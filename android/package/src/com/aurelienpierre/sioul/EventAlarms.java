@@ -558,11 +558,13 @@ final class EventAlarms
     }
 
     /**
-     * A reminder of the list said from its words (`fallback`): a notice to
-     * know tagged by its key, about its event (its address and time, as the
-     * list gives it: a tap opens it too), lasting until the event starts
-     * (`ends`), else the minutes Rust last gave (`lasts`). Pure, checked on
-     * a JVM (android/jvm-checks/NoticesCheck.java).
+     * A reminder of the list said from its words (`fallback`): tagged by its
+     * key, about its event (its address and time, as the list gives it: a
+     * tap opens it too). The time to leave, a notice to know lasting until
+     * the event starts (`ends`), else the minutes Rust last gave (`lasts`);
+     * an event's own alarm (kind "alarm", where no calendar app rings it in
+     * Sioul's place), a notice to do, until its `ends`. Pure, checked on a
+     * JVM (android/jvm-checks/EventOpenCheck.java).
      *
      * @param reminder the list's entry: {key, kind, title, body, about, ends}
      * @param key its key
@@ -579,7 +581,10 @@ final class EventAlarms
         said.about = ReminderOpener.isNoticeAddress(about) ? about : "";
         said.kind = reminder.optString("kind");
         said.endsMs = Math.max(0, reminder.optLong("ends"));
-        said.lastsMs = said.endsMs > now ? said.endsMs - now : lasts;
+        said.actionable = "alarm".equals(said.kind);
+        said.group = said.actionable ? Notices.ACTIONABLE : Notices.INFORMATIVE;
+        said.pierce = said.actionable;
+        said.lastsMs = said.actionable ? 0 : said.endsMs > now ? said.endsMs - now : lasts;
         said.title = reminder.optString("title");
         said.body = reminder.optString("body");
         if (!said.about.isEmpty())

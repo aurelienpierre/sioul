@@ -959,6 +959,9 @@ mod phone {
                 && let Ok(serde_json::Value::Object(said)) = serde_json::to_value(silence)
             {
                 fields.extend(said);
+                // A calendar app's alarms of events pass only where it rings them in Sioul's place
+                // (`eventalarms::calendar_app`); else Sioul's own pass on their channel, as before.
+                fields.insert("calendar".into(), (silence.calendar && crate::eventalarms::calendar_app().is_some()).into());
             }
             answers::entered(ask, &call("enter", &asked.to_string()), &ask.which.name(tr))
         }
@@ -2239,7 +2242,7 @@ mod tests {
         // The matrix's own (docs/attention.md, §3.3): this phone screens calls, so its contacts' calls
         // ring through the mode; messages from the starred; priority conversations; an event's alarms.
         use sioul_core::attention::{Senders as Matrix, Silence};
-        let silence = Silence { calls: Matrix::Contacts, messages: Matrix::Starred, repeat: true, conversations: true, alarms: true, doses: true, events: true };
+        let silence = Silence { calls: Matrix::Contacts, messages: Matrix::Starred, repeat: true, conversations: true, alarms: true, doses: true, events: true, calendar: false };
         let matrix = Ask { silence: Some(silence), ..ask(Which::Paused) };
         let read = serde_json::json!({ "api": 31, "access": true, "rule": { "calls": 2, "messages": 3, "repeat": 1, "alarms": 1, "conversations": 2 }, "doses": true, "events": true });
         assert_eq!(entered(&matrix, read).line, "Your phone is silenced, except calls from your contacts, messages from starred contacts, repeat callers and priority conversations. Alarms and dose reminders still come. Your events' alarms ring too.");

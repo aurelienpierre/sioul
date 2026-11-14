@@ -48,7 +48,7 @@ public final class NoticeReceiver extends BroadcastReceiver
             return;
         }
         if (DELETED.equals(action))
-            Notices.tidy(context);
+            Notices.tidy(context, java.util.Collections.emptyList(), java.util.Collections.singleton(Notices.key(Notices.NOTE, tag)));
     }
 
     /** Copy on the notice `tag`: `text` on the clipboard, then the notice taken away. */

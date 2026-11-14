@@ -90,7 +90,8 @@ public final class MailOpenCheck
         expect("new mail's buttons open a message only when it is an address", notes.contains("if (ReminderOpener.isMailAddress(address) && !label.isEmpty())") && notes.contains("ReminderOpener.isMailAddress(one) ? one : \"sioul:mailbox\""));
         expect("MailNotes logs no notification's text", !notes.matches("(?s).*Log\\.[a-z]\\([^;]*\\+ e\\).*") && !notes.matches("(?s).*Log\\.[a-z]\\([^;]*(json|said|address|open)[^;]*\\).*"));
         String poster = code(read(sources.resolve("Notices.java")));
-        expect("a notice's taps made in Notices.opening alone", poster.split("new Intent\\(", -1).length == 2 && poster.contains("static PendingIntent opening(Context context, String tag, String address)"));
+        expect("a notice's taps made in Notices.opening alone, beside Android's page of an app's notifications", poster.split("new Intent\\(", -1).length == 3 && poster.contains("static PendingIntent opening(Context context, String tag, String address)")
+            && poster.contains("new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app)"));
         expect("a notice's tap names a thing only when it is an address", poster.contains("ReminderOpener.isNoticeAddress(address) ? ReminderOpener.NOTICE : \"app\"") && poster.contains(".putExtra(ReminderOpener.KEY, ReminderOpener.NOTICE.equals(kind) ? address : \"\")"));
         expect("Notices logs no notification's text", !poster.matches("(?s).*Log\\.[a-z]\\([^;]*\\+ e\\).*") && !poster.matches("(?s).*Log\\.[a-z]\\([^;]*(json|said|address|about|title|body)[^;]*\\).*"));
         String receiver = code(read(sources.resolve("NoticeReceiver.java")));
@@ -106,21 +107,25 @@ public final class MailOpenCheck
                 .put(new JSONObject().put("label", "Io, Keys").put("address", "mid:keys@example.org"))
                 .put(new JSONObject().put("label", "Al, More").put("address", "mid:more@example.org")))
             .put("open", "");
-        Notices.Said mail = MailNotes.said(three, 300_000);
+        Notices.Said mail = MailNotes.said(three, 300_000, 1_794_040_000_000L);
         expect("a button per message named, three at most, never a file", mail.buttons.size() == 3 && mail.buttons.get(0).open.equals("mid:lunch-1@example.org") && mail.buttons.get(1).open.equals("sioul:mail/home/0123456789abcdef") && mail.buttons.get(2).open.equals("mid:keys@example.org"));
         expect("each button its words", mail.buttons.get(0).label.equals("Ana, Lunch") && mail.buttons.get(2).label.equals("Io, Keys"));
         expect("a tap opens the first", mail.about.equals("mid:lunch-1@example.org"));
         expect("each press its own request", Notices.requestCode(mail.tag, mail.buttons.get(0).open) != Notices.requestCode(mail.tag, mail.buttons.get(1).open));
-        expect("a notice to know, in its place, the minutes Rust gave", !mail.actionable && mail.group.equals(Notices.INFORMATIVE) && mail.tag.equals(MailNotes.TAG) && mail.lastsMs == 300_000 && mail.endsMs == 0);
+        expect("a notice to know, in its place, the minutes Rust gave, gone at the end of its day", !mail.actionable && mail.group.equals(Notices.INFORMATIVE) && mail.tag.equals(MailNotes.TAG) && mail.lastsMs == 300_000 && mail.endsMs == 1_794_040_000_000L);
+        java.time.ZoneId paris = java.time.ZoneId.of("Europe/Paris");
+        long evening = java.time.ZonedDateTime.of(2026, 11, 14, 23, 30, 0, 0, paris).toInstant().toEpochMilli();
+        long midnight = java.time.ZonedDateTime.of(2026, 11, 15, 0, 0, 0, 0, paris).toInstant().toEpochMilli();
+        expect("the end of its day: the next midnight there", MailNotes.dayEnds(evening, paris) == midnight && MailNotes.dayEnds(midnight, paris) == midnight + 86_400_000L);
         expect("on the lock screen, the count alone", "Three e-mails".equals(mail.publicTitle) && "".equals(mail.publicBody));
-        Notices.Said said = MailNotes.said(new JSONObject(three.toString()).put("lasts_ms", 600_000).put("ends", 1_794_000_000_000L).put("about", "mid:keys@example.org"), 300_000);
+        Notices.Said said = MailNotes.said(new JSONObject(three.toString()).put("lasts_ms", 600_000).put("ends", 1_794_000_000_000L).put("about", "mid:keys@example.org"), 300_000, 1_794_040_000_000L);
         expect("its life and thing as Rust says them", said.lastsMs == 600_000 && said.endsMs == 1_794_000_000_000L && said.about.equals("mid:keys@example.org"));
         // Before phase 2 (no `opens`): one message, it; several, the mailbox at its top.
-        Notices.Said one = MailNotes.said(new JSONObject().put("title", "One e-mail").put("body", "Ana, Lunch").put("open", "mid:lunch-1@example.org").put("words", words), 300_000);
+        Notices.Said one = MailNotes.said(new JSONObject().put("title", "One e-mail").put("body", "Ana, Lunch").put("open", "mid:lunch-1@example.org").put("words", words), 300_000, 1_794_040_000_000L);
         expect("one message: Open and a tap open it", one.buttons.size() == 1 && one.buttons.get(0).open.equals("mid:lunch-1@example.org") && one.about.equals("mid:lunch-1@example.org"));
-        Notices.Said several = MailNotes.said(new JSONObject().put("title", "Two e-mails").put("open", "").put("words", words), 300_000);
+        Notices.Said several = MailNotes.said(new JSONObject().put("title", "Two e-mails").put("open", "").put("words", words), 300_000, 1_794_040_000_000L);
         expect("several: the mailbox at its top", several.about.equals("sioul:mailbox") && several.buttons.get(0).open.equals("sioul:mailbox"));
-        Notices.Said path = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1").put("words", words), 300_000);
+        Notices.Said path = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1").put("words", words), 300_000, 1_794_040_000_000L);
         expect("a file given: the mailbox, never the file", path.about.equals("sioul:mailbox"));
         expect("Open in Rust's words", one.buttons.get(0).label.equals("Open"));
         String rows = code(read(sources.resolve("HomeCardRows.java")));

@@ -17,7 +17,9 @@
 //! left said as it is then. Every device tells its own: one held back on the
 //! phone because the computer was used a moment ago, then shown on an empty
 //! desk, would be an appointment missed. An event's own alarm rings in the
-//! phone's calendar app, never here (the notifications' decision 3).
+//! phone's calendar app, where one rings it (the notifications' decision 3:
+//! `calendar_app`); where none does, here, as before, a notice to do. Which
+//! of the two is said once on each device (`handover`).
 //!
 //! The same list holds when the meals, the night's notice and the end of
 //! work may come ("day" its kind): decided here at their alarm, and told on
@@ -154,12 +156,89 @@ pub(crate) fn coming(now: &Zoned) -> String {
     listed(&all, &crate::hours::with_layers(holds), now)
 }
 
-/// Whether a reminder is one a phone tells, and Android's alarm clock is
-/// given: the time to leave for an event (Sioul's "before" it). An event's
-/// own alarm rings in the phone's calendar app (the notifications' decision
-/// 3), and the working day before is made no more (decision 3 too).
-pub(crate) fn told_on_android(kind: Kind) -> bool {
-    kind == Kind::Before
+/// Whether a reminder is one Android tells here, and its alarm clock is
+/// given: the time to leave for an event (Sioul's "before" it); an event's
+/// own alarm only where no calendar app rings it in Sioul's place
+/// (`calendar_rings`: `calendar_app`, the notifications' decision 3). The
+/// working day before is made no more (decision 3 too).
+pub(crate) fn told_on_android(kind: Kind, calendar_rings: bool) -> bool {
+    kind == Kind::Before || (kind == Kind::Alarm && !calendar_rings)
+}
+
+/// The calendar app that rings an event's own alarms on this device in
+/// Sioul's place, by its package and its name (CalendarApps.java's rule: an
+/// app answers Android's calendar category, and an account type syncs
+/// agendas into it); none where there is none, and Sioul rings them itself,
+/// as before. Asked of Android once every ten minutes in a process at most.
+/// None off Android.
+pub(crate) fn calendar_app() -> Option<(String, String)> {
+    if !cfg!(target_os = "android") {
+        return None;
+    }
+    type Kept = Option<(std::time::Instant, Option<(String, String)>)>;
+    static KEPT: Mutex<Kept> = Mutex::new(None);
+    let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, app)) = kept.as_ref()
+        && at.elapsed() < std::time::Duration::from_secs(600)
+    {
+        return app.clone();
+    }
+    let said = crate::steps::java("calendar-app", "{}");
+    // No answer (an older Java, a refusal): Sioul rings them, never none does.
+    let package = said["package"].as_str().unwrap_or_default().to_string();
+    let app = (!package.is_empty()).then(|| (package.clone(), said["label"].as_str().filter(|l| !l.is_empty()).unwrap_or(&package).to_string()));
+    *kept = Some((std::time::Instant::now(), app.clone()));
+    app
+}
+
+/// Where what a device said of an event's own alarms is kept (`handover`).
+fn handover_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join("event-alarms-said.txt")
+}
+
+/// Which of the two a device says of an event's own alarms (`handover`):
+/// "calendar:<package>" where a calendar app rings them, "sioul" where
+/// Sioul does. Pure.
+fn handover_word(app: Option<&(String, String)>) -> String {
+    app.map_or_else(|| "sioul".to_string(), |(package, _)| format!("calendar:{package}"))
+}
+
+/// Said once on each device, and again only once it changes (a calendar app
+/// installed or gone): who rings an event's own alarms here. A calendar app
+/// does (the notifications' decision 3): a notice to know, with a button to
+/// that app's notifications in Android's settings, for whoever silenced it
+/// there once Sioul rang them too. None does: Sioul rings them here, and
+/// says so. Kept as said only once posted (`handover_path`). Android only.
+fn handover(app: Option<&(String, String)>) {
+    let word = handover_word(app);
+    let path = handover_path();
+    if std::fs::read_to_string(&path).is_ok_and(|said| said.trim() == word) {
+        return;
+    }
+    let now = jiff::Timestamp::now().as_second();
+    let Some(json) = handover_json(app, now) else { return };
+    if crate::steps::java("notice", &json.to_string()) == true {
+        let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
+        if let Err(e) = std::fs::write(&path, &word) {
+            eprintln!("{}: {e}", path.display());
+        }
+    }
+}
+
+/// The notice `handover` posts (`notice_json`): a minor notice to know,
+/// about nothing of Sioul's (a tap brings Sioul up); a calendar app named,
+/// with a button to its notifications in Android's settings.
+fn handover_json(app: Option<&(String, String)>, now: i64) -> Option<serde_json::Value> {
+    use sioul_core::notice::Kind as Of;
+    let notice = match app {
+        Some((_, label)) => Notice::new("", Of::Minor, tr().text("event-alarms-calendar-title", None), crate::backend::say("event-alarms-calendar-body", &[("app", label.clone())])),
+        None => Notice::new("", Of::Minor, tr().text("event-alarms-sioul-title", None), tr().text("event-alarms-sioul-body", None)),
+    };
+    let mut json = notice_json("event-alarms", &notice, false, None, now)?;
+    if let (Some((package, _)), Some(actions)) = (app, json["actions"].as_array_mut()) {
+        actions.push(serde_json::json!({ "label": tr().text("event-alarms-calendar-settings", None), "settings": package }));
+    }
+    Some(json)
 }
 
 /// The list Java is given, from reminders gathered already: the times to
@@ -169,10 +248,11 @@ pub(crate) fn told_on_android(kind: Kind) -> bool {
 /// them, or nothing (`day_note`).
 fn listed(all: &[Reminder], holds: &Holds, now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
+    let rings = calendar_app().is_some();
     let dir = reminders::told_dir();
     let mut due: Vec<(i64, &Reminder)> = all
         .iter()
-        .filter(|r| told_on_android(r.kind) && r.until > stamp && !reminders::told(&dir, &r.key))
+        .filter(|r| told_on_android(r.kind, rings) && r.until > stamp && !reminders::told(&dir, &r.key))
         .map(|r| (when(r, holds, stamp), r))
         .filter(|(at, r)| *at < r.until)
         .collect();
@@ -184,13 +264,15 @@ fn listed(all: &[Reminder], holds: &Holds, now: &Zoned) -> String {
     serde_json::json!({ "reminders": list, "look": look * 1000, "lasts_ms": informative_ms(), "words": words() }).to_string()
 }
 
-/// A time to leave as the list gives it, its alarm at `at` (Unix seconds):
-/// its words, said if Sioul cannot be asked then, with its event's address
-/// and time, which a tap on that notice opens too, and its start, when that
-/// notice goes.
+/// A reminder as the list gives it, its alarm at `at` (Unix seconds): its
+/// words, said if Sioul cannot be asked then, with its event's address and
+/// time, which a tap on that notice opens too, and when that notice goes:
+/// the time to leave as its event starts, an event's own alarm a quarter of
+/// an hour after (`Reminder::until`).
 fn listed_entry(reminder: &Reminder, at: i64) -> serde_json::Value {
     let about = reminder.notice("").about;
-    serde_json::json!({ "key": reminder.key, "kind": reminder.kind, "at": at * 1000, "title": reminder.title, "body": reminder.body, "about": about, "ends": reminder.starts.unwrap_or(reminder.until) * 1000 })
+    let ends = if reminder.kind == Kind::Alarm { reminder.until } else { reminder.starts.unwrap_or(reminder.until) };
+    serde_json::json!({ "key": reminder.key, "kind": reminder.kind, "at": at * 1000, "title": reminder.title, "body": reminder.body, "about": about, "ends": ends * 1000 })
 }
 
 /// When a reminder's alarm rings (Unix seconds): its time; past it, at once
@@ -228,6 +310,7 @@ pub(crate) fn schedule() {
         return;
     }
     hand(coming(&sioul_core::zone::now()));
+    handover(calendar_app().as_ref());
 }
 
 /// The same from the window's minute, with the reminders it gathered
@@ -237,6 +320,7 @@ pub(crate) fn schedule_from(all: &[Reminder], holds: &Holds, now: &Zoned) {
         return;
     }
     hand(listed(all, holds, now));
+    handover(calendar_app().as_ref());
 }
 
 /// A reminder shown in Android's notifications (`shown`): a notice to know,
@@ -254,9 +338,10 @@ pub(crate) fn show(reminder: &Reminder) {
     let _ = text;
 }
 
-/// New mail's notification on a phone (`mailnote`), in the quiet "New mail"
-/// channel: one at a time, the next batch in its place; a tap opens its one
-/// message (`open`, its address: `mail_note_json`), else the Porch.
+/// New mail's notification on a phone (`mailnote`), a notice to know in the
+/// quiet "Notices" channel (MailNotes.java): one at a time, the next batch in
+/// its place; a tap opens its one message (`open`, its address:
+/// `mail_note_json`), else the mailbox at its top.
 /// `through`: someone Always through is in it, whom the system's
 /// do-not-disturb should let through (a channel that passes, Java's to choose).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -371,7 +456,9 @@ fn decide(key: &str) -> String {
     let (all, holds) = reminders::gather_events(&load_config(), tr(), &now);
     let holds = crate::hours::with_layers(holds);
     let dir = reminders::told_dir();
-    let answer = match all.iter().find(|r| r.key == key) {
+    // An older build's alarm of an event's own, armed before the list changed: a calendar app rings it now.
+    let rings = calendar_app().is_some();
+    let answer = match all.iter().find(|r| r.key == key && told_on_android(r.kind, rings)) {
         Some(r) if r.ready_in(stamp, &holds) => {
             // Told by the window's minute already: nothing more.
             let shown = reminders::claim(&dir, &r.key);
@@ -442,7 +529,8 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
 /// take its alarm away. None once it no longer lasts (its event begun).
 fn shown(reminder: &Reminder, now: i64) -> Option<serde_json::Value> {
     let notice = reminder.notice(&tr().text("reminder-open", None));
-    let mut json = notice_json(&reminder.key, &notice, false, None, now)?;
+    // An event's own alarm Sioul rings here (no calendar app does): to do, passing as its row pierces.
+    let mut json = notice_json(&reminder.key, &notice, reminder.kind == Kind::Alarm, None, now)?;
     json["key"] = reminder.key.clone().into();
     Some(json)
 }
@@ -645,17 +733,34 @@ mod tests {
         }
     }
 
-    /// A phone tells the time to leave alone: an event's own alarm rings in
-    /// the phone's calendar app (the notifications' decision 3), and the
-    /// working day before is made no more; neither is given to Android's
-    /// alarm clock.
+    /// A phone tells the time to leave, and an event's own alarm only where
+    /// no calendar app rings it in Sioul's place (the notifications' decision
+    /// 3); the working day before is made no more; nothing else is given to
+    /// Android's alarm clock. Which of the two is said once, and again only
+    /// once it changes; the calendar app's notice opens its notifications.
     #[test]
-    fn a_phone_tells_the_time_to_leave_alone() {
+    fn a_phone_rings_an_event_s_own_alarm_only_where_no_calendar_app_does() {
         use sioul_core::reminders::Kind as Of;
-        assert!(told_on_android(Of::Before));
-        for kind in [Of::Alarm, Of::Event, Of::Asked, Of::Wait, Of::Payment, Of::Paper, Of::Contract, Of::Money] {
-            assert!(!told_on_android(kind), "{kind:?}");
+        assert!(told_on_android(Of::Before, true) && told_on_android(Of::Before, false));
+        assert!(!told_on_android(Of::Alarm, true), "a calendar app rings it");
+        assert!(told_on_android(Of::Alarm, false), "none does: Sioul, as before");
+        for kind in [Of::Event, Of::Asked, Of::Wait, Of::Payment, Of::Paper, Of::Contract, Of::Money] {
+            assert!(!told_on_android(kind, false) && !told_on_android(kind, true), "{kind:?}");
         }
+        let calendar = ("org.example.calendar".to_string(), "Calendar".to_string());
+        assert_eq!(handover_word(Some(&calendar)), "calendar:org.example.calendar");
+        assert_eq!(handover_word(None), "sioul");
+        let said = handover_json(Some(&calendar), 1_794_000_000).unwrap();
+        assert_eq!((said["tag"].as_str(), said["class"].as_str(), said["kind"].as_str(), said["about"].as_str()), (Some("event-alarms"), Some("informative"), Some("minor"), Some("")));
+        assert!(said["body"].as_str().is_some_and(|b| b.contains("Calendar")), "{said}");
+        assert_eq!(said["actions"][0]["settings"], "org.example.calendar", "its notifications in Android's settings");
+        let sioul = handover_json(None, 1_794_000_000).unwrap();
+        assert_eq!(sioul["actions"].as_array().map(Vec::len), Some(0));
+        // An event's own alarm Sioul rings: to do, until a quarter of an hour after its event began.
+        let alarm = Reminder { key: "alarm:yoga:1793520000:0".into(), kind: Of::Alarm, at: 1_793_520_000, until: 1_793_520_900, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: Some(sioul_core::links::event_uri("yoga")) };
+        let note = posted(&alarm, 1_793_520_000).unwrap();
+        assert_eq!((note["class"].as_str(), note["lasts_ms"].as_i64(), note["ends"].as_i64()), (Some("actionable"), Some(0), Some(1_793_520_900_000)));
+        assert_eq!(listed_entry(&alarm, alarm.at)["ends"].as_i64(), Some(1_793_520_900_000));
     }
 
     /// The addresses EventOpenCheck.java holds ReminderOpener.isEventAddress

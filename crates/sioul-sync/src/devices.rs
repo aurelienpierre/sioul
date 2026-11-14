@@ -426,14 +426,16 @@ pub fn others_in_use(entries: &[Entry], own: &str, now: i64, asleep: bool) -> bo
 /// entries (docs/notifications.md, "The device you are at tells"): another
 /// device's entry that is a computer's (a tablet's is Android's, a phone's
 /// kind), open (working, still sharing), its export dated lately (`FRESH`,
-/// `SKEW`), and not saying that nobody is at it. One that says nothing of it
-/// (an older Sioul, a system that cannot tell) counts as someone at it, as
-/// its own notices count it (`devices::someone_here` in the app). The meals,
-/// the night's notice and the end of work come on that computer then, and
-/// the phone says nothing; otherwise the phone tells them.
+/// `SKEW`), and saying that someone is at it (input within ten minutes and
+/// its session unlocked, or a press in Sioul). One that says nothing of it
+/// (an older Sioul, a system that cannot tell) is not counted: the phone
+/// tells then, and that computer may tell too, rather than nobody. The
+/// meals, the night's notice and the end of work come on a computer someone
+/// is at, and the phone, asking again a few minutes on while each may still
+/// come, says nothing; otherwise the phone tells them.
 pub fn computer_in_use(entries: &[Entry], own: &str, now: i64) -> bool {
     use sioul_core::health::{FRESH, SKEW};
-    entries.iter().any(|e| e.id != own && e.kind == COMPUTER && e.working && !e.left && now - e.exported <= FRESH + SKEW && e.active != Some(false))
+    entries.iter().any(|e| e.id != own && e.kind == COMPUTER && e.working && !e.left && now - e.exported <= FRESH + SKEW && e.active == Some(true))
 }
 
 /// What the other devices last wrote an availability's mirror from
@@ -821,17 +823,16 @@ mod tests {
 
     /// The device you are at tells (the notifications' decision 6): a phone
     /// leaves the meals, the night's notice and the end of work to a computer
-    /// someone is at (its entry fresh, open, not saying nobody is), or one
-    /// that says nothing of it (Sioul running counts, as its own notices
-    /// count it); never to one left on with nobody at it, one closed or
-    /// stale, another phone or a tablet, nor itself.
+    /// someone is at (its entry fresh, open, saying someone is); never to one
+    /// left on with nobody at it, one that cannot say (the phone tells rather
+    /// than nobody), one closed or stale, another phone or a tablet, nor itself.
     #[test]
     fn a_phone_leaves_the_days_notices_to_a_computer_someone_is_at() {
         use sioul_core::health::{FRESH, SKEW};
         let now = DUE;
         let desk = |active: Option<bool>| Entry { id: "desk".into(), kind: COMPUTER.into(), working: true, started: now - 3_600, exported: now - 60, active, ..Entry::default() };
         assert!(computer_in_use(&[desk(Some(true))], "phone", now), "someone at it");
-        assert!(computer_in_use(&[desk(None)], "phone", now), "unsaid: Sioul running counts");
+        assert!(!computer_in_use(&[desk(None)], "phone", now), "unsaid: not counted, the phone tells");
         assert!(!computer_in_use(&[desk(Some(false))], "phone", now), "left on, nobody at it: the phone tells");
         assert!(!computer_in_use(&[Entry { exported: now - FRESH - SKEW - 1, ..desk(Some(true)) }], "phone", now), "its news stale");
         assert!(computer_in_use(&[Entry { exported: now - FRESH - SKEW, ..desk(Some(true)) }], "phone", now), "fresh to the second");

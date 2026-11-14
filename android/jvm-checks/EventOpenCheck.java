@@ -89,6 +89,8 @@ public final class EventOpenCheck
         expect("until the event starts", fallen.lastsMs == 900_000 && fallen.endsMs == 1_793_520_000_000L && !fallen.actionable && fallen.tag.equals("before:yoga"));
         Notices.Said path = EventAlarms.fallen(new org.json.JSONObject(entry.toString()).put("about", "/c/yoga.ics#1793520000"), "before:yoga", 300_000, now, "Open");
         expect("a file kept: none, never the file", path.about.isEmpty() && path.buttons.isEmpty());
+        Notices.Said alarm = EventAlarms.fallen(new org.json.JSONObject(entry.toString()).put("kind", "alarm").put("key", "alarm:yoga"), "alarm:yoga", 300_000, now, "Open");
+        expect("an event's own alarm Sioul rings itself: to do, until its end", alarm.actionable && alarm.pierce && alarm.lastsMs == 0 && alarm.group.equals(Notices.ACTIONABLE) && alarm.about.equals(fallen.about));
         Notices.Said older = EventAlarms.fallen(new org.json.JSONObject().put("key", "before:yoga").put("title", "Yoga"), "before:yoga", 300_000, now, "Open");
         expect("an older list without them: Sioul as by its icon, the minutes kept", older.about.isEmpty() && older.lastsMs == 300_000 && older.endsMs == 0);
 

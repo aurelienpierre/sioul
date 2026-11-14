@@ -263,6 +263,13 @@ fn mail_cap(after: i64, now: i64, mailed: i64, mail_on: bool) -> i64 {
     if mail_on { after.min((mailed + MAIL_EVERY - now).max(STEP_AWAKE)) } else { after }
 }
 
+/// The next step (`after`, seconds from `now`) no later than the end of a
+/// rest that holds mail now (`ends`, Unix seconds), a second after it, a
+/// minute from now at the soonest; as it was without one. Pure.
+fn rest_cap(after: i64, now: i64, ends: Option<i64>) -> i64 {
+    ends.map_or(after, |ends| after.min((ends - now + 1).max(60)))
+}
+
 /// An exchange that found nothing to read nor to write (`Outcome::quiet`), or none ran.
 fn quiet_exchange(exchanged: &Option<Result<sioul_sync::share::Outcome, String>>) -> bool {
     match exchanged {
@@ -570,6 +577,10 @@ fn step(reason: &str) -> serde_json::Value {
     let mailed = MAILED.load(Ordering::Relaxed);
     let after = next_step(close, asleep, quiet);
     let next = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
+    // Mail resting now (sleep, a pause) and fetched once that time ends: the next step no later than
+    // its end, so that waking's first fetch and "The Porch opens" come then, not a step later.
+    let resting = !mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused) && mail_due(&config, mailed + MAIL_EVERY, mailed, false, false);
+    let next = rest_cap(next, now, resting.then(|| crate::hours::mode_now().until.map(|until| until.timestamp().as_second())).flatten());
     let words = words();
     serde_json::json!({
         "next": next,
@@ -697,6 +708,11 @@ mod tests {
         // Quiet looks in a row, awake: ten minutes, then fifteen, mail's own rhythm, and no further.
         assert_eq!([1, 2, 3, 40].map(|quiet| next_step(false, false, quiet)), [600, 900, 900, 900]);
         assert_eq!(STEP_QUIET[2], MAIL_EVERY, "each spaced wake carries the mail");
+        // Mail resting until waking: the step at waking, not a step later; never sooner than a minute.
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_000 + 600)), 601);
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_000 + 20 * 60)), 15 * 60, "a step comes first anyway");
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_010)), 60);
+        assert_eq!(rest_cap(15 * 60, 1_000, None), 15 * 60, "no rest, or its end unknown (a pause)");
         // Never while another device is in use, nor at night, whose fifteen minutes stay.
         assert_eq!(next_step(true, false, 5), 120);
         assert_eq!(next_step(false, true, 5), 900);

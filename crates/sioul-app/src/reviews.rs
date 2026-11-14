@@ -485,6 +485,17 @@ pub(crate) fn closing_notice(about: &str, kind: sioul_core::attention::Kind, tit
     notice
 }
 
+/// The turn of the day (05:00) next after `end`, when the work day it ended
+/// is no longer the one the sheet closes (`day_of`), Unix seconds; a day on
+/// where the zone has no such time. A phone's end-of-work notice is worth
+/// seeing until then at the latest: unseen overnight, it never greets the
+/// next morning with a sheet that would close nothing.
+fn next_turn(end: &Zoned) -> i64 {
+    let at = |date: Date| date.at(reviews::DAY_TURNS, 0, 0, 0).to_zoned(end.time_zone().clone()).ok().map(|z| z.timestamp().as_second());
+    let stamp = end.timestamp().as_second();
+    at(end.date()).filter(|turn| *turn > stamp).or_else(|| end.date().tomorrow().ok().and_then(at)).unwrap_or(stamp + 86_400)
+}
+
 /// Whether the end-of-work notice may still come at `stamp`, the hours
 /// having ended at `end` (Unix seconds): within its ten minutes, never before.
 fn still_due(stamp: i64, end: i64) -> bool {
@@ -539,9 +550,11 @@ pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
         WorkNotice::Comes(date) => {
             let day = work_day(now).to_string();
             let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{day}") };
-            // Worth telling until the evening's leisure is over: the night's start, else the day's end.
+            // Worth telling until the evening's leisure is over: the night's start, else the day's
+            // end; never past the turn of the day after the hours' end (`next_turn`).
             let night = crate::hours::blocks(now).kept.iter().filter(|k| k.kind == "sleep" && k.start > stamp).map(|k| k.start).min();
-            let notice = closing_notice(&sioul_core::notice::address::work_day(&day), sioul_core::attention::Kind::WorkOver, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close], night);
+            let relevant = phone_relevance(night, end.as_ref().map(next_turn));
+            let notice = closing_notice(&sioul_core::notice::address::work_day(&day), sioul_core::attention::Kind::WorkOver, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close], relevant);
             crate::eventalarms::day_note(&format!("day:work:{date}"), &notice);
             mark_told(date);
             serde_json::json!({ "shown": true })
@@ -551,13 +564,26 @@ pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
     }
 }
 
+/// Until when a phone's end-of-work notice is worth seeing: the night's
+/// start (`night`), never past the turn of the day after the hours' end
+/// (`turn`); the earlier of the two said, none when neither is known (the
+/// day's end then, `Notice::relevance`). Pure.
+fn phone_relevance(night: Option<i64>, turn: Option<i64>) -> Option<i64> {
+    match (night, turn) {
+        (Some(night), Some(turn)) => Some(night.min(turn)),
+        (night, turn) => night.or(turn),
+    }
+}
+
 /// Who tells the day's notices, as a phone's alarm sees it: this phone,
 /// settled, unless someone is at a computer (`in_use`), which tells them
-/// then (the notifications' decision 6). The "notices" lease is not read
-/// here: it follows the device that ran Sioul last, a computer left on all
-/// afternoon with nobody at it among them.
+/// then (the notifications' decision 6): then "not yet", and the alarm asks
+/// again a minute on while its ten minutes last (`WorkNotice::Soon`), so
+/// that a person leaving the desk at the last minute still hears it here.
+/// The "notices" lease is not read here: it follows the device that ran
+/// Sioul last, a computer left on all afternoon with nobody at it among them.
 pub(crate) fn phone_keeper(in_use: bool) -> sioul_sync::lease::Keeper {
-    sioul_sync::lease::Keeper { mine: !in_use, settled: true, ..Default::default() }
+    sioul_sync::lease::Keeper { mine: true, settled: !in_use, ..Default::default() }
 }
 
 /// Whether the night's review of the night `bed` belongs to is still to give:
@@ -627,14 +653,33 @@ mod tests {
 
     /// On a phone the end of work comes only while nobody is at a computer
     /// (the notifications' decision 6): there it comes, settled, as soon as
-    /// it is due; someone at a computer, it is told there, and the phone
-    /// marks the day told without a word.
+    /// it is due; someone at a computer, the phone says nothing yet and asks
+    /// again a minute on while its ten minutes last, the day not marked.
     #[test]
     fn a_phone_tells_the_end_of_work_while_nobody_is_at_a_computer() {
         let today: Date = "2026-10-14".parse().unwrap();
         let work = || Some(Offer { kind: Kind::Work, date: today });
         assert_eq!(notice_decision(true, work, || true, || false, || phone_keeper(false), today), (WorkNotice::Comes(today), Some(today)));
-        assert_eq!(notice_decision(true, work, || true, || false, || phone_keeper(true), today), (WorkNotice::No, Some(today)));
+        assert_eq!(notice_decision(true, work, || true, || false, || phone_keeper(true), today), (WorkNotice::Soon, None), "someone at a computer: asked again, the day not told");
+    }
+
+    /// The work notice on a phone is worth seeing until the night's start,
+    /// never past the turn of the day (05:00) after the hours' end: work
+    /// ending at 23:30, unseen overnight, goes at 05:00, not at the next
+    /// evening's bedtime.
+    #[test]
+    fn the_work_notice_goes_at_the_turn_of_the_day() {
+        let zone = jiff::tz::TimeZone::fixed(jiff::tz::offset(2));
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        let turn = |text: &str| at(text).timestamp().as_second();
+        assert_eq!(next_turn(&at("2026-10-14T17:30")), turn("2026-10-15T05:00"));
+        assert_eq!(next_turn(&at("2026-10-14T23:30")), turn("2026-10-15T05:00"));
+        assert_eq!(next_turn(&at("2026-10-15T01:00")), turn("2026-10-15T05:00"));
+        assert_eq!(next_turn(&at("2026-10-15T05:00")), turn("2026-10-16T05:00"));
+        assert_eq!(phone_relevance(Some(turn("2026-10-14T22:30")), Some(turn("2026-10-15T05:00"))), Some(turn("2026-10-14T22:30")), "the night's start first");
+        assert_eq!(phone_relevance(Some(turn("2026-10-15T22:30")), Some(turn("2026-10-15T05:00"))), Some(turn("2026-10-15T05:00")), "tomorrow's night: the turn of the day instead");
+        assert_eq!(phone_relevance(None, Some(turn("2026-10-15T05:00"))), Some(turn("2026-10-15T05:00")), "no night set");
+        assert_eq!(phone_relevance(None, None), None);
     }
 
     /// A sheet opened before the turn of the day and closed after it closes

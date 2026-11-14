@@ -37,7 +37,7 @@ final class TimeNote
     /** The one note, by its number alone: the doses' reminders are known by their key and 1. */
     private static final int NOTE = 2;
     /** Its group: its own (Notices). */
-    private static final String GROUP = "sioul.time";
+    static final String GROUP = "sioul.time";
 
     private TimeNote() {}
 
@@ -53,6 +53,7 @@ final class TimeNote
         NotificationManager notifications = context.getSystemService(NotificationManager.class);
         if (json == null || json.isEmpty()) {
             notifications.cancel(NOTE);
+            Notices.tidy(context, java.util.Collections.emptyList(), java.util.Collections.singleton(Notices.key(NOTE, null)));
             return;
         }
         final JSONObject note;
@@ -84,6 +85,8 @@ final class TimeNote
         else
             built.setWhen(note.optLong("since")).setShowWhen(true).setUsesChronometer(true);
         notifications.notify(NOTE, built.build());
+        // Its group's own summary on Android 16: never bundled with another.
+        Notices.tidy(context, java.util.Collections.singletonList(new Notices.Child(NOTE, null, GROUP, 0)), java.util.Collections.emptySet());
     }
 
     /** A button: its broadcast to TimeReceiver, by no other app. */

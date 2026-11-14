@@ -50,6 +50,10 @@ public final class ModeCheck
         expect("nothing at all", through("{\"people\":false,\"doses\":true,\"calls\":\"none\",\"messages\":\"none\",\"repeat\":false,\"conversations\":false,\"alarms\":true,\"events\":true}"), "4 4 false false true true true 3");
         expect("doses and alarms held", through("{\"people\":true,\"calls\":\"starred\",\"messages\":\"starred\",\"repeat\":true,\"conversations\":true,\"alarms\":true,\"doses\":false,\"events\":false}"), "3 3 true true true false false 2");
         // Nested, as "silence".
+        // A calendar app's alarms: only where Rust says so; an older Rust says nothing, held.
+        expect("calendar, said", PauseMode.Through.of(new JSONObject("{\"calendar\":true,\"events\":true}")).calendar, true);
+        expect("calendar, unsaid", PauseMode.Through.of(new JSONObject("{\"events\":true}")).calendar, false);
+        expect("calendar, nested", PauseMode.Through.of(new JSONObject("{\"silence\":{\"calendar\":true}}")).calendar, true);
         expect("nested", through("{\"people\":true,\"doses\":true,\"silence\":{\"calls\":\"contacts\",\"messages\":\"none\",\"repeat\":true,\"conversations\":false,\"alarms\":true,\"doses\":true,\"events\":false}}"), "2 4 true false true true false 3");
         expect("silence null", through("{\"people\":false,\"doses\":false,\"silence\":null}"), "4 4 false false true false true 3");
         // A held text let through at a review only when the filter silences every text (review of part 4, S-2).

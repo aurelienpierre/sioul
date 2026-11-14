@@ -6545,7 +6545,7 @@ attention-row-doses-help = Le rappel d’une prise à son heure, et la question 
 attention-row-wake = Le réveil
 attention-row-wake-help = Le réveil au lever réglé sur la page Santé, sur Android.
 attention-row-alarms = Les alarmes d’un événement
-attention-row-alarms-help = Les alarmes que porte un événement, réglées par vous ou par qui vous a invité.
+attention-row-alarms-help = Les alarmes que porte un événement, réglées par vous ou par qui vous a invité. Sur un téléphone dont l’application d’agenda les fait sonner à la place de Sioul, un mode de Sioul ne les laisse sonner que là où cette ligne dit tout de suite ; là où elle dit plus tard, ou quand l’événement y tombe, Android les garde silencieuses dans le volet, et elles ne sonnent jamais ensuite.
 attention-row-before = Rappels avant un événement
 attention-row-before-help = Le rappel de Sioul avant un événement, comme le dit Avant un événement dans Rappels.
 attention-row-day-before = Événements, le jour travaillé d’avant
@@ -6838,6 +6838,12 @@ mail-through-channel = Courriels des personnes qui passent toujours
 notices-channel = À savoir
 act-channel = À faire
 act-pause-channel = À faire pendant une pause
+# Said once on a phone or a tablet (eventalarms.rs, `handover`): who rings an event's own alarms there.
+event-alarms-calendar-title = Les alarmes des événements sonnent dans votre agenda
+event-alarms-calendar-body = Sioul ne fait plus sonner les alarmes propres à un événement sur cet appareil : { $app } le fait. Si vous les y aviez rendues muettes parce que Sioul les faisait sonner aussi, réactivez-les.
+event-alarms-calendar-settings = Ses notifications
+event-alarms-sioul-title = Sioul fait sonner ici les alarmes des événements
+event-alarms-sioul-body = Aucune application d’agenda ne synchronise vos agendas sur cet appareil : Sioul fait donc sonner lui-même les alarmes propres à un événement.
 
 ## Paramètres ▸ Ce qui vous joint, en mots : son onglet, ses cartes, la fiche d’une personne, Ce téléphone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
 settings-tab-attention = Ce qui vous joint

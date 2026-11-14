@@ -55,7 +55,7 @@ public final class EventNotesCheck
         expect("the public version says Rust's words for it, else Sioul's alone", version.contains("given ? said.publicTitle : \"Sioul\"") && version.contains("given ? said.publicBody : EventAlarms.word(context, \"public\")") && !version.contains("said.title") && !version.contains("said.body"));
         String alarms = new String(Files.readAllBytes(sources.resolve("EventAlarms.java")), StandardCharsets.UTF_8);
         expect("its words in both languages before Rust's", alarms.contains("{ \"public\", \"Sioul has a reminder for you.\", \"Sioul a un rappel pour vous.\" }"));
-        String summaries = body(text, "    static void tidy(Context context)");
+        String summaries = body(text, "    private static void summaries(");
         expect("a group's summary is private, its title the channel's name alone", summaries.contains(".setVisibility(Notification.VISIBILITY_PRIVATE)") && !summaries.contains("said."));
         // A code's notice: on the lock screen, its title alone (Rust's `code_note`).
         String rust = new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "eventalarms.rs")), StandardCharsets.UTF_8);

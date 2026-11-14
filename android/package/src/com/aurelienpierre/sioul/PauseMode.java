@@ -167,6 +167,13 @@ final class PauseMode
         boolean alarms;
         boolean doses;
         boolean events;
+        /**
+         * A calendar app's alarms of events (Android's events category):
+         * Rust's word, true only where the calendar app rings an event's own
+         * alarms in Sioul's place and they come at once in this mode; else,
+         * and from an older Rust, held.
+         */
+        boolean calendar;
 
         static Through of(JSONObject asked)
         {
@@ -182,8 +189,9 @@ final class PauseMode
             through.conversations = said.optBoolean("conversations", false);
             through.alarms = said.optBoolean("alarms", true);
             through.doses = said.optBoolean("doses", asked.optBoolean("doses", true));
-            // An event's alarm is shown during a mode only when the matrix lets it come then (Rust decides).
+            // Sioul's own alarm of an event: on its channel, decided at its time (Rust's `ready_in`).
             through.events = said.optBoolean("events", true);
+            through.calendar = asked.optBoolean("calendar", said.optBoolean("calendar", false));
             return through;
         }
 
@@ -376,9 +384,11 @@ final class PauseMode
      * media (the music the person plays); priority channels (Sioul's doses
      * and its notices to do, from Android 15; before, Android lets a channel
      * that passes through whatever the mode says). Other apps' reminders
-     * stay held; events (a calendar app's alarm of an event, which Sioul no
-     * longer rings on a phone: the notifications' decision 3) pass as the
-     * matrix lets an event's alarms through. Notifications held stay in the shade and the status
+     * stay held; events (a calendar app's alarm of an event, where it rings
+     * them in Sioul's place: the notifications' decision 3) pass only where
+     * Rust says they come at once in this mode, for any calendar
+     * (`calendar`), else stay silent in the shade, never rung after.
+     * Notifications held stay in the shade and the status
      * bar, without sound, banner, light, full screen or ambient display, as
      * Android's own do-not-disturb does by default; they come back after.
      */
@@ -393,7 +403,7 @@ final class PauseMode
             .allowMedia(true)
             .allowSystem(false)
             .allowReminders(false)
-            .allowEvents(through.events)
+            .allowEvents(through.calendar)
             .showPeeking(false)
             .showFullScreenIntent(false)
             .showLights(false)
@@ -511,8 +521,19 @@ final class PauseMode
      */
     private static boolean passingChannel(NotificationManager notifications, String id, String name)
     {
+        return passingChannel(notifications, id, name, false);
+    }
+
+    /**
+     * The same, its content hidden on the lock screen whatever the phone's
+     * own setting when `hidden` (Sioul's notices to do: a code).
+     */
+    private static boolean passingChannel(NotificationManager notifications, String id, String name, boolean hidden)
+    {
         NotificationChannel channel = Channels.quiet(id, name, NotificationManager.IMPORTANCE_DEFAULT);
         channel.setBypassDnd(true);
+        if (hidden)
+            channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PRIVATE);
         notifications.createNotificationChannel(channel);
         NotificationChannel kept = notifications.getNotificationChannel(id);
         return kept != null && kept.canBypassDnd() && kept.getImportance() != NotificationManager.IMPORTANCE_NONE && notifications.areNotificationsEnabled();
@@ -569,7 +590,7 @@ final class PauseMode
             return null;
         NotificationManager notifications = notifications(context);
         if (accessGranted(context))
-            passingChannel(notifications, Notices.ACT_PAUSE, name);
+            passingChannel(notifications, Notices.ACT_PAUSE, name, true);
         return notifications.getNotificationChannel(Notices.ACT_PAUSE) != null ? Notices.ACT_PAUSE : null;
     }
 

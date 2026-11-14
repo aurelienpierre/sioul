@@ -7,8 +7,9 @@
 //! asked on the Parameters page. Each is marked when told: told once, whichever runs.
 //! On a phone, the time to leave for an event only, through Android's
 //! notifications (`eventalarms`, whose alarms tell it while Sioul is away);
-//! the others wait for a computer. An event's own alarm rings on a computer
-//! alone: on Android, its calendar app rings it (the notifications' decision 3).
+//! the others wait for a computer. An event's own alarm rings in Android's
+//! calendar app where one rings it (the notifications' decision 3,
+//! `eventalarms::calendar_app`), else here, as on a computer.
 
 use crate::backend::{QtThread, load_config, say, tr};
 use sioul_core::reminders::{self, Kind};
@@ -35,14 +36,15 @@ pub(crate) fn tick() {
         // computer, every kind (dates, waits, payments, papers, contracts, the
         // money watch): what the device is, never its system (devicekind.rs).
         let carried = crate::devicekind::kind().carried();
+        // An event's own alarm: on Android, a calendar app's to ring where one does (a tablet's too).
+        let rings = android && crate::eventalarms::calendar_app().is_some();
         if carried {
-            all.retain(|r| crate::eventalarms::told_on_android(r.kind));
+            all.retain(|r| crate::eventalarms::told_on_android(r.kind, rings));
         }
-        // An event's own alarm: Android's calendar app rings it, a tablet's too.
-        if android {
+        if rings {
             all.retain(|r| r.kind != Kind::Alarm);
         }
-        let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| crate::eventalarms::told_on_android(r.kind)).cloned().collect() } else { Vec::new() };
+        let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| crate::eventalarms::told_on_android(r.kind, rings)).cloned().collect() } else { Vec::new() };
         // On a computer marked told only once posted (`told_now`): one that cannot come now comes again.
         let dir = reminders::told_dir();
         let mut told = if android { reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) } else { reminders::due(all, &dir, now.timestamp().as_second(), &holds) };

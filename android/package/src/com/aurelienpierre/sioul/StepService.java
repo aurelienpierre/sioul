@@ -201,6 +201,9 @@ public final class StepService extends Service
                 // Every notice about a thing settled on some device (a code's message read).
                 Notices.withdraw(context, asked.optString("about", ""));
                 return "true";
+            case "calendar-app":
+                // Whether a calendar app rings an event's own alarms here in Sioul's place (CalendarApps).
+                return CalendarApps.find(context);
             case "notices-seen":
                 // Sioul on the screen: the notices to know posted meanwhile count their minutes from now.
                 Notices.seen(context);
@@ -429,8 +432,9 @@ public final class StepService extends Service
             }
         };
         IntentFilter unlocked = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        // Exported: SystemUI sends it, not Android's own process; a protected broadcast, which no app can send.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            registerReceiver(unlocks, unlocked, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(unlocks, unlocked, Context.RECEIVER_EXPORTED);
         else
             registerReceiver(unlocks, unlocked);
         // The notices' channels made, an older Sioul's deleted, from the phone's start too.
@@ -458,6 +462,8 @@ public final class StepService extends Service
     public void onDestroy()
     {
         running = null;
+        // Its card goes with the service: its group's summary with it.
+        Notices.tidy(this, java.util.Collections.emptyList(), java.util.Collections.singleton(Notices.key(NOTE, null)));
         if (unlocks != null)
             unregisterReceiver(unlocks);
         if (watch != null)
@@ -485,6 +491,8 @@ public final class StepService extends Service
                 startForeground(NOTE, built, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else
                 startForeground(NOTE, built);
+            // Its group's own summary on Android 16: never bundled with another.
+            Notices.tidy(this, java.util.Collections.singletonList(new Notices.Child(NOTE, null, GROUP, 0)), java.util.Collections.emptySet());
         } catch (RuntimeException e) {
             // Refused (Android 12 and later, from the background): the next start.
             Log.w(TAG, "Steps: not in the foreground: " + e);
@@ -496,6 +504,7 @@ public final class StepService extends Service
     private void refresh()
     {
         getSystemService(NotificationManager.class).notify(NOTE, note());
+        Notices.tidy(this, java.util.Collections.singletonList(new Notices.Child(NOTE, null, GROUP, 0)), java.util.Collections.emptySet());
     }
 
     /**

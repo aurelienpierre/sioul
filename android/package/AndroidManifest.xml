@@ -84,6 +84,16 @@
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->
     <queries>
         <package android:name="foundation.e.drive" />
+        <!-- Whether a calendar app rings an event's own alarms in Sioul's
+             place (CalendarApps.java): the apps answering Android's calendar
+             category, and the sync adapters that fill agendas. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_CALENDAR" />
+        </intent>
+        <intent>
+            <action android:name="android.content.SyncAdapter" />
+        </intent>
     </queries>
     <!-- %%INSERT_PERMISSIONS -->
     <!-- %%INSERT_FEATURES -->

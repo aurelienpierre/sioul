@@ -23,10 +23,16 @@ import org.json.JSONObject;
  * - Notices.Said.of: the two classes as Rust says them (CODE below is
  *   Rust's code_note, which eventalarms::tests::a_code_s_notice_as_java_reads_it
  *   makes again and compares with this file's), each in its group, a code's
- *   Copy and Open the message, its lock screen its title alone;
+ *   Copy and Open the message, its lock screen its title alone whatever the
+ *   phone's setting (the channels to act on private there), its buttons
+ *   asking for the phone unlocked;
  * - Notices.timeout: the lifetime rule, five minutes from when the phone
  *   could show it, never past its relevance; something to do until its end;
- * - Notices.summaryTimeout: a group's summary goes with its last notice;
+ * - Notices.children, summaryEnd: a group's summary goes with its last
+ *   notice and never before one, Sioul's own post or cancel counted at once;
+ *   the background card's and the time running's groups summed too;
+ * - Notices.alerts: a code and new mail on its channel that passes ring
+ *   each time, never as a silent update;
  * - Notices.channelOf: the class's channel, the twin that passes only for
  *   something to do that pierces while one of Sioul's modes is on;
  * - EventAlarms.tapped, fresh: taps kept apart, each once, none older than
@@ -99,10 +105,21 @@ public final class NoticesCheck
         expect("something to do: until its thing ends, seen or not", Notices.timeout(true, 0, now + 600_000, now, false) + " " + Notices.timeout(true, 0, now + 600_000, now, true), "600000 600000");
         expect("something to do without an end: stays", Notices.timeout(true, 0, 0, now, true), 0);
 
-        // A group's summary goes with its last notice; never while one stays.
-        expect("with the last", Notices.summaryTimeout(new long[] { now - 60_000, now }, new long[] { five, five }, now), five);
-        expect("one stays: the summary stays", Notices.summaryTimeout(new long[] { now, now }, new long[] { five, 0 }, now), 0);
-        expect("none", Notices.summaryTimeout(new long[0], new long[0], now), 0);
+        // A group's summary goes with its last notice, never before one; Sioul's own change counted at once.
+        String know5 = Notices.GROUP + Notices.INFORMATIVE;
+        java.util.List<Notices.Child> shown = Arrays.asList(new Notices.Child(Notices.NOTE, "mail", know5, now + 180_000), new Notices.Child(Notices.NOTE, "codes|mid:c@example.org", Notices.GROUP + Notices.ACTIONABLE, 0));
+        java.util.List<Notices.Child> leave = java.util.Collections.singletonList(new Notices.Child(Notices.NOTE, "before:dentist", know5, now + 3_600_000));
+        java.util.List<Notices.Child> children = Notices.children(know5, shown, leave, java.util.Collections.emptySet());
+        expect("a notice just posted counted though Android does not show it yet", children.size(), 2);
+        expect("the summary goes with the last, the time to leave an hour on", Notices.summaryEnd(children), now + 3_600_000);
+        java.util.List<Notices.Child> reposted = java.util.Collections.singletonList(new Notices.Child(Notices.NOTE, "mail", know5, now + five));
+        expect("reposted: its new end, once", Notices.summaryEnd(Notices.children(know5, shown, reposted, java.util.Collections.emptySet())), now + five);
+        java.util.Set<String> copied = java.util.Collections.singleton(Notices.key(Notices.NOTE, "codes|mid:c@example.org"));
+        expect("a code copied: its group empty though Android still shows it, its summary gone", Notices.summaryEnd(Notices.children(Notices.GROUP + Notices.ACTIONABLE, shown, java.util.Collections.emptyList(), copied)), -1);
+        expect("a code that stays: its summary stays", Notices.summaryEnd(Notices.children(Notices.GROUP + Notices.ACTIONABLE, shown, java.util.Collections.emptyList(), java.util.Collections.emptySet())), 0);
+        expect("the background card: its own group, its summary while it shows", Notices.summaryEnd(Notices.children(StepService.GROUP, java.util.Collections.emptyList(), java.util.Collections.singletonList(new Notices.Child(0x5137, null, StepService.GROUP, 0)), java.util.Collections.emptySet())), 0);
+        expect("the groups summed: the notices', the card's, the time running's", Arrays.toString(Notices.GROUPS), "[sioul.informative, sioul.actionable, sioul.steps, sioul.time]");
+
 
         // The channels.
         expect("to know: Notices", Notices.channelOf(know, Notices.ACT_PAUSE), Notices.NOTICES);
@@ -110,9 +127,16 @@ public final class NoticesCheck
         expect("to do, piercing, no mode on: To act on", Notices.channelOf(code, null), Notices.ACT);
         Notices.Said quiet = Notices.Said.of(new JSONObject(CODE).put("pierce", false));
         expect("to do, not piercing: To act on", Notices.channelOf(quiet, Notices.ACT_PAUSE), Notices.ACT);
-        Notices.Said through = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "mid:a@example.org"), five);
+        Notices.Said through = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "mid:a@example.org"), five, now + 3_600_000);
         through.channel = PauseMode.MAIL_CHANNEL;
         expect("new mail's own that passes, as before", Notices.channelOf(through, null), PauseMode.MAIL_CHANNEL);
+
+        // What rings each time: something to do, new mail on its channel that passes; never something else.
+        expect("a code rings each time", Notices.alerts(code), true);
+        expect("something to know alerts once", Notices.alerts(know), false);
+        expect("new mail of someone Always through, in a mode: rings each time", Notices.alerts(through), true);
+        Notices.Said usual = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "mid:a@example.org"), five, now + 3_600_000);
+        expect("new mail as usual: once", Notices.alerts(usual), false);
 
         // The taps: each kept apart, once, five minutes at most.
         JSONArray taps = new JSONArray();
@@ -135,10 +159,28 @@ public final class NoticesCheck
             many = EventAlarms.tapped(many, "notice", "mid:" + i + "@example.org", now + i);
         expect("eight kept at most, the latest", many.length() + " " + many.getJSONObject(7).getString("key"), "8 mid:11@example.org");
 
+        // Whether a calendar app rings an event's own alarms in Sioul's place.
+        java.util.List<String> calendars = Arrays.asList("org.example.calendar", "org.example.agenda");
+        expect("a calendar app and agendas synced: the default one", CalendarApps.ringing(calendars, "org.example.agenda", true), "org.example.agenda");
+        expect("no default: the first", CalendarApps.ringing(calendars, null, true), "org.example.calendar");
+        expect("a default that is no calendar app (a chooser): the first", CalendarApps.ringing(calendars, "android", true), "org.example.calendar");
+        expect("nothing syncs agendas: Sioul rings them", CalendarApps.ringing(calendars, "org.example.agenda", false), "");
+        expect("no calendar app: Sioul rings them", CalendarApps.ringing(java.util.Collections.emptyList(), null, true), "");
+
         // From the sources.
         Path sources = Paths.get(System.getProperty("sioul.root"), "android", "package", "src", "com", "aurelienpierre", "sioul");
         String notices = code(read(sources.resolve("Notices.java")));
-        expect("the retired channels", Arrays.toString(Notices.RETIRED), "[events, event-alarms, event-alarms-pause, mail, day]");
+        expect("the retired channels", Arrays.toString(Notices.RETIRED), "[events, event-alarms, event-alarms-pause, mail, day, act, act-pause]");
+        expect("the channels to act on: new ids", Notices.ACT + " " + Notices.ACT_PAUSE, "to-act to-act-pause");
+        expect("to act on: hidden on the lock screen whatever the phone's setting", notices.contains("act.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);"), true);
+        String mode = code(read(sources.resolve("PauseMode.java")));
+        expect("its twin too, the doses' left as they were", mode.contains("passingChannel(notifications, Notices.ACT_PAUSE, name, true)") && mode.contains("passingChannel(notifications, DOSES_CHANNEL, asked.optString(\"channel\", \"Doses during a pause\"))"), true);
+        expect("a button to act on asks for the phone unlocked", notices.contains("if (said.actionable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)") && notices.contains("action.setAuthenticationRequired(true);"), true);
+        expect("one that rings comes anew, never as a silent update", notices.contains(".setOnlyAlertOnce(!alerts)") && notices.indexOf("notifications.cancel(said.tag, NOTE);") < notices.indexOf("notifications.notify(said.tag, NOTE, note.build());") && notices.indexOf("if (alerts)") > 0, true);
+        String seen = notices.substring(notices.indexOf("static void seen(Context context)"));
+        seen = seen.substring(0, seen.indexOf("\n    }\n"));
+        expect("seen once: its mark cleared on the notification built, before it is posted", seen.indexOf("built.extras.putBoolean(UNSEEN, false);") > 0 && seen.indexOf("built.extras.putBoolean(UNSEEN, false);") < seen.indexOf("notifications.notify(shown.getTag(), NOTE, built);"), true);
+        expect("the settings button names an app alone", Notices.Said.of(new JSONObject("{\"tag\":\"x\",\"actions\":[{\"label\":\"Calendar\",\"settings\":\"org.example.calendar\"},{\"label\":\"Bad\",\"settings\":\"x; rm\"}]}")).buttons.size(), 1);
         expect("never the doses'", Arrays.asList(Notices.RETIRED).contains("doses") || Arrays.asList(Notices.RETIRED).contains("doses-pause"), false);
         int made = notices.indexOf("Channels.quiet(ACT, ");
         int deleted = notices.indexOf("deleteNotificationChannel(id)");
@@ -164,7 +206,7 @@ public final class NoticesCheck
         expect("the background service's card: a group of its own", service.contains("static final String GROUP = \"sioul.steps\";") && service.contains(".setGroup(GROUP)"), true);
         expect("its words fixed: no time of day, the calls' line only while screened", service.contains("if (!line.isEmpty())") && !service.contains("line + \" \" + through"), true);
         expect("its calls' buttons only while calls are screened", service.contains("if (words != null && words.optBoolean(\"screening\"))"), true);
-        expect("the phone's unlock heard while it runs", service.contains("Intent.ACTION_USER_PRESENT") && service.contains("Notices.seen(context.getApplicationContext())") && service.contains("unregisterReceiver(unlocks)"), true);
+        expect("the phone's unlock heard while it runs, from SystemUI too", service.contains("Intent.ACTION_USER_PRESENT") && service.contains("Notices.seen(context.getApplicationContext())") && service.contains("unregisterReceiver(unlocks)") && service.contains("registerReceiver(unlocks, unlocked, Context.RECEIVER_EXPORTED)"), true);
         String receiver = code(read(sources.resolve("NoticeReceiver.java")));
         expect("a code copied: sensitive, then its notice taken away", receiver.contains("ClipDescription.EXTRA_IS_SENSITIVE") && receiver.indexOf("setPrimaryClip(clip)") < receiver.indexOf("Notices.dismiss(context, tag)"), true);
         expect("a code withdrawn once its message is read (Rust's notice-withdraw)", service.contains("case \"notice-withdraw\":") && service.contains("Notices.withdraw(context, asked.optString(\"about\", \"\"))"), true);

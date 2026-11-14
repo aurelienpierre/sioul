@@ -4406,7 +4406,12 @@ fn need_tag(block: &Kept, heads_up: bool, zone: &TimeZone) -> String {
 fn tell_needs(now: &Zoned) -> bool {
     let mut shown = false;
     for (block, heads_up) in needs_now(&load(), now) {
-        shown |= crate::eventalarms::day_note(&need_tag(&block, heads_up, now.time_zone()), &need_notice(&block, heads_up, now));
+        let mut notice = need_notice(&block, heads_up, now);
+        // A heads-up on a phone is worth seeing until its block begins, not a minute: it waits for the unlock.
+        if heads_up {
+            notice.relevant = Some(block.start);
+        }
+        shown |= crate::eventalarms::day_note(&need_tag(&block, heads_up, now.time_zone()), &notice);
     }
     shown
 }
@@ -4429,10 +4434,26 @@ pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
         return serde_json::json!({ "again_at": start * 1000 });
     }
     // Past the quarter of an hour its notice may come in (`Today::due`): nothing, nor asked again.
-    if !starts.iter().any(|start| (0..15 * 60).contains(&(stamp - start))) || crate::devices::computer_in_use() {
+    let Some(start) = starts.iter().copied().find(|start| (0..15 * 60).contains(&(stamp - start))) else {
         return serde_json::json!({});
+    };
+    // Someone at a computer: told there; asked again a few minutes on, while it may still come here.
+    if crate::devices::computer_in_use() {
+        return look_again(stamp, start + 15 * 60);
     }
     if tell_needs(now) { serde_json::json!({ "shown": true }) } else { serde_json::json!({}) }
+}
+
+/// How long a phone waits before it asks again whether someone is still at
+/// a computer, a need's notice due meanwhile (`decide_night`, `decide_need`).
+const LOOK_AGAIN: i64 = 5 * 60;
+
+/// A phone's answer while someone is at a computer: asked again a few
+/// minutes on (`LOOK_AGAIN`), while the notice may still come (before
+/// `until`, Unix seconds), else nothing. Pure.
+fn look_again(stamp: i64, until: i64) -> serde_json::Value {
+    let again = stamp + LOOK_AGAIN;
+    if again < until { serde_json::json!({ "again_at": again * 1000 }) } else { serde_json::json!({}) }
 }
 
 /// A phone's alarm at a need's heads-up or at a meal's or a nap's time
@@ -4443,13 +4464,17 @@ pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
 /// {"shown": true}; {"again_at": ms} rung early; {} when none comes.
 pub(crate) fn decide_need(now: &Zoned, key: &str) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
-    if let Some(at) = key.split(':').next().and_then(|at| at.parse::<i64>().ok())
+    let at = key.split(':').next().and_then(|at| at.parse::<i64>().ok());
+    if let Some(at) = at
         && (1..3600).contains(&(at - stamp))
     {
         return serde_json::json!({ "again_at": at * 1000 });
     }
+    // Someone at a computer: told there; asked again a few minutes on, while it may still
+    // come (`Today::due`: a heads-up ten minutes, a meal's own a quarter of an hour).
     if crate::devices::computer_in_use() {
-        return serde_json::json!({});
+        let window = if key.ends_with(":heads-up") { 10 * 60 } else { 15 * 60 };
+        return at.map_or_else(|| serde_json::json!({}), |at| look_again(stamp, at + window));
     }
     if tell_needs(now) { serde_json::json!({ "shown": true }) } else { serde_json::json!({}) }
 }
@@ -8266,6 +8291,9 @@ mod tests {
         assert_eq!(need_tag(&lunch, false, &zone), "day:need:2026-11-14:meal:0");
         assert_eq!(need_tag(&night, false, &zone), "day:night:2026-11-14");
         assert_eq!(need_tag(&night, true, &zone), "day:need:2026-11-14:sleep");
+        // Someone at a computer: asked again five minutes on while it may still come, then nothing.
+        assert_eq!(look_again(at(12, 30), at(12, 45)), serde_json::json!({ "again_at": at(12, 35) * 1000 }));
+        assert_eq!(look_again(at(12, 41), at(12, 45)), serde_json::json!({}));
     }
 
     /// The agenda's timeline (5 November 2026): a move says where the block

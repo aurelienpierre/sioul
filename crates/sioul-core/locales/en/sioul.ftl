@@ -6484,7 +6484,7 @@ attention-row-doses-help = A dose's reminder at its time, and the question on do
 attention-row-wake = The alarm at waking
 attention-row-wake-help = The alarm at waking set on the Health page, on Android.
 attention-row-alarms = An event's alarms
-attention-row-alarms-help = The alarms an event carries, set by you or by whoever invited you.
+attention-row-alarms-help = The alarms an event carries, set by you or by whoever invited you. On a phone whose calendar app rings them in Sioul's place, one of Sioul's modes lets them ring only where this row says at once; where it says later, or when the event falls then, Android keeps them silent in the shade, and they never ring after.
 attention-row-before = Reminders before an event
 attention-row-before-help = Sioul's own reminder before an event, as Before an event says in Reminders.
 attention-row-day-before = Events, the working day before
@@ -6777,6 +6777,12 @@ mail-through-channel = New mail from people always let through
 notices-channel = Notices
 act-channel = To act on
 act-pause-channel = To act on during a pause
+# Said once on a phone or a tablet (eventalarms.rs, `handover`): who rings an event's own alarms there.
+event-alarms-calendar-title = Events' alarms ring in your calendar app
+event-alarms-calendar-body = Sioul no longer rings an event's own alarms on this device: { $app } does. If you silenced them there because Sioul rang them too, turn them back on.
+event-alarms-calendar-settings = Its notifications
+event-alarms-sioul-title = Sioul rings events' alarms here
+event-alarms-sioul-body = No calendar app syncs your agendas on this device, so Sioul rings an event's own alarms itself.
 
 ## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, This phone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
 settings-tab-attention = What reaches you
