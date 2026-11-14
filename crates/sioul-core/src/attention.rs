@@ -1536,6 +1536,14 @@ pub struct Silence {
     pub doses: bool,
     /// An event's alarms, on a channel of their own that passes.
     pub events: bool,
+    /// A calendar app's alarms of events (Android's events category), on a
+    /// phone whose calendar app rings an event's own alarms in Sioul's place:
+    /// let through only where an event's alarms come at once in this mode,
+    /// for an event of any area (Android tells neither when the event falls
+    /// nor which calendar it is from, a work calendar's or another app's);
+    /// "when the event falls then" and "later" hold them, silent in the shade.
+    #[serde(default)]
+    pub calendar: bool,
 }
 
 /// What this phone does itself.
@@ -1591,6 +1599,7 @@ impl Attention {
             alarms: true,
             doses: self.level(Row::Own(Kind::Doses), now) == Level::Now,
             events: matches!(self.level(Row::Own(Kind::Alarms), now), Level::Now | Level::Event),
+            calendar: [None, Some(Area::WORK)].into_iter().all(|area| self.decide(&Event::own(Kind::Alarms).for_area(area), now).level == Level::Now),
         }
     }
 
@@ -3271,6 +3280,29 @@ mod tests {
         assert!(!choices(Row::People(Channel::Calls, Person::Neutral), Column::Dnd).contains(&Level::Quiet));
         let tr = Translator::new("en");
         assert_eq!(level_label(&tr, Row::People(Channel::Messages, Person::Neutral), Level::Quiet), "In the shade, without a sound");
+    }
+
+    /// A calendar app's alarms of events pass one of Sioul's modes on a
+    /// phone only where an event's alarms come at once then, whatever the
+    /// calendar: a pause, fixed at once; never Free time's or sleep's "when
+    /// the event falls then" (Android cannot tell when it falls), nor a cell
+    /// set to later; under do-not-disturb outside work time a work
+    /// calendar's would wait, so none passes (Android cannot tell them apart).
+    #[test]
+    fn a_calendar_apps_alarms_pass_a_mode_only_where_they_come_at_once() {
+        let usual = Attention::usual();
+        let phone = Phone::default();
+        assert!(usual.silence(&[Column::Pause], false, phone).calendar, "a pause: at once, fixed");
+        assert!(usual.silence(&[Column::Pause], false, phone).events);
+        let free = usual.silence(&[Column::Free], false, phone);
+        assert!(free.events && !free.calendar, "Free time: when the event falls then, Sioul's own only");
+        assert!(!usual.silence(&[Column::Sleep], false, phone).calendar, "sleep: when the event falls then");
+        assert!(!usual.silence(&[Column::Dnd], false, phone).calendar, "do-not-disturb in leisure: a work calendar's would wait");
+        let mut now = usual.clone();
+        now.set(Row::Own(Kind::Alarms), Column::Free, Level::Now).unwrap();
+        assert!(now.silence(&[Column::Free], false, phone).calendar, "Free time set to at once");
+        now.set(Row::Own(Kind::Alarms), Column::Free, Level::Later).unwrap();
+        assert!(!now.silence(&[Column::Free], false, phone).calendar, "later: held, silent in the shade");
     }
 
     /// Decision 16 of 18 October 2026 (the proposal's 3.7): a person's own

@@ -147,7 +147,8 @@ pub(crate) fn next(at: Option<i64>) {
     follow_setting_once();
 }
 
-/// The service's words, in the person's language.
+/// The service's words, in the person's language: its card's fixed title
+/// ("Sioul keeps your devices in step") and its channel's name.
 fn words() -> serde_json::Value {
     serde_json::json!({ "title": tr().text("dnd-steps-note", None), "channel": tr().text("dnd-steps-channel", None) })
 }
@@ -262,6 +263,13 @@ fn mail_cap(after: i64, now: i64, mailed: i64, mail_on: bool) -> i64 {
     if mail_on { after.min((mailed + MAIL_EVERY - now).max(STEP_AWAKE)) } else { after }
 }
 
+/// The next step (`after`, seconds from `now`) no later than the end of a
+/// rest that holds mail now (`ends`, Unix seconds), a second after it, a
+/// minute from now at the soonest; as it was without one. Pure.
+fn rest_cap(after: i64, now: i64, ends: Option<i64>) -> i64 {
+    ends.map_or(after, |ends| after.min((ends - now + 1).max(60)))
+}
+
 /// An exchange that found nothing to read nor to write (`Outcome::quiet`), or none ran.
 fn quiet_exchange(exchanged: &Option<Result<sioul_sync::share::Outcome, String>>) -> bool {
     match exchanged {
@@ -323,6 +331,10 @@ fn fetch_mail(config: &Config) -> bool {
                         if !filtered.problem.is_empty() {
                             eprintln!("sioul: steps: {}: {}", account.id, filtered.problem);
                         }
+                        // A code among it: its notice at once, as the window's fetch tells it (`backend::notify_codes`).
+                        if !report.first && !report.new.is_empty() {
+                            crate::backend::notify_codes(&report.new);
+                        }
                         crate::mailnote::arrived(&account.id, &report.new, report.first);
                         crate::mailnote::unfiltered(&account.id, &filtered.tell);
                         came |= !filtered.tell.is_empty();
@@ -376,21 +388,21 @@ fn rounds_wait() {
 }
 
 /// The background service's notification as things stand now (StepService;
-/// docs/android.md, "In the background"): {title, text, calls}. Its title,
-/// what now is for and until when; its text, do-not-disturb on or off, then
-/// the calls, screened or every call ringing; `calls`, the words of its
-/// buttons (`calls::words`). And when what now is for ends (Unix seconds).
-pub(crate) fn note() -> (serde_json::Value, Option<i64>) {
-    let (title, dnd, until) = crate::everywhere::note();
+/// docs/android.md, "In the background"; docs/notifications.md, "What stays
+/// a status"): {at, title, text, calls}. Its title, fixed words ("Sioul keeps
+/// your devices in step"), never the time of day, which would wake the phone
+/// at each change of time only to say it; its text, while this phone screens
+/// calls only, the calls screened or every call ringing until when; `calls`,
+/// the words of its buttons (`calls::words`), shown while calls are screened.
+pub(crate) fn note() -> serde_json::Value {
     let calls = crate::calls::words();
-    let calls_line = match (calls["screening"] == true, calls["through"] == true) {
+    let text = match (calls["screening"] == true, calls["through"] == true) {
         (false, _) => String::new(),
         (true, true) => calls["line"].as_str().unwrap_or_default().to_string(),
         (true, false) => tr().text("steps-note-calls-screened", None),
     };
-    let text = [dnd, calls_line].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
     let at = jiff::Timestamp::now().as_millisecond();
-    (serde_json::json!({ "at": at, "title": title, "text": text, "calls": calls }), until)
+    serde_json::json!({ "at": at, "title": tr().text("dnd-steps-note", None), "text": text, "calls": calls })
 }
 
 /// The notification's words told to the background service at once
@@ -405,7 +417,7 @@ pub(crate) fn tell_note() {
     if !cfg!(target_os = "android") || in_service() {
         return;
     }
-    java("note", &note().0.to_string());
+    java("note", &note().to_string());
 }
 
 /// Whether the phone keeps its two-minute steps (docs/android.md, "Its
@@ -523,7 +535,7 @@ fn step(reason: &str) -> serde_json::Value {
         *poked = (signature, line.clone());
     }
     // The notification's words shown now, before mail ends, which may take a while.
-    java("note", &note().0.to_string());
+    java("note", &note().to_string());
     // 3. Mail, done: every account fetched and its batch told (no wait after it).
     if let Some(mail) = mail
         && mail.join().is_err()
@@ -559,14 +571,16 @@ fn step(reason: &str) -> serde_json::Value {
         QUIET.store(0, Ordering::Relaxed);
         0
     };
-    // The notification's words now; the next step no later than the end of what now is for,
-    // so that its title changes with the time.
+    // The notification's words now (fixed: no step is asked to change them at a change of time).
     let now = jiff::Timestamp::now().as_second();
-    let (note, until) = note();
+    let note = note();
     let mailed = MAILED.load(Ordering::Relaxed);
     let after = next_step(close, asleep, quiet);
-    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
-    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(after, |s| s.min(after));
+    let next = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
+    // Mail resting now (sleep, a pause) and fetched once that time ends: the next step no later than
+    // its end, so that waking's first fetch and "The Porch opens" come then, not a step later.
+    let resting = !mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused) && mail_due(&config, mailed + MAIL_EVERY, mailed, false, false);
+    let next = rest_cap(next, now, resting.then(|| crate::hours::mode_now().until.map(|until| until.timestamp().as_second())).flatten());
     let words = words();
     serde_json::json!({
         "next": next,
@@ -694,6 +708,11 @@ mod tests {
         // Quiet looks in a row, awake: ten minutes, then fifteen, mail's own rhythm, and no further.
         assert_eq!([1, 2, 3, 40].map(|quiet| next_step(false, false, quiet)), [600, 900, 900, 900]);
         assert_eq!(STEP_QUIET[2], MAIL_EVERY, "each spaced wake carries the mail");
+        // Mail resting until waking: the step at waking, not a step later; never sooner than a minute.
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_000 + 600)), 601);
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_000 + 20 * 60)), 15 * 60, "a step comes first anyway");
+        assert_eq!(rest_cap(15 * 60, 1_000, Some(1_010)), 60);
+        assert_eq!(rest_cap(15 * 60, 1_000, None), 15 * 60, "no rest, or its end unknown (a pause)");
         // Never while another device is in use, nor at night, whose fifteen minutes stay.
         assert_eq!(next_step(true, false, 5), 120);
         assert_eq!(next_step(false, true, 5), 900);

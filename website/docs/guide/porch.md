@@ -38,7 +38,8 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
 
 - on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here;
-- its row on top of the Porch, in **Right now**, with **Copy**; on Android, on the Porch and on Sioul's card on your home screen, since Sioul does not notify codes there yet.
+- on Android, one notification to act on, with **Copy the code** and **Open the message**; on the lock screen its title alone, never the code, whatever the phone's own setting, and **Copy the code** only once the phone is unlocked; it goes once the code is copied, expires or its message is read; none while you sleep;
+- its row on top of the Porch, in **Right now**, with **Copy**; on Android, on Sioul's card on your home screen too.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 

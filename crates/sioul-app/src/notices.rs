@@ -544,6 +544,7 @@ pub(crate) fn mail_told() -> Option<Told> {
 /// settled (a phone's through Java; a computer's own thread looks itself,
 /// `mailnote::show`), and forgotten.
 pub(crate) fn withdraw_if_settled() {
+    withdraw_codes();
     let Some(told) = mail_told() else { return };
     if !settled_mail(&told) {
         return;
@@ -561,9 +562,81 @@ pub(crate) fn withdraw_if_settled() {
     });
 }
 
+/// A phone's code told (`backend::code_notices`): its message's notice and
+/// file kept beside the log (never shared), under "code|" and its address
+/// (`code_key`), until its message is settled on any device or a day went by.
+pub(crate) fn posted_code(about: &str, mut told: Told) {
+    told.at = jiff::Timestamp::now().as_millisecond();
+    let path = Posted::default_path();
+    let written = sioul_core::filelock::with_lock(&path, || {
+        let mut posted = Posted::load(&path);
+        posted.told.insert(code_key(about), told);
+        posted.save(&path)
+    });
+    if let Err(e) = written {
+        eprintln!("sioul: notices: {e}");
+    }
+}
+
+/// Where a code's notice is kept in `Posted`: "code|" and its message's address.
+fn code_key(about: &str) -> String {
+    format!("code|{about}")
+}
+
+/// The codes kept (`posted_code`) whose message is settled now (read,
+/// dismissed or done on any device), or kept a day already (expired long
+/// since: Android took them away), as `settled` says of each: their
+/// addresses, to take away, and the codes left kept. Pure.
+fn codes_done(posted: &Posted, now_ms: i64, settled: impl Fn(&Told) -> bool) -> Vec<String> {
+    posted.told.iter().filter_map(|(key, told)| key.strip_prefix("code|").filter(|_| now_ms - told.at > 86_400_000 || settled(told)).map(str::to_string)).collect()
+}
+
+/// At the window's minute and a phone's background step: each code's
+/// notice on this phone taken away once its message is settled on any
+/// device (`eventalarms::withdraw`), and forgotten; forgotten too after a
+/// day. Copied or expired, Android took it away already.
+fn withdraw_codes() {
+    let path = Posted::default_path();
+    let posted = Posted::load(&path);
+    if !posted.told.keys().any(|key| key.starts_with("code|")) {
+        return;
+    }
+    let done = codes_done(&posted, jiff::Timestamp::now().as_millisecond(), settled_mail);
+    if done.is_empty() {
+        return;
+    }
+    for about in &done {
+        crate::eventalarms::withdraw(about);
+    }
+    let _ = sioul_core::filelock::with_lock(&path, || {
+        let mut posted = Posted::load(&path);
+        for about in &done {
+            posted.told.remove(&code_key(about));
+        }
+        posted.save(&path)
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A phone's code is taken away once its message is settled on any
+    /// device, and forgotten after a day whatever became of it; new mail's
+    /// notification is no code, and stays its own.
+    #[test]
+    fn a_phones_code_goes_once_its_message_is_settled() {
+        let told = |at: i64, id: &str| Told { at, ids: vec![id.into()], items: vec![String::new()] };
+        let now = 1_794_000_000_000;
+        let mut posted = Posted::default();
+        posted.told.insert(code_key("mid:read@example.org"), told(now - 60_000, "read"));
+        posted.told.insert(code_key("mid:waiting@example.org"), told(now - 60_000, "waiting"));
+        posted.told.insert(code_key("mid:old@example.org"), told(now - 86_400_001, "old"));
+        posted.told.insert(Kind::Mail.as_str().into(), told(now - 60_000, "read"));
+        let mut done = codes_done(&posted, now, |t| t.ids == ["read"]);
+        done.sort();
+        assert_eq!(done, ["mid:old@example.org", "mid:read@example.org"]);
+    }
 
     /// Each verb says its word; an unknown verb says nothing.
     #[test]

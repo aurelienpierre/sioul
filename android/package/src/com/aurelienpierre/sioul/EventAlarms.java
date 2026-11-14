@@ -4,13 +4,10 @@
 package com.aurelienpierre.sioul;
 
 import android.app.AlarmManager;
-import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.UserManager;
 import android.util.Log;
@@ -30,45 +27,44 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Reminders before events while Sioul is not on the screen (docs/android.md,
- * "Events"): Android freezes an app it does not show, so Rust hands the
- * coming reminders of events ahead (crates/sioul-app/src/eventalarms.rs:
- * their own alarms, Sioul's before them, the working day before), and each
- * is given to Android's alarm clock, as the doses are (DoseAlarms). At its
- * time EventReceiver asks Rust what to say: the event read again, sleep or a
- * pause holding it or not, the time left said as it is then. Rust shows it
- * through `show`: Sioul's reminders before an event and the working day
- * before in the "Events" channel, at low importance (no sound, no banner);
- * an alarm the event carries in "An event's alarms", at Android's default
- * importance (its sound, no banner), or, while one of Sioul's modes lets
- * them through, in its twin that passes do-not-disturb (PauseMode); each
- * yours to change in Android's settings. A tap opens the event in Sioul
- * (ReminderOpener). Rust silent, the words given with the list are shown
- * instead: never nothing. Apart from the doses: its own list, alarms,
- * channels and receiver. The list also holds when the end of work's notice
- * and the night's may come (kind "day"): Rust decides those at their alarm
- * and shows them through DayNotes, or nothing; no words are kept for them.
+ * The time to leave for an event while Sioul is not on the screen
+ * (docs/android.md, "Events"): Android freezes an app it does not show, so
+ * Rust hands the coming ones ahead (crates/sioul-app/src/eventalarms.rs:
+ * Sioul's reminder before each event), and each is given to Android's alarm
+ * clock, as the doses are (DoseAlarms). At its time EventReceiver asks Rust
+ * what to say: the event read again, sleep or a pause holding it or not, the
+ * time left said as it is then. Rust shows it through `show`, a notice to
+ * know (Notices) that lasts until its event starts; a tap opens the event in
+ * Sioul (ReminderOpener). Rust silent, the words given with the list are
+ * shown instead, with the event's address: never nothing. An event's own
+ * alarm is never rung here: the phone's calendar app rings it. Apart from
+ * the doses: its own list, alarms and receiver. The list also holds when
+ * the end of work's notice, the night's and the meals' may come (kind
+ * "day"): Rust decides those at their alarm and shows them through
+ * DayNotes, or nothing; no words are kept for them. Also the taps on
+ * Sioul's notices, kept until Sioul takes them (`opened`).
  */
 final class EventAlarms
 {
     static final String RING = "com.aurelienpierre.sioul.action.EVENT_REMINDER";
     static final String LOOK = "com.aurelienpierre.sioul.action.EVENT_LOOK";
-    /** The "Events" channel: Sioul's reminders before an event, and the working day before; quiet. */
-    static final String CHANNEL = "events";
-    /** "An event's alarms": the alarms an event carries, with their sound. */
-    static final String ALARMS = "event-alarms";
-
     private static final String SCHEME = "sioul-event";
     private static final String KEPT = "sioul-events";
     private static final String LIST = "list";
     private static final String WORDS = "words";
     private static final String OPENED = "opened";
-    /** A reminder is known by its key (its tag) and this number. */
-    private static final int NOTE = 2;
+    /** The taps kept (`opened`), a list since 14 November 2026: an older Sioul's single one is dropped. */
+    private static final String TAPS = "taps";
+    /** How long a notice to know lasts once seen, as Rust gave it with the list (ms). */
+    private static final String LASTS = "lasts_ms";
     /** The question asked again once a day, nothing having rung meanwhile. */
     private static final int LOOK_CODE = 0x5801;
-    /** A reminder stays in the shade until an hour after its event began. */
-    private static final long KEPT_AFTER_MS = 60 * 60 * 1000L;
+    /** A tap older than this opens nothing: Sioul did not come up meanwhile, and would open it out of the blue. */
+    static final long TAP_KEPT_MS = 5 * 60 * 1000L;
+    /** The taps kept at most, the oldest let go first. */
+    static final int TAPS_KEPT = 8;
+    /** A notice to know lasts this long once seen when Rust has said nothing yet (ms): Sioul's own lifetime unsaid. */
+    static final long LASTS_UNSAID_MS = 5 * 60 * 1000L;
 
     private EventAlarms() {}
 
@@ -80,9 +76,10 @@ final class EventAlarms
     // ---------------------------------------------------------------- the list
 
     /**
-     * Rust's coming reminders: JSON {reminders: [{key, at (Unix ms), title,
-     * body}], look (Unix ms), words}. Their alarms replace those given
-     * before, as `merged` says; the list is kept for Android's restarts. Any thread.
+     * Rust's coming reminders: JSON {reminders: [{key, kind, at (Unix ms),
+     * title, body, about, ends}], look (Unix ms), lasts_ms, words}. Their
+     * alarms replace those given before, as `merged` says; the list is kept
+     * for Android's restarts. Any thread.
      */
     static synchronized void set(Context context, String json)
     {
@@ -111,8 +108,11 @@ final class EventAlarms
         SharedPreferences.Editor kept = kept(context).edit().putString(LIST, list.toString());
         if (words != null)
             kept.putString(WORDS, words.toString());
+        if (given.optLong(LASTS) > 0)
+            kept.putLong(LASTS, given.optLong(LASTS));
         kept.commit();
-        channel(context);
+        // The channels of the notices made, an older Sioul's deleted.
+        Notices.channels(context, words);
         for (Arm arm : armed)
             alarm(context, arm.key, arm.at);
         look(context, given.optLong("look"));
@@ -422,58 +422,109 @@ final class EventAlarms
         }
     }
 
-    /** A tapped notification's thing, kept until Sioul takes it (ReminderOpener): "event" and its address (an older notice: its file), "porch". */
+    /**
+     * A tapped notification's thing, kept until Sioul takes it
+     * (ReminderOpener): "notice" and its address; an older notice's
+     * "event", "porch"… Each tap kept apart, never in another's place
+     * (`tapped`).
+     */
     static synchronized void opened(Context context, String kind, String key)
     {
-        JSONObject thing = new JSONObject();
-        put(thing, "kind", kind);
-        put(thing, "key", key == null ? "" : key);
-        kept(context).edit().putString(OPENED, thing.toString()).apply();
+        JSONArray taps;
+        try {
+            taps = new JSONArray(kept(context).getString(TAPS, "[]"));
+        } catch (JSONException e) {
+            taps = new JSONArray();
+        }
+        kept(context).edit().putString(TAPS, tapped(taps, kind, key, System.currentTimeMillis()).toString()).remove(OPENED).commit();
     }
 
-    /** What a tapped notification opens, once, as JSON {kind, key}; null when nothing (android/main.cpp, for Rust). */
+    /**
+     * What tapped notifications open, each once, as a JSON list
+     * [{kind, key}] in the order they were tapped; null when nothing
+     * (android/main.cpp, for Rust: as Sioul comes back, and as it starts).
+     * A tap older than five minutes is let go (`fresh`); an older Sioul's
+     * single tap, without its time, too.
+     */
     static synchronized String takeOpened(Context context)
     {
         SharedPreferences kept = kept(context);
-        String thing = kept.getString(OPENED, null);
-        if (thing != null)
-            kept.edit().remove(OPENED).apply();
-        return thing;
+        String taps = kept.getString(TAPS, null);
+        if (taps == null && !kept.contains(OPENED))
+            return null;
+        kept.edit().remove(TAPS).remove(OPENED).commit();
+        JSONArray fresh;
+        try {
+            fresh = fresh(new JSONArray(taps == null ? "[]" : taps), System.currentTimeMillis());
+        } catch (JSONException e) {
+            return null;
+        }
+        return fresh.length() == 0 ? null : fresh.toString();
+    }
+
+    /**
+     * The taps kept with `kind` and `key` tapped at `now` (Unix ms): last,
+     * the same thing tapped before taken out (one tap per thing), the oldest
+     * let go beyond eight. Pure, checked on a JVM
+     * (android/jvm-checks/NoticesCheck.java).
+     *
+     * @param taps the taps kept: [{kind, key, at}]
+     * @param kind what was tapped
+     * @param key what in it
+     * @param now the time now (Unix ms)
+     * @return the taps to keep
+     */
+    static JSONArray tapped(JSONArray taps, String kind, String key, long now)
+    {
+        String said = key == null ? "" : key;
+        List<JSONObject> kept = new ArrayList<>();
+        for (int i = 0; i < taps.length(); i++) {
+            JSONObject tap = taps.optJSONObject(i);
+            if (tap != null && !(tap.optString("kind").equals(kind) && tap.optString("key").equals(said)))
+                kept.add(tap);
+        }
+        JSONObject tap = new JSONObject();
+        put(tap, "kind", kind);
+        put(tap, "key", said);
+        put(tap, "at", now);
+        kept.add(tap);
+        JSONArray out = new JSONArray();
+        for (JSONObject one : kept.subList(Math.max(0, kept.size() - TAPS_KEPT), kept.size()))
+            out.put(one);
+        return out;
+    }
+
+    /**
+     * The taps still worth opening at `now` (Unix ms), {kind, key} each, in
+     * their order: tapped within five minutes, never one from the future (a
+     * clock set back) nor one without its time. Pure (NoticesCheck).
+     *
+     * @param taps the taps kept: [{kind, key, at}]
+     * @param now the time now (Unix ms)
+     * @return those to open
+     */
+    static JSONArray fresh(JSONArray taps, long now)
+    {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < taps.length(); i++) {
+            JSONObject tap = taps.optJSONObject(i);
+            long at = tap == null ? 0 : tap.optLong("at");
+            if (at <= 0 || at > now || now - at > TAP_KEPT_MS)
+                continue;
+            JSONObject thing = new JSONObject();
+            put(thing, "kind", tap.optString("kind"));
+            put(thing, "key", tap.optString("key"));
+            out.put(thing);
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- the reminders
 
     /**
-     * The channels: "Events" at low importance, without sound or banner, for
-     * Sioul's reminders before an event and the working day before; "An
-     * event's alarms" at Android's default importance (its sound, no banner),
-     * for the alarms an event carries. Yours to change.
-     */
-    static void channel(Context context)
-    {
-        NotificationManager notifications = context.getSystemService(NotificationManager.class);
-        notifications.createNotificationChannel(Channels.quiet(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_LOW));
-        notifications.createNotificationChannel(Channels.quiet(ALARMS, word(context, "alarms"), NotificationManager.IMPORTANCE_DEFAULT));
-    }
-
-    /**
-     * Whether a reminder is an alarm its event carries: as Rust says it
-     * ("kind": "alarm", "before", "event"), else by its key (`alarm:…`, a
-     * list given by an older Sioul). Pure, checked on a JVM
-     * (android/jvm-checks/ModeCheck.java).
-     */
-    static boolean isAlarm(String kind, String key)
-    {
-        if (kind != null && !kind.isEmpty())
-            return "alarm".equals(kind);
-        return key != null && key.startsWith("alarm:");
-    }
-
-    /**
-     * Rust's reminder (eventalarms.rs, `show`): JSON {key, kind, title, body,
-     * event (its address and time: {@code sioul:event/<UID>#1793520000}), until
-     * (Unix ms, when the event begins), words}. A
-     * tap, or Open, brings Sioul up on the event. Any thread.
+     * Rust's reminder (eventalarms.rs, `shown`): a notice (Notices.Said) with
+     * {key}, the reminder's key, its tag too; a tap, or Open, brings Sioul up
+     * on the event. Its alarm then has nothing left to do. Any thread.
      */
     static void show(Context context, String json)
     {
@@ -481,14 +532,11 @@ final class EventAlarms
         try {
             said = new JSONObject(json);
         } catch (JSONException e) {
-            Log.e(DoseAlarms.TAG, "Events: a reminder that does not read. " + e);
+            Log.e(DoseAlarms.TAG, "Events: a reminder that does not read (" + e.getClass().getSimpleName() + ").");
             return;
         }
-        JSONObject words = said.optJSONObject("words");
-        if (words != null)
-            kept(context).edit().putString(WORDS, words.toString()).apply();
         String key = said.optString("key");
-        post(context, key, isAlarm(said.optString("kind"), key), said.optString("title"), said.optString("body"), said.optString("event"), said.optLong("until"));
+        Notices.post(context, Notices.Said.of(said));
         // Told (from the window's minute, maybe): its alarm has nothing left to do.
         cancel(context, key);
         done(context, key);
@@ -496,22 +544,57 @@ final class EventAlarms
 
     /**
      * The words given with the list, said when Rust cannot be asked at a
-     * reminder's time: never nothing. Not the end of work's notice nor the
-     * night's (kind "day"): said by Rust alone, or not at all, as on a
-     * computer (Rust's notice may not come: the day closed, a meeting, the
-     * notice told on another device).
+     * reminder's time: never nothing. Not the end of work's notice, the
+     * night's nor a meal's (kind "day"): said by Rust alone, or not at all,
+     * as on a computer (Rust's notice may not come: the day closed, a
+     * meeting, someone at a computer).
      */
     static void fallback(Context context, String key)
     {
         JSONObject reminder = kept(context, key);
         if (reminder == null || isDay(reminder.optString("kind")))
             return;
-        post(context, key, isAlarm(reminder.optString("kind"), key), reminder.optString("title"), reminder.optString("body"), "", 0);
+        Notices.post(context, fallen(reminder, key, lasts(context), System.currentTimeMillis(), word(context, "open")));
     }
 
     /**
-     * Whether an entry of the list is the end of work's notice or the
-     * night's (DayNotes), which have no words kept. Pure, checked on a JVM
+     * A reminder of the list said from its words (`fallback`): tagged by its
+     * key, about its event (its address and time, as the list gives it: a
+     * tap opens it too). The time to leave, a notice to know lasting until
+     * the event starts (`ends`), else the minutes Rust last gave (`lasts`);
+     * an event's own alarm (kind "alarm", where no calendar app rings it in
+     * Sioul's place), a notice to do, until its `ends`. Pure, checked on a
+     * JVM (android/jvm-checks/EventOpenCheck.java).
+     *
+     * @param reminder the list's entry: {key, kind, title, body, about, ends}
+     * @param key its key
+     * @param lasts how long a notice to know lasts once seen (ms)
+     * @param now the time now (Unix ms)
+     * @param open the words of its button, "Open"
+     * @return the notice to post
+     */
+    static Notices.Said fallen(JSONObject reminder, String key, long lasts, long now, String open)
+    {
+        Notices.Said said = new Notices.Said();
+        said.tag = key;
+        String about = reminder.optString("about");
+        said.about = ReminderOpener.isNoticeAddress(about) ? about : "";
+        said.kind = reminder.optString("kind");
+        said.endsMs = Math.max(0, reminder.optLong("ends"));
+        said.actionable = "alarm".equals(said.kind);
+        said.group = said.actionable ? Notices.ACTIONABLE : Notices.INFORMATIVE;
+        said.pierce = said.actionable;
+        said.lastsMs = said.actionable ? 0 : said.endsMs > now ? said.endsMs - now : lasts;
+        said.title = reminder.optString("title");
+        said.body = reminder.optString("body");
+        if (!said.about.isEmpty())
+            said.buttons.add(new Notices.Button(open, said.about, ""));
+        return said;
+    }
+
+    /**
+     * Whether an entry of the list is the end of work's notice, the night's
+     * or a meal's (DayNotes), which have no words kept. Pure, checked on a JVM
      * (android/jvm-checks/DayNotesCheck.java).
      *
      * @param kind the entry's kind, as Rust gave it
@@ -525,81 +608,43 @@ final class EventAlarms
     /** A reminder said for nothing (by the fallback) taken away. */
     static void dismiss(Context context, String key)
     {
-        context.getSystemService(NotificationManager.class).cancel(key, NOTE);
+        Notices.dismiss(context, key);
     }
 
-    /**
-     * A reminder in the shade: an alarm the event carries in "An event's
-     * alarms", or in its twin that passes do-not-disturb while every one of
-     * Sioul's modes on lets an event's alarms through (PauseMode); Sioul's
-     * own reminders in the quiet "Events".
-     */
-    private static void post(Context context, String key, boolean alarm, String title, String body, String event, long until)
+    /** How long a notice to know lasts once seen (ms), as Rust last gave it with the list; five minutes before any. */
+    static long lasts(Context context)
     {
-        channel(context);
-        String channel = alarm ? PauseMode.alarmsChannelNow(context) : CHANNEL;
-        // The event by its address alone, never its file; without one (said from the words kept): Sioul as by its icon.
-        String address = ReminderOpener.isEventAddress(event) ? event : "";
-        Intent sioul = new Intent(context, ReminderOpener.class).setData(Uri.fromParts(ReminderOpener.SCHEME, address.isEmpty() ? "app" : "event", null))
-                           .putExtra(ReminderOpener.KEY, address).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent open = PendingIntent.getActivity(context, key.hashCode(), sioul, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification.Builder reminder = new Notification.Builder(context, channel)
-            .setSmallIcon(R.drawable.sioul_notification)
-            .setColor(context.getColor(R.color.sioul_green))
-            .setContentTitle(title.isEmpty() ? "Sioul" : title)
-            .setContentText(body)
-            .setStyle(new Notification.BigTextStyle().bigText(body))
-            .setCategory(Notification.CATEGORY_REMINDER)
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            // Where the phone hides what a notification says on its lock screen: Sioul, and that
-            // it has a reminder, never the appointment nor what to bring (composed tasks §7.3).
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicVersion(context, channel))
-            .addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.sioul_notification), word(context, "open"), open).build());
-        long left = until - System.currentTimeMillis();
-        if (until > 0 && left > -KEPT_AFTER_MS)
-            reminder.setTimeoutAfter(left + KEPT_AFTER_MS);
-        context.getSystemService(NotificationManager.class).notify(key, NOTE, reminder.build());
+        long given = kept(context).getLong(LASTS, 0);
+        return given > 0 ? given : LASTS_UNSAID_MS;
     }
 
-    /**
-     * A reminder as the lock screen shows it where the phone hides private
-     * content: "Sioul has a reminder for you.", nothing of what it is about.
-     */
-    private static Notification publicVersion(Context context, String channel)
+    /** The words Rust gave with a notice, kept for those said while it cannot be asked. */
+    static void keepWords(Context context, JSONObject words)
     {
-        return new Notification.Builder(context, channel)
-            .setSmallIcon(R.drawable.sioul_notification)
-            .setColor(context.getColor(R.color.sioul_green))
-            .setContentTitle("Sioul")
-            .setContentText(word(context, "public"))
-            .build();
+        if (words != null && words.length() > 0)
+            kept(context).edit().putString(WORDS, words.toString()).apply();
     }
 
     // ---------------------------------------------------------------- the words said here
 
     private static final String[][] FALLBACK_WORDS = {
-        { "channel", "Events", "Événements" },
-        { "alarms", "An event's alarms", "Alarmes des événements" },
-        { "alarms-pause", "An event's alarms during a pause", "Alarmes des événements pendant une pause" },
-        { "mail", "New mail", "Nouveaux courriels" },
+        { "notices", "Notices", "À savoir" },
+        { "act", "To act on", "À faire" },
+        { "act-pause", "To act on during a pause", "À faire pendant une pause" },
         { "mail-through", "New mail from people always let through", "Courriels des personnes qui passent toujours" },
-        { "day", "End of the day", "Fin de journée" },
         { "open", "Open", "Ouvrir" },
         { "public", "Sioul has a reminder for you.", "Sioul a un rappel pour vous." },
     };
 
     /**
-     * The words said here, as Rust gave them with the list (in the person's
-     * language, crates/sioul-core/locales); before any list, these, by the
-     * phone's language.
+     * The words said here, as Rust gave them with the list or a notice (in
+     * the person's language, crates/sioul-core/locales); before any, these,
+     * by the phone's language. Without a context (a check on a JVM), these.
      */
     static String word(Context context, String which)
     {
         try {
-            String said = new JSONObject(kept(context).getString(WORDS, "{}")).optString(which);
+            String said = context == null ? "" : new JSONObject(kept(context).getString(WORDS, "{}")).optString(which);
             if (!said.isEmpty())
                 return said;
         } catch (JSONException e) {

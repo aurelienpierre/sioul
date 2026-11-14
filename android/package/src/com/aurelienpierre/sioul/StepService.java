@@ -10,9 +10,11 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -58,6 +60,12 @@ import java.util.Locale;
  * - While this phone screens calls (Calls.java), its notification offers "Let
  *   every call through", for an hour or until turned off, and "Screen calls
  *   again"; each step keeps the calls' table in step too.
+ * - Its notification says fixed words ("Sioul keeps your devices in step"),
+ *   never the time of day, in a group of its own, so that Android groups
+ *   none of Sioul's notices under it (docs/notifications.md, "What stays a
+ *   status").
+ * - It hears the phone's unlock while it runs: the notices to know posted
+ *   while nobody could see them count their minutes from then (Notices.seen).
  *
  * Rust's questions come through call(verb, json) (android/main.cpp), also
  * from Sioul's own process: starting and stopping the service, the stars of
@@ -82,6 +90,8 @@ public final class StepService extends Service
     private static final long SOON_MS = 20_000;
     private static final String CHANNEL = "steps";
     private static final int NOTE = 0x5137;
+    /** Its notification's group: its own, so that it absorbs nothing. */
+    static final String GROUP = "sioul.steps";
     private static final String KEPT = "sioul-steps";
     /** Seconds between two steps when Rust gave no answer. */
     private static final long USUAL_S = 300;
@@ -98,10 +108,12 @@ public final class StepService extends Service
     private FileObserver watch;
     private String watched = "";
     private String own = "";
-    /** Its text: do-not-disturb on or off, the calls screened or ringing (Rust's `steps::note`). */
+    /** Its text: while this phone screens calls, the calls screened or ringing until when (Rust's `steps::note`). */
     private String line = "";
-    /** Its title: what now is for, until when; Sioul's words for the service before Rust gave any. */
+    /** Its title: fixed words, Rust's in your language ("Sioul keeps your devices in step"); Sioul's own before Rust gave any. */
     private String title = "";
+    /** The phone's unlock heard while the service runs (Notices.seen). */
+    private BroadcastReceiver unlocks;
     private String channelName = "";
     /**
      * The calls screened, as Rust words them at each step: {screening, through,
@@ -180,6 +192,21 @@ public final class StepService extends Service
             case "mail-withdraw":
                 // New mail's notification, each of its messages dealt with on some device (Rust's notices).
                 MailNotes.withdraw(context);
+                return "true";
+            case "notice":
+                // A notice of Rust's own (a code: eventalarms.rs, `code_note`), posted in whichever process asks.
+                Notices.show(context, json);
+                return "true";
+            case "notice-withdraw":
+                // Every notice about a thing settled on some device (a code's message read).
+                Notices.withdraw(context, asked.optString("about", ""));
+                return "true";
+            case "calendar-app":
+                // Whether a calendar app rings an event's own alarms here in Sioul's place (CalendarApps).
+                return CalendarApps.find(context);
+            case "notices-seen":
+                // Sioul on the screen: the notices to know posted meanwhile count their minutes from now.
+                Notices.seen(context);
                 return "true";
             default:
                 // texts: read and sent for your computers (Texts.java, TextSend.java).
@@ -395,6 +422,23 @@ public final class StepService extends Service
         foreground();
         // The phone's texts watched in this process: the import asks Android only when they changed.
         Texts.watch(this);
+        // The phone unlocked: the notices to know waiting to be seen count their minutes from now.
+        unlocks = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent)
+            {
+                if (Intent.ACTION_USER_PRESENT.equals(intent.getAction()))
+                    Notices.seen(context.getApplicationContext());
+            }
+        };
+        IntentFilter unlocked = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        // Exported: SystemUI sends it, not Android's own process; a protected broadcast, which no app can send.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            registerReceiver(unlocks, unlocked, Context.RECEIVER_EXPORTED);
+        else
+            registerReceiver(unlocks, unlocked);
+        // The notices' channels made, an older Sioul's deleted, from the phone's start too.
+        Notices.channels(this, null);
     }
 
     @Override
@@ -418,6 +462,10 @@ public final class StepService extends Service
     public void onDestroy()
     {
         running = null;
+        // Its card goes with the service: its group's summary with it.
+        Notices.tidy(this, java.util.Collections.emptyList(), java.util.Collections.singleton(Notices.key(NOTE, null)));
+        if (unlocks != null)
+            unregisterReceiver(unlocks);
         if (watch != null)
             watch.stopWatching();
         Texts.unwatch(this);
@@ -443,6 +491,8 @@ public final class StepService extends Service
                 startForeground(NOTE, built, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else
                 startForeground(NOTE, built);
+            // Its group's own summary on Android 16: never bundled with another.
+            Notices.tidy(this, java.util.Collections.singletonList(new Notices.Child(NOTE, null, GROUP, 0)), java.util.Collections.emptySet());
         } catch (RuntimeException e) {
             // Refused (Android 12 and later, from the background): the next start.
             Log.w(TAG, "Steps: not in the foreground: " + e);
@@ -454,9 +504,14 @@ public final class StepService extends Service
     private void refresh()
     {
         getSystemService(NotificationManager.class).notify(NOTE, note());
+        Notices.tidy(this, java.util.Collections.singletonList(new Notices.Child(NOTE, null, GROUP, 0)), java.util.Collections.emptySet());
     }
 
-    /** One quiet notification: the lowest importance, no sound, no badge, hidden on the lock screen. */
+    /**
+     * One quiet notification: the lowest importance, no sound, no badge,
+     * hidden on the lock screen; fixed words, in a group of its own; the
+     * calls' line and buttons only while this phone screens calls.
+     */
     private Notification note()
     {
         NotificationManager notifications = getSystemService(NotificationManager.class);
@@ -470,15 +525,13 @@ public final class StepService extends Service
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
+            .setGroup(GROUP)
             .setContentIntent(open(this));
-        // The calls' line while every call rings ("Every call rings until 15:30."), after do-not-disturb's.
+        // While this phone screens calls (Rust says it then only): "Calls are screened.", or "Every call rings until 15:30.".
         JSONObject words = callsWords();
-        String through = words == null ? "" : words.optString("line", "");
-        String text = line.isEmpty() ? through : through.isEmpty() ? line : line + " " + through;
-        if (!text.isEmpty()) {
-            // Whole when opened: what now is for above, do-not-disturb and the calls below.
-            note.setContentText(text);
-            note.setStyle(new Notification.BigTextStyle().bigText(text));
+        if (!line.isEmpty()) {
+            note.setContentText(line);
+            note.setStyle(new Notification.BigTextStyle().bigText(line));
         }
         // "Let every call through" while this phone screens calls: for an hour or until
         // turned off; once on, "Screen calls again" (docs/android.md, "Calls").

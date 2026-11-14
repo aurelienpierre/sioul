@@ -4365,31 +4365,36 @@ fn night_offered(block: &Kept, now: &Zoned) -> Vec<crate::reviews::Offered> {
 /// task"), with "Options…"; then one at its time, in its place (the same
 /// need: docs/notifications.md). Notices to know: while someone is at the
 /// computer, never in a pause or a do-not-disturb. Its name and time only:
-/// safe to be read by someone else (docs/health.md). A phone shows only the
-/// night's own, at its alarm (`decide_night`).
+/// safe to be read by someone else (docs/health.md). A phone shows them at
+/// its alarms while nobody is at a computer (`decide_need`, `decide_night`).
 fn needs_tick(health: &Health, now: &Zoned) {
-    use sioul_core::notice::{Act, Kind, Notice, address};
     if cfg!(target_os = "android") {
         return;
     }
-    let hm = |at: i64| clock(at, now.time_zone());
     for (block, heads_up) in needs_now(health, now) {
-        let name = name_of(&block);
-        let about = address::need(&block.key);
-        if !heads_up && block.kind == "sleep" {
-            // The night's own notice: closing the day is offered beside its
-            // options while that night's review is to give (docs/reviews.md).
-            crate::reviews::show_notice(&about, sioul_core::attention::Kind::Needs, &name, &hm(block.start), night_offered(&block, now), Some(block.end), None);
-            continue;
-        }
-        let (title, body) = if heads_up { (tr().text("need-heads-up", None), say("need-at", &[("name", name), ("time", hm(block.start))])) } else { (name, hm(block.start)) };
-        // One button: the window's question (later, at another time, not
-        // today; a line on where you stopped).
-        // Its heads-up is worth a minute, then the meal's own notice comes; a meal's, nap's own, while it lasts.
-        let relevant = (!heads_up).then_some(block.end);
-        let notice = Notice::new(about.clone(), Kind::Own(sioul_core::attention::Kind::Needs), title, body).relevant(relevant).action(tr().text("need-open", None), Act::Open { address: about, hint: String::new() });
-        crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Needs)), None);
+        crate::tell::tell_as(need_notice(&block, heads_up, now), sioul_core::notice::told(Some(sioul_core::attention::Kind::Needs)), None);
     }
+}
+
+/// A need's notice, as both devices make it (`needs_tick`, a phone's
+/// `tell_needs`): about its block (`sioul:need/<key>`), its name and time
+/// only. The night's own as its wind-down begins, closing the day offered
+/// beside its options while that night's review is to give (docs/reviews.md),
+/// worth telling while it lasts; a heads-up about the work ("No new big
+/// task"), worth a minute, then the meal's own notice comes; a meal's or a
+/// nap's own, while it lasts. One button besides: the window's question
+/// (later, at another time, not today; a line on where you stopped).
+fn need_notice(block: &Kept, heads_up: bool, now: &Zoned) -> sioul_core::notice::Notice {
+    use sioul_core::notice::{Act, Kind, Notice, address};
+    let hm = |at: i64| clock(at, now.time_zone());
+    let name = name_of(block);
+    let about = address::need(&block.key);
+    if !heads_up && block.kind == "sleep" {
+        return crate::reviews::closing_notice(&about, sioul_core::attention::Kind::Needs, &name, &hm(block.start), night_offered(block, now), Some(block.end));
+    }
+    let (title, body) = if heads_up { (tr().text("need-heads-up", None), say("need-at", &[("name", name), ("time", hm(block.start))])) } else { (name, hm(block.start)) };
+    let relevant = (!heads_up).then_some(block.end);
+    Notice::new(about.clone(), Kind::Own(sioul_core::attention::Kind::Needs), title, body).relevant(relevant).action(tr().text("need-open", None), Act::Open { address: about, hint: String::new() })
 }
 
 /// When the night's own notice may come in the next nights, for a phone's
@@ -4414,14 +4419,72 @@ pub(crate) fn coming_night(now: &Zoned) -> Vec<(String, i64)> {
         .collect()
 }
 
+/// When the needs' other notices may come in the next days, for a phone's
+/// alarms (`eventalarms::coming`): each block's heads-up, `heads_up` minutes
+/// before it, and a meal's or a nap's own at its time (the night's own is
+/// `coming_night`'s), while each may still come as `Today::due` gives it
+/// (ten minutes for a heads-up, a quarter of an hour at its time) and was
+/// not given here already; each ("day:need:<Unix seconds>:<block>:heads-up",
+/// or ":start", that time), the same from one minute to the next.
+pub(crate) fn coming_needs(now: &Zoned) -> Vec<(String, i64)> {
+    let heads_up = i64::from(load().needs.heads_up) * 60;
+    let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date());
+    let given = |block: &Kept, what: &str| {
+        let date = Timestamp::from_second(block.start).ok().map(|t| t.to_zoned(now.time_zone().clone()).date());
+        date == Some(now.date()) && today.sent.contains(&format!("{}:{what}", block.key))
+    };
+    needs_alarms(&crate::hours::blocks(now).kept, heads_up, now.timestamp().as_second(), given)
+}
+
+/// `coming_needs` from the blocks kept, the heads-up's minutes (seconds), now
+/// (Unix seconds) and what was given here already: pure.
+fn needs_alarms(kept: &[Kept], heads_up: i64, stamp: i64, given: impl Fn(&Kept, &str) -> bool) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    for block in kept.iter().filter(|block| block.notices) {
+        let ahead = block.start - heads_up;
+        if heads_up > 0 && stamp - ahead < 10 * 60 && stamp < block.start && !given(block, "heads-up") {
+            out.push((format!("day:need:{ahead}:{}:heads-up", block.key), ahead));
+        }
+        if block.kind != "sleep" && stamp - block.start < 15 * 60 && !given(block, "start") {
+            out.push((format!("day:need:{}:{}:start", block.start, block.key), block.start));
+        }
+    }
+    out
+}
+
+/// The tag a need's notice is shown under on a phone: the night's own by
+/// its day, as before; the others by their day and block, so that a meal's
+/// notice at its time takes its heads-up's place.
+fn need_tag(block: &Kept, heads_up: bool, zone: &TimeZone) -> String {
+    let date = Timestamp::from_second(block.start).map(|t| t.to_zoned(zone.clone()).date().to_string()).unwrap_or_default();
+    if !heads_up && block.kind == "sleep" { format!("day:night:{date}") } else { format!("day:need:{date}:{}", block.key) }
+}
+
+/// The needs' notices due now told on a phone (`needs_now`, each marked
+/// given here): every one due, the night's own with its buttons, each in
+/// Android's notifications as a notice to know. Whether any was shown.
+fn tell_needs(now: &Zoned) -> bool {
+    let mut shown = false;
+    for (block, heads_up) in needs_now(&load(), now) {
+        let mut notice = need_notice(&block, heads_up, now);
+        // A heads-up on a phone is worth seeing until its block begins, not a minute: it waits for the unlock.
+        if heads_up {
+            notice.relevant = Some(block.start);
+        }
+        shown |= crate::eventalarms::day_note(&need_tag(&block, heads_up, now.time_zone()), &notice);
+    }
+    shown
+}
+
 /// A phone's alarm as the night's wind-down begins (`eventalarms`,
 /// "day:night:…"): the night's own notice as a computer's minute says it
-/// (`needs_now`), from the device you are at as who keeps the reminders
-/// reads, never claimed from there (`share::looked`). Shown in Android's
-/// notifications with "Close the whole day" while that night's review is to
-/// give, and "Options…", each opening Sioul on its sheet or its question.
-/// {"shown": true}; {"again_at": ms} rung early, or kept here only lately;
-/// {} when it does not come.
+/// (`needs_now`), told by the phone only while nobody is at a computer
+/// (`devices::computer_in_use`: the device you are at tells, the
+/// notifications' decision 6). Shown in Android's notifications with "Close
+/// the whole day" while that night's review is to give, and "Options…",
+/// each opening Sioul on its sheet or its question; any other need's notice
+/// due then with it. {"shown": true}; {"again_at": ms} rung early; {} when
+/// it does not come.
 pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
     let starts: Vec<i64> = crate::hours::blocks(now).kept.iter().filter(|block| block.kind == "sleep").map(|block| block.start).collect();
@@ -4431,23 +4494,49 @@ pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
         return serde_json::json!({ "again_at": start * 1000 });
     }
     // Past the quarter of an hour its notice may come in (`Today::due`): nothing, nor asked again.
-    if !starts.iter().any(|start| (0..15 * 60).contains(&(stamp - start))) {
-        return serde_json::json!({});
-    }
-    let keeper = crate::share::looked("health", sioul_sync::lease::Rule::FollowsYou);
-    if !keeper.mine {
-        return serde_json::json!({});
-    }
-    if !keeper.settled {
-        return serde_json::json!({ "again_at": (stamp + 60) * 1000 });
-    }
-    let Some(block) = needs_now(&load(), now).into_iter().find(|(block, heads_up)| !heads_up && block.kind == "sleep").map(|(block, _)| block) else {
+    let Some(start) = starts.iter().copied().find(|start| (0..15 * 60).contains(&(stamp - start))) else {
         return serde_json::json!({});
     };
-    let date = Timestamp::from_second(block.start).map(|t| t.to_zoned(now.time_zone().clone()).date()).unwrap_or(now.date());
-    let offered = night_offered(&block, now);
-    crate::eventalarms::day_note(&format!("day:night:{date}"), &name_of(&block), &clock(block.start, now.time_zone()), &offered, block.end.min(stamp + crate::reviews::PHONE_NOTICE_KEPT));
-    serde_json::json!({ "shown": true })
+    // Someone at a computer: told there; asked again a few minutes on, while it may still come here.
+    if crate::devices::computer_in_use() {
+        return look_again(stamp, start + 15 * 60);
+    }
+    if tell_needs(now) { serde_json::json!({ "shown": true }) } else { serde_json::json!({}) }
+}
+
+/// How long a phone waits before it asks again whether someone is still at
+/// a computer, a need's notice due meanwhile (`decide_night`, `decide_need`).
+const LOOK_AGAIN: i64 = 5 * 60;
+
+/// A phone's answer while someone is at a computer: asked again a few
+/// minutes on (`LOOK_AGAIN`), while the notice may still come (before
+/// `until`, Unix seconds), else nothing. Pure.
+fn look_again(stamp: i64, until: i64) -> serde_json::Value {
+    let again = stamp + LOOK_AGAIN;
+    if again < until { serde_json::json!({ "again_at": again * 1000 }) } else { serde_json::json!({}) }
+}
+
+/// A phone's alarm at a need's heads-up or at a meal's or a nap's time
+/// (`eventalarms`, "day:need:<Unix seconds>:…", `coming_needs`): as the
+/// computer's minute says them (`needs_now`), told by the phone only while
+/// nobody is at a computer (the notifications' decision 6), each a notice to
+/// know with "Options…"; never "Time to move", which a phone never tells.
+/// {"shown": true}; {"again_at": ms} rung early; {} when none comes.
+pub(crate) fn decide_need(now: &Zoned, key: &str) -> serde_json::Value {
+    let stamp = now.timestamp().as_second();
+    let at = key.split(':').next().and_then(|at| at.parse::<i64>().ok());
+    if let Some(at) = at
+        && (1..3600).contains(&(at - stamp))
+    {
+        return serde_json::json!({ "again_at": at * 1000 });
+    }
+    // Someone at a computer: told there; asked again a few minutes on, while it may still
+    // come (`Today::due`: a heads-up ten minutes, a meal's own a quarter of an hour).
+    if crate::devices::computer_in_use() {
+        let window = if key.ends_with(":heads-up") { 10 * 60 } else { 15 * 60 };
+        return at.map_or_else(|| serde_json::json!({}), |at| look_again(stamp, at + window));
+    }
+    if tell_needs(now) { serde_json::json!({ "shown": true }) } else { serde_json::json!({}) }
 }
 
 /// A day's block changed, that day only, as the page asks (JSON: its `date`,
@@ -8250,6 +8339,43 @@ mod tests {
         assert_eq!(need_item(&date, "meal:9"), "{}", "none that day");
         let _ = std::fs::remove_file(Days::default_path());
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A phone's alarms for the needs (the notifications' decision 6): each
+    /// block's heads-up while it may still come (ten minutes, never once the
+    /// block began), a meal's and a nap's own at its time for a quarter of an
+    /// hour (the night's own is `coming_night`'s), none given here already
+    /// nor for a block without its notices; each the same from one minute to
+    /// the next. A meal's notice at its time takes its heads-up's place.
+    #[test]
+    fn a_phone_is_given_the_needs_alarms_while_they_may_come() {
+        let zone = TimeZone::fixed(jiff::tz::offset(1));
+        let at = |h: i8, m: i8| jiff::civil::date(2026, 11, 14).at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let lunch = Kept { key: "meal:0".into(), kind: "meal", index: 0, name: String::new(), start: at(12, 30), at: at(12, 30), end: at(13, 15), notices: true };
+        let nap = Kept { key: "nap:0".into(), kind: "nap", index: 0, name: String::new(), start: at(14, 0), at: at(14, 0), end: at(14, 30), notices: false };
+        let night = Kept { key: "sleep".into(), kind: "sleep", index: 0, name: String::new(), start: at(22, 30), at: at(23, 0), end: at(23, 59), notices: true };
+        let kept = [lunch.clone(), nap, night.clone()];
+        let none = |_: &Kept, _: &str| false;
+        let alarms = needs_alarms(&kept, 15 * 60, at(9, 0), none);
+        assert_eq!(
+            alarms,
+            [(format!("day:need:{}:meal:0:heads-up", at(12, 15)), at(12, 15)), (format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30)), (format!("day:need:{}:sleep:heads-up", at(22, 15)), at(22, 15))],
+            "the nap's notices off; the night's own is the night's alarm"
+        );
+        assert_eq!(needs_alarms(&kept, 15 * 60, at(9, 1), none), alarms, "the same a minute on");
+        let past = needs_alarms(&kept, 15 * 60, at(12, 40), none);
+        assert_eq!(past, [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30)), (format!("day:need:{}:sleep:heads-up", at(22, 15)), at(22, 15))], "the heads-up gone once the meal began");
+        assert_eq!(needs_alarms(&kept, 15 * 60, at(12, 45), none).len(), 1, "a quarter of an hour on, the meal's own gone too");
+        assert_eq!(needs_alarms(&kept, 15 * 60, at(9, 0), |block: &Kept, what: &str| block.key == "meal:0" && what == "heads-up").len(), 2, "given here already");
+        assert_eq!(needs_alarms(&kept, 0, at(9, 0), none), [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30))], "no heads-up set");
+        // A meal's heads-up and its own share their place; the night's own keeps its day's.
+        assert_eq!(need_tag(&lunch, true, &zone), need_tag(&lunch, false, &zone));
+        assert_eq!(need_tag(&lunch, false, &zone), "day:need:2026-11-14:meal:0");
+        assert_eq!(need_tag(&night, false, &zone), "day:night:2026-11-14");
+        assert_eq!(need_tag(&night, true, &zone), "day:need:2026-11-14:sleep");
+        // Someone at a computer: asked again five minutes on while it may still come, then nothing.
+        assert_eq!(look_again(at(12, 30), at(12, 45)), serde_json::json!({ "again_at": at(12, 35) * 1000 }));
+        assert_eq!(look_again(at(12, 41), at(12, 45)), serde_json::json!({}));
     }
 
     /// The agenda's timeline (5 November 2026): a move says where the block

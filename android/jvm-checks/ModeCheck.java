@@ -16,7 +16,6 @@ import org.json.JSONObject;
  * - PauseMode.Through.of: the policy's parts from Rust's ask (dnd.rs: the
  *   matrix's Silence flattened beside "people" and "doses"; nested; older);
  * - PauseMode.passesNow: which modes on let a channel that passes be used;
- * - EventAlarms.isAlarm: an event's own alarm, by Rust's kind or its key;
  * - AppNotes.talkKey against Rust's talk_key (values from Rust's own code,
  *   rustc on a verbatim copy of appnotes.rs's fnv and talk_key);
  * - AppNotes.forgotten, AppNotes.pages.
@@ -51,6 +50,10 @@ public final class ModeCheck
         expect("nothing at all", through("{\"people\":false,\"doses\":true,\"calls\":\"none\",\"messages\":\"none\",\"repeat\":false,\"conversations\":false,\"alarms\":true,\"events\":true}"), "4 4 false false true true true 3");
         expect("doses and alarms held", through("{\"people\":true,\"calls\":\"starred\",\"messages\":\"starred\",\"repeat\":true,\"conversations\":true,\"alarms\":true,\"doses\":false,\"events\":false}"), "3 3 true true true false false 2");
         // Nested, as "silence".
+        // A calendar app's alarms: only where Rust says so; an older Rust says nothing, held.
+        expect("calendar, said", PauseMode.Through.of(new JSONObject("{\"calendar\":true,\"events\":true}")).calendar, true);
+        expect("calendar, unsaid", PauseMode.Through.of(new JSONObject("{\"events\":true}")).calendar, false);
+        expect("calendar, nested", PauseMode.Through.of(new JSONObject("{\"silence\":{\"calendar\":true}}")).calendar, true);
         expect("nested", through("{\"people\":true,\"doses\":true,\"silence\":{\"calls\":\"contacts\",\"messages\":\"none\",\"repeat\":true,\"conversations\":false,\"alarms\":true,\"doses\":true,\"events\":false}}"), "2 4 true false true true false 3");
         expect("silence null", through("{\"people\":false,\"doses\":false,\"silence\":null}"), "4 4 false false true false true 3");
         // A held text let through at a review only when the filter silences every text (review of part 4, S-2).
@@ -88,14 +91,6 @@ public final class ModeCheck
         expect("modes off", PauseMode.passesNow(kept, "doses."), false);
         kept.put("on.free-time", true);
         expect("free time entered by an older Sioul: nothing said", PauseMode.passesNow(kept, "events."), true);
-
-        // An event's own alarm.
-        expect("kind alarm", EventAlarms.isAlarm("alarm", "alarm:uid:1:0"), true);
-        expect("kind before", EventAlarms.isAlarm("before", "before:uid:1"), false);
-        expect("kind event", EventAlarms.isAlarm("event", "event:uid:1"), false);
-        expect("older list, alarm by key", EventAlarms.isAlarm("", "alarm:uid:1:-900"), true);
-        expect("older list, before by key", EventAlarms.isAlarm("", "before:uid:1"), false);
-        expect("nothing", EventAlarms.isAlarm(null, null), false);
 
         // A conversation's key, as Rust's talk_key (values from Rust's own code).
         String[][] keys = {
