@@ -515,6 +515,36 @@ fn reachable_ends(now: &Zoned) -> (i64, i64, bool) {
     (hours.unwrap_or(0), waking.or(night).unwrap_or(0), waking.is_some())
 }
 
+/// The latest Mail's Real time box ticked at `now` lasts (the notifications'
+/// phase 2): as Reachable "until the hours you are in end", it goes off when
+/// those hours end (`realtime_hours`, looked at each minute: made longer, it
+/// follows them), and never later than the night's start, or midnight with
+/// no night known; at night, an hour on; with no hours known, an hour on. It
+/// never stays on through an evening or a night it was not ticked in.
+pub(crate) fn realtime_ends(now: &Zoned) -> i64 {
+    let stamp = now.timestamp().as_second();
+    let (hours, night, at_night) = reachable_ends(now);
+    realtime_end(stamp, hours, night, at_night, sioul_core::notice::Moment::end_of_day(now))
+}
+
+/// `realtime_ends` from what was read: now, the hours' end and the night's
+/// start or waking (0 unknown), whether it is night, the day's end.
+fn realtime_end(stamp: i64, hours: i64, night: i64, at_night: bool, day_end: i64) -> i64 {
+    if at_night {
+        return stamp + 3_600;
+    }
+    let latest = if night > stamp { night } else { day_end.max(stamp + 60) };
+    if hours > stamp { latest } else { latest.min(stamp + 3_600) }
+}
+
+/// The hours Real time was ticked in, as a word: what now is for (work,
+/// admin, leisure, a meal, sleep…), whatever its end; when it changes, those
+/// hours are over (`backend::follow_realtime`).
+pub(crate) fn realtime_hours(now: &Zoned) -> String {
+    let mode = crate::hours::mode_at(now);
+    format!("{:?}{}", mode.time, if mode.paused() { ":paused" } else if mode.free() { ":free" } else { "" })
+}
+
 /// One of the three states pressed here (`rules::State`; part 3 of "What
 /// reaches you"): Reachable for `length` ("30", "60", "120" minutes,
 /// "hours" until the hours you are in end, "tonight", "off" until you turn
@@ -1132,6 +1162,31 @@ fn edit_people(path: &std::path::Path, change: impl FnOnce(&mut People)) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mail's Real time box ends with the hours it was ticked in (the
+    /// notifications' phase 2), as Reachable "until these hours end": never
+    /// past the night's start; at night, waking; with neither known, an hour on.
+    #[test]
+    fn real_time_ends_with_the_hours_it_was_ticked_in() {
+        let now = 1_800_000_000;
+        let midnight = now + 30_000;
+        // Ticked at 15:00 in work hours ending at 17:00, the night at 22:00: at the latest the
+        // night's start; the hours' end turns it off first (`realtime_hours`, each minute).
+        assert_eq!(realtime_end(now, now + 7_200, now + 25_200, false, midnight), now + 25_200);
+        // Ticked at 20:00 in the evening (its hours end with the night's start): off at 22:00.
+        assert_eq!(realtime_end(now, now + 7_200, now + 7_200, false, midnight), now + 7_200);
+        // At night: an hour, never until waking (review of phase 2, L2).
+        assert_eq!(realtime_end(now, 0, now + 21_600, true, midnight), now + 3_600);
+        // No night known, the evening's hours ending the next morning: midnight at the latest.
+        assert_eq!(realtime_end(now, now + 50_000, 0, false, midnight), midnight);
+        // No hours known: an hour on, never for good.
+        assert_eq!(realtime_end(now, 0, 0, false, midnight), now + 3_600);
+        assert_eq!(realtime_end(now, now - 60, now + 1_800, false, midnight), now + 1_800, "an hour, or the night sooner");
+        // Past its end, it goes off at the next minute; unticked or without an end, nothing to do.
+        assert!(crate::backend::realtime_over(true, now + 7_200, now + 7_200));
+        assert!(!crate::backend::realtime_over(true, now + 7_200, now + 7_199));
+        assert!(!crate::backend::realtime_over(false, now + 7_200, now + 9_000) && !crate::backend::realtime_over(true, 0, now));
+    }
 
     #[test]
     fn the_signature_follows_what_is_asked() {

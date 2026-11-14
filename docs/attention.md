@@ -109,7 +109,7 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 | 5. **Floors** (calls) | a second call within 15 minutes (never a hidden number's, which cannot be told apart); Expecting a call, for numbers nobody knows only (the call screening's, apart) | rings |
 | 6. **Exceptions** | Always through (its row, `=` and `☆` read against their own row); a chat site naming someone your cards know follows their Messages row when it holds more | the exception's |
 | 7. **The matrix** | the time and its layers, the row | a level |
-| 8. **What it is for** | the source's area (an address, an app, a site, a task) against now: what is for work waits in your evening, but your safe senders' and Always through's, and but when the row and the area never meet in your week | later |
+| 8. **What it is for** | the source's area (an address, an app, a site, a task) against now (`areas::in_view`): what is for work waits in your evening, but Always through's, Reachable's and your safe people's chats, and but when the row and the area never meet in your week. Mail to an address for another time waits too, your safe senders' included (the notifications' decision 2 of 13 November 2026): theirs is shown on the Porch meanwhile (◑) and told once the address's hours begin, when their row tells them there at some time (●), and never for an address whose area is unsaid (`Event::unsaid`: no closed hours for them); a mail app's notification on a phone waits the same way | later; ◑ for your safe senders' mail |
 | 9. **Holds** | the Porch resting after a pause (mail shown, not told); a meeting (no meal's notice, no "Work hours are over"); the chat limit (chat sites wait) | later, or not at all |
 | 10. **Output** | `Output { level, shown, told, pierce, step }`; `pierce` when it is told through the system's do-not-disturb (codes, doses, alarms, a call in a site, Always through) | |
 
@@ -120,8 +120,9 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 ### Examples
 - **A safe friend at 03:00.** Their chat waits for waking (Messages × Safe × Sleep is ○); their mail is on the Porch if you look, told at waking (◑); their call goes to voicemail, and the Porch lists it at waking. On the Always through list: their chat and their call come at once, their mail is ◑.
 - **A number both blocked and on the Always through list**, calling at noon: declined. Blocking someone takes them off Always through, and putting them on Always through takes them off the blocked list, said (`porch::set_standing`, `porch::unblock_person`).
-- **A code from your bank at 22:40, while you wind down**: told (Codes × Sleep is ●; "On the Porch only" stays a choice there). The same code by text is never held either.
-- **A neutral colleague's mail at 19:00 to your work address**: it waits off the Porch until work (Mail × Neutral × Leisure is ○).
+- **A code from your bank at 22:40, while you wind down**: on the Porch, its card showing it, untold (Codes × Sleep is "On the Porch only" since the notifications' decision 5 of 13 November 2026; At once stays a choice there). The same code by text is never held by Sioul, and the night's do-not-disturb keeps it silent.
+- **A safe colleague's mail at 19:00 to your work address**: shown on the Porch (◑), told with "The Porch opens" when work begins (step 8, decision 2 of 13 November 2026); to your personal address, told at once (Mail × Safe × Leisure is ●).
+- **A neutral colleague's mail at 19:00 to your work address**: it waits off the Porch until work (Mail × Neutral × Leisure is ○, and step 8).
 - **A group's message during Free time**: held until Free time ends and its row lets it come (Groups × Free time is ○).
 - **Under do-not-disturb from its switch**: Sioul's reminder before an event is ● (on a computer a notice to know, so not posted while do-not-disturb holds: the Porch and the agenda show the event); mail from someone Always through is ★ (on a computer a notice to know too: shown on the Porch, untold, since 13 November 2026; on a phone, its own channel, as before); a safe sender's who is not on the list is shown, not told (◑); a safe caller goes to voicemail, the list's people ring.
 
@@ -165,7 +166,7 @@ A mail app's notification on a phone takes the Mail rows (◑ held, since a phon
 
 | Sioul's own | W | A | L | M | S | P | F | Y | D |
 |---|---|---|---|---|---|---|---|---|---|
-| Codes and links you asked for | **●** | **●** | **●** | **●** | ● | **●** | **●** | **●** | **●** |
+| Codes and links you asked for | **●** | **●** | **●** | **●** | – | **●** | **●** | **●** | **●** |
 | Doses | **●** | **●** | **●** | **●** | ● | ● | **●** | **●** | **●** |
 | The alarm at waking | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** |
 | An event's alarms | ● | ● | ● | ● | ◐ | **●** | ◐ | ● | **●** |
@@ -182,7 +183,7 @@ A mail app's notification on a phone takes the Mail rows (◑ held, since a phon
 | Automatons (phone) | ◎ | ◎ | ◎ | ◎ | ○ | ○ | ○ | ○ | ○ |
 | Apps and sites set to At once (phone) | ● | ● | ● | ● | ○ | ○ | ○ | ○ | ○ |
 
-**Locks** (`attention::lock`, each with a sentence, `attention-lock-*`): the blocked never; a dose at once but in sleep and a pause, your choice there; a code at once but in sleep, where "On the Porch only" stays a choice; an event's alarms at once in a pause and under do-not-disturb, as both promise; the alarm at waking always. Health's night or nap notice at its own start comes whatever sleep's column says, but in a pause.
+**Locks** (`attention::lock`, each with a sentence, `attention-lock-*`): the blocked never; a dose at once but in sleep and a pause, your choice there; a code at once but in sleep, where it waits on the Porch as usual ("On the Porch only", decision 5 of 13 November 2026) and At once stays a choice; an event's alarms at once in a pause and under do-not-disturb, as both promise; the alarm at waking always. Health's night or nap notice at its own start comes whatever sleep's column says, but in a pause.
 
 **What the cells leave alone**: what a thing is for (step 8) and the named holds (step 9), each said in its time's card; the master switches (new mail told at all, newsletters, sites gathered, each reminder's own, Health's); and each source's own choice (a site's Real time and Silenced, an app's, a conversation's and a browser site's on a phone, an event's Remind, a block's Not today).
 
@@ -279,7 +280,7 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 3. **Blocked beats Always through**; one list takes them off the other, said.
 4. **Messages at night** wait in sleep and a pause, as mail's telling does; in Free time your safe senders' still come.
 5. **Mail apps on a phone** take the Mail rows, ◑ held.
-6. **Codes asked for** come at once in every time, sleep and a pause included, from mail and from other apps; "On the Porch only" stays a choice for sleep.
+6. **Codes asked for** come at once in every time, sleep and a pause included, from mail and from other apps; "On the Porch only" stays a choice for sleep. Changed on 13 November 2026 (the notifications' decision 5, [notifications.md](notifications.md#mail)): in sleep, Sioul's own codes wait on the Porch as usual, as porch.md promised; At once stays a choice there. Other apps' codes on a phone are still never held by the listener (a code cannot wait); the night's do-not-disturb keeps them silent.
 7. **An event's alarms in a pause, on a phone**: a channel of their own that passes Sioul's modes. Since 14 November 2026 (the notifications' decision 3), only where Sioul rings them; where the phone's calendar app rings them in Sioul's place, the mode lets its events through where this row says at once (`Silence::calendar`).
 8. **Always through conversations under Sioul's modes**: the modes let Priority conversations through; Sioul opens the conversation's page in Android to mark it.
 9. **Safe callers in Free time**: while the phone screens calls, Sioul's modes let every contact's call ring; else starred contacts only.
@@ -297,6 +298,8 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 24. **Older Sioul**: not kept in step; the older keys seed the matrix once, then go.
 25. **The holds outside the matrix** stay named holds, each said in its time's card.
 26. **French**: « type », never « sorte », for a kind.
+
+The notifications' redesign of 13 November 2026 ([notifications.md](notifications.md#mail)) changed two things here: **mail is told only while the address it came to is for what now is for** (decision 2: step 8 holds your safe senders' mail too, shown on the Porch meanwhile; Always through and Reachable stay the exceptions; a mail app's notification on a phone follows it), and **codes wait on the Porch while you sleep** (decision 5: Codes × Sleep "On the Porch only" as usual, At once a choice).
 
 The decisions of 14 and 18 October 2026 (what reaches you: one control, the screening apart, gentler defaults, a person's own row), built in parts. **The call screening apart** (decisions 3 to 5, and the decisions after the review of 19 October 2026): spam and numbers nobody knows are screened at all hours unless you choose its hours, never switched off by do-not-disturb or any state; numbers in no address book, automated callers (ARCEP's roots for machines), numbers that cannot be a caller's (089) and failed verifications go to voicemail, hidden numbers as you had them, and a number you called in the last 14 days rings as your contacts do; the spam kinds stay out at all hours, a second call too; whatever the screening lets ring by itself never rings where your contacts' row declines (do-not-disturb, the night, a pause), only Expecting a call opening beyond; Expecting a call takes the place of Let every call through, for numbers nobody knows only; a screened caller is declined, as before ([android.md](android.md#calls)). No preset nor any write of the matrix touches the Calls rows of strangers and hidden numbers, kept for the screening's first values.
 

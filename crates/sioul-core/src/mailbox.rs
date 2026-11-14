@@ -210,7 +210,14 @@ mod area_text {
 /// for"); unsaid, work, as everywhere else: an address you did not classify
 /// never reaches your evenings (docs/areas.md).
 pub fn area_of(account: &Account) -> Area {
-    account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK)
+    said_area(account).unwrap_or(Area::WORK)
+}
+
+/// What an address is for as its card says it; none when unsaid. Unsaid, it
+/// takes work's hours (`area_of`), but has no closed hours for your safe
+/// senders' mail, told at their times (`attention::Event::for_address`).
+pub fn said_area(account: &Account) -> Option<Area> {
+    account.area.as_deref().and_then(Area::parse)
 }
 
 /// What Mail's filter ticks by itself now: what the hours bring
@@ -890,7 +897,7 @@ fn page_of_windows(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTr
             let unproven = !matches!(trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain()).0, Trust::Verified);
             let who = if unproven { Who::Stranger } else { world.senders.who_of(&card) };
             let always = !unproven && card.from_address.as_deref().is_some_and(|a| world.always.admits_address(a));
-            world.attention.mail_from(who, always, from_own, area_of(&address.account), &world.now).shown
+            world.attention.mail_from(who, always, from_own, Some(area_of(&address.account)), &world.now).shown
         };
         let at = jiff::Timestamp::from_second(first.sent).map(|t| t.to_zoned(zone.clone())).unwrap_or_else(|_| jiff::Timestamp::UNIX_EPOCH.to_zoned(zone.clone()));
         let mut subject = item.subject.clone();

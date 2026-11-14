@@ -854,7 +854,7 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchMad
     let mut moment = sioul_core::attention::Now::of(mode);
     moment.nothing = mode.free() && pause::nothing_now(m.overrides, &m.config.free_time);
     let always = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
-    let area_of = |t: &Triaged| t.card.account.as_deref().and_then(|id| m.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
+    let area_of = |t: &Triaged| t.card.account.as_deref().and_then(|id| m.config.account(id)).and_then(sioul_core::mailbox::said_area);
     let mail: Vec<Triaged> = input.items.iter().filter(|t| attention.mail(t, &input.senders, &always, area_of(t), &moment).shown).cloned().collect();
     let shown = view::porch(&mail, m.config, input.store.as_ref(), m.tr, at, mode.quiet);
     if !shown.open {

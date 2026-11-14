@@ -150,16 +150,43 @@ fn machine_number(sender: &Sender, config: &Config, now: &Zoned) -> bool {
 }
 
 /// What a notification's source is for: the app's, as you set it; else, for
-/// mail, the address it came to, when it is one of your accounts' (unsaid: work).
-fn area_of(posted: &Posted, kind: &Kind, choices: &Choices, config: &Config) -> Option<Area> {
-    choices.app(&posted.package).area.or_else(|| match kind {
-        Kind::People(talk) if !talk.to.is_empty() => config
-            .accounts
-            .iter()
-            .find(|a| a.address.as_deref().is_some_and(|address| address.trim().eq_ignore_ascii_case(&talk.to)))
-            .map(|a| a.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK)),
+/// mail, the address it came to, when it is one of your accounts'
+/// (`account_of`): the area it says, or, unsaid, work's hours, none of them
+/// closed for your safe senders (`true`: `Talk::to_unsaid`), as Sioul's own
+/// notice of the same message. An address none of your accounts holds: none.
+fn area_of(posted: &Posted, kind: &Kind, choices: &Choices, config: &Config) -> (Option<Area>, bool) {
+    if let Some(area) = choices.app(&posted.package).area {
+        return (Some(area), false);
+    }
+    let Kind::People(talk) = kind else { return (None, false) };
+    match account_of(&config.accounts, &talk.to) {
+        Some(account) => match sioul_core::mailbox::said_area(account) {
+            Some(area) => (Some(area), false),
+            None => (Some(Area::WORK), true),
+        },
+        None => (None, false),
+    }
+}
+
+/// Which of your accounts an address a mail app shows came to (review of
+/// phase 2, M6): the account of that address or user name, a "+tag" left
+/// aside (jane+news@work.example is jane@work.example); else the one
+/// account of its domain, an alias delivered there (support@work.example);
+/// none when the app shows no address, or several accounts share the domain.
+fn account_of<'a>(accounts: &'a [sioul_core::config::Account], to: &str) -> Option<&'a sioul_core::config::Account> {
+    let to = to.trim().to_lowercase();
+    let (local, domain) = to.rsplit_once('@')?;
+    let bare = format!("{}@{domain}", local.split_once('+').map_or(local, |(base, _)| base));
+    let mail: Vec<&sioul_core::config::Account> = accounts.iter().filter(|a| a.address.is_some()).collect();
+    let names = |a: &sioul_core::config::Account| [a.address.as_deref(), a.username.as_deref()].into_iter().flatten().map(|s| s.trim().to_lowercase()).collect::<Vec<_>>();
+    if let Some(account) = mail.iter().find(|a| names(a).iter().any(|n| *n == to || *n == bare)) {
+        return Some(account);
+    }
+    let mut same = mail.iter().filter(|a| names(a).iter().any(|n| n.rsplit_once('@').is_some_and(|(_, d)| d == domain)));
+    match (same.next(), same.next()) {
+        (Some(account), None) => Some(account),
         _ => None,
-    })
+    }
 }
 
 /// Do-not-disturb's switch or a focus session, holding now: when it ends,
@@ -209,9 +236,12 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise);
     // said so in its why and its line (review of part 2, F11).
     let machine = matches!(&kind, Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now));
-    let kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
+    let mut kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
     let (who, admitted) = if matches!(kind, Kind::People(_)) { (who, admitted) } else { (None, false) };
-    let area = area_of(&posted, &kind, &choices, &config);
+    let (area, unsaid) = area_of(&posted, &kind, &choices, &config);
+    if let Kind::People(talk) = &mut kind {
+        talk.to_unsaid = unsaid;
+    }
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
     // Today's slots of time for you, as the window wrote them; where they begin and end.
@@ -1223,6 +1253,34 @@ fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mail app's address finds its account (review of phase 2, M6): the
+    /// address or the user name, a "+tag" aside, else the one account of its
+    /// domain (an alias); its area as said, or unsaid: work's hours, none
+    /// closed for safe senders; an address no account holds has none.
+    #[test]
+    fn a_mail_app_s_address_finds_its_account() {
+        let config: Config = toml::from_str(
+            "[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"jane@work.example\"\nhost = \"imap.work.example\"\narea = \"work\"\n\
+             [[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"jane@home.example\"\nusername = \"j.doe@home.example\"\nhost = \"imap.home.example\"\n\
+             [[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"one@shared.example\"\nhost = \"imap.shared.example\"\n\
+             [[account]]\nid = \"b\"\nkind = \"imap\"\naddress = \"two@shared.example\"\nhost = \"imap.shared.example\"\n",
+        )
+        .unwrap();
+        let id = |to: &str| account_of(&config.accounts, to).map(|a| a.id.as_str());
+        assert_eq!(id("Jane@Work.example"), Some("work"));
+        assert_eq!(id("jane+news@work.example"), Some("work"), "a +tag");
+        assert_eq!(id("support@work.example"), Some("work"), "an alias of the one account of its domain");
+        assert_eq!(id("j.doe@home.example"), Some("home"), "its user name");
+        assert_eq!(id("three@shared.example"), None, "two accounts share the domain");
+        assert_eq!((id("someone@elsewhere.example"), id("Work"), id("")), (None, None, None));
+        let talk = |to: &str| Kind::People(appnotes::Talk { via: Channel::Mail, sender: Sender::Unknown, conversation: None, to: to.into(), to_unsaid: false, sms: false });
+        let posted = Posted { package: "ch.protonmail.android".into(), ..Posted::default() };
+        let choices = Choices::default();
+        assert_eq!(area_of(&posted, &talk("support@work.example"), &choices, &config), (Some(Area::WORK), false));
+        assert_eq!(area_of(&posted, &talk("jane@home.example"), &choices, &config), (Some(Area::WORK), true), "unsaid: work's hours, open to safe senders");
+        assert_eq!(area_of(&posted, &talk("someone@elsewhere.example"), &choices, &config), (None, false));
+    }
 
     /// Decision 16 (the proposal's 3.7): "Let them through then" sets the
     /// person's own row by their card, else their number, else the

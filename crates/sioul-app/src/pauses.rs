@@ -106,6 +106,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         apply();
         // Reachable begun or ended (here, on another device, by its end): the Porch and the mail's pace follow.
         crate::backend::follow_reachable(&qt, &shared);
+        // Mail's Real time past the end of the hours it was ticked in: off.
+        crate::backend::follow_realtime(&qt, &shared);
         if crate::dnd::take_pause_pressed() {
             let _ = qt.queue(|sioul| press(sioul));
         }

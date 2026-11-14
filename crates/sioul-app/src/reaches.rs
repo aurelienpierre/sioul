@@ -571,7 +571,8 @@ fn when_words(config: &Config, column: Column) -> String {
 /// Free time's, Nothing at all, is its card's switch, its help under it.
 fn also_lines(column: Column) -> Vec<String> {
     let ids: &[&str] = match column {
-        Column::Work => &["attention-also-meeting"],
+        // Work's card too: mail to a personal address waits for its hours then (review of phase 2, L5).
+        Column::Work => &["attention-also-areas", "attention-also-meeting"],
         Column::Admin => &["attention-also-areas", "attention-also-meeting"],
         Column::Leisure | Column::Meals => &["attention-also-areas"],
         Column::Pause => &["attention-also-porch-rests"],
@@ -1383,7 +1384,9 @@ mod tests {
         let sleep = card_lines(&usual, &config, Column::Sleep, computer);
         has(&sleep, "Mail from your Always through people is shown in Sioul, without a notification.");
         has(&sleep, "Mail from your safe senders is shown in Sioul, without a notification.");
-        has(&sleep, "The codes and links you ask for and your doses come at once.");
+        // Codes wait on the Porch while you sleep (the notifications' decision 5 of 13 November 2026).
+        has(&sleep, "The codes and links you ask for stay on the Porch, without a notification.");
+        has(&sleep, "Your doses come at once.");
         let work = card_lines(&usual, &config, Column::Work, computer);
         has(&work, "Mail from everyone comes at once.");
         has(&work, "“Work hours are over” does not come at this time.");

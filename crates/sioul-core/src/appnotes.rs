@@ -233,6 +233,10 @@ pub struct Talk {
     pub conversation: Option<Conversation>,
     /// The address it came to (a mail app's sub-text), for that address's area.
     pub to: String,
+    /// That address is one of your accounts' whose area you did not say
+    /// (`attention::Event::unsaid`): work's hours, but none closed for your
+    /// safe senders. Set by the window's listener, which reads the accounts.
+    pub to_unsaid: bool,
     /// An SMS: a sender named only and found in no address book is a
     /// business's sender id ("AMELI"), an automaton.
     pub sms: bool,
@@ -516,7 +520,7 @@ pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> K
     }
     let to = if via == Channel::Mail { address_in(&p.sub).unwrap_or_default() } else { String::new() };
     let conversation = if via == Channel::Messages { conversation_of(p, person, sms) } else { None };
-    Kind::People(Talk { via, sender, conversation, to, sms })
+    Kind::People(Talk { via, sender, conversation, to, to_unsaid: false, sms })
 }
 
 /// Who wrote, from what the address books and lists say of a name
@@ -1093,8 +1097,9 @@ fn at_once(ask: &Ask) -> Decision {
 /// Someone's message: now when the matrix lets them through
 /// (`attention::Attention::decide`: their row on its channel, a group's own
 /// row, Always through's, the time, its layers), the notification's area
-/// fitting now for all but your safe people and Always through (as mail to an
-/// address for another time, docs/areas.md); else at their next time.
+/// fitting now for all but Always through and your safe people's chats (a
+/// mail app's, from your safe senders too: as mail to an address for another
+/// time, docs/areas.md); else at their next time.
 fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
@@ -1102,9 +1107,9 @@ fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decisi
     // Its app's or conversation's own row, set: at once, gathered or held as it says at each time.
     if ask.attention.has_sources(ask.sources) {
         let event = Event::of(Source::Message { via: talk.via, who, group, always }).from_sources(ask.sources.to_vec());
-        return by_matrix(ask, &[event.clone().for_area(ask.area), event], Why::Allowed, Why::Waiting);
+        return by_matrix(ask, &[event.clone().for_area(ask.area).area_unsaid(talk.to_unsaid), event], Why::Allowed, Why::Waiting);
     }
-    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area), &ask.moment(at, mode)).told;
+    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
     // Its area and its times never meeting in the coming days, the matrix alone decides: nothing waits for good.
     let next = first_moment(ask, &|at, mode| open(at, mode, ask.area)).or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
     match next {
@@ -1261,7 +1266,7 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
             Event::own(attention::Kind::AppAutomatons)
         }
         Route::AtOnce => Event::own(attention::Kind::AppAtOnce),
-        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, group, always }),
+        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, group, always }).area_unsaid(talk.to_unsaid),
     };
     let event = event.for_area(ask.area).from_sources(sources);
     let out = ask.attention.decide(&event, &moment);
@@ -1657,7 +1662,7 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     if who == Some(Who::Blocked) {
         return Decision::held(held.until.max(ask.stamp() + 60), Why::Never);
     }
-    let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), sms: false };
+    let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), to_unsaid: false, sms: false };
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
             Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.group, ask),
@@ -2227,8 +2232,12 @@ mod tests {
         // Someone known writing to a leisure address in work time: held until the evening's leisure.
         let held = decide(&proton, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T17:00:00"));
-        // Safe people to any address, any time.
-        assert_eq!(decide(&proton, Some(Who::Safe), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None)).why, Why::Allowed);
+        // Safe people to an address for another time: held until then too (here lunch, a
+        // leisure time), as Sioul's own notification of the same message waits (decision 2
+        // of 13 November 2026); to an address for now, at once.
+        let held = decide(&proton, Some(Who::Safe), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T12:10:00"));
+        assert_eq!(decide(&proton, Some(Who::Safe), false, &choices, &ask(&evening, &clock, Some(Area::LEISURE), None)).why, Why::Allowed);
         // An automaton for work: its gatherings in work time only.
         let shop = classify(&posted(SHOP), &choices);
         let held = decide(&shop, None, false, &choices, &ask(&evening, &clock, Some(Area::WORK), None));
