@@ -11,7 +11,7 @@ description: "Sioul is a personal administrative environment, trauma-informed an
 
 Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
-<p class="sioul-quiet" markdown>[Try Sioul, version 0.0.10](guide/install.md): Linux, Windows, macOS and Android. It is young and changes often; the rest of this page says what it is for.</p>
+<p class="sioul-quiet" markdown>[Try Sioul, version 0.0.11](guide/install.md): Linux, Windows, macOS and Android. It is young and changes often; the rest of this page says what it is for.</p>
 
 A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one matter. You do not have to keep their relationships in your head: Sioul keeps them.
 
@@ -235,7 +235,7 @@ The same reasoning decides how Sioul is built. Your data stays on your devices, 
 
 ## Where it stands
 
-Sioul is young (version 0.0.10) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones and tablets, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
+Sioul is young (version 0.0.11) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones and tablets, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

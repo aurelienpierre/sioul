@@ -8,7 +8,7 @@
 
 Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
-*Try it: [version 0.0.10](https://github.com/aurelienpierre/sioul/releases/latest) for Linux, Windows, macOS and Android; it is young and changes often ([install](https://sioul.aurelienpierre.com/guide/install.html)).*
+*Try it: [version 0.0.11](https://github.com/aurelienpierre/sioul/releases/latest) for Linux, Windows, macOS and Android; it is young and changes often ([install](https://sioul.aurelienpierre.com/guide/install.html)).*
 
 A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one matter. You do not have to keep their relationships in your head: Sioul keeps them.
 
@@ -84,7 +84,7 @@ Sioul is the working counterpart of a book by the same author, *Design and Engin
 
 ## Where it stands
 
-Version 0.0.10: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones and tablets, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
+Version 0.0.11: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones and tablets, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
