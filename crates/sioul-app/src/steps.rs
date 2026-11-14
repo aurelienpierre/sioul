@@ -301,18 +301,62 @@ fn mail_due(config: &Config, now: i64, last: i64, tellable: bool) -> bool {
 fn could_tell(config: &Config, attention: &sioul_core::attention::Attention, listed: bool, now: &sioul_core::attention::Now) -> bool {
     use sioul_core::reach::Who;
     let whos = [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger];
-    config.accounts.iter().filter(|a| a.syncs()).map(sioul_core::mailbox::area_of).any(|area| {
+    config.accounts.iter().filter(|a| a.syncs()).map(sioul_core::mailbox::said_area).any(|area| {
         whos.iter().any(|who| attention.mail_from(*who, false, false, area, now).told || (listed && attention.mail_from(*who, true, false, area, now).told))
     })
 }
 
-/// `could_tell` now, as this process reads the moment (`hours`, as new
-/// mail's notifications read it) and the Always through list.
+/// Whether a code asked for now is fetched by the background step: codes
+/// come at once now (the Codes row: as usual, but while you sleep) and the
+/// phone is in use (`in_use`, its screen on): a code is asked for at a
+/// device, and one in your hand fetches what it may need; put away, the
+/// step skips as `could_tell` says. Sioul's window, while open, fetches by
+/// itself, and a computer fetches at all times. The one place of this rule
+/// (the owner's question 12, open: the coordinator's recommendation).
+fn fetches_for_codes(attention: &sioul_core::attention::Attention, now: &sioul_core::attention::Now, in_use: bool) -> bool {
+    use sioul_core::attention::{Kind, Level, Row};
+    in_use && attention.level(Row::Own(Kind::Codes), now) == Level::Now
+}
+
+/// Whether this phone is in use now: its screen on, as Android says (the
+/// listener's `learn-power`); unknown, not.
+fn phone_in_use() -> bool {
+    java("learn-power", "{}").get("interactive").and_then(serde_json::Value::as_bool).unwrap_or(false)
+}
+
+/// Whether this step fetches mail, as this process reads the moment now
+/// (`hours`, as new mail's notifications read it), the Always through list
+/// and the phone's use: `could_tell`, or a code wanted (`fetches_for_codes`).
 fn tellable(config: &Config) -> bool {
     let now = sioul_core::zone::now();
-    let moment = crate::hours::attention_at(&crate::hours::mode_at(&now), &now);
+    tellable_in(config, &crate::hours::mode_at(&now), &now, phone_in_use())
+}
+
+/// `tellable` in `mode` at `now`, the phone in use or not.
+fn tellable_in(config: &Config, mode: &sioul_core::quiet::Mode, now: &jiff::Zoned, in_use: bool) -> bool {
+    let moment = crate::hours::attention_at(mode, now);
+    let attention = sioul_core::attention::Attention::of(config);
     let people = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
-    could_tell(config, &sioul_core::attention::Attention::of(config), people.people.iter().any(|p| !p.emails.is_empty()), &moment)
+    could_tell(config, &attention, people.people.iter().any(|p| !p.emails.is_empty()), &moment) || fetches_for_codes(&attention, &moment, in_use)
+}
+
+/// The step waits this long at most for its exchange before telling its mail.
+const EXCHANGE_AT_MOST: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A mail round of a step: every account fetched, the batch held meanwhile
+/// (`mailnote::hold`); told once the step's exchange says it is done
+/// (`exchanged`, or its sender gone; a minute at most), so that what another
+/// device told, which that exchange brings, is never told again here
+/// (review of phase 2, M3); then what waited and may come now ("The Porch
+/// opens"), and a few hundred messages more read for money, so that From
+/// mail opens on what is found.
+fn mail_round(exchanged: std::sync::mpsc::Receiver<()>) {
+    crate::mailnote::hold();
+    fetch_mail(&load_config());
+    let _ = exchanged.recv_timeout(EXCHANGE_AT_MOST);
+    crate::mailnote::close_now();
+    crate::mailnote::tick();
+    crate::ledger::background_step(&load_config());
 }
 
 /// The inbox of each account fetched, every account at once (each in a
@@ -320,8 +364,8 @@ fn tellable(config: &Config) -> bool {
 /// each, the account's lock across processes), what your spam filter moves
 /// moved, what your mail filters do done, its arrivals handed to the new-mail
 /// notifications, told in one notification once every account is fetched
-/// (`mailnote::close_now`), and to the home screen's card when any came
-/// (`homecard::mail_came`); whether any came.
+/// and the step's exchange done (`mail_round`, `mailnote::close_now`), and to
+/// the home screen's card when any came (`homecard::mail_came`); whether any came.
 fn fetch_mail(config: &Config) -> bool {
     let any = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|scope| {
@@ -352,8 +396,6 @@ fn fetch_mail(config: &Config) -> bool {
             });
         }
     });
-    // Every account's arrivals known: told now, in one notification.
-    crate::mailnote::close_now();
     // A topics' table that just arrived judges the mail kept here, some at each step (docs/topics.md, "The model").
     let _ = sioul_core::topics::judging::judge_kept(config, 500);
     let any = any.into_inner();
@@ -482,16 +524,16 @@ fn step(reason: &str) -> serde_json::Value {
     // step's network comes in one burst; then what waited and may come now
     // ("The Porch opens"), at the mail's rhythm. Waited for before the answer.
     let started = jiff::Timestamp::now().as_second();
-    // Some mail fetched now could be told now: else no round (nothing told would come of it).
+    // The moment looked at, mail fetched or not: a time that begins between two rounds is seen
+    // within a step (`mailnote::look`, review of phase 2, L1).
+    crate::mailnote::look();
+    // Some mail fetched now could be told now, or a code is wanted: else no round (nothing told
+    // would come of it). The batch is told after this step's exchange (`mail_round`).
     let tells = config.reminders.mail && tellable(&config);
-    let mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells).then(|| {
+    let (exchanged_said, exchanged) = std::sync::mpsc::channel::<()>();
+    let mut mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells).then(|| {
         MAILED.store(started, Ordering::Relaxed);
-        std::thread::spawn(|| {
-            fetch_mail(&load_config());
-            crate::mailnote::tick();
-            // Then a few hundred messages more read for money, so that From mail opens on what is found.
-            crate::ledger::background_step(&load_config());
-        })
+        std::thread::spawn(move || mail_round(exchanged))
     });
     // 6, begun now beside the mail: your availabilities' calendars, a token
     // check each, a pull and a rewrite only when one changed, at most every
@@ -510,6 +552,23 @@ fn step(reason: &str) -> serde_json::Value {
     let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
     rounds_wait();
     let exchanged = crate::share::exchange_here(fetch_first);
+    // The exchange done: the mail round may tell what it fetched, what another device told now known.
+    drop(exchanged_said);
+    // New mail's notification taken away once each message it told is settled on any device, at
+    // every step, a mail round or not (review of phase 2, M1): the words this exchange brought.
+    crate::notices::withdraw_if_settled();
+    // Reachable, or someone on Always through, brought by this exchange: a round now, if it turned
+    // due (review of phase 2, L4); its exchange is the one just done.
+    if mail.is_none() {
+        let config = load_config();
+        let now = jiff::Timestamp::now().as_second();
+        if config.reminders.mail && mail_due(&config, now, MAILED.load(Ordering::Relaxed), tellable(&config)) {
+            MAILED.store(now, Ordering::Relaxed);
+            let (done, said) = std::sync::mpsc::channel::<()>();
+            drop(done);
+            mail = Some(std::thread::spawn(move || mail_round(said)));
+        }
+    }
     // Whether anything came or went, for the next step's spacing (`spaced`).
     let mut news = !quiet_exchange(&exchanged);
     rearm_after(exchanged);
@@ -586,7 +645,7 @@ fn step(reason: &str) -> serde_json::Value {
     let (note, until) = note();
     let mailed = MAILED.load(Ordering::Relaxed);
     let after = next_step(close, asleep, quiet);
-    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, tells)) } else { after };
+    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, tells || mailed >= started)) } else { after };
     let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(after, |s| s.min(after));
     let words = words();
     serde_json::json!({
@@ -1140,8 +1199,12 @@ mod tests {
     fn mail_is_fetched_only_when_some_could_be_told() {
         use sioul_core::attention::{Attention, Column, Now};
         let with = |area: &str, extra: &str| -> Config { toml::from_str(&format!("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n{area}{extra}")).unwrap() };
-        let work = with("", "");
+        let work = with("area = \"work\"\n", "");
         let personal = with("area = \"admin+leisure\"\n", "");
+        // An address whose area is unsaid has no closed hours for your safe senders (review of
+        // phase 2, M8): a round in the evening, their mail told at their times.
+        let unsaid = with("", "");
+        assert!(could_tell(&unsaid, &Attention::of(&unsaid), false, &Now::time(Column::Leisure)));
         let tells = |config: &Config, listed: bool, now: &Now| could_tell(config, &Attention::of(config), listed, now);
         let (at_work, evening, asleep, paused, free) = (Now::time(Column::Work), Now::time(Column::Leisure), Now::time(Column::Sleep), Now::time(Column::Pause), Now::time(Column::Free));
         // A work address: in work time; in the evening nothing could be told (a safe sender's mail waits, shown).
@@ -1185,6 +1248,54 @@ mod tests {
         let step = std::fs::read_to_string(root.join("crates/sioul-app/src/steps.rs")).unwrap();
         assert!(step.contains("let pressed = reason == \"calls\";") && step.contains("&& !pressed && (in_use || !asleep);"), "a press on the calls' notification: at once, no pull waited for");
     }
+
+    /// A code is fetched for while the phone is in use (review of phase 2,
+    /// M2; the owner's question 12, the coordinator's recommendation): codes
+    /// at once now and the screen on; put away, or asleep (codes wait on the
+    /// Porch then), not. `tellable_in`, the glue (L8): the hours' moment, the
+    /// Always through list, the phone's use. The step withdraws settled mail
+    /// notices at every step, a round or not (M1), and tells its batch after
+    /// its exchange (M3).
+    #[test]
+    fn a_code_is_fetched_for_while_the_phone_is_in_use() {
+        use sioul_core::attention::{Attention, Column, Now};
+        let usual = Attention::usual();
+        assert!(fetches_for_codes(&usual, &Now::time(Column::Leisure), true));
+        assert!(!fetches_for_codes(&usual, &Now::time(Column::Leisure), false), "put away");
+        assert!(!fetches_for_codes(&usual, &Now::time(Column::Sleep), true), "asleep: codes wait on the Porch");
+        assert!(fetches_for_codes(&usual, &Now::time(Column::Pause), true), "a pause: codes come");
+        // The glue, with folders made for tests: a work address in the evening.
+        sioul_core::config::stand_ins_only();
+        let _files = TELLABLE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@work.example\"\nhost = \"imap.work.example\"\narea = \"work\"\n").unwrap();
+        let week = sioul_core::areas::Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let mode = |time: sioul_core::areas::Time, reason: sioul_core::quiet::Reason| sioul_core::quiet::Mode { quiet: true, time, week, reason, until: None, back: None, label: String::new() };
+        let now = jiff::Zoned::now();
+        let evening = mode(sioul_core::areas::Time::Leisure, sioul_core::quiet::Reason::Evening);
+        let people = sioul_core::everywhere::People::default_path();
+        let _ = std::fs::remove_file(&people);
+        assert!(!tellable_in(&config, &evening, &now, false), "nothing could be told: no round");
+        assert!(tellable_in(&config, &evening, &now, true), "the phone in hand: a code may be wanted");
+        assert!(!tellable_in(&config, &mode(sioul_core::areas::Time::Sleep, sioul_core::quiet::Reason::Sleep), &now, true), "asleep");
+        let mut listed = sioul_core::everywhere::People::default();
+        listed.add(sioul_core::everywhere::Person { name: "Lou".into(), emails: vec!["lou@example.org".into()], ..Default::default() }, None);
+        listed.save(&people).unwrap();
+        assert!(tellable_in(&config, &evening, &now, false), "someone on Always through: told to any address");
+        let _ = std::fs::remove_file(&people);
+        // The step's order, read from its source: the settled notice taken away at every step,
+        // outside the mail round; the batch held until the exchange.
+        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/steps.rs")).unwrap();
+        let step = source.split("fn step(reason: &str)").nth(1).unwrap();
+        let exchange = step.find("crate::share::exchange_here(fetch_first)").unwrap();
+        assert!(step.find("crate::notices::withdraw_if_settled();").is_some_and(|at| at > exchange), "withdrawn after the exchange, each step");
+        assert!(step.find("drop(exchanged_said);").is_some_and(|at| at > exchange), "the round told after the exchange");
+        let round = source.split("fn mail_round(").nth(1).unwrap().split("\n}\n").next().unwrap();
+        let (held, fetched, waited, told) = (round.find("hold()").unwrap(), round.find("fetch_mail(").unwrap(), round.find("recv_timeout").unwrap(), round.find("close_now()").unwrap());
+        assert!(held < fetched && fetched < waited && waited < told, "{round}");
+    }
+
+    /// Who writes the Always through list in these tests, one at a time.
+    static TELLABLE: Mutex<()> = Mutex::new(());
 
     /// Mail at night: a round only when the matrix of what reaches you tells
     /// some mail then (as usual it tells none while you sleep: no round, no

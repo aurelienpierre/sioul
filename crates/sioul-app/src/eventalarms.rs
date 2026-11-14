@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn a_batch_of_two_opens_each_message() {
         use sioul_core::mailnote::{Letter, openers};
-        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: format!("mail:home:{i}"), file: format!("/data/user/0/sioul/files/mail/home/cur/{i}.sioul"), arrived: 0 };
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: format!("mail:home:{i}"), file: format!("/data/user/0/sioul/files/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") };
         let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
         let mut opens = openers(&sioul_core::i18n::Translator::new("en"), &two);
         opens.push(sioul_core::mailnote::Opener { label: "A file".into(), address: "/data/user/0/sioul/files/mail/home/cur/3.sioul".into(), hint: String::new() });

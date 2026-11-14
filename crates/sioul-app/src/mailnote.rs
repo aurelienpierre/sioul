@@ -28,7 +28,6 @@
 
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
-use sioul_core::areas::Area;
 use sioul_core::attention::{Attention, Level, Now, Output};
 use sioul_core::config::Config;
 use sioul_core::everywhere::People;
@@ -60,9 +59,28 @@ struct Batch {
     opens: bool,
     /// A thread waits to tell them.
     waiting: bool,
+    /// Held by a phone's step since then (`hold`): told by `close_now` once
+    /// the step's exchange brought what another device told, never by the
+    /// thread waiting, but past `HELD_AT_MOST`.
+    held: Option<Instant>,
 }
 
-static BATCH: Mutex<Batch> = Mutex::new(Batch { letters: Vec::new(), first: None, last: None, window: None, opens: false, waiting: false });
+static BATCH: Mutex<Batch> = Mutex::new(Batch { letters: Vec::new(), first: None, last: None, window: None, opens: false, waiting: false, held: None });
+
+/// A batch a step holds is told by the thread waiting for it past this,
+/// should the step never say: never lost.
+const HELD_AT_MOST: Duration = Duration::from_secs(120);
+
+/// A phone's background step fetches: what it brings is told once every
+/// account is fetched and the step's exchange is done (`close_now`), so that
+/// what another device told, which that exchange brings in its told log, is
+/// never told again here (review of phase 2, M3).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn hold() {
+    if let Ok(mut batch) = BATCH.lock() {
+        batch.held = Some(Instant::now());
+    }
+}
 
 /// Letters added to this process's batch (`opens`: they waited for their
 /// time), told ten seconds after the last added, a minute at most after the first.
@@ -86,14 +104,27 @@ fn add_to_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
 /// The moment last seen by `tick`, in this process: a change is a time beginning.
 static MOMENT: Mutex<Option<String>> = Mutex::new(None);
 
-/// Since when this process has watched the moment it is in (`mailnote::Watch`).
-static WATCH: Mutex<Option<Watch>> = Mutex::new(None);
-
-/// The moment (`Seen::moment`) looked at now, by `told` and `tick`: since
-/// when this process has watched it, without a gap. New mail that reached
-/// its server before then waited.
+/// The moment (`Seen::moment`) looked at now, by `told`, `tick` and each of
+/// a phone's steps (`look`): since when this device has watched it, without
+/// a gap (`mailnote::Watch`, kept on the device for every process). New mail
+/// that reached its server before then waited.
 fn watched(moment: &str, now: i64) -> i64 {
-    WATCH.lock().map_or(now, |mut watch| watch.get_or_insert_with(Watch::default).look(moment, now))
+    Watch::look_kept(&Watch::default_path(), moment, now)
+}
+
+/// The moment looked at now, at each of a phone's steps, mail fetched or not
+/// (review of phase 2, L1): a time that begins between two mail rounds is
+/// seen within a step, so that the mail of its first minutes is new in it,
+/// and the mail of a short closed time between two rounds waited.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn look() {
+    let config = load_config();
+    if !config.reminders.mail {
+        return;
+    }
+    let now = sioul_core::zone::now();
+    let seen = Seen::now(config, &now);
+    watched(&seen.moment(), now.timestamp().as_second());
 }
 
 /// What decides now whether a message is told: the matrix of what reaches
@@ -128,9 +159,10 @@ impl Seen {
 
     /// What the matrix says of this message now (`Attention::mail`): its
     /// sender's row as the Porch weighs it, Always through, what the address
-    /// it came to is for (unsaid: work's).
+    /// it came to is for (unsaid: work's hours, but never closed for your
+    /// safe senders: `Event::for_address`).
     fn decided(&self, t: &Triaged) -> Output {
-        let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
+        let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(sioul_core::mailbox::said_area);
         self.attention.mail(t, self.senders(), &self.always, area, &self.now)
     }
 
@@ -267,6 +299,7 @@ pub(crate) fn close_now() {
         let Ok(mut batch) = BATCH.lock() else { return };
         batch.first = None;
         batch.last = None;
+        batch.held = None;
         (std::mem::take(&mut batch.letters), batch.window.take(), std::mem::take(&mut batch.opens))
     };
     if !letters.is_empty() {
@@ -281,11 +314,13 @@ fn close_batch() {
         std::thread::sleep(Duration::from_secs(1));
         let ready = {
             let Ok(mut batch) = BATCH.lock() else { return };
-            let done = batch.last.is_none_or(|last| last.elapsed() >= GATHERED) || batch.first.is_some_and(|first| first.elapsed() >= AT_MOST);
+            let held = batch.held.is_some_and(|since| since.elapsed() < HELD_AT_MOST);
+            let done = !held && (batch.last.is_none_or(|last| last.elapsed() >= GATHERED) || batch.first.is_some_and(|first| first.elapsed() >= AT_MOST));
             done.then(|| {
                 batch.waiting = false;
                 batch.first = None;
                 batch.last = None;
+                batch.held = None;
                 (std::mem::take(&mut batch.letters), batch.window.take(), std::mem::take(&mut batch.opens))
             })
         };
@@ -376,18 +411,37 @@ fn tick_from(window: Option<Window>) {
 }
 
 /// The letters still waiting in the ledger, marked told by this process
-/// (the others are another's to tell, or told); `gone` marked told too, and
-/// those another device told already (its told log, carried by the sharing:
-/// the "notices" lease moved meanwhile), without a word.
+/// (the others are another's to tell, or told), each message once, whichever
+/// of your addresses it came to (review of phase 2, M5); `gone` marked told
+/// too, and those whose message was told already: here at another address,
+/// or by another device (its told log, carried by the sharing: the
+/// "notices" lease moved meanwhile), without a word.
 fn claim(letters: Vec<Letter>, gone: &[String], stamp: i64) -> Vec<Letter> {
-    let path = Ledger::default_path();
-    let elsewhere = mailnote::told_elsewhere(&sioul_core::notices::folder(), &crate::notices::here_id(), stamp * 1000);
-    let (before, letters): (Vec<Letter>, Vec<Letter>) = letters.into_iter().partition(|l| !l.notice.is_empty() && elsewhere.contains(&l.notice));
-    let gone: Vec<String> = gone.iter().cloned().chain(before.into_iter().map(|l| l.key)).collect();
+    claim_in(&Ledger::default_path(), &mailnote::told_elsewhere(&sioul_core::notices::folder(), &crate::notices::here_id(), stamp * 1000), letters, gone, stamp)
+}
+
+/// `claim`, with the ledger at `path` and the messages another device told (`elsewhere`).
+fn claim_in(path: &std::path::Path, elsewhere: &std::collections::BTreeSet<String>, letters: Vec<Letter>, gone: &[String], stamp: i64) -> Vec<Letter> {
+    let path = path.to_path_buf();
     sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
-        let mut seen = std::collections::BTreeSet::new();
-        let mine: Vec<Letter> = letters.into_iter().filter(|l| ledger.waiting.contains_key(&l.key) && seen.insert(l.key.clone())).collect();
+        let (mut seen, mut messages) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
+        let mut gone: Vec<String> = gone.to_vec();
+        let mut mine = Vec::new();
+        for letter in letters {
+            if !ledger.waiting.contains_key(&letter.key) || !seen.insert(letter.key.clone()) {
+                continue;
+            }
+            if ledger.messages.contains_key(&letter.message) || elsewhere.contains(&letter.message) || !messages.insert(letter.message.clone()) {
+                ledger.told_message(&letter.message, stamp);
+                gone.push(letter.key);
+                continue;
+            }
+            mine.push(letter);
+        }
+        for letter in &mine {
+            ledger.told_message(&letter.message, stamp);
+        }
         for key in mine.iter().map(|l| &l.key).chain(&gone) {
             ledger.tell(key, stamp);
         }
@@ -431,8 +485,8 @@ fn show(title: &str, body: &str, through: bool, window: Option<&Window>, mine: &
     // Its messages' notices, kept here until each is settled on any device
     // (`notices`): then it is taken away where it shows.
     let told = crate::notices::posted_mail(mine.iter().map(|l| l.notice.clone()).collect(), mine.iter().map(|l| l.file.clone()).collect());
-    // Told here: never told again by another device once the lease moves.
-    let ids: Vec<String> = mine.iter().map(|l| l.notice.clone()).filter(|id| !id.is_empty()).collect();
+    // Told here: never told again by another device once the lease moves, at any of your addresses.
+    let ids: Vec<String> = mine.iter().map(|l| l.message.clone()).filter(|id| !id.is_empty()).collect();
     if let Err(e) = mailnote::say_told(&sioul_core::notices::folder(), &crate::notices::here_id(), &ids, jiff::Timestamp::now().as_millisecond()) {
         eprintln!("sioul: mail notified: {e}");
     }
@@ -465,4 +519,38 @@ pub(crate) fn mail_notice(title: &str, body: &str, openers: &[mailnote::Opener],
         return Notice::new(address::MAILBOX, Kind::Mail, title, body).action(open, Act::Open { address: address::MAILBOX.to_string(), hint: String::new() });
     };
     openers.iter().fold(Notice::new(first.address.clone(), Kind::Mail, title, body).hint(first.hint.clone()), |notice, o| notice.action(o.label.clone(), Act::Open { address: o.address.clone(), hint: o.hint.clone() }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn letter(key: &str, message: &str) -> Letter {
+        Letter { key: key.into(), sender: "Ana".into(), subject: "Dinner".into(), through: false, address: format!("mid:{message}@example.org"), notice: String::new(), file: String::new(), arrived: 0, message: message.into() }
+    }
+
+    /// The claim (review of phase 2, M3 to M5, L8): each waiting message told
+    /// once, whichever address it came to; one another device told (its told
+    /// log) and one told here at another address marked told without a word;
+    /// a letter no longer waiting not told; all of them kept in the ledger.
+    #[test]
+    fn the_claim_tells_each_message_once_across_addresses_and_devices() {
+        let path = std::env::temp_dir().join(format!("sioul-claim-{}.toml", std::process::id()));
+        let mut ledger = Ledger::default();
+        for key in ["home-1", "work-1", "home-2", "home-3", "home-4"] {
+            ledger.wait(key, 100);
+        }
+        ledger.told_message("id:4", 50);
+        ledger.save(&path).unwrap();
+        let elsewhere: std::collections::BTreeSet<String> = ["id:2".to_string()].into();
+        let letters = vec![letter("home-1", "id:1"), letter("work-1", "id:1"), letter("home-2", "id:2"), letter("home-3", "id:3"), letter("home-4", "id:4"), letter("gone-5", "id:5")];
+        let mine = claim_in(&path, &elsewhere, letters, &[], 200);
+        assert_eq!(mine.iter().map(|l| l.key.as_str()).collect::<Vec<_>>(), ["home-1", "home-3"], "its work copy, the one told elsewhere, the one told here before: none; one not waiting: none");
+        let after = Ledger::load(&path);
+        assert!(after.waiting.is_empty() && ["home-1", "work-1", "home-2", "home-3", "home-4"].iter().all(|k| after.told.contains_key(*k)), "{after:?}");
+        assert!(["id:1", "id:2", "id:3", "id:4"].iter().all(|m| after.messages.contains_key(*m)), "{after:?}");
+        // Claimed again: nothing, never twice.
+        assert!(claim_in(&path, &Default::default(), vec![letter("home-1", "id:1")], &[], 300).is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
 }

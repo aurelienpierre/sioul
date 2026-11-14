@@ -392,6 +392,8 @@ sioul-core/src/mailcache.rs	look	1	write_whole(&index, &header, &all)
 # sioul-core/src/mailnote.rs: notes on mail: no item.
 sioul-core/src/mailnote.rs	save	1	std::fs::write(&temporary, text)
 sioul-core/src/mailnote.rs	save	1	std::fs::rename(&temporary, path)
+# sioul-core/src/mailnote.rs: since when this device watched the moment (state): no item.
+sioul-core/src/mailnote.rs	look_kept	1	crate::filelock::replace(path, text.as_bytes())
 
 # sioul-core/src/movements.rs: Sioul's own record of your money movements (a file of its own, written beside then renamed under its lock): no item.
 sioul-core/src/movements.rs	edit	1	std::fs::write(&temporary, written)

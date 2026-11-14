@@ -2405,7 +2405,7 @@ mod tests {
     fn a_batch_of_two_opens_each_message() {
         use sioul_core::mailnote::{Letter, openers};
         use sioul_core::notice::{Act, address};
-        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0 };
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") };
         let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
         let notice = crate::mailnote::mail_notice("Two e-mails", "Ana, Lunch · Noa, The lease", &openers(&sioul_core::i18n::Translator::new("en"), &two), "Open");
         assert_eq!((notice.about.as_str(), notice.hint.as_str()), ("mid:letter-1@example.org", "/mail/home/cur/1.sioul"), "a click opens the first");
