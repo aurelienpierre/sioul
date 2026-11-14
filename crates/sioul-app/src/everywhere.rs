@@ -554,6 +554,23 @@ fn reachable_ends(now: &Zoned) -> (i64, i64, bool) {
     (hours.unwrap_or(0), waking.or(night).unwrap_or(0), waking.is_some())
 }
 
+/// When Mail's Real time box ends by itself, ticked at `now` (the
+/// notifications' phase 2): as Reachable "until the hours you are in end", the
+/// end of those hours, never past the night's start; at night, waking; with
+/// neither known, an hour on. It never stays on through a whole evening it
+/// was not ticked in.
+pub(crate) fn realtime_ends(now: &Zoned) -> i64 {
+    let stamp = now.timestamp().as_second();
+    let (hours, night, _) = reachable_ends(now);
+    realtime_end(stamp, hours, night)
+}
+
+/// `realtime_ends` from what was read: now, the hours' end and the night's
+/// start or waking (0 unknown).
+fn realtime_end(stamp: i64, hours: i64, night: i64) -> i64 {
+    [hours, night].into_iter().find(|end| *end > stamp).unwrap_or(stamp + 3_600)
+}
+
 /// One of the three states pressed here (`rules::State`; part 3 of "What
 /// reaches you"): Reachable for `length` ("30", "60", "120" minutes,
 /// "hours" until the hours you are in end, "tonight", "off" until you turn
@@ -1171,6 +1188,27 @@ fn edit_people(path: &std::path::Path, change: impl FnOnce(&mut People)) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mail's Real time box ends with the hours it was ticked in (the
+    /// notifications' phase 2), as Reachable "until these hours end": never
+    /// past the night's start; at night, waking; with neither known, an hour on.
+    #[test]
+    fn real_time_ends_with_the_hours_it_was_ticked_in() {
+        let now = 1_800_000_000;
+        // Ticked at 15:00 in work hours ending at 17:00, the night at 22:00: off at 17:00.
+        assert_eq!(realtime_end(now, now + 7_200, now + 25_200), now + 7_200);
+        // Ticked at 20:00 in the evening (its hours end with the night's start): off at 22:00, never all night.
+        assert_eq!(realtime_end(now, now + 7_200, now + 7_200), now + 7_200);
+        // At night: no hours' end, waking.
+        assert_eq!(realtime_end(now, 0, now + 21_600), now + 21_600);
+        // Nothing known (no hours set, no night): an hour on, never for good.
+        assert_eq!(realtime_end(now, 0, 0), now + 3_600);
+        assert_eq!(realtime_end(now, now - 60, 0), now + 3_600, "an end already past is none");
+        // Past its end, it goes off at the next minute; unticked or without an end, nothing to do.
+        assert!(crate::backend::realtime_over(true, now + 7_200, now + 7_200));
+        assert!(!crate::backend::realtime_over(true, now + 7_200, now + 7_199));
+        assert!(!crate::backend::realtime_over(false, now + 7_200, now + 9_000) && !crate::backend::realtime_over(true, 0, now));
+    }
 
     #[test]
     fn the_signature_follows_what_is_asked() {

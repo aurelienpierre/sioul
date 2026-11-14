@@ -282,18 +282,37 @@ fn doses_ahead() -> bool {
     !health.doses(&now, &until).is_empty()
 }
 
-/// Whether mail is fetched at this step: at its rhythm, not while you sleep
-/// or pause unless the matrix of what reaches you tells some mail then (as
-/// usual, nothing is told then, your safe senders' and Always through's
-/// shown, not told; it comes when Sioul opens or after), and only when new
-/// mail is notified at all.
-fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) -> bool {
-    use sioul_core::attention::{Attention, Column, Level, Row, persons};
-    use sioul_core::reach::Channel;
-    let attention = Attention::of(config);
-    let held = |column: Column| !persons(Channel::Mail).iter().any(|p| attention.cell(Row::People(Channel::Mail, *p), column) == Level::Now);
-    let resting = (asleep && held(Column::Sleep)) || (paused && held(Column::Pause));
-    config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
+/// Whether mail is fetched at this step: at its rhythm, only when new mail
+/// is notified at all, and only when some mail fetched now could be told now
+/// (`tellable`, `could_tell`; the notifications' phase 2): what is not told
+/// now waits for its time and comes at the first round of it, or when Sioul
+/// opens. As usual: no round while you sleep or pause, nor while every
+/// address rests and nobody on Always through could reach you then.
+fn mail_due(config: &Config, now: i64, last: i64, tellable: bool) -> bool {
+    config.reminders.mail && tellable && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
+}
+
+/// Whether some new mail fetched now could be told now, as the matrix of
+/// what reaches you decides a message (`Attention::mail_from`): a sender's
+/// row (safe, your contacts, restricted, strangers) that tells mail to the
+/// area of one of the addresses fetched, or Always through's when someone on
+/// that list has an address (`listed`), whose mail is told to any address;
+/// Reachable lets everyone's through; the Porch resting after a pause, nobody's.
+fn could_tell(config: &Config, attention: &sioul_core::attention::Attention, listed: bool, now: &sioul_core::attention::Now) -> bool {
+    use sioul_core::reach::Who;
+    let whos = [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger];
+    config.accounts.iter().filter(|a| a.syncs()).map(sioul_core::mailbox::area_of).any(|area| {
+        whos.iter().any(|who| attention.mail_from(*who, false, false, area, now).told || (listed && attention.mail_from(*who, true, false, area, now).told))
+    })
+}
+
+/// `could_tell` now, as this process reads the moment (`hours`, as new
+/// mail's notifications read it) and the Always through list.
+fn tellable(config: &Config) -> bool {
+    let now = sioul_core::zone::now();
+    let moment = crate::hours::attention_at(&crate::hours::mode_at(&now), &now);
+    let people = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
+    could_tell(config, &sioul_core::attention::Attention::of(config), people.people.iter().any(|p| !p.emails.is_empty()), &moment)
 }
 
 /// The inbox of each account fetched, every account at once (each in a
@@ -463,7 +482,9 @@ fn step(reason: &str) -> serde_json::Value {
     // step's network comes in one burst; then what waited and may come now
     // ("The Porch opens"), at the mail's rhythm. Waited for before the answer.
     let started = jiff::Timestamp::now().as_second();
-    let mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), asleep, paused).then(|| {
+    // Some mail fetched now could be told now: else no round (nothing told would come of it).
+    let tells = config.reminders.mail && tellable(&config);
+    let mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells).then(|| {
         MAILED.store(started, Ordering::Relaxed);
         std::thread::spawn(|| {
             fetch_mail(&load_config());
@@ -565,7 +586,7 @@ fn step(reason: &str) -> serde_json::Value {
     let (note, until) = note();
     let mailed = MAILED.load(Ordering::Relaxed);
     let after = next_step(close, asleep, quiet);
-    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
+    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, tells)) } else { after };
     let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(after, |s| s.min(after));
     let words = words();
     serde_json::json!({
@@ -786,7 +807,7 @@ mod tests {
                 known = fresh;
                 pulls.push(at);
             }
-            let mail = mail_due(&config, at, mailed, asleep, false);
+            let mail = mail_due(&config, at, mailed, !asleep);
             if mail {
                 mailed = at;
             }
@@ -800,7 +821,7 @@ mod tests {
             let after = keeps_close_of(&known, PHONE_ID, at, asleep, || dose);
             quiet = if spaced("alarm", asleep, close || after, news, false, || ahead) { quiet + 1 } else { 0 };
             let spaced_after = next_step(after, asleep, quiet);
-            at += if quiet > 0 { mail_cap(spaced_after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, false)) } else { spaced_after };
+            at += if quiet > 0 { mail_cap(spaced_after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, !asleep)) } else { spaced_after };
         }
         // The longest wait between two pulls in the hour, the wait from its last one to the next step included.
         pulls.push(at);
@@ -907,13 +928,13 @@ mod tests {
             let (mut mailed, mut quiet, mut at, mut reason) = (0i64, 2u32, news, "folder");
             let mut times = vec![0];
             while at < 4 * 3_600 {
-                if mail_due(&config, at, mailed, false, false) {
+                if mail_due(&config, at, mailed, true) {
                     mailed = at;
                     times.push(at);
                 }
                 quiet = if spaced(reason, false, false, reason != "alarm", false, || false) { quiet + 1 } else { 0 };
                 let after = next_step(false, false, quiet);
-                at += if capped && quiet > 0 { mail_cap(after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, false, false)) } else { after };
+                at += if capped && quiet > 0 { mail_cap(after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, true)) } else { after };
                 reason = "alarm";
             }
             times.windows(2).map(|w| w[1] - w[0]).max().unwrap()
@@ -1095,24 +1116,56 @@ mod tests {
     }
 
     #[test]
-    fn mail_comes_at_its_rhythm_never_asleep_nor_paused() {
+    fn mail_comes_at_its_rhythm_when_some_could_be_told() {
         let mut config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
         assert!(config.accounts.iter().any(sioul_core::config::Account::syncs));
         let now = 10_000;
-        assert!(mail_due(&config, now, 0, false, false));
-        assert!(!mail_due(&config, now, now - 60, false, false), "fetched a minute ago");
-        assert!(mail_due(&config, now, now - MAIL_EVERY, false, false));
-        assert!(!mail_due(&config, now, 0, true, false), "asleep");
-        assert!(!mail_due(&config, now, 0, false, true), "paused");
-        // New mail told while you sleep, as the notification matrix now says: fetched then too.
-        let mut told: Config = toml::from_str("[notify]\nmail = [\"sleep\"]\n").unwrap();
-        told.accounts = config.accounts.clone();
-        assert!(mail_due(&told, now, 0, true, false) && !mail_due(&told, now, 0, false, true));
+        assert!(mail_due(&config, now, 0, true));
+        assert!(!mail_due(&config, now, now - 60, true), "fetched a minute ago");
+        assert!(mail_due(&config, now, now - MAIL_EVERY, true));
+        assert!(!mail_due(&config, now, 0, false), "nothing could be told now");
         config.reminders.mail = false;
-        assert!(!mail_due(&config, now, 0, false, false), "new mail not notified at all");
+        assert!(!mail_due(&config, now, 0, true), "new mail not notified at all");
         config.reminders.mail = true;
         config.accounts.clear();
-        assert!(!mail_due(&config, now, 0, false, false), "no account");
+        assert!(!mail_due(&config, now, 0, true), "no account");
+    }
+
+    /// The phone's background step fetches mail only when something fetched
+    /// could be told now (the notifications' phase 2): an address whose area
+    /// is in view with a row that tells then, Always through, Reachable. A
+    /// work address alone in the evening: no round; asleep or paused, as usual,
+    /// none either.
+    #[test]
+    fn mail_is_fetched_only_when_some_could_be_told() {
+        use sioul_core::attention::{Attention, Column, Now};
+        let with = |area: &str, extra: &str| -> Config { toml::from_str(&format!("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n{area}{extra}")).unwrap() };
+        let work = with("", "");
+        let personal = with("area = \"admin+leisure\"\n", "");
+        let tells = |config: &Config, listed: bool, now: &Now| could_tell(config, &Attention::of(config), listed, now);
+        let (at_work, evening, asleep, paused, free) = (Now::time(Column::Work), Now::time(Column::Leisure), Now::time(Column::Sleep), Now::time(Column::Pause), Now::time(Column::Free));
+        // A work address: in work time; in the evening nothing could be told (a safe sender's mail waits, shown).
+        assert!(tells(&work, false, &at_work));
+        assert!(!tells(&work, false, &evening), "a work address in the evening: no round");
+        // A personal address in the evening: your safe senders' mail is told.
+        assert!(tells(&personal, false, &evening));
+        // Asleep, paused, in Free time: as usual nothing told, no round.
+        for now in [&asleep, &paused, &free] {
+            assert!(!tells(&work, false, now) && !tells(&personal, false, now), "{:?}", now.times);
+        }
+        // Always through told to any address: a round in the evening, when someone is on the list.
+        assert!(tells(&work, true, &evening));
+        // Reachable: everyone's mail told, every address.
+        let mut reachable = evening.clone();
+        reachable.reachable = true;
+        assert!(tells(&work, false, &reachable));
+        // The Porch resting after a pause: nobody's, but while Reachable.
+        let mut rests = at_work.clone();
+        rests.holds.porch_rests = true;
+        assert!(!tells(&work, false, &rests) && !tells(&work, true, &rests));
+        // A do-not-disturb from its switch: only Always through, when someone is on the list.
+        let dnd = at_work.clone().layers(false, true);
+        assert!(!tells(&work, false, &dnd) && tells(&work, true, &dnd));
     }
 
     /// Calls are untouched by whether someone is at a computer: the calls'
@@ -1139,18 +1192,22 @@ mod tests {
     /// round every fifteen minutes in the night's steps, and no IDLE.
     #[test]
     fn mail_at_night_only_when_the_matrix_tells_some_then() {
+        use sioul_core::attention::{Attention, Column, Now};
         let accounts = "[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n";
         let usual: Config = toml::from_str(accounts).unwrap();
         let now = 1_800_000_000;
-        assert!(!mail_due(&usual, now, 0, true, false), "asleep, as usual: no round");
+        let night = Now::time(Column::Sleep);
+        let tells = |config: &Config| could_tell(config, &Attention::of(config), true, &night);
+        assert!(!mail_due(&usual, now, 0, tells(&usual)), "asleep, as usual: no round");
         let always: Config = toml::from_str(&format!("{accounts}[attention]\n\"mail.always\" = [\"sleep\"]\n")).unwrap();
-        assert!(mail_due(&always, now, 0, true, false), "Always through told at night: fetched");
-        assert!(!mail_due(&always, now, now - 60, true, false) && mail_due(&always, now, now - MAIL_EVERY, true, false), "at its rhythm");
+        assert!(mail_due(&always, now, 0, tells(&always)), "Always through told at night: fetched");
+        assert!(!could_tell(&always, &Attention::of(&always), false, &night), "but nobody on the list");
+        assert!(!mail_due(&always, now, now - 60, tells(&always)) && mail_due(&always, now, now - MAIL_EVERY, tells(&always)), "at its rhythm");
         // Its rounds fall in the night's steps (every fifteen minutes): four an hour, no wake of their own.
         let mut mailed = now - 3_600;
         let mut rounds = 0;
         for at in (0..4).map(|n| now + n * STEP_ASLEEP) {
-            if mail_due(&always, at, mailed, true, false) {
+            if mail_due(&always, at, mailed, tells(&always)) {
                 (mailed, rounds) = (at, rounds + 1);
             }
         }

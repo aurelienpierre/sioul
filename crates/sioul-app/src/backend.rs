@@ -3067,6 +3067,9 @@ pub(crate) struct Shared {
     pub(crate) ties: Mutex<Option<(std::sync::Weak<sioul_core::links::Loaded>, Arc<sioul_core::ties::Built>)>>,
     /// Real time: every folder each minute, the Porch open.
     pub(crate) realtime: AtomicBool,
+    /// When Real time ends by itself (Unix seconds; 0 none): the end of the
+    /// hours it was ticked in (`everywhere::realtime_ends`, `follow_realtime`).
+    pub(crate) realtime_until: std::sync::atomic::AtomicI64,
     /// Addresses are being placed on the map.
     pub(crate) locating: AtomicBool,
     /// Bitwarden's session, once unlocked; in memory only.
@@ -3854,6 +3857,29 @@ pub(crate) fn follow_reachable(qt: &QtThread, shared: &Arc<Shared>) {
         update_paces(shared);
         show(qt, shared);
     }
+}
+
+/// Real time past its end (the end of the hours it was ticked in): off, the
+/// mail's pace and the Porch as usual again, said in the status line. Each
+/// minute (`pauses::tick`).
+pub(crate) fn follow_realtime(qt: &QtThread, shared: &Arc<Shared>) {
+    let until = shared.realtime_until.load(Ordering::Relaxed);
+    if !realtime_over(shared.realtime.load(Ordering::Relaxed), until, jiff::Timestamp::now().as_second()) {
+        return;
+    }
+    shared.realtime.store(false, Ordering::Relaxed);
+    shared.realtime_until.store(0, Ordering::Relaxed);
+    update_paces(shared);
+    let _ = qt.queue(|mut sioul| {
+        sioul.as_mut().set_realtime(false);
+        sioul.as_mut().set_status(QString::from(&tr().text("realtime-ended", None)));
+    });
+    show(qt, shared);
+}
+
+/// Whether Real time, on or not, is past its end now (`until`, 0 none).
+pub(crate) fn realtime_over(on: bool, until: i64, now: i64) -> bool {
+    on && until > 0 && now >= until
 }
 
 /// Gives every running watcher its pace from the configuration, and real time.
@@ -7917,11 +7943,20 @@ impl qobject::Sioul {
 
     fn set_realtime_mode(mut self: Pin<&mut Self>, on: bool) {
         let shared = self.shared();
+        // Ticked: until the hours it is ticked in end, as Reachable (`follow_realtime`).
+        let until = if on { crate::everywhere::realtime_ends(&sioul_core::zone::now()) } else { 0 };
+        shared.realtime_until.store(until, Ordering::Relaxed);
         shared.realtime.store(on, Ordering::Relaxed);
         shared.opened_anyway.store(on || shared.opened_anyway.load(Ordering::Relaxed), Ordering::Relaxed);
         update_paces(&shared);
         self.as_mut().set_realtime(on);
-        let line = tr().text(if on { "realtime-on" } else { "realtime-off" }, None);
+        let line = if on {
+            let mut args = sioul_core::i18n::args();
+            args.set("time", jiff::Timestamp::from_second(until).map(|at| at.to_zoned(sioul_core::zone::current()).strftime("%H:%M").to_string()).unwrap_or_default());
+            tr().text("realtime-on", Some(&args))
+        } else {
+            tr().text("realtime-off", None)
+        };
         self.as_mut().set_status(QString::from(&line));
         show(&self.qt_thread(), &shared);
     }
