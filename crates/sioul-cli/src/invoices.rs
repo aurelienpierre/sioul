@@ -92,7 +92,7 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
                 }
                 return Ok(());
             }
-            println!("{}", copied(s, &found)?.display());
+            println!("{}", copied(s, &found).map_err(|why| not_given(s, why))?.display());
             Ok(())
         }
         InvoicesCommand::Export { html: Some(number), .. } => {
@@ -115,17 +115,21 @@ fn today() -> Date {
     sioul_core::zone::now().date()
 }
 
-/// The issued file of `found`, as it was kept, copied where your invoices go
-/// (`invoice::kept`); never made again. A file changed since is said.
-fn copied(s: &Session, found: &Invoice) -> Result<std::path::PathBuf, String> {
-    use invoice::kept::State;
+/// The file issued of `found` (`invoice::kept`: made again from its record
+/// when gone or changed and this Sioul makes the same bytes), copied where
+/// your invoices go; its path, or why not.
+fn copied(s: &Session, found: &Invoice) -> Result<std::path::PathBuf, invoice::kept::NotGiven> {
     let path = invoice::pdf_path(found, &s.config.invoice.folder, &s.tr.text("invoice-folder-name", None));
-    match invoice::kept::copy_to(&invoice::folder(), found, &path)? {
-        State::Kept(_) => {}
-        State::Changed(_) => eprintln!("{}", s.say("invoice-kept-changed", &[("number", found.number.clone())])),
-        State::Missing(_) | State::None => return Err(s.say("invoice-kept-missing", &[("number", found.number.clone())])),
-    }
+    invoice::kept::copy_to(&invoice::folder(), found, &path, &s.tr)?;
     Ok(path)
+}
+
+/// Why a file was not handed out, in words.
+fn not_given(s: &Session, why: invoice::kept::NotGiven) -> String {
+    match why {
+        invoice::kept::NotGiven::Kept(why) => why,
+        invoice::kept::NotGiven::Copy(path, e) => format!("{} ({e})", s.say("invoice-not-written", &[("path", path.display().to_string())])),
+    }
 }
 
 /// An amount as typed ("120.50", "120,50") in cents.
@@ -205,10 +209,11 @@ fn show(s: &Session, number: &str) -> Result<(), String> {
             println!("  {} {}", if check.required { "✗" } else { "·" }, check.text);
         }
     }
-    // Its issued file, when it is not as it was kept.
+    // Its issued file, when it is not as it was kept (export --pdf makes it again when it can).
     match invoice::kept::state(&folder, &found) {
         invoice::kept::State::Changed(_) => println!("  · {}", s.say("invoice-kept-changed", &[("number", found.number.clone())])),
         invoice::kept::State::Missing(_) => println!("  · {}", s.say("invoice-kept-missing", &[("number", found.number.clone())])),
+        invoice::kept::State::Misnamed(file) => println!("  · {}", s.say("invoice-kept-misnamed", &[("number", found.number.clone()), ("file", file), ("record", folder.join(invoice::file_name(&found.number)).display().to_string())])),
         _ => {}
     }
     Ok(())
@@ -301,10 +306,16 @@ fn issue(s: &Session, id: &str) -> Result<(), String> {
     let steps = life::Steps { time: None, ledger: ledger.as_deref().filter(|_| !budget.is_empty()).map(|l| (l, budget.as_str())) };
     let issued = life::issue(&folder, id, &s.config.invoice, today(), &numbering, client, &steps, &s.tr)?;
     println!("{}", s.say("invoice-cli-issued", &[("number", issued.number.clone()), ("amount", s.tr.money_in(issued.total(), &issued.currency))]));
-    if let Some(why) = invoice::cii::without(&issued) {
-        println!("  · {}", why.said(&s.tr));
+    // What the issue found to say (a file set aside), and the checks' notes (no Factur-X data, an IBAN whose key fails…).
+    for note in issued.said.iter().cloned().chain(life::checks(&issued, &s.config.invoice, today()).into_iter().filter(|c| !c.required).map(|c| c.text)) {
+        println!("  · {note}");
     }
-    println!("{}", s.say("invoice-cli-pdf", &[("path", copied(s, &issued)?.display().to_string())]));
+    // Issued all the same when its copy cannot be written: said, and Print again later.
+    match copied(s, &issued) {
+        Ok(path) => println!("{}", s.say("invoice-cli-pdf", &[("path", path.display().to_string())])),
+        Err(invoice::kept::NotGiven::Copy(path, e)) => eprintln!("{} ({e})", s.say("invoice-issued-not-copied", &[("number", issued.number.clone()), ("path", path.display().to_string())])),
+        Err(why) => eprintln!("{}", not_given(s, why)),
+    }
     Ok(())
 }
 

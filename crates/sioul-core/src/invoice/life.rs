@@ -663,16 +663,25 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
     let freed = if invoice.kind == Kind::CreditNote { freed_sessions(&invoice, &records) } else { Vec::new() };
     // Numbered and kept under the journal's lock: one number at a time on this device.
     let journal_path = dir.join(series::JOURNAL);
+    let mut set_aside = Vec::new();
     let before = crate::filelock::with_lock(&journal_path, || -> Result<Option<Journal>, String> {
+        // What an issue stopped halfway left, finished or set aside first: it never blocks a number.
+        set_aside = super::kept::tidy(dir, tr);
         let existed = journal_path.exists();
         let journal = Journal::load(dir);
         let records = super::all_in(dir);
         let (number, n) = series::next(&pattern, day, &journal, &records, &numbering.claimed);
         invoice.number = number.clone();
         invoice.series = pattern.sequence(day);
-        // Its file first, kept beside it: the record names it with its SHA-256.
+        // Its file first, waiting beside it: the record names it with its
+        // SHA-256, and is the commit; the file takes its name after.
         super::kept::write(dir, &mut invoice, &super::pdf::Options { qr: s.qr != Some(false) })?;
         if let Err(e) = super::write_new(dir, &invoice) {
+            super::kept::remove(dir, &invoice);
+            return Err(e);
+        }
+        if let Err(e) = super::kept::commit(dir, &invoice) {
+            let _ = super::remove_issued(dir, &invoice.number);
             super::kept::remove(dir, &invoice);
             return Err(e);
         }
@@ -763,6 +772,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         undo_record(&unmark);
         return Err(e);
     }
+    invoice.said = set_aside;
     Ok(invoice)
 }
 

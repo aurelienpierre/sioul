@@ -552,6 +552,10 @@ pub struct Invoice {
     /// A record that no longer reads: its number only, never written over.
     #[serde(skip)]
     pub unreadable: bool,
+    /// What issuing it found to say besides (a file of an issue stopped
+    /// halfway, set aside): said once, never kept.
+    #[serde(skip)]
+    pub said: Vec<String>,
 }
 
 impl Invoice {

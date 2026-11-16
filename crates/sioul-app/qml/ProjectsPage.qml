@@ -104,9 +104,16 @@ Item {
             page.problem = page.sioul.textWith("invoice-not-written", "path", failed)
             return
         }
-        page.sioul.status = made.said ? made.said : page.sioul.textWith("invoice-written", "path", made.pdf)
+        // Where it is, and what the issue found to say (the checks' notes, a
+        // copy that could not be written): the status line.
+        const said = []
+        if (made.pdf)
+            said.push(page.sioul.textWith("invoice-written", "path", made.pdf))
+        if (made.said)
+            said.push(made.said)
+        page.sioul.status = said.join(" ")
         // Shown in your PDF reader, except while the window takes its own pictures.
-        if (page.sioul.grabFolder() === "")
+        if (made.pdf && page.sioul.grabFolder() === "")
             Qt.openUrlExternally(page.theme.fileUrl(made.pdf))
     }
 
