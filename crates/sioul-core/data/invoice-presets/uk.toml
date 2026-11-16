@@ -1,0 +1,105 @@
+# United Kingdom. Sources: docs/research/invoicing.md, from the research of
+# 16 November 2026 (gov.uk, "Invoicing and taking payment from customers",
+# "VAT registration thresholds"; HMRC VAT Notice 700 §16.3.1). Not
+# registered for VAT: no "no VAT" mention is required, no VAT line at all.
+id = "uk"
+country = "GB"
+currency = "GBP"
+name.en = "United Kingdom"
+name.fr = "Royaume-Uni"
+limits.en = "VAT invoices become e-invoices from 1 April 2029 (gov.uk); Sioul makes PDFs."
+limits.fr = "Les factures avec TVA deviennent électroniques à partir du 1er avril 2029 (gov.uk) ; Sioul fait des PDF."
+
+[[legal_form]]
+id = "sole"
+name.en = "Sole trader"
+name.fr = "Entrepreneur individuel"
+
+[[legal_form]]
+id = "company"
+name.en = "Company"
+name.fr = "Société"
+company = true
+
+[[identifier]]
+kind = "vat"
+name.en = "VAT registration number"
+name.fr = "Numéro de TVA"
+before.en = "VAT"
+before.fr = "TVA"
+
+[[identifier]]
+kind = "utr"
+name.en = "Unique Taxpayer Reference (UTR)"
+name.fr = "Unique Taxpayer Reference (UTR)"
+before.en = "UTR"
+before.fr = "UTR"
+
+[[identifier]]
+kind = "other"
+name.en = "Other"
+name.fr = "Autre"
+
+# A unique number, your name, address and contact details, the customer's
+# name and address, a description, the supply and invoice dates, the amounts
+# and the total owed (gov.uk). A sole trader using a business name adds
+# their own name and an address for legal documents. Registered for VAT:
+# VAT Notice 700 §16.3.1.
+[[require]]
+field = "name"
+why.en = "Your name, and your business name if you use one."
+why.fr = "Votre nom, et le nom de votre entreprise si vous en avez un."
+
+[[require]]
+field = "address"
+why.en = "Your address."
+why.fr = "Votre adresse."
+
+[[require]]
+any = ["vat"]
+scheme = ["liable"]
+why.en = "Your VAT registration number (VAT Notice 700, 16.3.1)."
+why.fr = "Votre numéro de TVA (VAT Notice 700, 16.3.1)."
+
+[[require]]
+who = "client"
+field = "name"
+why.en = "The customer’s name."
+why.fr = "Le nom du client."
+
+[[require]]
+who = "client"
+field = "address"
+why.en = "The customer’s address."
+why.fr = "L’adresse du client."
+
+# The total VAT is shown in sterling (VAT Notice 700, 16.3.1).
+[[require]]
+field = "currency-when-taxed"
+scheme = ["liable"]
+why.en = "A VAT invoice in another currency also shows its VAT in sterling: Sioul cannot convert yet, so issue it in pounds."
+why.fr = "Une facture avec TVA dans une autre devise donne aussi sa TVA en livres sterling : Sioul ne sait pas encore convertir, émettez-la en livres."
+
+[tax]
+schemes = ["none", "liable"]
+
+# The UK's rates (20 %, 5 %, 0 %), not part of the research of November
+# 2026: the rates as known in mid-2026; check them before relying on them.
+[[tax.rates]]
+from = "2011-01-04"
+rates = [
+    { rate = 2000, name.en = "standard", name.fr = "normal" },
+    { rate = 500, name.en = "reduced", name.fr = "réduit" },
+    { rate = 0, name.en = "zero", name.fr = "zéro" },
+]
+
+[tax.exempt]
+category = "E"
+
+# Registration for VAT above £90,000 taxable turnover (gov.uk), watched while not registered.
+[[threshold]]
+id = "registration"
+kind = "registration"
+scheme = "none"
+amount = 9000000
+from = "2024-04-01"

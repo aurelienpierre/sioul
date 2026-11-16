@@ -6306,15 +6306,17 @@ impl qobject::Sioul {
     }
 
     fn import_bank(self: Pin<&mut Self>, file: &QString) -> QString {
-        let (ok, said) = crate::bank::import(&file.to_string());
+        let (ok, said, paid) = crate::bank::import(&file.to_string());
         // The budgets count the bank accounts' movements.
         show(&self.qt_thread(), &self.shared());
+        crate::projects::say_matched_payments(&self.qt_thread(), &self.shared(), paid);
         QString::from(&serde_json::json!({ "ok": ok, "said": said }).to_string())
     }
 
     fn import_bank_into(self: Pin<&mut Self>, file: &QString, account: &QString) -> QString {
-        let (ok, said) = crate::bank::import_into(&file.to_string(), &account.to_string());
+        let (ok, said, paid) = crate::bank::import_into(&file.to_string(), &account.to_string());
         show(&self.qt_thread(), &self.shared());
+        crate::projects::say_matched_payments(&self.qt_thread(), &self.shared(), paid);
         QString::from(&serde_json::json!({ "ok": ok, "said": said }).to_string())
     }
 

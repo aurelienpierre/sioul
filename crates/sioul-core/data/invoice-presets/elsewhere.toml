@@ -1,0 +1,46 @@
+# Any other country: no legal claims. Every identifier and
+# every legal line is the person's own.
+id = "elsewhere"
+name.en = "Elsewhere: my own lines"
+name.fr = "Ailleurs : mes propres lignes"
+
+[[identifier]]
+kind = "tax-id"
+name.en = "Tax number"
+name.fr = "Numéro fiscal"
+
+[[identifier]]
+kind = "vat"
+name.en = "VAT number"
+name.fr = "Numéro de TVA"
+
+[[identifier]]
+kind = "other"
+name.en = "Other"
+name.fr = "Autre"
+
+[[require]]
+field = "name"
+why.en = "Your name, as invoices print it."
+why.fr = "Votre nom, tel que les factures l’impriment."
+
+[[require]]
+who = "client"
+field = "name"
+why.en = "The client’s name."
+why.fr = "Le nom du client."
+
+[tax]
+schemes = ["none", "franchise", "liable"]
+
+# The franchise's mention, if any, is the person's own.
+[tax.franchise]
+category = "E"
+
+[tax.exempt]
+category = "E"
+
+# No rates of its own: the person types the rate of each line.
+[[tax.rates]]
+from = "2000-01-01"
+rates = []

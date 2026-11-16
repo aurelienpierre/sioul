@@ -21,6 +21,7 @@
 
 use crate::contracts::Contract;
 use crate::i18n::Translator;
+use crate::money::Money;
 use crate::letters::Letters;
 use crate::papers::Paper;
 use crate::tasks::Task;
@@ -238,14 +239,14 @@ pub fn of_payments(ledger: &crate::budget::Ledger, today: Date, tr: &Translator)
 
 /// An invoice you issued and that is not paid, on its due day (its own
 /// device's: invoices live where they were made). Only from `today` on.
+/// `invoices` are all of them: a credit note settles what it credits.
 pub fn of_invoices(invoices: &[crate::invoice::Invoice], today: Date, tr: &Translator) -> Vec<Dated> {
     invoices
         .iter()
-        .filter(|i| !i.paid && !i.number.is_empty())
+        .filter(|i| !i.number.is_empty() && !i.unreadable && i.kind != crate::invoice::Kind::CreditNote && !i.status(invoices).settled())
         .filter_map(|i| {
             let due: Date = i.due.get(..10)?.parse().ok().filter(|d| *d >= today)?;
-            let who = if i.client.trim().is_empty() { i.project_title.clone() } else { i.client.clone() };
-            let title = [i.number.clone(), who, tr.money(i.total())].into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join(" · ");
+            let title = [i.number.clone(), i.who(), tr.money_in(Money(i.left(invoices)), &i.currency)].into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join(" · ");
             Some(Dated { kind: Kind::Invoice, key: i.number.clone(), address: crate::links::invoice_uri(&i.number), title, date: due, at: None })
         })
         .collect()
@@ -467,7 +468,15 @@ mod tests {
     fn payments_and_invoices() {
         let (today, tr) = (day("2026-10-26"), Translator::new("en"));
         let ledger: crate::budget::Ledger = toml::from_str("[[line]]\nbudget = \"home\"\ndate = 2026-10-26\namount = -650.0\nlabel = \"Rent\"\nplanned = true\n\n[[line]]\nbudget = \"studio\"\ndate = 2026-11-15\namount = 480.0\nlabel = \"Invoice 2026-002\"\nplanned = true\n\n[[line]]\nbudget = \"home\"\ndate = 2026-10-20\namount = -40.0\nlabel = \"Water\"\nplanned = true\n").unwrap();
-        let paid = |paid: bool| crate::invoice::Invoice { number: "2026-002".into(), due: "2026-11-15".into(), client: "Fernhill".into(), total_cents: 48_000, paid, ..Default::default() };
+        let paid = |paid: bool| crate::invoice::Invoice {
+            number: "2026-002".into(),
+            due: "2026-11-15".into(),
+            client: crate::invoice::Client { name: "Fernhill".into(), ..Default::default() },
+            currency: "EUR".into(),
+            totals: crate::invoice::Totals { due: 48_000, ..Default::default() },
+            payments: if paid { vec![crate::invoice::Payment { date: "2026-11-01".into(), amount: 48_000, ..Default::default() }] } else { Vec::new() },
+            ..Default::default()
+        };
         let payments = of_payments(&ledger, today, &tr);
         assert_eq!(payments.iter().map(|d| (d.title.as_str(), d.address.as_str())).collect::<Vec<_>>(), [("Rent · €650", "sioul:budget/home/0")]);
         let invoices = of_invoices(&[paid(false)], today, &tr);

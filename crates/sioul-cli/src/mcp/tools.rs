@@ -772,7 +772,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "invoices",
         title: "Invoices",
-        description: "The invoices the person issued, newest first: number, date, client, amount, when payment is due, and whether it is paid. Read-only: nothing is issued, sent or marked paid.",
+        description: "The person's invoice drafts, then the invoices, credit notes and deposit invoices they issued, newest first: number (none on a draft, which has its draft id), kind, date, client, amount in its currency, when payment is due, and where it stands (draft, not paid yet, partly paid, paid, credited). Read-only: nothing is issued, sent or marked paid.",
         writes: false,
         idempotent: true,
         open_world: false,

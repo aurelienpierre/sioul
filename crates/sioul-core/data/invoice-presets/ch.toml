@@ -1,0 +1,86 @@
+# Switzerland: liable for VAT from CHF 100,000 of worldwide turnover, or not.
+# Sources: docs/research/invoicing.md, from the research of 16 November 2026
+# (estv.admin.ch "Tax liability VAT"; kmu.admin.ch "Invoicing").
+id = "ch"
+country = "CH"
+currency = "CHF"
+name.en = "Switzerland"
+name.fr = "Suisse"
+limits.en = "The QR-bill payment part comes later."
+limits.fr = "La partie paiement de la QR-facture viendra plus tard."
+
+[[legal_form]]
+id = "sole"
+name.en = "Sole trader"
+name.fr = "Entreprise individuelle"
+
+[[legal_form]]
+id = "company"
+name.en = "Company"
+name.fr = "Société"
+company = true
+
+# The UID followed by "MWST", "TVA" or "IVA" when liable for VAT.
+[[identifier]]
+kind = "uid"
+name.en = "UID (with MWST / TVA / IVA when liable for VAT)"
+name.fr = "IDE (avec MWST / TVA / IVA si assujetti)"
+
+[[identifier]]
+kind = "other"
+name.en = "Other"
+name.fr = "Autre"
+
+[[require]]
+field = "name"
+why.en = "Your name."
+why.fr = "Votre nom."
+
+[[require]]
+field = "address"
+why.en = "Your address."
+why.fr = "Votre adresse."
+
+[[require]]
+any = ["uid"]
+scheme = ["liable"]
+why.en = "Your VAT number (the UID with MWST, TVA or IVA)."
+why.fr = "Votre numéro de TVA (l’IDE suivi de MWST, TVA ou IVA)."
+
+[[require]]
+who = "client"
+field = "name"
+why.en = "The client’s name."
+why.fr = "Le nom du client."
+
+# Not required on receipts up to CHF 400 (kmu.admin.ch).
+[[require]]
+who = "client"
+field = "address"
+level = "recommended"
+why.en = "The client’s address."
+why.fr = "L’adresse du client."
+
+[tax]
+schemes = ["none", "liable"]
+
+# 8.1 % from the research (kmu.admin.ch's example); 2.6 % and 3.8 % are the
+# reduced and lodging rates as known in mid-2026, not part of the research:
+# check them before relying on them.
+[[tax.rates]]
+from = "2024-01-01"
+rates = [
+    { rate = 810, name.en = "standard", name.fr = "normal" },
+    { rate = 260, name.en = "reduced", name.fr = "réduit" },
+    { rate = 380, name.en = "lodging", name.fr = "hébergement" },
+]
+
+[tax.exempt]
+category = "E"
+
+[[threshold]]
+id = "registration"
+kind = "registration"
+scheme = "none"
+amount = 10000000
+from = "2018-01-01"

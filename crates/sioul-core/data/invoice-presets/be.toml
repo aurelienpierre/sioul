@@ -1,0 +1,105 @@
+# Belgium. Sources: docs/research/invoicing.md, from the research of
+# 16 November 2026 (the content of VAT Code art. 53 §2 and Royal Decree
+# no. 1 art. 5 mirrors Directive 2006/112/EC art. 226). The VAT scheme is
+# chosen apart from the legal form: the small-business franchise (VAT Code
+# art. 56bis), whose mention Royal Decree no. 1 prescribes was not settled
+# by the research (two wordings in use), so the person writes it; or
+# liable. The franchise's €25,000 threshold was found in secondary sources
+# only: left out.
+id = "be"
+country = "BE"
+currency = "EUR"
+name.en = "Belgium"
+name.fr = "Belgique"
+limits.en = "Under the franchise, write its mention yourself: Sioul does not know the exact wording Royal Decree no. 1 asks. Invoices between Belgian businesses go through Peppol since 2026, which Sioul does not reach: the PDF is made, sending it there is yours."
+limits.fr = "En franchise, écrivez-en vous-même la mention : Sioul ne connaît pas la formulation exacte qu’exige l’arrêté royal n° 1. Les factures entre entreprises belges passent par Peppol depuis 2026, que Sioul n’atteint pas : le PDF est fait, l’y envoyer vous revient."
+
+[[legal_form]]
+id = "sole"
+name.en = "Sole trader"
+name.fr = "Entreprise individuelle"
+
+[[legal_form]]
+id = "company"
+name.en = "Company"
+name.fr = "Société"
+company = true
+
+# A franchise enterprise keeps a Belgian VAT number.
+[[identifier]]
+kind = "vat"
+name.en = "VAT number"
+name.fr = "Numéro de TVA"
+before.en = "VAT"
+before.fr = "TVA"
+
+[[identifier]]
+kind = "other"
+name.en = "Other"
+name.fr = "Autre"
+
+[[require]]
+field = "name"
+why.en = "Your full name (Directive 2006/112/EC, art. 226(5))."
+why.fr = "Votre nom complet (directive 2006/112/CE, art. 226(5))."
+
+[[require]]
+field = "address"
+why.en = "Your full address (Directive 2006/112/EC, art. 226(5))."
+why.fr = "Votre adresse complète (directive 2006/112/CE, art. 226(5))."
+
+[[require]]
+any = ["vat"]
+why.en = "Your VAT number (Directive 2006/112/EC, art. 226(3))."
+why.fr = "Votre numéro de TVA (directive 2006/112/CE, art. 226(3))."
+
+[[require]]
+field = "mention"
+scheme = ["franchise"]
+why.en = "The franchise mention, in your own words: Settings ▸ Invoices."
+why.fr = "La mention de franchise, dans vos mots : Réglages ▸ Factures."
+
+[[require]]
+who = "client"
+field = "name"
+why.en = "The client’s full name."
+why.fr = "Le nom complet du client."
+
+[[require]]
+who = "client"
+field = "address"
+why.en = "The client’s full address."
+why.fr = "L’adresse complète du client."
+
+[[require]]
+who = "client"
+any = ["vat"]
+client = ["business", "public"]
+zone = ["eu"]
+why.en = "The client’s EU VAT number (Directive 2006/112/EC, art. 226(4))."
+why.fr = "Le numéro de TVA intracommunautaire du client (directive 2006/112/CE, art. 226(4))."
+
+[tax]
+schemes = ["franchise", "liable"]
+
+[tax.franchise]
+category = "E"
+
+# The Belgian rates (21 %, 12 %, 6 %), not part of the research of November
+# 2026: the rates as known in mid-2026; check them before relying on them.
+[[tax.rates]]
+from = "1996-01-01"
+rates = [
+    { rate = 2100, name.en = "standard", name.fr = "normal" },
+    { rate = 1200, name.en = "intermediate", name.fr = "intermédiaire" },
+    { rate = 600, name.en = "reduced", name.fr = "réduit" },
+]
+
+[tax.exempt]
+category = "E"
+
+[tax.reverse]
+category = "AE"
+reason_code = "VATEX-EU-AE"
+mention.en = "Reverse charge"
+mention.fr = "Autoliquidation"

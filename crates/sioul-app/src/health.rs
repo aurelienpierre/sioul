@@ -5537,7 +5537,7 @@ mod tests {
     use sioul_sync::lease::Claim;
 
     fn claim(renewed: i64, wrote: Option<(u32, u64)>, closed: bool) -> Claim {
-        Claim { computer: "laptop-id".into(), name: "laptop".into(), since: 0, renewed, until: renewed + 300, active: renewed, taken: 0, wrote, closed, pad: String::new() }
+        Claim { series: Default::default(), computer: "laptop-id".into(), name: "laptop".into(), since: 0, renewed, until: renewed + 300, active: renewed, taken: 0, wrote, closed, pad: String::new() }
     }
 
     fn heard_up_to(n: u64) -> sioul_sync::share::Heard {
@@ -7666,7 +7666,7 @@ mod tests {
         // Last night's: open at 22:00, closed at 23:00, read at 23:06.
         learn(&mut kept, &[], &[desk(due - 36_000, due - 32_400, false, due - 32_410)], &none, due - 32_000);
         // This morning its clock runs an hour ahead: opened at 07:00 (08:00 by its clock), its claim renewed at 07:59 (08:59).
-        let claim = sioul_sync::lease::Claim { computer: "desk-id".into(), name: "desk".into(), since: due, renewed: due + 3_540, until: due + 3_840, active: due + 3_540, taken: 0, wrote: None, closed: false, pad: String::new() };
+        let claim = sioul_sync::lease::Claim { series: Default::default(), computer: "desk-id".into(), name: "desk".into(), since: due, renewed: due + 3_540, until: due + 3_840, active: due + 3_540, taken: 0, wrote: None, closed: false, pad: String::new() };
         learn(&mut kept, std::slice::from_ref(&claim), &[desk(due, 0, true, due + 3_540)], &none, due - 40);
         let peer = kept.peers["desk-id"].peer.clone();
         assert!(peer.set_aside && peer.said.as_ref().is_some_and(|s| s.started == due - 36_000), "set aside, last night's kept: never an older Sioul");
@@ -8148,7 +8148,7 @@ mod tests {
         assert!(!kept.peers["phone-id"].peer.off, "it spoke again");
         // Closed at 1 525 by its entry, but its claim renewed open at 1 700 (an older Sioul put back
         // there, which updates no entry): the entry is not trusted, its claims are, as an older Sioul's.
-        let open = Claim { computer: "phone-id".into(), name: "localhost".into(), since: 1_600, renewed: 1_700, until: 2_000, active: 1_700, taken: 0, wrote: Some((1, 9)), closed: false, pad: String::new() };
+        let open = Claim { series: Default::default(), computer: "phone-id".into(), name: "localhost".into(), since: 1_600, renewed: 1_700, until: 2_000, active: 1_700, taken: 0, wrote: Some((1, 9)), closed: false, pad: String::new() };
         learn(&mut kept, &[open], &[phone(1_520, false, 1_525)], &heard_of("phone-id", 9), 1_710);
         assert_eq!(kept.peers["phone-id"].peer.said, None);
     }

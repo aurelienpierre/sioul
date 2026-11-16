@@ -12,7 +12,6 @@ use crate::i18n::Translator;
 use crate::invoice::Invoice;
 use crate::links::{self, Kind, Loaded};
 use crate::mailindex::{MailIndex, Threads};
-use crate::money::Money;
 use crate::porch::{Admission, Gate};
 use crate::tasks::Status;
 use crate::timereport::{Entry, duration};
@@ -45,7 +44,12 @@ pub struct InvoiceRow {
     pub number: String,
     pub date: String,
     pub total: String,
+    /// Settled: paid, or credited.
     pub paid: bool,
+    /// "invoice", "credit-note", "deposit".
+    pub kind: String,
+    /// "issued", "sent", "partly-paid", "paid", "credited".
+    pub status: String,
 }
 
 /// A project's page.
@@ -251,7 +255,7 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
         let at = invoice.date.parse::<jiff::civil::Date>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
         let mut args = crate::i18n::args();
         args.set("number", invoice.number.clone());
-        push(at, "invoice", tr.text("project-invoice", Some(&args)), tr.money(invoice.total()), String::new(), invoice.number.clone());
+        push(at, "invoice", tr.text("project-invoice", Some(&args)), tr.money_in(invoice.total(), &invoice.currency), String::new(), invoice.number.clone());
     }
     // What is coming, the nearest first; then what happened, the newest first.
     moments.sort_by_key(|m| if m.coming { (0, m.when) } else { (1, -m.when) });
@@ -279,7 +283,10 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
             .iter()
             .filter(|i| i.project == project.id)
             .rev()
-            .map(|i| InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money(Money(i.total_cents)), paid: i.paid })
+            .map(|i| {
+                let status = i.status(invoices);
+                InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money_in(i.total(), &i.currency), paid: status.settled(), kind: i.kind.id().into(), status: status.id().into() }
+            })
             .collect(),
     }
 }
@@ -373,7 +380,7 @@ mod tests {
         assert_eq!(line, vec![("task", "Deliver the site", true), ("task", "Mock-ups", false), ("time", "2 h 30 noted", false), ("mail", "Re: Quote", false), ("mail", "Quote", false)]);
         assert_eq!(page.moments.last().map(|m| m.detail.as_str()), Some("From Jane"));
         assert_eq!((page.open_tasks, page.done_tasks, page.unbilled.as_str()), (1, 1, "2 h 30"));
-        assert_eq!(page.unbilled_amount, tr.money(Money(15000)));
+        assert_eq!(page.unbilled_amount, tr.money(crate::money::Money(15000)));
         let listed = rows(&loaded, &entries, &[Project { id: "housing".into(), title: "Housing".into(), ..Project::default() }, lumen]);
         assert_eq!(listed[0].id, "lumen", "projects first");
         let _ = std::fs::remove_dir_all(&root);

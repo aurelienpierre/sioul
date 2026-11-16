@@ -1505,10 +1505,22 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
     let Some((folder, key)) = sealed(attached(&here)) else { return (alone, false) };
     // The claim says how far this computer wrote its records: read that far, the others know all it marked.
     let wrote = share::written(&memory_path(), &here.id);
-    match sioul_sync::lease::renew(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), active, take, rule, wrote) {
+    // Invoices: the claim carries each series' last number known here, so
+    // that a device whose records have not come yet never gives one again.
+    let series = (part == crate::projects::INVOICES).then(|| sioul_core::invoice::series::Journal::load(&sioul_core::invoice::folder()).lasts());
+    let renewal = sioul_sync::lease::Renewal { now: jiff::Timestamp::now().as_second(), active, take, rule, wrote, series };
+    match sioul_sync::lease::renew_with(&folder, &key, part, &here.id, renewal) {
         Ok(keeper) => (keeper, false),
         Err(_) => (alone, true),
     }
+}
+
+/// Each series' largest last number among every device's claim on `part`
+/// (`lease::claimed_series`); sharing off, none.
+pub(crate) fn claimed_series(part: &str) -> std::collections::BTreeMap<String, u64> {
+    let here = share::Here::load(&state_dir());
+    let Some((folder, key)) = sealed(attached(&here)) else { return std::collections::BTreeMap::new() };
+    sioul_sync::lease::claimed_series(&sioul_sync::lease::claims(&folder, &key, part))
 }
 
 /// Whether another computer closed its claim on `part` with records not

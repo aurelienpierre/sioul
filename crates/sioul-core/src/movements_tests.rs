@@ -513,11 +513,11 @@ fn an_export_taken_in_twice_adds_nothing() {
     assert_eq!((statement.movements.len(), statement.pending.len()), (2, 1), "booked apart from pending");
     let today = day("2026-11-04");
     let first = acts::take_in(&root, &statement, "Main", &words, today).unwrap();
-    assert_eq!(first, acts::TakenIn { read: 2, new: 2, holds: 1, joined: 1 });
+    assert_eq!(first, acts::TakenIn { read: 2, new: 2, holds: 1, joined: 1, paid: Vec::new() });
     let store = Store::load(&root).unwrap();
     assert_eq!(store.links.iter().map(|l| (l.movement.as_str(), l.source.as_str(), l.how.as_str())).collect::<Vec<_>>(), vec![("preset:rent/2026-11-01", "bank:main/R1", "sure")]);
     let again = acts::take_in(&root, &statement, "Main", &words, today).unwrap();
-    assert_eq!(again, acts::TakenIn { read: 2, new: 0, holds: 1, joined: 0 });
+    assert_eq!(again, acts::TakenIn { read: 2, new: 0, holds: 1, joined: 0, paid: Vec::new() });
     let store = Store::load(&root).unwrap();
     assert_eq!((store.links.len(), store.holds.len()), (1, 1));
     assert_eq!(Bank::load(&root).unwrap().movements.len(), 2);
@@ -663,8 +663,8 @@ fn a_csv_taken_in_twice_adds_nothing_and_keeps_its_hold_apart() {
     assert_eq!((statement.movements.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), statement.pending.iter().map(|m| m.id.as_str()).collect::<Vec<_>>()), (vec!["T1"], vec!["T2"]), "refused left out, pending apart");
     assert_eq!(statement.balance, Some((day("2026-11-02"), Money(7602))), "a pending row sets no balance");
     let today = day("2026-11-04");
-    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 1, holds: 1, joined: 0 });
-    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 0, holds: 1, joined: 0 });
+    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 1, holds: 1, joined: 0, paid: Vec::new() });
+    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 0, holds: 1, joined: 0, paid: Vec::new() });
     assert_eq!((Bank::load(&root).unwrap().movements.len(), Store::load(&root).unwrap().holds.len()), (1, 1));
     let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
     assert_eq!(all.find("hold:paypal/T2").map(|m| m.state), Some(State::NotFinal));

@@ -193,8 +193,8 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     let now = Zoned::now().timestamp().as_second();
     sioul_core::timelog::record(&sioul_core::timelog::Session { project: "taxes".into(), start: now - 2 * 3600, minutes: 45, note: "Zeugma call".into(), ..Default::default() }).unwrap();
     let today = Zoned::now().date().to_string();
-    let bill = sioul_core::invoice::Invoice { number: "2026-099".into(), date: today.clone(), due: today, project: "taxes".into(), project_title: "Zeugma taxes".into(), client: "Zeugma Ltd".into(), total_cents: 5000, currency: "EUR".into(), ..Default::default() };
-    sioul_core::invoice::save_in(&sioul_core::invoice::folder(), &bill).unwrap();
+    let bill = sioul_core::invoice::Invoice { number: "2026-099".into(), date: today.clone(), due: today, project: "taxes".into(), project_title: "Zeugma taxes".into(), client: sioul_core::invoice::Client { name: "Zeugma Ltd".into(), ..Default::default() }, totals: sioul_core::invoice::Totals { due: 5000, ..Default::default() }, currency: "EUR".into(), ..Default::default() };
+    sioul_core::invoice::keep_issued(&sioul_core::invoice::folder(), &bill).unwrap();
     let letter = sioul_core::letters::Letter {
         id: "zeugma-letter".into(),
         file: "letters/2026/zeugma-letter.pdf".into(),

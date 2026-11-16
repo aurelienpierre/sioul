@@ -1,0 +1,10 @@
+# Italy: not supported. Invoices between Italian parties go through the
+# Sistema di Interscambio in FatturaPA XML, for every regime, forfettari
+# included since 1 January 2024 (fatturapa.gov.it; DL 36/2022 art. 18).
+id = "it"
+country = "IT"
+supported = false
+name.en = "Italy (not supported)"
+name.fr = "Italie (non prise en charge)"
+why_not.en = "Italian invoices go through the state’s exchange system (SdI) in its own format: Sioul does not reach it, so it makes no Italian invoices."
+why_not.fr = "Les factures italiennes passent par le système d’échange de l’État (SdI), dans son propre format : Sioul ne l’atteint pas, il ne fait donc pas de factures italiennes."

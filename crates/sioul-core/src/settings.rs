@@ -1604,6 +1604,18 @@ mod tests {
                 "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
         );
+        // The invoices' keys of before November 2026 keep their places, and
+        // their meaning: a table written with them alone is read as it was
+        // (`invoice::life`: France, an EI, the micro regime and the
+        // franchise for a VAT line citing 293 B; "elsewhere" otherwise).
+        let older: Config = toml::from_str("[invoice]\nname = \"Camille Exemple EI\"\naddress = \"2 place de l’Exemple\\n69001 Lyon\"\nsiret = \"732 829 320 00017\"\nvat = \"TVA non applicable, art. 293 B du CGI\"\nprefix = \"\"\ncurrency = \"EUR\"\npayment = \"IBAN FR76\"\nrate = 60.0\n").unwrap();
+        let shown: Vec<(String, SettingValue)> = for_view("parameters", &older, &tr, &[], None).into_iter().filter(|s| s.key.starts_with("invoice.")).map(|s| (s.key, s.value)).collect();
+        assert_eq!(shown.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"]);
+        assert!(shown.iter().any(|(k, v)| k == "invoice.vat" && *v == SettingValue::Text("TVA non applicable, art. 293 B du CGI".into())));
+        let today: jiff::civil::Date = "2026-11-16".parse().unwrap();
+        assert_eq!(crate::invoice::life::preset_of(&older.invoice).id, "fr");
+        assert_eq!(crate::invoice::life::scheme_on(&older.invoice, today), ("franchise".to_string(), "TVA non applicable, art. 293 B du CGI".to_string()));
+        assert_eq!(crate::invoice::life::issuer_on(&older.invoice, today).name, "Camille Exemple EI");
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
         assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);

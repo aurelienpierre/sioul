@@ -139,9 +139,10 @@ pub(crate) fn card(shared: &Shared, kind: &str, key: &str) -> String {
         Kind::Invoice => {
             let invoices = sioul_core::invoice::all_in(&sioul_core::invoice::folder());
             let Some(invoice) = invoices.iter().find(|i| i.number == key) else { return gone() };
-            let Some(d) = dated::of_invoices(std::slice::from_ref(invoice), today, tr()).into_iter().next() else { return gone() };
-            let lines: Vec<String> = [invoice.project_title.clone(), say("dated-invoice-total", &[("total", tr().money(invoice.total()))])].into_iter().filter(|l| !l.trim().is_empty()).collect();
-            with(head(&d), serde_json::json!({ "lines": lines, "edit": "none", "why": tr().text("dated-invoice-record", None), "number": invoice.number, "paid": invoice.paid }))
+            // All of them: a credit note settles what it credits.
+            let Some(d) = dated::of_invoices(&invoices, today, tr()).into_iter().find(|d| d.key == key) else { return gone() };
+            let lines: Vec<String> = [invoice.project_title.clone(), say("dated-invoice-total", &[("total", tr().money_in(invoice.total(), &invoice.currency))])].into_iter().filter(|l| !l.trim().is_empty()).collect();
+            with(head(&d), serde_json::json!({ "lines": lines, "edit": "none", "why": tr().text("dated-invoice-record", None), "number": invoice.number, "paid": invoice.status(&invoices).settled() }))
         }
         Kind::PrescriptionEnds | Kind::RunsOut => {
             let Ok(health) = sioul_core::health::Health::read(&sioul_core::health::Health::default_path()) else { return gone() };

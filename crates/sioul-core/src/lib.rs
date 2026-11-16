@@ -203,6 +203,7 @@ pub mod calls;
 pub mod capabilities;
 // The chain of ties from one thing (docs/research/link-graph.md).
 pub mod chain;
+pub mod clients;
 pub mod capacity;
 pub mod capture;
 pub mod changes;

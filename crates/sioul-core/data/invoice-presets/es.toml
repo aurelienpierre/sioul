@@ -1,0 +1,11 @@
+# Spain: not supported. Any invoicing software used by a Spanish taxpayer
+# must keep a hash-chained record of each invoice and print a QR code, with
+# its producer's declaration (VERI*FACTU, Real Decreto 1007/2023, Orden
+# HAC/1177/2024); sole traders from 1 July 2027. A template would be illegal.
+id = "es"
+country = "ES"
+supported = false
+name.en = "Spain (not supported)"
+name.fr = "Espagne (non prise en charge)"
+why_not.en = "Spain asks invoicing software to be certified, its invoices chained and signed (VERI*FACTU): Sioul is not, so it makes no Spanish invoices."
+why_not.fr = "L’Espagne demande un logiciel de facturation certifié, aux factures chaînées et signées (VERI*FACTU) : Sioul ne l’est pas, il ne fait donc pas de factures espagnoles."

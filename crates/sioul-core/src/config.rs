@@ -915,20 +915,32 @@ pub struct WeatherSettings {
     pub longitude: Option<f64>,
 }
 
+/// Settings ▸ Invoices: who issues invoices and how (docs/projects.md,
+/// "Invoices"). The country's preset, the legal form, the income regime and
+/// the VAT scheme are four settings of their own: a French EI
+/// micro-entrepreneur may be liable for VAT, a company under the franchise.
+/// A table from before November 2026 (name, address, siret, vat, prefix,
+/// payment) keeps working as it was: its `vat` mentioning 293 B makes it
+/// France, an EI, the micro regime and the franchise with that very
+/// mention; any other is "elsewhere", its lines printed as they were
+/// (`invoice::life::issuer_on`).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct InvoiceSettings {
     #[serde(default)]
     pub name: String,
-    /// Postal address, on lines.
+    /// Postal address, on lines (the street, or the whole address as on an envelope).
     #[serde(default)]
     pub address: String,
-    /// SIRET, or the business number where you are.
+    /// SIRET, or the business number where you are (before November 2026;
+    /// now an identifier among `ids`, read as one when `ids` has none).
     #[serde(default)]
     pub siret: String,
-    /// The VAT line: "TVA non applicable, art. 293 B du CGI" for a French micro-entrepreneur.
+    /// The VAT line: "TVA non applicable, art. 293 B du CGI" for a French
+    /// micro-entrepreneur under the franchise (before November 2026; now the
+    /// franchise's mention, `tax`).
     #[serde(default)]
     pub vat: String,
-    /// Invoice numbers start with it: "2026-".
+    /// Invoice numbers start with it: "2026-" (before November 2026; now `pattern`).
     #[serde(default)]
     pub prefix: String,
     /// An hour's fee when a project does not say.
@@ -942,6 +954,117 @@ pub struct InvoiceSettings {
     /// Payment details printed at the bottom: IBAN, terms.
     #[serde(default)]
     pub payment: String,
+    /// The country's preset (`invoice::presets`): "fr", "de", "be", "uk",
+    /// "ch", "elsewhere"; empty: from `vat`, as before.
+    #[serde(default)]
+    pub preset: String,
+    /// A legal form of the preset's: "ei" (France: « EI » printed after the
+    /// name), "sasu", "sole", "company"…
+    #[serde(default)]
+    pub legal_form: String,
+    /// The income regime for the books: "micro", "reel".
+    #[serde(default)]
+    pub regime: String,
+    #[serde(default)]
+    pub trade_name: String,
+    #[serde(default)]
+    pub postcode: String,
+    #[serde(default)]
+    pub city: String,
+    /// The address's country, ISO 3166-1 ("FR"); the preset's when empty.
+    #[serde(default)]
+    pub country: String,
+    #[serde(default)]
+    pub email: String,
+    /// Identifiers: `[[invoice.id]]` kind, value, printed.
+    #[serde(default, rename = "id")]
+    pub ids: Vec<IdSetting>,
+    /// The VAT scheme from a day on: `[[invoice.tax]]` from, scheme ("none",
+    /// "franchise", "liable"), mention (the franchise's, editable).
+    #[serde(default)]
+    pub tax: Vec<TaxSetting>,
+    /// Options printed: "debits" (France: VAT on debits).
+    #[serde(default)]
+    pub options: Vec<String>,
+    /// A company's share capital, as printed: "1 000 €".
+    #[serde(default)]
+    pub capital: String,
+    /// Activities for the books: "goods-bic", "services-bic", "bnc", "cipav".
+    #[serde(default)]
+    pub activity: Vec<String>,
+    /// Payment terms: days after the invoice (the preset's when unsaid), at the end of that month or not.
+    #[serde(default)]
+    pub terms_days: Option<u32>,
+    #[serde(default)]
+    pub end_of_month: bool,
+    /// The late-payment rate, in percent, when not the preset's default (France: ECB rate + 10 points).
+    #[serde(default)]
+    pub penalty_rate: Option<f64>,
+    /// Bank accounts: `[[invoice.bank]]` holder, iban, bic.
+    #[serde(default, rename = "bank")]
+    pub banks: Vec<BankSetting>,
+    /// Professional insurance, as printed: insurer, contact, coverage.
+    #[serde(default)]
+    pub insurance: String,
+    /// The numbering pattern: "{YYYY}-{N:3}"; from `prefix` when empty.
+    #[serde(default)]
+    pub pattern: String,
+    /// "yearly" or "never"; with `pattern` only.
+    #[serde(default)]
+    pub reset: String,
+    /// Credit notes' own pattern; empty: the invoices' series.
+    #[serde(default)]
+    pub credit_pattern: String,
+    /// The legal lines: `[[invoice.line]]` id (a preset line's, to change or
+    /// take out with `off = true`; none for a line of your own), text, subject.
+    #[serde(default, rename = "line")]
+    pub lines: Vec<LineSetting>,
+    /// The invoices' language by default ("en", "fr"); a client's own first.
+    #[serde(default)]
+    pub language: String,
+}
+
+/// An identifier as Settings keeps it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct IdSetting {
+    pub kind: String,
+    pub value: String,
+    #[serde(default = "yes")]
+    pub printed: bool,
+}
+
+/// The VAT scheme from a day on.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct TaxSetting {
+    /// "2026-01-01"; empty: always.
+    #[serde(default)]
+    pub from: String,
+    pub scheme: String,
+    #[serde(default)]
+    pub mention: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct BankSetting {
+    #[serde(default)]
+    pub holder: String,
+    #[serde(default)]
+    pub iban: String,
+    #[serde(default)]
+    pub bic: String,
+}
+
+/// A legal line as Settings keeps it.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct LineSetting {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub off: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]

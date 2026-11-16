@@ -807,12 +807,11 @@ impl TieIndex {
         for invoice in sources.invoices.iter().filter(|i| !i.number.is_empty()) {
             let me = links::invoice_uri(&invoice.number);
             let when = invoice.date.trim().parse::<jiff::civil::Date>().ok().and_then(|d| day_seconds(d, &zone));
-            let title = if invoice.client.trim().is_empty() { invoice.project_title.clone() } else { invoice.client.clone() };
-            b.name(&me, Named { title, detail: invoice.number.clone(), when, amount: Some(Money(invoice.total_cents)) });
+            b.name(&me, Named { title: invoice.who(), detail: invoice.number.clone(), when, amount: Some(invoice.total()) });
             if !invoice.project.trim().is_empty() {
                 b.tie(&me, &links::project_uri(invoice.project.trim()), How::Project, Need::Nothing);
             }
-            if let Some(card) = one_named(&invoice.client) {
+            if let Some(card) = invoice.client_ref.strip_prefix("sioul:contact/").map(|_| invoice.client_ref.clone()).or_else(|| one_named(&invoice.client.name)) {
                 b.tie(&me, &card, How::Client, Need::Nothing);
             }
         }

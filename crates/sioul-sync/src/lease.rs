@@ -40,9 +40,10 @@ pub const SETTLING: i64 = 90;
 pub const UNCLOSED: i64 = 24 * 3600;
 
 /// Who keeps a part, as the claims say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Rule {
     /// The computer used most recently: medicines' reminders.
+    #[default]
     FollowsYou,
     /// The one that took it last, on purpose: invoices' numbers.
     StaysPut,
@@ -67,6 +68,12 @@ pub struct Claim {
     /// said until then is known; none from a Sioul that does not say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wrote: Option<(u32, u64)>,
+    /// For invoices: each series' last number this computer knows
+    /// (`sioul_core::invoice::series::Journal::lasts`), so that a computer
+    /// whose records have not come yet still never gives one of them again;
+    /// none from a Sioul that does not say, nor for another part.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub series: BTreeMap<String, u64>,
     /// It closed then (quit, or put away): it marks nothing until it says otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed: bool,
@@ -213,12 +220,36 @@ static KEPT: Mutex<BTreeMap<String, (String, i64)>> = Mutex::new(BTreeMap::new()
 /// `wrote` how far it wrote its records. Returns who keeps it now.
 #[allow(clippy::too_many_arguments)]
 pub fn renew(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, active: i64, take: bool, rule: Rule, wrote: Option<(u32, u64)>) -> Result<Keeper, String> {
+    renew_with(folder, key, part, computer, Renewal { now, active, take, rule, wrote, series: None })
+}
+
+/// What a renewal says, beside the part and the computer.
+#[derive(Debug, Clone, Default)]
+pub struct Renewal {
+    pub now: i64,
+    pub active: i64,
+    pub take: bool,
+    pub rule: Rule,
+    pub wrote: Option<(u32, u64)>,
+    /// For invoices: each series' last number known here; None keeps what the claim said.
+    pub series: Option<BTreeMap<String, u64>>,
+}
+
+/// `renew`, with each series' last number for invoices: the claim carries
+/// the larger of what it said and what is known now, never less.
+pub fn renew_with(folder: &Path, key: &[u8; 32], part: &str, computer: &str, renewal: Renewal) -> Result<Keeper, String> {
+    let Renewal { now, active, take, rule, wrote, series } = renewal;
     let mut claims = read(folder, key, part);
     let old = claims.iter().find(|c| c.computer == computer).cloned();
     // A claim that lapsed, or closed, starts again: its age counts from now.
     let since = old.as_ref().filter(|c| c.until > now && !c.closed).map_or(now, |c| c.since);
     let taken = if take { now } else { old.as_ref().map_or(0, |c| c.taken) };
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, closed: false, pad: String::new() };
+    let mut kept = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    for (sequence, last) in series.unwrap_or_default() {
+        let at = kept.entry(sequence).or_insert(0);
+        *at = (*at).max(last);
+    }
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, series: kept, closed: false, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     claims.retain(|c| c.computer != computer);
     claims.push(claim);
@@ -231,6 +262,18 @@ fn write(folder: &Path, key: &[u8; 32], part: &str, computer: &str, claim: &Clai
     let sealed = |pad: usize| serde_json::to_vec(&Claim { pad: ".".repeat(pad), ..claim.clone() }).map(|plain| crate::share::seal(key, &bound(part, computer), &plain)).map_err(|e| e.to_string());
     let pad = crate::share::pad_for(&path, |pad| sealed(pad).map_or(0, |s| s.len() as u64));
     crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
+}
+
+/// Each series' largest last number among every computer's claim on
+/// `part`, live, lapsed or closed: a number one of them gave is never given
+/// again, whichever keeps the part now.
+pub fn claimed_series(claims: &[Claim]) -> BTreeMap<String, u64> {
+    let mut out: BTreeMap<String, u64> = BTreeMap::new();
+    for (sequence, last) in claims.iter().flat_map(|c| c.series.iter()) {
+        let at = out.entry(sequence.clone()).or_insert(0);
+        *at = (*at).max(*last);
+    }
+    out
 }
 
 /// Who keeps `part`, as read now, without claiming it.
@@ -268,7 +311,8 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
 /// others know everything it marked before it closed.
 pub fn close(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>) -> Result<(), String> {
     let old = read(folder, key, part).into_iter().find(|c| c.computer == computer);
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, closed: true, pad: String::new() };
+    let series = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, series, closed: true, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     if let Ok(mut kept) = KEPT.lock() {
         kept.remove(part);
@@ -329,6 +373,26 @@ mod tests {
         assert!(look(&dir, &key, "invoices", "desktop", 1200 + UNCLOSED + 1, Rule::StaysPut).mine, "a day without news: it keeps nothing");
         // Another key reads nothing: a stranger's claims do not count.
         assert!(look(&dir, &[1u8; 32], "invoices", "desktop", 1210, Rule::StaysPut).mine);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Each claim carries the last number of each series its computer gave
+    /// (the invoicing's phase 1): kept through a renewal that says nothing,
+    /// never lowered, kept when it closes; every computer reads the largest.
+    #[test]
+    fn a_claim_carries_the_last_numbers() {
+        let dir = folder("series");
+        let key = [4u8; 32];
+        let said = |n: u64| Some(BTreeMap::from([("2026-{N:3}".to_string(), n)]));
+        let renewal = |now: i64, series| Renewal { now, active: now, take: false, rule: Rule::StaysPut, wrote: None, series };
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1000, said(7))).unwrap();
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1060, None)).unwrap();
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1120, said(5))).unwrap();
+        renew_with(&dir, &key, "invoices-series", "laptop", renewal(1130, said(3))).unwrap();
+        close(&dir, &key, "invoices-series", "desk", 1200, None).unwrap();
+        let claims = claims(&dir, &key, "invoices-series");
+        assert_eq!(claims.iter().find(|c| c.computer == "desk").map(|c| c.series.clone()), said(7), "never lowered, kept when closed");
+        assert_eq!(claimed_series(&claims), said(7).unwrap());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

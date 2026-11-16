@@ -316,16 +316,51 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
 
 pub fn invoices(s: &Session, _args: &Args) -> Result<Answer, String> {
     let (consent, _) = consent(s);
-    let all = invoice::all_in(&invoice::folder());
-    let shown: Vec<&invoice::Invoice> = all.iter().filter(|i| consent.allows_projects([i.project.as_str()])).collect();
-    let closed = all.len() - shown.len();
+    let folder = invoice::folder();
+    let all = invoice::all_in(&folder);
+    let drafts = invoice::drafts_in(&folder);
+    // Drafts first, then invoices, newest first; each project's as the person opened it.
+    let every: Vec<&invoice::Invoice> = drafts.iter().chain(all.iter().rev()).filter(|i| !i.unreadable).collect();
+    let shown: Vec<&&invoice::Invoice> = every.iter().filter(|i| consent.allows_projects([i.project.as_str()])).collect();
+    let closed = every.len() - shown.len();
     let mut lines = Vec::new();
     let mut out = Vec::new();
-    for i in shown.iter().rev() {
-        let paid = if i.paid { "paid" } else { "not paid yet" };
-        let client = i.client.lines().next().unwrap_or_default();
-        lines.push(format!("{} · {} · {client} · {} · {paid}{}", i.number, i.date, s.tr.money(i.total()), if i.due.is_empty() || i.paid { String::new() } else { format!(" (due {})", i.due) }));
-        out.push(json!({ "number": i.number, "date": i.date, "due": i.due, "project": i.project, "project_title": i.project_title, "client": client, "amount": s.tr.money(i.total()), "currency": i.currency, "paid": i.paid }));
+    for i in shown {
+        let status = i.status(&all);
+        let client = i.client.first_line();
+        let amount = s.tr.money_in(i.total(), &i.currency);
+        let name = if i.number.is_empty() { format!("draft {}", i.draft) } else { i.number.clone() };
+        let kind = match i.kind {
+            invoice::Kind::Invoice => "",
+            invoice::Kind::CreditNote => " · credit note",
+            invoice::Kind::Deposit => " · deposit invoice",
+        };
+        let left = i.left(&all);
+        let due = if matches!(status, invoice::Status::Issued | invoice::Status::Sent | invoice::Status::PartlyPaid) && !i.due.is_empty() { format!(" (due {})", i.due) } else { String::new() };
+        let words = match status {
+            invoice::Status::Draft => "draft, not numbered".to_string(),
+            invoice::Status::Issued | invoice::Status::Sent => "not paid yet".to_string(),
+            invoice::Status::PartlyPaid => format!("partly paid, {} left", s.tr.money_in(sioul_core::money::Money(left), &i.currency)),
+            invoice::Status::Paid => "paid".to_string(),
+            invoice::Status::Credited => "credited".to_string(),
+        };
+        lines.push(format!("{name}{kind} · {} · {client} · {amount} · {words}{due}", if i.date.is_empty() { "—" } else { i.date.as_str() }));
+        out.push(json!({
+            "number": i.number,
+            "draft": i.draft,
+            "kind": i.kind.id(),
+            "status": status.id(),
+            "date": i.date,
+            "due": i.due,
+            "project": i.project,
+            "project_title": i.project_title,
+            "client": client,
+            "amount": amount,
+            "left": s.tr.money_in(sioul_core::money::Money(left), &i.currency),
+            "currency": i.currency,
+            "paid": status.settled(),
+            "corrects": i.corrects.as_ref().map(|c| c.number.clone()).unwrap_or_default(),
+        }));
     }
     if out.is_empty() && closed == 0 {
         lines.push("No invoice issued yet.".into());
