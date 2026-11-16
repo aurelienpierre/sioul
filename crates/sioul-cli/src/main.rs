@@ -45,6 +45,7 @@ mod accounts;
 mod dav;
 mod mail;
 mod help;
+mod invoices;
 mod mcp;
 mod money;
 mod pgp;
@@ -126,6 +127,11 @@ enum Command {
     MoneyMail(money::MoneyMailArgs),
     /// What a work budget received, as the declaration counts it: the turnover and the receipts register.
     Receipts(money::ReceiptsArgs),
+    /// The invoices you issued and your drafts: list, show, export, draft, issue, credit, pay.
+    Invoices {
+        #[command(subcommand)]
+        command: Option<invoices::InvoicesCommand>,
+    },
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
     Account(accounts::AccountCommand),
@@ -403,6 +409,7 @@ fn main() -> ExitCode {
         Command::Movement(command) => money::run(&session, command),
         Command::MoneyMail(args) => money::money_mail(&session, args),
         Command::Receipts(args) => money::receipts(&session, args),
+        Command::Invoices { command } => invoices::run(&session, command),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),

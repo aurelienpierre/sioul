@@ -685,7 +685,7 @@ fn the_agents_texts_say_this_computer() {
     }
 }
 
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
+const WRITING: &[&str] = &["add_task", "draft_invoice", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -1838,6 +1838,32 @@ fn a_closed_project_s_invoice_is_kept_by_its_address() {
     let tied = call(&mut server, "link", json!({ "from": "sioul:task/receipt", "to": "sioul:invoice/2026-099" }));
     assert!(tied["isError"] == true, "{tied}");
     never_zeugma(&tied, "link");
+}
+
+/// An agent drafts an invoice when the person asks, and nothing more: the
+/// draft has no number, the invoices it lists say it is a draft; a closed
+/// project's time is refused, its name never said.
+#[test]
+fn an_agent_drafts_invoices_and_never_issues_them() {
+    let _home = home();
+    let mut server = server();
+    let closed = call(&mut server, "draft_invoice", json!({ "project": "taxes" }));
+    assert!(closed["isError"] == true, "{closed}");
+    never_zeugma(&closed, "draft_invoice");
+    let issued_before = sioul_core::invoice::all_in(&sioul_core::invoice::folder()).len();
+    let made = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Workshop", "quantity": 2, "unit": "DAY", "price": 450 }] }));
+    assert!(made["isError"] != true, "{made}");
+    let id = made["structuredContent"]["draft"].as_str().unwrap().to_string();
+    assert!(text(&made).contains("Nothing is numbered"), "{made}");
+    let draft = sioul_core::invoice::draft_in(&sioul_core::invoice::folder(), &id).unwrap();
+    assert_eq!((draft.number.as_str(), draft.totals.lines, draft.client.name.as_str()), ("", 90_000, "North Studio"));
+    assert_eq!(sioul_core::invoice::all_in(&sioul_core::invoice::folder()).len(), issued_before, "nothing issued");
+    let listed = call(&mut server, "invoices", json!({}));
+    let rows = listed["structuredContent"]["invoices"].as_array().unwrap();
+    assert!(rows.iter().any(|r| r["draft"] == id.as_str() && r["status"] == "draft" && r["number"] == ""), "{listed}");
+    never_zeugma(&listed, "invoices");
+    let nothing = call(&mut server, "draft_invoice", json!({ "client": "North Studio" }));
+    assert!(nothing["isError"] == true, "{nothing}");
 }
 
 #[test]

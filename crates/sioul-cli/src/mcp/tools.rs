@@ -831,6 +831,32 @@ pub const TOOLS: &[Tool] = &[
         run: write::add_task,
     },
     Tool {
+        name: "draft_invoice",
+        title: "Draft an invoice",
+        description: "Saves a draft invoice, only when the person asked for one: from a project's billable time not billed yet (`project`, with `from_time`), with lines of its own (`lines`), or both. Its client is the project's, or `client` as named. A draft has no number: it is never issued, sent nor paid here; the person reads it and issues it from Sioul. Says what the draft still lacks before it can be issued.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "project": { "type": "string", "description": "The project, by its id or its address sioul:project/<id>." },
+                    "from_time": { "type": "boolean", "description": "Bill the project's time not billed yet (true by default with a project)." },
+                    "client": { "type": "string", "description": "Who it bills, when not the project's client: a name, or sioul:contact/<UID>." },
+                    "lines": { "type": "array", "items": { "type": "object", "properties": {
+                        "description": { "type": "string" },
+                        "quantity": { "type": "number", "description": "1 by default." },
+                        "unit": { "type": "string", "description": "UN/ECE code: C62 (one, the default), HUR, DAY, MON, KMT, LS." },
+                        "price": { "type": "number", "description": "The unit price excluding tax, in the invoice's currency: 450 or 62.5." },
+                        "goods": { "type": "boolean", "description": "Goods rather than a service." }
+                    }, "required": ["description", "price"] } },
+                }),
+                &[],
+            )
+        },
+        run: write::draft_invoice,
+    },
+    Tool {
         name: "add_steps",
         title: "Add steps to a task",
         description: "Adds steps to one bigger task, in the order given, after the steps it has: each a task of its own in the bigger task's list (RELATED-TO PARENT), its place in the sequence written (X-APPLE-SORT-ORDER, which Nextcloud Tasks and Tasks.org read). Make steps small and concrete: one action each, starting with a verb, a few minutes each, in the order they happen; a step without an estimate counts five minutes. What to carry or to check is a list in the bigger task's notes (\"- [ ] item\"), not steps. Never invent times, addresses or prices; leave out what you do not know, and say so. Nothing else changes. The steps count at once; Sioul's window says it, with Undo; sent at the next sync.",
