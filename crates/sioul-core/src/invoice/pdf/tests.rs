@@ -42,17 +42,59 @@ fn every_sample() -> Vec<samples::Sample> {
     all
 }
 
-/// Word for word what `html::current` says, in both languages, for every sample.
+/// The words the layout drew, the page's own aside (its number, the QR
+/// code's caption); each inside its page, below no line's bottom, and none
+/// over another on its line.
+fn drawn_words(pages: &[Vec<Mark>], fonts: &Fonts) -> Vec<String> {
+    let mut all = String::new();
+    for page in pages {
+        let mut spans: Vec<(f32, f32, f32, &str)> = Vec::new();
+        for mark in page {
+            if let Mark::Text { x, baseline, style, text, furniture } = mark {
+                let width = fonts.width(text, *style);
+                assert!(*x >= 0.0 && x + width <= WIDTH && *baseline > 0.0 && *baseline <= HEIGHT - 10.0, "outside its page: {text} at ({x}, {baseline})");
+                if !furniture {
+                    assert!(*baseline <= BOTTOM, "below the lines' bottom: {text} at {baseline}");
+                    all.push_str(text);
+                    all.push('\n');
+                }
+                for (other_x, other_end, other_baseline, other) in &spans {
+                    let same_line = (baseline - other_baseline).abs() < 1.0;
+                    assert!(!same_line || x + width <= *other_x + 0.5 || *x >= other_end - 0.5, "“{text}” over “{other}”");
+                }
+                spans.push((*x, x + width, *baseline, text.as_str()));
+            }
+        }
+    }
+    words(&all)
+}
+
+/// Word for word what `html::current` says, in both languages, for every
+/// sample: the words the layout drew, each inside its page.
 #[test]
 fn the_pdf_says_what_the_page_says() {
+    let fonts = Fonts::load().unwrap();
     for s in every_sample() {
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
             let page = html::html(&s.invoice, &tr);
             let c = content(&s.invoice, &tr);
             assert_eq!(words(&c.texts().join("\n")), html_words(&page), "{} in {language}", s.name);
+            let qr = epc::payload(&s.invoice).and_then(|p| epc::matrix(&p));
+            let pages = lay_out(&c, qr.as_ref(), &fonts, &tr);
+            let (drawn, said) = (drawn_words(&pages, &fonts), html_words(&page));
+            if drawn != said {
+                let only = |a: &[String], b: &[String]| a.iter().filter(|w| a.iter().filter(|x| x == w).count() > b.iter().filter(|x| x == w).count()).cloned().collect::<std::collections::BTreeSet<_>>();
+                panic!("{} in {language}, as drawn: drawn only {:?}, the page's only {:?}", s.name, only(&drawn, &said), only(&said, &drawn));
+            }
         }
     }
+    // A line longer than a page goes on to the next, its last detail drawn.
+    let s = samples::valid().into_iter().find(|s| s.name == "fr-long-line").unwrap();
+    let tr = Translator::new("fr");
+    let pages = lay_out(&content(&s.invoice, &tr), None, &fonts, &tr);
+    assert!(pages.len() >= 2, "{} pages", pages.len());
+    assert!(pages.iter().flatten().any(|m| matches!(m, Mark::Text { text, .. } if text == "lumiere-automne-080.tif")));
 }
 
 /// The number written at `at` in `pdf`.

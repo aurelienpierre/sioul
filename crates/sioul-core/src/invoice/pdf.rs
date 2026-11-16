@@ -425,7 +425,8 @@ impl Fonts {
 /// What a page holds: text, a rule, the QR code's squares.
 #[derive(Debug, Clone)]
 enum Mark {
-    Text { x: f32, baseline: f32, style: Style, text: String },
+    /// `furniture`: the page's own words (its number, the QR code's caption), not the invoice's.
+    Text { x: f32, baseline: f32, style: Style, text: String, furniture: bool },
     Rule { x1: f32, x2: f32, y: f32, ink: (u8, u8, u8), width: f32 },
     Qr { x: f32, y: f32, side: f32, matrix: Matrix },
 }
@@ -467,7 +468,7 @@ impl<'a> Layout<'a> {
         }
         let baseline = top + style.size * 0.95;
         let printable = self.fonts.printable(text, style.bold);
-        self.page().push(Mark::Text { x, baseline, style, text: printable });
+        self.page().push(Mark::Text { x, baseline, style, text: printable, furniture: false });
     }
 
     /// Text ending at `right`.
@@ -499,18 +500,43 @@ fn columns(count: usize) -> Vec<(f32, f32)> {
 }
 
 /// The table's head, on the current page.
-fn head(l: &mut Layout, c: &Content, cols: &[(f32, f32)]) {
+/// Each column's head on as many lines as its width takes ("Prix unitaire
+/// HT" on two in a French table under VAT), never into its neighbour.
+fn heads(fonts: &Fonts, c: &Content, cols: &[(f32, f32)]) -> Vec<Vec<String>> {
+    c.heads.iter().zip(cols).map(|(h, (_, w))| fonts.wrap(h, w - 2.0 * CELL_PADDING, QUIET)).collect()
+}
+
+/// The head's height, its padding and rule included.
+fn head_height(fonts: &Fonts, c: &Content, cols: &[(f32, f32)]) -> f32 {
+    2.0 * CELL_PADDING + heads(fonts, c, cols).iter().map(Vec::len).max().unwrap_or(1) as f32 * QUIET.leading()
+}
+
+/// The table's head on the current page; `again` on a page after the first,
+/// where its words are the page's own (said once, on the first).
+fn head(l: &mut Layout, c: &Content, cols: &[(f32, f32)], again: bool) {
+    let first = l.page().len();
     let top = l.y + CELL_PADDING;
-    for (i, (h, (x, w))) in c.heads.iter().zip(cols).enumerate() {
-        if i == 0 {
-            l.text(x + CELL_PADDING, top, QUIET, h);
-        } else {
-            l.text_right(x + w - CELL_PADDING, top, QUIET, h);
+    let mut bottom = top;
+    for (i, (lines, (x, w))) in heads(l.fonts, c, cols).iter().zip(cols).enumerate() {
+        let mut y = top;
+        for line in lines {
+            if i == 0 {
+                l.text(x + CELL_PADDING, y, QUIET, line);
+            } else {
+                l.text_right(x + w - CELL_PADDING, y, QUIET, line);
+            }
+            y += QUIET.leading();
         }
+        bottom = bottom.max(y);
     }
-    l.y = top + QUIET.leading() + CELL_PADDING;
+    l.y = bottom + CELL_PADDING;
     let y = l.y;
     l.rule(MARGIN, MARGIN + CONTENT, y, RULE, 0.75);
+    for mark in &mut l.page()[first..] {
+        if let Mark::Text { furniture, .. } = mark {
+            *furniture = again;
+        }
+    }
 }
 
 /// The invoice laid out on pages.
@@ -536,27 +562,33 @@ fn lay_out(c: &Content, qr: Option<&Matrix>, fonts: &Fonts, tr: &Translator) -> 
     l.y += 14.0;
     // The lines, the head again on each new page.
     let cols = columns(c.heads.len());
-    head(&mut l, c, &cols);
+    head(&mut l, c, &cols, false);
     let (desc_x, desc_w) = cols[0];
+    // What a page holds under the head: a row longer than that goes on to the next page.
+    let page_room = BOTTOM - MARGIN - head_height(fonts, c, &cols);
     for row in &c.rows {
         let described = fonts.wrap(&row.description, desc_w - 2.0 * CELL_PADDING, BODY);
         let smalls: Vec<String> = row.small.iter().flat_map(|s| fonts.wrap(s, desc_w - 2.0 * CELL_PADDING, SMALL)).collect();
         let height = 2.0 * CELL_PADDING + described.len() as f32 * BODY.leading() + smalls.len() as f32 * SMALL.leading();
-        if l.room(height) {
-            head(&mut l, c, &cols);
+        // A row a page holds is never cut; a longer one starts where its first line fits.
+        let needed = if height <= page_room { height } else { 2.0 * CELL_PADDING + BODY.leading() };
+        if l.room(needed) {
+            head(&mut l, c, &cols, true);
         }
         let top = l.y + CELL_PADDING;
-        let mut y = top;
-        for line in &described {
-            l.text(desc_x + CELL_PADDING, y, BODY, line);
-            y += BODY.leading();
-        }
-        for line in &smalls {
-            l.text(desc_x + CELL_PADDING, y, SMALL, line);
-            y += SMALL.leading();
-        }
         for (cell, (x, w)) in row.cells.iter().zip(&cols[1..]) {
             l.text_right(x + w - CELL_PADDING, top, BODY, cell);
+        }
+        let mut y = top;
+        for (line, style) in described.iter().map(|t| (t, BODY)).chain(smalls.iter().map(|t| (t, SMALL))) {
+            if y + style.leading() > BOTTOM {
+                // Its words go on, under the head again; its figures stay on its first part.
+                l.new_page();
+                head(&mut l, c, &cols, true);
+                y = l.y + CELL_PADDING;
+            }
+            l.text(desc_x + CELL_PADDING, y, style, line);
+            y += style.leading();
         }
         l.y = y + CELL_PADDING;
         let bottom = l.y;
@@ -566,14 +598,18 @@ fn lay_out(c: &Content, qr: Option<&Matrix>, fonts: &Fonts, tr: &Translator) -> 
     let (last_x, last_w) = *cols.last().expect("columns");
     for (i, (label, amount)) in c.sums.iter().enumerate() {
         let style = if i + 1 == c.sums.len() { SUM_STRONG } else { SUM };
-        let labels = fonts.wrap(label, last_x - MARGIN - 2.0 * CELL_PADDING, style);
+        // The amount ends at the last column's edge; one wider than its
+        // column reaches left, and its label ends before it, never over it.
+        let amount_left = last_x + last_w - CELL_PADDING - fonts.width(amount, style);
+        let label_right = (last_x - CELL_PADDING).min(amount_left - 2.0 * CELL_PADDING);
+        let labels = fonts.wrap(label, label_right - MARGIN - CELL_PADDING, style);
         if l.room(2.0 * CELL_PADDING + labels.len() as f32 * style.leading()) {
-            head(&mut l, c, &cols);
+            head(&mut l, c, &cols, true);
         }
         let top = l.y + CELL_PADDING;
         let mut y = top;
         for line in &labels {
-            l.text_right(last_x - CELL_PADDING, y, style, line);
+            l.text_right(label_right, y, style, line);
             y += style.leading();
         }
         l.text_right(last_x + last_w - CELL_PADDING, top, style, amount);
@@ -594,7 +630,7 @@ fn lay_out(c: &Content, qr: Option<&Matrix>, fonts: &Fonts, tr: &Translator) -> 
         let mut top = y + QR_SIDE;
         for line in &captions {
             let width = fonts.width(line, FOOT);
-            l.text(x + (QR_SIDE - width) / 2.0, top, FOOT, line);
+            l.page().push(Mark::Text { x: x + (QR_SIDE - width) / 2.0, baseline: top + FOOT.size * 0.95, style: FOOT, text: fonts.printable(line, false), furniture: true });
             top += FOOT.leading();
         }
         beside = top;
@@ -617,7 +653,7 @@ fn lay_out(c: &Content, qr: Option<&Matrix>, fonts: &Fonts, tr: &Translator) -> 
         for (i, page) in l.pages.iter_mut().enumerate() {
             let text = say(tr, "invoice-page", &[("title", c.title.clone()), ("page", (i + 1).to_string()), ("pages", pages.to_string())]);
             let width = fonts.width(&text, FOOT);
-            page.push(Mark::Text { x: MARGIN + CONTENT - width, baseline: HEIGHT - 28.0, style: FOOT, text: fonts.printable(&text, false) });
+            page.push(Mark::Text { x: MARGIN + CONTENT - width, baseline: HEIGHT - 28.0, style: FOOT, text: fonts.printable(&text, false), furniture: true });
         }
     }
     l.pages
@@ -711,7 +747,7 @@ pub fn render(invoice: &Invoice, options: &Options) -> Result<Rendered, String> 
         let mut surface = page.surface();
         for mark in marks {
             match mark {
-                Mark::Text { x, baseline, style, text } => {
+                Mark::Text { x, baseline, style, text, .. } => {
                     let font = if style.bold { fonts.bold.clone() } else { fonts.regular.clone() };
                     let glyphs = fonts.glyphs(text, style.bold);
                     surface.set_fill(Some(fill(style.ink)));

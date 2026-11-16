@@ -10,7 +10,8 @@
 //!
 //! `write_fixtures` (ignored unless asked) writes them as Sioul issues
 //! them: `valid/` holds the Factur-X files a validator must accept,
-//! `invalid/` one made wrong on purpose (its totals do not add up),
+//! `invalid/` one made wrong on purpose (its totals do not add up), the rule
+//! it breaks beside it (`broken-totals.rule`: BR-CO-15),
 //! `without-xml/` the French franchise without a VAT number, a PDF/A-3 that
 //! carries no XML yet (design §12, question 1).
 //!
@@ -282,6 +283,12 @@ pub(crate) fn valid() -> Vec<Sample> {
     let many: Vec<(String, u32)> = (1..=70).map(|n| (format!("Retouche de la photographie n° {n}, série « Lumière d’automne »"), 15 + (n % 4) * 15)).collect();
     let lines: Vec<Line> = many.iter().map(|(d, m)| Line::of_time(d, *m, 6000, "E", 0)).collect();
     add("fr-long", s.clone(), issued(&s, french_client(), "fr", "EUR", lines, "2026-021", "2026-11-16"));
+
+    // One line longer than a page: its description and its eighty details go on to the next.
+    let mut long_line = Line::of_time("Retouche", 600, 6000, "E", 0);
+    long_line.description = "Retouche, recadrage et préparation pour l’impression des photographies de la série « Lumière d’automne », ".repeat(25).trim_end_matches([' ', ',']).to_string();
+    long_line.details = (1..=80).map(|n| format!("lumiere-automne-{n:03}.tif")).collect::<Vec<_>>().join("\n");
+    add("fr-long-line", s.clone(), issued(&s, french_client(), "fr", "EUR", vec![long_line], "2026-023", "2026-11-16"));
     out
 }
 
@@ -324,6 +331,8 @@ fn write_fixtures() {
     }
     assert!(write("without-xml", &without_xml()).xml.is_none());
     assert!(write("invalid", &broken()).xml.is_some());
+    // The rule the broken one breaks, for the validator to find it failed for that one.
+    std::fs::write(root.join("invalid").join("broken-totals.rule"), "BR-CO-15").unwrap();
     // The kinds: invoices, a credit note, a deposit invoice.
     assert!(valid().iter().any(|s| s.invoice.kind == Kind::CreditNote) && valid().iter().any(|s| s.invoice.kind == Kind::Deposit));
 }
