@@ -114,7 +114,7 @@ Freelancers, consultants, the self-employed: the work you sell and the admin it 
 - **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
 - **Time counted while you work**, by the focus timer, or for a meeting or a call in a few keys: `1h30`. The same record teaches the plan [how long things take](guide/time.md#how-long-things-take).
 - **What is left to bill**, for each project, in hours and in money, always in view.
-- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, most of the mentions French law asks for (you add "EI" after your name), a PDF; then the money expected in your budget until it is paid.
+- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions your country's law asks for (in France, « EI » after your name), a PDF/A-3 carrying its Factur-X electronic invoice, kept as it was issued; then the money expected in your budget until it is paid.
 - **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.
 
 No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)

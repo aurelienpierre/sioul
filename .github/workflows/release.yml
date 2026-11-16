@@ -220,6 +220,9 @@ jobs:
           for plugin in iconengines/libqsvgicon.dylib imageformats/libqsvg.dylib; do
             test -f "$app/Contents/PlugIns/$plugin" || { echo "macdeployqt left out $plugin" >&2; exit 1; }
           done
+          # The works of others inside the programs, with their licences (NOTICES.md).
+          mkdir -p "$app/Contents/Resources/licenses"
+          cp NOTICES.md crates/sioul-core/data/fonts/LICENSE-Liberation crates/sioul-app/fonts/LICENSE-DejaVu crates/sioul-app/icons/COPYING-ICONS "$app/Contents/Resources/licenses/"
           codesign --force --deep --sign - "$app"
           for try in 1 2 3; do
             hdiutil create -volname Sioul -srcfolder "$app" -ov -format UDZO "bundle/Sioul-${version}-macos-universal.dmg" && break
@@ -311,6 +314,10 @@ jobs:
           install -Dm644 packaging/appimage/sioul-sandbox.sh AppDir/apprun-hooks/sioul-sandbox.sh
           # pcsc-lite's client is linked in: its BSD licence travels with it.
           install -Dm644 pcsc-lite-2.5.2/COPYING AppDir/usr/share/licenses/pcsc-lite/COPYING
+          # The works of others inside the programs, with their licences (NOTICES.md).
+          for notice in NOTICES.md crates/sioul-core/data/fonts/LICENSE-Liberation crates/sioul-app/fonts/LICENSE-DejaVu crates/sioul-app/icons/COPYING-ICONS; do
+            install -Dm644 "$notice" "AppDir/usr/share/licenses/sioul/$(basename "$notice")"
+          done
           curl -fsSLO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           curl -fsSLO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-*.AppImage
