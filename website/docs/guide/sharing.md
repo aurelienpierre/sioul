@@ -148,7 +148,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 | Spam filter | what you said is spam or not on each device, and what each device's filter moved and flagged, so that every device learns from the same truth; the newest of the tables its training makes only while one of your devices does not learn (an older Sioul, a new device, one whose training is off), never over the table of a device that learns; never the mail it learned from, nor its words ([Settings](settings.md#your-own-spam-filter)) |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day, the time you keep around meetings with others |
-| Drafts and invoices | mail being written, invoices made, their drafts and the journal of their numbers |
+| Drafts and invoices | mail being written, invoices made and their files, their drafts and the journal of their numbers |
 | Projects and money | from your notes folder: projects and their mail routes, budgets, bank accounts and movements, contracts, your clients' profiles |
 | Lists kept here | calendars and contacts kept on this device only |
 | Notes | your notes folder: notes, their pictures, PDFs and memos, scanned letters |

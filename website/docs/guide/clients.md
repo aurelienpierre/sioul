@@ -20,7 +20,7 @@ In Sioul it is one loop, in one window. The client's mail comes to their project
 3. **The work fits in your working hours.** The project's tasks, as a board, a list or a Gantt chart; the one next step, placed in the hours you keep for work. [Tasks](tasks.md)
 4. **Time counts while you work.** The minutes of a focus session go to its task, and to the task's project. A meeting, a call, work done away from the timer: **Note time**, `1h30`. A task can be left off the bill. [Where time comes from](time.md#where-time-comes-from)
 5. **What is left to bill stays in view**: for each project, in hours and in money, on the Time page and beside the project. [The Time page](time.md#the-time-page)
-6. **The invoice, from that time.** **Make the invoice**: one line per task, at the project's rate; what your country's rules ask, checked first, and said when something is missing; a number that follows the last one and is never given twice; the time it bills marked as billed, so that the next invoice leaves it out; a PDF, ready to send. [Invoices](time.md#invoices)
+6. **The invoice, from that time.** **Make the invoice**: one line per task, at the project's rate; what your country's rules ask, checked first, and said when something is missing; a number that follows the last one and is never given twice; the time it bills marked as billed, so that the next invoice leaves it out; a PDF/A-3 carrying its Factur-X, kept as it was issued, ready to send. [Invoices](time.md#invoices)
 7. **Until it is paid.** The total is expected in the project's budget on the day it is due, thirty days later unless you said otherwise. When you take in your bank's export, the client's transfer is written on the invoice by itself, with Undo; **Paid** says it by hand. A wrong invoice is corrected by a credit note, never changed. [Paid, and credit notes](time.md#paid-and-credit-notes), [Budgets](budgets.md)
 
 <figure markdown="span">
@@ -57,7 +57,7 @@ Outside your working hours, client projects and the Time page rest: "Work projec
 ## Not there yet {#not-there-yet}
 
 - **Invoices in the window**: one list of every invoice and draft, an editor for any line (a fixed price, expenses, goods), Settings ▸ Invoices by country, client profiles in Contacts. For now, **Make the invoice** bills hours; lines of other kinds come from an [AI agent's](ai-agent.md) draft, issued from the command line. Quotes are not made yet.
-- **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Sioul makes PDF invoices only, for now; later, each one carries its Factur-X ([Time and invoices](time.md#not-there-yet)).
+- **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Each invoice Sioul issues already carries its Factur-X, in the PDF/A-3 kept as it was issued, which most platforms take as a file; sending through your platform from Sioul comes later ([Time and invoices](time.md#not-there-yet)).
 - **The books**: the receipts book made from your invoices' payments, the URSSAF declarations by category, and a word when you near a threshold.
 
 ## Why it works this way {#why-it-works-this-way}

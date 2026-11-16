@@ -105,7 +105,7 @@ Printed on the invoices you make from [Time](time.md#invoices) and [Projects](pr
 - **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…; left empty, the prefix is the year, so numbering starts again each year, while a prefix of your own goes on counting;
 - **Currency**: a three-letter code, such as EUR, USD, CHF: the currency of your invoices, unless a client's profile gives another;
 - **Payment details**: printed at the bottom: bank details, terms. In France, Sioul prints the late-payment lines itself for business clients (no discount for early payment, the penalties, the €40 fee): leave them out of these details, or they print twice;
-- **Invoices go into**: the folder of their PDFs, `Documents/Invoices` in your home folder when empty;
+- **Invoices go into**: the folder where a copy of each invoice's file goes when it is issued or printed again, `Documents/Invoices` in your home folder when empty; the file itself is kept beside the invoice, and travels with it;
 - **An hour costs**: the rate when a project does not set its own.
 
 Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, or a business client's address, now holds it back, with a sentence saying what to add.
@@ -116,7 +116,7 @@ Since November 2026, an invoice is checked before it is issued against what your
 - `[[invoice.tax]]`: your VAT scheme from a day on, `from` (`2027-01-01`), `scheme` (`none`, `franchise` or `liable`) and, under the franchise, `mention` when you want another line than your country's; `options = ["debits"]` in France, when you pay VAT on debits;
 - `[[invoice.id]]`: your identifiers, each a `kind` your country names (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), its `value`, and `printed`;
 - `trade_name`, `postcode`, `city`, `country` (two letters, such as `FR`) and `email`; `capital`, a company's share capital as printed; `insurance`, your professional insurance as printed (insurer, contact, coverage);
-- `[[invoice.bank]]`: `holder`, `iban` and `bic`, printed on your invoices;
+- `[[invoice.bank]]`: `holder`, `iban` and `bic`, printed on your invoices; on an invoice in euros, the first IBAN whose key holds goes into a QR code to pay by transfer, with the holder's name (yours when unsaid), unless `qr = false`;
 - `pattern` (`{YYYY}-{N:3}`: the year `{YYYY}` or `{YY}`, the month `{MM}`, and one counter, `{N}`, or `{N:4}` for four digits at least), `reset` (`yearly`, with the year in the pattern, or `never`), `credit_pattern` (a series of their own for credit notes; empty, they follow your invoices);
 - `language` (`en` or `fr`), `terms_days` and `end_of_month` (when payment is due), `penalty_rate` (a late-payment rate of your own, in percent; else France's default, the ECB's rate plus 10 points);
 - `[[invoice.line]]`: a line of your own (`text`), or one of your country's lines in your words (its `id` and a new `text`) or taken out (its `id` and `off = true`); France's are `escompte`, `penalties`, `indemnity`, `capital` and `debits`.
