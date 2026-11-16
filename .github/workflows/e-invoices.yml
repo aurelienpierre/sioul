@@ -6,20 +6,25 @@
 # Sioul issues them, one invoice per country's preset and VAT scheme (and a
 # credit note, a deposit invoice and the final one, three pages of lines)
 # into valid/, one made wrong on purpose (its totals a cent off) into
-# invalid/, and the French franchise without a VAT number, which carries no
-# XML yet (design §12, question 1), into without-xml/. Mustang
-# (mustangproject.org, Apache-2.0) reads each with veraPDF and the EN 16931
-# schematron inside: tools/einvoice/validate.sh then expects every file of
-# valid/ to pass, the one of invalid/ to fail, and the PDF/A of
-# without-xml/ to pass. The invoices are made up; no invoice ever goes to an
-# online validator.
+# invalid/ with the rule it breaks beside it, and the French franchise
+# without a VAT number, which carries no XML yet (design §12, question 1),
+# into without-xml/. Mustang (mustangproject.org, Apache-2.0) reads each
+# with veraPDF, the EN 16931 schematron and the French rules of XP Z12-012
+# inside: tools/einvoice/validate.sh then expects every file of valid/ to
+# pass with no word from the French rules, the one of invalid/ to fail for
+# its own rule, and the PDF/A of without-xml/ to pass; it lists every
+# warning. The invoices are made up; no invoice ever goes to an online
+# validator.
 #
-# Runs on each push to main that touches the invoices' code, presets, fonts
-# or words, and by hand. Linux alone: the files are the same on every system.
-# Versions checked on 16 November 2026: Mustang CLI 2.26.0 (25 August 2026,
-# its jar's SHA-256 as its GitHub release gives it), actions/setup-java
-# v6.2.0 pinned to its commit (Temurin 21), actions/checkout v7.0.1,
-# Swatinem/rust-cache v2.9.2, actions/upload-artifact v7.0.2.
+# Runs on each push to main that touches what goes into an invoice's file
+# (its code, presets, fonts, words, the formatting of money, percents,
+# durations and settings, the core's dependencies), and by hand, as the
+# other workflows do. Linux alone: the files are the same on every system.
+# Versions checked on 17 November 2026: Mustang CLI 2.26.0 (25 August 2026,
+# its jar pinned by the SHA-256 its GitHub release gives), and the actions
+# by their major versions, as android.yml and pages.yml take them:
+# actions/setup-java v6 (v6.3.0; Temurin 21), actions/checkout v7 (v7.0.1),
+# Swatinem/rust-cache v2 (v2.9.2), actions/upload-artifact v7 (v7.0.2).
 
 name: Electronic invoices
 
@@ -28,9 +33,14 @@ on:
     branches: [main]
     paths:
       - "crates/sioul-core/src/invoice/**"
+      - "crates/sioul-core/src/i18n.rs"
+      - "crates/sioul-core/src/money.rs"
+      - "crates/sioul-core/src/timereport.rs"
+      - "crates/sioul-core/src/config.rs"
       - "crates/sioul-core/data/invoice-presets/**"
       - "crates/sioul-core/data/fonts/**"
       - "crates/sioul-core/locales/**"
+      - "crates/sioul-core/Cargo.toml"
       - "tools/einvoice/**"
       - "Cargo.lock"
       - ".github/workflows/e-invoices.yml"
@@ -59,7 +69,7 @@ jobs:
           key: e-invoices
           cache-on-failure: true
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -76,7 +86,7 @@ jobs:
           cargo test --release --locked -p sioul-core --lib -- --ignored --exact invoice::samples::write_fixtures
           ls -R "$RUNNER_TEMP/invoices"
 
-      - name: Each valid one passes, the broken one fails
+      - name: Each valid one passes, the broken one fails for its own rule
         run: tools/einvoice/validate.sh "$RUNNER_TEMP/Mustang-CLI.jar" "$RUNNER_TEMP/invoices"
 
       - name: The invoices and Mustang's reports, when something failed

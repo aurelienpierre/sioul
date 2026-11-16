@@ -3,12 +3,17 @@
 # Copyright © 2026 Aurélien Pierre
 #
 # Checks the invoices Sioul issues with Mustang (mustangproject.org), offline
-# (docs/projects.md, "The issued file"): every PDF of valid/ must pass whole
-# (its PDF/A-3, its Factur-X XML, the report's own summary), every PDF of
-# invalid/ must fail, and every PDF of without-xml/, which carries no XML yet,
-# must pass as a PDF/A-3b. Mustang's exit status is not enough: it may end at
-# 0 while its PDF/A part failed, so each part of its report is read. The
-# reports are kept beside, in reports/.
+# (docs/projects.md, "The issued file"):
+#   - every PDF of valid/ must pass whole (its PDF/A-3b, its Factur-X XML,
+#     the report's own summary) and draw no word from the French rules
+#     (XP Z12-012's schematron, which Mustang runs beside EN 16931's);
+#   - every PDF of invalid/ must fail for its own rule, the one its .rule
+#     file beside it names (BR-CO-15), not for any other reason;
+#   - every PDF of without-xml/, which carries no XML yet, must pass as a
+#     PDF/A-3b.
+# Mustang's exit status is not enough (it may end at 0 while its PDF/A part
+# failed): each part of its report is read, and every warning and error is
+# listed. The reports are kept in reports/.
 #
 #   SIOUL_INVOICE_FIXTURES=<folder> cargo test --release -p sioul-core --lib -- --ignored --exact invoice::samples::write_fixtures
 #   tools/einvoice/validate.sh <Mustang-CLI-2.26.0.jar> <folder>
@@ -26,10 +31,14 @@ cd "$reports"
 statuses() { grep -o 'summary status="[a-z]*"' "$1" | sed 's/.*="\(.*\)"/\1/' | tr '\n' ' ' || true; }
 # What veraPDF found of the PDF alone: "3b true" for a compliant PDF/A-3b.
 pdfa() { grep -o 'flavour=[0-9a-z]*\|isCompliant=[a-z]*' "$1" | sed 's/.*=//' | tr '\n' ' ' || true; }
+# Every warning and error of a report, one a line.
+messages() { grep -o '<\(warning\|error\)[^>]*>[^<]*' "$1" | sed 's/^<\(warning\|error\)[^>]*>/\1: /' | cut -c1-240 || true; }
+# How many messages the French rules gave.
+french() { grep -c 'XP_Z12_012' "$1" || true; }
 
 failures=0
 check() {
-    local file=$1 want=$2 name report all part good
+    local file=$1 want=$2 name report all part good rule
     name=$(basename "$(dirname "$file")")-$(basename "$file" .pdf)
     report="$reports/$name.xml"
     java -Xmx1G -Dfile.encoding=UTF-8 -jar "$jar" --action validate --source "$file" > "$report" 2> "$reports/$name.log" || true
@@ -37,17 +46,23 @@ check() {
     part=$(pdfa "$report")
     good=no
     case "$want" in
-        valid) [[ -n "$all" && "$all" != *invalid* && "$part" == "3b true " ]] && good=yes ;;
-        invalid) [[ "$all" == *invalid* ]] && good=yes ;;
+        valid) [[ -n "$all" && "$all" != *invalid* && "$part" == "3b true " && $(french "$report") -eq 0 ]] && good=yes ;;
+        invalid)
+            rule=$(cat "${file%.pdf}.rule" 2>/dev/null || true)
+            [[ "$all" == *invalid* && -n "$rule" ]] && grep -q "\[$rule\]" "$report" && good=yes
+            all="$all/ for ${rule:-no rule named} "
+            ;;
         pdfa) [[ "$part" == "3b true " ]] && good=yes ;;
     esac
     if [[ $good == yes ]]; then
         echo "as expected ($want): $name: $all/ PDF/A $part"
     else
         echo "NOT AS EXPECTED ($want): $name: $all/ PDF/A $part"
-        grep -o '<error[^>]*>[^<]*</error>\|<warning[^>]*>[^<]*</warning>\|<exception[^>]*>[^<]*</exception>' "$report" | head -20 || true
+        grep -o '<exception[^>]*>[^<]*' "$report" | head -5 || true
         failures=$((failures + 1))
     fi
+    # Its warnings and errors, for a reader of the log.
+    messages "$report" | sed 's/^/    /'
 }
 
 count=0
