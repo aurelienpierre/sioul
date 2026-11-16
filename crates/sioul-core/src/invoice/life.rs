@@ -256,7 +256,23 @@ pub fn from_time(entries: &[Entry], project: &Project, mut draft: Invoice, s: &I
 /// A draft credit note for `invoice`: all its lines to cancel it, or the
 /// ones at `chosen` to correct some; it cites the invoice's number and day.
 pub fn credit(invoice: &Invoice, chosen: Option<&[usize]>, s: &InvoiceSettings, today: Date) -> Invoice {
-    let lines: Vec<Line> = invoice.lines.iter().enumerate().filter(|(i, _)| chosen.is_none_or(|c| c.contains(i))).map(|(_, l)| l.clone()).collect();
+    // Each line as it was billed, its tax with it: an exempt line keeps the
+    // reason the invoice printed (the franchise's mention), should the
+    // scheme have changed since.
+    let reason_of = |category: &str| invoice.totals.breakdown.iter().find(|b| b.category == category).map(|b| b.reason.clone()).unwrap_or_default();
+    let lines: Vec<Line> = invoice
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| chosen.is_none_or(|c| c.contains(i)))
+        .map(|(_, l)| {
+            let mut line = l.clone();
+            if line.category == "E" && line.exemption.trim().is_empty() {
+                line.exemption = reason_of("E");
+            }
+            line
+        })
+        .collect();
     let mut draft = Invoice {
         format: FORMAT,
         kind: Kind::CreditNote,
@@ -309,7 +325,8 @@ pub fn cite_deposits(draft: &mut Invoice, deposits: &[Invoice], s: &InvoiceSetti
 pub fn refresh(draft: &mut Invoice, s: &InvoiceSettings, day: Date) {
     draft.format = FORMAT;
     draft.issuer = issuer_on(s, day);
-    for line in &mut draft.lines {
+    // A credit note keeps the tax of the lines it credits, whatever the scheme is now.
+    for line in draft.lines.iter_mut().filter(|_| draft.kind != Kind::CreditNote) {
         let (category, rate) = default_tax(&draft.issuer, &draft.client, line.nature, day);
         if draft.issuer.scheme != "liable" || category == "AE" {
             // No VAT is ever shown under the franchise or without a scheme
@@ -697,28 +714,35 @@ fn freed_sessions(credit: &Invoice, records: &[Invoice]) -> Vec<String> {
         .collect()
 }
 
-/// A payment written on the issued invoice `number` of `dir`; returns the invoice as it is now.
+/// A payment written on the issued invoice `number` of `dir`; returns the
+/// invoice as it is now. One matched with a bank line it holds already is
+/// not written again.
 pub fn add_payment(dir: &Path, number: &str, payment: Payment) -> Result<Invoice, String> {
-    let mut invoice = super::find_in(dir, number).ok_or_else(|| format!("{number}: no such invoice here"))?;
-    if payment.amount == 0 {
-        return Ok(invoice);
+    if super::find_in(dir, number).is_none() {
+        return Err(format!("{number}: no such invoice here"));
     }
-    // Matched twice with one bank line: once.
-    if !payment.movement.is_empty() && invoice.payments.iter().any(|p| p.movement == payment.movement) {
-        return Ok(invoice);
-    }
-    invoice.payments.push(payment);
-    super::write_life(dir, &invoice)?;
+    let (_, invoice) = super::change_life(dir, number, |invoice| {
+        let twice = !payment.movement.is_empty() && invoice.payments.iter().any(|p| p.movement == payment.movement);
+        if payment.amount != 0 && !twice {
+            invoice.payments.push(payment);
+        }
+    })?;
     Ok(invoice)
 }
 
 /// A payment taken off `number` (its Undo); Ok(false) when it is not there any more.
 pub fn remove_payment(dir: &Path, number: &str, payment: &Payment) -> Result<bool, String> {
-    let Some(mut invoice) = super::find_in(dir, number) else { return Ok(false) };
-    let Some(at) = invoice.payments.iter().position(|p| p == payment) else { return Ok(false) };
-    invoice.payments.remove(at);
-    super::write_life(dir, &invoice)?;
-    Ok(true)
+    if super::find_in(dir, number).is_none() {
+        return Ok(false);
+    }
+    let (removed, _) = super::change_life(dir, number, |invoice| match invoice.payments.iter().position(|p| p == payment) {
+        Some(at) => {
+            invoice.payments.remove(at);
+            true
+        }
+        None => false,
+    })?;
+    Ok(removed)
 }
 
 /// "Paid", said by hand on `day` by `means`: a payment of what is left.
@@ -738,12 +762,16 @@ pub fn pay_rest(dir: &Path, number: &str, day: Date, means: &str) -> Result<Opti
 /// "Not paid" after all: every payment said by hand taken off, a format-1
 /// record's own word too; those the bank's matching found stay.
 pub fn unpay(dir: &Path, number: &str) -> Result<(), String> {
-    let mut invoice = super::find_in(dir, number).ok_or_else(|| format!("{number}: no such invoice here"))?;
-    invoice.payments.retain(|p| !p.movement.is_empty());
-    if let Some(older) = invoice.older.as_mut() {
-        older.paid = false;
+    if super::find_in(dir, number).is_none() {
+        return Err(format!("{number}: no such invoice here"));
     }
-    super::write_life(dir, &invoice)
+    super::change_life(dir, number, |invoice| {
+        invoice.payments.retain(|p| !p.movement.is_empty());
+        if let Some(older) = invoice.older.as_mut() {
+            older.paid = false;
+        }
+    })
+    .map(|_| ())
 }
 
 /// Of a payment of `amount` on `invoice`, what is turnover excluding VAT,

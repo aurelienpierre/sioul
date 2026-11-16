@@ -307,6 +307,11 @@ fn a_credit_note_cancels_and_frees_the_time() {
     assert_eq!((kept.status(&all), kept.left(&all)), (Status::PartlyPaid, 6000));
     let page = html(&note, &tr);
     assert!(page.contains("Credit note No. 2026-002") && page.contains("2026-001") && !page.contains("Late payment"), "{page}");
+    // Liable for VAT since: a credit note of a franchise invoice still carries no VAT, and its mention.
+    let liable = InvoiceSettings { tax: vec![TaxSetting { from: "2026-10-06".into(), scheme: "liable".into(), mention: String::new() }, TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..s.clone() };
+    let late = credit(kept, Some(&[0]), &liable, day("2026-10-08"));
+    assert_eq!((late.totals.tax, late.lines[0].category.as_str()), (0, "E"));
+    assert!(html(&late, &tr).contains("293 B"), "{}", html(&late, &tr));
     // The rest credited: the invoice is credited, all its time free.
     let rest = save_draft(&place.invoices(), &credit(kept, Some(&[0]), &s, day("2026-10-08"))).unwrap();
     issue(&place.invoices(), &rest.draft, &s, day("2026-10-08"), &Numbering::default(), None, &none, &tr).unwrap();

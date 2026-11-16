@@ -206,20 +206,24 @@ pub(crate) fn write_new(dir: &Path, invoice: &Invoice) -> Result<PathBuf, String
     Ok(path)
 }
 
-/// An issued record's life written in place: its payments and the day it
-/// was sent, every other line of its file kept as it is (a format-1 record's
-/// `paid` too, for an older Sioul). Refused for a record that does not read,
-/// or whose file holds another number.
-pub fn write_life(dir: &Path, invoice: &Invoice) -> Result<(), String> {
+/// An issued record's life changed in place by `change`, under its file's
+/// lock, read and written in one step (a payment said in the window and one
+/// found by the bank at once both stay): its payments and the day it was
+/// sent, every other line of its file kept as it is (a format-1 record's
+/// `paid` too, for an older Sioul, and `paid_before`, its own word from
+/// before). Refused for a record that does not read, or whose file holds
+/// another number. Returns what `change` returned and the record as written.
+pub fn change_life<R>(dir: &Path, number: &str, change: impl FnOnce(&mut Invoice) -> R) -> Result<(R, Invoice), String> {
     use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
-    let path = dir.join(file_name(&invoice.number));
+    let path = dir.join(file_name(number));
     crate::filelock::with_lock(&path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
         let text = std::fs::read_to_string(&path).map_err(|e| fail(e.to_string()))?;
-        let kept = record::read(&text).ok_or_else(|| fail("this record no longer reads: Sioul leaves it as it is".into()))?;
-        if kept.number != invoice.number {
-            return Err(fail(format!("holds {}", kept.number)));
+        let mut invoice = record::read(&text).ok_or_else(|| fail("this record no longer reads: Sioul leaves it as it is".into()))?;
+        if invoice.number != number {
+            return Err(fail(format!("holds {}", invoice.number)));
         }
+        let out = change(&mut invoice);
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         if invoice.payments.is_empty() {
             doc.remove("payments");
@@ -235,22 +239,36 @@ pub fn write_life(dir: &Path, invoice: &Invoice) -> Result<(), String> {
             }
             doc.insert("payments", Item::ArrayOfTables(list));
         }
-        if invoice.sent.is_empty() && kept.format == 1 {
+        if invoice.sent.is_empty() && invoice.format == 1 {
             doc.remove("sent");
         } else {
             doc.insert("sent", value(invoice.sent.as_str()));
         }
-        if kept.format == 1 {
-            // An older Sioul reads `paid`: said with the payments.
-            let all = std::slice::from_ref(invoice);
-            doc.insert("paid", value(invoice.older.as_ref().is_some_and(|o| o.paid) || invoice.status(all).settled()));
+        if invoice.format == 1 {
+            // An older Sioul reads `paid`: said with the payments; its own
+            // word from before kept apart, so that an Undo puts it back.
+            let said = invoice.older.as_ref().is_some_and(|o| o.paid);
+            doc.insert("paid_before", value(said));
+            doc.insert("paid", value(said || invoice.status(std::slice::from_ref(&invoice)).settled()));
         }
         let changed = doc.to_string();
         if changed != text {
             write_whole(&path, &changed)?;
         }
-        Ok(())
+        Ok((out, invoice))
     })
+}
+
+/// An issued record's life written as `invoice` holds it (`change_life`).
+pub fn write_life(dir: &Path, invoice: &Invoice) -> Result<(), String> {
+    change_life(dir, &invoice.number, |kept| {
+        kept.payments = invoice.payments.clone();
+        kept.sent = invoice.sent.clone();
+        if let (Some(kept), Some(given)) = (kept.older.as_mut(), invoice.older.as_ref()) {
+            kept.paid = given.paid;
+        }
+    })
+    .map(|_| ())
 }
 
 /// An issued record taken out: only to undo an issue that failed halfway.
@@ -322,6 +340,17 @@ mod tests {
         assert!(text.contains("paid = true") && !text.contains("format"), "{text}");
         let again = find_in(&dir, "2026-001").unwrap();
         assert_eq!((again.format, again.status(&[]), again.paid()), (1, Status::Paid, 12000));
+        // Paid's Undo: not paid again, `paid` said so for an older Sioul.
+        assert!(life::remove_payment(&dir, "2026-001", &paid.payments[0]).unwrap());
+        let undone = find_in(&dir, "2026-001").unwrap();
+        assert_eq!((undone.status(&[]), undone.paid()), (Status::Issued, 0));
+        assert!(std::fs::read_to_string(dir.join("2026-001.toml")).unwrap().contains("paid = false"));
+        // Said paid by an older Sioul, then matched and the match undone: still paid, by its own word.
+        std::fs::write(dir.join("2026-001.toml"), older.replace("total_cents = 12000\n", "total_cents = 12000\npaid = true\n")).unwrap();
+        let matched = Payment { date: "2026-10-03".into(), amount: 12000, means: "transfer".into(), movement: "sioul:movement/x".into() };
+        life::add_payment(&dir, "2026-001", matched.clone()).unwrap();
+        life::remove_payment(&dir, "2026-001", &matched).unwrap();
+        assert_eq!(find_in(&dir, "2026-001").unwrap().status(&[]), Status::Paid);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

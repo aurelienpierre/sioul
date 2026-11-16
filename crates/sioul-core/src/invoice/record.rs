@@ -605,7 +605,7 @@ impl Invoice {
         let due = self.totals.due;
         if credited > 0 && credited >= due {
             Status::Credited
-        } else if said_paid || (due > 0 && paid + credited >= due) || (due <= 0 && paid > 0) {
+        } else if said_paid || due <= 0 || paid + credited >= due {
             Status::Paid
         } else if paid > 0 || credited > 0 {
             Status::PartlyPaid
@@ -663,7 +663,11 @@ struct V1 {
     sessions: Vec<String>,
     #[serde(default)]
     paid: bool,
-    /// Payments written on it since format 2 (`write_life`).
+    /// Its own `paid` from before format 2, kept once Sioul writes its life
+    /// (`change_life`): `paid` says the payments too, for an older Sioul.
+    #[serde(default)]
+    paid_before: Option<bool>,
+    /// Payments written on it since format 2 (`change_life`).
     #[serde(default)]
     payments: Vec<Payment>,
     #[serde(default)]
@@ -727,7 +731,7 @@ impl V1 {
             totals: Totals { lines: self.total_cents, without_tax: self.total_cents, tax: 0, with_tax: self.total_cents, deposits: 0, due: self.total_cents, breakdown },
             payments: self.payments,
             sent: self.sent,
-            older: Some(Older { siret: self.issuer.siret, vat: self.issuer.vat, payment: self.issuer.payment, paid: self.paid, sessions: self.sessions }),
+            older: Some(Older { siret: self.issuer.siret, vat: self.issuer.vat, payment: self.issuer.payment, paid: self.paid_before.unwrap_or(self.paid), sessions: self.sessions }),
             ..Invoice::default()
         }
     }
