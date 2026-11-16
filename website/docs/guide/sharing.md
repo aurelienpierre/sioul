@@ -148,7 +148,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 | Spam filter | what you said is spam or not on each device, and what each device's filter moved and flagged, so that every device learns from the same truth; the newest of the tables its training makes only while one of your devices does not learn (an older Sioul, a new device, one whose training is off), never over the table of a device that learns; never the mail it learned from, nor its words ([Settings](settings.md#your-own-spam-filter)) |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day, the time you keep around meetings with others |
-| Drafts and invoices | mail being written, invoices made, their drafts and the journal of their numbers |
+| Drafts and invoices | mail being written, invoices made, their payments and the day each was sent (each device writes its own, all read together), their drafts and the journal of their numbers |
 | Projects and money | from your notes folder: projects and their mail routes, budgets, bank accounts and movements, contracts, your clients' profiles |
 | Lists kept here | calendars and contacts kept on this device only |
 | Notes | your notes folder: notes, their pictures, PDFs and memos, scanned letters |
@@ -204,7 +204,7 @@ Sioul for Android shares the same way, through the folder your sync app keeps on
 
 - **Medicines** are reminded by the device you are using only, so that a dose is not reminded twice. A dose marked taken goes to the others at once.
 - **The sites' gathered notification** comes on the device you are using.
-- **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. A device that numbers them and has not been heard from (its sync stopped, or late on Android) still holds them, until it is heard from, closes Sioul, or a day goes by without its news. A device whose sharing leaves **Drafts and invoices** off issues none: the others' numbers would not reach it. See [Time and invoices](time.md#on-several-computers).
+- **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. A device that numbers them and has not been heard from (its sync stopped, or late on Android) still holds them, until it is heard from, closes Sioul, or a day goes by without its news. A device whose sharing leaves **Drafts and invoices** off issues none: the others' numbers would not reach it. Nor does one whose sharing cannot read its key, such as when its keyring is locked: it could not tell which device numbers them. On a computer, the command line issues an invoice only while Sioul's window there keeps the invoices. See [Time and invoices](time.md#on-several-computers).
 
 ## Not there yet {#not-there-yet}
 

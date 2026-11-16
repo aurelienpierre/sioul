@@ -148,7 +148,7 @@ Sous **Ce qui voyage depuis cet appareil**, chaque partie a son interrupteur, di
 | Filtre à indésirables | ce que vous avez dit indésirable ou pas sur chaque appareil, et ce que le filtre de chaque appareil a déplacé et signalé, pour que chaque appareil apprenne de la même vérité ; la plus récente des tables que fait son apprentissage seulement tant qu’un de vos appareils n’apprend pas (un Sioul plus ancien, un nouvel appareil, un appareil dont l’apprentissage est désactivé), jamais par-dessus la table d’un appareil qui apprend ; jamais les courriels dont il a appris, ni ses mots ([les réglages des Courriels](settings.md#your-own-spam-filter)) |
 | Santé | les médicaments, les ordonnances et les prises |
 | Temps | le temps noté, la séance en cours, les choix du jour, où vous vous êtes arrêté, travailler tard ou fini pour aujourd’hui, le temps que vous gardez autour des réunions avec d’autres |
-| Brouillons et factures | les courriels en cours d’écriture, les factures faites, leurs brouillons et le journal de leurs numéros |
+| Brouillons et factures | les courriels en cours d’écriture, les factures faites, leurs paiements et le jour de leur envoi (chaque appareil écrit les siens, tous lus ensemble), leurs brouillons et le journal de leurs numéros |
 | Projets et argent | de votre dossier de notes : les projets et leurs routes de courriels, les budgets, les comptes et mouvements bancaires, les contrats, les fiches de vos clients |
 | Listes gardées ici | les agendas et contacts gardés sur cet appareil seulement |
 | Notes | votre dossier de notes : les notes, leurs images, PDF et mémos, les lettres numérisées |
@@ -204,7 +204,7 @@ Sioul pour Android partage de la même façon, par le dossier que votre applicat
 
 - **Les médicaments** ne sont rappelés que par l’appareil que vous utilisez, pour qu’une prise ne soit pas rappelée deux fois. Une prise notée part tout de suite vers les autres.
 - **La notification regroupée des sites** vient sur l’appareil où vous êtes.
-- **Les factures** sont numérotées sur un seul appareil, pour qu’un numéro ne soit jamais donné deux fois. Un autre appareil dit où elles se font, et propose **Faire les factures sur cet appareil**. Un appareil qui les numérote et dont on n’a pas de nouvelles (sa synchronisation arrêtée, ou en retard sur Android) les garde, jusqu’à ce qu’on en ait, qu’il ferme Sioul, ou qu’une journée passe sans nouvelles de lui. Un appareil dont le partage laisse **Brouillons et factures** éteint n’en émet aucune : les numéros des autres ne lui parviendraient pas. Voir [Le temps et les factures](time.md#on-several-computers).
+- **Les factures** sont numérotées sur un seul appareil, pour qu’un numéro ne soit jamais donné deux fois. Un autre appareil dit où elles se font, et propose **Faire les factures sur cet appareil**. Un appareil qui les numérote et dont on n’a pas de nouvelles (sa synchronisation arrêtée, ou en retard sur Android) les garde, jusqu’à ce qu’on en ait, qu’il ferme Sioul, ou qu’une journée passe sans nouvelles de lui. Un appareil dont le partage laisse **Brouillons et factures** éteint n’en émet aucune : les numéros des autres ne lui parviendraient pas. Un appareil dont le partage ne peut pas lire sa clé, par exemple quand son trousseau est verrouillé, n’en émet pas non plus : il ne pourrait pas savoir quel appareil les numérote. Sur un ordinateur, la ligne de commande n’émet une facture que tant que la fenêtre de Sioul y garde les factures. Voir [Le temps et les factures](time.md#on-several-computers).
 
 ## Pas encore là {#not-there-yet}
 
