@@ -833,7 +833,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "draft_invoice",
         title: "Draft an invoice",
-        description: "Saves a draft invoice, only when the person asked for one: from a project's billable time not billed yet (`project`, with `from_time`), with lines of its own (`lines`), or both. Its client is the project's, or `client` as named. A draft has no number: it is never issued, sent nor paid here; the person reads it and issues it from Sioul. Says what the draft still lacks before it can be issued.",
+        description: "Saves a draft invoice, only when the person asked for one: from a project's billable time not billed yet (`project`, with `from_time`), with lines of its own (`lines`), or both. Its client is the project's, or `client` as named. A draft has no number: it is never issued, sent nor paid here; the person reads it and issues it from Sioul. Says what the draft still lacks before it can be issued. Nothing else changes.",
         writes: true,
         idempotent: false,
         open_world: false,

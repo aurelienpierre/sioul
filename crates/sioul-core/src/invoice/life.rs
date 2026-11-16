@@ -433,6 +433,18 @@ fn legal_notes(draft: &Invoice, s: &InvoiceSettings, preset: &Preset) -> Vec<Not
     out
 }
 
+/// A draft of `dir` changed by `change` (its lines, its client, its dates,
+/// its notes), then made again as it would be issued on `day` (`refresh`)
+/// and kept; an issued invoice is never changed: a credit note answers it.
+pub fn change_draft(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, change: impl FnOnce(&mut Invoice)) -> Result<Invoice, String> {
+    let mut draft = super::draft_in(dir, id).ok_or_else(|| format!("{id}: no such draft here"))?;
+    change(&mut draft);
+    draft.number.clear();
+    draft.draft = id.to_string();
+    refresh(&mut draft, s, day);
+    super::save_draft(dir, &draft)
+}
+
 /// What a check found: required (issue waits) or recommended (said only).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Check {
@@ -569,6 +581,7 @@ pub struct Steps<'a> {
 /// budget line planned; the draft taken out. All or nothing: a step that
 /// fails undoes the ones before it. `client`, when given, is the client
 /// as its profile says now, frozen with it.
+#[allow(clippy::too_many_arguments)]
 pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &Numbering, client: Option<Client>, steps: &Steps, tr: &Translator) -> Result<Invoice, String> {
     // Sharing on, the `drafts` part off: the records do not travel, so the
     // other devices' numbers may not be known here.

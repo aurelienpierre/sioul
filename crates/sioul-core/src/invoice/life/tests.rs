@@ -7,7 +7,7 @@
 use super::*;
 use crate::config::{IdSetting, LineSetting, TaxSetting};
 use crate::invoice::record::Status;
-use crate::invoice::{all_in, draft_in, drafts_in, find_in, html, save_draft};
+use crate::invoice::{all_in, draft_in, drafts_in, find_in, html, remove_draft, save_draft};
 use crate::timelog::{self, Session};
 use std::path::PathBuf;
 
@@ -312,12 +312,21 @@ fn a_credit_note_cancels_and_frees_the_time() {
     let late = credit(kept, Some(&[0]), &liable, day("2026-10-08"));
     assert_eq!((late.totals.tax, late.lines[0].category.as_str()), (0, "E"));
     assert!(html(&late, &tr).contains("293 B"), "{}", html(&late, &tr));
+    // A draft changes freely: a line added, the totals made again; it stays a draft.
+    let changed = change_draft(&place.invoices(), &rest_id(&place, kept, &s), &s, day("2026-10-08"), |d| d.lines.push(Line::of_time("Travel", 30, 6000, "E", 0))).unwrap();
+    assert_eq!((changed.lines.len(), changed.totals.due, changed.number.as_str()), (2, 9000, ""));
+    remove_draft(&place.invoices(), &changed.draft).unwrap();
     // The rest credited: the invoice is credited, all its time free.
     let rest = save_draft(&place.invoices(), &credit(kept, Some(&[0]), &s, day("2026-10-08"))).unwrap();
     issue(&place.invoices(), &rest.draft, &s, day("2026-10-08"), &Numbering::default(), None, &none, &tr).unwrap();
     let all = all_in(&place.invoices());
     assert_eq!(all.iter().find(|i| i.number == "2026-001").unwrap().status(&all), Status::Credited);
     assert!(timelog::sessions_in(&time).iter().all(|x| x.invoice.is_empty()));
+}
+
+/// A credit note's draft for the line `0` of `invoice`, kept: its id.
+fn rest_id(place: &Place, invoice: &Invoice, s: &InvoiceSettings) -> String {
+    save_draft(&place.invoices(), &credit(invoice, Some(&[0]), s, day("2026-10-08"))).unwrap().draft
 }
 
 /// A deposit invoice, then the final invoice deducting it; payments add up.

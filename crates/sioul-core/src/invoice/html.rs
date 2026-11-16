@@ -72,7 +72,9 @@ fn current(invoice: &Invoice, tr: &Translator) -> String {
     if !issuer.trade_name.is_empty() {
         seller.push(escape(&issuer.trade_name));
     }
-    seller.push(lines_html(&issuer.address.text("")));
+    // The issuer's country said only to a client abroad, the client's only when abroad.
+    let client_country = if invoice.client.address.country.trim().is_empty() { home.clone() } else { invoice.client.address.country.clone() };
+    seller.push(lines_html(&issuer.address.text(&client_country)));
     seller.extend(issuer.ids.iter().filter(|i| i.printed && !i.value.trim().is_empty()).map(|i| id_line(&i.kind, &i.value)));
     if !issuer.email.is_empty() {
         seller.push(escape(&issuer.email));

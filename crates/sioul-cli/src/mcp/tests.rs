@@ -1440,6 +1440,7 @@ fn health_never_reaches_an_agent() {
         ("letters", json!({}), Answers),
         ("time", json!({}), Answers),
         ("invoices", json!({}), Answers),
+        ("draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Workshop", "price": 100 }] }), Answers),
         ("reminders", json!({ "days": 30 }), Answers),
         ("now", json!({}), Answers),
         ("spam_status", json!({}), Answers),
