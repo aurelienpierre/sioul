@@ -26,7 +26,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 **New project** (or **New ▾ ▸ A project**):
 
 - **Name**.
-- **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its postal address.
+- **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
 - Without it, the project is yours. **Yours, outside work** keeps its tasks in view in quiet time, with family and friends.
 - **Where it stands**: open, waiting, or closed.
 

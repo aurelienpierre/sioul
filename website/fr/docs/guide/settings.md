@@ -99,14 +99,47 @@ Sur un ordinateur, ou une tablette sans carte SIM, les messages multimédias qui
 
 Ce qui est imprimé sur les factures que vous faites depuis [Temps](time.md#invoices) et [Projets](projects.md) :
 
-- **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe) ; en France, un entrepreneur individuel écrit « EI » juste après son nom (« Camille Exemple EI »), comme le demande la loi ;
-- **SIRET**, ou le numéro d’entreprise là où vous êtes ; vide tant que votre entreprise n’est pas immatriculée ;
-- **Mention de TVA** : pour une micro-entreprise en France, « TVA non applicable, art. 293 B du CGI » ;
+- **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe). La loi demande que le nom d’un entrepreneur individuel porte « EI » : Sioul l’imprime pour vous juste après le nom (« Camille Exemple EI ») quand c’est votre forme juridique (`legal_form = "ei"`, plus bas, la première du préréglage français, donc aussi quand vous n’en indiquez pas), et un nom qui le dit déjà ne le porte qu’une fois ;
+- **SIRET**, ou le numéro d’entreprise là où vous êtes ; vide tant que votre entreprise n’est pas immatriculée. En France, neuf chiffres se lisent comme votre SIREN ; un numéro qui ne passe pas sa vérification (un chiffre faux) retient la facture jusqu’à ce qu’il soit juste ;
+- **Mention de TVA** : pour une micro-entreprise en France, « TVA non applicable, art. 293 B du CGI ». Sans `preset` réglé (plus bas), une mention qui cite l’article 293 B fait de vos factures celles d’un entrepreneur individuel français en franchise en base de TVA, avec cette mention comme celle de la franchise ; toute autre mention est imprimée telle quelle, sous **Ailleurs** ([Les règles de votre pays](time.md#your-countrys-rules)) ;
 - **Les numéros de facture commencent par** : les numéros se suivent ensuite, 2026-001, 2026-002… ; laissé vide, le préfixe est l’année, si bien que la numérotation repart chaque année, tandis qu’un préfixe à vous continue de compter ;
-- **Devise** : un code de trois lettres, comme EUR, USD, CHF ;
-- **Modalités de paiement** : imprimées en bas (coordonnées bancaires, délai, pénalités de retard) ;
+- **Devise** : un code de trois lettres, comme EUR, USD, CHF : la devise de vos factures, sauf si la fiche d’un client en donne une autre ;
+- **Modalités de paiement** : imprimées en bas (coordonnées bancaires, délai). En France, Sioul imprime lui-même les mentions de retard de paiement pour les clients professionnels (pas d’escompte pour paiement anticipé, les pénalités, l’indemnité de 40 €) : laissez-les hors de ces modalités, sinon elles s’impriment deux fois ;
 - **Les factures vont dans** : le dossier de leurs PDF, `Documents/Factures` dans votre dossier personnel s’il est vide ;
 - **Une heure coûte** : le tarif quand un projet ne fixe pas le sien.
+
+Depuis novembre 2026, une facture est vérifiée avant d’être émise d’après ce que demandent les règles de votre pays : un SIREN qui manque, ou l’adresse d’un client professionnel, la retient désormais, avec une phrase qui dit quoi ajouter.
+
+**Dans le fichier de configuration**, pour l’instant ([Où les réglages sont gardés](#where-settings-are-kept), sous `[invoice]`), en attendant que Paramètres ▸ Factures les montre par pays. Les réglages ci-dessus continuent de fonctionner comme avant :
+
+- `preset` : les règles de votre pays, `fr`, `de`, `be`, `uk`, `ch` ou `elsewhere` (`es` et `it` sont nommés, et non pris en charge) ; `legal_form` : en France `ei` (micro-entrepreneur compris, et par défaut), `eurl`, `sasu`, `sarl`, `sas` ou `sa`, ailleurs `sole` (par défaut) ou `company` ; `regime`, en France : `micro` ou `reel` ;
+- `[[invoice.tax]]` : votre régime de TVA à partir d’un jour, `from` (`2027-01-01`), `scheme` (`none`, `franchise` ou `liable`) et, en franchise, `mention` quand vous voulez une autre mention que celle de votre pays ; `options = ["debits"]` en France, quand vous avez opté pour le paiement de la taxe d’après les débits ;
+- `[[invoice.id]]` : vos identifiants, chacun un `kind` que nomme votre pays (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), sa valeur `value`, et `printed` ;
+- `trade_name` (le nom commercial), `postcode`, `city`, `country` (deux lettres, comme `FR`) et `email` ; `capital`, le capital social d’une société tel qu’il s’imprime ; `insurance`, votre assurance professionnelle telle qu’elle s’imprime (assureur, coordonnées, couverture) ;
+- `[[invoice.bank]]` : `holder`, `iban` et `bic`, imprimés sur vos factures ;
+- `pattern` (`{YYYY}-{N:3}` : l’année `{YYYY}` ou `{YY}`, le mois `{MM}`, et un seul compteur, `{N}`, ou `{N:4}` pour quatre chiffres au moins), `reset` (`yearly`, avec l’année dans le modèle, ou `never`), `credit_pattern` (une série à part pour les avoirs ; vide, ils suivent vos factures) ;
+- `language` (`en` ou `fr`), `terms_days` et `end_of_month` (le délai de paiement), `penalty_rate` (un taux de pénalités de retard à vous, en pour cent ; sinon celui de la France par défaut, le taux de la BCE majoré de 10 points) ;
+- `[[invoice.line]]` : une ligne à vous (`text`), ou l’une des mentions de votre pays dans vos mots (son `id` et un nouveau `text`) ou retirée (son `id` et `off = true`) ; celles de la France sont `escompte`, `penalties`, `indemnity`, `capital` et `debits`.
+
+```toml
+[invoice]
+preset = "fr"
+legal_form = "ei"
+regime = "micro"
+name = "Camille Exemple"
+postcode = "69001"
+city = "Lyon"
+
+[[invoice.id]]
+kind = "siret"
+value = "…"
+
+[[invoice.tax]]
+from = "2026-01-01"
+scheme = "franchise"
+```
+
+Une société règle sa `legal_form`, même en franchise : une mention de TVA qui cite l’article 293 B, sans rien d’autre, fait de vos factures celles d’un entrepreneur individuel.
 
 ## Les réglages propres à chaque page {#each-pages-own-settings}
 

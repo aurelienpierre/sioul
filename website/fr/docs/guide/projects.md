@@ -26,7 +26,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 **Nouveau projet** (ou **Nouveau ▾ ▸ Un projet**) :
 
 - **Nom**.
-- **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent son adresse postale.
+- **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent sa fiche de client quand il en a une ([Vos clients](time.md#your-clients)), sinon son adresse postale.
 - Sans cela, le projet est à vous. **À vous, hors travail** garde ses tâches en vue pendant le calme, avec la famille et les amis.
 - **Où il en est** : ouvert, en attente ou fermé.
 

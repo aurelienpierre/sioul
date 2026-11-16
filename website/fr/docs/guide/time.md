@@ -16,7 +16,8 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 ## Protégé par défaut {#what-is-protected}
 
 - Votre temps, vos clients et vos factures restent dans des fichiers lisibles sur vos appareils. Pas de compte à ouvrir, pas d’abonnement, pas de serveur de Sioul.
-- Un numéro de facture n’est jamais donné deux fois, même avec plusieurs appareils : un seul appareil numérote les factures, et Sioul attend plutôt que de risquer un numéro en double.
+- Un numéro de facture n’est jamais donné deux fois, même avec plusieurs appareils : un seul appareil numérote les factures, et Sioul attend plutôt que de risquer un numéro en double. Sioul note le dernier numéro donné, si bien qu’un numéro reste donné même si son fichier est supprimé.
+- Une facture émise n’est jamais changée : un avoir qui la cite la corrige.
 - Le temps déjà facturé ne peut plus être changé, ni facturé de nouveau.
 - Le tableur pour votre comptable ne peut pas porter de formule cachée : un titre de tâche venu d’un courriel de quelqu’un est écrit comme du simple texte.
 - Quand vos appareils partagent, votre temps et vos factures voyagent scellés, par un dossier que votre propre synchronisation transporte : le dossier et son serveur voient que quelque chose a changé, jamais quoi ([Le partage](sharing.md)).
@@ -65,20 +66,49 @@ Le bouton d’export, en haut à droite de la page Temps : **Le temps facturab
 
 ## Les factures {#invoices}
 
-Sur la page d’un projet, ou à côté du projet sur la page Temps, **Faire la facture** quand du temps facturable attend.
+Sur la page d’un projet, ou à côté du projet sur la page Temps, **Faire la facture** quand du temps facturable attend. Sioul fait la facture de ce temps et l’émet du même clic. S’il manque quelque chose que demandent les règles de votre pays (votre SIREN, l’adresse d’un client professionnel…), Sioul dit quoi, en mots simples, et ne fait rien : ajoutez-le, puis refaites la facture.
 
-- **Les numéros.** Avec le préfixe habituel, l’année, les numéros repartent de 001 chaque mois de janvier : 2026-001, 2026-002. Avec votre propre préfixe, ils continuent après le dernier, d’une année sur l’autre. Un numéro n’est jamais donné deux fois, et une facture ne peut pas être supprimée depuis Sioul.
-- **Les lignes** : une par tâche (ou par temps noté sans tâche), avec ses heures au taux du projet.
+- **Les numéros.** Avec le modèle habituel, l’année puis trois chiffres, les numéros repartent de 001 chaque mois de janvier : 2026-001, 2026-002. Avec votre propre préfixe, ils continuent après le dernier, d’une année sur l’autre. Sioul note le dernier numéro donné dans chaque série : un numéro n’est jamais donné deux fois, même si son fichier est supprimé à la main, et un numéro sans facture sur cet appareil est signalé, jamais redonné. Une facture ne peut pas être supprimée depuis Sioul.
+- **Les lignes** : une par tâche (ou par temps noté sans tâche), avec son temps au taux du projet, au centime près.
 - **Facturé une fois** : le temps facturé porte le numéro de sa facture ; la facture suivante le laisse de côté, et ce temps ne peut plus être changé.
-- **Ce qu’elle imprime** : votre nom ou votre raison sociale, votre adresse et votre SIRET ; le nom et l’adresse postale du client ; son numéro ; le jour où elle est émise, la date ou la période de la prestation (le premier et le dernier jour des séances qu’elle facture, ou leur seul jour), et le jour où le paiement est dû ; le projet ; chaque ligne avec ses heures, son taux et son montant, puis le total ; votre mention de TVA (« TVA non applicable, art. 293 B du CGI » pour une micro-entreprise) ; vos modalités de paiement ; et une ligne sur le retard de paiement : des pénalités au taux de trois fois le taux d’intérêt légal, l’indemnité forfaitaire de 40 € pour frais de recouvrement, et pas d’escompte pour paiement anticipé. « EI » après votre nom n’est pas ajouté pour vous : voir [Pas encore là](#not-there-yet).
-- **Le PDF** (A4) va dans `Documents/Factures` de votre dossier personnel, ou dans le dossier choisi. **Imprimer à nouveau** le réécrit.
-- **Votre budget** : le total est attendu dans le budget du projet, payable à trente jours. **Payée** inscrit le paiement à la date du jour, et l’argent compte.
+- **Ce qu’elle imprime**, comme le disent [les règles de votre pays](#your-countrys-rules) : votre nom, suivi de « EI » pour un entrepreneur individuel en France, votre adresse et vos identifiants (votre SIREN ou votre SIRET en France) ; le nom, l’adresse et les identifiants du client, et l’adresse de livraison des biens quand elle est autre ; son numéro ; le jour où elle est émise, la date ou la période de la prestation (le premier et le dernier jour des séances qu’elle facture, ou leur seul jour), et le jour où le paiement est dû ; ce qu’elle vend (des prestations de services, des biens, ou les deux) ; chaque ligne avec sa quantité, son unité, son prix unitaire et son montant ; la TVA par taux quand vous y êtes assujetti, et les totaux ; la mention de la franchise en base de TVA quand vous en relevez (« TVA non applicable, article 293 B du CGI » en France) ; pour un client professionnel, les mentions sur le retard de paiement (en France : pas d’escompte pour paiement anticipé, des pénalités au taux de la BCE majoré de 10 points, gardé avec la facture, et l’indemnité forfaitaire de 40 € pour frais de recouvrement), aucune pour un particulier ; vos modalités de paiement et vos propres lignes.
+- **Dans sa propre langue et sa propre devise** : le français ou l’anglais, et la devise de la fiche du client, sinon celle de vos réglages, quelle que soit la langue de la fenêtre. Ses montants s’affichent dans cette devise partout dans Sioul.
+- **Le PDF** (A4) va dans `Documents/Factures` de votre dossier personnel, ou dans le dossier choisi. **Imprimer à nouveau** le réécrit à partir de l’enregistrement de la facture, dans sa propre langue.
+- **Votre budget** : le montant dû est attendu dans le budget du projet le jour de son échéance : trente jours plus tard, sauf si vos réglages ou la fiche du client disent autre chose.
 
 Votre nom, votre adresse, vos numéros, la devise, les modalités de paiement et le taux horaire se règlent une fois, dans [Paramètres ▸ Factures](settings.md#invoices).
+
+### Payée, et les avoirs {#paid-and-credit-notes}
+
+- **Payée**, sur la page d’un projet ou sur la carte de la facture dans l’agenda, inscrit un paiement de ce qui reste, par virement, à la date du jour, et l’argent compte dans le budget ; **Annuler** le reprend. Une fois la case décochée, les paiements que vous aviez indiqués à la main sont retirés.
+- **Depuis votre banque** : quand vous prenez l’export de votre banque (**Prendre un export…**), un virement que Sioul rapproche d’une facture y est inscrit comme paiement, au jour et au montant de la banque, et la ligne d’état le dit (« Payée, d’après votre banque : facture 2026-004. »), avec **Annuler**. Il n’y a rien à confirmer. Sioul rapproche un virement d’une facture dont l’argent est attendu dans un budget : le champ **Factures attendues dans** du projet.
+- **Payée en partie** : les paiements s’additionnent ; tant qu’ils n’atteignent pas le montant dû, la facture n’est pas encore payée, et `sioul invoices` dit ce qui reste. Sioul ne dit jamais d’une facture qu’elle est en retard.
+- **Une facture erronée** n’est jamais changée : un avoir qui la cite la corrige, avec toutes ses lignes pour l’annuler, ou certaines pour les corriger. Il prend le numéro suivant de la même série. Émis, il règle ce qu’il crédite, et le temps de chaque ligne qu’il annule en entier peut être facturé de nouveau. Pour l’instant, les avoirs se font [en ligne de commande](#from-the-command-line).
+- **Les acomptes** : une facture peut déduire les factures d’acompte émises avant elle ; faire une facture d’acompte viendra avec l’éditeur de factures ([Pas encore là](#not-there-yet)).
+
+### Les règles de votre pays {#your-countrys-rules}
+
+Ce qu’une facture doit dire dépend de votre pays, et en France de trois choses qui ne s’impliquent pas l’une l’autre : votre forme juridique (entrepreneur individuel, micro-entrepreneur compris, ou société), votre régime d’imposition (micro ou réel), et votre régime de TVA (la franchise en base, ou redevable de la TVA), qui peut changer à un jour donné. La facture d’un micro-entrepreneur redevable de la TVA porte « EI » et la TVA par taux ; celle d’une société en franchise porte la mention de la franchise, sa forme et son capital.
+
+Sioul connaît les règles de la France, de l’Allemagne, de la Belgique, du Royaume-Uni et de la Suisse, et **Ailleurs**, pour tout autre pays : aucune affirmation juridique, chaque identifiant et chaque ligne sont les vôtres. Les règles de chaque pays sont des données que Sioul lit, avec leurs sources :
+
+- **L’Espagne et l’Italie ne sont pas prises en charge**, et Sioul dit pourquoi plutôt que d’offrir un modèle qui y serait illégal : l’Espagne demande un logiciel de facturation certifié, aux factures chaînées et signées (VERI\*FACTU) ; les factures italiennes passent par le système d’échange de l’État (SdI), dans son propre format.
+- **La Belgique** : entre entreprises belges, les factures sont des factures électroniques structurées, envoyées par Peppol depuis 2026, et un PDF par courriel ne suffit plus. Sioul n’atteint pas Peppol : il fait le PDF, et envoyer la facture par votre point d’accès vous revient. En franchise, écrivez-en vous-même la mention : Sioul ne connaît pas la formulation exacte qu’exige la loi.
+- **La France, redevable de la TVA, avec des clients particuliers** : un logiciel qui enregistre leurs paiements doit être certifié ou attesté (article 286 I 3° bis du CGI), et Sioul n’a ni l’un ni l’autre. En franchise, rien n’est demandé.
+- **La France, la mention de la franchise** : le droit de la TVA passe dans un nouveau code, le CIBS, le 1er janvier 2027, et l’article à y citer n’est pas encore tranché (L. 223-3 ou L. 233-3). « TVA non applicable, article 293 B du CGI » reste valable jusqu’au 30 juin 2028 et est la mention par défaut ; vous pouvez en écrire une autre.
+- **Les taux de TVA** : Sioul livre ceux de chaque pays tels qu’ils étaient connus à la mi-2026 ; vérifiez-les avant de vous y fier.
+
+En attendant que Paramètres ▸ Factures les montre par pays, ces choix se font dans le fichier de configuration ([Paramètres ▸ Factures](settings.md#invoices)). Les réglages des factures faits avant continuent de fonctionner comme avant : une mention de TVA qui cite l’article 293 B veut dire la France, un entrepreneur individuel, le régime micro et la franchise ; toute autre mention veut dire Ailleurs, ses lignes imprimées comme avant.
+
+### Vos clients {#your-clients}
+
+Un client peut avoir une fiche, dans `sioul-clients.toml` dans votre dossier de notes, liée à son contact : une entreprise, un particulier ou un organisme public ; la dénomination ; l’adresse de facturation et, quand elle est autre, l’adresse de livraison ; ses identifiants (un SIREN, un numéro de TVA) ; la langue, la devise et le délai de paiement de ses factures ; l’adresse où les envoyer ; un bon de commande à imprimer. Un projet dont le **Pour** nomme ce contact, ou le nom de la fiche, facture avec elle. Sans fiche, une facture prend le nom du contact et sa première adresse postale, comme avant. Pour l’instant, les fiches s’écrivent à la main dans ce fichier (un exemple dans [les notes de conception, en anglais](https://sioul.aurelienpierre.com/dev/projects.html#clients)) ; Contacts et Projets les montreront plus tard.
 
 ### Sur plusieurs appareils {#on-several-computers}
 
 Un numéro de facture ne doit jamais être donné deux fois. Quand vous [partagez entre vos appareils](sharing.md), un seul appareil numérote les factures : un autre dit « Les factures sont numérotées sur … », et **Faire les factures sur cet appareil** les reprend, après une minute et demie, une fois que vos autres appareils le savent. Si votre dossier de partage ne peut pas être écrit, ou si un autre appareil ne s’est pas manifesté depuis quelques minutes, Sioul attend plutôt que de risquer un numéro en double.
+
+Chaque appareil dit aussi aux autres le dernier numéro qu’il a donné dans chaque série, si bien qu’un appareil dont les factures ne sont pas encore arrivées ne redonne jamais l’un de ces numéros. Un appareil qui partage, mais laisse de côté **Brouillons et factures**, n’émet aucune facture : il le dit, et vous les émettez sur un appareil qui les partage. Les fiches des clients voyagent avec vos projets, une fois que chacun de vos appareils a un Sioul qui les connaît.
 
 ## Pendant le calme {#in-quiet-time}
 
@@ -86,9 +116,10 @@ En dehors des heures de travail, la page Temps attend derrière **Montrer quand 
 
 ## Pas encore là {#not-there-yet}
 
-- **« EI » après votre nom.** Le nom d’un entrepreneur individuel doit être précédé ou suivi des mots « entrepreneur individuel » ou « EI » (service-public.gouv.fr, fiche F31808). Sioul ne l’ajoute pas de lui-même : écrivez-le juste après votre nom dans [Paramètres ▸ Factures](settings.md#invoices), comme le dit l’aide du champ (« Camille Exemple EI »).
-- **La facture électronique.** À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, en UBL, en CII ou dans un format mixte comme Factur-X, avec le SIREN du client. À partir de la même date, les données des ventes aux particuliers et à l’étranger doivent être transmises (e-reporting). Sioul ne fait que des factures en PDF, pour l’instant.
-- Les devis, les lignes au forfait, les frais, les montants de TVA et les avoirs.
+- **Les factures dans la fenêtre.** Un seul endroit pour toutes les factures et tous les brouillons (Argent ▸ Factures) ; un éditeur pour toute ligne (un forfait, des jours, des frais, des biens), qui dit ce qui manque pendant que vous tapez ; Paramètres ▸ Factures par pays ; les fiches des clients dans Contacts et Projets ; **Écrire le courriel**, le PDF joint ; **Payée…** avec le jour et le moyen de paiement ; **Avoir…** et **Acompte…**. D’ici là, un brouillon fait en ligne de commande ou par un [agent d’IA](ai-agent.md) s’émet en ligne de commande.
+- **Le fichier gardé, et la facture électronique.** Sioul fait un PDF ordinaire, réécrit quand vous l’imprimez à nouveau. Plus tard, chaque facture émise sera gardée telle que le fichier envoyé, un PDF/A-3 qui porte sa facture électronique (Factur-X, dans le profil de la norme européenne) et, sur les factures en euros, un code QR pour payer par virement, gardé à côté de son enregistrement avec son empreinte ; **Imprimer à nouveau** rendra alors ce fichier-là. À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, en UBL, en CII ou dans un format mixte comme Factur-X, avec le SIREN du client ; à partir de la même date, les données des ventes aux particuliers et à l’étranger doivent être transmises (e-reporting). L’envoi par votre plateforme depuis Sioul est prévu avant cette date.
+- **Les livres.** Le livre des recettes fait des paiements de vos factures, les déclarations à l’URSSAF par catégorie, et un mot quand vous approchez des seuils de la franchise de TVA ou du régime micro.
+- Les devis.
 - Le temps qui court dans les notifications de Windows et de macOS : seule la fenêtre de concentration le montre là.
 
 ## Pour aller plus loin {#going-further}
@@ -113,11 +144,29 @@ Le détail, avec ce qui vient de la recherche et ce qui est une supposition : 
 
 `sioul focus start <task> [--minutes 25]`, `sioul focus status` et `sioul focus stop [--done] [--note "…"]` mènent le minuteur de concentration depuis un terminal ; ses minutes comptent comme celles de la fenêtre.
 
+Vos factures, depuis un terminal :
+
+```
+sioul invoices [list] [--client <mots>] [--year 2026] [--status draft|issued|sent|partly-paid|paid|credited]
+sioul invoices show <numéro ou brouillon>
+sioul invoices export [--year 2026] | --html <numéro>
+sioul invoices draft <projet>
+sioul invoices issue <brouillon>
+sioul invoices credit <numéro> [--line 2]…
+sioul invoices pay <numéro> [--day 2026-11-16] [--amount 120.50] [--means transfer|card|cash|cheque|direct-debit|other]
+```
+
+`list` donne d’abord vos brouillons, puis vos factures, de la plus récente à la plus ancienne, chacune avec où elle en est. `show` donne les lignes, les totaux et les paiements d’une facture, et pour un brouillon ce qui lui manque encore avant de pouvoir l’émettre. `export` écrit toutes les factures en tableur, ou la page à imprimer d’une facture. `draft` fait un brouillon du temps d’un projet pas encore facturé : rien n’est numéroté. `issue` numérote un brouillon et le garde, comme le fait la fenêtre, et seulement sur l’appareil qui numérote vos factures. `credit` fait un brouillon d’avoir, de toutes les lignes d’une facture ou de celles données, que `issue` émet ensuite. `pay` inscrit un paiement reçu : ce qui reste, sauf si vous donnez un montant.
+
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 
 Votre estimation de la durée d’une tâche porte une information, avec un biais : l’erreur typique est de 20 à 30 %, les tâches courtes surestimées, les longues sous-estimées, et le total d’une journée déborde (Halkjelsvik et Jørgensen 2012). On se souvient mal de la durée des tâches passées, et voir les temps mesurés de tâches semblables aide (Roy, Christenfeld et McKenzie 2005). Votre estimation est donc gardée et corrigée dans le plan, jamais remplacée ; les minutes chronométrées comptent plus que celles dont on se souvient ; et la marge est celle de la journée, pas de chaque tâche.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constat 24, et dans [Time estimation (en anglais)](https://sioul.aurelienpierre.com/dev/research/time-estimation.html).
+Le droit français donne à chaque facture un numéro d’une série continue au moment où elle est émise, et une facture émise n’est jamais changée : un avoir qui cite son numéro et sa date la corrige (CGI, annexe II, art. 242 nonies A ; CGI, art. 289 ; BOFiP, BOI-TVA-DECLA-30-20-20-10 et -20). Un brouillon n’a donc pas de numéro, l’émission le numérote et le fige, le dernier numéro donné est noté à part des factures elles-mêmes, et une facture erronée trouve sa réponse dans un avoir. Les pays diffèrent par ce qu’une facture doit dire, pas par ce dont elle est faite : la norme européenne de la facture électronique, EN 16931, nomme chacune de ses parties, et les factures électroniques de la France et de l’Allemagne portent exactement ces parties (Factur-X 1.09.2). Un seul enregistrement garde donc une facture dans les termes de cette norme, les règles de chaque pays sont des données, et l’Espagne et l’Italie, dont les factures demandent un logiciel certifié ou le canal de l’État, sont dites hors d’atteinte plutôt que dotées d’un modèle qui y serait illégal.
+
+Un micro-entrepreneur déclare ce que ses clients ont payé, quand ils l’ont payé (URSSAF ; CGI, art. 50-0 et 102 ter), et ce que la loi demande sur une facture à un professionnel (les pénalités, l’indemnité de 40 €) ne l’est pas sur une facture à un particulier (code de commerce, L441-10). Un paiement que montre votre banque est donc inscrit sur sa facture de lui-même, avec Annuler, sans rien attendre de vous ; les mentions pour les professionnels ne vont qu’aux professionnels ; et une facture pas encore payée est dite telle, jamais « en retard », jamais en rouge : les mêmes chiffres en rouge font attendre le pire (Bazley, Cronqvist et Mormann 2021), et l’on détourne les yeux de ses comptes quand ils vont mal (Olafsson et Pagel 2017).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 24 et 76 à 79, et dans [Time estimation (en anglais)](https://sioul.aurelienpierre.com/dev/research/time-estimation.html) et [Invoices (en anglais)](https://sioul.aurelienpierre.com/dev/research/invoicing.html).
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
@@ -136,7 +185,8 @@ En octobre 2026, d’après la documentation de chaque application.
 | Des factures faites du temps | ✓ | en partie⁸ | ✓⁹ | ✓ | ✓ | ✓ |
 | Chaque heure facturée une fois, jamais deux | ✓ | ✗⁵ | ✓ | ✓ | ✓ | ? |
 | Des numéros de facture qui se suivent d’eux-mêmes | ✓¹⁰ | ✗¹¹ | ✓¹² | ✓¹² | ✓ | ✓ |
-| Devis, frais ou montants de TVA | ✗ | en partie¹³ | ✓ | ✓ | ✓ | ✓¹⁴ |
+| Devis, frais ou montants de TVA | en partie¹³ | en partie¹⁴ | ✓ | ✓ | ✓ | ✓¹⁵ |
+| Avoirs et factures d’acompte | en partie¹⁶ | ? | ? | ? | ? | ✓¹⁵ |
 | Un tableur pour votre comptable | ✓ | ✓ | ✓ | ? | ✓ | ? |
 
 1. Coupé quand vous l’arrêtez : au-delà du double du temps choisi (ou de ce temps et une demi-heure), le temps choisi compte ; sans fin fixée, trois heures au plus. Rien ne surveille si vous êtes devant votre ordinateur.
@@ -148,31 +198,33 @@ En octobre 2026, d’après la documentation de chaque application.
 7. Les enregistrements pas encore exportés sont ce que prend la facture suivante ; un montant restant à facturer n’est pas décrit.
 8. Un PDF fait d’un rapport, chaque champ modifiable ; la facture n’est pas gardée dans Toggl Track.
 9. À partir de l’offre Standard.
-10. Jamais donnés deux fois, aussi entre vos appareils : un seul appareil les numérote. Avec le préfixe habituel, la série repart chaque année.
+10. Jamais donnés deux fois, aussi entre vos appareils : un seul appareil les numérote, et le dernier numéro donné est noté. Avec le modèle habituel, la série repart chaque année.
 11. Le numéro de facture se tape à la main.
 12. Automatique par défaut ; il peut se changer.
-13. Un champ de taxe, tapé sur la facture.
-14. Devis, avoirs et factures d’acompte.
+13. La TVA par taux quand vous y êtes assujetti ; les lignes autres que du temps (un forfait, des jours, des frais) seulement dans le brouillon d’un agent d’IA pour l’instant ; pas de devis.
+14. Un champ de taxe, tapé sur la facture.
+15. Devis, avoirs et factures d’acompte.
+16. Un avoir qui cite la facture, fait en ligne de commande pour l’instant ; une facture finale déduit les factures d’acompte qu’elle cite, et faire une facture d’acompte viendra avec l’éditeur.
 
 **La France, et où vivent vos données**
 
 | | Sioul | Toggl Track | Clockify | Harvest | Kimai | Freebe |
 |---|---|---|---|---|---|---|
-| Les mentions légales françaises imprimées pour vous | en partie¹ | ? | ? | ? | ?² | ✓ |
+| Les mentions légales françaises imprimées pour vous | ✓¹ | ? | ? | ? | ?² | ✓ |
 | Des factures électroniques pour la France (Factur-X, UBL, CII) | ✗³ | ? | ? | ? | en partie⁴ | ✓ |
 | Fonctionne sans connexion | ✓ | ✓⁵ | ✓⁵ | ? | ? | ? |
 | Votre temps sur vos propres appareils, sans compte | ✓ | ✗ | ✗ | ✗ | en partie⁶ | ✗ |
 | Logiciel libre | ✓ | ✗⁷ | ✗⁷ | ✗⁷ | ✓ | ✗⁷ |
 
-1. Imprimés : le SIRET, la mention d’exonération de TVA, la date ou la période de la prestation, les pénalités de retard, l’indemnité de 40 €, pas d’escompte pour paiement anticipé. Pas imprimés pour vous : « EI » (tapez-le après votre nom), et le SIREN du client, que les micro-entreprises doivent donner à partir du 1er septembre 2027.
+1. D’après vos réglages et la fiche du client : « EI » après le nom d’un entrepreneur individuel, le SIREN ou le SIRET, la forme, le capital et le registre d’une société, la mention de la franchise de TVA ou la TVA par taux, le SIREN et le numéro de TVA du client, l’adresse de livraison, la date ou la période de la prestation, la nature de l’opération ; pour les clients professionnels seulement, pas d’escompte pour paiement anticipé, les pénalités de retard et l’indemnité de 40 €. Ce qui manque est dit avant que la facture soit émise.
 2. Ses modèles de facture sont à modifier vous-même ; aucun modèle français n’a été confirmé.
-3. Sioul fait des factures en PDF. À partir du 1er septembre 2027, une micro-entreprise française doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée.
+3. Sioul fait des factures en PDF ; plus tard, chacune portera sa Factur-X. À partir du 1er septembre 2027, une micro-entreprise française doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée.
 4. Avec une extension payante, 99 € par an : Factur-X, ZUGFeRD, XRechnung, UBL et CII.
 5. Les applications de bureau de Toggl Track ; Clockify sur Mac, Windows, Linux, Android et iOS. Les deux envoient le temps à leurs serveurs une fois de nouveau en ligne.
 6. Sur votre propre serveur, ou dans le nuage de Kimai.
 7. Un service hébergé, selon ses propres conditions ; aucune licence libre n’est publiée pour lui.
 
-D’autres en font plus pour la facturation elle-même : la détection d’inactivité (Toggl Track, Clockify) ; les devis, les frais, la TVA, les avoirs et les liens de paiement (Clockify, Harvest, Kimai, Freebe) ; les factures électroniques de la réforme française (Freebe, et Kimai avec une extension) ; les déclarations à l’URSSAF (Freebe) ; les équipes, les validations et les intégrations (les quatre services commerciaux). Sioul garde ce qui reste à facturer, ne facture chaque heure qu’une fois, numérote sans double même d’un appareil à l’autre, donne ce même temps au plan de vos journées, et garde le tout sur vos propres appareils.
+D’autres en font plus pour la facturation elle-même : la détection d’inactivité (Toggl Track, Clockify) ; les devis, les frais et les liens de paiement, avec la TVA et les avoirs faits dans leur fenêtre (Clockify, Harvest, Kimai, Freebe) ; les factures électroniques de la réforme française (Freebe, et Kimai avec une extension) ; les déclarations à l’URSSAF (Freebe) ; les équipes, les validations et les intégrations (les quatre services commerciaux). Sioul garde ce qui reste à facturer, ne facture chaque heure qu’une fois, numérote sans double même d’un appareil à l’autre, imprime ce que demande votre pays d’après des règles gardées comme des données, inscrit sur chaque facture les paiements que montre votre banque, donne ce même temps au plan de vos journées, et garde le tout sur vos propres appareils.
 
 ??? info "Sources"
     Toutes lues le 8 octobre 2026.
@@ -188,10 +240,12 @@ D’autres en font plus pour la facturation elle-même : la détection d’ina
 
 - **Le temps noté** : du TOML, un fichier par mois (`~/.local/share/sioul/time/2026-10.toml` sous Linux), la séance en cours dans `time/running.toml`, pour que fermer la fenêtre ne perde rien. Chaque enregistrement dit comment ses minutes ont été connues (`kind` : mesuré, tapé, corrigé).
 - **Un minuteur oublié** : une séance au-delà de `max(2 × choisi, choisi + 30)` minutes compte le temps choisi ; une séance sans fin fixée compte 180 minutes au plus ; l’une ou l’autre est alors marquée corrigée.
-- **Les factures** : un enregistrement chacune (`invoices/<numéro>.toml`), écrit en entier puis renommé à sa place, qui garde vos coordonnées telles qu’elles étaient ce jour-là ; un enregistrement qui ne se lit plus garde quand même son numéro. Le PDF est en A4, avec des marges de 18 mm, écrit par le `QPdfWriter` de Qt à partir d’un `QTextDocument`.
-- **La numérotation** : le plus grand numéro du préfixe, plus un, sur trois chiffres. Le préfixe par défaut est l’année suivie d’un tiret : cette série repart donc chaque année ; un préfixe à vous continue simplement.
-- **Facturé une fois** : chaque séance facturée porte le numéro de sa facture, et une nouvelle facture laisse de côté toute séance qui en a un.
-- **Un seul appareil numérote** : un bail dans le dossier de partage (`leases/invoices/<ordinateur>.lease`, scellé comme les enregistrements), renouvelé chaque minute et valable cinq ; un autre appareil n’agit qu’après 90 secondes d’attente, et seulement si les autres appareils se sont manifestés récemment ([Le partage](sharing.md#some-things-one-device-at-a-time)).
+- **Les factures** : un enregistrement chacune (`invoices/<numéro>.toml`), dans les termes de la norme européenne EN 16931 (format 2 depuis novembre 2026 : types 380, 381 et 386, montants en centimes entiers, arrondis au plus loin de zéro), écrit une seule fois, jamais par-dessus un autre fichier, qui garde vos coordonnées et celles du client telles qu’elles étaient ce jour-là ; ensuite, seuls ses paiements et le jour de son envoi y sont écrits, sur place. Les brouillons dans `invoices/drafts/<id>.toml`, nommés par le moment où ils ont été faits, jamais par un numéro. Un enregistrement fait avant novembre 2026 se lit tel qu’il est et n’est jamais réécrit ; un enregistrement qui ne se lit plus garde quand même son numéro. Le PDF est en A4, avec des marges de 18 mm, écrit par le `QPdfWriter` de Qt à partir d’un `QTextDocument`, jusqu’au fichier émis d’une phase suivante.
+- **La numérotation** : un modèle (`{YYYY}-{N:3}` par défaut) et son recommencement, chaque année ou jamais ; chaque numéro vaut un de plus que le plus grand du journal des séries (`invoices/series.toml`, le dernier numéro de chaque série), des enregistrements et du bail de chaque appareil. Un préfixe vide donne l’année et trois chiffres, qui repartent chaque année ; un préfixe à vous continue simplement.
+- **Émise tout ou rien** : le numéro, l’enregistrement, le journal, le temps marqué et la ligne du budget s’écrivent ensemble ; une étape qui échoue défait celles d’avant.
+- **Les pays** : un fichier de règles par pays (`crates/sioul-core/data/invoice-presets/`), lu par le même code : les identifiants et leur vérification (un SIREN ou un SIRET par sa clé de Luhn), ce qui est exigé, les régimes et les taux de TVA, les mentions avec leurs codes de sujet EN 16931, les délais de paiement, les seuils datés.
+- **Facturé une fois** : chaque séance facturée porte le numéro de sa facture, et une nouvelle facture laisse de côté toute séance qui en a un ; un avoir libère les séances des lignes qu’il annule en entier.
+- **Un seul appareil numérote** : un bail dans le dossier de partage (`leases/invoices/<ordinateur>.lease`, scellé comme les enregistrements), renouvelé chaque minute et valable cinq, qui porte le dernier numéro de chaque série ; un autre appareil n’agit qu’après 90 secondes d’attente, et seulement si les autres appareils se sont manifestés récemment ([Le partage](sharing.md#some-things-one-device-at-a-time)).
 - **Le tableur** : les guillemets de la RFC 4180 ; une cellule qui commence par `=`, `+`, `-`, `@`, une tabulation ou un retour chariot reçoit une apostrophe devant, pour qu’un tableur ne l’exécute jamais comme une formule (injection CSV) ; `;` et la virgule décimale en français.
-- **Le partage** : la partie **Temps** porte le temps noté, la séance en cours et les revues du jour ; **Brouillons et factures** porte les enregistrements des factures. Chaque enregistrement est scellé avec XChaCha20-Poly1305 sous une clé tirée de votre phrase de passe par Argon2id (64 Mio, 3 passes) et gardée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+- **Le partage** : la partie **Temps** porte le temps noté, la séance en cours et les revues du jour ; **Brouillons et factures** porte les enregistrements des factures, leurs brouillons et le journal des séries ; **Projets et argent** porte les fiches des clients (`sioul-clients.toml`), une fois que le Sioul de chaque appareil les connaît. Chaque enregistrement est scellé avec XChaCha20-Poly1305 sous une clé tirée de votre phrase de passe par Argon2id (64 Mio, 3 passes) et gardée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 - **Combien de temps prennent les choses, en chiffres** : y = ln(temps passé ÷ première estimation) sur les tâches finies ; les poids diminuent de moitié tous les 4,5 jours ; les minutes tapées pèsent un quart ; rapproché de 1,1× tant qu’il n’y a pas environ neuf tâches, et par domaine, de la vôtre ; robuste aux valeurs aberrantes (trois écarts médians mis à l’échelle, tenu entre ×8 et ÷8) ; chaque jour garde comme temps libre le 85e centile d’une simulation à graine, au plus un tiers de la journée ([les notes de conception, en anglais](https://sioul.aurelienpierre.com/dev/capacity.html)).
