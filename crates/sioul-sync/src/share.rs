@@ -513,6 +513,27 @@ fn movements_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.movements >= MOVEMENTS_SHARED))
 }
 static PAPERS_RULES: Rules = Rules { keyed: &[keyed("paper", &["id"])], whole: &[], local: &[], next: None };
+/// The client profiles (`sioul_core::clients`): each `[[client]]` by its id,
+/// as projects are by theirs.
+static CLIENTS_RULES: Rules = Rules { keyed: &[keyed("client", &["id"])], whole: &[], local: &[], next: None };
+
+/// The client profiles' store, in the notes folder beside the projects.
+pub const CLIENTS: &str = "notes/sioul-clients.toml";
+
+/// What a device's entry says once its Sioul has the client profiles' store (`devices::Entry::clients`).
+pub const CLIENTS_SHARED: u32 = 1;
+
+/// Whether the client profiles travel by the log: at least one other
+/// device counts (`present`), and every one of them says in its sealed
+/// entry that its Sioul has the store (`devices::Entry::clients`), as the
+/// persons' store waits (`persons_shared`): until then each device keeps
+/// its profiles to itself, and an older Sioul, which would take the file
+/// for a note, never holds a record it would keep waiting. A sync app
+/// carrying the notes folder carries the file itself, whatever this says.
+fn clients_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.clients >= CLIENTS_SHARED))
+}
 /// The persons your admin is done for (`sioul_core::persons`): each person
 /// a table named by its id (`[person.<id>]`), each of its fields an entry, so
 /// that a name changed on the phone and a birth date added on the computer
@@ -660,6 +681,7 @@ const NOT_NOTES: &[&str] = &[
     sioul_core::projects::FILE,
     sioul_core::projects::OLD_FILE,
     sioul_core::projects::BEFORE_RENAME,
+    sioul_core::clients::FILE,
     sioul_core::budget::LEDGER,
     sioul_core::bank::MANIFEST,
     sioul_core::contracts::MANIFEST,
@@ -965,6 +987,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
     // files; the notes themselves, each file sealed apart.
     if let Some(notes) = config.notes_root_path() {
         stores.push(file("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&notes), Shape::Toml(&PROJECTS_RULES)));
+        // The client profiles: travel once every other device says it has the store (`clients_shared`).
+        stores.push(file("projects", CLIENTS, notes.join(sioul_core::clients::FILE), Shape::Toml(&CLIENTS_RULES)));
         stores.push(file("projects", "notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
         stores.push(file("projects", "notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
         stores.push(file("projects", "notes/sioul-contracts.toml", notes.join(sioul_core::contracts::MANIFEST), Shape::Toml(&CONTRACTS_RULES)));
@@ -2942,6 +2966,12 @@ struct Memory {
     /// Missing: not yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     persons_open: bool,
+    /// The client profiles' store (`CLIENTS`) travelled from here once every
+    /// device said it has it (`clients_shared`): from then on it stays in this
+    /// device's exchanges, as `persons_open` keeps the persons. Missing: not
+    /// yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    clients_open: bool,
     /// Your word on topics (`TOPICS`) travelled from here once every device
     /// said it has the store (`topics_shared`): from then on it stays in
     /// this device's exchanges, as `persons_open` keeps the persons. Missing:
@@ -6051,6 +6081,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if persons && !memory.persons_open && persons_shared(sharing, &memory, now_ms) {
         memory.persons_open = true;
     }
+    let clients = stores.iter().any(|s| s.name == CLIENTS);
+    if clients && !memory.clients_open && clients_shared(sharing, &memory, now_ms) {
+        memory.clients_open = true;
+    }
     let topics = stores.iter().any(|s| s.name == TOPICS);
     if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
         memory.topics_open = true;
@@ -6067,6 +6101,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             || (s.name == MOVEMENTS && !memory.movements_open)
             || (s.name == NOTICES && !memory.notices_open)
             || (s.name == PERSONS && !memory.persons_open)
+            || (s.name == CLIENTS && !memory.clients_open)
             || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open)
     };
     let stores: &[Store] = if stores.iter().any(left_out) {

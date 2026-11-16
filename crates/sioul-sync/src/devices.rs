@@ -132,6 +132,14 @@ pub struct Entry {
     /// field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub persons: u32,
+    /// Whether its Sioul has the client profiles' store (`share::CLIENTS`,
+    /// `sioul_core::clients`): 1 from a build that has it, 0 from an older
+    /// one, which takes the file for a note. The store travels only once
+    /// every other device that counts says 1 (`share::clients_shared`), as
+    /// the persons' store does. An older Sioul reads the entry as before, the
+    /// field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub clients: u32,
     /// Whether its Sioul has the store of your word on mail's topics
     /// (`share::TOPICS`, `sioul_core::topics::labels`): 1 from a build that
     /// has it, 0 from an older one. The store travels only once every other
