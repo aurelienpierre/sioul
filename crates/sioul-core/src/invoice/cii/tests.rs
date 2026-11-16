@@ -118,6 +118,60 @@ fn credit_notes_deposits_and_payment() {
     assert_eq!(all(&xml(&sample("fr-deposit").invoice).unwrap(), "TypeCode")[0], "386");
 }
 
+/// The account: IBANID, AccountName, ProprietaryID in the schema's order,
+/// whatever the IBAN; the XML and the QR code name the same account, the
+/// first whose key holds.
+#[test]
+fn the_account_is_written_in_the_schema_s_order() {
+    let text = xml(&sample("fr-account-not-iban").invoice).unwrap();
+    let name = text.find("<ram:AccountName>Camille Exemple</ram:AccountName>").expect("its holder");
+    let proprietary = text.find("<ram:ProprietaryID>FR7630006000011234567890188</ram:ProprietaryID>").expect("not an IBAN");
+    assert!(name < proprietary && !text.contains("<ram:IBANID>"), "{text}");
+    assert!(text.contains("<ram:TypeCode>30</ram:TypeCode>"), "a credit transfer, not SEPA's");
+    let mut two = sample("fr-franchise").invoice;
+    two.issuer.banks.insert(0, crate::invoice::Bank { holder: "Old".into(), iban: "FR76 3000 6000 0112 3456 7890 188".into(), bic: String::new() });
+    let text = xml(&two).unwrap();
+    assert!(text.contains("<ram:IBANID>FR7630006000011234567890189</ram:IBANID>") && !text.contains("ProprietaryID"), "{text}");
+    assert!(crate::invoice::epc::payload(&two).unwrap().contains("FR7630006000011234567890189"));
+}
+
+/// A final invoice cites the deposit invoices it deducts (BG-3); a deposit
+/// invoice says no delivery day (nothing is delivered yet); a credit note to
+/// a business carries the payment notes French rules ask of every invoice.
+#[test]
+fn deposits_are_cited_and_never_delivered() {
+    let last = xml(&sample("fr-final").invoice).unwrap();
+    assert!(last.contains("<ram:IssuerAssignedID>2026-005</ram:IssuerAssignedID>"), "{last}");
+    assert_eq!(all(&last, "InvoiceReferencedDocument").len(), 1);
+    let deposit = xml(&sample("fr-deposit").invoice).unwrap();
+    assert!(!deposit.contains("ActualDeliverySupplyChainEvent"), "{deposit}");
+    assert!(xml(&sample("fr-franchise").invoice).unwrap().contains("ActualDeliverySupplyChainEvent"));
+    let credit = xml(&sample("fr-credit-note").invoice).unwrap();
+    let subjects = all(&credit, "SubjectCode");
+    assert!(["AAB", "PMD", "PMT"].iter().all(|s| subjects.iter().any(|x| x == s)), "{subjects:?}");
+}
+
+/// Countries as ISO writes them: "UK" is GB, a name is its code; one Sioul
+/// does not know leaves the XML out; a line's price below zero or a unit
+/// outside Sioul's too.
+#[test]
+fn countries_and_lines_are_the_standard_s() {
+    let mut british = sample("fr-export").invoice;
+    british.client.address.country = "UK".into();
+    let text = xml(&british).unwrap();
+    assert_eq!(all(&text, "CountryID")[1], "GB", "{text}");
+    british.client.address.country = "Belgique".into();
+    assert_eq!(all(&xml(&british).unwrap(), "CountryID")[1], "BE");
+    british.client.address.country = "Atlantis".into();
+    assert_eq!(without(&british), Some(Without::ClientCountry));
+    let mut lines = sample("fr-liable").invoice;
+    lines.lines[0].unit = "PCE".into();
+    assert_eq!(without(&lines), Some(Without::Lines));
+    lines.lines[0].unit = "DAY".into();
+    lines.lines[0].price = -100;
+    assert_eq!(without(&lines), Some(Without::Lines));
+}
+
 /// Lines outside the scope of VAT beside taxed ones: no XML (BR-O-11 to 14), said.
 #[test]
 fn outside_the_scope_stays_alone() {

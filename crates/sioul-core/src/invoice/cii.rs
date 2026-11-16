@@ -67,6 +67,14 @@ pub enum Without {
     /// Lines outside the scope of VAT beside others: EN 16931 has an
     /// invoice either outside it whole or not at all (BR-O-11 to 14).
     OutsideMixed,
+    /// The client's or the delivery's country, not one of ISO 3166-1 (`countries`).
+    ClientCountry,
+    /// A line's price below zero (BR-27) or its unit outside Sioul's (`units`).
+    Lines,
+    /// A deposit invoice for goods to another member state, without the
+    /// period it covers (BR-IC-11: a delivery day or a period; a deposit
+    /// has no delivery yet).
+    DepositPeriod,
 }
 
 impl Without {
@@ -81,6 +89,9 @@ impl Without {
                 Without::SellerId => "invoice-xml-seller-id",
                 Without::SellerCountry => "invoice-xml-seller-country",
                 Without::OutsideMixed => "invoice-xml-outside-mixed",
+                Without::ClientCountry => "invoice-xml-client-country",
+                Without::Lines => "invoice-xml-lines",
+                Without::DepositPeriod => "invoice-xml-deposit-period",
             },
             None,
         )
@@ -146,8 +157,19 @@ pub fn without(invoice: &Invoice) -> Option<Without> {
     let buyer = buyer_ids(invoice);
     let categories: Vec<&str> = invoice.totals.breakdown.iter().map(|b| b.category.as_str()).collect();
     let has = |c: &str| categories.contains(&c);
-    if invoice.issuer.address.country.trim().len() != 2 {
+    if super::countries::code(&invoice.issuer.address.country).is_none() {
         return Some(Without::SellerCountry);
+    }
+    let client = &invoice.client;
+    let delivery = client.delivery.iter().map(|d| d.country.trim()).filter(|c| !c.is_empty());
+    if [client.address.country.trim()].into_iter().filter(|c| !c.is_empty()).chain(delivery).any(|c| super::countries::code(c).is_none()) {
+        return Some(Without::ClientCountry);
+    }
+    if invoice.lines.iter().any(|l| l.price < 0 || !super::units::known(&l.unit)) {
+        return Some(Without::Lines);
+    }
+    if invoice.kind == Kind::Deposit && has("K") && invoice.period_from.is_empty() {
+        return Some(Without::DepositPeriod);
     }
     if has("O") && categories.iter().any(|c| *c != "O") {
         return Some(Without::OutsideMixed);
@@ -282,9 +304,12 @@ fn address(out: &mut Out, address: &Address, country: &str) -> Done {
     out.close()
 }
 
-/// The country an address is in: its own, else the seller's (a client in the seller's country).
+/// The country an address is in, as ISO 3166-1 writes it: its own (`without`
+/// refuses one that is not a country); an address that names none is at
+/// home, as the page prints it, the seller's.
 fn country_of(address: &Address, home: &str) -> String {
-    if address.country.trim().len() == 2 { address.country.trim().to_uppercase() } else { home.trim().to_uppercase() }
+    let own = address.country.trim();
+    super::countries::code(if own.is_empty() { home } else { own }).unwrap_or_default().to_string()
 }
 
 /// France's business process (BT-23): goods, services or both (B1, S1, M1),
@@ -440,7 +465,7 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
         line(&mut out, n + 1, l, &tr)?;
     }
 
-    let home = invoice.issuer.address.country.trim().to_uppercase();
+    let home = super::countries::code(&invoice.issuer.address.country).unwrap_or_default().to_string();
     out.open("ram:ApplicableHeaderTradeAgreement")?;
     let issuer = &invoice.issuer;
     party(&mut out, "ram:SellerTradeParty", &seller_ids(invoice), &issuer.name, &issuer.trade_name, "", &issuer.address, &home, &issuer.email)?;
@@ -468,7 +493,9 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
         address(&mut out, place, &country_of(place, &country_of(&client.address, &home)))?;
         out.close()?;
     }
-    let supplied = [invoice.period_to.as_str(), invoice.period_from.as_str(), invoice.date.as_str()].into_iter().find(|d| day(d).is_some()).unwrap_or("");
+    // A deposit invoice bills what is not supplied yet: no such day (its
+    // period, when it says one, is BG-14 below).
+    let supplied = if invoice.kind == Kind::Deposit { "" } else { [invoice.period_to.as_str(), invoice.period_from.as_str(), invoice.date.as_str()].into_iter().find(|d| day(d).is_some()).unwrap_or("") };
     if !supplied.is_empty() {
         out.open("ram:ActualDeliverySupplyChainEvent")?;
         out.date("ram:OccurrenceDateTime", "udt:DateTimeString", supplied)?;
@@ -477,7 +504,8 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
     out.close()?;
 
     out.open("ram:ApplicableHeaderTradeSettlement")?;
-    let bank = issuer.banks.iter().find(|b| !b.iban.trim().is_empty()).filter(|_| invoice.kind != Kind::CreditNote);
+    // The account the QR code names too: the first whose IBAN's key holds, else the first.
+    let bank = super::epc::account(issuer).filter(|_| invoice.kind != Kind::CreditNote);
     if bank.is_some() {
         out.leaf("ram:PaymentReference", &invoice.number)?;
     }
@@ -488,9 +516,15 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
         out.open("ram:SpecifiedTradeSettlementPaymentMeans")?;
         // UNTDID 4461: 58, a SEPA credit transfer; 30, any other.
         out.leaf("ram:TypeCode", if iban && invoice.currency.eq_ignore_ascii_case("EUR") { "58" } else { "30" })?;
+        // The schema's order: IBANID, AccountName, ProprietaryID.
         out.open("ram:PayeePartyCreditorFinancialAccount")?;
-        out.leaf(if iban { "ram:IBANID" } else { "ram:ProprietaryID" }, &account)?;
+        if iban {
+            out.leaf("ram:IBANID", &account)?;
+        }
         out.leaf("ram:AccountName", &bank.holder)?;
+        if !iban {
+            out.leaf("ram:ProprietaryID", &account)?;
+        }
         out.close()?;
         if !bank.bic.trim().is_empty() {
             out.open("ram:PayeeSpecifiedCreditorFinancialInstitution")?;
@@ -543,7 +577,9 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
     }
     out.leaf("ram:DuePayableAmount", &amount(t.due))?;
     out.close()?;
-    if let Some(cited) = invoice.corrects.as_ref().filter(|c| !c.number.is_empty()) {
+    // The invoices it cites (BG-3, as many as the profile's schema takes): the
+    // one a credit note corrects, the deposit invoices a final one deducts.
+    for cited in invoice.corrects.iter().chain(&invoice.deposits).filter(|c| !c.number.is_empty()) {
         out.open("ram:InvoiceReferencedDocument")?;
         out.leaf("ram:IssuerAssignedID", &cited.number)?;
         out.date("ram:FormattedIssueDateTime", "qdt:DateTimeString", &cited.date)?;

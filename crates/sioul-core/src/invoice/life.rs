@@ -158,7 +158,9 @@ pub fn terms_of(s: &InvoiceSettings, client_days: Option<u32>, client_end_of_mon
 /// Where the client is, from the issuer: "domestic", "eu", "abroad".
 fn zone_of(issuer: &Issuer, client: &Client) -> &'static str {
     let country = if client.address.country.trim().is_empty() { issuer.address.country.as_str() } else { client.address.country.as_str() };
-    presets::zone(&issuer.address.country, country)
+    // As codes: "Belgique" is BE, "UK" GB (`countries`).
+    let code = |c: &str| super::countries::code(c).map_or_else(|| c.to_string(), str::to_string);
+    presets::zone(&code(&issuer.address.country), &code(country))
 }
 
 /// The category and rate a new line of `nature` takes for `client`: none
@@ -350,7 +352,8 @@ pub fn refresh(draft: &mut Invoice, s: &InvoiceSettings, day: Date) {
         }
     }
     let preset = presets::get(&draft.issuer.preset);
-    draft.penalty_rate = if draft.client.is_business() && draft.kind != Kind::CreditNote { penalty_on(s, day) } else { 0 };
+    // A business's credit note says the payment lines too, as French rules ask of every invoice (BR-FR-05).
+    draft.penalty_rate = if draft.client.is_business() { penalty_on(s, day) } else { 0 };
     draft.notes = legal_notes(draft, s, preset).into_iter().chain(draft.notes.iter().filter(|n| n.legal.is_empty()).cloned()).collect();
     if !draft.number.is_empty() || !draft.date.is_empty() {
         let issued: Date = draft.date.parse().unwrap_or(day);
@@ -383,14 +386,13 @@ fn legal_notes(draft: &Invoice, s: &InvoiceSettings, preset: &Preset) -> Vec<Not
     let issuer = &draft.issuer;
     let form = preset.form(&issuer.legal_form);
     let company = form.is_some_and(|f| f.company);
-    let payment_line = |subject: &str| matches!(subject, "AAB" | "PMD" | "PMT");
     let mut out = Vec::new();
     for line in &preset.line {
         let for_client = line.client.is_empty() || line.client.contains(&draft.client.kind);
         let for_option = line.option.is_empty() || issuer.options.contains(&line.option);
         let for_scheme = line.scheme.is_empty() || line.scheme.contains(&issuer.scheme);
         let for_form = line.form.is_empty() || line.form.iter().any(|f| f == &issuer.legal_form || (f == "company" && company));
-        if !(for_client && for_option && for_scheme && for_form) || (draft.kind == Kind::CreditNote && payment_line(&line.subject)) {
+        if !(for_client && for_option && for_scheme && for_form) {
             continue;
         }
         let own = s.lines.iter().find(|l| l.id == line.id);
@@ -543,6 +545,35 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
         let mut args = crate::i18n::args();
         args.set("characters", unprintable.into_iter().collect::<String>());
         say(true, tr.text("invoice-check-unprintable", Some(&args)));
+    }
+    // Right-to-left writing is printed backwards until Sioul orders it (Unicode's bidi): held back.
+    let backwards = super::pdf::right_to_left(&probe);
+    if !backwards.is_empty() {
+        let mut args = crate::i18n::args();
+        args.set("characters", backwards.into_iter().collect::<String>());
+        say(true, tr.text("invoice-check-right-to-left", Some(&args)));
+    }
+    // What EN 16931 refuses in the file's data: a unit price below zero
+    // (BR-27: a discount or a credit note says less), a unit outside
+    // Recommendation 20's, a country that is none.
+    for (n, line) in draft.lines.iter().enumerate() {
+        let mut args = crate::i18n::args();
+        args.set("line", (n + 1) as i64);
+        args.set("unit", line.unit.clone());
+        if line.price < 0 {
+            say(true, tr.text("invoice-check-price-negative", Some(&args)));
+        }
+        if !super::units::known(&line.unit) {
+            say(true, tr.text("invoice-check-unit-unknown", Some(&args)));
+        }
+    }
+    let delivery = draft.client.delivery.as_ref().map(|d| d.country.clone()).unwrap_or_default();
+    for (country, id) in [(&issuer.address.country, "invoice-check-own-country"), (&draft.client.address.country, "invoice-check-client-country"), (&delivery, "invoice-check-delivery-country")] {
+        if !country.trim().is_empty() && super::countries::code(country).is_none() {
+            let mut args = crate::i18n::args();
+            args.set("country", country.trim().to_string());
+            say(true, tr.text(id, Some(&args)));
+        }
     }
     for bank in issuer.banks.iter().filter(|b| !super::epc::iban_valid(&b.iban)) {
         let mut args = crate::i18n::args();

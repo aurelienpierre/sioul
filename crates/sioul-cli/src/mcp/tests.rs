@@ -1865,6 +1865,15 @@ fn an_agent_drafts_invoices_and_never_issues_them() {
     never_zeugma(&listed, "invoices");
     let nothing = call(&mut server, "draft_invoice", json!({ "client": "North Studio" }));
     assert!(nothing["isError"] == true, "{nothing}");
+    // A word for a unit is read as its code; a unit Sioul does not know, or
+    // a price below zero (EN 16931, BR-27), is refused with a sentence.
+    let hours = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Advice", "quantity": 3, "unit": "hrs", "price": 80 }] }));
+    let id = hours["structuredContent"]["draft"].as_str().unwrap().to_string();
+    assert_eq!(sioul_core::invoice::draft_in(&sioul_core::invoice::folder(), &id).unwrap().lines[0].unit, "HUR");
+    let bushels = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Grain", "unit": "PCE", "price": 5 }] }));
+    assert!(bushels["isError"] == true && text(&bushels).contains("no unit Sioul knows"), "{bushels}");
+    let below = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Discount", "price": -100 }] }));
+    assert!(below["isError"] == true && text(&below).contains("below zero"), "{below}");
 }
 
 #[test]

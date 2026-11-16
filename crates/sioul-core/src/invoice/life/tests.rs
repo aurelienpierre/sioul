@@ -208,6 +208,30 @@ fn an_older_table_keeps_its_words() {
 /// What the preset asks, said before issue: the issuer's SIREN required, a
 /// French business client's recommended now and required from September
 /// 2027; a number that fails its key refused; a consumer gets no B2B lines.
+/// What EN 16931 refuses is said before issue: a unit price below zero, a
+/// unit Sioul does not know, a country that is none; a country in words is
+/// read as its code, its zone with it.
+#[test]
+fn checks_hold_what_the_standard_refuses() {
+    let s = french("franchise");
+    let mut draft = fresh("en");
+    draft.lines = vec![Line::of_time("Advice", 60, 9000, "E", 0)];
+    refresh(&mut draft, &s, day("2026-11-16"));
+    assert!(checks(&draft, &s, day("2026-11-16")).iter().all(|c| !c.required));
+    let mut odd = draft.clone();
+    odd.lines[0].price = -9000;
+    odd.lines[0].unit = "PCE".into();
+    odd.client.address.country = "Atlantis".into();
+    let said: Vec<String> = checks(&odd, &s, day("2026-11-16")).into_iter().filter(|c| c.required).map(|c| c.text).collect();
+    assert!(said.iter().any(|t| t.contains("below zero")) && said.iter().any(|t| t.contains("“PCE”")) && said.iter().any(|t| t.contains("“Atlantis”")), "{said:?}");
+    // In words, another member state: the reverse charge, as with its code.
+    let mut belgian = draft.clone();
+    belgian.client.address.country = "Belgique".into();
+    belgian.client.ids = vec![Identifier { kind: "vat".into(), value: "BE0123456749".into(), printed: true }];
+    refresh(&mut belgian, &s, day("2026-11-16"));
+    assert_eq!(belgian.lines[0].category, "AE");
+}
+
 #[test]
 fn checks_say_what_is_missing() {
     let mut s = french("franchise");
@@ -308,7 +332,8 @@ fn a_credit_note_cancels_and_frees_the_time() {
     let kept = all.iter().find(|i| i.number == "2026-001").unwrap();
     assert_eq!((kept.status(&all), kept.left(&all)), (Status::PartlyPaid, 6000));
     let page = html(&note, &tr);
-    assert!(page.contains("Credit note No. 2026-002") && page.contains("2026-001") && !page.contains("Late payment"), "{page}");
+    // A business's credit note carries the payment lines too, as French rules ask of every invoice (BR-FR-05).
+    assert!(page.contains("Credit note No. 2026-002") && page.contains("2026-001") && page.contains("Late payment"), "{page}");
     // Liable for VAT since: a credit note of a franchise invoice still carries no VAT, and its mention.
     let liable = InvoiceSettings { tax: vec![TaxSetting { from: "2026-10-06".into(), scheme: "liable".into(), mention: String::new() }, TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..s.clone() };
     let late = credit(kept, Some(&[0]), &liable, day("2026-10-08"));

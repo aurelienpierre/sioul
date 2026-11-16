@@ -19,6 +19,7 @@
 //! (service-public.gouv.fr, sheet F31808).
 
 pub mod cii;
+pub mod countries;
 pub mod epc;
 pub mod html;
 pub mod ids;
@@ -32,6 +33,7 @@ pub mod record;
 pub(crate) mod samples;
 pub mod series;
 pub mod totals;
+pub mod units;
 
 pub use html::{html, page};
 pub use record::{Address, Bank, Cited, Client, Identifier, Invoice, Issuer, Kind, Line, Nature, Note, Payment, Status, TaxBreak, Terms, Totals};

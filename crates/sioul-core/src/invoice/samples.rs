@@ -271,6 +271,12 @@ pub(crate) fn valid() -> Vec<Sample> {
     let s = InvoiceSettings { address: "Eksempelgata 2".into(), postcode: "0150".into(), city: "Oslo".into(), country: "NO".into(), currency: "NOK".into(), ..elsewhere("liable", "", vec![id("vat", "NO123456785MVA")]) };
     add("elsewhere-liable", s.clone(), issued(&s, american_client, "en", "NOK", vec![line("Consulting", 2000, "HUR", 150000, Nature::Service, "S", 2500)], "2026-020", "2026-11-16"));
 
+    // An account whose IBAN's key fails (a digit mistyped), its holder named:
+    // the XML in the schema's order all the same, and no QR code.
+    let mut mistyped = french("franchise", true);
+    mistyped.banks = vec![BankSetting { holder: "Camille Exemple".into(), iban: "FR76 3000 6000 0112 3456 7890 188".into(), bic: String::new() }];
+    add("fr-account-not-iban", mistyped.clone(), issued(&mistyped, french_client(), "fr", "EUR", time(&[("Retouches", 90)], 6000), "2026-022", "2026-11-16"));
+
     // A long invoice: its lines over three pages, the head again on each.
     let s = french("franchise", true);
     let many: Vec<(String, u32)> = (1..=70).map(|n| (format!("Retouche de la photographie n° {n}, série « Lumière d’automne »"), 15 + (n % 4) * 15)).collect();

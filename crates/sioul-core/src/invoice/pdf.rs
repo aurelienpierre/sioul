@@ -22,7 +22,9 @@
 //! (github.com/liberationfonts/liberation-fonts, liberation-fonts-ttf-2.1.5):
 //! Regular SHA-256 76d04c18…de8ee8, Bold 788abee4…a9173. A character it
 //! cannot print (a script it lacks) is said before issue (`unprintable`),
-//! since PDF/A forbids drawing a missing glyph.
+//! since PDF/A forbids drawing a missing glyph; so is right-to-left writing
+//! (`right_to_left`), which would print backwards without Unicode's
+//! bidirectional ordering.
 
 use super::cii;
 use super::epc::{self, Matrix};
@@ -640,6 +642,29 @@ pub fn unprintable(invoice: &Invoice) -> Vec<char> {
     out
 }
 
+/// Whether `c` is written right to left (Hebrew, Arabic, Syriac, Thaana,
+/// N'Ko and the scripts after them): Sioul shapes each line as one run,
+/// without Unicode's bidirectional ordering, so such words would print
+/// backwards, digits reversed among them.
+fn right_to_left_char(c: char) -> bool {
+    matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}' | '\u{10800}'..='\u{10FFF}' | '\u{1E800}'..='\u{1EFFF}')
+}
+
+/// The characters of `invoice`'s page written right to left: said before
+/// issue and held back, until Sioul orders such text.
+pub fn right_to_left(invoice: &Invoice) -> Vec<char> {
+    let tr = Translator::new(if invoice.language.is_empty() { "en" } else { &invoice.language });
+    let mut out: Vec<char> = Vec::new();
+    for text in content(invoice, &tr).texts() {
+        for c in text.chars().filter(|c| right_to_left_char(*c)) {
+            if !out.contains(&c) {
+                out.push(c);
+            }
+        }
+    }
+    out
+}
+
 fn color((r, g, b): (u8, u8, u8)) -> rgb::Color {
     rgb::Color::new(r, g, b)
 }
@@ -665,6 +690,10 @@ pub fn render(invoice: &Invoice, options: &Options) -> Result<Rendered, String> 
     let missing = unprintable(invoice);
     if !missing.is_empty() {
         return Err(say(&tr, "invoice-check-unprintable", &[("characters", missing.into_iter().collect())]));
+    }
+    let backwards = right_to_left(invoice);
+    if !backwards.is_empty() {
+        return Err(say(&tr, "invoice-check-right-to-left", &[("characters", backwards.into_iter().collect())]));
     }
     let c = content(invoice, &tr);
     let qr = if options.qr { epc::payload(invoice).and_then(|p| epc::matrix(&p)) } else { None };

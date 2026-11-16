@@ -170,6 +170,18 @@ fn characters_the_font_lacks_wait() {
     render(&s.invoice, &Options::default()).unwrap();
 }
 
+/// Right-to-left writing is held back until Sioul orders it: Hebrew would
+/// print backwards, its digits reversed.
+#[test]
+fn right_to_left_writing_waits() {
+    let mut s = samples::without_xml();
+    s.invoice.client.name = "סטודיו שלום".into();
+    assert!(!right_to_left(&s.invoice).is_empty());
+    assert!(render(&s.invoice, &Options::default()).is_err());
+    let checks = crate::invoice::life::checks(&s.invoice, &s.settings, "2026-11-16".parse().unwrap());
+    assert!(checks.iter().any(|c| c.required && c.text.contains('ס')), "{checks:?}");
+}
+
 /// Every sample makes its file, in its language and in the other.
 #[test]
 fn every_sample_makes_its_file() {

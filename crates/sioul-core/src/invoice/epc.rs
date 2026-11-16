@@ -17,7 +17,7 @@
 //! at most. Error correction M, version 13 at most. Drawn in the PDF as
 //! squares (`pdf`), never as a picture. A setting turns it off.
 
-use super::record::{Invoice, Kind};
+use super::record::{Bank, Invoice, Issuer, Kind};
 
 /// The largest payload EPC069-12 allows, in bytes.
 pub const LARGEST: usize = 331;
@@ -40,6 +40,12 @@ pub fn iban_valid(iban: &str) -> bool {
     rest == 1
 }
 
+/// The account invoices are paid into, the same for the QR code and the
+/// XML: the first whose IBAN's key holds, else the first with a number.
+pub fn account(issuer: &Issuer) -> Option<&Bank> {
+    issuer.banks.iter().find(|b| iban_valid(&b.iban)).or_else(|| issuer.banks.iter().find(|b| !b.iban.trim().is_empty()))
+}
+
 /// The payload of `invoice`'s QR code: a euro invoice (not a credit note)
 /// with something to pay and a valid IBAN among its issuer's accounts; none
 /// otherwise, or when it would not fit.
@@ -51,7 +57,7 @@ pub fn payload(invoice: &Invoice) -> Option<String> {
     if !(1..=99_999_999_999).contains(&due) {
         return None;
     }
-    let bank = invoice.issuer.banks.iter().find(|b| iban_valid(&b.iban))?;
+    let bank = account(&invoice.issuer).filter(|b| iban_valid(&b.iban))?;
     let iban: String = bank.iban.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
     let bic: String = bank.bic.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
     let bic = if matches!(bic.len(), 8 | 11) { bic } else { String::new() };
@@ -93,7 +99,7 @@ pub fn matrix(payload: &str) -> Option<Matrix> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::invoice::record::{Bank, Issuer, Totals};
+    use crate::invoice::record::Totals;
 
     /// A documented test IBAN (the German example of ISO 13616 and the
     /// ECBS), its key valid; one digit off, refused.
