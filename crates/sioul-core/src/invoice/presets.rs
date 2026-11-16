@@ -145,6 +145,13 @@ pub struct Require {
     /// For which legal forms; "company" for any company form; empty: all.
     #[serde(default)]
     pub form: Vec<String>,
+    /// When a line of the invoice has one of these VAT categories ("AE",
+    /// "K"); empty: whatever the lines.
+    #[serde(default)]
+    pub category: Vec<String>,
+    /// For an issuer with one of these activities ("goods-bic"); empty: any.
+    #[serde(default)]
+    pub activity: Vec<String>,
     #[serde(default)]
     pub level: Level,
     #[serde(default)]
@@ -179,10 +186,12 @@ pub struct Tax {
     /// Liable for VAT: the rates, dated.
     #[serde(default)]
     pub rates: Vec<Dated<RateList>>,
-    /// Services to a business in another member state: its client owes the
-    /// VAT (reverse charge), whatever the scheme.
+    /// Where a line's VAT is due, by the scheme, the client's zone and kind,
+    /// and what the line sells (`life::placed`): the reverse charge, an
+    /// intra-EU delivery, an export, outside the scope; the first that
+    /// applies places the line.
     #[serde(default)]
-    pub reverse: Option<Reverse>,
+    pub place: Vec<Place>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -205,12 +214,29 @@ pub struct Mention {
     pub text: String,
 }
 
+/// Where a line's VAT is due: under these schemes, for clients of these
+/// kinds in these zones, for lines of this nature; the category the line
+/// takes, EN 16931's reason code, and the words printed for it. Without
+/// words (the research gave none), the line prints no mention and a
+/// required check says `why` until the line says its own.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-pub struct Reverse {
+pub struct Place {
+    pub id: String,
+    #[serde(default)]
+    pub scheme: Vec<String>,
+    #[serde(default)]
+    pub zone: Vec<String>,
+    #[serde(default)]
+    pub client: Vec<String>,
+    #[serde(default)]
+    pub nature: Vec<String>,
     pub category: String,
     #[serde(default)]
     pub reason_code: String,
+    #[serde(default)]
     pub mention: Words,
+    #[serde(default)]
+    pub why: Words,
 }
 
 /// A line printed on invoices, with its EN 16931 subject code (UNTDID 4451).
@@ -370,6 +396,58 @@ pub fn get(id: &str) -> &'static Preset {
 /// client: another member state's business is billed by the EU's rules.
 pub const EU: [&str; 27] = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"];
 
+/// Country names, as an address's last line writes them, in English,
+/// French and the country's own language, for the countries an invoice
+/// most often goes to: their ISO 3166-1 code.
+const COUNTRIES: &[(&str, &[&str])] = &[
+    ("AT", &["austria", "autriche", "osterreich"]),
+    ("BE", &["belgium", "belgique", "belgie", "belgien"]),
+    ("BG", &["bulgaria", "bulgarie"]),
+    ("CY", &["cyprus", "chypre"]),
+    ("CZ", &["czechia", "czech republic", "tchequie", "republique tcheque", "cesko"]),
+    ("DE", &["germany", "allemagne", "deutschland"]),
+    ("DK", &["denmark", "danemark", "danmark"]),
+    ("EE", &["estonia", "estonie", "eesti"]),
+    ("ES", &["spain", "espagne", "espana"]),
+    ("FI", &["finland", "finlande", "suomi"]),
+    ("FR", &["france"]),
+    ("GR", &["greece", "grece", "hellas"]),
+    ("HR", &["croatia", "croatie", "hrvatska"]),
+    ("HU", &["hungary", "hongrie", "magyarorszag"]),
+    ("IE", &["ireland", "irlande", "eire"]),
+    ("IT", &["italy", "italie", "italia"]),
+    ("LT", &["lithuania", "lituanie", "lietuva"]),
+    ("LU", &["luxembourg", "luxemburg"]),
+    ("LV", &["latvia", "lettonie", "latvija"]),
+    ("MT", &["malta", "malte"]),
+    ("NL", &["netherlands", "the netherlands", "pays-bas", "pays bas", "nederland", "holland", "hollande"]),
+    ("PL", &["poland", "pologne", "polska"]),
+    ("PT", &["portugal"]),
+    ("RO", &["romania", "roumanie"]),
+    ("SE", &["sweden", "suede", "sverige"]),
+    ("SI", &["slovenia", "slovenie", "slovenija"]),
+    ("SK", &["slovakia", "slovaquie", "slovensko"]),
+    ("GB", &["united kingdom", "royaume-uni", "royaume uni", "uk", "great britain", "grande-bretagne", "england", "angleterre", "scotland", "ecosse", "wales"]),
+    ("CH", &["switzerland", "suisse", "schweiz", "svizzera"]),
+    ("NO", &["norway", "norvege", "norge"]),
+    ("IS", &["iceland", "islande"]),
+    ("LI", &["liechtenstein"]),
+    ("MC", &["monaco"]),
+    ("AD", &["andorra", "andorre"]),
+    ("US", &["united states", "united states of america", "usa", "etats-unis", "etats unis"]),
+    ("CA", &["canada"]),
+];
+
+/// The ISO 3166-1 code of a country an address's line names ("Belgique",
+/// "Deutschland", "BE"); None for a line that names none Sioul knows.
+pub fn country_code(line: &str) -> Option<&'static str> {
+    let folded: String = crate::text::fold(line.trim()).into_iter().collect::<String>().trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
+    if folded.is_empty() {
+        return None;
+    }
+    COUNTRIES.iter().find(|(code, names)| folded.eq_ignore_ascii_case(code) || names.iter().any(|n| *n == folded)).map(|(code, _)| *code)
+}
+
 /// Where a client in `client` is from an issuer in `issuer`: "domestic",
 /// "eu" (another member state, the issuer's in the EU too), "abroad".
 pub fn zone(issuer: &str, client: &str) -> &'static str {
@@ -472,6 +550,13 @@ mod tests {
             for form in preset.require.iter().flat_map(|r| &r.form).chain(preset.line.iter().flat_map(|l| &l.form)) {
                 assert!(form == "company" || preset.form(form).is_some(), "{id}: names the form {form}, which it has not");
             }
+            for place in &preset.tax.place {
+                assert!(place.scheme.iter().all(|s| preset.tax.schemes.contains(s)), "{id}: {} names a scheme it does not offer", place.id);
+                assert!(matches!(place.category.as_str(), "S" | "Z" | "E" | "AE" | "K" | "G" | "O"), "{id}: {}", place.id);
+                assert!(place.zone.iter().all(|z| matches!(z.as_str(), "domestic" | "eu" | "abroad")), "{id}: {}", place.id);
+                // Without the research's words, the rule says why the line must say its own.
+                assert!(!place.mention.is_empty() || (!place.why.get("en").is_empty() && !place.why.get("fr").is_empty()), "{id}: {} has neither words nor a why", place.id);
+            }
             if preset.tax.schemes.iter().any(|s| s == "franchise") {
                 assert!(preset.tax.franchise.is_some(), "{id}: a franchise without its category");
             }
@@ -512,5 +597,6 @@ mod tests {
         assert_eq!(zone("FR", "be"), "eu");
         assert_eq!(zone("FR", "CH"), "abroad");
         assert_eq!(zone("GB", "FR"), "abroad");
+        assert_eq!((country_code("Belgique"), country_code(" Deutschland "), country_code("BE"), country_code("Royaume-Uni"), country_code("Narnia")), (Some("BE"), Some("DE"), Some("BE"), Some("GB"), None));
     }
 }

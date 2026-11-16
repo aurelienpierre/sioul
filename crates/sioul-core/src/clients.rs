@@ -195,9 +195,12 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
 
 /// Who a project's client is, for an invoice: the profile of the contact it
 /// names (`sioul:contact/<uid>`) or of the name it gives; without one, the
-/// contact's card (its organisation and name, its first postal address), or
-/// the name as written. The profile comes back too, for its language,
-/// currency and terms.
+/// contact's card (its organisation and name, its first postal address, its
+/// country when the address's last line names one), or the name as written.
+/// Without a profile, the client's kind is guessed: a card with an
+/// organisation is a business, else a person; the invoice keeps the guess
+/// and says it, and a profile corrects it. The profile comes back too, for
+/// its language, currency and terms.
 pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) -> (Client, Option<&'a Profile>) {
     let reference = reference.trim();
     let uid = reference.strip_prefix("sioul:contact/").map(crate::notes::decode);
@@ -227,16 +230,27 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
     match contact {
         Some(card) => (
             Client {
-                kind: "business".into(),
+                kind: if card.org.trim().is_empty() { "consumer".into() } else { "business".into() },
                 name: card_name(card),
-                address: Address::from_text(&card.addresses.first().map(|a| a.value.clone()).unwrap_or_default()),
+                address: card_address(&card.addresses.first().map(|a| a.value.clone()).unwrap_or_default()),
                 email: card.emails.first().map(|e| e.value.clone()).unwrap_or_default(),
                 ..Client::default()
             },
             None,
         ),
-        None => (Client { kind: "business".into(), name: reference.to_string(), ..Client::default() }, None),
+        None => (Client { kind: "consumer".into(), name: reference.to_string(), ..Client::default() }, None),
     }
+}
+
+/// A card's postal address, on its lines; its last line, when it names a
+/// country ("Belgique", "Deutschland"), becomes the address's country.
+pub fn card_address(text: &str) -> Address {
+    let mut address = Address::from_text(text);
+    if let Some(code) = address.lines.last().and_then(|l| crate::invoice::presets::country_code(l)) {
+        address.lines.pop();
+        address.country = code.to_string();
+    }
+    address
 }
 
 /// A card's name as invoices print it: its organisation, then the person.
@@ -280,6 +294,12 @@ mod tests {
         assert_eq!((client.name.as_str(), client.email.as_str(), found.map(|p| p.language.as_str())), ("Studio Lumen SARL", "anna@example.org", Some("fr")));
         assert_eq!(resolve("Studio Lumen", &clients, std::slice::from_ref(&anna)).1.map(|p| p.id.as_str()), Some(id.as_str()), "by the card's organisation");
         assert_eq!(resolve("robin example", &clients, &[]).0.kind, "consumer");
+        // No profile: a card with an organisation is a business, its country from its address's last line.
+        let brussels = Contact { uid: "b-1".into(), name: "Léa Exemple".into(), org: "Atelier Bruxelles".into(), addresses: vec![Labeled { label: String::new(), value: "Rue de l’Exemple 1\n1000 Bruxelles\nBelgique".into() }], ..Contact::default() };
+        let (client, _) = resolve("sioul:contact/b-1", &Clients::default(), std::slice::from_ref(&brussels));
+        assert_eq!((client.kind.as_str(), client.address.country.as_str(), client.address.lines.len()), ("business", "BE", 2));
+        let person = Contact { uid: "p-1".into(), name: "Sam Exemple".into(), ..Contact::default() };
+        assert_eq!(resolve("sioul:contact/p-1", &Clients::default(), std::slice::from_ref(&person)).0.kind, "consumer", "a person");
         // No profile: the card, as before; else the name as written.
         let nobody = Clients::default();
         let (card, none) = resolve("sioul:contact/anna-1", &nobody, std::slice::from_ref(&anna));

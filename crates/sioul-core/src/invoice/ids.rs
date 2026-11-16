@@ -2,9 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Business identifiers checked by their own keys, before an invoice is
-//! issued with a wrong one: a SIREN and a SIRET by the Luhn sum, a French VAT
-//! number by its two-digit key. Other identifiers (a Steuernummer, a UTR, an
-//! EIN) are kept as plain text: no key is checked that Sioul does not know.
+//! issued with a wrong one: a SIREN and a SIRET by the Luhn sum; a VAT
+//! number by its own country, the two letters it starts with (a French one
+//! by its two-digit key, another member state's, the United Kingdom's or
+//! Switzerland's by its form), never by the issuer's. Other identifiers (a
+//! Steuernummer, a UTR, an EIN) are kept as plain text: no key is checked
+//! that Sioul does not know. "En cours d'attribution", a SIRET being given,
+//! passes as such.
 
 /// How an identifier's value is checked (`check` in a preset).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +21,8 @@ pub enum Check {
     Siret,
     /// "FR", a two-digit key, a SIREN.
     VatFr,
+    /// Any country's VAT number, by its own country's form (`vat_valid`).
+    Vat,
 }
 
 impl Check {
@@ -26,6 +32,7 @@ impl Check {
             "siren" => Check::Siren,
             "siret" => Check::Siret,
             "vat-fr" => Check::VatFr,
+            "vat" => Check::Vat,
             _ => Check::Text,
         }
     }
@@ -60,10 +67,20 @@ fn digits(value: &str, count: usize) -> bool {
 /// rule: the sum of their digits is a multiple of five (INSEE).
 const LA_POSTE: &str = "356000000";
 
+/// A SIRET or SIREN not given yet, said so: « en cours d'attribution » (SP F31808).
+pub fn pending(value: &str) -> bool {
+    let folded: String = crate::text::fold(value).into_iter().collect();
+    folded.contains("en cours d") || folded.contains("pending")
+}
+
 /// Whether `value` passes its check; plain text always does, when not empty.
 pub fn valid(check: Check, value: &str) -> bool {
     let v = compact(value);
+    if matches!(check, Check::Siren | Check::Siret) && pending(value) {
+        return true;
+    }
     match check {
+        Check::Vat => vat_valid(value),
         Check::Text => !value.trim().is_empty(),
         Check::Siren => digits(&v, 9) && luhn(&v),
         Check::Siret => digits(&v, 14) && luhn(&v[..9]) && (luhn(&v) || (v.starts_with(LA_POSTE) && v.bytes().map(|b| u32::from(b - b'0')).sum::<u32>().is_multiple_of(5))),
@@ -84,6 +101,70 @@ pub fn valid(check: Check, value: &str) -> bool {
                 Err(_) => key.chars().all(|c| c.is_ascii_alphanumeric()),
             }
         }
+    }
+}
+
+/// The forms of VAT numbers by their country's two letters (the EU's VIES
+/// forms; the United Kingdom's; Switzerland's UID with its suffix):
+/// (letters, shortest and longest after them, what they may hold).
+const VAT_FORMS: &[(&str, usize, usize, &str)] = &[
+    ("AT", 9, 9, "U8"),
+    ("BE", 10, 10, "digits"),
+    ("BG", 9, 10, "digits"),
+    ("CY", 9, 9, "alnum"),
+    ("CZ", 8, 10, "digits"),
+    ("DE", 9, 9, "digits"),
+    ("DK", 8, 8, "digits"),
+    ("EE", 9, 9, "digits"),
+    ("EL", 9, 9, "digits"),
+    ("ES", 9, 9, "alnum"),
+    ("FI", 8, 8, "digits"),
+    ("HR", 11, 11, "digits"),
+    ("HU", 8, 8, "digits"),
+    ("IE", 8, 9, "alnum"),
+    ("IT", 11, 11, "digits"),
+    ("LT", 9, 12, "digits"),
+    ("LU", 8, 8, "digits"),
+    ("LV", 11, 11, "digits"),
+    ("MT", 8, 8, "digits"),
+    ("NL", 12, 12, "alnum"),
+    ("PL", 10, 10, "digits"),
+    ("PT", 9, 9, "digits"),
+    ("RO", 2, 10, "digits"),
+    ("SE", 12, 12, "digits"),
+    ("SI", 8, 8, "digits"),
+    ("SK", 10, 10, "digits"),
+    ("XI", 5, 12, "alnum"),
+    ("GB", 5, 12, "alnum"),
+];
+
+/// A VAT number checked by its own country: a French one by its key (a
+/// SIREN with its two digits), another by its country's form; one whose
+/// first letters name no country Sioul knows is taken as written.
+pub fn vat_valid(value: &str) -> bool {
+    let v = compact(value);
+    if v.len() < 4 {
+        return false;
+    }
+    let (country, rest) = v.split_at(2);
+    if country == "FR" {
+        return valid(Check::VatFr, &v);
+    }
+    // Switzerland: CHE, nine digits, and MWST, TVA or IVA after it when liable.
+    if let Some(digits) = v.strip_prefix("CHE") {
+        let digits = digits.trim_end_matches("MWST").trim_end_matches("TVA").trim_end_matches("IVA");
+        return digits.len() == 9 && digits.bytes().all(|b| b.is_ascii_digit());
+    }
+    match VAT_FORMS.iter().find(|(c, ..)| *c == country) {
+        Some((_, least, most, kind)) => {
+            (*least..=*most).contains(&rest.len())
+                && match *kind {
+                    "digits" => rest.bytes().all(|b| b.is_ascii_digit()),
+                    "U8" => rest.starts_with('U') && rest[1..].bytes().all(|b| b.is_ascii_digit()),
+                    _ => rest.bytes().all(|b| b.is_ascii_alphanumeric()),
+                }
+        }
+        None => !value.trim().is_empty(),
     }
 }
 
@@ -114,7 +195,14 @@ mod tests {
         assert!(!valid(Check::VatFr, &wrong));
         assert!(!valid(Check::VatFr, "DE123456789"));
         assert!(valid(Check::Text, "12/345/67890") && !valid(Check::Text, "  "));
+        // A VAT number by its own country (the review of phase 1, F5).
+        assert!(valid(Check::Vat, "BE0417497106") && valid(Check::Vat, "DE 123 456 789") && valid(Check::Vat, &vat));
+        assert!(!valid(Check::Vat, "BE04174971") && !valid(Check::Vat, "DE12345678") && !valid(Check::Vat, &wrong));
+        assert!(valid(Check::Vat, "CHE-123.456.789 MWST") && valid(Check::Vat, "ATU12345678") && valid(Check::Vat, "NL123456789B01"));
+        // A SIRET being given.
+        assert!(valid(Check::Siret, "en cours d’attribution") && pending("SIRET en cours d'attribution"));
         assert_eq!(Check::named("siren"), Check::Siren);
+        assert_eq!(Check::named("vat"), Check::Vat);
         assert_eq!(Check::named("ust-idnr"), Check::Text);
     }
 }

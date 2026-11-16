@@ -1627,7 +1627,9 @@ pub(crate) fn closing() {
         if ended() {
             let wrote = share::written(&memory, &here.id);
             for part in PARTS {
-                let _ = sioul_sync::lease::close(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote);
+                // Invoices: the closed claim says each series' last number, an issue just before included.
+                let known = (part == crate::projects::INVOICES).then(|| sioul_core::invoice::series::Journal::load(&sioul_core::invoice::folder()).lasts());
+                let _ = sioul_sync::lease::close_with(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote, known);
             }
         }
     }

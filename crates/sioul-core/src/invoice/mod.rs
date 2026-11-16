@@ -7,9 +7,9 @@
 //! An invoice is one record in EN 16931's vocabulary (`record`): a draft
 //! until it is issued, kept in `$XDG_DATA_HOME/sioul/invoices/drafts/`; then
 //! numbered (`series`), its issuer and client frozen as they were, kept as
-//! `invoices/<number>.toml`, never changed but for its life: its payments,
-//! the day it was sent. A wrong invoice is answered by a credit note citing
-//! it. The rules of a country (its mentions, identifiers, rates, thresholds)
+//! `invoices/<number>.toml` and never written again. Its life (its
+//! payments, the day it was sent) is kept apart, each device in its own file
+//! (`lives`). A wrong invoice is answered by a credit note citing it. The rules of a country (its mentions, identifiers, rates, thresholds)
 //! are data (`presets`); the life of an invoice is `life`; its page to print
 //! is `html`. The date or period of the service is said on it, as French law
 //! asks (service-public.gouv.fr, sheet F31808).
@@ -17,6 +17,7 @@
 pub mod html;
 pub mod ids;
 pub mod life;
+pub mod lives;
 pub mod presets;
 pub mod record;
 pub mod series;
@@ -67,16 +68,41 @@ fn read_file(path: &Path) -> Option<Invoice> {
     Some(Invoice { number, unreadable: true, ..Invoice::default() })
 }
 
-/// Every invoice issued and kept in `dir`, by number (2026-999 before
-/// 2026-1000). The series journal and the drafts are not invoices.
-pub fn all_in(dir: &Path) -> Vec<Invoice> {
+/// The issued records of `dir`, one per number, their life not read: a
+/// second file holding a number another holds (a sync app's conflicted
+/// copy, a copy by hand) is said in the log and left aside; the record kept
+/// is the file its number names. The series journal of before (`series.toml`)
+/// is no invoice.
+pub fn records_in(dir: &Path) -> Vec<Invoice> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut out: Vec<Invoice> = entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::JOURNAL))
-        .filter_map(|p| read_file(&p))
-        .collect();
+    let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)).collect();
+    paths.sort();
+    let mut by: std::collections::BTreeMap<String, (PathBuf, Invoice)> = std::collections::BTreeMap::new();
+    for path in paths {
+        let Some(invoice) = read_file(&path) else { continue };
+        let own = |p: &Path, number: &str| p.file_name().is_some_and(|n| n.to_string_lossy() == file_name(number));
+        match by.get(&invoice.number) {
+            Some((kept, _)) if own(kept, &invoice.number) || !own(&path, &invoice.number) => {
+                eprintln!("Sioul: {} holds invoice {} again, as {} does: left aside", path.display(), invoice.number, kept.display());
+            }
+            Some((kept, _)) => {
+                eprintln!("Sioul: {} holds invoice {} again, as {} does: left aside", kept.display(), invoice.number, path.display());
+                by.insert(invoice.number.clone(), (path, invoice));
+            }
+            None => {
+                by.insert(invoice.number.clone(), (path, invoice));
+            }
+        }
+    }
+    by.into_values().map(|(_, invoice)| invoice).collect()
+}
+
+/// Every invoice issued and kept in `dir`, with its life (`lives`), by
+/// number (2026-999 before 2026-1000). The series journal and the drafts
+/// are not invoices.
+pub fn all_in(dir: &Path) -> Vec<Invoice> {
+    let mut out = records_in(dir);
+    lives::Lives::load(dir).apply(&mut out);
     out.sort_by(|a, b| natural(&a.number, &b.number));
     out
 }
@@ -86,15 +112,30 @@ pub fn find_in(dir: &Path, number: &str) -> Option<Invoice> {
     all_in(dir).into_iter().find(|i| i.number == number && !i.unreadable)
 }
 
-/// The drafts kept in `dir`, the newest first.
+/// Whether a draft's id is one: letters, digits and dashes, as Sioul gives
+/// them, never a path.
+pub fn draft_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// The drafts kept in `dir`, the newest first: each one's id is its file's
+/// name (never what the file says), and only a name a draft's id may be.
 pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
     let Ok(entries) = std::fs::read_dir(dir.join(DRAFTS)) else { return Vec::new() };
     let mut out: Vec<Invoice> = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-        .filter_map(|p| std::fs::read_to_string(&p).ok().and_then(|t| record::read(&t)))
-        .filter(|d| d.number.is_empty() && !d.draft.is_empty())
+        .filter_map(|p| {
+            let id = p.file_stem()?.to_string_lossy().into_owned();
+            if !draft_id_ok(&id) {
+                return None;
+            }
+            let mut draft = std::fs::read_to_string(&p).ok().and_then(|t| record::read(&t))?;
+            draft.draft = id;
+            draft.number.clear();
+            Some(draft)
+        })
         .collect();
     out.sort_by(|a, b| b.draft.cmp(&a.draft));
     out
@@ -102,6 +143,9 @@ pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
 
 /// One draft of `dir`, by its id.
 pub fn draft_in(dir: &Path, id: &str) -> Option<Invoice> {
+    if !draft_id_ok(id) {
+        return None;
+    }
     drafts_in(dir).into_iter().find(|d| d.draft == id)
 }
 
@@ -135,7 +179,7 @@ pub fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 /// Writes a file whole, through a file beside it.
-fn write_whole(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
@@ -155,6 +199,9 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
     if draft.draft.is_empty() {
         draft.draft = new_draft_id();
     }
+    if !draft_id_ok(&draft.draft) {
+        return Err(format!("“{}” is no draft's id", draft.draft));
+    }
     draft.format = record::FORMAT;
     let text = toml::to_string(&draft).map_err(|e| e.to_string())?;
     write_whole(&dir.join(DRAFTS).join(format!("{}.toml", draft.draft)), &text)?;
@@ -163,6 +210,9 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
 
 /// A draft taken out of `dir`; Ok(false) when it was not there.
 pub fn remove_draft(dir: &Path, id: &str) -> Result<bool, String> {
+    if !draft_id_ok(id) {
+        return Err(format!("“{id}” is no draft's id"));
+    }
     let path = dir.join(DRAFTS).join(format!("{id}.toml"));
     match std::fs::remove_file(&path) {
         Ok(()) => {
@@ -206,71 +256,6 @@ pub(crate) fn write_new(dir: &Path, invoice: &Invoice) -> Result<PathBuf, String
     Ok(path)
 }
 
-/// An issued record's life changed in place by `change`, under its file's
-/// lock, read and written in one step (a payment said in the window and one
-/// found by the bank at once both stay): its payments and the day it was
-/// sent, every other line of its file kept as it is (a format-1 record's
-/// `paid` too, for an older Sioul, and `paid_before`, its own word from
-/// before). Refused for a record that does not read, or whose file holds
-/// another number. Returns what `change` returned and the record as written.
-pub fn change_life<R>(dir: &Path, number: &str, change: impl FnOnce(&mut Invoice) -> R) -> Result<(R, Invoice), String> {
-    use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
-    let path = dir.join(file_name(number));
-    crate::filelock::with_lock(&path, || {
-        let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(&path).map_err(|e| fail(e.to_string()))?;
-        let mut invoice = record::read(&text).ok_or_else(|| fail("this record no longer reads: Sioul leaves it as it is".into()))?;
-        if invoice.number != number {
-            return Err(fail(format!("holds {}", invoice.number)));
-        }
-        let out = change(&mut invoice);
-        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-        if invoice.payments.is_empty() {
-            doc.remove("payments");
-        } else {
-            let mut list = ArrayOfTables::new();
-            for p in &invoice.payments {
-                let mut t = Table::new();
-                t["date"] = value(p.date.as_str());
-                t["amount"] = value(p.amount);
-                t["means"] = value(p.means.as_str());
-                t["movement"] = value(p.movement.as_str());
-                list.push(t);
-            }
-            doc.insert("payments", Item::ArrayOfTables(list));
-        }
-        if invoice.sent.is_empty() && invoice.format == 1 {
-            doc.remove("sent");
-        } else {
-            doc.insert("sent", value(invoice.sent.as_str()));
-        }
-        if invoice.format == 1 {
-            // An older Sioul reads `paid`: said with the payments; its own
-            // word from before kept apart, so that an Undo puts it back.
-            let said = invoice.older.as_ref().is_some_and(|o| o.paid);
-            doc.insert("paid_before", value(said));
-            doc.insert("paid", value(said || invoice.status(std::slice::from_ref(&invoice)).settled()));
-        }
-        let changed = doc.to_string();
-        if changed != text {
-            write_whole(&path, &changed)?;
-        }
-        Ok((out, invoice))
-    })
-}
-
-/// An issued record's life written as `invoice` holds it (`change_life`).
-pub fn write_life(dir: &Path, invoice: &Invoice) -> Result<(), String> {
-    change_life(dir, &invoice.number, |kept| {
-        kept.payments = invoice.payments.clone();
-        kept.sent = invoice.sent.clone();
-        if let (Some(kept), Some(given)) = (kept.older.as_mut(), invoice.older.as_ref()) {
-            kept.paid = given.paid;
-        }
-    })
-    .map(|_| ())
-}
-
 /// An issued record taken out: only to undo an issue that failed halfway.
 pub(crate) fn remove_issued(dir: &Path, number: &str) -> Result<(), String> {
     let path = dir.join(file_name(number));
@@ -289,7 +274,8 @@ mod tests {
     }
 
     /// A record that no longer reads still holds its number, and is never
-    /// written over; two numbers making one file name: the second refused.
+    /// written over; two numbers making one file name: the second refused; a
+    /// sync app's conflicted copy of a record is no second invoice (F12).
     #[test]
     fn a_number_is_never_given_twice() {
         let dir = dir("kept");
@@ -299,28 +285,31 @@ mod tests {
         assert_eq!(kept.iter().map(|i| (i.number.as_str(), i.unreadable)).collect::<Vec<_>>(), [("2026-003", true), ("2026-004", true)]);
         let pattern = series::Pattern::of_prefix("");
         assert_eq!(series::next(&pattern, "2026-11-16".parse().unwrap(), &series::Journal::default(), &kept, &Default::default()).0, "2026-005");
-        assert!(write_life(&dir, &Invoice { number: "2026-003".into(), ..Invoice::default() }).is_err(), "never written over");
         // A number with what Windows refuses in a file name is kept under a name it takes.
         let path = write_new(&dir, &Invoice { number: "F:2026/001".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
         assert_eq!(path.file_name().unwrap(), "F-2026-001.toml");
         let again = write_new(&dir, &Invoice { number: "F/2026:001".into(), currency: "EUR".into(), ..Invoice::default() });
         assert!(again.is_err_and(|e| e.contains("F:2026/001")), "the second refused, the first kept");
         assert_eq!(find_in(&dir, "F:2026/001").map(|i| i.format), Some(2));
-        // The journal is no invoice; 2026-1000 comes after 2026-999.
-        series::Journal::default().save(&dir).unwrap();
+        // The journal of before is no invoice; 2026-1000 comes after 2026-999.
+        std::fs::write(dir.join(series::OLD_JOURNAL), "format = 1\n").unwrap();
         write_new(&dir, &Invoice { number: "2026-1000".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
         write_new(&dir, &Invoice { number: "2026-999".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
+        // A conflicted copy of 2026-999, as a sync app makes it: left aside, one invoice.
+        std::fs::copy(dir.join("2026-999.toml"), dir.join("2026-999 (conflict 2026-11-16 10.30).toml")).unwrap();
         let numbers: Vec<String> = all_in(&dir).into_iter().map(|i| i.number).collect();
         assert_eq!(numbers, ["2026-003", "2026-004", "2026-999", "2026-1000", "F:2026/001"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A format-1 record (before November 2026) reads as an issued invoice
-    /// of kind 380 with time lines; Paid writes its life in place, every
-    /// other line kept, `paid` said for an older Sioul.
+    /// of kind 380 with time lines, and is never written: Paid goes into this
+    /// device's life file; its own `paid`, an older Sioul's word, reads as a
+    /// payment from before, which an Undo here takes back (F18).
     #[test]
     fn a_format_1_record_reads_and_stays_as_it_is() {
         let dir = dir("older");
+        let tr = crate::i18n::Translator::new("en");
         let older = "number = \"2026-001\"\ndate = \"2026-09-01\"\ndue = \"2026-10-01\"\nproject = \"lumen\"\nproject_title = \"Studio Lumen\"\nclient = \"Studio Lumen\\nAnna Exemple\"\nclient_address = \"1 rue de l’Exemple\\n75002 Paris\"\nsessions = [\"10:t:90\", \"20:t:30\"]\ntotal_cents = 12000\ncurrency = \"EUR\"\n\n[[lines]]\nlabel = \"Build the site\"\nminutes = 120\nrate = 60.0\ncents = 12000\n\n[issuer]\nname = \"Camille Exemple EI\"\naddress = \"2 place de l’Exemple\\n69001 Lyon\"\nsiret = \"732 829 320 00017\"\nvat = \"TVA non applicable, art. 293 B du CGI\"\npayment = \"IBAN FR76 0000\"\n";
         std::fs::write(dir.join("2026-001.toml"), older).unwrap();
         let read = find_in(&dir, "2026-001").unwrap();
@@ -328,29 +317,18 @@ mod tests {
         assert_eq!((read.lines[0].minutes(), read.lines[0].price, read.lines[0].amount), (Some(120), 6000, 12000));
         assert_eq!(read.sessions(), ["10:t:90", "20:t:30"]);
         assert_eq!(read.status(&[]), Status::Issued);
-        let mut paid = read.clone();
-        paid.payments.push(Payment { date: "2026-10-02".into(), amount: 12000, means: "transfer".into(), movement: String::new() });
-        write_life(&dir, &paid).unwrap();
-        let text = std::fs::read_to_string(dir.join("2026-001.toml")).unwrap();
-        let mut rest = text.as_str();
-        for line in older.lines().filter(|l| !l.is_empty()) {
-            let at = rest.find(line).unwrap_or_else(|| panic!("{line} kept, in its place:\n{text}"));
-            rest = &rest[at + line.len()..];
-        }
-        assert!(text.contains("paid = true") && !text.contains("format"), "{text}");
+        let paid = life::pay_rest(&dir, "desk", "2026-001", "2026-10-02".parse().unwrap(), "transfer", &tr).unwrap().unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("2026-001.toml")).unwrap(), older, "never written");
         let again = find_in(&dir, "2026-001").unwrap();
         assert_eq!((again.format, again.status(&[]), again.paid()), (1, Status::Paid, 12000));
-        // Paid's Undo: not paid again, `paid` said so for an older Sioul.
-        assert!(life::remove_payment(&dir, "2026-001", &paid.payments[0]).unwrap());
-        let undone = find_in(&dir, "2026-001").unwrap();
-        assert_eq!((undone.status(&[]), undone.paid()), (Status::Issued, 0));
-        assert!(std::fs::read_to_string(dir.join("2026-001.toml")).unwrap().contains("paid = false"));
-        // Said paid by an older Sioul, then matched and the match undone: still paid, by its own word.
+        life::take_back(&dir, "desk", std::slice::from_ref(&paid.id)).unwrap();
+        assert_eq!(find_in(&dir, "2026-001").unwrap().status(&[]), Status::Issued);
+        // Said paid by an older Sioul: a payment from before, taken back by "Not paid".
         std::fs::write(dir.join("2026-001.toml"), older.replace("total_cents = 12000\n", "total_cents = 12000\npaid = true\n")).unwrap();
-        let matched = Payment { date: "2026-10-03".into(), amount: 12000, means: "transfer".into(), movement: "sioul:movement/x".into() };
-        life::add_payment(&dir, "2026-001", matched.clone()).unwrap();
-        life::remove_payment(&dir, "2026-001", &matched).unwrap();
-        assert_eq!(find_in(&dir, "2026-001").unwrap().status(&[]), Status::Paid);
+        let said = find_in(&dir, "2026-001").unwrap();
+        assert_eq!((said.status(&[]), said.payments[0].id.as_str()), (Status::Paid, "older:2026-001"));
+        life::unpay(&dir, "desk", "2026-001", &tr).unwrap();
+        assert_eq!(find_in(&dir, "2026-001").unwrap().status(&[]), Status::Issued);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

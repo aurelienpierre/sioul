@@ -153,6 +153,16 @@ pub struct TimeView {
     pub sentence: String,
 }
 
+/// A cell of a spreadsheet: text, never a formula. One starting with "=",
+/// "+", "-", "@", a tab or a return (a task made from someone's mail,
+/// `=HYPERLINK(…)`, a client's name) would run in the spreadsheet; a quote
+/// before it keeps it text. Quoted when it holds the separator, a quote or a
+/// line's end.
+pub fn csv_cell(text: &str, sep: char) -> String {
+    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text.to_string() };
+    if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
+}
+
 /// A project's billable time from `from` to `to` (both included), as a
 /// spreadsheet reads it: what was done, how many hours, at what rate, for how
 /// much, one line per task (or note), then the total. Nothing else: a full
@@ -161,12 +171,7 @@ pub struct TimeView {
 pub fn billable_csv(all: &[Entry], project: &Project, from: Date, to: Date, default_rate: f64, french: bool, words: [&str; 5]) -> String {
     let (sep, decimal) = if french { (';', ',') } else { (',', '.') };
     let number = |value: f64| format!("{value:.2}").replace('.', &decimal.to_string());
-    // A title is text, never a formula: one starting with "=", "+", "-", "@" (a task made from
-    // someone's mail, `=HYPERLINK(…)`) would run in the spreadsheet; a quote before it keeps it text.
-    let field = |text: &str| {
-        let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text.to_string() };
-        if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
-    };
+    let field = |text: &str| csv_cell(text, sep);
     let rate = project.rate.unwrap_or(default_rate);
     let mut by_what: Vec<(String, u32)> = Vec::new();
     for e in all.iter().filter(|e| e.project == project.id && e.billable && e.day >= from && e.day <= to) {

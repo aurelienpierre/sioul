@@ -310,8 +310,19 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
 /// phone. It keeps nothing, and says how far it wrote its records, so the
 /// others know everything it marked before it closed.
 pub fn close(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>) -> Result<(), String> {
+    close_with(folder, key, part, computer, now, wrote, None)
+}
+
+/// `close`, with each series' last number known now for invoices (the
+/// journal's, which an issue just before may have raised): the closed claim
+/// carries the larger of it and what it said.
+pub fn close_with(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>, known: Option<BTreeMap<String, u64>>) -> Result<(), String> {
     let old = read(folder, key, part).into_iter().find(|c| c.computer == computer);
-    let series = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    let mut series = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    for (sequence, last) in known.unwrap_or_default() {
+        let at = series.entry(sequence).or_insert(0);
+        *at = (*at).max(last);
+    }
     let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, series, closed: true, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     if let Ok(mut kept) = KEPT.lock() {

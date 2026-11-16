@@ -321,7 +321,9 @@ fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
     let (keeper, unwritten) = crate::share::keeper(INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
     let now = jiff::Timestamp::now().as_second();
     let refused = |text: String, elsewhere: bool| Some(serde_json::json!({ "error": text, "elsewhere": elsewhere }).to_string());
-    if unwritten {
+    // Sharing set up but its key unreadable (a keyring locked): the others'
+    // claims cannot be read, so nothing says this device may number.
+    if unwritten || (crate::share::configured() && !crate::share::on()) {
         return refused(tr().text("invoice-unchecked", None), false);
     }
     if !keeper.mine {
@@ -383,21 +385,24 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
         let today = sioul_core::zone::now().date();
         let clients = sioul_core::clients::Clients::load(&store.root).unwrap_or_default();
         let blank = life::for_client(settings, project.client.as_deref().unwrap_or(""), &clients, &loaded(shared).contacts, tr().language(), today);
-        let client = blank.client.clone();
-        let draft = life::from_time(&entries(shared), &project, blank, settings, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
         let folder = invoice::folder();
+        let records = invoice::all_in(&folder);
+        let draft = life::from_time(&entries(shared), &project, blank, &records, settings, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
         let draft = invoice::save_draft(&folder, &draft)?;
-        let numbering = life::Numbering { sharing: crate::share::configured(), drafts_shared: crate::share::shares("drafts"), claimed: crate::share::claimed_series(INVOICES) };
+        let numbering = life::Numbering { device: crate::notices::here_id(), sharing: crate::share::configured(), drafts_shared: crate::share::shares("drafts"), claimed: crate::share::claimed_series(INVOICES) };
         let ledger = store.root.join(budget::LEDGER);
         let budget_id = project.budget.clone().unwrap_or_default();
         let steps = life::Steps { time: None, ledger: (!budget_id.is_empty()).then_some((ledger.as_path(), budget_id.as_str())) };
-        let made = match life::issue(&folder, &draft.draft, settings, today, &numbering, Some(client), &steps, tr()) {
+        let made = match life::issue(&folder, &draft.draft, settings, today, &numbering, &steps, tr()) {
             Ok(made) => made,
             Err(e) => {
                 let _ = invoice::remove_draft(&folder, &draft.draft);
                 return Err(e);
             }
         };
+        // The claim says the new number at once, not at the next minute's renewal.
+        let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
+        let _ = crate::share::keeper(INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
         Ok(serde_json::json!({ "number": made.number, "html": invoice::page(&made, tr()), "pdf": pdf_path(&made).display().to_string() }))
     })();
     work::refresh(qt, shared);
@@ -442,21 +447,37 @@ pub(crate) fn set_paid(qt: &QtThread, shared: &Arc<Shared>, number: &str, paid: 
     }
 }
 
-/// Payments the bank's matching wrote on your invoices (`movements::acts::resolve`),
-/// said in the status line with Undo, which takes them off again; no
-/// "to confirm" step (docs/projects.md, "Invoices").
+/// What the bank's matching wrote on your invoices (`movements::acts::resolve`),
+/// said in the status line with Undo, which takes the payments back and
+/// keeps the bank line apart from the invoices' lines from then on (the
+/// match was wrong); what a line paid beyond what the invoices asked is
+/// said too. No "to confirm" step (docs/projects.md, "Invoices").
 pub(crate) fn say_matched_payments(qt: &QtThread, shared: &Arc<Shared>, paid: crate::bank::Paid) {
     if paid.is_empty() {
         return;
     }
-    let numbers = paid.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>().join(", ");
-    let line = say("invoice-paid-by-bank", &[("numbers", numbers)]);
+    let mut numbers: Vec<String> = paid.iter().flat_map(|p| p.taken.entries.iter().map(|(n, _, _)| n.clone())).collect();
+    numbers.dedup();
+    let over: i64 = paid.iter().map(|p| p.taken.overpaid).sum();
+    let mut line = if numbers.is_empty() { String::new() } else { say("invoice-paid-by-bank", &[("numbers", numbers.join(", "))]) };
+    if over > 0 {
+        let more = say("invoice-paid-beyond", &[("amount", tr().money(sioul_core::money::Money(over)))]);
+        line = [line, more].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+    }
     work::refresh(qt, shared);
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
         let folder = invoice::folder();
+        let device = crate::notices::here_id();
+        let root = load_config().notes_root_path();
         let mut problem = String::new();
-        for (number, payment) in &paid {
-            if let Err(e) = life::remove_payment(&folder, number, payment) {
+        for matched in &paid {
+            if let Err(e) = life::take_back(&folder, &device, &matched.taken.ids()) {
+                problem = e;
+            }
+            // The match was wrong: the bank line and the invoices' line apart from now on.
+            if let Some(root) = &root
+                && let Err(e) = sioul_core::movements::acts::not_same(root, &matched.movement, &matched.source)
+            {
                 problem = e;
             }
         }
@@ -474,6 +495,11 @@ struct PaidBefore {
     line: Option<budget::Settled>,
 }
 
+/// This device's name, for its own life of the invoices (`invoice::lives`).
+fn device() -> String {
+    crate::notices::here_id()
+}
+
 /// The invoice `number` paid or not, its budget line with it: paid, a
 /// payment of what is left and a planned line settled on `today`, what
 /// Paid did returned for its Undo; not paid, the payments said by hand
@@ -484,14 +510,14 @@ fn paid_as(number: &str, paid: bool, today: Date) -> Result<Option<PaidBefore>, 
     let store = store().ok();
     let (ledger, link) = (store.map(|s| s.root.join(budget::LEDGER)), format!("sioul:invoice/{number}"));
     if paid {
-        let payment = life::pay_rest(&folder, number, today, "transfer")?;
+        let payment = life::pay_rest(&folder, &device(), number, today, "transfer", tr())?;
         let line = match &ledger {
             Some(ledger) => budget::settle_line(ledger, &link, today)?,
             None => None,
         };
         return Ok(Some(PaidBefore { payment, line }));
     }
-    life::unpay(&folder, number)?;
+    life::unpay(&folder, &device(), number, tr())?;
     if let (Some(ledger), Some(day)) = (&ledger, found.due_day()) {
         budget::unsettle_line(ledger, &link, day)?;
     }
@@ -509,7 +535,7 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
         return Err(tr().text("undo-too-late", None));
     }
     if let Some(payment) = &before.payment {
-        life::remove_payment(&invoice::folder(), number, payment)?;
+        life::take_back(&invoice::folder(), &device(), std::slice::from_ref(&payment.id))?;
     }
     Ok(())
 }
@@ -529,9 +555,11 @@ mod tests {
         let folder = invoice::folder();
         let today = Zoned::now().date();
         for (number, paid_before) in [("2026-901", false), ("2026-902", true)] {
-            let payments = if paid_before { vec![invoice::Payment { date: today.to_string(), amount: 1000, means: "transfer".into(), movement: String::new() }] } else { Vec::new() };
-            let bill = invoice::Invoice { number: number.into(), date: today.to_string(), due: today.to_string(), currency: "EUR".into(), totals: invoice::Totals { due: 1000, ..Default::default() }, payments, ..Default::default() };
+            let bill = invoice::Invoice { number: number.into(), date: today.to_string(), due: today.to_string(), currency: "EUR".into(), totals: invoice::Totals { due: 1000, ..Default::default() }, ..Default::default() };
             invoice::keep_issued(&folder, &bill).unwrap();
+            if paid_before {
+                life::add_payment(&folder, &device(), number, invoice::Payment { date: today.to_string(), amount: 1000, means: "transfer".into(), ..Default::default() }, tr()).unwrap();
+            }
             let before = paid_as(number, true, today).unwrap().unwrap();
             assert_eq!(before.payment.is_none(), paid_before, "{number}: nothing left to pay when paid before");
             let all = invoice::all_in(&folder);

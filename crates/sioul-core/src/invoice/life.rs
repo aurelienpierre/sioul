@@ -16,6 +16,7 @@
 //! whatever the VAT; the franchise's mention under the franchise whatever
 //! the form.
 
+use super::lives;
 use super::presets::{self, Level, Preset, Who};
 use super::record::{Address, Bank, Cited, Client, FORMAT, Identifier, Invoice, Issuer, Kind, Line, Nature, Note, Payment, Terms, rounded};
 use super::series::{self, Journal, Pattern, Reset};
@@ -40,11 +41,15 @@ pub fn preset_of(s: &InvoiceSettings) -> &'static Preset {
     if older_french(s) { presets::get("fr") } else { presets::get(s.preset.trim()) }
 }
 
-/// The legal form: as set; else the preset's first (in France, an EI), a
-/// sole trader being who most often bills alone; none for "elsewhere".
+/// The legal form: as set; for a country chosen in Settings, else its
+/// first (in France, an EI), a sole trader being who most often bills
+/// alone; for a table from before November 2026, none until said (a
+/// company under the franchise must not read « EI »: a check asks for it).
 pub fn legal_form_of(s: &InvoiceSettings) -> String {
     if !s.legal_form.trim().is_empty() {
         s.legal_form.trim().to_string()
+    } else if s.preset.trim().is_empty() {
+        String::new()
     } else {
         preset_of(s).legal_form.first().map(|f| f.id.clone()).unwrap_or_default()
     }
@@ -155,31 +160,64 @@ pub fn terms_of(s: &InvoiceSettings, client_days: Option<u32>, client_end_of_mon
     Terms { days: client_days.or(s.terms_days).or(preset_of(s).terms_days).unwrap_or(30), end_of_month: client_end_of_month.unwrap_or(s.end_of_month) }
 }
 
-/// Where the client is, from the issuer: "domestic", "eu", "abroad".
-fn zone_of(issuer: &Issuer, client: &Client) -> &'static str {
-    let country = if client.address.country.trim().is_empty() { issuer.address.country.as_str() } else { client.address.country.as_str() };
-    presets::zone(&issuer.address.country, country)
+/// Where the client is, from the issuer: "domestic", "eu", "abroad"; or
+/// "unknown" when nothing says (no country, no address: an address written
+/// without a country is one written for the issuer's own post).
+pub fn zone_of(issuer: &Issuer, client: &Client) -> &'static str {
+    if !client.address.country.trim().is_empty() {
+        return presets::zone(&issuer.address.country, &client.address.country);
+    }
+    if client.address.is_empty() { "unknown" } else { "domestic" }
 }
 
-/// The category and rate a new line of `nature` takes for `client`: none
-/// under no scheme ("O"); the client's reverse charge for a service to a
-/// business in another member state; the franchise's ("E"); liable, the
-/// preset's first rate, standard ("S").
-pub fn default_tax(issuer: &Issuer, client: &Client, nature: Nature, day: Date) -> (String, i64) {
+/// How a line is taxed: its category, rate, the words saying why it bears
+/// no VAT here (empty when there are none to say, or none known) and their
+/// EN 16931 code, and the rule that placed it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Placed {
+    pub category: String,
+    pub rate: i64,
+    pub mention: String,
+    pub reason_code: String,
+    pub rule: Option<presets::Place>,
+}
+
+/// Where a line of `nature` for `client` is taxed, on `day`, in `language`:
+/// the preset's first placement rule that applies (the issuer's scheme, the
+/// client's zone and kind, the line's nature: the reverse charge, an
+/// intra-EU delivery, an export, outside the scope); else the scheme's own:
+/// none ("O"), the franchise ("E"), liable at the preset's first rate ("S").
+/// A client whose zone is unknown is taken as domestic here, and a check asks for its country.
+pub fn placed(issuer: &Issuer, client: &Client, nature: Nature, day: Date, language: &str) -> Placed {
     let preset = presets::get(&issuer.preset);
-    if let Some(reverse) = &preset.tax.reverse
-        && client.is_business()
-        && nature == Nature::Service
-        && zone_of(issuer, client) == "eu"
-        && issuer.scheme != "none"
-    {
-        return (reverse.category.clone(), 0);
+    let zone = match zone_of(issuer, client) {
+        "unknown" => "domestic",
+        zone => zone,
+    };
+    let nature_id = if nature == Nature::Goods { "goods" } else { "service" };
+    let rule = preset.tax.place.iter().find(|r| {
+        (r.scheme.is_empty() || r.scheme.contains(&issuer.scheme))
+            && (r.zone.is_empty() || r.zone.iter().any(|z| z == zone))
+            && (r.client.is_empty() || r.client.contains(&client.kind))
+            && (r.nature.is_empty() || r.nature.iter().any(|n| n == nature_id))
+    });
+    if let Some(rule) = rule {
+        return Placed { category: rule.category.clone(), rate: 0, mention: rule.mention.get(language).to_string(), reason_code: rule.reason_code.clone(), rule: Some(rule.clone()) };
     }
     match issuer.scheme.as_str() {
-        "franchise" => (preset.tax.franchise.as_ref().map_or_else(|| "E".into(), |f| f.category.clone()), 0),
-        "liable" => ("S".into(), preset.rates_on(day).first().map_or(0, |r| r.rate)),
-        _ => ("O".into(), 0),
+        "franchise" => {
+            let franchise = preset.tax.franchise.as_ref();
+            Placed { category: franchise.map_or_else(|| "E".into(), |f| f.category.clone()), reason_code: franchise.map(|f| f.reason_code.clone()).unwrap_or_default(), ..Placed::default() }
+        }
+        "liable" => Placed { category: "S".into(), rate: preset.rates_on(day).first().map_or(0, |r| r.rate), ..Placed::default() },
+        _ => Placed { category: "O".into(), ..Placed::default() },
     }
+}
+
+/// The category and rate a new line of `nature` takes for `client` (`placed`).
+pub fn default_tax(issuer: &Issuer, client: &Client, nature: Nature, day: Date) -> (String, i64) {
+    let p = placed(issuer, client, nature, day, "en");
+    (p.category, p.rate)
 }
 
 /// The language of an invoice: the client's, the settings', else `fallback` (the window's).
@@ -222,7 +260,9 @@ pub fn for_client(s: &InvoiceSettings, reference: &str, clients: &crate::clients
 /// line per task or note, its time at the project's rate (the settings'
 /// when it has none), in the order first worked on; the service's period
 /// from the first and last days billed. None when nothing waits to be billed.
-pub fn from_time(entries: &[Entry], project: &Project, mut draft: Invoice, s: &InvoiceSettings, today: Date) -> Option<Invoice> {
+/// The time billed is what the issued `records` say (`with_billing`), whatever the sessions' marks.
+pub fn from_time(entries: &[Entry], project: &Project, mut draft: Invoice, records: &[Invoice], s: &InvoiceSettings, today: Date) -> Option<Invoice> {
+    let entries = with_billing(entries, records);
     let billed: Vec<&Entry> = entries.iter().filter(|e| e.project == project.id && e.billable && e.invoice.is_empty() && e.minutes > 0).collect();
     if billed.is_empty() {
         return None;
@@ -247,6 +287,7 @@ pub fn from_time(entries: &[Entry], project: &Project, mut draft: Invoice, s: &I
     draft.lines.extend(grouped.into_iter().map(|(_, label, minutes, keys)| Line { sessions: keys, ..Line::of_time(&label, minutes, price, &category, rate) }));
     draft.period_from = billed.iter().map(|e| e.day).min().map(|d| d.to_string()).unwrap_or_default();
     draft.period_to = billed.iter().map(|e| e.day).max().map(|d| d.to_string()).unwrap_or_default();
+    draft.period_default = false;
     draft.project = project.id.clone();
     draft.project_title = project.title.clone();
     refresh(&mut draft, s, today);
@@ -267,9 +308,10 @@ pub fn credit(invoice: &Invoice, chosen: Option<&[usize]>, s: &InvoiceSettings, 
         .filter(|(i, _)| chosen.is_none_or(|c| c.contains(i)))
         .map(|(_, l)| {
             let mut line = l.clone();
-            if line.category == "E" && line.exemption.trim().is_empty() {
-                line.exemption = reason_of("E");
+            if line.exemption.trim().is_empty() {
+                line.exemption = reason_of(&line.category);
             }
+            line.own_tax = true;
             line
         })
         .collect();
@@ -325,29 +367,17 @@ pub fn cite_deposits(draft: &mut Invoice, deposits: &[Invoice], s: &InvoiceSetti
 pub fn refresh(draft: &mut Invoice, s: &InvoiceSettings, day: Date) {
     draft.format = FORMAT;
     draft.issuer = issuer_on(s, day);
-    // A credit note keeps the tax of the lines it credits, whatever the scheme is now.
-    for line in draft.lines.iter_mut().filter(|_| draft.kind != Kind::CreditNote) {
-        let (category, rate) = default_tax(&draft.issuer, &draft.client, line.nature, day);
-        if draft.issuer.scheme != "liable" || category == "AE" {
-            // No VAT is ever shown under the franchise or without a scheme
-            // (art. 293 E CGI: VAT shown is VAT owed); the client's reverse charge.
-            line.category = category;
-            line.rate = rate;
-        } else {
-            match line.category.as_str() {
-                // A rate of the person's own, kept.
-                "S" if line.rate > 0 => {}
-                // Zero-rated, an EU delivery, an export: the person's choice.
-                "Z" | "K" | "G" => {}
-                // Exempt with its reason written: kept.
-                "E" | "O" if !line.exemption.trim().is_empty() => {}
-                // Left from a franchise, a reverse charge no longer due, no rate yet: the standard one.
-                _ => {
-                    line.category = category;
-                    line.rate = rate;
-                }
-            }
-        }
+    // Each line placed where its VAT is due (`placed`), unless its tax is
+    // its own (set by you, or kept from the invoice a credit note credits).
+    // No VAT is ever shown under the franchise or without a scheme (art. 293
+    // E CGI: VAT shown is VAT owed): the rules of those schemes say so.
+    let language = if draft.language.is_empty() { "en".to_string() } else { Translator::new(&draft.language).language().to_string() };
+    for line in draft.lines.iter_mut().filter(|l| !l.own_tax) {
+        let p = placed(&draft.issuer, &draft.client, line.nature, day, &language);
+        line.category = p.category;
+        line.rate = p.rate;
+        line.exemption = p.mention;
+        line.reason_code = p.reason_code;
     }
     let preset = presets::get(&draft.issuer.preset);
     draft.penalty_rate = if draft.client.is_business() && draft.kind != Kind::CreditNote { penalty_on(s, day) } else { 0 };
@@ -358,16 +388,26 @@ pub fn refresh(draft: &mut Invoice, s: &InvoiceSettings, day: Date) {
     } else {
         draft.due = draft.terms.due(day).to_string();
     }
+    // The service's day, when nothing says it: the day of issue, said on
+    // the draft (the day it is made again), so that it can be changed;
+    // issued, it is the issue's day (ann. II CGI, art. 242 nonies A I-10°).
+    if draft.number.is_empty() && (draft.period_from.is_empty() || draft.period_default) {
+        let on = if draft.date.is_empty() { day.to_string() } else { draft.date.clone() };
+        draft.period_from = on.clone();
+        draft.period_to = on;
+        draft.period_default = true;
+    }
     let issuer = draft.issuer.clone();
-    let language = draft.language.clone();
-    let reverse = preset.tax.reverse.clone();
     let franchise_code = preset.tax.franchise.as_ref().map(|f| f.reason_code.clone()).unwrap_or_default();
+    // Why a category bears no VAT: its lines' own words (the placement's, or
+    // yours); the franchise's mention for its exempt lines.
     let reasons = move |category: &str, lines: &[&Line]| -> (String, String) {
-        match category {
-            "AE" => reverse.as_ref().map_or_else(|| ("Reverse charge".into(), "VATEX-EU-AE".into()), |r| (r.mention.get(&language).to_string(), r.reason_code.clone())),
-            "E" if issuer.scheme == "franchise" => (issuer.mention.clone(), franchise_code.clone()),
-            "E" => (lines.iter().map(|l| l.exemption.trim()).find(|e| !e.is_empty()).unwrap_or("").to_string(), String::new()),
-            _ => (String::new(), String::new()),
+        let own = lines.iter().map(|l| l.exemption.trim()).find(|e| !e.is_empty()).map(str::to_string);
+        let code = lines.iter().map(|l| l.reason_code.trim()).find(|c| !c.is_empty()).map(str::to_string);
+        match (category, own) {
+            (_, Some(words)) => (words, code.unwrap_or_default()),
+            ("E", None) if issuer.scheme == "franchise" => (issuer.mention.clone(), code.unwrap_or_else(|| franchise_code.clone())),
+            (_, None) => (String::new(), code.unwrap_or_default()),
         }
     };
     let deposits: i64 = draft.deposits.iter().map(|d| d.amount).sum();
@@ -454,7 +494,9 @@ pub struct Check {
 
 /// What the preset asks of this draft and it lacks, in plain words, as it
 /// would be issued on `day`: required items first.
-pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
+/// `records` are the invoices issued (`all_in`): a credit note is checked
+/// against what is left to credit on the invoice it cites.
+pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date, records: &[Invoice]) -> Vec<Check> {
     let tr = Translator::new(if draft.language.is_empty() { "en" } else { &draft.language });
     let language = tr.language().to_string();
     let issuer = issuer_on(s, day);
@@ -481,14 +523,72 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
     if draft.kind == Kind::CreditNote && draft.corrects.as_ref().is_none_or(|c| c.number.is_empty()) {
         say(true, words("invoice-check-credit-cites"));
     }
+    // Never more credited than is left to credit: an invoice credited twice gives the client twice.
+    if draft.kind == Kind::CreditNote
+        && let Some(cited) = draft.corrects.as_ref().filter(|c| !c.number.is_empty())
+        && let Some(invoice) = records.iter().find(|r| r.number == cited.number && !r.unreadable)
+    {
+        let left = invoice.left_to_credit(records);
+        if draft.totals.due > left {
+            let notes: Vec<String> = records.iter().filter(|r| r.kind == Kind::CreditNote && r.corrects.as_ref().is_some_and(|c| c.number == invoice.number)).map(|r| r.number.clone()).collect();
+            let mut args = crate::i18n::args();
+            args.set("number", invoice.number.clone());
+            args.set("left", tr.money_in(crate::money::Money(left), &invoice.currency));
+            args.set("notes", if notes.is_empty() { "—".to_string() } else { notes.join(", ") });
+            say(true, tr.text("invoice-check-credit-too-much", Some(&args)));
+        }
+    }
     if draft.currency.trim().len() != 3 {
         say(true, words("invoice-check-currency"));
     }
     let company = preset.form(&issuer.legal_form).is_some_and(|f| f.company);
     let zone = zone_of(&issuer, &draft.client);
     let natures: Vec<&str> = draft.lines.iter().map(|l| if l.nature == Nature::Goods { "goods" } else { "service" }).collect();
+    let categories: Vec<&str> = draft.lines.iter().map(|l| l.category.as_str()).collect();
+    // A table from before November 2026 says no legal form: asked once, « EI » not printed meanwhile.
+    if s.legal_form.trim().is_empty() && s.preset.trim().is_empty() && !preset.legal_form.is_empty() {
+        say(true, words("invoice-check-legal-form"));
+    }
+    // A scheme the country does not offer (none under France, where every
+    // business is under the franchise or liable) is never taken as said.
+    if preset.id != presets::ELSEWHERE && !preset.tax.schemes.is_empty() && !preset.tax.schemes.contains(&issuer.scheme) {
+        let mut args = crate::i18n::args();
+        args.set("scheme", issuer.scheme.clone());
+        args.set("schemes", preset.tax.schemes.join(", "));
+        say(true, tr.text("invoice-check-scheme-offered", Some(&args)));
+    }
+    // A business's country, where its VAT is due depends on it.
+    if draft.client.is_business() && zone == "unknown" && !preset.tax.place.is_empty() {
+        say(true, words("invoice-check-client-country"));
+    }
+    // A line not taxed here says why, in words the research gives: where
+    // they lack, the line writes its own (the review of phase 1, F4, F29).
+    for line in &draft.lines {
+        if !line.exemption.trim().is_empty() {
+            continue;
+        }
+        if line.own_tax {
+            let says_nothing = matches!(line.category.as_str(), "K" | "G" | "AE") || (line.category == "E" && issuer.scheme != "franchise") || (line.category == "O" && issuer.scheme != "none");
+            if says_nothing {
+                say(true, words("invoice-check-line-exemption"));
+            }
+            continue;
+        }
+        if let Some(rule) = placed(&issuer, &draft.client, line.nature, day, &language).rule.filter(|r| r.mention.is_empty()) {
+            say(true, rule.why.get(&language).to_string());
+        }
+    }
+    // Two late-payment rates never: your payment words speak of late fees,
+    // and Sioul prints its own (the review of phase 1, F27).
+    let folded: String = crate::text::fold(&issuer.payment).into_iter().collect();
+    let speaks = ["penalit", "penalt", "indemnit", "late fee", "late payment", "retard de paiement", "recouvrement"].iter().any(|w| folded.contains(w));
+    if speaks && draft.notes.iter().any(|n| matches!(n.legal.as_str(), "penalties" | "indemnity")) {
+        say(true, words("invoice-check-two-late-fees"));
+    }
     for rule in &preset.require {
         let applies = (rule.client.is_empty() || rule.client.contains(&draft.client.kind))
+            && (rule.category.is_empty() || rule.category.iter().any(|c| categories.contains(&c.as_str())))
+            && (rule.activity.is_empty() || rule.activity.iter().any(|a| s.activity.contains(a)))
             && (rule.zone.is_empty() || rule.zone.iter().any(|z| z == zone))
             && (rule.nature.is_empty() || rule.nature.iter().any(|n| natures.contains(&n.as_str())))
             && (rule.scheme.is_empty() || rule.scheme.contains(&issuer.scheme))
@@ -502,7 +602,9 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
             Who::Issuer => &issuer.ids,
             Who::Client => &draft.client.ids,
         };
-        let has = |kind: &str| ids.iter().any(|i| i.kind == kind && !i.value.trim().is_empty());
+        // A SIRET being given, said so, stands for it (SP F31808), as "other" too.
+        let pending = |kind: &str| matches!(kind, "siren" | "siret") && ids.iter().any(|i| i.kind == "other" && super::ids::pending(&i.value));
+        let has = |kind: &str| ids.iter().any(|i| i.kind == kind && !i.value.trim().is_empty()) || pending(kind);
         let met = if !rule.any.is_empty() {
             rule.any.iter().any(|k| has(k))
         } else {
@@ -511,6 +613,7 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
                 (Who::Issuer, "address") => !issuer.address.is_empty(),
                 (Who::Issuer, "mention") => !issuer.mention.trim().is_empty(),
                 (Who::Issuer, "capital") => !issuer.capital.trim().is_empty(),
+                (Who::Issuer, "contact") => !issuer.email.trim().is_empty(),
                 (Who::Issuer, "currency-when-taxed") => draft.totals.tax == 0 || preset.currency.is_empty() || draft.currency.eq_ignore_ascii_case(&preset.currency),
                 (Who::Client, "name") => !draft.client.name.trim().is_empty(),
                 (Who::Client, "address") => !draft.client.address.is_empty(),
@@ -554,11 +657,13 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
     out
 }
 
-/// What issuing needs of this device: whether it shares, whether its
-/// `drafts` part (which carries invoices) is on, and every device's last
-/// numbers (`sioul_sync::lease::Claim::series`).
+/// What issuing needs of this device: its name in the sharing (each
+/// device writes its own journal and life files), whether it shares,
+/// whether its `drafts` part (which carries invoices) is on, and every
+/// device's last numbers (`sioul_sync::lease::Claim::series`).
 #[derive(Debug, Clone, Default)]
 pub struct Numbering {
+    pub device: String,
     pub sharing: bool,
     pub drafts_shared: bool,
     pub claimed: BTreeMap<String, u64>,
@@ -573,77 +678,147 @@ pub struct Steps<'a> {
     pub ledger: Option<(&'a Path, &'a str)>,
 }
 
+/// The time billed, by session key, as the issued records say it: each
+/// session an invoice or a deposit invoice lists is billed by it, unless a
+/// credit note cancelled it since (`freed_sessions`), whatever the sessions'
+/// own marks say: those are a cache, made again from this (`reconcile_marks`).
+pub fn billed(records: &[Invoice]) -> BTreeMap<String, String> {
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    for invoice in records.iter().filter(|r| !r.unreadable && !r.number.is_empty() && r.kind != Kind::CreditNote) {
+        for key in invoice.sessions() {
+            out.insert(key, invoice.number.clone());
+        }
+    }
+    for credit in records.iter().filter(|r| !r.unreadable && !r.number.is_empty() && r.kind == Kind::CreditNote) {
+        let corrected = credit.corrects.as_ref().map(|c| c.number.as_str()).unwrap_or("");
+        for key in freed_sessions(credit, records) {
+            if out.get(&key).is_some_and(|n| n == corrected) {
+                out.remove(&key);
+            }
+        }
+    }
+    out
+}
+
+/// Entries with their billing as the issued records say it (`billed`): a
+/// session a record bills is billed by it, whatever its mark; one marked
+/// by a number whose record is not here (yet) stays as marked.
+pub fn with_billing(entries: &[Entry], records: &[Invoice]) -> Vec<Entry> {
+    let billed = billed(records);
+    let here: std::collections::BTreeSet<&str> = records.iter().filter(|r| !r.unreadable).map(|r| r.number.as_str()).collect();
+    entries
+        .iter()
+        .map(|e| {
+            let mut e = e.clone();
+            match billed.get(&e.key) {
+                Some(number) => e.invoice = number.clone(),
+                // Marked by an invoice that is here and does not bill it (a credit note freed it).
+                None if here.contains(e.invoice.as_str()) => e.invoice.clear(),
+                None => {}
+            }
+            e
+        })
+        .collect()
+}
+
+/// The sessions' marks made again from the issued records (`billed`): a
+/// session a record bills carries its number; one marked by a number whose
+/// record is here and bills it no more (credited) is cleared; a mark whose
+/// record is not here yet stays. Returns how many sessions changed. Run
+/// before each issue, so that a crash between a record and its marks never
+/// lets the same time be billed twice.
+pub fn reconcile_marks(records: &[Invoice], time_folder: &Path) -> Result<usize, String> {
+    let billed = billed(records);
+    let here: std::collections::BTreeSet<String> = records.iter().filter(|r| !r.unreadable).map(|r| r.number.clone()).collect();
+    let sessions = crate::timelog::sessions_in(time_folder);
+    let wrong: Vec<String> = sessions
+        .iter()
+        .filter(|x| match billed.get(&x.key()) {
+            Some(number) => x.invoice != *number,
+            None => !x.invoice.is_empty() && here.contains(&x.invoice),
+        })
+        .map(crate::timelog::Session::key)
+        .collect();
+    if wrong.is_empty() {
+        return Ok(0);
+    }
+    crate::timelog::update_in(time_folder, &wrong, |x| match billed.get(&x.key()) {
+        Some(number) => x.invoice = number.clone(),
+        None => x.invoice.clear(),
+    })
+}
+
 /// Issues the draft `id` of `dir` on `day`: checked first (what is required
-/// and missing refuses it, in words); then, under the series journal's
-/// lock, numbered as one more than the journal, the records and every
-/// device's claim, its issuer frozen, kept under its number, the journal
-/// written; its time marked (a credit note's cancelled time freed); its
-/// budget line planned; the draft taken out. All or nothing: a step that
-/// fails undoes the ones before it. `client`, when given, is the client
-/// as its profile says now, frozen with it.
-#[allow(clippy::too_many_arguments)]
-pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &Numbering, client: Option<Client>, steps: &Steps, tr: &Translator) -> Result<Invoice, String> {
+/// and missing refuses it, in words); then, under the numbering's lock,
+/// numbered as one more than the journal, the records and every device's
+/// claim, kept under its number (its client as the draft froze it), this
+/// device's journal written; its time marked (a credit note's cancelled
+/// time freed); its budget line planned (a credit note lowers the credited
+/// invoice's instead); the draft taken out. All or nothing: a step that
+/// fails undoes the ones before it.
+pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &Numbering, steps: &Steps, tr: &Translator) -> Result<Invoice, String> {
     // Sharing on, the `drafts` part off: the records do not travel, so the
     // other devices' numbers may not be known here.
     if numbering.sharing && !numbering.drafts_shared {
         return Err(tr.text("invoice-drafts-part-off", None));
     }
     let mut invoice = super::draft_in(dir, id).ok_or_else(|| tr.text("invoice-draft-gone", None))?;
-    if let Some(client) = client {
-        invoice.client = client;
-    }
     invoice.date = day.to_string();
     refresh(&mut invoice, s, day);
-    let blocking: Vec<String> = checks(&invoice, s, day).into_iter().filter(|c| c.required).map(|c| c.text).collect();
+    let records = super::all_in(dir);
+    let blocking: Vec<String> = checks(&invoice, s, day, &records).into_iter().filter(|c| c.required).map(|c| c.text).collect();
     if !blocking.is_empty() {
         return Err(blocking.join("\n"));
     }
     let pattern = pattern_of(s, invoice.kind)?;
     let time_folder = steps.time.map(Path::to_path_buf).unwrap_or_else(crate::timelog::folder);
+    // The marks made again from the records first: a crash between a record and its marks bills nothing twice.
+    reconcile_marks(&records, &time_folder)?;
     // Time billed meanwhile (on another device, by another draft) is never billed twice.
     let sessions = invoice.sessions();
     if invoice.kind != Kind::CreditNote && !sessions.is_empty() {
-        let billed: Vec<String> = crate::timelog::sessions_in(&time_folder).into_iter().filter(|x| !x.invoice.is_empty() && sessions.contains(&x.key())).map(|x| x.invoice).collect();
-        if let Some(number) = billed.first() {
+        let by_records = billed(&records);
+        let marked = crate::timelog::sessions_in(&time_folder).into_iter().filter(|x| !x.invoice.is_empty() && sessions.contains(&x.key())).map(|x| x.invoice);
+        if let Some(number) = sessions.iter().find_map(|k| by_records.get(k).cloned()).or_else(|| marked.into_iter().next()) {
             let mut args = crate::i18n::args();
-            args.set("number", number.clone());
+            args.set("number", number);
             return Err(tr.text("invoice-time-billed-meanwhile", Some(&args)));
         }
     }
-    let records = super::all_in(dir);
     let freed = if invoice.kind == Kind::CreditNote { freed_sessions(&invoice, &records) } else { Vec::new() };
-    // Numbered and kept under the journal's lock: one number at a time on this device.
-    let journal_path = dir.join(series::JOURNAL);
-    let before = crate::filelock::with_lock(&journal_path, || -> Result<Option<Journal>, String> {
-        let existed = journal_path.exists();
+    // Numbered and kept under the numbering's lock: one number at a time on this device.
+    let lock = dir.join(series::LOCK);
+    let own_before = crate::filelock::with_lock(&lock, || -> Result<Option<Journal>, String> {
         let journal = Journal::load(dir);
-        let records = super::all_in(dir);
+        let records = super::records_in(dir);
         let (number, n) = series::next(&pattern, day, &journal, &records, &numbering.claimed);
         invoice.number = number.clone();
         invoice.series = pattern.sequence(day);
+        invoice.period_default = false;
         super::write_new(dir, &invoice)?;
-        let mut after = journal.clone();
+        let own = Journal::own(dir, &numbering.device);
+        let mut after = own.clone().unwrap_or_default();
         after.series.insert(invoice.series.clone(), series::Last { last: n, number, day: day.to_string() });
-        if let Err(e) = after.save(dir) {
+        if let Err(e) = after.save(dir, &numbering.device) {
             let _ = super::remove_issued(dir, &invoice.number);
             return Err(e);
         }
-        Ok(existed.then_some(journal))
+        Ok(own)
     })?;
     let undo_record = |also: &dyn Fn()| {
         also();
-        crate::filelock::with_lock(&journal_path, || {
+        crate::filelock::with_lock(&lock, || {
             let _ = super::remove_issued(dir, &invoice.number);
-            let _ = match &before {
-                Some(journal) => journal.save(dir),
-                None => std::fs::remove_file(&journal_path).map_err(|e| e.to_string()),
+            let _ = match &own_before {
+                Some(journal) => journal.save(dir, &numbering.device),
+                None => std::fs::remove_file(Journal::own_path(dir, &numbering.device)).map_err(|e| e.to_string()),
             };
         });
     };
     // Its time marked, or a credit note's cancelled time freed.
     let number = invoice.number.clone();
+    let corrected = invoice.corrects.as_ref().map(|c| c.number.clone()).unwrap_or_default();
     let marked = if invoice.kind == Kind::CreditNote {
-        let corrected = invoice.corrects.as_ref().map(|c| c.number.clone()).unwrap_or_default();
         crate::timelog::update_in(&time_folder, &freed, |x| {
             if x.invoice == corrected {
                 x.invoice.clear();
@@ -654,7 +829,6 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
     };
     let unmark = || {
         if invoice.kind == Kind::CreditNote {
-            let corrected = invoice.corrects.as_ref().map(|c| c.number.clone()).unwrap_or_default();
             let _ = crate::timelog::update_in(&time_folder, &freed, |x| {
                 if x.invoice.is_empty() {
                     x.invoice = corrected.clone();
@@ -672,9 +846,26 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         undo_record(&unmark);
         return Err(e);
     }
-    // Expected in the project's budget until paid.
+    let mut origin = crate::i18n::args();
+    origin.set("number", number.clone());
+    let origin = tr.text("invoice-budget-origin", Some(&origin));
+    // Expected in the project's budget until paid, in euros (the ledger's
+    // money: an invoice in another currency is not expected there, and no
+    // bank line in euros ever joins it); a credit note lowers the credited
+    // invoice's line instead, so that its money is no longer expected.
     let mut line_key = None;
-    if invoice.kind != Kind::CreditNote
+    let mut lowered = None;
+    if invoice.kind == Kind::CreditNote {
+        if let Some((ledger, _)) = steps.ledger {
+            match crate::budget::lower_planned(ledger, &crate::links::invoice_uri(&corrected), crate::money::Money(invoice.totals.due)) {
+                Ok(was) => lowered = was.map(|w| (ledger, w)),
+                Err(e) => {
+                    undo_record(&unmark);
+                    return Err(e);
+                }
+            }
+        }
+    } else if invoice.currency.eq_ignore_ascii_case("EUR")
         && let Some((ledger, budget)) = steps.ledger.filter(|(_, b)| !b.is_empty())
     {
         let line_id = crate::ids::new();
@@ -691,9 +882,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
             links: vec![crate::links::invoice_uri(&number), crate::links::project_uri(&invoice.project)].into_iter().filter(|l| !l.ends_with('/')).collect(),
             ..crate::budget::Line::default()
         };
-        let mut origin = crate::i18n::args();
-        origin.set("number", number.clone());
-        if let Err(e) = crate::budget::record_line(ledger, &line, &tr.text("invoice-budget-origin", Some(&origin))) {
+        if let Err(e) = crate::budget::record_line(ledger, &line, &origin) {
             undo_record(&unmark);
             return Err(e);
         }
@@ -703,6 +892,9 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
     if let Err(e) = super::remove_draft(dir, id) {
         if let Some((ledger, key)) = &line_key {
             let _ = crate::budget::remove_line_by_key(ledger, key);
+        }
+        if let Some((ledger, (was, gone))) = &lowered {
+            let _ = crate::budget::restore_lowered(ledger, was, *gone, &origin);
         }
         undo_record(&unmark);
         return Err(e);
@@ -727,64 +919,139 @@ fn freed_sessions(credit: &Invoice, records: &[Invoice]) -> Vec<String> {
         .collect()
 }
 
-/// A payment written on the issued invoice `number` of `dir`; returns the
-/// invoice as it is now. One matched with a bank line it holds already is
-/// not written again.
-pub fn add_payment(dir: &Path, number: &str, payment: Payment) -> Result<Invoice, String> {
-    if super::find_in(dir, number).is_none() {
-        return Err(format!("{number}: no such invoice here"));
-    }
-    let (_, invoice) = super::change_life(dir, number, |invoice| {
-        let twice = !payment.movement.is_empty() && invoice.payments.iter().any(|p| p.movement == payment.movement);
-        if payment.amount != 0 && !twice {
-            invoice.payments.push(payment);
-        }
-    })?;
-    Ok(invoice)
+/// Why no payment goes on an invoice, in words; None when one may.
+fn unpayable(invoice: &Invoice, tr: &Translator) -> Option<String> {
+    let mut args = crate::i18n::args();
+    args.set("number", invoice.corrects.as_ref().map(|c| c.number.clone()).unwrap_or_default());
+    (invoice.kind == Kind::CreditNote).then(|| tr.text("invoice-credit-not-paid", Some(&args)))
 }
 
-/// A payment taken off `number` (its Undo); Ok(false) when it is not there any more.
-pub fn remove_payment(dir: &Path, number: &str, payment: &Payment) -> Result<bool, String> {
-    if super::find_in(dir, number).is_none() {
-        return Ok(false);
+/// A payment said on the issued invoice `number` of `dir`, written in this
+/// `device`'s life (`lives`): never more than is left to pay, never on a
+/// credit note. Returns the payment, with its id.
+pub fn add_payment(dir: &Path, device: &str, number: &str, mut payment: Payment, tr: &Translator) -> Result<Payment, String> {
+    let all = super::all_in(dir);
+    let invoice = all.iter().find(|i| i.number == number && !i.unreadable).ok_or_else(|| tr.text("invoice-gone", None))?;
+    if let Some(why) = unpayable(invoice, tr) {
+        return Err(why);
     }
-    let (removed, _) = super::change_life(dir, number, |invoice| match invoice.payments.iter().position(|p| p == payment) {
-        Some(at) => {
-            invoice.payments.remove(at);
-            true
+    let left = invoice.left(&all);
+    if payment.amount <= 0 || payment.amount > left {
+        let mut args = crate::i18n::args();
+        args.set("left", tr.money_in(crate::money::Money(left), &invoice.currency));
+        return Err(tr.text("invoice-payment-too-much", Some(&args)));
+    }
+    payment.id = lives::new_id();
+    let entry = lives::Paid { id: payment.id.clone(), invoice: number.to_string(), date: payment.date.clone(), amount: payment.amount, means: payment.means.clone(), movement: payment.movement.clone() };
+    lives::change_own(dir, device, |book| book.payments.push(entry))?;
+    Ok(payment)
+}
+
+/// Entries of the life taken back by their ids (a payment's Undo, an
+/// evidence's), whichever device wrote them: a removal in this `device`'s file.
+pub fn take_back(dir: &Path, device: &str, ids: &[String]) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    lives::change_own(dir, device, |book| {
+        for id in ids {
+            if !book.removed.iter().any(|r| r.id == *id) {
+                book.removed.push(lives::Removed { id: id.clone() });
+            }
         }
-        None => false,
-    })?;
-    Ok(removed)
+    })
 }
 
 /// "Paid", said by hand on `day` by `means`: a payment of what is left.
 /// Returns the payment written, None when nothing was left to pay.
-pub fn pay_rest(dir: &Path, number: &str, day: Date, means: &str) -> Result<Option<Payment>, String> {
+pub fn pay_rest(dir: &Path, device: &str, number: &str, day: Date, means: &str, tr: &Translator) -> Result<Option<Payment>, String> {
     let all = super::all_in(dir);
-    let invoice = all.iter().find(|i| i.number == number && !i.unreadable).ok_or_else(|| format!("{number}: no such invoice here"))?;
+    let invoice = all.iter().find(|i| i.number == number && !i.unreadable).ok_or_else(|| tr.text("invoice-gone", None))?;
+    if let Some(why) = unpayable(invoice, tr) {
+        return Err(why);
+    }
     let left = invoice.left(&all);
     if left <= 0 {
         return Ok(None);
     }
-    let payment = Payment { date: day.to_string(), amount: left, means: if means.is_empty() { "transfer".into() } else { means.to_string() }, movement: String::new() };
-    add_payment(dir, number, payment.clone())?;
-    Ok(Some(payment))
+    let payment = Payment { id: String::new(), date: day.to_string(), amount: left, means: if means.is_empty() { "transfer".into() } else { means.to_string() }, movement: String::new() };
+    add_payment(dir, device, number, payment, tr).map(Some)
 }
 
-/// "Not paid" after all: every payment said by hand taken off, a format-1
-/// record's own word too; those the bank's matching found stay.
-pub fn unpay(dir: &Path, number: &str) -> Result<(), String> {
-    if super::find_in(dir, number).is_none() {
-        return Err(format!("{number}: no such invoice here"));
+/// "Not paid" after all: every payment said by hand taken back (a
+/// format-1 record's own word too); those the bank's matching found stay.
+pub fn unpay(dir: &Path, device: &str, number: &str, tr: &Translator) -> Result<(), String> {
+    let invoice = super::find_in(dir, number).ok_or_else(|| tr.text("invoice-gone", None))?;
+    let ids: Vec<String> = invoice.payments.iter().filter(|p| p.movement.is_empty()).map(|p| p.id.clone()).collect();
+    take_back(dir, device, &ids)
+}
+
+/// What one bank line did to your invoices (`take_bank_line`): each entry
+/// written (a payment, or a bank line taken in as a hand payment's
+/// evidence) with its invoice and amount, and what the line paid beyond
+/// what they asked.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Taken {
+    pub entries: Vec<(String, String, i64)>,
+    pub overpaid: i64,
+}
+
+impl Taken {
+    pub fn ids(&self) -> Vec<String> {
+        self.entries.iter().map(|(_, id, _)| id.clone()).collect()
     }
-    super::change_life(dir, number, |invoice| {
-        invoice.payments.retain(|p| !p.movement.is_empty());
-        if let Some(older) = invoice.older.as_mut() {
-            older.paid = false;
+}
+
+/// A bank line of `amount` in `currency`, on `day`, that the matching joined
+/// to the planned lines of the invoices `numbers` (several, when one
+/// transfer pays several): split across them, the oldest first, each up to
+/// what it has left. A payment said by hand with no bank line takes this
+/// line in as its evidence instead of gaining a second payment; nothing is
+/// written on an invoice in another currency, a credit note, or one with
+/// nothing left; what remains is said as paid beyond. Written in one step
+/// in this `device`'s life.
+pub fn take_bank_line(dir: &Path, device: &str, numbers: &[String], movement: &str, day: Date, amount: i64, currency: &str) -> Result<Taken, String> {
+    let all = super::all_in(dir);
+    let mut invoices: Vec<&Invoice> = numbers.iter().filter_map(|n| all.iter().find(|i| i.number == *n && !i.unreadable)).collect();
+    invoices.sort_by(|a, b| (a.date.as_str(), a.number.as_str()).cmp(&(b.date.as_str(), b.number.as_str())));
+    invoices.dedup_by(|a, b| a.number == b.number);
+    let mut rest = amount.max(0);
+    let mut taken = Taken::default();
+    let mut book_payments = Vec::new();
+    let mut book_evidence = Vec::new();
+    for invoice in invoices {
+        if rest == 0 {
+            break;
         }
-    })
-    .map(|_| ())
+        if invoice.kind == Kind::CreditNote || !invoice.currency.eq_ignore_ascii_case(currency) || invoice.payments.iter().any(|p| p.movement == movement) {
+            continue;
+        }
+        // Said by hand, not found at the bank yet: this line is their evidence.
+        for hand in invoice.payments.iter().filter(|p| p.movement.is_empty()) {
+            if rest < hand.amount {
+                break;
+            }
+            let id = lives::new_id();
+            book_evidence.push(lives::Evidence { id: id.clone(), payment: hand.id.clone(), movement: movement.to_string(), date: day.to_string() });
+            taken.entries.push((invoice.number.clone(), id, hand.amount));
+            rest -= hand.amount;
+        }
+        let pay = invoice.left(&all).min(rest);
+        if pay > 0 {
+            let id = lives::new_id();
+            book_payments.push(lives::Paid { id: id.clone(), invoice: invoice.number.clone(), date: day.to_string(), amount: pay, means: "transfer".into(), movement: movement.to_string() });
+            taken.entries.push((invoice.number.clone(), id, pay));
+            rest -= pay;
+        }
+    }
+    taken.overpaid = rest;
+    if !book_payments.is_empty() || !book_evidence.is_empty() {
+        lives::change_own(dir, device, |book| {
+            book.payments.extend(book_payments);
+            book.evidence.extend(book_evidence);
+        })?;
+    }
+    Ok(taken)
 }
 
 /// Of a payment of `amount` on `invoice`, what is turnover excluding VAT,

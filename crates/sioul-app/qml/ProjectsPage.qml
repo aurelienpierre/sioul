@@ -443,12 +443,14 @@ Item {
 
                         Label {
                             Layout.fillWidth: true
-                            text: [bill.modelData.number, bill.modelData.date, bill.modelData.total].join("  ·  ")
+                            // A credit note says what it credits; it is never paid.
+                            text: [bill.modelData.number, bill.modelData.date, bill.modelData.total, bill.modelData.note || ""].filter(t => t !== "").join("  ·  ")
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: page.theme.text
                         }
                         CheckBox {
+                            visible: bill.modelData.kind !== "credit-note"
                             text: page.sioul.text("invoice-paid")
                             checked: bill.modelData.paid
                             onToggled: page.problem = page.sioul.setInvoicePaid(bill.modelData.number, checked)

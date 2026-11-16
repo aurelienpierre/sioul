@@ -34,6 +34,7 @@ before.fr = "Steuernummer"
 
 [[identifier]]
 kind = "vat"
+check = "vat"
 name.en = "VAT number (USt-IdNr.)"
 name.fr = "Numéro de TVA (USt-IdNr.)"
 before.en = "USt-IdNr."
@@ -85,15 +86,21 @@ field = "address"
 why.en = "The client’s full address."
 why.fr = "L’adresse complète du client."
 
-# Reverse charge: the client's VAT number (Directive 2006/112/EC, art. 226(4)).
+# Reverse charge and intra-EU deliveries: both VAT numbers (Directive
+# 2006/112/EC, art. 226(3)-(4)), under the small-business exemption too
+# (the review of phase 1, F14).
+[[require]]
+any = ["vat"]
+category = ["AE", "K"]
+why.en = "Your USt-IdNr.: a reverse-charge invoice carries it (Directive 2006/112/EC, art. 226(3))."
+why.fr = "Votre USt-IdNr. : une facture en autoliquidation le porte (directive 2006/112/CE, art. 226(3))."
+
 [[require]]
 who = "client"
 any = ["vat"]
-scheme = ["liable"]
-client = ["business", "public"]
-zone = ["eu"]
-why.en = "The client’s EU VAT number."
-why.fr = "Le numéro de TVA intracommunautaire du client."
+category = ["AE", "K"]
+why.en = "The client’s EU VAT number (Directive 2006/112/EC, art. 226(4))."
+why.fr = "Le numéro de TVA intracommunautaire du client (directive 2006/112/CE, art. 226(4))."
 
 [tax]
 schemes = ["franchise", "liable"]
@@ -120,12 +127,53 @@ rates = [
 [tax.exempt]
 category = "E"
 
-# "Reverse charge", literally (Directive 2006/112/EC, art. 226(11a)).
-[tax.reverse]
+# A business client's services in another member state, whatever the
+# scheme: "Reverse charge", literally (Directive 2006/112/EC, art. 226(11a)).
+[[tax.place]]
+id = "eu-service"
+scheme = ["franchise", "liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["service"]
 category = "AE"
 reason_code = "VATEX-EU-AE"
 mention.en = "Reverse charge"
 mention.fr = "Autoliquidation"
+
+# Liable, goods to a business in another member state (category K), and
+# services to a business or goods outside the EU: the research gives no
+# German words for them, so the line says its own, and a check asks them.
+[[tax.place]]
+id = "eu-goods"
+scheme = ["liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["goods"]
+category = "K"
+reason_code = "VATEX-EU-IC"
+why.en = "An intra-EU delivery carries the words of its exemption, which Sioul’s sources do not give for Germany: write them on the line."
+why.fr = "Une livraison intracommunautaire porte les mots de son exonération, que les sources de Sioul ne donnent pas pour l’Allemagne : écrivez-les sur la ligne."
+
+[[tax.place]]
+id = "abroad-service"
+scheme = ["liable"]
+zone = ["abroad"]
+client = ["business", "public"]
+nature = ["service"]
+category = "O"
+reason_code = "VATEX-EU-O"
+why.en = "A service to a business outside the EU is not taxed in Germany; Sioul’s sources do not give its words: write them on the line."
+why.fr = "Une prestation à une entreprise hors de l’UE n’est pas taxée en Allemagne ; les sources de Sioul n’en donnent pas les mots : écrivez-les sur la ligne."
+
+[[tax.place]]
+id = "abroad-goods"
+scheme = ["liable"]
+zone = ["abroad"]
+nature = ["goods"]
+category = "G"
+reason_code = "VATEX-EU-G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give for Germany: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas pour l’Allemagne : écrivez-les sur la ligne."
 
 # Turnover of the previous year and of this one (§ 19 UStG, since
 # 1 January 2025), watched while the exemption holds.

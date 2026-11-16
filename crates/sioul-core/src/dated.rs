@@ -237,9 +237,10 @@ pub fn of_payments(ledger: &crate::budget::Ledger, today: Date, tr: &Translator)
         .collect()
 }
 
-/// An invoice you issued and that is not paid, on its due day (its own
-/// device's: invoices live where they were made). Only from `today` on.
-/// `invoices` are all of them: a credit note settles what it credits.
+/// An invoice you issued and that is not paid, on its due day (the records
+/// travel with the drafts part, so every device that shares it says it).
+/// Only from `today` on. `invoices` are all of them: a credit note settles
+/// what it credits, and is never a date of its own.
 pub fn of_invoices(invoices: &[crate::invoice::Invoice], today: Date, tr: &Translator) -> Vec<Dated> {
     invoices
         .iter()

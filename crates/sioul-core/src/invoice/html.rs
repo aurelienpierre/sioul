@@ -125,7 +125,10 @@ fn current(invoice: &Invoice, tr: &Translator) -> String {
     if !invoice.order.is_empty() {
         facts.push(say(tr, "invoice-order", &[("order", invoice.order.clone())]));
     }
-    let liable = issuer.scheme == "liable";
+    // VAT columns and per-rate lines whenever the totals carry VAT (a credit
+    // note of an invoice issued under VAT, after the franchise came back),
+    // or the issuer is liable.
+    let liable = issuer.scheme == "liable" || invoice.totals.tax != 0 || invoice.totals.breakdown.iter().any(|b| b.category == "S");
     let quantity = |line: &Line| -> String {
         match line.minutes() {
             Some(minutes) => duration(minutes),

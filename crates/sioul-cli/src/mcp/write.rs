@@ -457,7 +457,8 @@ pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
         draft.project_title = project.title.clone();
         if from_time {
             let entries = sioul_core::timereport::entries(&sioul_core::timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
-            if let Some(timed) = life::from_time(&entries, project, draft.clone(), settings, today) {
+            let records = invoice::all_in(&invoice::folder());
+            if let Some(timed) = life::from_time(&entries, project, draft.clone(), &records, settings, today) {
                 draft = timed;
             }
         }
@@ -476,9 +477,15 @@ pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
     if draft.lines.is_empty() {
         return Err(if project.is_some() { s.tr.text("invoice-nothing", None) } else { "Nothing to bill: give `lines`, or a `project` with time not billed yet.".into() });
     }
+    // The service's day or period, when the person said it; else the day of issue.
+    if let Some(from) = args.date("service_from")? {
+        draft.period_from = from.to_string();
+        draft.period_to = args.date("service_to")?.unwrap_or(from).to_string();
+        draft.period_default = false;
+    }
     life::refresh(&mut draft, settings, today);
     let saved = invoice::save_draft(&invoice::folder(), &draft)?;
-    let missing: Vec<String> = life::checks(&saved, settings, today).into_iter().map(|c| format!("{} {}", if c.required { "Needed before issuing:" } else { "Worth adding:" }, c.text)).collect();
+    let missing: Vec<String> = life::checks(&saved, settings, today, &invoice::all_in(&invoice::folder())).into_iter().map(|c| format!("{} {}", if c.required { "Needed before issuing:" } else { "Worth adding:" }, c.text)).collect();
     let mut text = format!("Draft {} kept: {} · {}. Nothing is numbered: the person issues it from Sioul.", saved.draft, one_line(saved.client.first_line()), s.tr.money_in(saved.total(), &saved.currency));
     for line in &missing {
         text.push('\n');

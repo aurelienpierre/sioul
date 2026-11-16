@@ -389,8 +389,8 @@ pub(crate) fn save_reserve(id: &str, edit: &str) -> String {
     result.err().unwrap_or_default()
 }
 
-/// The payments the matching wrote on your invoices while an export was taken in: (number, payment).
-pub(crate) type Paid = Vec<(String, sioul_core::invoice::Payment)>;
+/// What the matching wrote on your invoices while an export was taken in, a bank line at a time.
+pub(crate) type Paid = Vec<sioul_core::movements::acts::InvoicePaid>;
 
 /// A bank export taken in; returns what it added, in a sentence, or what
 /// went wrong, and the payments it wrote on your invoices.
@@ -435,7 +435,7 @@ fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
     // sharing takes too; its holds kept apart, its new lines resolved against what
     // was planned and announced (`movements::acts::take_in`).
     let words = sioul_core::words::Words::of(&config);
-    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date()) {
+    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date(), &crate::notices::here_id()) {
         Ok(added) => added,
         Err(e) => return (false, e),
     };

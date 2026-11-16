@@ -28,6 +28,7 @@ company = true
 # A franchise enterprise keeps a Belgian VAT number.
 [[identifier]]
 kind = "vat"
+check = "vat"
 name.en = "VAT number"
 name.fr = "Numéro de TVA"
 before.en = "VAT"
@@ -57,7 +58,7 @@ why.fr = "Votre numéro de TVA (directive 2006/112/CE, art. 226(3))."
 field = "mention"
 scheme = ["franchise"]
 why.en = "The franchise mention, in your own words: Settings ▸ Invoices."
-why.fr = "La mention de franchise, dans vos mots : Réglages ▸ Factures."
+why.fr = "La mention de franchise, dans vos mots : Paramètres ▸ Factures."
 
 [[require]]
 who = "client"
@@ -74,8 +75,7 @@ why.fr = "L’adresse complète du client."
 [[require]]
 who = "client"
 any = ["vat"]
-client = ["business", "public"]
-zone = ["eu"]
+category = ["AE", "K"]
 why.en = "The client’s EU VAT number (Directive 2006/112/EC, art. 226(4))."
 why.fr = "Le numéro de TVA intracommunautaire du client (directive 2006/112/CE, art. 226(4))."
 
@@ -85,8 +85,12 @@ schemes = ["franchise", "liable"]
 [tax.franchise]
 category = "E"
 
-# The Belgian rates (21 %, 12 %, 6 %), not part of the research of November
-# 2026: the rates as known in mid-2026; check them before relying on them.
+# The Belgian rates (21 % standard, 12 % and 6 % reduced), confirmed for
+# 2026 after the review of 16 November 2026: the proposed 22 % was dropped;
+# the 2026 budget only moved some goods and services between the rates from
+# 1 March 2026. Sources: BDO, "Belgium VAT and excise duty changes in 2026"
+# (bdo.global); Bird & Bird, "Belgium increases VAT in the hospitality, food
+# and leisure sectors as of March 2026" (twobirds.com).
 [[tax.rates]]
 from = "1996-01-01"
 rates = [
@@ -98,8 +102,49 @@ rates = [
 [tax.exempt]
 category = "E"
 
-[tax.reverse]
+# A business client's services in another member state, whatever the
+# scheme: "Reverse charge", literally (Directive 2006/112/EC, art. 226(11a)).
+[[tax.place]]
+id = "eu-service"
+scheme = ["franchise", "liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["service"]
 category = "AE"
 reason_code = "VATEX-EU-AE"
 mention.en = "Reverse charge"
 mention.fr = "Autoliquidation"
+
+# Liable, goods to a business in another member state, services to a
+# business or goods outside the EU: no Belgian words in the research.
+[[tax.place]]
+id = "eu-goods"
+scheme = ["liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["goods"]
+category = "K"
+reason_code = "VATEX-EU-IC"
+why.en = "An intra-EU delivery carries the words of its exemption, which Sioul’s sources do not give for Belgium: write them on the line."
+why.fr = "Une livraison intracommunautaire porte les mots de son exonération, que les sources de Sioul ne donnent pas pour la Belgique : écrivez-les sur la ligne."
+
+[[tax.place]]
+id = "abroad-service"
+scheme = ["liable"]
+zone = ["abroad"]
+client = ["business", "public"]
+nature = ["service"]
+category = "O"
+reason_code = "VATEX-EU-O"
+why.en = "A service to a business outside the EU is not taxed in Belgium; Sioul’s sources do not give its words: write them on the line."
+why.fr = "Une prestation à une entreprise hors de l’UE n’est pas taxée en Belgique ; les sources de Sioul n’en donnent pas les mots : écrivez-les sur la ligne."
+
+[[tax.place]]
+id = "abroad-goods"
+scheme = ["liable"]
+zone = ["abroad"]
+nature = ["goods"]
+category = "G"
+reason_code = "VATEX-EU-G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give for Belgium: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas pour la Belgique : écrivez-les sur la ligne."

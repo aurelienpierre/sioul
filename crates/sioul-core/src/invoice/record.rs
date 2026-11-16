@@ -91,6 +91,8 @@ pub enum Status {
     PartlyPaid,
     Paid,
     Credited,
+    /// An issued credit note: never paid nor unpaid, it credits an invoice.
+    CreditNote,
 }
 
 impl Status {
@@ -102,16 +104,17 @@ impl Status {
             Status::PartlyPaid => "partly-paid",
             Status::Paid => "paid",
             Status::Credited => "credited",
+            Status::CreditNote => "credit-note",
         }
     }
 
     pub fn named(name: &str) -> Option<Status> {
-        [Status::Draft, Status::Issued, Status::Sent, Status::PartlyPaid, Status::Paid, Status::Credited].into_iter().find(|s| s.id() == name)
+        [Status::Draft, Status::Issued, Status::Sent, Status::PartlyPaid, Status::Paid, Status::Credited, Status::CreditNote].into_iter().find(|s| s.id() == name)
     }
 
-    /// Settled: nothing left to pay.
+    /// Settled: nothing left to pay (a credit note never has anything to pay).
     pub fn settled(self) -> bool {
-        matches!(self, Status::Paid | Status::Credited)
+        matches!(self, Status::Paid | Status::Credited | Status::CreditNote)
     }
 }
 
@@ -307,9 +310,17 @@ pub struct Line {
     /// BT-152, in basis points (2000 = 20 %).
     #[serde(default)]
     pub rate: i64,
-    /// Why the line is exempt, when it is (BT-120 for its category).
+    /// Why the line is exempt or not taxed here, when it is (BT-120 for its
+    /// category): the preset's words for where its VAT is due, or your own.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub exemption: String,
+    /// EN 16931's code for that reason (BT-121): "VATEX-EU-AE".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reason_code: String,
+    /// Its tax set by you (or kept from the invoice a credit note credits):
+    /// Sioul never places it again (`life::refresh`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub own_tax: bool,
     #[serde(default)]
     pub nature: Nature,
     /// BT-131, in cents: quantity × price / base − discount, to the cent.
@@ -345,6 +356,8 @@ impl Line {
             category: category.to_string(),
             rate,
             exemption: String::new(),
+            reason_code: String::new(),
+            own_tax: false,
             nature: Nature::Service,
             amount: 0,
             sessions: Vec::new(),
@@ -431,9 +444,13 @@ pub struct Note {
     pub legal: String,
 }
 
-/// A payment received, or a refund made on a credit note.
+/// A payment received, from the invoice's life (`lives`): never written
+/// into its record.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Payment {
+    /// Its id in the life's files (`older:<number>` for a format-1 record's own word).
+    #[serde(default)]
+    pub id: String,
     pub date: String,
     pub amount: i64,
     /// "transfer", "card", "cash", "cheque", "direct-debit", "other".
@@ -493,6 +510,10 @@ pub struct Invoice {
     pub period_from: String,
     #[serde(default)]
     pub period_to: String,
+    /// A draft's service day said by Sioul (the day of issue), not by you:
+    /// made again until issued, when it is the issue's day.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub period_default: bool,
     /// BT-9, from the terms.
     #[serde(default)]
     pub due: String,
@@ -533,10 +554,11 @@ pub struct Invoice {
     /// The late-payment rate printed, in basis points; 0 when none.
     #[serde(default)]
     pub penalty_rate: i64,
-    #[serde(default)]
+    /// Its payments, from its life (`lives`), never from its record's file.
+    #[serde(skip)]
     pub payments: Vec<Payment>,
-    /// The day the mail with it left Sioul.
-    #[serde(default)]
+    /// The day the mail with it left Sioul, from its life too.
+    #[serde(skip)]
     pub sent: String,
     /// The issued file kept beside the record, and the SHA-256 of it and of
     /// the record (written from phase 2 on).
@@ -598,16 +620,18 @@ impl Invoice {
         if self.number.is_empty() {
             return Status::Draft;
         }
+        if self.kind == Kind::CreditNote {
+            return Status::CreditNote;
+        }
         let credited = self.credited(all);
         let paid = self.paid();
-        // A format-1 record said paid by its own word.
-        let said_paid = self.older.as_ref().is_some_and(|o| o.paid);
         let due = self.totals.due;
         if credited > 0 && credited >= due {
             Status::Credited
-        } else if said_paid || due <= 0 || paid + credited >= due {
+        } else if due <= 0 || (paid > 0 && paid + credited >= due) {
             Status::Paid
-        } else if paid > 0 || credited > 0 {
+        } else if paid > 0 {
+            // Partly paid only with a payment: a part credited is not paid.
             Status::PartlyPaid
         } else if !self.sent.is_empty() {
             Status::Sent
@@ -622,6 +646,14 @@ impl Invoice {
             return 0;
         }
         (self.totals.due - self.paid() - self.credited(all)).max(0)
+    }
+
+    /// What is left to credit on it: its amount less the credit notes issued for it.
+    pub fn left_to_credit(&self, all: &[Invoice]) -> i64 {
+        if self.kind == Kind::CreditNote || self.number.is_empty() {
+            return 0;
+        }
+        (self.totals.due - self.credited(all)).max(0)
     }
 
     /// The day it is due, when it says one.
@@ -661,17 +693,10 @@ struct V1 {
     currency: String,
     issuer: V1Issuer,
     sessions: Vec<String>,
+    /// Its own word that it was paid, an older Sioul's: read as a payment
+    /// from before (`lives`), which only an older Sioul changes.
     #[serde(default)]
     paid: bool,
-    /// Its own `paid` from before format 2, kept once Sioul writes its life
-    /// (`change_life`): `paid` says the payments too, for an older Sioul.
-    #[serde(default)]
-    paid_before: Option<bool>,
-    /// Payments written on it since format 2 (`change_life`).
-    #[serde(default)]
-    payments: Vec<Payment>,
-    #[serde(default)]
-    sent: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -729,9 +754,7 @@ impl V1 {
             },
             lines,
             totals: Totals { lines: self.total_cents, without_tax: self.total_cents, tax: 0, with_tax: self.total_cents, deposits: 0, due: self.total_cents, breakdown },
-            payments: self.payments,
-            sent: self.sent,
-            older: Some(Older { siret: self.issuer.siret, vat: self.issuer.vat, payment: self.issuer.payment, paid: self.paid_before.unwrap_or(self.paid), sessions: self.sessions }),
+            older: Some(Older { siret: self.issuer.siret, vat: self.issuer.vat, payment: self.issuer.payment, paid: self.paid, sessions: self.sessions }),
             ..Invoice::default()
         }
     }

@@ -48,8 +48,10 @@ pub struct InvoiceRow {
     pub paid: bool,
     /// "invoice", "credit-note", "deposit".
     pub kind: String,
-    /// "issued", "sent", "partly-paid", "paid", "credited".
+    /// "issued", "sent", "partly-paid", "paid", "credited", "credit-note".
     pub status: String,
+    /// A credit note's words: what it credits; empty for an invoice.
+    pub note: String,
 }
 
 /// A project's page.
@@ -255,7 +257,13 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
         let at = invoice.date.parse::<jiff::civil::Date>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
         let mut args = crate::i18n::args();
         args.set("number", invoice.number.clone());
-        push(at, "invoice", tr.text("project-invoice", Some(&args)), tr.money_in(invoice.total(), &invoice.currency), String::new(), invoice.number.clone());
+        // A credit note is named so: "Invoice 2026-006" with its amount read as money expected.
+        let words = match invoice.kind {
+            crate::invoice::Kind::CreditNote => "project-credit-note",
+            crate::invoice::Kind::Deposit => "project-deposit",
+            crate::invoice::Kind::Invoice => "project-invoice",
+        };
+        push(at, "invoice", tr.text(words, Some(&args)), tr.money_in(invoice.total(), &invoice.currency), String::new(), invoice.number.clone());
     }
     // What is coming, the nearest first; then what happened, the newest first.
     moments.sort_by_key(|m| if m.coming { (0, m.when) } else { (1, -m.when) });
@@ -285,7 +293,15 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
             .rev()
             .map(|i| {
                 let status = i.status(invoices);
-                InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money_in(i.total(), &i.currency), paid: status.settled(), kind: i.kind.id().into(), status: status.id().into() }
+                let note = match &i.corrects {
+                    Some(cited) if i.kind == crate::invoice::Kind::CreditNote => {
+                        let mut args = crate::i18n::args();
+                        args.set("number", cited.number.clone());
+                        tr.text("invoice-credits", Some(&args))
+                    }
+                    _ => String::new(),
+                };
+                InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money_in(i.total(), &i.currency), paid: status.settled(), kind: i.kind.id().into(), status: status.id().into(), note }
             })
             .collect(),
     }
