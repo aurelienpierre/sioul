@@ -3,11 +3,11 @@
 
 //! `sioul invoices`: the invoices you issued and your drafts, from the
 //! terminal (docs/projects.md, "Invoices"): listed with where each stands,
-//! shown, exported as a spreadsheet or a page to print; a draft made from a
-//! project's unbilled time, issued by you at the keyboard; a credit note; a
-//! payment received. Issuing follows the window's rules: one device numbers
-//! at a time (`sioul_sync::lease`), and a device whose sharing leaves
-//! invoices out never numbers.
+//! shown, exported as a spreadsheet, a page to print or the PDF kept when
+//! it was issued; a draft made from a project's unbilled time, issued by you
+//! at the keyboard; a credit note; a payment received. Issuing follows the
+//! window's rules: one device numbers at a time (`sioul_sync::lease`), and a
+//! device whose sharing leaves invoices out never numbers.
 
 use crate::{Session, one_line};
 use jiff::civil::Date;
@@ -20,12 +20,12 @@ pub(crate) enum InvoicesCommand {
     List(ListArgs),
     /// One invoice or draft, by its number or its draft's id: its lines, its totals, what it still lacks.
     Show { number: String },
-    /// Every invoice as a spreadsheet (CSV), one as its page to print, or where its PDF is.
+    /// Every invoice as a spreadsheet (CSV), one as its page to print, or its PDF.
     Export {
-        /// The page to print of this invoice (HTML; the window prints it to PDF).
+        /// The page to print of this invoice (HTML), as a draft's preview shows it.
         #[arg(long, conflicts_with = "pdf")]
         html: Option<String>,
-        /// Where the window wrote this invoice's PDF, and whether it is there.
+        /// This invoice's PDF as it was issued, copied where your invoices go; its path.
         #[arg(long)]
         pdf: Option<String>,
         /// Only this year's.
@@ -37,7 +37,7 @@ pub(crate) enum InvoicesCommand {
         /// The project, by its id.
         project: String,
     },
-    /// Issues a draft: numbers it, keeps it, marks its time; you at the keyboard.
+    /// Issues a draft: numbers it, keeps its PDF and its record, marks its time; you at the keyboard.
     Issue {
         /// The draft's id (`sioul invoices list` gives it).
         draft: String,
@@ -83,11 +83,16 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
         InvoicesCommand::Show { number } => show(s, &number),
         InvoicesCommand::Export { pdf: Some(number), .. } => {
             let found = invoice::find_in(&invoice::folder(), &number).ok_or_else(|| s.tr.text("invoice-gone", None))?;
-            let path = invoice::pdf_path(&found, &s.config.invoice.folder, &s.tr.text("invoice-folder-name", None));
-            println!("{}", path.display());
-            if !path.is_file() {
-                println!("{}", s.tr.text("invoice-cli-no-pdf", None));
+            if found.file.is_empty() {
+                // Before November 2026 the window printed it; it is where it went, or not there.
+                let path = invoice::pdf_path(&found, &s.config.invoice.folder, &s.tr.text("invoice-folder-name", None));
+                println!("{}", path.display());
+                if !path.is_file() {
+                    println!("{}", s.tr.text("invoice-cli-no-pdf", None));
+                }
+                return Ok(());
             }
+            println!("{}", copied(s, &found)?.display());
             Ok(())
         }
         InvoicesCommand::Export { html: Some(number), .. } => {
@@ -108,6 +113,19 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
 
 fn today() -> Date {
     sioul_core::zone::now().date()
+}
+
+/// The issued file of `found`, as it was kept, copied where your invoices go
+/// (`invoice::kept`); never made again. A file changed since is said.
+fn copied(s: &Session, found: &Invoice) -> Result<std::path::PathBuf, String> {
+    use invoice::kept::State;
+    let path = invoice::pdf_path(found, &s.config.invoice.folder, &s.tr.text("invoice-folder-name", None));
+    match invoice::kept::copy_to(&invoice::folder(), found, &path)? {
+        State::Kept(_) => {}
+        State::Changed(_) => eprintln!("{}", s.say("invoice-kept-changed", &[("number", found.number.clone())])),
+        State::Missing(_) | State::None => return Err(s.say("invoice-kept-missing", &[("number", found.number.clone())])),
+    }
+    Ok(path)
 }
 
 /// An amount as typed ("120.50", "120,50") in cents.
@@ -186,6 +204,12 @@ fn show(s: &Session, number: &str) -> Result<(), String> {
         for check in life::checks(&found, &s.config.invoice, today()) {
             println!("  {} {}", if check.required { "✗" } else { "·" }, check.text);
         }
+    }
+    // Its issued file, when it is not as it was kept.
+    match invoice::kept::state(&folder, &found) {
+        invoice::kept::State::Changed(_) => println!("  · {}", s.say("invoice-kept-changed", &[("number", found.number.clone())])),
+        invoice::kept::State::Missing(_) => println!("  · {}", s.say("invoice-kept-missing", &[("number", found.number.clone())])),
+        _ => {}
     }
     Ok(())
 }
@@ -277,6 +301,10 @@ fn issue(s: &Session, id: &str) -> Result<(), String> {
     let steps = life::Steps { time: None, ledger: ledger.as_deref().filter(|_| !budget.is_empty()).map(|l| (l, budget.as_str())) };
     let issued = life::issue(&folder, id, &s.config.invoice, today(), &numbering, client, &steps, &s.tr)?;
     println!("{}", s.say("invoice-cli-issued", &[("number", issued.number.clone()), ("amount", s.tr.money_in(issued.total(), &issued.currency))]));
+    if let Some(why) = invoice::cii::without(&issued) {
+        println!("  · {}", why.said(&s.tr));
+    }
+    println!("{}", s.say("invoice-cli-pdf", &[("path", copied(s, &issued)?.display().to_string())]));
     Ok(())
 }
 

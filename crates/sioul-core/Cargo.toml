@@ -45,6 +45,19 @@ sha2 = "0.10"
 # Already built for every target through sioul-sync (the same version and
 # features): nothing new is compiled.
 flate2 = "1"
+# The issued invoice (invoice/pdf.rs): a PDF/A-3b written in Rust, its fonts
+# embedded and subset, its Factur-X XML attached. Pure Rust (pdf-writer,
+# skrifa, subsetter, xmp-writer, flate2), so the phone builds it too; MIT or
+# Apache-2.0; it asks for Rust 1.92. No raster images, no text of its own:
+# the text is shaped here, with the rustybuzz krilla shapes with.
+krilla = { version = "0.8.2", default-features = false }
+rustybuzz = "0.20"
+# The Factur-X XML (invoice/cii.rs), written element by element in the
+# order the CII schema fixes: MIT, pure Rust, no default features.
+quick-xml = "0.42"
+# The EPC payment QR code (invoice/epc.rs): Nayuki's reference encoder,
+# error correction and version fixed as EPC069-12 asks; MIT, no dependency.
+qrcodegen = "1.8"
 
 # No core file of a crash (coredump.rs): setrlimit, on every Unix. Already
 # built for every target through the other crates: nothing new is compiled.

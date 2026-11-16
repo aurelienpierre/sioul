@@ -1022,6 +1022,9 @@ pub struct InvoiceSettings {
     /// The invoices' language by default ("en", "fr"); a client's own first.
     #[serde(default)]
     pub language: String,
+    /// The EPC payment QR code on euro invoices with an IBAN; on unless `false`.
+    #[serde(default)]
+    pub qr: Option<bool>,
 }
 
 /// An identifier as Settings keeps it.

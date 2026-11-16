@@ -216,8 +216,10 @@ fn checks_say_what_is_missing() {
     draft.lines = vec![Line::of_time("Advice", 60, 9000, "E", 0)];
     refresh(&mut draft, &s, day("2026-11-16"));
     let now = checks(&draft, &s, day("2026-11-16"));
-    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false], "{now:?}");
+    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false, false], "{now:?}");
     assert!(now[0].text.contains("SIREN") && now[0].text.contains("September 2027"), "{now:?}");
+    // Under the franchise without a VAT number, its PDF carries no Factur-X data yet: said only.
+    assert!(now[1].text.contains("Factur-X"), "{now:?}");
     let later = checks(&draft, &s, day("2027-09-01"));
     assert!(later.iter().any(|c| c.required && c.text.contains("SIREN")), "{later:?}");
     s.ids = vec![IdSetting { kind: "siren".into(), value: "732 829 321".into(), printed: true }];

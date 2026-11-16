@@ -11,14 +11,25 @@
 //! the day it was sent. A wrong invoice is answered by a credit note citing
 //! it. The rules of a country (its mentions, identifiers, rates, thresholds)
 //! are data (`presets`); the life of an invoice is `life`; its page to print
-//! is `html`. The date or period of the service is said on it, as French law
-//! asks (service-public.gouv.fr, sheet F31808).
+//! is `html`, for drafts and records from before November 2026. Issued, an
+//! invoice is a PDF/A-3 (`pdf`) carrying its Factur-X XML (`cii`) and, in
+//! euros, the EPC payment QR code (`epc`), kept beside its record with its
+//! SHA-256 (`kept`) and given back as it is when printed again. The date or
+//! period of the service is said on it, as French law asks
+//! (service-public.gouv.fr, sheet F31808).
 
+pub mod cii;
+pub mod epc;
 pub mod html;
 pub mod ids;
+pub mod kept;
 pub mod life;
+pub mod pdf;
+mod pdfa;
 pub mod presets;
 pub mod record;
+#[cfg(test)]
+pub(crate) mod samples;
 pub mod series;
 pub mod totals;
 

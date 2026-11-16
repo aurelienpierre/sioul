@@ -363,13 +363,31 @@ pub(crate) fn keep_invoices(shared: &Shared) {
     }
 }
 
+/// What the window shows of an issued invoice: the file kept when it was
+/// issued (`invoice::kept`), copied byte for byte where invoices go,
+/// {"pdf"}, with what to say when it changed since ({"said"}); never made
+/// again. A record from before November 2026 kept no file: {"html", "pdf"},
+/// its page for the window to print, as it always was.
+fn printed(found: &Invoice) -> Result<serde_json::Value, String> {
+    let destination = pdf_path(found);
+    let pdf = destination.display().to_string();
+    if found.file.is_empty() {
+        return Ok(serde_json::json!({ "html": invoice::page(found, tr()), "pdf": pdf }));
+    }
+    match invoice::kept::copy_to(&invoice::folder(), found, &destination).map_err(|_| say("invoice-not-written", &[("path", pdf.clone())]))? {
+        invoice::kept::State::Kept(_) => Ok(serde_json::json!({ "pdf": pdf })),
+        invoice::kept::State::Changed(_) => Ok(serde_json::json!({ "pdf": pdf, "said": say("invoice-kept-changed", &[("number", found.number.clone())]) })),
+        invoice::kept::State::Missing(_) | invoice::kept::State::None => Err(say("invoice-kept-missing", &[("number", found.number.clone())])),
+    }
+}
+
 /// Makes the invoice of a project's unbilled hours, in one click: a draft
 /// of its time for its client (its profile's language, currency and terms,
 /// else the settings'), issued at once (`invoice::life::issue`: checked,
-/// numbered, its record kept, its hours marked, its payment expected in the
-/// project's budget, all or nothing). Returns {"number", "html", "pdf"} for
-/// the window to print, or {"error"}: what is missing is said, and no draft
-/// stays behind (the editor comes later).
+/// numbered, its file and its record kept, its hours marked, its payment
+/// expected in the project's budget, all or nothing). Returns {"number",
+/// "pdf"}: its file copied where invoices go (`printed`), or {"error"}: what
+/// is missing is said, and no draft stays behind (the editor comes later).
 pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     // One computer numbers invoices (`sioul_sync::lease`): two at once could give one number twice.
     if let Some(elsewhere) = invoices_held_elsewhere(shared) {
@@ -398,7 +416,9 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
                 return Err(e);
             }
         };
-        Ok(serde_json::json!({ "number": made.number, "html": invoice::page(&made, tr()), "pdf": pdf_path(&made).display().to_string() }))
+        let mut answer = printed(&made)?;
+        answer["number"] = serde_json::json!(made.number);
+        Ok(answer)
     })();
     work::refresh(qt, shared);
     match result {
@@ -407,11 +427,11 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
     }
 }
 
-/// An invoice made before, to print again: {"html", "pdf"}.
+/// An invoice made before, again: its kept file, as `printed` gives it.
 pub(crate) fn invoice_again(number: &str) -> String {
-    match invoice::find_in(&invoice::folder(), number) {
-        Some(found) => serde_json::json!({ "html": invoice::page(&found, tr()), "pdf": pdf_path(&found).display().to_string() }).to_string(),
-        None => serde_json::json!({ "error": tr().text("invoice-gone", None) }).to_string(),
+    match invoice::find_in(&invoice::folder(), number).ok_or_else(|| tr().text("invoice-gone", None)).and_then(|found| printed(&found)) {
+        Ok(answer) => answer.to_string(),
+        Err(error) => serde_json::json!({ "error": error }).to_string(),
     }
 }
 

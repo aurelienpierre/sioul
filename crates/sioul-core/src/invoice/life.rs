@@ -534,6 +534,24 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date) -> Vec<Check> {
             }
         }
     }
+    // The issued file: a character its font cannot print waits (a PDF/A
+    // never draws a missing glyph); a wrong IBAN is said; an invoice whose
+    // PDF will carry no Factur-X XML is said, never held back.
+    let probe = Invoice { issuer: issuer.clone(), ..draft.clone() };
+    let unprintable = super::pdf::unprintable(&probe);
+    if !unprintable.is_empty() {
+        let mut args = crate::i18n::args();
+        args.set("characters", unprintable.into_iter().collect::<String>());
+        say(true, tr.text("invoice-check-unprintable", Some(&args)));
+    }
+    for bank in issuer.banks.iter().filter(|b| !super::epc::iban_valid(&b.iban)) {
+        let mut args = crate::i18n::args();
+        args.set("iban", bank.iban.clone());
+        say(false, tr.text("invoice-check-iban-wrong", Some(&args)));
+    }
+    if let Some(why) = super::cii::without(&probe).filter(|w| *w != super::cii::Without::Older) {
+        say(false, why.said(&tr));
+    }
     if let Some(max) = preset.terms_max_days
         && draft.client.is_business()
         && draft.terms.days > max
@@ -621,11 +639,17 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         let (number, n) = series::next(&pattern, day, &journal, &records, &numbering.claimed);
         invoice.number = number.clone();
         invoice.series = pattern.sequence(day);
-        super::write_new(dir, &invoice)?;
+        // Its file first, kept beside it: the record names it with its SHA-256.
+        super::kept::write(dir, &mut invoice, &super::pdf::Options { qr: s.qr != Some(false) })?;
+        if let Err(e) = super::write_new(dir, &invoice) {
+            super::kept::remove(dir, &invoice);
+            return Err(e);
+        }
         let mut after = journal.clone();
         after.series.insert(invoice.series.clone(), series::Last { last: n, number, day: day.to_string() });
         if let Err(e) = after.save(dir) {
             let _ = super::remove_issued(dir, &invoice.number);
+            super::kept::remove(dir, &invoice);
             return Err(e);
         }
         Ok(existed.then_some(journal))
@@ -634,6 +658,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         also();
         crate::filelock::with_lock(&journal_path, || {
             let _ = super::remove_issued(dir, &invoice.number);
+            super::kept::remove(dir, &invoice);
             let _ = match &before {
                 Some(journal) => journal.save(dir),
                 None => std::fs::remove_file(&journal_path).map_err(|e| e.to_string()),

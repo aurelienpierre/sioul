@@ -1,7 +1,7 @@
 # Building and running
 
 ## What it needs
-- **Rust** 1.89 or newer.
+- **Rust** 1.92 or newer.
 - **D-Bus** development files, for the system keyring and notifications.
 - **pcsc-lite**'s development files on Linux and BSDs, for security keys (OpenPGP cards: a YubiKey): `pcsc-sys` links its client, found by pkg-config. Windows and macOS have theirs built in (WinSCard, the PCSC framework); Android needs none. To use a key, the smart card service must run: `pcscd` with its CCID driver (Fedora `pcsc-lite` and `pcsc-lite-ccid`, then `sudo systemctl enable --now pcscd.socket`; Debian and Ubuntu `pcscd`; Arch `pcsclite` and `ccid`).
 - **For the window only: Qt 6.9 or newer** (built and used with 6.11), with its development files: Qt Declarative (QML, Qt Quick, Controls, Layouts, Dialogs, Effects), Qt WebEngine with Qt WebChannel and Qt PDF, Qt Multimedia, Qt Positioning, Qt Location and Qt Image Formats. Sites keep their permissions with Qt WebEngine's permission API, long menus scroll as items of the window (both Qt 6.8), and each site's profile is made from a prototype (`WebEngineProfilePrototype`, Qt 6.9). The command line builds without Qt.

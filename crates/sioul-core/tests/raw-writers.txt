@@ -361,6 +361,15 @@ sioul-core/src/invoice/mod.rs	write_new	1	write_whole(&path, &text)
 sioul-core/src/invoice/mod.rs	change_life	1	write_whole(&path, &changed)
 sioul-core/src/invoice/mod.rs	remove_issued	1	std::fs::remove_file(&path)
 
+# sioul-core/src/invoice/kept.rs: an issued invoice's file, beside its record, and its copy where invoices go: no item.
+sioul-core/src/invoice/kept.rs	write	1	std::fs::write(&temporary, &rendered.pdf)
+sioul-core/src/invoice/kept.rs	write	1	std::fs::rename(&temporary, &path)
+sioul-core/src/invoice/kept.rs	write	1	std::fs::remove_file(&temporary)
+sioul-core/src/invoice/kept.rs	remove	1	std::fs::remove_file(path(dir, invoice))
+sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::write(&temporary, &bytes)
+sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::rename(&temporary, destination)
+sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::remove_file(&temporary)
+
 # sioul-core/src/invoice/series.rs: the invoices' series journal, beside them: no item.
 sioul-core/src/invoice/series.rs	save	1	std::fs::write(&temporary, text)
 sioul-core/src/invoice/series.rs	save	1	std::fs::rename(&temporary, &path)
