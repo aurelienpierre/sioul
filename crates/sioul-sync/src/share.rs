@@ -11078,6 +11078,24 @@ mod tests {
             assert!(text.contains("follows = 2") && text.contains("work = \"work+leisure\""), "{text}");
             assert_eq!((name_of(&read(computer), &phone.id), said_area(&read(computer), &phone.id)), (Some("Pocket phone"), Some(Area::PERSONAL)), "{text}");
         }
+
+        // A device's last field taken out on the desk: gone from the desk's file with its table;
+        // on the phone, where that table was first written (said there first), its header stays,
+        // empty: read as nothing said, as if it were gone, and shown nowhere.
+        set_area(&desk_config, &tablet, "").unwrap();
+        assert!(!desk.read("config/config.toml").contains(&tablet), "the desk's own table goes with its last field");
+        desk.exchange(&folder, &key, NOW + 15 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 16 * MINUTE);
+        let text = phone.read("config/config.toml");
+        let header = |id: &str| [format!("[device.{id}]\n"), format!("[device.\"{id}\"]\n")];
+        assert!(header(&tablet).iter().any(|h| text.contains(h.as_str())) && !text.contains("area = \"admin\""), "an empty header left behind: {text}");
+        let config = read(&phone);
+        assert!(config.devices.get(&tablet).is_some_and(|said| said.name.is_none() && said.area.is_none()), "read as nothing said");
+        assert_eq!((name_of(&config, &tablet), said_area(&config, &tablet)), (None, None));
+        assert_eq!(phone.exchange(&folder, &key, NOW + 17 * MINUTE).sent, 0, "an empty table says nothing to the others");
+        // Said again there, the header takes the field.
+        set_area(&phone_config, &tablet, "work").unwrap();
+        assert_eq!(said_area(&read(&phone), &tablet), Some(Area::WORK));
         let _ = std::fs::remove_dir_all(&base);
     }
 

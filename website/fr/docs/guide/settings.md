@@ -99,9 +99,9 @@ Sur un ordinateur, ou une tablette sans carte SIM, les messages multimédias qui
 
 Chaque appareil avec lequel vous partagez, celui-ci d’abord, chacun sur une carte ; dans une fenêtre large, les champs des cartes s’alignent en tableau.
 
-- **Renommer…** : un nom à vous pour l’appareil, affiché sur tous. Laissé vide, le nom que lui donne son système revient.
+- **Renommer…** : un nom à vous pour l’appareil, qui voyage avec vos réglages. Laissé vide, le nom que lui donne son système revient.
 - **Ce qu’il est**, où il en est **maintenant**, sa **dernière ouverture**, son **dernier partage** et son **Sioul** : tels que chaque appareil les dit.
-- **Pour** : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez ; sans rien de coché, tout y arrive. Vous pouvez le dire de n’importe quel appareil, depuis n’importe lequel. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela.
+- **Pour** : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez ; sans rien de coché, tout y arrive. Vous pouvez le dire de n’importe quel appareil, depuis n’importe lequel. Cela voyage avec vos réglages, vers chaque appareil qui partage **Réglages et comptes**. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela.
 - **Ce qui arrive, et quand**, sous les appareils : pour chaque appareil, ce qui arrive au travail, pendant les démarches, les loisirs, les repas et le sommeil. Appuyez sur une case pour la changer ; **Selon ce à quoi il sert** la remet. Une phrase dit ce que cet appareil fait venir en ce moment ([À quoi sert chaque appareil](hours.md#what-each-device-is-for)).
 - **Partage** : les parties que l’appareil partage. Une partie se change sur l’appareil lui-même ; celles de cet appareil sont dans [Votre dossier et le partage](#your-folder-and-sharing).
 - **Le compter de nouveau**, **Oublier cet appareil**, **L’oublier maintenant** et **L’oublier et retirer ses fichiers…**, pour un autre appareil.

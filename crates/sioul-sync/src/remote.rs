@@ -1479,7 +1479,7 @@ pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Op
 /// its entry (`devices`) and its claim on the health part (`lease`), the later
 /// of the folder's copy and the one fetched beside it, each by its own times
 /// (`devices::written`; the claim's renewal and its end).
-type Said = BTreeMap<String, (Option<(i64, i64, i64, i64, i64)>, Option<(i64, i64)>)>;
+type Said = BTreeMap<String, (Option<(i64, i64, i64, i64, i64, i64)>, Option<(i64, i64)>)>;
 
 pub(crate) fn said_by_each(folder: &Path, key: &[u8; 32], own: &str) -> Said {
     let mut out: Said = BTreeMap::new();

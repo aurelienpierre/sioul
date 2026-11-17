@@ -174,7 +174,7 @@ fn carried_on_phone(said: Option<bool>, guessed: bool) -> bool {
 /// none does (`Here::notes_carried`). Carried: notes and papers stop
 /// travelling through the sharing here. Returns what went wrong, else "".
 pub(crate) fn set_notes_carried(carried: bool) -> String {
-    between_exchanges(|| {
+    let problem = between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         // Read as it is, never through `here()`, which takes this lock to mend it.
         let mut here = share::Here::load(&state_dir());
@@ -189,7 +189,12 @@ pub(crate) fn set_notes_carried(carried: bool) -> String {
             }
         }
         here.save(&state_dir()).err().unwrap_or_default()
-    })
+    });
+    // Notes and papers may no longer travel from here: the entry says so now (the review of phase 1, R2).
+    if problem.is_empty() {
+        crate::devices::parts_now();
+    }
+    problem
 }
 
 /// A phone's shared storage.
@@ -639,6 +644,10 @@ pub(crate) fn devices() -> String {
         on: bool,
         /// Why it is not, when a folder is set all the same: its key is not held; else "".
         why: String,
+        /// Sharing on, the part "settings" switched off here: what is said
+        /// in the tab stays on this device, and the others' word does not
+        /// come (the review of phase 1, R7); else "".
+        stays: String,
         rows: Vec<crate::health::DeviceRow>,
         /// What comes forward on each device at each time: the rows' cells are
         /// set with it (`device_grid::grid`); here, what is said around them.
@@ -655,11 +664,12 @@ pub(crate) fn devices() -> String {
         None => Vec::new(),
     };
     let why = if vault.is_none() && here.folder_path().is_some() { tr().text("share-key-missing", None) } else { String::new() };
+    let stays = if vault.is_some() && !here.shares("settings", &config) { tr().text("devices-settings-stay", None) } else { String::new() };
     let mut rows = crate::health::device_table(&holders);
     // Each device's five cells, and now on this one: as the rule reads them (`dispatch::known`, `hours::mode_at`).
     let now = sioul_core::zone::now();
     let grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
-    json(&Devices { on: vault.is_some(), why, rows, grid })
+    json(&Devices { on: vault.is_some(), why, stays, rows, grid })
 }
 
 /// What you said of a device, written into the shared settings
@@ -1214,7 +1224,7 @@ pub(crate) fn set_part(part: &str, on: bool) -> String {
     });
     // This device's entry says what it shares now, for the others to show it (Settings ▸ Devices).
     if problem.is_empty() {
-        crate::devices::parts_changed();
+        crate::devices::parts_now();
     }
     problem
 }

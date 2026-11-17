@@ -1440,7 +1440,7 @@ pub mod qobject {
         #[qinvokable]
         fn device_forget(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, rows, grid }`,
+        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, stays, rows, grid }`,
         /// a row per device, this one first (`sioul_sync::device_table::Row`),
         /// each with its five cells; `grid`, what is said around them
         /// (`sioul_sync::device_grid::Grid`: the times' names, now on this
@@ -8205,6 +8205,10 @@ impl qobject::Sioul {
             mail::show_mail(&qt, &shared);
         }
         // What this device is: the window's, and the others' at the next exchange (its devices' entry).
+        // The notes folder moved: whether a sync app carries it, so whether notes and papers travel from here.
+        if key == "case_store" {
+            crate::devices::parts_now();
+        }
         if key == "device_kind" {
             self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
             crate::devicekind::name_in_words();
