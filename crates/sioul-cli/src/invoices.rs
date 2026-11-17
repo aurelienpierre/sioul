@@ -379,7 +379,7 @@ fn claim_numbers(sharing: Option<(std::path::PathBuf, [u8; 32])>, device: &str) 
     let _ = lease::renew_with(&folder, &key, "invoices", device, renewal);
 }
 
-fn unhex(text: &str) -> Option<[u8; 32]> {
+pub(crate) fn unhex(text: &str) -> Option<[u8; 32]> {
     let bytes: Option<Vec<u8>> = (0..text.len()).step_by(2).map(|i| text.get(i..i + 2).and_then(|b| u8::from_str_radix(b, 16).ok())).collect();
     <[u8; 32]>::try_from(bytes?).ok()
 }
