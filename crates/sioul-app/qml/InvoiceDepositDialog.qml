@@ -59,8 +59,9 @@ SafeDialog {
     }
 
     objectName: "invoiceDepositDialog"
-    anchors.centerIn: Overlay.overlay
-    width: Math.min(420, dialog.roomWidth - 2 * dialog.safeGap)
+    parent: Overlay.overlay
+    anchors.centerIn: parent
+    width: Math.min(420, (parent ? dialog.roomWidth : 420) - 2 * dialog.theme.gap)
     modal: true
     title: dialog.sioul.text("invoices-deposit-title")
 

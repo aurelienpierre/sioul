@@ -49,8 +49,9 @@ SafeDialog {
     }
 
     objectName: "invoiceCreditDialog"
-    anchors.centerIn: Overlay.overlay
-    width: Math.min(480, dialog.roomWidth - 2 * dialog.safeGap)
+    parent: Overlay.overlay
+    anchors.centerIn: parent
+    width: Math.min(480, (parent ? dialog.roomWidth : 480) - 2 * dialog.theme.gap)
     modal: true
     title: dialog.invoice ? dialog.theme.plain(dialog.sioul.textWith("invoices-credit-title", "title", dialog.invoice.title)) : ""
 

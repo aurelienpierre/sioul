@@ -84,9 +84,10 @@ SafeDialog {
     }
 
     objectName: "clientProfileDialog"
-    anchors.centerIn: Overlay.overlay
-    width: Math.min(520, dialog.roomWidth - 2 * dialog.safeGap)
-    height: Math.min(implicitHeight, dialog.roomHeight - 2 * dialog.safeGap)
+    parent: Overlay.overlay
+    anchors.centerIn: parent
+    width: Math.min(520, (parent ? dialog.roomWidth : 520) - 2 * dialog.theme.gap)
+    height: Math.min(implicitHeight, (parent ? dialog.roomHeight : 800) - 2 * dialog.theme.gap)
     modal: true
     title: dialog.sioul.text("clients-profile")
 

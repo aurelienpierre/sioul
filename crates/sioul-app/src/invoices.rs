@@ -151,16 +151,40 @@ pub(crate) fn list(asked: &str) -> String {
     years.dedup();
     let statuses: Vec<Value> = STATUSES.iter().filter(|s| rows.iter().any(|r| r["status"] == **s)).map(|s| json!({ "id": s, "label": tr().text(&format!("invoices-status-{s}"), None) })).collect();
     let shown: Vec<Value> = rows.into_iter().filter(|r| (asked.client.is_empty() || r["client"] == asked.client.as_str()) && (asked.year.is_empty() || r["year"] == asked.year.as_str()) && (asked.status.is_empty() || r["status"] == asked.status.as_str())).collect();
-    let mut said: Vec<String> = invoice::series::missing(&journal, &all)
-        .into_iter()
-        .map(|m| match m.number {
-            Some(number) => say("invoice-cli-missing", &[("number", number)]),
-            None => say("invoice-cli-missing-in", &[("sequence", m.sequence), ("n", m.counter.to_string())]),
-        })
-        .collect();
+    let mut said = missing_words(invoice::series::missing(&journal, &all));
     said.extend(invoice::twice_in(&folder).into_iter().map(|t| say("invoice-cli-twice", &[("number", t.number), ("first", t.clients.0), ("second", t.clients.1), ("file", t.copy.display().to_string())])));
     said.extend(invoice::lives::Lives::load(&folder).newer.iter().chain(invoice::series::Journal::newer(&folder).iter()).map(|p| say("invoice-cli-newer", &[("file", p.display().to_string())])));
     json!({ "rows": shown, "clients": clients, "years": years, "statuses": statuses, "said": said, "declares": !all.is_empty() }).to_string()
+}
+
+/// The numbers with no record here, said in few lines: a run of numbers
+/// that follow one another as one ("2026-001 to 2026-013 have no record on
+/// this device."), a number alone as itself.
+fn missing_words(missing: Vec<invoice::series::Missing>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut run: Vec<invoice::series::Missing> = Vec::new();
+    let flush = |run: &mut Vec<invoice::series::Missing>, out: &mut Vec<String>| {
+        match run.as_slice() {
+            [] => {}
+            [one] => out.push(match &one.number {
+                Some(number) => say("invoice-cli-missing", &[("number", number.clone())]),
+                None => say("invoice-cli-missing-in", &[("sequence", one.sequence.clone()), ("n", one.counter.to_string())]),
+            }),
+            [first, .., last] => out.push(match (&first.number, &last.number) {
+                (Some(a), Some(b)) => say("invoices-missing-run", &[("first", a.clone()), ("last", b.clone())]),
+                _ => say("invoices-missing-run-in", &[("sequence", first.sequence.clone()), ("first", first.counter.to_string()), ("last", last.counter.to_string())]),
+            }),
+        }
+        run.clear();
+    };
+    for m in missing {
+        if run.last().is_some_and(|l| l.sequence != m.sequence || l.counter + 1 != m.counter) {
+            flush(&mut run, &mut out);
+        }
+        run.push(m);
+    }
+    flush(&mut run, &mut out);
+    out
 }
 
 // ---------------------------------------------------------------- the editor
@@ -516,7 +540,8 @@ pub(crate) fn show(number: &str) -> String {
         "status": status,
         "status_words": tr().text(&format!("invoices-status-{status}"), None),
         "left": left as f64 / 100.0,
-        "left_words": if left > 0 { say(if i.kind == Kind::CreditNote { "invoices-left-to-pay-back" } else { "invoices-left-to-pay" }, &[("amount", money_in(left, &i.currency))]) } else { String::new() },
+        // What is left, once a part is paid (or on a credit note, to pay back).
+        "left_words": if left > 0 && matches!(status, "partly-paid" | "to-pay-back") { say(if i.kind == Kind::CreditNote { "invoices-left-to-pay-back" } else { "invoices-left-to-pay" }, &[("amount", money_in(left, &i.currency))]) } else { String::new() },
         "sent": if i.sent.is_empty() { String::new() } else { say("invoices-sent-on", &[("day", long(&i.sent))]) },
         "corrects": i.corrects.as_ref().map(|c| say("invoice-corrects", &[("number", c.number.clone()), ("date", long(&c.date))])).unwrap_or_default(),
         "credit_notes": credit_notes,
@@ -947,8 +972,25 @@ pub(crate) fn settings_view() -> String {
     let regimes: Vec<Value> = preset.regime.iter().map(|r| json!({ "id": r.id, "name": r.name.get(&language) })).collect();
     let schemes: Vec<Value> = preset.tax.schemes.iter().map(|id| json!({ "id": id, "name": tr.text(&format!("invoices-scheme-{id}"), None) })).collect();
     let id_kinds: Vec<Value> = preset.identifier.iter().map(|k| json!({ "kind": k.kind, "name": k.name.get(&language) })).collect();
-    // What the preset asks of you before issuing: its required identifiers.
-    let mut asks: Vec<String> = preset.require.iter().filter(|r| r.who == presets::Who::Issuer && r.level == presets::Level::Required && r.client.is_empty() && r.zone.is_empty() && r.category.is_empty() && r.until.is_none_or(|u| u >= today)).map(|r| r.why.get(&language).to_string()).collect();
+    // What the preset asks of you before issuing any invoice, as you are today:
+    // its rules for the issuer under your VAT scheme, legal form and activities,
+    // whatever the client and the lines.
+    let scheme_now = life::scheme_on(s, today).0;
+    let company = preset.form(&form).is_some_and(|f| f.company);
+    let applies = |r: &&presets::Require| {
+        r.who == presets::Who::Issuer
+            && r.level == presets::Level::Required
+            && r.client.is_empty()
+            && r.zone.is_empty()
+            && r.nature.is_empty()
+            && r.category.is_empty()
+            && (r.scheme.is_empty() || r.scheme.contains(&scheme_now))
+            && (r.form.is_empty() || r.form.iter().any(|f| *f == form || (f == "company" && company)))
+            && (r.activity.is_empty() || s.activity.iter().any(|a| r.activity.contains(a)))
+            && r.from.is_none_or(|f| f <= today)
+            && r.until.is_none_or(|u| u >= today)
+    };
+    let mut asks: Vec<String> = preset.require.iter().filter(applies).map(|r| r.why.get(&language).to_string()).collect();
     asks.dedup();
     let pattern = life::pattern_of(s, Kind::Invoice);
     let folder = invoice::folder();
@@ -966,7 +1008,6 @@ pub(crate) fn settings_view() -> String {
         })
         .chain(s.lines.iter().filter(|o| o.id.trim().is_empty() || o.id.starts_with("older-")).map(|o| json!({ "id": o.id, "text": "", "own": o.text, "subject": o.subject, "off": o.off, "preset": false })))
         .collect();
-    let company = preset.form(&form).is_some_and(|f| f.company);
     let declares = preset.declaration.is_some();
     let periods: Vec<Value> = preset.declaration.as_ref().map(|d| d.periods.clone()).unwrap_or_default().iter().map(|p| json!({ "id": p, "name": tr.text(&format!("invoices-every-{p}"), None) })).collect();
     let activities: Vec<Value> = preset.activity.iter().map(|a| json!({ "id": a.id, "name": a.name.get(&language) })).collect();
@@ -1167,6 +1208,17 @@ mod tests {
         let draft = Invoice { draft: "20261117-093012-abcdef".into(), ..Invoice::default() };
         assert_eq!(draft_day(&draft), "2026-11-17");
         assert_eq!(row(&draft, &all, false)["key"].as_str(), Some("draft:20261117-093012-abcdef"));
+    }
+
+    /// The numbers with no record here are said as runs, never a line each.
+    #[test]
+    fn missing_numbers_are_said_as_runs() {
+        use invoice::series::Missing;
+        let m = |n: u64| Missing { sequence: "2026-{N:3}".into(), counter: n, number: Some(format!("2026-{n:03}")) };
+        let said = missing_words(vec![m(1), m(2), m(3), m(7)]);
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(said[0].contains("2026-001") && said[0].contains("2026-003") && !said[0].contains("2026-002"), "{said:?}");
+        assert!(said[1].contains("2026-007"), "{said:?}");
     }
 
     /// A list's row of Settings ▸ Invoices made a table: empty texts left

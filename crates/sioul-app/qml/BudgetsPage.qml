@@ -309,6 +309,11 @@ Item {
                         }
                     }
                 }
+                // On a computer the tabs keep to the left, as wide as their names.
+                Item {
+                    visible: !page.window.compact
+                    Layout.fillWidth: true
+                }
             }
         }
 

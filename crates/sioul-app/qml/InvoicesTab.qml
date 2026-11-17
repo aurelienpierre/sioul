@@ -419,9 +419,9 @@ Item {
                 color: tab.theme.text
             }
             Label {
-                visible: tab.invoice !== null && (tab.invoice.due !== "" && tab.invoice.left_words !== "" || tab.invoice.corrects !== "")
+                visible: tab.invoice !== null && (tab.invoice.due !== "" && tab.invoice.acts.paid || tab.invoice.corrects !== "")
                 Layout.fillWidth: true
-                text: tab.invoice ? [tab.invoice.corrects, tab.invoice.left_words !== "" && tab.invoice.due !== "" ? tab.sioul.textWith("invoices-due-on", "day", tab.invoice.due) : ""].filter(t => t !== "").join("  ·  ") : ""
+                text: tab.invoice ? [tab.invoice.corrects, tab.invoice.acts.paid && tab.invoice.due !== "" ? tab.sioul.textWith("invoices-due-on", "day", tab.invoice.due) : ""].filter(t => t !== "").join("  ·  ") : ""
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: tab.theme.muted
@@ -545,6 +545,7 @@ Item {
                     spacing: 8
 
                     Label {
+                        Layout.preferredWidth: 80
                         Layout.fillWidth: true
                         text: [billed.modelData.description, billed.modelData.time].filter(t => t !== "").join("  ·  ")
                         textFormat: Text.PlainText

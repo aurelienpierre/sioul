@@ -156,7 +156,7 @@ Item {
 
     // Issue: numbered, kept, its file copied where invoices go.
     function issueNow() {
-        typing.stop()
+        // What was typed a moment ago, sent first.
         if (typing.running || editor.lines.some(l => l.from === null))
             editor.sendLines(false)
         const made = JSON.parse(editor.sioul.issueInvoiceDraft(editor.draftId) || "{}")
@@ -166,6 +166,16 @@ Item {
             return
         }
         editor.issued(made)
+    }
+
+    // The preview unfolded and in sight, at the page's end (the window's pictures).
+    function toPreview() {
+        editor.previewOpen = true
+        Qt.callLater(() => {
+            const flick = scroll.contentItem as Flickable
+            if (flick)
+                flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        })
     }
 
     function discard() {
@@ -737,6 +747,7 @@ Item {
                     spacing: 8
 
                     Label {
+                        Layout.preferredWidth: 80
                         Layout.fillWidth: true
                         text: total.modelData.label
                         textFormat: Text.PlainText

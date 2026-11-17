@@ -65,8 +65,9 @@ SafeDialog {
     }
 
     objectName: "invoicePaidDialog"
-    anchors.centerIn: Overlay.overlay
-    width: Math.min(420, dialog.roomWidth - 2 * dialog.safeGap)
+    parent: Overlay.overlay
+    anchors.centerIn: parent
+    width: Math.min(420, (parent ? dialog.roomWidth : 420) - 2 * dialog.theme.gap)
     modal: true
     title: dialog.invoice ? dialog.theme.plain(dialog.sioul.textWith(dialog.invoice.kind === "credit-note" ? "invoices-paid-back-title" : "invoices-paid-title", "title", dialog.invoice.title)) : ""
 
@@ -81,7 +82,7 @@ SafeDialog {
         DateField {
             id: day
 
-            Layout.fillWidth: true
+            Layout.preferredWidth: 220
             Layout.preferredHeight: 40
             theme: dialog.theme
             sioul: dialog.sioul

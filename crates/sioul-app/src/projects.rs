@@ -402,11 +402,17 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
                 lines.extend(more.lines);
                 life::change_draft(&folder, &draft.draft, settings, today, |d| {
                     d.lines = lines;
-                    if !more.period_from.is_empty() && (d.period_default || more.period_from < d.period_from) {
+                    // The service's days: the time's, when the draft said the issue's day; else widened to it.
+                    if d.period_default {
                         d.period_from = more.period_from.clone();
-                    }
-                    if more.period_to > d.period_to {
                         d.period_to = more.period_to.clone();
+                    } else {
+                        if !more.period_from.is_empty() && more.period_from < d.period_from {
+                            d.period_from = more.period_from.clone();
+                        }
+                        if more.period_to > d.period_to {
+                            d.period_to = more.period_to.clone();
+                        }
                     }
                     d.period_default = d.period_from.is_empty();
                 })?;

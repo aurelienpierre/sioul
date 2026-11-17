@@ -404,6 +404,7 @@ Item {
 
                     Label {
                         objectName: "projectClientProfile"
+                        Layout.preferredWidth: 80
                         Layout.fillWidth: true
                         text: page.profile ? (page.profile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.profile.summary) : page.sioul.text("clients-profile-none")) : ""
                         textFormat: Text.PlainText
@@ -468,6 +469,7 @@ Item {
 
                         // Opened in Money ▸ Invoices: its payments, Paid…, Credit note…, Write the mail.
                         ItemDelegate {
+                            Layout.preferredWidth: 80
                             Layout.fillWidth: true
                             padding: 2
                             onClicked: page.window.openInvoice(bill.modelData.number)
