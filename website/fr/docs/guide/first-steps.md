@@ -82,7 +82,7 @@ Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne part
 4. Tapez votre **mot de passe**. Il va dans le trousseau de votre système, nulle part ailleurs.
 5. Choisissez **Se connecter et ajouter**. Sioul essaie le mot de passe avant de garder quoi que ce soit, puis relève vos courriels récents.
 
-Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous.
+Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous. Yahoo Mail en demande un à tout logiciel de courriel qui ne se connecte pas sur la page de Yahoo elle-même : ci-dessous aussi.
 
 Outlook.com, Hotmail, Live, MSN et Microsoft 365 ne prennent aucun mot de passe : vous vous connectez sur la page de Microsoft elle-même, ci-dessous.
 
@@ -98,6 +98,16 @@ Google refuse le mot de passe de votre compte dans les autres logiciels de courr
 - **Se connecter avec Google** : la page de Google elle-même s’ouvre dans votre navigateur. Pour les courriels, Google n’accepte qu’une clé Google à vous, pas celle de Sioul : un projet gratuit dans Google Cloud, fait une fois (**Faire votre clé Google** déplie les étapes), celui de vos agendas Google si vous l’avez fait. Google dit ensuite que l’application n’est pas validée : c’est la vôtre ; choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail. Publiez le projet (*Audience → Publier l’application*) : s’il reste en test, Google coupe l’accès tous les sept jours.
 
 Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur Android, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
+
+### Yahoo Mail {#yahoo-mail}
+
+Yahoo demande un mot de passe d’application aux logiciels de courriel qui ne se connectent pas sur la page de Yahoo elle-même, et jamais le mot de passe de votre compte Yahoo. Sioul est l’un de ces logiciels. Il trouve les serveurs de Yahoo d’après votre adresse (yahoo.com et ses versions par pays comme yahoo.fr, ymail.com, myyahoo.com, rocketmail.com) dans la liste des fournisseurs de Thunderbird, et dit où créer le mot de passe d’application avant que vous ne tapiez quoi que ce soit :
+
+1. Après **Trouver le serveur**, choisissez **Créer un mot de passe d’application** : la page de sécurité de votre compte Yahoo s’ouvre dans votre navigateur (login.yahoo.com/account/security).
+2. Là, sous « Connexions externes », choisissez « Créer un mot de passe d’application », nommez-le Sioul, puis « Générer le mot de passe ». Yahoo ne le propose que dans un navigateur déjà utilisé plusieurs jours de suite pour vous connecter à Yahoo, et pas en navigation privée ; sinon, il dit d’utiliser sa messagerie web ou sa propre application.
+3. Collez le mot de passe d’application sous **Mot de passe**, puis choisissez **Se connecter et ajouter**.
+
+Si Yahoo refuse un mot de passe plus tard, Sioul le dit et nomme la même page ; la fenêtre qui redemande le mot de passe a le même bouton **Créer un mot de passe d’application**. Pas encore essayé avec un vrai compte Yahoo. Source : l’aide de Yahoo, « Générer et gérer des mots de passe d’application tierce », <https://fr.aide.yahoo.com/kb/SLN15241.html>, lue le 17 novembre 2026.
 
 ### Outlook.com, Hotmail et Microsoft 365 {#outlook-and-microsoft-365}
 

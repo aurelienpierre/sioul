@@ -78,7 +78,7 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft 
 
 Three forms, one after the other:
 
-- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password; for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**.
+- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password; for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**.
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 

@@ -279,6 +279,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | CalDAV and CardDAV both ways, an invitation answered | Radicale, on the computer; a stand-in in the tests (sync tokens, multigets, cut connections, slow answers, 412, an invitation answered on two devices) | [building.md](building.md); `dav::tests` |
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
 | Microsoft's sign-in, IMAP and SMTP | stand-ins of its token endpoint and of Exchange's IMAP and SMTP answers; Windows' Credential Manager in the Windows CI job, for a 4 KB refresh token | [microsoft.md](microsoft.md), "What was tested" |
+| Yahoo's mail: its servers found, its refusal of a password said with where to make an app password | Thunderbird's entry for yahoo.com as a fixture; a stand-in sending server on the computer; no Yahoo account, no login sent to Yahoo | [client.md](client.md), "Signing in to the servers" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
 | OpenPGP | GnuPG 2.4, both ways | [client.md](client.md), "As built" |
 | Bitwarden | its key-derivation vectors; the live cloud with a made-up account; a real vault, in daily use | [sites.md](sites.md), "Bitwarden"; 6 October 2026 |
@@ -294,6 +295,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 - Waits edited on a phone through DAVx⁵ (OpenTasks, Tasks.org, jtx Board), to confirm what their code says; Thunderbird's and Apple's handling of Sioul's lines.
 - An invitation accepted on a server that schedules itself (Nextcloud, Google, iCloud): one answer reaching the organizer, the event shown answered or not elsewhere.
 - Google itself: the sign-in, CalDAV, CardDAV, Google Tasks.
+- Yahoo Mail itself, with an app password: receiving, sending, the words of its refusals.
 - GitHub itself with a fine-grained token, since 098a9d5.
 - A YubiKey on GitHub, Google and Proton in Sites; a call with the microphone and the camera, and changing them during a real call (Jitsi, Google Meet, Teams: only fake devices and a stand-in page were used); sharing a screen in a real call, on X11 and on Wayland; a PDF a site shows.
 - Discord itself staying logged in after Sioul quits (a test page doing as it does is checked: `tools/check-sites.py quit`).

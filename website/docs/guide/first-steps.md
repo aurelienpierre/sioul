@@ -82,7 +82,7 @@ Already using Sioul on another device? On a device that does not share yet, the 
 4. Type your **password**. It goes to your system's keyring, nowhere else.
 5. Choose **Connect and add**. Sioul tests the password before keeping anything, then fetches your recent mail.
 
-Some providers want an **app password** instead of your usual one when two-step verification is on: you make it in your account's settings at the provider. Gmail and Google Workspace: below.
+Some providers want an **app password** instead of your usual one when two-step verification is on: you make it in your account's settings at the provider. Gmail and Google Workspace: below. Yahoo Mail wants one from every mail program that does not sign in on Yahoo's own page: below too.
 
 Outlook.com, Hotmail, Live, MSN and Microsoft 365 take no password at all: you sign in on Microsoft's own page, below.
 
@@ -98,6 +98,16 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
 Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On Android, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
+
+### Yahoo Mail {#yahoo-mail}
+
+Yahoo wants an app password from mail programs that do not sign in on Yahoo's own page, and never your Yahoo account's own password. Sioul is one of those programs. It finds Yahoo's servers from your address (yahoo.com and its country versions such as yahoo.fr, ymail.com, myyahoo.com, rocketmail.com) in Thunderbird's list of providers, and says where to make the app password before you type anything:
+
+1. After **Find the server**, choose **Make an app password**: your Yahoo account's security page opens in your browser (login.yahoo.com/account/security).
+2. There, under "External connections", choose "Create app password", name it Sioul, then "Generate password". Yahoo offers this only in a browser you have already used to sign in to Yahoo for several days in a row, and not in a private window; otherwise it says to use its webmail or its own app.
+3. Paste the app password under **Password**, then choose **Connect and add**.
+
+If Yahoo refuses a password later, Sioul says so and names the same page; the dialog that asks for the password again has the same **Make an app password** button. Not yet tried with a real Yahoo account. Source: Yahoo's help, "Generate and manage 3rd-party app passwords", <https://help.yahoo.com/kb/SLN15241.html>, read 17 November 2026.
 
 ### Outlook.com, Hotmail and Microsoft 365 {#outlook-and-microsoft-365}
 

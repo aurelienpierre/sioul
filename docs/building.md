@@ -123,7 +123,7 @@ The drawings are in `data/icons/`: `sioul.svg`, `sioul-small.svg` (drawn for 32 
    ```
    sioul account add you@example.org
    ```
-   Sioul finds the server from the address (your provider's own settings, then Thunderbird's list of providers), says what it found, asks for the password, tests it, keeps it in your system keyring, and fetches the last 14 days. Gmail wants an app password (myaccount.google.com/apppasswords).
+   Sioul finds the server from the address (your provider's own settings, then Thunderbird's list of providers), says what it found, asks for the password, tests it, keeps it in your system keyring, and fetches the last 14 days. Gmail wants an app password (myaccount.google.com/apppasswords), and so does Yahoo Mail (login.yahoo.com/account/security, under "External connections").
 2. **Web-only mailboxes**, chats and other sites open in Sites (Ctrl+4), each logged in once in its own lasting profile ([sites.md](sites.md)); from the terminal, `sioul account portal proton https://mail.proton.me` adds one.
 3. **Keep the window open**, or run `sioul watch` in a terminal: each account's inbox stays open (IMAP IDLE), and the codes and links you ask sites for become quiet notifications within seconds.
 4. **Install an antivirus** to have attachments checked before they open (without one, Sioul asks first): `sudo dnf install clamav clamav-update`, then `sudo freshclam` for its signatures and `sudo systemctl enable --now clamav-freshclam` to keep them current.
