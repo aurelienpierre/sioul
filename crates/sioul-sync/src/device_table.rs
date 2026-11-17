@@ -118,6 +118,10 @@ pub struct Row {
     /// Said in the cells' place for a device whose Sioul is older: "Its
     /// Sioul is older: everything still comes there."; "" otherwise.
     pub cells_older: String,
+    /// Said under the cells of a device whose own entry says other cells
+    /// than these (it does not share your settings, or they have not reached
+    /// it yet): it follows its own until yours do; "" otherwise.
+    pub cells_apart: String,
 }
 
 /// What the table is made from: read by its caller, at `now`.

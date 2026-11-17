@@ -149,16 +149,38 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub topics: u32,
     /// Whether its Sioul follows what you said each device is for
-    /// (docs/areas.md, "What each device is for"): `AREAS` (1) from a build
-    /// that reads its line of the settings' table (`[device."<id>"]`: its
-    /// area, the cells you changed) and tells only what comes forward on it;
-    /// 0 from an older one, which tells by the rule before: while it is the
-    /// device used last of all, everything (`lease::told_by`). No word of the
-    /// doses': `said` does not carry it, and the health lease never reads
-    /// it. An older Sioul reads the entry as before, the field unknown to it
-    /// passed over.
+    /// (docs/areas.md, "Which device tells"): `AREAS` (1) from a build that
+    /// reads its own line of the settings' table (`[device."<id>"]`: its
+    /// area, the cells you changed), says its cells here (`cells`), and,
+    /// keeping the notices, tells what comes forward on it; 0 from an older
+    /// one, which tells everything while it keeps them, and never holds a
+    /// thing for later (`dispatch::Known`). No word of the doses': `said`
+    /// does not carry it, and the health lease never reads it. An older
+    /// Sioul reads the entry as before, the field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub areas: u32,
+    /// What comes forward on it at each time, as it reads its own line in
+    /// its own week (`sioul_core::areas::Cells::words`): by time ("work",
+    /// "admin", "leisure", "meals", "sleep"; "any", what it is for, which
+    /// comes while no hours are set), the areas then ("work+leisure",
+    /// "none"); a time its week lacks left out. Empty while nothing is said
+    /// of it: it brings what the hours bring. The others read it to know
+    /// what this device would tell (docs/areas.md, "Which device tells"),
+    /// never the shared settings, which a device may not share. Written
+    /// again when it changes (`steady`). No word of the doses'. An older
+    /// Sioul passes over it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub cells: std::collections::BTreeMap<String, String>,
+    /// Of each other device it counts that follows what devices are for, by
+    /// its id, the cells it acts on (`sioul_core::areas::Cells::key` of that
+    /// device's `cells`; "" for one nothing is said of). The keeper of the
+    /// notices lets a thing wait for this device only once it says here
+    /// that it acts on the keeper's own cells: until then, what this device
+    /// would claim on the keeper's word, the keeper tells (review of phase 2,
+    /// H1, M3). Written again when it changes (`steady`). An older Sioul
+    /// passes over it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub known: std::collections::BTreeMap<String, String>,
     /// What it says of the spam filter's and the topics' tables
     /// (docs/spam-filter.md, "Every device trains its own"): 0 from an older
     /// Sioul, which only reads a table another device made and deletes its

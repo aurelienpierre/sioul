@@ -8,18 +8,22 @@
 //! device's areas never keep back. Settings ▸ Devices and `sioul devices`
 //! show the same, worded here.
 //!
-//! A cell says the device's own line (`sioul_core::areas::Line::cell`): what
-//! the time brings, kept to what the device is for, or the cell you changed.
-//! What no device is for comes on every device as the hours say
-//! (`Here::unheld`): that is said once, under the grid, and in the sentence
-//! of now, which says what really comes here. A device whose Sioul is older
-//! has no cell in force: one sentence says everything still comes there.
+//! A cell says the device's line as your settings here say it
+//! (`sioul_core::areas::Line::cell`): what the time brings, kept to what the
+//! device is for, or the cell you changed; only the times your week has (a
+//! time it lacks never comes: review of phase 2, M2). What no device is for
+//! comes on every device as the hours say (`Here::unheld`): that is said
+//! once, under the grid, and in the sentence of now, which says what really
+//! comes here. A device whose Sioul is older has no cell in force: one
+//! sentence says everything still comes there. A device whose own entry says
+//! other cells (it does not share your settings, or not yet) follows its
+//! own: one sentence under its cells says so (`Row::cells_apart`).
 
 use crate::device_table::Row;
 use crate::dispatch::Known;
 use serde::Serialize;
 use sioul_core::areafilter::areas_in_words;
-use sioul_core::areas::{Area, Line, Time};
+use sioul_core::areas::{Area, Cells, Line, Time};
 use sioul_core::device_said::Said;
 use sioul_core::i18n::Translator;
 use sioul_core::quiet::Mode;
@@ -85,10 +89,10 @@ pub fn time_title(time: Time, words: &Translator) -> String {
     words.text(&format!("attention-column-{}", time.id()), None)
 }
 
-/// The five cells of a device's line, in the week `mode` knows; `device`:
-/// the name the device is shown under.
+/// The cells of a device's line, one per time the week `mode` knows has;
+/// `device`: the name the device is shown under.
 pub fn cells(line: Line, device: &str, mode: &Mode, words: &Translator) -> Vec<Cell> {
-    Time::STATES
+    times(mode)
         .into_iter()
         .map(|time| {
             let areas = line.cell(time, mode.week);
@@ -111,6 +115,11 @@ pub fn cells(line: Line, device: &str, mode: &Mode, words: &Translator) -> Vec<C
         .collect()
 }
 
+/// The times the week has, in the cells' order (`Time::STATES`).
+fn times(mode: &Mode) -> Vec<Time> {
+    Time::STATES.into_iter().filter(|time| mode.week.has(*time)).collect()
+}
+
 /// Each row given its cells (`Row::cells`), or, for a device whose Sioul is
 /// older, the sentence said in their place (`Row::cells_older`); and what is
 /// said around them. `said`: what you said of each device; `known`: the
@@ -123,6 +132,9 @@ pub fn grid(rows: &mut [Row], said_of: &BTreeMap<String, Said>, known: &Known, m
         if row.follows {
             let line = said_of.get(&row.id).map(Said::line).unwrap_or_default();
             row.cells = cells(line, &row.name, mode, words);
+            // Another device's own word on its cells, when it says other ones than these.
+            let apart = known.others.get(&row.id).is_some_and(|seen| seen.cells != Cells::Line(line).words(mode.week));
+            row.cells_apart = if apart && !row.here { words.text("devices-cells-apart", None) } else { String::new() };
         } else {
             row.cells = Vec::new();
             row.cells_older = words.text("devices-older", None);
@@ -140,9 +152,9 @@ pub fn grid(rows: &mut [Row], said_of: &BTreeMap<String, Said>, known: &Known, m
             None => said(words, "devices-now-open", &[("time", time), ("comes", comes)]),
         }
     };
-    let some_said = known.lines.values().any(|line| !line.says_nothing());
+    let some_said = known.some_said();
     let unheld = if some_said && !here.unheld.is_empty() { said(words, "devices-unheld", &[("areas", areas_in_words(words, "device-areas", here.unheld))]) } else { String::new() };
-    Grid { times: Time::STATES.into_iter().map(|time| time_title(time, words)).collect(), now, unheld, never: words.text("devices-never-held", None) }
+    Grid { times: times(mode).into_iter().map(|time| time_title(time, words)).collect(), now, unheld, never: words.text("devices-never-held", None) }
 }
 
 /// The grid's own lines for the command line, under the table: what now
@@ -154,6 +166,7 @@ pub fn plain(grid: &Grid) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dispatch::Seen;
     use sioul_core::areas::{Lines, Week};
     use sioul_core::quiet::Reason;
 
@@ -170,6 +183,12 @@ mod tests {
         ]
     }
 
+    /// Another device as its entry says it: its cells in `week`, and that it acts on the cells of `of`.
+    fn seen_by(said_of: &BTreeMap<String, Said>, id: &str, of: &str, week: Week) -> Seen {
+        let words = |id: &str| Cells::Line(said_of.get(id).map(Said::line).unwrap_or_default()).words(week);
+        Seen { cells: words(id), known: [(of.to_string(), Cells::key(&words(of)))].into(), carried: false }
+    }
+
     fn said(pairs: &[(&str, &str, &[(&str, &str)])]) -> BTreeMap<String, Said> {
         pairs.iter().map(|(id, area, at)| (id.to_string(), Said { area: (!area.is_empty()).then(|| area.to_string()), at: at.iter().map(|(time, cell)| (time.to_string(), cell.to_string())).collect(), ..Said::default() })).collect()
     }
@@ -181,7 +200,8 @@ mod tests {
     fn the_grid_says_each_cell_in_words() {
         let english = Translator::new("en");
         let said_of = said(&[("desk", "work", &[]), ("phone", "admin+leisure", &[("work", "work+leisure"), ("meals", "none")]), ("tablet", "leisure", &[])]);
-        let known = Known { me: "desk".into(), lines: [("desk", &said_of["desk"]), ("phone", &said_of["phone"])].into_iter().map(|(id, said)| (id.to_string(), said.line())).collect(), older: vec!["tablet".into()] };
+        let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let known = Known { me: "desk".into(), mine: said_of["desk"].line(), others: [("phone".to_string(), seen_by(&said_of, "phone", "desk", week))].into(), older: vec!["tablet".into()] };
         let at: jiff::Zoned = "2026-10-02T19:00[Europe/Paris]".parse().unwrap();
         let evening = mode(Time::Leisure, Reason::Evening, Some("2026-10-02T22:00[Europe/Paris]"), &known.lines());
         let mut rows = rows();
@@ -201,12 +221,18 @@ mod tests {
         // An older Sioul: no cell in force, one sentence.
         assert!(rows[0].follows && rows[1].follows && !rows[2].follows && rows[2].cells.is_empty());
         assert_eq!(rows[2].cells_older, "Its Sioul is older: everything still comes there.");
+        assert_eq!((rows[0].cells_apart.as_str(), rows[1].cells_apart.as_str()), ("", ""), "each acts on the line shown");
+        // The phone's own entry says other cells (it does not share your settings): said under its cells.
+        let apart = Known { others: [("phone".to_string(), Seen::default())].into(), ..known.clone() };
+        let mut other_rows = rows.clone();
+        super::grid(&mut other_rows, &said_of, &apart, &evening, &at, &english);
+        assert_eq!(other_rows[1].cells_apart, "Its own settings say otherwise for now: it follows those until yours reach it.");
         // Now, on the computer for work, in the evening: nothing; every area has its device.
         assert_eq!(grid.now, "Now, leisure until 22:00: nothing comes here.");
         assert_eq!(grid.unheld, "");
         assert!(grid.never.contains("doses") && grid.never.contains("Calls and texts keep their own table"));
         // On the phone, the same evening.
-        let on_phone = Known { me: "phone".into(), ..known.clone() };
+        let on_phone = Known { me: "phone".into(), mine: said_of["phone"].line(), others: [("desk".to_string(), seen_by(&said_of, "desk", "phone", week))].into(), older: vec!["tablet".into()] };
         let mut rows = self::rows();
         let there = super::grid(&mut rows, &said_of, &on_phone, &mode(Time::Leisure, Reason::Evening, Some("2026-10-02T22:00[Europe/Paris]"), &on_phone.lines()), &at, &english);
         assert_eq!(there.now, "Now, leisure until 22:00: leisure comes here.");
@@ -232,7 +258,7 @@ mod tests {
         let at: jiff::Zoned = "2026-10-02T19:00[Europe/Paris]".parse().unwrap();
         // The computer for work, alone: admin and leisure are for no device.
         let said_of = said(&[("desk", "work", &[])]);
-        let alone = Known { me: "desk".into(), lines: [("desk".to_string(), said_of["desk"].line())].into(), older: Vec::new() };
+        let alone = Known { me: "desk".into(), mine: said_of["desk"].line(), ..Known::default() };
         let mut rows = vec![rows().remove(0)];
         let grid = grid(&mut rows, &said_of, &alone, &mode(Time::Leisure, Reason::Evening, Some("2026-10-02T22:00[Europe/Paris]"), &alone.lines()), &at, &english);
         assert_eq!(grid.unheld, "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.");
@@ -240,11 +266,31 @@ mod tests {
         assert_eq!(rows[0].cells.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Work", "Nothing", "Nothing", "Nothing", "Nothing"], "the cells say the device's own line");
         assert_eq!(plain(&grid).len(), 3);
         // Nothing said of any device: every cell as the hours say, nothing unheld to say.
-        let nothing = Known { me: "desk".into(), lines: [("desk".to_string(), Line::default())].into(), older: Vec::new() };
+        let nothing = Known { me: "desk".into(), ..Known::default() };
         let mut rows = vec![self::rows().remove(0)];
         let plain_grid = super::grid(&mut rows, &BTreeMap::new(), &nothing, &mode(Time::Leisure, Reason::Evening, None, &nothing.lines()), &at, &english);
         assert_eq!(rows[0].cells.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Work", "Admin", "Leisure", "Leisure", "Leisure"]);
         assert!(rows[0].cells.iter().all(|c| !c.own));
         assert_eq!((plain_grid.unheld.as_str(), plain_grid.now.as_str()), ("", "Now, leisure: leisure comes here."));
+    }
+
+    /// Only the times the week has get a cell (review of phase 2, M2, L5):
+    /// admin without hours of its own has none, work's cell holding admin
+    /// as the time lends it; a phone whose only admin was in that missing
+    /// cell is for admin at no time, and the sentence under the grid says so.
+    #[test]
+    fn a_time_the_week_lacks_has_no_cell() {
+        let english = Translator::new("en");
+        let at: jiff::Zoned = "2026-10-02T10:00[Europe/Paris]".parse().unwrap();
+        let lent = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
+        let said_of = said(&[("desk", "work", &[]), ("phone", "admin+leisure", &[("work", "leisure")])]);
+        let known = Known { me: "desk".into(), mine: said_of["desk"].line(), others: [("phone".to_string(), seen_by(&said_of, "phone", "desk", lent))].into(), older: Vec::new() };
+        let mode = Mode { quiet: false, time: Time::Work, week: lent, reason: Reason::Working, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() }.on(&known.lines());
+        let mut rows = self::rows()[..2].to_vec();
+        let grid = grid(&mut rows, &said_of, &known, &mode, &at, &english);
+        assert_eq!(grid.times, ["Work", "Leisure", "Meals", "Sleep"]);
+        assert_eq!(rows[1].cells.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Leisure", "Leisure", "Leisure", "Leisure"]);
+        assert_eq!(grid.unheld, "No device is for your admin: until one is, that comes on every device, as the hours say.");
+        assert_eq!(grid.now, "Now, work: work and your admin come here.");
     }
 }

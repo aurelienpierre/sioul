@@ -3225,7 +3225,7 @@ mod tests {
         teller.listen(Arc::clone(&listener));
         let now = jiff::Timestamp::now().as_second();
         assert!(teller.restart(&saved, now).is_empty(), "nothing left by a run before");
-        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix, dispatched: false };
+        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
         let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
         let shape = |n: &Notice, pierce: bool, moment: Moment| match notice::decide(n, &told(pierce), moment, 5, jiff::Timestamp::now().as_second()) {
             Decision::Post(shape) => shape,
@@ -3356,7 +3356,7 @@ mod tests {
         let now = jiff::Timestamp::now().as_second();
         let teller = Teller::start();
         teller.listen(Arc::new(|_: Press| {}));
-        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix, dispatched: false };
+        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
         let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
         let post = |n: Notice, pierce: bool| match notice::decide(&n, &told(pierce), here, 5, now) {
             Decision::Post(shape) => teller.post(n, shape, "Open", None),
