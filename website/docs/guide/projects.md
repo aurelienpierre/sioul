@@ -39,7 +39,9 @@ On the left, every project, with its open tasks and the time left to bill. On th
 - **On one line of time**: what is **coming** first (dates asked of its open tasks, events), then what happened **before**, newest first: tasks done, mail, notes changed, time noted, invoices.
 - **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
-- **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
+- **Make the invoice**, when billable time waits to be billed: a draft of that time opens in the editor, in Budgets ▸ Invoices, where you check it and issue it. A project with a draft already gets that draft back, with the time noted since added ([The editor](time.md#the-editor)).
+- **Its client's profile**, on a project for a client: one line, such as "Client profile: A business · France · 904 123 452", or "No client profile yet: invoices bill it as a business, from its card.", with **Client profile…** ([Your clients](time.md#your-clients)).
+- **Its invoices**: each opens its pane in Budgets ▸ Invoices, with **Paid…**, **Write the mail**, **Print again** and **Credit note…** ([An issued invoice's pane](time.md#an-issued-invoice)). The **Paid** box beside each says it is paid, by transfer, today.
 - **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
 
 ## Mail that comes here by itself {#mail-that-comes-here-by-itself}

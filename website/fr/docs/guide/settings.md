@@ -97,78 +97,70 @@ Sur un ordinateur, ou une tablette sans carte SIM, les messages multimédias qui
 
 ## Factures {#invoices}
 
-Ce qui est imprimé sur les factures que vous faites depuis [Temps](time.md#invoices) et [Projets](projects.md) :
+Ce qu’impriment vos factures et comment comptent vos livres, comme votre pays le demande. Votre pays vient d’abord, puis ce qu’il exige ; le reste est replié sous **Plus** et **Les livres**. Chaque valeur est enregistrée quand vous quittez son champ, un choix aussitôt, comme partout dans les Paramètres.
 
-- **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe). La loi demande que le nom d’un entrepreneur individuel porte « EI » : Sioul l’imprime pour vous juste après le nom (« Camille Exemple EI ») quand votre **Forme juridique** le dit, et un nom qui le dit déjà ne le porte qu’une fois ;
-- **Forme juridique**, sous votre nom, quand les règles de votre pays nomment des formes : en France, *Entrepreneur individuel (micro-entrepreneur compris)*, EURL, SASU, SARL, SAS ou SA ; en Allemagne, en Belgique, au Royaume-Uni et en Suisse, *Entrepreneur individuel* ou *Société*. *Pas encore dite* vient en premier : les réglages des factures faits avant novembre 2026 n’en disent aucune, et votre prochaine facture attend que vous choisissiez, pour qu’une société en franchise de TVA ne porte jamais « EI » ;
-- **SIRET**, ou le numéro d’entreprise là où vous êtes ; vide tant que votre entreprise n’est pas immatriculée. En France, neuf chiffres se lisent comme votre SIREN ; un numéro qui ne passe pas sa vérification (un chiffre faux) retient la facture jusqu’à ce qu’il soit juste. Tant que votre SIRET n’est pas encore attribué, écrivez « en cours d’attribution » : vos factures impriment « SIRET en cours d’attribution », la formule que donne service-public.gouv.fr ;
-- **Mention de TVA** : pour une micro-entreprise en France, « TVA non applicable, art. 293 B du CGI ». Sans `preset` réglé (plus bas), une mention qui cite l’article 293 B fait de vos factures des factures françaises, en franchise en base de TVA, avec cette mention comme celle de la franchise, et votre forme juridique demandée une fois (plus haut) ; toute autre mention est imprimée telle quelle, sous **Ailleurs** ([Les règles de votre pays](time.md#your-countrys-rules)) ;
-- **Les numéros de facture commencent par** : les numéros se suivent ensuite, 2026-001, 2026-002… ; laissé vide, le préfixe est l’année, si bien que la numérotation repart chaque année, tandis qu’un préfixe à vous continue de compter ;
-- **Devise** : un code de trois lettres, comme EUR, USD, CHF : la devise de vos factures, sauf si la fiche d’un client en donne une autre ;
-- **Modalités de paiement** : imprimées en bas (coordonnées bancaires, délai). En France, Sioul imprime lui-même les mentions de retard de paiement pour les clients professionnels (pas d’escompte pour paiement anticipé, les pénalités, l’indemnité de 40 €) : laissez-les hors de ces modalités. Des modalités qui parlent de pénalités de retard retiennent une facture à un professionnel jusqu’à ce que vous gardiez les vôtres ou celles de Sioul, pour qu’une facture n’indique jamais deux taux : retirez-les de vos modalités (et donnez votre taux à `penalty_rate`, plus bas, s’il diffère), ou éteignez les mentions de Sioul (`penalties` et `indemnity`, plus bas) ;
-- **Les factures vont dans** : le dossier où va une copie du fichier de chaque facture quand elle est émise ou imprimée à nouveau, `Documents/Factures` dans votre dossier personnel s’il est vide ; le fichier lui-même est gardé à côté de la facture, et voyage avec elle ;
+<figure markdown="span">
+  [![Paramètres ▸ Factures : sa phrase en haut ; Les règles de votre pays, France ; Forme juridique ; Votre nom ou raison sociale ; ce que votre pays demande avant qu’une facture soit émise ; Vos identifiants, un SIRET, imprimé ; « TVA aujourd’hui : Franchise en base de TVA. » ; puis Plus, replié.](../assets/screens/fr/settings-invoices.png){ loading=lazy }](../assets/screens/fr/settings-invoices.png "Ouvrir l’image en grand")
+  <figcaption>Votre pays d’abord, puis ce qu’il demande.</figcaption>
+</figure>
+
+- **En haut, une fois**, quand vos réglages des factures ont été faits avant novembre 2026 : votre forme juridique, avec un bouton pour chacune. Un entrepreneur individuel (micro-entrepreneur compris) imprime « EI » après son nom ; une société non.
+- **Les règles de votre pays** : la France, l’Allemagne, la Belgique, le Royaume-Uni, la Suisse, ou **Ailleurs** pour tout autre pays, où chaque identifiant et chaque ligne sont les vôtres. L’Espagne et l’Italie sont listées comme non prises en charge, et Sioul dit pourquoi ([Les règles de votre pays](time.md#your-countrys-rules)).
+- **Forme juridique**, quand les règles de votre pays nomment des formes : en France, *Entrepreneur individuel (micro-entrepreneur compris)*, EURL, SASU, SARL, SAS ou SA ; en Allemagne, en Belgique, au Royaume-Uni et en Suisse, *Entrepreneur individuel* ou *Société*. *Pas encore dite* vient en premier : les réglages faits avant novembre 2026 n’en disent aucune, et votre prochaine facture attend que vous choisissiez, pour qu’une société en franchise de TVA ne porte jamais « EI ».
+- **Votre nom ou raison sociale**. La loi demande que le nom d’un entrepreneur individuel porte « EI » : Sioul l’imprime pour vous juste après le nom (« Camille Exemple EI ») quand votre forme juridique le dit, et un nom qui le dit déjà ne le porte qu’une fois.
+- **Avant qu’une facture soit émise, votre pays demande :** ce qu’il exige de vous, en phrases.
+- **Vos identifiants** : chacun avec son type (un SIREN ou un SIRET, un numéro de TVA, la ville de votre registre du commerce, un autre que nomme votre pays), son numéro, et **imprimé** (un identifiant qui ne s’imprime pas ne compte pas pour ce qu’exige votre pays). En France, un numéro qui ne passe pas sa vérification (un chiffre faux) retient la facture jusqu’à ce qu’il soit juste. Tant que votre SIRET n’est pas encore attribué, écrivez « en cours d’attribution » comme SIRET : vos factures impriment « SIRET en cours d’attribution », la formule que donne service-public.gouv.fr. Un SIRET écrit dans vos réglages avant novembre 2026 est imprimé tant que vous ne dites pas d’identifiant ici.
+- **La TVA aujourd’hui**, en une phrase : « TVA aujourd’hui : Franchise en base de TVA. »
+
+**Plus**, replié :
+
+- **Régime d’imposition pour les livres** : en France, micro ou réel.
+- **Régime de TVA, à partir d’un jour** : pas assujetti à la TVA, la franchise en base de TVA, ou redevable de la TVA, chacun à partir de son jour. En franchise, écrivez sa mention avec vos mots quand vous en voulez une autre que celle de votre pays (« TVA non applicable, article 293 B du CGI » en France). **À partir d’un autre jour** ajoute le régime suivant : quand votre chiffre d’affaires dépasse un seuil, ajoutez le jour à partir duquel la TVA s’applique ([Ce qui vous joint](notifications.md#sioul-s-own)).
+- **Nom commercial**, **Votre adresse**, **Code postal**, **Ville**, **Pays**, et le **Courriel imprimé sur les factures**. **Écrire le courriel** envoie depuis cette adresse quand elle est l’un de vos comptes.
+- **Comptes bancaires** : titulaire, IBAN et BIC, imprimés sur vos factures ; un IBAN qui ne passe pas sa vérification est signalé. **Le QR code de paiement sur les factures en euros** : sur une facture en euros, le premier IBAN dont la clé est juste va dans un code QR pour payer par virement, avec le nom du titulaire.
+- **Modalités de paiement** : imprimées en bas. En France, Sioul imprime lui-même les mentions de retard de paiement pour les clients professionnels (pas d’escompte pour paiement anticipé, les pénalités, l’indemnité de 40 €) : laissez-les hors de ces modalités. Des modalités qui parlent de pénalités de retard retiennent une facture à un professionnel jusqu’à ce que vous gardiez les vôtres ou celles de Sioul, pour qu’une facture n’indique jamais deux taux : retirez-les de vos modalités (et donnez votre taux plus bas, s’il diffère), ou éteignez les mentions de Sioul sous **Lignes imprimées**.
+- **Payable sous, en jours**, et **fin de mois** : quand le paiement est dû, sauf si la fiche d’un client dit autre chose.
+- **Taux des pénalités de retard, en pourcentage** : le vôtre, quand ce n’est pas celui de votre pays par défaut (en France, le taux de la BCE majoré de 10 points).
+- La langue des factures (la langue de Sioul, l’anglais ou le français) et leur devise (trois lettres, comme EUR, USD, CHF), sauf si la fiche d’un client en donne d’autres.
+- **Numérotation** : `{YYYY}-{N:3}` donne 2026-001, 2026-002… (l’année `{YYYY}` ou `{YY}`, le mois `{MM}`, et un seul compteur, `{N}`, ou `{N:4}` pour quatre chiffres au moins), **depuis 1 chaque année** ou **jamais depuis 1 à nouveau** ; **Numérotation propre aux avoirs**, quand les avoirs ont leur propre série. « Le prochain numéro : 2026-015 » montre ce qui vient ; une numérotation qui ne se lit pas dit pourquoi, et n’est pas gardée. Les réglages faits avant novembre 2026 gardent leur préfixe tant que vous n’écrivez pas de numérotation ici.
+- **Lignes imprimées** : chaque mention de votre pays avec son interrupteur et, quand vous le voulez, son texte avec vos mots ; puis vos propres lignes, avec **Une ligne à vous**. Celles de la France sont la ligne de l’escompte, les pénalités, l’indemnité de 40 €, le capital d’une société et la TVA sur les débits.
+- **Assurance professionnelle, telle qu’imprimée** (assureur, coordonnées, couverture), et le **Capital social, tel qu’imprimé** d’une société.
+
+**Les livres**, replié, en France ([La déclaration](budgets.md#the-declaration)) :
+
+- **Vos activités** : ce que vous vendez, une ou deux : ventes de marchandises (BIC), prestations de services commerciales ou artisanales (BIC), autres prestations de services, libérales (BNC), ou profession libérale réglementée (CIPAV). Vos déclarations ont une ligne pour chacune ; les biens d’un paiement vont à votre activité de biens, ses services à celle de services. Aucune cochée, votre chiffre d’affaires est compté sans cotisations estimées, et la déclaration le dit.
+- **Déclarer** : chaque trimestre ou chaque mois, comme vous l’avez choisi auprès de l’URSSAF ; non dit, comme le dit votre budget de travail, et à défaut chaque trimestre.
+- **Versement libératoire, payé avec chaque déclaration** : quand vous l’avez choisi, l’impôt sur le revenu payé avec chaque déclaration, 1 %, 1,7 % ou 2,2 % de votre chiffre d’affaires.
+- **Contribution à la formation, au titre de** : le commerce, l’artisanat ou une profession libérale, pour la contribution à la formation professionnelle (CFP : 0,1 %, 0,3 % ou 0,2 %) ; **Comme votre activité le dit** la prend de votre activité quand elle le dit (ventes de marchandises : commerce ; BNC ou CIPAV : profession libérale), et sinon la CFP est dite non comptée.
+- **Le jour où vous avez commencé** (2026-06-12) : les seuils de votre première année sont calculés au prorata de vos jours d’activité, votre première déclaration regroupe vos premiers mois comme l’URSSAF le demande (en déclarant chaque mois, le mois où vous avez commencé et les trois suivants ; chaque trimestre, le trimestre où vous avez commencé et le suivant), et vos livres commencent ce jour-là. Sans lui, ils commencent avec la première facture ou recette que Sioul connaît. Un jour que Sioul ne sait pas lire est dit en haut, et reste de côté.
+- **Le récapitulatif de TVA** : chaque mois, ou chaque trimestre, quand vous êtes redevable de la TVA.
+- **TVA sur les débits (une option prise auprès des impôts)**.
+- **Des taux à vous (ACRE, un taux que l’Urssaf vous a donné)** : les cotisations sociales, le versement libératoire ou la contribution à la formation professionnelle ; l’activité (pour la contribution à la formation professionnelle, votre métier : `commerce`, `craft` ou `liberal`) ; le taux en pourcentage ; à partir d’un jour, jusqu’à un jour. L’ACRE en est un : Sioul ne peut pas savoir qu’elle vous a été accordée, alors écrivez son taux, jusqu’à la fin du troisième trimestre qui suit votre début.
+
+**Votre plateforme de facturation électronique** : le nom de la plateforme agréée (une PA) que vous utilisez. À partir de septembre 2027, les entreprises françaises reçoivent leurs factures par une telle plateforme ; tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de chaque facture : il porte ses données Factur-X ([Écrire le courriel](time.md#write-the-mail)).
+
+Sous ce bloc, deux de plus :
+
+- **Les factures vont dans** : le dossier où va une copie du fichier de chaque facture quand elle est émise ou imprimée à nouveau, `Documents/Factures` dans votre dossier personnel s’il est vide ; le fichier lui-même est gardé à côté de la facture, et voyage avec elle ;
 - **Une heure coûte** : le tarif quand un projet ne fixe pas le sien.
 
-Depuis novembre 2026, une facture est vérifiée avant d’être émise d’après ce que demandent les règles de votre pays : un SIREN qui manque, l’adresse d’un client professionnel (un client sans fiche est facturé comme une entreprise), le pays d’un client quand son adresse le laisse inconnu ou, pour des réglages faits avant, votre forme juridique, la retient désormais, avec une phrase qui dit quoi ajouter.
+Depuis novembre 2026, une facture est vérifiée avant d’être émise d’après ce que demandent les règles de votre pays : un SIREN qui manque, l’adresse d’un client professionnel (un client sans fiche est facturé comme une entreprise), le pays d’un client quand son adresse le laisse inconnu ou, pour des réglages faits avant, votre forme juridique, la retient, avec une phrase qui dit quoi ajouter. L’éditeur les montre avant que vous appuyiez sur **Émettre** ([L’éditeur](time.md#the-editor)).
 
-**Dans le fichier de configuration**, pour l’instant ([Où les réglages sont gardés](#where-settings-are-kept), sous `[invoice]`), en attendant que Paramètres ▸ Factures les montre par pays. Les réglages ci-dessus continuent de fonctionner comme avant :
+**Encore dans le fichier de configuration** ([Où les réglages sont gardés](#where-settings-are-kept), sous `[invoice]`), un réglage de vos livres :
 
-- `preset` : les règles de votre pays, `fr`, `de`, `be`, `uk`, `ch` ou `elsewhere` (`es` et `it` sont nommés, et non pris en charge) ; `legal_form` (**Forme juridique**, plus haut) : en France `ei` (micro-entrepreneur compris), `eurl`, `sasu`, `sarl`, `sas` ou `sa`, ailleurs `sole` ou `company` ; avec un `preset` réglé, sa première forme est celle par défaut ; sans `preset`, comme dans les réglages faits avant novembre 2026, aucune tant que vous ne l’avez pas dite ; `regime`, en France : `micro` ou `reel` ;
-- `[[invoice.tax]]` : votre régime de TVA à partir d’un jour, `from` (`2027-01-01`), `scheme` (`none`, `franchise` ou `liable`) et, en franchise, `mention` quand vous voulez une autre mention que celle de votre pays ; `options = ["debits"]` en France, quand vous avez opté pour le paiement de la taxe d’après les débits ;
-- `[[invoice.id]]` : vos identifiants, chacun un `kind` que nomme votre pays (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), sa valeur `value`, et `printed` (`true` sauf si vous dites `false` : un identifiant qui ne s’imprime pas ne compte pas pour ce que demandent les règles de votre pays) ;
-- `trade_name` (le nom commercial), `postcode`, `city`, `country` (deux lettres, comme `FR`) et `email` ; `capital`, le capital social d’une société tel qu’il s’imprime ; `insurance`, votre assurance professionnelle telle qu’elle s’imprime (assureur, coordonnées, couverture) ;
-- `[[invoice.bank]]` : `holder`, `iban` et `bic`, imprimés sur vos factures ; sur une facture en euros, le premier IBAN dont la clé est juste va dans un code QR pour payer par virement, avec le nom du titulaire (le vôtre s’il n’est pas dit), sauf avec `qr = false` ;
-- `pattern` (`{YYYY}-{N:3}` : l’année `{YYYY}` ou `{YY}`, le mois `{MM}`, et un seul compteur, `{N}`, ou `{N:4}` pour quatre chiffres au moins), `reset` (`yearly`, avec l’année dans le modèle, ou `never`), `credit_pattern` (une série à part pour les avoirs ; vide, ils suivent vos factures) ;
-- `language` (`en` ou `fr`), `terms_days` et `end_of_month` (le délai de paiement), `penalty_rate` (un taux de pénalités de retard à vous, en pour cent ; sinon celui de la France par défaut, le taux de la BCE majoré de 10 points) ;
-- `[[invoice.line]]` : une ligne à vous (`text`), ou l’une des mentions de votre pays dans vos mots (son `id` et un nouveau `text`) ou retirée (son `id` et `off = true`) ; celles de la France sont `escompte`, `penalties`, `indemnity`, `capital` et `debits`.
-
-```toml
-[invoice]
-preset = "fr"
-legal_form = "ei"
-regime = "micro"
-name = "Camille Exemple"
-postcode = "69001"
-city = "Lyon"
-
-[[invoice.id]]
-kind = "siret"
-value = "…"
-
-[[invoice.tax]]
-from = "2026-01-01"
-scheme = "franchise"
-```
-
-Une société dit sa forme juridique, même en franchise : avec `preset = "fr"` et sans `legal_form`, vos factures sont celles d’un entrepreneur individuel ; des réglages faits avant, avec pour seule indication une mention de TVA qui cite l’article 293 B, attendent votre choix.
-
-**Pour vos livres** ([La déclaration](budgets.md#the-declaration)), dans la même table du fichier de configuration, en attendant que Paramètres ▸ Factures les montre. Les phrases qui vous envoient à Paramètres ▸ Factures pour votre activité, votre métier ou votre régime de TVA veulent dire ces lignes d’ici là :
-
-- `activity` : ce que vous vendez, une ou deux activités : `goods-bic` (ventes de marchandises, BIC), `services-bic` (prestations de services commerciales ou artisanales, BIC), `bnc` (autres prestations de services, libérales, BNC), `cipav` (profession libérale réglementée, CIPAV). Vos déclarations ont une ligne pour chacune ; les biens d’un paiement vont à votre activité de biens, ses services à celle de services. Sans elle, votre chiffre d’affaires est compté sans cotisations estimées, et la déclaration le dit.
-- `declare` : `quarter` ou `month`, comme vous l’avez choisi auprès de l’URSSAF ; sinon, comme le dit votre budget de travail, et à défaut chaque trimestre.
-- `vl = true` quand vous avez choisi le versement libératoire : l’impôt sur le revenu payé avec chaque déclaration, 1 %, 1,7 % ou 2,2 % de votre chiffre d’affaires.
-- `trade` : `commerce`, `craft` (l’artisanat) ou `liberal`, pour la contribution à la formation professionnelle (CFP : 0,1 %, 0,3 % ou 0,2 %) ; sinon, Sioul le prend de votre activité quand elle le dit (ventes de marchandises : commerce ; BNC ou CIPAV : profession libérale), et dit autrement que la CFP n’est pas comptée.
-- `started` : le jour où votre activité a commencé (`2026-06-12`) : les seuils de votre première année sont calculés au prorata de vos jours d’activité, votre première déclaration regroupe vos premiers mois comme l’URSSAF le demande (en déclarant chaque mois, le mois où vous avez commencé et les trois suivants ; chaque trimestre, le trimestre où vous avez commencé et le suivant), et vos livres commencent ce jour-là. Sans lui, ils commencent avec la première facture ou recette que Sioul connaît. Une valeur que Sioul ne sait pas lire (`2026-6-12`) est dite là où vos livres se montrent, et reste de côté.
-- `vat_period` : `month`, sauf si vous dites `quarter` : la période de votre récapitulatif de TVA, quand vous êtes redevable de la TVA.
-- `[[invoice.contribution]]` : un taux à vous par-dessus celui de Sioul, d’un jour à un autre : `kind` (`social`, `vl` ou `cfp`), `activity` (votre métier, pour la CFP), `rate` en pour cent, `from`, `until`. L’ACRE en est un : Sioul ne peut pas savoir qu’elle vous a été accordée, alors écrivez son taux, jusqu’à la fin du troisième trimestre qui suit votre début.
 - `[[invoice.threshold]]` : un seuil à vous par-dessus celui de Sioul de même `id`, à partir d’un jour : `amount`, en euros, et `from`. Les `id` sont `franchise-services`, `franchise-services-higher`, `franchise-goods`, `franchise-goods-higher`, `micro-services` et `micro-goods`. Les avocats et les auteurs, dont les seuils de franchise diffèrent, ne sont pas dans les règles de Sioul : écrivez les vôtres.
 
 ```toml
 [invoice]
-activity = ["bnc"]
-declare = "quarter"
-vl = true
-started = "2026-06-12"
+trade = "liberal"
 
-[[invoice.contribution]]
-kind = "social"
-activity = "bnc"
-rate = 12.8
-from = "2026-06-12"
-until = "2027-03-31"
+[[invoice.threshold]]
+id = "franchise-services"
+amount = 50000
+from = "2026-01-01"
 ```
 
-Les taux et les seuils sont ceux de la France pour 2026, tels que l’URSSAF et l’administration fiscale les publient, chacun avec son jour : une mise à jour de Sioul apporte les suivants, et les vôtres restent par-dessus.
+Tout ce que montre Paramètres ▸ Factures est gardé dans cette même table, `[invoice]`, que vous pouvez toujours lire et changer à la main : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/projects.html#invoices) en listent chaque clé. Les taux et les seuils sont ceux de la France pour 2026, tels que l’URSSAF et l’administration fiscale les publient, chacun avec son jour : une mise à jour de Sioul apporte les suivants, et les vôtres restent par-dessus.
 
 ## Les réglages propres à chaque page {#each-pages-own-settings}
 

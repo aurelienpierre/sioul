@@ -20,8 +20,8 @@ In Sioul it is one loop, in one window. The client's mail comes to their project
 3. **The work fits in your working hours.** The project's tasks, as a board, a list or a Gantt chart; the one next step, placed in the hours you keep for work. [Tasks](tasks.md)
 4. **Time counts while you work.** The minutes of a focus session go to its task, and to the task's project. A meeting, a call, work done away from the timer: **Note time**, `1h30`. A task can be left off the bill. [Where time comes from](time.md#where-time-comes-from)
 5. **What is left to bill stays in view**: for each project, in hours and in money, on the Time page and beside the project. [The Time page](time.md#the-time-page)
-6. **The invoice, from that time.** **Make the invoice**: one line per task, at the project's rate; what your country's rules ask, checked first, and said when something is missing; a number that follows the last one and is never given twice; the time it bills marked as billed, so that the next invoice leaves it out; a PDF/A-3 carrying its Factur-X, kept as it was issued, ready to send. [Invoices](time.md#invoices)
-7. **Until it is paid.** The total is expected in the project's budget on the day it is due, thirty days later unless you said otherwise. When you take in your bank's export, the client's transfer is written on the invoice by itself, with Undo; **Paid** says it by hand. A wrong invoice is corrected by a credit note, never changed. [Paid, and credit notes](time.md#paid-and-credit-notes), [Budgets](budgets.md)
+6. **The invoice, from that time.** **Make the invoice** opens a draft of that time in the editor: one line per task, at the project's rate, and any other line you add; what your country's rules ask is said before you press **Issue**. Issued, it takes a number that follows the last one and is never given twice; the time it bills is marked as billed, so that the next invoice leaves it out; its PDF/A-3 carries its Factur-X and is kept as it was issued. **Write the mail** prepares the mail to the client, the PDF attached. [Invoices](time.md#invoices)
+7. **Until it is paid.** The total is expected in the project's budget on the day it is due, thirty days later unless you said otherwise. When you take in your bank's export, the client's transfer is written on the invoice by itself, with Undo; **Paid…** says it by hand, with its day and how, a part of it too. A wrong invoice is corrected by a credit note, never changed. Every invoice and draft waits in Budgets ▸ Invoices. [Paid, and credit notes](time.md#paid-and-credit-notes), [Budgets](budgets.md)
 
 <figure markdown="span">
   [![The Time page on "Week": a bar per day, stacked in a few calm colours by project; under it, each project's hours and what is left to bill, then each stretch of time, newest first.](../assets/screens/time.png){ loading=lazy }](../assets/screens/time.png "Open the picture at full size")
@@ -30,21 +30,21 @@ In Sioul it is one loop, in one window. The client's mail comes to their project
 
 ## Set once {#set-once}
 
-**Settings ▸ Invoices**: your name or business name, your address, your SIRET or your business number, the VAT line, how invoice numbers start, your currency, your payment details, your hourly rate. Every invoice then carries them. [Settings ▸ Invoices](settings.md#invoices)
+**Settings ▸ Invoices**: your country first, then what it asks: your legal form, your name, your identifiers (your SIRET in France); under **More**, your address, your VAT scheme, your bank account, your payment details and your numbering; under **The books**, what you declare and how often; and your hourly rate. Every invoice then carries them. [Settings ▸ Invoices](settings.md#invoices)
 
-Your country's rules decide the rest: Sioul knows those of France, Germany, Belgium, the United Kingdom and Switzerland, and **Elsewhere** leaves every line to you; Spain and Italy are not supported, and Sioul says why. In France, your legal form, your income regime and your VAT scheme are three settings apart, made for now in the configuration file. [Your country's rules](time.md#your-countrys-rules)
+Your country's rules decide the rest: Sioul knows those of France, Germany, Belgium, the United Kingdom and Switzerland, and **Elsewhere** leaves every line to you; Spain and Italy are not supported, and Sioul says why. In France, your legal form, your income regime and your VAT scheme are three settings apart. [Your country's rules](time.md#your-countrys-rules)
 
 For a French micro-entrepreneur, the invoice prints « EI » after your name by itself, your SIREN or SIRET, « TVA non applicable, article 293 B du CGI » under the VAT franchise (the VAT per rate once you are liable for it), the date or period of the service, and what it sells, services or goods. For a business client, it adds no discount for early payment, the late-payment penalties at the ECB's rate plus 10 points, and the €40 recovery fee; for a private person, none of them. For a service to a business in another EU country, it prints « Autoliquidation » and both VAT numbers, under the franchise too; to a business outside the EU, « TVA non applicable – article 259-1 du CGI ». Before issuing, Sioul says what is missing, such as a business client's SIREN, which micro-enterprises must give from 1 September 2027. Elsewhere, the VAT line and the payment details are yours to word.
 
-Each client can have a profile: their legal name, billing and delivery addresses, identifiers, the language, currency and payment terms of their invoices. Without one, a client is billed as a business; a profile says when the client is a private person. [Your clients](time.md#your-clients)
+Each client can have a profile: their legal name, billing and delivery addresses, identifiers, the language, currency and payment terms of their invoices. You make it and change it on their contact's page or on their project's, with **Client profile…**; **Bill this client**, on their contact's page, starts a draft for them. Without a profile, a client is billed as a business; a profile says when the client is a private person. [Your clients](time.md#your-clients)
 
-With the usual prefix, the year, invoice numbers start again each January; with a prefix of your own, they go on from the last one ([Invoices](time.md#invoices)).
+With the usual numbering, the year then three digits, invoice numbers start again each January; a numbering that never starts from 1 again goes on from the last one ([Settings ▸ Invoices](settings.md#invoices)).
 
 ## For your accountant {#for-your-accountant}
 
 **Billable time, as a spreadsheet (CSV)**: one project, a stretch of time (this month, last month, from one day to another), one line per task with its hours, its rate and its amount, then the total. A title that came from someone's mail is written as plain text, never as a formula. [A spreadsheet of billable time](time.md#a-spreadsheet-of-billable-time)
 
-**Your receipts book and your declarations**: each payment received on your invoices, on its day, with the client, what you sold, the invoice and how it was paid, totalled by quarter and by year, as a spreadsheet (CSV) and a PDF; for each quarter or month, what to declare to URSSAF and by when, with the contributions estimated, which the Porch shows from the day the declaration can be made. [The declaration](budgets.md#the-declaration)
+**Your receipts book and your declarations**: each payment received on your invoices, on its day, with the client, what you sold, the invoice and how it was paid, totalled by quarter and by year, as a spreadsheet (CSV) and a PDF; for each quarter or month, what to declare to URSSAF and by when, with the contributions estimated, which the Porch shows from the day the declaration can be made until you say it **Declared**. [The declaration](budgets.md#the-declaration)
 
 ## On your desktop and your laptop {#on-your-desktop-and-your-laptop}
 
@@ -58,8 +58,8 @@ Outside your working hours, client projects and the Time page rest: "Work projec
 
 ## Not there yet {#not-there-yet}
 
-- **Invoices in the window**: one list of every invoice and draft, an editor for any line (a fixed price, expenses, goods), Settings ▸ Invoices by country, client profiles in Contacts. For now, **Make the invoice** bills hours; lines of other kinds come from an [AI agent's](ai-agent.md) draft, issued from the command line. Quotes are not made yet.
-- **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Each invoice Sioul issues already carries its Factur-X, in the PDF/A-3 kept as it was issued, which most platforms take as a file; sending through your platform from Sioul comes later ([Time and invoices](time.md#not-there-yet)).
+- **Sending electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Each invoice Sioul issues already carries its Factur-X, in the PDF/A-3 kept as it was issued, which most platforms take as a file: name your platform in [Settings ▸ Invoices](settings.md#invoices), and upload each PDF there. Sending through your platform from Sioul comes later ([Time and invoices](time.md#not-there-yet)).
+- Quotes.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -70,7 +70,7 @@ More in [what the research says](../dev/research.md), findings 31 and 44.
 
 ## Compared with other apps {#compared-with-other-apps}
 
-Toggl Track, Clockify, Harvest, Kimai and Freebe do more for quotes, expenses and VAT, and Freebe already makes the electronic invoices France will ask for. Sioul keeps the whole loop, from the client's mail to the paid invoice, in one window and in files on your devices. The tables, as of October 2026: [Time and invoices](time.md#compared-with-other-apps) and [Projects](projects.md#compared-with-other-apps).
+Toggl Track, Clockify, Harvest, Kimai and Freebe do more for quotes and expenses, and Freebe already makes the electronic invoices France will ask for. Sioul keeps the whole loop, from the client's mail to the paid invoice, in one window and in files on your devices. The tables, as of October 2026: [Time and invoices](time.md#compared-with-other-apps) and [Projects](projects.md#compared-with-other-apps).
 
 ## Yours {#yours}
 
