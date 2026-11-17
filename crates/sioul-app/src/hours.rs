@@ -65,11 +65,15 @@ pub(crate) fn blocks(now: &Zoned) -> Blocks {
     blocks
 }
 
-/// What now is for, and until when.
+/// What now is for, and until when, on this device: the time as the hours
+/// say, with what the person said each device is for (`dispatch::lines`), so
+/// that everything the window shows or tells now reads this device's cell
+/// (docs/areas.md, "What each device is for"). The plan reads the hours
+/// alone (`sioul_core::plan`).
 pub(crate) fn mode_at(now: &Zoned) -> Mode {
     let config = load_config();
     let overrides = Overrides::load(&Overrides::default_path());
-    quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks(now), now)
+    quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks(now), now).on(&crate::dispatch::lines())
 }
 
 pub(crate) fn mode_now() -> Mode {
@@ -145,11 +149,12 @@ pub(crate) fn comes(kind: Kind) -> bool {
 }
 
 /// Reminders' holds (`reminders::gather`) with this process's layers, the
-/// do-not-disturb it keeps a few seconds rather than reading its files again.
+/// do-not-disturb it keeps a few seconds rather than reading its files again,
+/// on this device (`Holds::on`): a work date waits where work does not come.
 pub(crate) fn with_layers(mut holds: Holds) -> Holds {
     holds.now.slot = quiet_slot();
     holds.now.dnd = crate::everywhere::holds_others();
-    holds
+    holds.on(&crate::dispatch::lines())
 }
 
 /// Whether a dose's reminder waits now: the matrix's doses row, whose only

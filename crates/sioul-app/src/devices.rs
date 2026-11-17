@@ -152,6 +152,9 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.clients = sioul_sync::share::CLIENTS_SHARED;
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
+        // It follows what you said each device is for (docs/areas.md, "What each device is for"):
+        // the others then choose with it which device tells a thing. No word of the doses'.
+        entry.areas = sioul_sync::devices::AREAS;
         // It keeps its own table whatever comes, and says whether it learns now
         // (`spam::learns_level`): the tables travel while any device does not.
         entry.learns = crate::spam::learns_level();

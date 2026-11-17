@@ -149,7 +149,9 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
     LOOKED.store(now, Ordering::Relaxed);
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        let keeper = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
+        // The books are the business's: among the computers work comes forward on now, the one
+        // used last looks; while it comes forward on none (the evening), the one used last of all.
+        let keeper = crate::dispatch::Tellers::now(Some(active)).keeper(Some(sioul_core::areas::Area::WORK));
         if !keeper.mine || !keeper.settled {
             return;
         }

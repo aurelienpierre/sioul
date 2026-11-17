@@ -280,7 +280,7 @@ fn budget_filter_in(path: &std::path::Path, mode: &sioul_core::quiet::Mode, now:
     if kept.areas.settle(said, now) {
         write_view(path, &kept);
     }
-    (kept.areas.shown(said, now), sioul_core::areafilter::shown(&kept.areas, said, now, tr()))
+    (kept.areas.shown(said, now), sioul_core::areafilter::shown(&kept.areas, said, now, tr()).on(tr(), mode))
 }
 
 /// The areas you ticked in the budgets' filter, at `mode`: kept until the hours change, a day at most.
@@ -310,7 +310,7 @@ mod tests {
     use sioul_core::quiet::{Mode, Reason};
 
     fn mode(time: Time) -> Mode {
-        Mode { quiet: time != Time::Work, time, week: Week { work_hours: true, admin_hours: true, ..Week::default() }, reason: Reason::Working, until: None, back: None, label: String::new() }
+        Mode { quiet: time != Time::Work, time, week: Week { work_hours: true, admin_hours: true, ..Week::default() }, reason: Reason::Working, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() }
     }
 
     /// The budgets' filter (docs/areas.md, "A page's filter by area"): as

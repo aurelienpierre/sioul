@@ -179,7 +179,7 @@ pub(crate) fn mailbox_filter(mode: &sioul_core::quiet::Mode, now: i64) -> (sioul
 fn mailbox_filter_in(path: &Path, mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::mailbox::Filter, sioul_core::areafilter::Shown) {
     let kept = kept_view(path);
     let said = sioul_core::mailbox::hours_say(mode);
-    let shown = sioul_core::areafilter::shown(&kept.areas, said, now, tr());
+    let shown = sioul_core::areafilter::shown(&kept.areas, said, now, tr()).on(tr(), mode);
     (sioul_core::mailbox::Filter { areas: kept.areas.shown(said, now), off: kept.off }, shown)
 }
 
@@ -783,13 +783,12 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
-    let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
     let asked = shared.open_mailbox.lock().ok().and_then(|o| o.clone());
     let mailbox = asked.map(|ask| {
         let (files, said) = mailbox_waiting(&files, &waiting);
         mailbox_pages(&config, &ask, &files, &said)
     });
-    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
+    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), &mode)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
 }
 
 /// A folder's messages as its list reads them, from the folder's index
@@ -2420,7 +2419,7 @@ mod tests {
     fn a_batch_of_two_opens_each_message() {
         use sioul_core::mailnote::{Letter, openers};
         use sioul_core::notice::{Act, address};
-        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") };
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}"), area: None };
         let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
         let notice = crate::mailnote::mail_notice("Two e-mails", "Ana, Lunch · Noa, The lease", &openers(&sioul_core::i18n::Translator::new("en"), &two), "Open");
         assert_eq!((notice.about.as_str(), notice.hint.as_str()), ("mid:letter-1@example.org", "/mail/home/cur/1.sioul"), "a click opens the first");
@@ -2494,7 +2493,7 @@ mod tests {
             sent: 0,
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
-        let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false });
+        let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false, device: String::new() });
         let texts_of = |page: &Page| page_texts(page, &ask, &shown, &[]);
         let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
@@ -2581,7 +2580,7 @@ mod tests {
         let now = 1_800_000_000;
         let end = jiff::Timestamp::from_second(now + 3600).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
         let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
-        let at_work = Mode { quiet: false, time: Time::Work, week, reason: Reason::Working, until: Some(end), back: None, label: String::new() };
+        let at_work = Mode { quiet: false, time: Time::Work, week, reason: Reason::Working, until: Some(end), back: None, label: String::new(), here: sioul_core::areas::Here::default() };
         let evening = Mode { quiet: true, time: Time::Leisure, reason: Reason::Evening, until: None, ..at_work.clone() };
         let (filter, shown) = mailbox_filter_in(&path, &at_work, now);
         assert_eq!(filter, sioul_core::mailbox::Filter { areas: Area::WORK, off: Vec::new() }, "the older file's address is no filter");
@@ -3177,7 +3176,7 @@ mod tests {
             }
         }
         let addresses: Vec<sioul_core::mailbox::Address> = config.accounts.iter().enumerate().map(|(i, account)| sioul_core::mailbox::Address { account: account.clone(), folders: folders.clone(), trusted: vec!["mx.example.org".into()], tint: i as u8, resting: None }).collect();
-        let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() };
+        let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() };
         let zone = sioul_core::zone::current();
         let none = BTreeSet::new();
         let make = |ask: &sioul_core::mailbox::Ask| {
@@ -3185,7 +3184,7 @@ mod tests {
             sioul_core::mailbox::page(&addresses, &world, ask, &none, tr(), now, &zone, sioul_core::mailbox::STEP_FILL)
         };
         use sioul_core::mailbox::{Ask, Chip};
-        let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false };
+        let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false, device: String::new() };
         let page_texts = |page: &sioul_core::mailbox::Page| page_texts(page, &Ask::default(), &shown, &[]);
         // The first index: the newest of each folder at once, then steps while the page shows.
         let at = std::time::Instant::now();
@@ -3307,7 +3306,7 @@ mod tests {
         let config = Config { accounts: vec![work, home], ..Config::default() };
         let page = Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier: true, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let ask = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: vec!["home".into()] }), ..Ask::default() };
-        let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false };
+        let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false, device: String::new() };
         let parts = hidden_parts(&config, &ask);
         assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["on:home"], "leisure's resting mail never said: {parts:?}");
         assert!(parts[0].text.contains("noa@home.example.org"), "the address by its name: {}", parts[0].text);

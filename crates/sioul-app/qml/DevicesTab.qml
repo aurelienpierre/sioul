@@ -14,8 +14,14 @@
 // up under their names, as a table; in a narrow one each device is a card,
 // each field under its name. With sharing off, this device alone.
 //
-// What a device is for is written into the shared settings and shown;
-// nothing is folded or held by it yet.
+// What a device is for is written into the shared settings, and each device
+// then brings forward only that, at its hours (docs/areas.md, "What each
+// device is for"). Under the devices, the grid says what comes forward on
+// each at each of the five times (DeviceGrid.qml): in a wide window one
+// matrix, devices by times; in a narrow one each card says its cells in
+// words, a line per time. A cell opens three boxes and "As its areas say";
+// one you changed is framed. Then one sentence for now on this device, one
+// for the areas no device is for, and what a device's areas never keep back.
 
 pragma ComponentBehavior: Bound
 
@@ -34,9 +40,12 @@ ColumnLayout {
     // rows give it; none while they are not read.
     property var kindRow: null
 
-    // What the core says: { on, why, rows } (`share::devices`).
+    // What the core says: { on, why, rows, grid } (`share::devices`).
     property var view: ({ on: false, why: "", rows: [] })
     readonly property var rows: tab.view.rows || []
+    // What is said around the cells: the times' names, now on this device,
+    // the areas no device is for, what is never kept back (`device_grid::Grid`).
+    readonly property var grid: tab.view.grid || ({ times: [], now: "", unheld: "", never: "" })
     property string problem: ""
     // Wide enough for eight columns: the fields line up as a table.
     readonly property bool wide: tab.width >= 900
@@ -323,6 +332,38 @@ ColumnLayout {
                     }
                 }
 
+                // On a phone: what comes forward on it at each time, in words, a line per time.
+                Loader {
+                    active: !tab.wide && tab.grid.times.length > 0
+                    visible: active
+                    Layout.fillWidth: true
+
+                    sourceComponent: Component {
+                        ColumnLayout {
+                            spacing: 2
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: tab.sioul.text("devices-grid-title")
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                color: tab.theme.muted
+                            }
+                            DeviceGrid {
+                                objectName: "deviceCells"
+                                Layout.fillWidth: true
+                                sioul: tab.sioul
+                                theme: tab.theme
+                                rows: [device.row]
+                                times: tab.grid.times
+                                wide: false
+                                help: tab.sioul.text("devices-cell-help")
+                                onPicked: (id, time, areas) => tab.say(id, "at." + time, areas)
+                            }
+                        }
+                    }
+                }
+
                 // The name you give it: empty, its system's name comes back.
                 ColumnLayout {
                     visible: tab.renaming === device.deviceId
@@ -477,10 +518,81 @@ ColumnLayout {
     Label {
         visible: tab.rows.length > 1
         Layout.fillWidth: true
-        Layout.bottomMargin: 24
         text: tab.sioul.text("devices-parts-elsewhere")
         wrapMode: Text.Wrap
         font.pixelSize: 13
+        color: tab.theme.muted
+    }
+
+    // What comes forward, and when: the grid, devices by times.
+    Label {
+        visible: tab.grid.times.length > 0
+        Layout.topMargin: 16
+        Layout.fillWidth: true
+        text: tab.sioul.text("devices-grid-title")
+        font.pixelSize: 17
+        font.weight: Font.DemiBold
+        elide: Text.ElideRight
+        color: tab.theme.accent
+    }
+    Label {
+        visible: tab.grid.times.length > 0
+        Layout.fillWidth: true
+        text: tab.sioul.text("devices-grid-help")
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        lineHeight: 1.25
+        color: tab.theme.muted
+    }
+    Loader {
+        active: tab.wide && tab.grid.times.length > 0
+        visible: active
+        Layout.fillWidth: true
+        Layout.leftMargin: tab.pad
+        Layout.rightMargin: tab.pad
+
+        sourceComponent: Component {
+            DeviceGrid {
+                objectName: "deviceMatrix"
+                sioul: tab.sioul
+                theme: tab.theme
+                rows: tab.rows
+                times: tab.grid.times
+                wide: true
+                help: tab.sioul.text("devices-cell-help")
+                onPicked: (id, time, areas) => tab.say(id, "at." + time, areas)
+            }
+        }
+    }
+    // Now, on this device; the areas no device is for; what is never kept back.
+    Label {
+        objectName: "devicesNow"
+        visible: (tab.grid.now || "") !== ""
+        Layout.fillWidth: true
+        text: tab.grid.now || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
+    }
+    Label {
+        objectName: "devicesUnheld"
+        visible: (tab.grid.unheld || "") !== ""
+        Layout.fillWidth: true
+        text: tab.grid.unheld || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
+    }
+    Label {
+        objectName: "devicesNever"
+        visible: tab.grid.times.length > 0
+        Layout.fillWidth: true
+        Layout.bottomMargin: 24
+        text: tab.grid.never || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        lineHeight: 1.25
         color: tab.theme.muted
     }
 }

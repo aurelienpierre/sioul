@@ -1440,15 +1440,21 @@ pub mod qobject {
         #[qinvokable]
         fn device_forget(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, rows }`, a
-        /// row per device, this one first (`sioul_sync::device_table::Row`).
+        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, rows, grid }`,
+        /// a row per device, this one first (`sioul_sync::device_table::Row`),
+        /// each with its five cells; `grid`, what is said around them
+        /// (`sioul_sync::device_grid::Grid`: the times' names, now on this
+        /// device, the areas no device is for, what is never kept back).
         #[qinvokable]
         fn devices(self: &Sioul) -> QString;
 
         /// What you say of a device, written into the shared settings
         /// (`share::say_of_device`): `field` "name" (the name you give it;
-        /// "" its system's again) or "area" (what it is for: work, admin,
-        /// leisure joined by +; "" everything). Returns what went wrong, else "".
+        /// "" its system's again), "area" (what it is for: work, admin,
+        /// leisure joined by +; "" everything), or "at.<time>" (a cell: what
+        /// comes forward on it at work, admin, leisure, meals or sleep:
+        /// areas joined by +, "none" for nothing, "" as its areas say).
+        /// Returns what went wrong, else "".
         #[qinvokable]
         fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
@@ -3640,6 +3646,13 @@ pub(crate) fn mode_json() -> String {
         Reason::FreeTime => tr().text(if sioul_core::pause::nothing_now(&overrides, &config.free_time) { "mode-free-time-nothing" } else { "mode-free-time" }, None),
         Reason::Paused => tr().text("mode-paused", None),
         Reason::Extended => String::new(),
+    };
+    // Where this device, and not the hour, keeps what the time brings back: said after the
+    // time's own sentence (docs/areas.md, "What each device is for").
+    let line = match sioul_core::areafilter::device_line(tr(), &mode) {
+        Some(device) if line.is_empty() => device,
+        Some(device) => format!("{line} {device}"),
+        None => line,
     };
     // The day closed today can be taken back, that day only.
     let today = overrides.closed_today(&now);
@@ -6899,8 +6912,19 @@ impl qobject::Sioul {
         QString::from(&crate::share::devices())
     }
 
-    fn device_say(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
-        QString::from(&crate::share::say_of_device(&id.to_string(), &field.to_string(), &value.to_string()))
+    fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        let field = field.to_string();
+        let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
+        // What a device is for, or a cell of its line: what now brings on this device is said and
+        // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
+        if problem.is_empty() && field != "name" {
+            self.as_mut().set_mode(QString::from(&mode_json()));
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            show(&qt, &shared);
+            work::show_work(&qt, &shared);
+            mail::show_mail(&qt, &shared);
+        }
+        QString::from(&problem)
     }
 
     fn needs(&self) -> QString {

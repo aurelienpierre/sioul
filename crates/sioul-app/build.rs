@@ -153,6 +153,7 @@ fn main() {
         "qml/TimeExport.qml",
         "qml/SharePanel.qml",
         "qml/DevicesTab.qml",
+        "qml/DeviceGrid.qml",
         "qml/RemovalAsked.qml",
         "qml/JoinPanel.qml",
         "qml/PapersPage.qml",

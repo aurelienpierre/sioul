@@ -8,8 +8,12 @@
 // remove its files…" with what goes said first; this device's own kind and
 // its parts' link; sharing off, this device alone. In a wide window the
 // fields line up as a table under their titles; at a phone's width (412
-// points) each device is a card and nothing runs past the edge. The rows
-// themselves are tested in sioul-sync (device_table.rs). Run by
+// points) each device is a card and nothing runs past the edge. Under the
+// devices, what comes forward on each at each time (DeviceGrid.qml, tested
+// by itself in tst_devicegrid.qml): one matrix in a wide window, each card's
+// own lines on a phone; a cell ticked is said as `at.<time>`; then now on
+// this device, the areas no device is for, and what is never kept back. The
+// rows themselves are tested in sioul-sync (device_table.rs, device_grid.rs). Run by
 // tools/qml-test.sh. To see the tab, set `pictures` below to a folder (a
 // change of your own, not to commit).
 
@@ -53,12 +57,32 @@ Item {
         function textWith(key, name, value) {
             return key + ":" + value
         }
+        // Each device's cells as its areas say, here made up: the desk for work,
+        // the phone for the rest; the laptop's Sioul is older. A cell said
+        // (`at.<time>`) takes its place: "none" nothing, "" as its areas say.
+        readonly property var times: ["Work", "Admin", "Leisure", "Meals", "Sleep"]
+        readonly property var usual: ({ "desk": ["work", "", "", "", ""], "phone": ["", "admin", "leisure", "leisure", "leisure"] })
+        function cells(id, name, word) {
+            const ids = ["work", "admin", "leisure", "meals", "sleep"]
+            const words = { work: "Work", admin: "Admin", leisure: "Leisure" }
+            return ids.map((time, i) => {
+                const said = word["at." + time]
+                const own = said !== undefined && said !== ""
+                const areas = own ? (said === "none" ? "" : said) : mock.usual[id][i]
+                const on = areas === "" ? [] : areas.split("+")
+                const label = on.length === 0 ? "Nothing" : on.map(a => words[a]).join(" · ")
+                return { time: time, title: mock.times[i], work: on.indexOf("work") >= 0, admin: on.indexOf("admin") >= 0, leisure: on.indexOf("leisure") >= 0, areas: areas, label: label, own: own, name: name + ", " + mock.times[i] + ": " + label, line: mock.times[i] + ": " + label }
+            })
+        }
         function devices() {
             const rows = (mock.on ? mock.known : mock.known.slice(0, 1)).map(row => {
                 const word = mock.said[row.id] || {}
-                return Object.assign({}, row, { given: word.name || "", name: word.name || row.system, area: word.area || "", area_words: word.area || "Everything comes here" })
+                const name = word.name || row.system
+                const follows = mock.usual[row.id] !== undefined
+                return Object.assign({}, row, { given: word.name || "", name: name, area: word.area || "", area_words: word.area || "Everything comes here", follows: follows, cells: follows ? mock.cells(row.id, name, word) : [], cells_older: follows ? "" : "Its Sioul is older: everything still comes there." })
             })
-            return JSON.stringify({ on: mock.on, why: mock.why, rows: rows })
+            const grid = { times: mock.times, now: "Now, leisure until 22:00: nothing comes here.", unheld: mock.on ? "" : "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.", never: "Whatever a device is for, these always come: doses and everything of Health." }
+            return JSON.stringify({ on: mock.on, why: mock.why, rows: rows, grid: grid })
         }
         function deviceSay(id, field, value) {
             mock.asked = mock.asked.concat([["say", id, field, value].join(" ").trim()])
@@ -330,6 +354,64 @@ Item {
             compare(sharingSpy.count, 1)
         }
 
+        // Under the devices, in a wide window: one matrix, devices by times, each
+        // cell in words; a cell ticked is said for its device and its time; a
+        // changed cell is framed and goes back with "As its areas say"; a
+        // device on an older Sioul says one sentence; then now on this device
+        // and what is never kept back.
+        function test_the_grid_says_what_comes_forward_on_each_device() {
+            verify(tab.wide)
+            const matrix = named(tab, "deviceMatrix")
+            verify(matrix !== null && showing(matrix), "one matrix under the devices")
+            verify(walk(tab, i => i.objectName === "deviceCells", []).length === 0, "no lines in the cards of a wide window")
+            verify(shown(tab, "devices-grid-title") !== null && shown(tab, "devices-grid-help") !== null)
+            const cell = (id, time) => walk(matrix, i => i.objectName === "cell-" + id + "-" + time && showing(i), [])[0] || null
+            const face = c => walk(c, i => i.objectName === "areaFilter", [])[0]
+            compare(["work", "admin", "leisure", "meals", "sleep"].map(t => face(cell("desk", t)).text), ["Work  ▾", "Nothing  ▾", "Nothing  ▾", "Nothing  ▾", "Nothing  ▾"])
+            compare(face(cell("phone", "leisure")).text, "Leisure  ▾")
+            compare(face(cell("desk", "work")).Accessible.name, "Work desk, Work: Work")
+            // The laptop's Sioul is older: no cell, one sentence.
+            verify(cell("laptop", "work") === null)
+            verify(shown(matrix, "Its Sioul is older: everything still comes there.") !== null)
+            // Friends reach the phone during work: its Work cell, ticked from this device.
+            mouseClick(face(cell("phone", "work")))
+            const box = name => walk(matrix.Overlay.overlay, i => i.objectName === name && i.visible, [])[0] || null
+            tryVerify(() => box("area:leisure") !== null, 2000)
+            mouseClick(box("area:leisure"))
+            compare(mock.asked, ["say phone at.work leisure"])
+            tryVerify(() => cell("phone", "work") !== null && face(cell("phone", "work")).text === "Leisure  ▾", 2000)
+            compare(cell("phone", "work").border.width, 1, "a cell you changed is framed")
+            compare(cell("phone", "admin").border.width, 0)
+            // Nothing at all there: the last box unticked is "none", your word for nothing.
+            mouseClick(face(cell("phone", "work")))
+            tryVerify(() => box("area:leisure") !== null && box("area:leisure").checked === true, 2000)
+            mouseClick(box("area:leisure"))
+            compare(mock.asked[1], "say phone at.work none")
+            tryVerify(() => face(cell("phone", "work")).text === "Nothing  ▾", 2000)
+            // "As its areas say": the cell as it was.
+            mouseClick(face(cell("phone", "work")))
+            tryVerify(() => box("areaFilterAsHours") !== null, 2000)
+            compare(box("areaFilterAsHours").text, "devices-cell-as-areas")
+            mouseClick(box("areaFilterAsHours"))
+            compare(mock.asked[2], "say phone at.work")
+            tryVerify(() => cell("phone", "work").border.width === 0, 2000)
+            // Now on this device; every area has its device: nothing more to say; what is never kept back.
+            compare(named(tab, "devicesNow").text, "Now, leisure until 22:00: nothing comes here.")
+            verify(showing(named(tab, "devicesNow")) && !showing(named(tab, "devicesUnheld")) && showing(named(tab, "devicesNever")))
+            save("devices-grid")
+        }
+
+        // An area no device is for is said in one sentence under the grid (here,
+        // this device alone, for work).
+        function test_an_area_no_device_is_for_is_said_under_the_grid() {
+            mock.on = false
+            tab.reload()
+            wait(50)
+            const unheld = named(tab, "devicesUnheld")
+            verify(showing(unheld))
+            compare(unheld.text, "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.")
+        }
+
         // At a phone's width: cards, each field under its name, nothing past the edge.
         function test_cards_on_a_narrow_window() {
             root.width = 412
@@ -349,6 +431,17 @@ Item {
             compare(past.map(i => i.objectName || i.text || String(i)), [], "nothing past the edge")
             const cards = walk(tab, i => (i.objectName || "").startsWith("device-"), [])
             verify(cards[0].y + cards[0].height <= cards[1].y && cards[1].y + cards[1].height <= cards[2].y, "one card under the other")
+            // No matrix there: each card says its cells in words, a line per time; an older Sioul, its sentence.
+            verify(named(tab, "deviceMatrix") === null, "no wall of marks")
+            const lines = named(phone, "deviceCells")
+            verify(lines !== null && showing(lines))
+            const said = walk(lines, i => (i.objectName || "").startsWith("cell-phone-") && showing(i), [])
+            compare(said.length, 5, "a line per time")
+            for (let i = 1; i < said.length; ++i)
+                verify(said[i].mapToItem(tab, 0, 0).y > said[i - 1].mapToItem(tab, 0, 0).y, "one line under the other")
+            for (const time of mock.times)
+                verify(shown(lines, time) !== null, time)
+            verify(shown(card("laptop"), "Its Sioul is older: everything still comes there.") !== null)
             // The switches still work there.
             boxes(card("laptop"))[0].toggle()
             boxes(card("laptop"))[0].toggled()

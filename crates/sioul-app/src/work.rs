@@ -213,7 +213,8 @@ fn fresh_lines(tasks: &[Task], quiet: Option<&sioul_core::quiet::QuietTasks>) ->
 pub(crate) fn situation(projects: &[sioul_core::projects::Project]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let now = sioul_core::zone::now();
-    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), projects)
+    // On this device: the task pages keep what comes forward on it (`Situation::on`).
+    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), projects).on(&crate::dispatch::lines())
 }
 
 /// The plan, and what it needs, from what was read.

@@ -6,7 +6,10 @@
 // Work, Admin and Leisure, ticked as the hours say until you tick others;
 // "As the hours say" sets them back, while your ticks hold; one "?" says how
 // it works. Rust keeps the ticks and decides when they end (`areafilter`);
-// this lays them out. Mail's All addresses and the Budgets page use it.
+// this lays them out. Mail's All addresses and the Budgets page use it, and
+// each cell of Settings ▸ Devices (DeviceGrid.qml), where the boxes are what
+// comes forward on a device at a time and the way back is "As its areas say"
+// (`asHoursText`, `name`).
 
 pragma ComponentBehavior: Bound
 
@@ -19,10 +22,19 @@ Item {
 
     required property var sioul
     required property var theme
-    // What Rust says of it (`areafilter::Shown`): {work, admin, leisure, label, own}.
+    // What Rust says of it (`areafilter::Shown`): {work, admin, leisure, label, own},
+    // and `device`, the sentence that says this device keeps areas back now, when it does.
     property var shown: null
     // The "?"'s words: what this page's filter does, once.
     property string help: ""
+    // What the "?" says: how the filter works, then, where this device and not
+    // the hour is the reason some area is not ticked, the sentence that says so.
+    readonly property string helpText: filter.shown && filter.shown.device ? filter.help + "\n\n" + filter.shown.device : filter.help
+    // What the way back says: "As the hours say", or a page's own words.
+    property string asHoursText: filter.sioul.text("area-filter-as-hours")
+    // What a screen reader says of the button, when the page has better
+    // words than "What shows: …" (a cell: its device, its time, its areas).
+    property string name: ""
     readonly property alias unfolded: list.opened
 
     // The three areas as they are now ticked, as written ("work+leisure", "" for none).
@@ -61,7 +73,7 @@ Item {
         flat: true
         // The words come from Rust, ours: plain text all the same.
         text: filter.theme.plain(filter.shown ? filter.shown.label : "") + "  ▾"
-        Accessible.name: filter.sioul.textWith("area-filter-name", "areas", filter.shown ? filter.shown.label : "")
+        Accessible.name: filter.name !== "" ? filter.name : filter.sioul.textWith("area-filter-name", "areas", filter.shown ? filter.shown.label : "")
         // A press on it while its list is open closes the list (outside it): that
         // same click does not open it again.
         onClicked: {
@@ -162,7 +174,8 @@ Item {
                 visible: !!filter.shown && filter.shown.own === true
                 flat: true
                 font.pixelSize: 13
-                text: filter.sioul.text("area-filter-as-hours")
+                // A page's own words: plain text all the same.
+                text: filter.theme.plain(filter.asHoursText)
                 onClicked: filter.asHours()
             }
             Label {
@@ -171,7 +184,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 0
                 Layout.topMargin: 4
-                text: filter.help
+                text: filter.helpText
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pixelSize: 13

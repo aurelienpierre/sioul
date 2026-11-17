@@ -640,6 +640,9 @@ pub(crate) fn devices() -> String {
         /// Why it is not, when a folder is set all the same: its key is not held; else "".
         why: String,
         rows: Vec<crate::health::DeviceRow>,
+        /// What comes forward on each device at each time: the rows' cells are
+        /// set with it (`device_grid::grid`); here, what is said around them.
+        grid: sioul_sync::device_grid::Grid,
     }
     let here = here();
     let vault = sealed(attached(&here));
@@ -652,23 +655,44 @@ pub(crate) fn devices() -> String {
         None => Vec::new(),
     };
     let why = if vault.is_none() && here.folder_path().is_some() { tr().text("share-key-missing", None) } else { String::new() };
-    json(&Devices { on: vault.is_some(), why, rows: crate::health::device_table(&holders) })
+    let mut rows = crate::health::device_table(&holders);
+    // Each device's five cells, and now on this one: as the rule reads them (`dispatch::known`, `hours::mode_at`).
+    let now = sioul_core::zone::now();
+    let grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
+    json(&Devices { on: vault.is_some(), why, rows, grid })
 }
 
 /// What you said of a device, written into the shared settings
 /// (`[device."<id>"]`, `sioul_core::device_said`): the name you give it
-/// (`field` "name"; "" its system's name again), or what it is for ("area":
-/// work, admin, leisure joined by +; "" everything again). Any device may
-/// say it of any other: it travels with the settings. Returns what went
-/// wrong, else "".
+/// (`field` "name"; "" its system's name again), what it is for ("area":
+/// work, admin, leisure joined by +; "" everything again), or one cell of
+/// its line ("at.work", "at.meals"…: what comes forward on it at that time,
+/// areas joined by +, "none" for nothing; "" as its areas say again). Any
+/// device may say it of any other: it travels with the settings. Returns
+/// what went wrong, else "".
 pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
     let path = crate::backend::config_path();
-    let written = match field {
-        "name" => sioul_core::device_said::set_name(&path, id, value),
-        "area" => sioul_core::device_said::set_area(&path, id, value),
+    let written = match (field, field.strip_prefix("at.")) {
+        ("name", _) => sioul_core::device_said::set_name(&path, id, value),
+        ("area", _) => sioul_core::device_said::set_area(&path, id, value),
+        (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
         _ => Err(format!("{field}?")),
     };
     written.err().unwrap_or_default()
+}
+
+/// A cell as the window says it: its time, one of the five, and its areas
+/// ("" as the device's areas say; "none" nothing); in words when either
+/// does not read.
+fn said_cell(time: &str, value: &str) -> Result<(sioul_core::areas::Time, Option<sioul_core::areas::Area>), String> {
+    let say = |id: &str, said: &str| {
+        let mut args = sioul_core::i18n::args();
+        args.set("said", said.to_string());
+        tr().text(id, Some(&args))
+    };
+    let at = sioul_core::device_said::cell_time(time).ok_or_else(|| say("devices-time-refused", time))?;
+    let areas = sioul_core::device_said::said_cell(value).ok_or_else(|| say("devices-cell-refused", value.trim()))?;
+    Ok((at, areas))
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -3574,6 +3598,59 @@ mod tests {
         let row = own_row();
         assert!(row["given"] == "" && row["name"] == row["system"] && row["area"] == "");
         assert!(!std::fs::read_to_string(&config).unwrap().contains("device"));
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Settings ▸ Devices says what comes forward on each device at each
+    /// time: this device's row has its five cells, in words, as the hours
+    /// say while nothing is said of it; a cell said in the window
+    /// ("at.<time>") is written into the settings and shows at once, marked
+    /// as changed; "none" is your word for nothing; "" puts it back; a time
+    /// that is none of the five, or words that name no area, are refused in
+    /// words, nothing written. Alone, what this device is not for is said to
+    /// come all the same.
+    #[test]
+    fn the_grid_says_this_device_s_cells_and_a_cell_is_said_in_the_window() {
+        sioul_core::config::stand_ins_only();
+        let dir = std::env::temp_dir().join(format!("sioul-app-devices-grid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "theme = \"dark\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        let view = || serde_json::from_str::<serde_json::Value>(&devices()).unwrap();
+        let shown = view();
+        let id = shown["rows"][0]["id"].as_str().unwrap().to_string();
+        assert_eq!(shown["grid"]["times"].as_array().map(Vec::len), Some(5));
+        let cells = |view: &serde_json::Value| view["rows"][0]["cells"].as_array().cloned().unwrap_or_default();
+        assert_eq!(cells(&shown).len(), 5, "a cell per time");
+        assert!(shown["rows"][0]["follows"] == true && cells(&shown).iter().all(|cell| cell["own"] == false), "{shown}");
+        assert_eq!(cells(&shown).iter().map(|cell| cell["time"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["work", "admin", "leisure", "meals", "sleep"]);
+        assert_eq!(shown["grid"]["unheld"], "", "nothing said of any device: nothing to say");
+        assert!(shown["grid"]["never"].as_str().is_some_and(|never| !never.is_empty()));
+        // A cell said: written, shown at once, marked.
+        assert_eq!(say_of_device(&id, "at.work", "work+leisure"), "");
+        assert_eq!(say_of_device(&id, "at.meals", "none"), "");
+        let text = std::fs::read_to_string(&config).unwrap();
+        assert!(text.contains("work = \"work+leisure\"") && text.contains("meals = \"none\"") && text.contains("theme = \"dark\""), "{text}");
+        let shown = view();
+        let cell = |time: usize| cells(&shown)[time].clone();
+        assert_eq!((cell(0)["areas"].as_str(), cell(0)["own"].as_bool(), cell(0)["leisure"].as_bool()), (Some("work+leisure"), Some(true), Some(true)));
+        assert_eq!((cell(3)["areas"].as_str(), cell(3)["own"].as_bool(), cell(3)["label"].as_str()), (Some(""), Some(true), Some(tr().text("devices-cell-nothing", None).as_str())));
+        assert_eq!(cell(1)["own"], false);
+        // Refused in words, nothing written.
+        assert!(!say_of_device(&id, "at.weekend", "work").is_empty() && !say_of_device(&id, "at.work", "often").is_empty() && !say_of_device(&id, "at.work+admin", "work").is_empty());
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        // As its areas say again: the cells go, and their table with them.
+        assert_eq!(say_of_device(&id, "at.work", ""), "");
+        assert_eq!(say_of_device(&id, "at.meals", ""), "");
+        assert!(!std::fs::read_to_string(&config).unwrap().contains("device"));
+        // This device alone, said to be for work: the rest is for no device, and that is said.
+        assert_eq!(say_of_device(&id, "area", "work"), "");
+        let shown = view();
+        assert!(shown["grid"]["unheld"].as_str().is_some_and(|unheld| !unheld.is_empty()), "{shown}");
+        assert_eq!(say_of_device(&id, "area", ""), "");
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
     }

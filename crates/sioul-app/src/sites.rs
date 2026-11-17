@@ -287,16 +287,14 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
         Ok(mut last) if *last != due => *last = due,
         _ => return,
     }
-    // Where you are: one computer gathers (`sioul_sync::lease`).
+    // Where you are: one computer gathers each site (`sioul_sync::lease`), among those the
+    // site comes forward on now, by what it is for (`dispatch::Tellers`).
     let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
-    let (keeper, _) = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false);
-    if !keeper.mine {
-        return;
-    }
+    let tellers = crate::dispatch::Tellers::now(Some(active));
     let path = Notices::default_path();
     let notices = Notices::load(&path);
     let mode = crate::backend::mode_now();
-    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && sioul_core::areas::in_view(s.area, mode.time, mode.week)).map(|s| (s.id.clone(), s.name.clone())).collect();
+    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && mode.brings(s.area) && tellers.tells(Some(s.area))).map(|s| (s.id.clone(), s.name.clone())).collect();
     // What is new since the last time it rang: each notification named once (the Porch keeps them all).
     let lines: Vec<String> = named
         .iter()
@@ -331,7 +329,7 @@ pub(crate) fn list() -> String {
     let rows: Vec<SiteRow> = sites::sites(&load_config())
         .into_iter()
         .map(|site| {
-            let in_view = sioul_core::areas::in_view(site.area, mode.time, mode.week);
+            let in_view = mode.brings(site.area);
             let icon = sioul_sync::favicon::cached(&favicons(), &sites::host_of(&site.url)).map(|p| crate::backend::file_url(&p)).unwrap_or_default();
             SiteRow { news: in_view && !notices.of(&site.id).is_empty(), in_view, icon, site }
         })
@@ -450,7 +448,7 @@ pub(crate) fn waiting() -> String {
     let mode = crate::backend::mode_now();
     let rows: Vec<Waiting> = sites::sites(&load_config())
         .into_iter()
-        .filter(|site| sioul_core::areas::in_view(site.area, mode.time, mode.week))
+        .filter(|site| mode.brings(site.area))
         .filter_map(|site| {
             let items: Vec<String> = notices.of(&site.id).into_iter().map(|n| if n.text.is_empty() { n.title.clone() } else { say("site-news-line", &[("title", n.title.clone()), ("text", n.text.clone())]) }).collect();
             (!items.is_empty()).then(|| Waiting { id: site.id, name: site.name, items })
