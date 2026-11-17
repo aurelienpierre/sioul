@@ -22,6 +22,7 @@ use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medi
 use sioul_core::i18n::Translator;
 use sioul_core::needs::{DayEdit, DayProblem, Days, Kept, Needs};
 use sioul_core::tasks::TaskEdit;
+use sioul_sync::peers::{Mark, PeerSeen, Peers};
 use std::sync::Arc;
 
 /// The health file, as every reader of the doses takes it (`load_said`).
@@ -2818,66 +2819,6 @@ thread_local! {
     static DEVICE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
-/// What this computer saw of your other devices, for the doses: kept here
-/// only (`$XDG_STATE_HOME/sioul/share/peers.json`), never shared.
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct Peers {
-    #[serde(default)]
-    peers: std::collections::BTreeMap<String, PeerSeen>,
-    /// When this device last looked (its clock): an opening seen now is timed
-    /// only when it looked a moment before, else its own absence would count.
-    #[serde(default)]
-    looked: i64,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct PeerSeen {
-    peer: Peer,
-    /// Its last claim seen here: when it renewed it (its clock).
-    #[serde(default)]
-    renewed: i64,
-    /// When this computer last looked (its clock): news is timed only while it watches.
-    #[serde(default)]
-    looked: i64,
-    /// How late its last claims came here, in seconds.
-    #[serde(default)]
-    delays: Vec<i64>,
-    /// Its newest entry in the devices' registry read here, by its own times
-    /// (`devices::written`; `peer.seen`: when it came): never replaced by an
-    /// older copy put back, nor taken from a clock more than `FUTURE` ahead.
-    #[serde(default)]
-    entry: Option<sioul_sync::devices::Entry>,
-    /// The words (`Entry::acked`) of the copy of its entry read now, when one
-    /// reads and is not set aside (`Peer::set_aside`): a phone's word stands
-    /// here only where this copy says it as well as the newest one, so that a
-    /// copy that is no news may take a word away, never give one (the final
-    /// review before 0.0.6, F1H). Not kept from one reading to the next.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    acked_now: Option<std::collections::BTreeMap<String, i64>>,
-    /// Its export's date (its clock) less when it was seen here (this one's),
-    /// the last sixty: how far its clock is ahead, at least, is the largest.
-    #[serde(default)]
-    aheads: Vec<i64>,
-    /// You said it is off: what it had said then. Counted again once it says anything newer.
-    #[serde(default)]
-    off: Option<Mark>,
-    /// You forgot it, silent: not listed until it says anything newer.
-    #[serde(default)]
-    forgotten: Option<Mark>,
-    /// How late the news of its last openings came here, in seconds
-    /// (`Peer::wake`: the longest), the last `WAKES`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    wakes: Vec<i64>,
-    /// Since when its claim on the doses ran, as last seen: an older Sioul's
-    /// openings, timed as an entry's start is.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    since: i64,
-}
-
-fn is_zero(n: &i64) -> bool {
-    *n == 0
-}
-
 /// How far ahead of this device's clock another device's times may run and
 /// still be taken (ten minutes: a clock left to drift; one set wrong by hours
 /// or a year is not): beyond it, its copy is no news and is set aside
@@ -2922,20 +2863,6 @@ fn note_wake(seen: &mut PeerSeen, delay: i64, news: Option<bool>) {
     seen.wakes.push(delay.max(0));
     let keep = seen.wakes.len().saturating_sub(WAKES);
     seen.wakes.drain(..keep);
-}
-
-/// What a device had said when you said it was off, or forgot it.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Mark {
-    #[serde(default)]
-    started: i64,
-    #[serde(default)]
-    exported: i64,
-    #[serde(default)]
-    renewed: i64,
-    /// When you said so (this device's clock).
-    #[serde(default)]
-    at: i64,
 }
 
 fn peers_path() -> std::path::PathBuf {
@@ -3311,159 +3238,47 @@ fn mark_device(id: &str, set: impl FnOnce(&mut PeerSeen, Mark)) -> String {
     })
 }
 
-/// How long a phone says nothing before a computer offers to forget it now
-/// (`DeviceRow::forget_now`): a day, where a living phone restates its entry
-/// every hour (`devices::RESTATED`).
-pub(crate) const FORGET_NOW_AFTER: i64 = 86_400;
+pub(crate) use sioul_sync::device_table::{FORGET_NOW_AFTER, Holding, Row as DeviceRow};
 
-/// A device as Settings ▸ Your folder and sharing lists it (`share::status`).
-#[derive(Serialize, Debug)]
-pub(crate) struct DeviceRow {
-    id: String,
-    name: String,
-    /// How it is, in words: in use now, closed at 22:14, silent since…, off as you said, an older Sioul.
-    state: String,
-    /// Said under it, quietly: it does not share its doses; its clock ahead.
-    notes: Vec<String>,
-    /// Counted as off, as you said: "Count it again".
-    off: bool,
-    /// Silent for a week: "Forget this device".
-    forget: bool,
-    /// On a computer, a phone silent for a day or more, still counted:
-    /// "Forget it now", said with what it changes (a phone that will never
-    /// share again, dead or lost, holds the doses' reminders back for a week otherwise).
-    forget_now: bool,
-    /// The Sioul it runs, as its entry says it: "Sioul 0.0.3 (eff8661abcde)", said
-    /// calmly when older than this device's; "" when its entry does not say.
-    build: String,
-}
-
-/// What a device listed by the sharing holds back (`share::formats`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Holding {
-    /// The newer form of what travels: it is known by what it shared alone.
-    Format,
-    /// An older Sioul, once the newer form travels.
-    Older,
-    /// Your own time around meetings, kept on each device until it is
-    /// updated or forgotten (re-check of 857c39e, §3.2).
-    OwnTime,
-}
-
-/// Your other devices, as this one knows them, for Settings: nothing red, no
-/// counts. `holders`: the devices that hold the newer form of what travels
-/// back, run an older Sioul once it travels, or keep your own time around
-/// meetings from travelling (`share::formats`), with when each was last
-/// heard (seconds, 0 when nothing says it) and what it holds back; each is
-/// listed (`holder_rows`).
-pub(crate) fn device_rows(holders: &[(String, i64, Holding)]) -> Vec<DeviceRow> {
+/// Every device of yours, this one first, as Settings ▸ Devices lists them
+/// (`sioul_sync::device_table`, which words each row): what this device
+/// just learned of the others (`know`) and kept of each, this device's own
+/// entry and the parts it shares now (`devices::here`), and what you said
+/// of each (`[device."<id>"]`). Nothing red, no counts. `holders`: the
+/// devices that hold the newer form of what travels back, run an older
+/// Sioul once it travels, or keep your own time around meetings from
+/// travelling (`share::formats`), with when each was last heard (seconds, 0
+/// when nothing says it) and what it holds back; each is listed. With
+/// sharing off, this device alone.
+pub(crate) fn device_table(holders: &[(String, i64, Holding)]) -> Vec<DeviceRow> {
     let knowledge = know();
     let kept = load_peers();
-    let mut rows = device_rows_of(&knowledge.peers, &kept, Timestamp::now().as_second(), tr());
-    holder_rows(&mut rows, holders, tr());
-    rows
+    let config = crate::backend::load_config();
+    let here = crate::devices::here();
+    let facts = sioul_sync::device_table::Facts {
+        id: &here.id,
+        own: &here.own,
+        sharing: here.sharing,
+        parts: &here.parts,
+        peers: &knowledge.peers,
+        kept: &kept,
+        holders,
+        said: &config.devices,
+        computer: crate::devices::kind() == sioul_sync::devices::COMPUTER,
+        now: Timestamp::now().as_second(),
+        looked: None,
+        zone: sioul_core::zone::current(),
+    };
+    sioul_sync::device_table::table(&facts, tr())
 }
 
-/// Every device holding the newer form back has its line, so that the window
-/// says which (docs/database.md, "The format of what travels"): one the rows
-/// do not list (known to the sharing alone, by what it shared before, or
-/// forgotten here while the sharing heard it since) is added, with "Forget
-/// this device": it is not counted for your doses, so forgetting it makes no
-/// dose look known. One listed keeps its own line: forgotten only once silent
-/// for a week, as any device, since a device counted for your doses and
-/// forgotten could make a dose it took look not taken. One that keeps your
-/// own time around meetings from travelling says so in one sentence, under
-/// its own line when it has one (re-check of 857c39e, §3.2).
-fn holder_rows(rows: &mut Vec<DeviceRow>, holders: &[(String, i64, Holding)], words: &Translator) {
-    let zone = jiff::tz::TimeZone::system();
-    let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
-    for (id, heard, holds) in holders {
-        if id.is_empty() {
-            continue;
-        }
-        if let Some(row) = rows.iter_mut().find(|row| row.id == *id) {
-            let note = words.text("share-device-own-time", None);
-            if *holds == Holding::OwnTime && !row.notes.contains(&note) {
-                row.notes.push(note);
-            }
-            continue;
-        }
-        let state = match (holds, *heard > 0) {
-            (Holding::Format, true) => said(words, "share-device-holds", &[("when", when(*heard))]),
-            (Holding::Format, false) => words.text("share-device-holds-unknown", None),
-            (Holding::Older, true) => said(words, "share-device-older", &[("when", when(*heard))]),
-            (Holding::Older, false) => words.text("share-device-unread", None),
-            (Holding::OwnTime, true) => said(words, "share-device-own-time-heard", &[("when", when(*heard))]),
-            (Holding::OwnTime, false) => words.text("share-device-own-time-unknown", None),
-        };
-        rows.push(DeviceRow { id: id.clone(), name: capitalized(&words.text("share-other-device", None)), state, notes: Vec::new(), off: false, forget: true, forget_now: false, build: String::new() });
-    }
-    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-}
-
+/// The other devices' rows, as the table words them (`sioul_sync::device_table`).
+#[cfg(test)]
 fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) -> Vec<DeviceRow> {
-    let zone = jiff::tz::TimeZone::system();
-    let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
-    let mut rows: Vec<DeviceRow> = peers
-        .iter()
-        // Forgotten here, or replaced by another device (`apply_replaced`): not listed until it says anything newer.
-        .filter(|peer| !peer.id.is_empty() && !peer.forgotten && kept.peers.get(&peer.id).is_none_or(|seen| seen.forgotten.is_none()))
-        .map(|peer| {
-            let seen = kept.peers.get(&peer.id);
-            let entry = seen.and_then(|s| s.entry.as_ref()).filter(|_| peer.said.is_some());
-            let named = named_of(peer);
-            let name = match entry {
-                Some(e) if e.kind == sioul_sync::devices::PHONE && !e.name.is_empty() && e.name != sioul_sync::devices::PHONE => format!("{} ({})", capitalized(&words.text(if e.form == sioul_sync::devices::TABLET { "device-the-tablet" } else { "device-the-phone" }, None)), e.name),
-                _ => device_start(&named, words),
-            };
-            let off = peer.off;
-            let counted = sioul_core::health::counts(&Peer { off: false, ..peer.clone() }, now);
-            // Its entry from a clock far ahead of this one's, set aside (`FUTURE`): said, so that its clock is set right.
-            let future = peer.set_aside;
-            let state = if off {
-                words.text("share-device-off", None)
-            } else if future && entry.is_none() {
-                words.text("share-device-future", None)
-            } else if !counted {
-                said(words, "share-device-silent", &[("when", when(peer.heard))])
-            } else {
-                match entry {
-                    Some(e) if e.working && now - peer.seen > sioul_core::health::QUIET => said(words, "share-device-quiet", &[("when", when(e.exported))]),
-                    Some(e) if e.working => said(words, "share-device-in-use", &[("when", when(e.exported))]),
-                    Some(e) => said(words, "share-device-closed", &[("when", when(e.closed)), ("shared", when(e.exported))]),
-                    None if seen.is_some_and(|s| s.renewed > 0) => said(words, "share-device-older", &[("when", when(peer.heard))]),
-                    None => words.text("share-device-unread", None),
-                }
-            };
-            let mut notes = Vec::new();
-            if entry.is_some_and(|e| !e.doses) {
-                notes.push(words.text("share-device-apart", None));
-            }
-            if future && (off || entry.is_some()) {
-                notes.push(words.text("share-device-future", None));
-            } else if peer.ahead >= 60 {
-                let mut args = sioul_core::i18n::args();
-                args.set("minutes", peer.ahead / 60);
-                notes.push(words.text("share-device-ahead", Some(&args)));
-            }
-            // The build it runs (docs/database.md, "Devices"): an older one said, calmly.
-            let build = match entry.map(|e| (e.build(), sioul_core::build::older(&e.version, sioul_core::build::VERSION))) {
-                Some((build, _)) if build.is_empty() => String::new(),
-                Some((build, true)) => said(words, "share-device-build-older", &[("build", build), ("here", sioul_core::build::DESCRIBED.to_string())]),
-                Some((build, false)) => said(words, "share-device-build", &[("build", build)]),
-                None => String::new(),
-            };
-            // Forgotten once silent a week, or once said off (a phone that never gives its word holds the computers until then: L2).
-            let forget = !counted || off;
-            // On a computer, a phone silent a day (its entry not changed here since: a living
-            // phone restates it each hour): "Forget it now", rather than a week's wait.
-            let phone = peer.said.as_ref().is_some_and(|s| s.phone) || entry.is_some_and(|e| e.kind == sioul_sync::devices::PHONE);
-            let forget_now = !forget && phone && crate::devices::kind() == sioul_sync::devices::COMPUTER && now - peer.seen.max(peer.heard) >= FORGET_NOW_AFTER;
-            DeviceRow { id: peer.id.clone(), name, state, notes, off, forget, forget_now, build }
-        })
-        .collect();
-    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    rows
+    let own = sioul_sync::devices::Entry { id: "this-device".into(), ..sioul_sync::devices::Entry::default() };
+    let said = std::collections::BTreeMap::new();
+    let facts = sioul_sync::device_table::Facts { id: "this-device", own: &own, sharing: true, parts: &[], peers, kept, holders: &[], said: &said, computer: true, now, looked: None, zone: jiff::tz::TimeZone::UTC };
+    sioul_sync::device_table::table(&facts, words).into_iter().skip(1).collect()
 }
 
 /// Why a dose is not known, in words: "your laptop: last heard at 07:52".
@@ -7624,32 +7439,6 @@ mod tests {
         assert!(replaces.holds(Some(old.started), old.exported * 1000) && !replaces.holds(Some(due - 900), old.exported * 1000) && !replaces.holds(Some(old.started), (old.exported + 60) * 1000));
     }
 
-    /// On a computer, a phone silent for a day or more is offered "Forget it
-    /// now" (a dead phone could hold every dose back a
-    /// week); one heard within the day, or already offered "Forget this
-    /// device", is not; nor is a computer.
-    #[test]
-    fn a_phone_silent_a_day_is_offered_to_be_forgotten_now() {
-        use sioul_core::health::Said;
-        let now: i64 = 1_791_360_000;
-        let peer = |id: &str, phone: bool, seen: i64| Peer {
-            id: id.into(),
-            name: id.into(),
-            said: Some(Said { started: seen - 60, closed: seen, working: false, exported: seen, imported: seen, doses: true, left: false, phone }),
-            complete: true,
-            seen,
-            heard: seen,
-            ..Peer::default()
-        };
-        let peers = [peer("silent-phone", true, now - FORGET_NOW_AFTER - 60), peer("fresh-phone", true, now - 3_600), peer("silent-desk", false, now - FORGET_NOW_AFTER - 60), peer("week-phone", true, now - 8 * 86_400)];
-        let rows = device_rows_of(&peers, &Peers::default(), now, &Translator::new("en"));
-        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
-        assert!(row("silent-phone").forget_now && !row("silent-phone").forget);
-        assert!(!row("fresh-phone").forget_now);
-        assert!(!row("silent-desk").forget_now, "a computer is not offered it");
-        assert!(row("week-phone").forget && !row("week-phone").forget_now, "silent a week: Forget this device, as before");
-    }
-
     /// The final review's words: on the phone, a desk whose clock runs an hour
     /// ahead (its copies set aside, last night's kept, its claims dated ahead)
     /// is said as it is, never "an older Sioul there?", in the alarm's reason
@@ -8211,63 +8000,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Settings ▸ Your folder and sharing lists your other devices: how each
-    /// is, in words, with what can be done; nothing red, no counts.
-    #[test]
-    fn your_devices_listed_in_words() {
-        use sioul_core::health::Said;
-        use sioul_sync::devices::Entry;
-        let english = Translator::new("en");
-        let now = 1_800_000_000;
-        let entry = |id: &str, kind: &str, name: &str, working: bool, exported: i64, doses: bool| Entry { id: id.into(), name: name.into(), kind: kind.into(), started: now - 7_200, closed: if working { 0 } else { exported + 5 }, working, exported, doses, ..Entry::default() };
-        let mut kept = Peers::default();
-        let mut add = |entry: Entry, seen: i64, ahead: i64| {
-            let peer = Peer { id: entry.id.clone(), name: entry.name.clone(), said: Some(entry.said()), complete: true, seen, heard: entry.exported, ahead, ..Peer::default() };
-            kept.peers.insert(entry.id.clone(), PeerSeen { peer, entry: Some(entry), ..PeerSeen::default() });
-        };
-        add(entry("a-phone", "phone", "FP3", false, now - 600, true), now - 590, 240);
-        add(entry("b-desk", "computer", "desk", true, now - 30, true), now - 25, 0);
-        add(entry("c-laptop", "computer", "laptop", true, now - 4 * 3_600, false), now - 4 * 3_600, 0);
-        add(entry("d-old", "computer", "old", true, now - 9 * 86_400, true), now - 9 * 86_400, 0);
-        kept.peers.insert("e-older".into(), PeerSeen { peer: Peer { id: "e-older".into(), name: "tower".into(), heard: now - 120, ..Peer::default() }, renewed: now - 120, ..PeerSeen::default() });
-        kept.peers.get_mut("b-desk").unwrap().peer.off = true;
-        let peers: Vec<Peer> = kept.peers.values().map(|s| s.peer.clone()).collect();
-        let rows = device_rows_of(&peers, &kept, now, &english);
-        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
-        assert_eq!(row("a-phone").name, "The phone (FP3)");
-        assert!(row("a-phone").state.starts_with("Closed ") && row("a-phone").notes == ["Its clock is 4 minutes ahead of this one's, at least."], "{:?}", row("a-phone"));
-        assert!(row("b-desk").off && row("b-desk").state == "Counted as off, as you said, until it shares again.");
-        assert!(row("c-laptop").state.starts_with("In use when it last shared") && row("c-laptop").notes == ["It does not share its doses."], "{:?}", row("c-laptop"));
-        assert!(row("d-old").forget && row("d-old").state.starts_with("Silent since "), "{:?}", row("d-old"));
-        assert!(row("e-older").state.starts_with("An older Sioul: last heard "), "{:?}", row("e-older"));
-        assert!(rows.iter().all(|r| !r.state.contains("not taken")));
-        let _ = Said::default();
-        // The devices holding the newer form of what travels back: each has its
-        // line; one not listed is added, with Forget; one listed keeps its own.
-        let mut rows = rows;
-        holder_rows(&mut rows, &[("e-older".into(), now - 120, Holding::Format), ("f-gone".into(), now - 90 * 86_400, Holding::Format), ("g-unknown".into(), 0, Holding::Format), ("h-after".into(), now - 3_600, Holding::Older)], &english);
-        assert_eq!(rows.iter().filter(|r| r.id == "e-older").count(), 1);
-        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
-        assert!(!row("e-older").forget, "counted for the doses: forgotten once silent a week only");
-        assert!(row("f-gone").forget && row("f-gone").name == "Another device of yours" && row("f-gone").state.starts_with("Known here by what it shared, last "), "{:?}", row("f-gone"));
-        assert!(row("h-after").forget && row("h-after").state.starts_with("An older Sioul: last heard "), "{:?}", row("h-after"));
-        assert!(row("g-unknown").forget && row("g-unknown").state == "Known here by what it shared: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.", "{:?}", row("g-unknown"));
-        // The devices keeping your own time around meetings from travelling (re-check of 857c39e,
-        // §3.2): one listed says it under its own line, keeping its own Forget; one not listed is
-        // added with Forget; one already added for the format says it once more, under it.
-        let mut rows = rows;
-        holder_rows(&mut rows, &[("d-old".into(), now - 9 * 86_400, Holding::OwnTime), ("i-tablet".into(), now - 3_600, Holding::OwnTime), ("f-gone".into(), now - 90 * 86_400, Holding::OwnTime)], &english);
-        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
-        let sentence = "Until it is updated there, or forgotten here, the time you keep around meetings stays on each of your devices.";
-        assert!(row("d-old").forget && row("d-old").notes == [sentence], "{:?}", row("d-old"));
-        let tablet = row("i-tablet");
-        assert!(tablet.forget && tablet.name == "Another device of yours" && tablet.state.starts_with("Known here by what it shared, last heard ") && tablet.state.ends_with(": until it is updated there, or forgotten here, the time you keep around meetings stays on each of your devices."), "{tablet:?}");
-        assert!(row("f-gone").notes == [sentence] && rows.iter().filter(|r| r.id == "f-gone").count() == 1, "{:?}", row("f-gone"));
-        for r in &rows {
-            let words = format!("{} {}", r.state, r.notes.join(" ")).to_lowercase();
-            assert!(!words.contains("error") && !words.contains("blocked"), "calm: {r:?}");
-        }
-    }
     /// A Health run reads once what your devices know (`know`, under
     /// `KNOWING`): its page and its Porch's doses come from one read.
     #[test]

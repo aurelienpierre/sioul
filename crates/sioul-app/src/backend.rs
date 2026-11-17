@@ -1436,9 +1436,21 @@ pub mod qobject {
         #[qinvokable]
         fn device_off(self: Pin<&mut Sioul>, id: &QString, off: bool) -> QString;
 
-        /// A device silent for a week, forgotten (Settings ▸ Your folder and sharing).
+        /// A device silent for a week, forgotten (Settings ▸ Devices).
         #[qinvokable]
         fn device_forget(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, rows }`, a
+        /// row per device, this one first (`sioul_sync::device_table::Row`).
+        #[qinvokable]
+        fn devices(self: &Sioul) -> QString;
+
+        /// What you say of a device, written into the shared settings
+        /// (`share::say_of_device`): `field` "name" (the name you give it;
+        /// "" its system's again) or "area" (what it is for: work, admin,
+        /// leisure joined by +; "" everything). Returns what went wrong, else "".
+        #[qinvokable]
+        fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
@@ -6881,6 +6893,14 @@ impl qobject::Sioul {
 
     fn device_forget(self: Pin<&mut Self>, id: &QString) -> QString {
         QString::from(&crate::health::device_forget(&id.to_string()))
+    }
+
+    fn devices(&self) -> QString {
+        QString::from(&crate::share::devices())
+    }
+
+    fn device_say(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        QString::from(&crate::share::say_of_device(&id.to_string(), &field.to_string(), &value.to_string()))
     }
 
     fn needs(&self) -> QString {

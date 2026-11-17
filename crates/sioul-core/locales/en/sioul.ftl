@@ -3734,10 +3734,6 @@ share-others = { $count ->
 }
 share-alone = No other device yet: on the other one, choose the same folder and type the same passphrase.
 share-last = Last exchange here: { $when }.
-share-devices = Your other devices
-share-device-in-use = In use now; last shared { $when }.
-share-device-quiet = In use when it last shared, { $when }, and silent since: it may have stopped without closing.
-share-device-closed = Closed { $when }; last shared { $shared }.
 share-device-older = An older Sioul: last heard { $when }.
 share-device-unread = What it says does not read here yet.
 share-device-holds = Known here by what it shared, last heard { $when }: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.

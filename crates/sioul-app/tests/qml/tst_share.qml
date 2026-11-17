@@ -2,11 +2,12 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Settings ▸ Your folder and sharing (SharePanel.qml), sharing on, on a
-// stand-in for Sioul: this device's build, each other device's build (an
-// older one said calmly), the switch that sends this device's files to the
-// server beside the sync app, and "Send everything again" with what it said;
-// notes held after going many at once, with Put them back and Take them out
-// now; "Remove its files" for a device, what goes said before the press.
+// stand-in for Sioul: this device's build, the line that leads to the
+// devices' own tab (tst_devices.qml tests that tab), the switch that sends
+// this device's files to the server beside the sync app, and "Send
+// everything again" with what it said; notes held after going many at once,
+// with Put them back and Take them out now; "Remove its files" for a device
+// that no longer counts, what goes said before the press.
 // The sending itself is tested in sioul-sync (remote.rs); here the window's
 // side, in English and French. Run by tools/qml-test.sh. To see the panel,
 // set `pictures` below to a folder (a change of your own, not to commit).
@@ -46,7 +47,8 @@ Item {
             "en": {
                 "share-now": "Exchange now",
                 "share-stop": "Stop sharing",
-                "share-devices": "Your other devices",
+                "share-devices-moved": "Your devices are listed in Settings ▸ Devices, with what each is for.",
+                "share-devices-open": "Open Devices",
                 "share-send-help": "Right after each change, Sioul sends this device's own files there itself, beside your sync app.",
                 "share-backup-switch": "Also fetch them from the server",
                 "share-backup-help": "When your sync app is late, Sioul also reads them on the server.",
@@ -57,7 +59,8 @@ Item {
             "fr": {
                 "share-now": "Échanger maintenant",
                 "share-stop": "Arrêter le partage",
-                "share-devices": "Vos autres appareils",
+                "share-devices-moved": "Vos appareils sont listés dans Paramètres ▸ Appareils, avec ce à quoi sert chacun.",
+                "share-devices-open": "Ouvrir Appareils",
                 "share-send-help": "Juste après chaque changement, Sioul envoie lui-même là-bas les fichiers de cet appareil, à côté de votre application de synchronisation.",
                 "share-backup-switch": "Aller aussi les chercher sur le serveur",
                 "share-backup-help": "Quand votre application de synchronisation tarde, Sioul les lit aussi sur le serveur.",
@@ -69,16 +72,12 @@ Item {
         readonly property var said: ({
             "en": {
                 build: "This device: Sioul 0.0.3 (eff8661abcde).",
-                phone: "Sioul 0.0.2 (0123456789ab), older than this device's (0.0.3 (eff8661abcde)): updating it there, when you can, keeps both alike.",
-                laptop: "Sioul 0.0.3 (eff8661abcde).",
                 sendSwitch: "Also send this device's changes to cloud.example.org directly",
                 sendLine: "Sent directly to cloud.example.org, last at 10:41.",
                 again: "Sent 14 files to cloud.example.org at 10:42."
             },
             "fr": {
                 build: "Cet appareil : Sioul 0.0.3 (eff8661abcde).",
-                phone: "Sioul 0.0.2 (0123456789ab), plus ancien que celui de cet appareil (0.0.3 (eff8661abcde)) : le mettre à jour là-bas, quand vous pouvez, garde les deux pareils.",
-                laptop: "Sioul 0.0.3 (eff8661abcde).",
                 sendSwitch: "Envoyer aussi les changements de cet appareil directement à cloud.example.org",
                 sendLine: "Envoyé directement à cloud.example.org, la dernière fois à 10:41.",
                 again: "14 fichiers envoyés à cloud.example.org à 10:42."
@@ -119,10 +118,6 @@ Item {
                     { text: "2 earlier versions and contents used lately, 1.1 MB, leave two weeks after their last use.", device: "" }
                 ] : [],
                 gone_devices: mock.held ? [{ id: "c", name: "The phone (Model 7)", state: "Forgotten here. Its files are still in the folder: 16.1 MB." }] : [],
-                devices: [
-                    { id: "a", name: "The phone (FP5)", state: "In use now; last shared 10:41.", notes: [], off: false, forget: false, build: said.phone },
-                    { id: "b", name: "laptop", state: "Closed 09:12; last shared 09:12.", notes: [], off: false, forget: false, build: said.laptop }
-                ],
                 backup: { shown: true, line: "Also fetched directly from cloud.example.org, last at 10:41.", on: true, given: "", found: true, send: !mock.sendsOff(), send_switch: said.sendSwitch, send_line: said.sendLine },
                 servers: [],
                 mirrored: false,
@@ -171,6 +166,13 @@ Item {
             sioul: mock
             theme: testTheme
         }
+    }
+
+    SignalSpy {
+        id: devicesSpy
+
+        target: panel
+        signalName: "devicesAsked"
     }
 
     TestCase {
@@ -253,15 +255,13 @@ Item {
             tryVerify(() => button("share-device-remove-confirm") !== null, 2000)
             button("share-device-remove-confirm").clicked()
             compare(mock.asked, ["files c", "files c", "remove c"])
-            // A device that counts: on its own line, the same question.
-            mock.asked = []
+            // The devices that count are listed in their own tab: none here, one line leads there.
             const live = walk(panel, i => i.visible && i.text === "share-device-remove-live" && i.clicked !== undefined, [])
-            compare(live.length, 2, "one for each device that counts")
-            live[0].clicked()
-            tryVerify(() => shown(what) !== null, 2000)
-            compare(mock.asked, ["files a"])
-            button("share-device-remove-confirm").clicked()
-            compare(mock.asked, ["files a", "remove a"])
+            compare(live.length, 0, "the devices that count have their own tab")
+            verify(shown(mock.text("share-devices-moved")) !== null, "the line that leads to the devices' tab")
+            devicesSpy.clear()
+            button(mock.text("share-devices-open")).clicked()
+            compare(devicesSpy.count, 1, "the devices' tab asked for")
             save("share-held-and-removal")
         }
 
@@ -281,8 +281,8 @@ Item {
             verify(shown("2 earlier versions and contents used lately, 1.1 MB, leave two weeks after their last use.") !== null)
             verify(shown("Their contents in the folder: 2.3 MB.") !== null, "the held notes' size")
             const live = walk(panel, i => i.visible && i.text === "share-device-remove-live" && i.clicked !== undefined, [])
-            compare(live.length, 3, "one for each device that counts, and one where it waits")
-            live[2].clicked()
+            compare(live.length, 1, "where it waits; the devices that count have their own tab")
+            live[0].clicked()
             const what = "What goes: its records (17 files) and the small files it kept there, 16.1 MB. What stays: everything your devices already read of it."
             tryVerify(() => shown(what) !== null, 2000, "what goes and what stays, said first")
             compare(walk(panel, i => i.visible && i.text === "share-device-remove-confirm" && i.clicked !== undefined && i.checked !== undefined, []).length, 1, "asked once, where it was pressed")
@@ -301,10 +301,9 @@ Item {
             panel.reload()
             const said = mock.said[data.language]
             wait(50)
-            // This device's build, each other device's, an older one said.
+            // This device's build; each other device's is said in the devices' tab.
             verify(shown(said.build) !== null, "this device's build")
-            verify(shown(said.phone) !== null, "the phone's older build, said")
-            verify(shown(said.laptop) !== null, "the laptop's build")
+            verify(shown(mock.text("share-devices-moved")) !== null, "the line that leads to the devices' tab")
             // The switch, on by default where the backup is, and where it stands.
             const sending = switchBeside(said.sendSwitch)
             verify(sending !== null, "the switch to send beside the sync app")

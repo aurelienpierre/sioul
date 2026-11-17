@@ -6,8 +6,8 @@
 // (ReachesTab.qml), the words Sioul looks for (WordsTab.qml), reminders,
 // the pauses, on a phone what sets it up
 // (PhoneSetup.qml), on a computer the multimedia messages sent from it
-// (TextsSending.qml), your folder and sharing, invoices. Each setting says in
-// a sentence what it changes and is saved at once.
+// (TextsSending.qml), your folder and sharing, your devices (DevicesTab.qml),
+// invoices. Each setting says in a sentence what it changes and is saved at once.
 
 pragma ComponentBehavior: Bound
 
@@ -25,6 +25,8 @@ Item {
     property string problem: ""
     // The sharing panel, made the first time its tab is shown, then kept.
     readonly property var share: shareLoader.item
+    // The devices' tab, while it is shown.
+    readonly property var devices: devicesLoader.item
     property bool shareMade: page.section === "files"
     onSectionChanged: {
         if (page.section === "files")
@@ -33,9 +35,9 @@ Item {
     // One tab at a time: how it looks, the hours, what reaches you, the words,
     // reminders, the pauses; on Android, what sets it up (its system's); where
     // there is no telephony (a computer, a tablet without a SIM), the texts it
-    // sends through the phone; your folder and sharing, invoices; what AI
-    // agents may use (each project closed to them until opened).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "invoices", "ai"])
+    // sends through the phone; your folder and sharing, your devices,
+    // invoices; what AI agents may use (each project closed to them until opened).
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "devices", "invoices", "ai"])
     // A tab's name's key: Android's own tab named by what the device is ("This
     // phone", "This tablet", else "This device"), never by its system.
     function tabKey(section) {
@@ -165,8 +167,8 @@ Item {
         clip: true
 
         ColumnLayout {
-            // What reaches you's cards sit three in a row where they can.
-            width: Math.min(scroll.availableWidth, page.section === "attention" ? 1100 : 720)
+            // What reaches you's cards sit three in a row where they can; the devices' fields line up as a table.
+            width: Math.min(scroll.availableWidth, page.section === "attention" || page.section === "devices" ? 1100 : 720)
             spacing: 6
 
             Label {
@@ -352,6 +354,27 @@ Item {
                     SharePanel {
                         sioul: page.sioul
                         theme: page.theme
+                        onDevicesAsked: page.showSetting("devices")
+                    }
+                }
+            }
+
+            // Your devices: what each is, when it last opened and shared, what you
+            // say it is for (docs/database.md, "Devices").
+            Loader {
+                id: devicesLoader
+
+                active: page.section === "devices"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    DevicesTab {
+                        sioul: page.sioul
+                        theme: page.theme
+                        kindRow: page.rows.find(r => r.key === "device_kind") || null
+                        onSave: (key, value, shown) => page.save(key, value, shown)
+                        onSharingAsked: page.showSetting("files")
                     }
                 }
             }

@@ -3770,10 +3770,6 @@ share-others = { $count ->
 }
 share-alone = Aucun autre appareil pour l’instant : sur l’autre, choisissez le même dossier et tapez la même phrase de passe.
 share-last = Dernier échange ici : { $when }.
-share-devices = Vos autres appareils
-share-device-in-use = Utilisé en ce moment ; dernier partage { $when }.
-share-device-quiet = Utilisé lors de son dernier partage, { $when }, et silencieux depuis : il s’est peut-être arrêté sans se fermer.
-share-device-closed = Fermé { $when } ; dernier partage { $shared }.
 share-device-older = Un Sioul plus ancien : entendu pour la dernière fois { $when }.
 share-device-unread = Ce qu’il dit ne se lit pas encore ici.
 share-device-holds = Connu ici par ce qu’il a partagé, entendu pour la dernière fois { $when } : jusqu’à sa mise à jour là-bas, ou jusqu’à ce que vous l’oubliiez ici, vos appareils continuent de partager sous la forme que lit un Sioul plus ancien.

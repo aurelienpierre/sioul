@@ -122,6 +122,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
     let notifications = crate::appnotes::access_here();
     // A phone's word on each computer's opening it read (none on a computer: `health::acknowledged_openings`).
     let acked = crate::health::acknowledged_openings();
+    // The parts it shares, for the others to show (Settings ▸ Devices); none while it does not share.
+    let parts = if vault.is_some() { crate::share::parts_shared() } else { Vec::new() };
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.id = id;
         entry.name = name();
@@ -158,6 +160,7 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
             entry.notifications = notifications;
         }
         entry.acked = acked;
+        entry.parts = parts;
         change(entry);
     });
     match written {
@@ -188,6 +191,39 @@ pub(crate) fn learns_now() {
 /// now, for the others to name it (`Entry::form`).
 pub(crate) fn form_changed() {
     let _ = write(|_| {});
+}
+
+/// A part switched on or off here (Settings ▸ Your folder and sharing):
+/// this device's entry says so now, for the others to show it (`Entry::parts`).
+pub(crate) fn parts_changed() {
+    let _ = write(|_| {});
+}
+
+/// This device, for the table of your devices (`health::device_table`).
+pub(crate) struct Here {
+    /// Its id in the sharing; "" while it has none.
+    pub(crate) id: String,
+    /// Its own entry as kept here, named and said as it is now.
+    pub(crate) own: Entry,
+    /// Sharing is on here: a folder set, its key held.
+    pub(crate) sharing: bool,
+    /// The parts it shares now; none while it does not share.
+    pub(crate) parts: Vec<String>,
+}
+
+/// `Here`, read now: this device's entry as it last wrote it
+/// (`share/device.toml`), with its name, its kind and its form as they are
+/// at this moment, whatever was last written.
+pub(crate) fn here() -> Here {
+    let (id, vault) = crate::share::vault().unwrap_or_default();
+    let mut own = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir()));
+    own.id = id.clone();
+    own.name = name();
+    own.kind = kind().into();
+    own.form = crate::devicekind::kind().word().into();
+    let sharing = vault.is_some();
+    let parts = if sharing { crate::share::parts_shared() } else { Vec::new() };
+    Here { id, own, sharing, parts }
 }
 
 /// The window opened, or a phone's Sioul back on the screen: up. Found up
