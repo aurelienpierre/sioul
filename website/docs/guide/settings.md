@@ -109,13 +109,13 @@ Printed on the invoices you make from [Time](time.md#invoices) and [Projects](pr
 - **Invoices go into**: the folder of their PDFs, `Documents/Invoices` in your home folder when empty;
 - **An hour costs**: the rate when a project does not set its own.
 
-Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, a business client's address, or, for settings made before, your legal form, now holds it back, with a sentence saying what to add.
+Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, a business client's address (a client without a profile is billed as a business), a client's country when their address leaves it unknown, or, for settings made before, your legal form, now holds it back, with a sentence saying what to add.
 
 **In the configuration file**, for now ([Where settings are kept](#where-settings-are-kept), under `[invoice]`), until Settings ▸ Invoices shows them by country. The settings above keep working as they did:
 
 - `preset`: your country's rules, `fr`, `de`, `be`, `uk`, `ch` or `elsewhere` (`es` and `it` are named, and not supported); `legal_form` (**Legal form**, above): in France `ei` (a micro-entrepreneur included), `eurl`, `sasu`, `sarl`, `sas` or `sa`, elsewhere `sole` or `company`; with a `preset` set, its first is the default; without one, as in settings made before November 2026, none until you say it; `regime`, in France: `micro` or `reel`;
 - `[[invoice.tax]]`: your VAT scheme from a day on, `from` (`2027-01-01`), `scheme` (`none`, `franchise` or `liable`) and, under the franchise, `mention` when you want another line than your country's; `options = ["debits"]` in France, when you pay VAT on debits;
-- `[[invoice.id]]`: your identifiers, each a `kind` your country names (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), its `value`, and `printed`;
+- `[[invoice.id]]`: your identifiers, each a `kind` your country names (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), its `value`, and `printed` (`true` unless you say `false`: an identifier not printed does not count for what your country's rules require);
 - `trade_name`, `postcode`, `city`, `country` (two letters, such as `FR`) and `email`; `capital`, a company's share capital as printed; `insurance`, your professional insurance as printed (insurer, contact, coverage);
 - `[[invoice.bank]]`: `holder`, `iban` and `bic`, printed on your invoices;
 - `pattern` (`{YYYY}-{N:3}`: the year `{YYYY}` or `{YY}`, the month `{MM}`, and one counter, `{N}`, or `{N:4}` for four digits at least), `reset` (`yearly`, with the year in the pattern, or `never`), `credit_pattern` (a series of their own for credit notes; empty, they follow your invoices);

@@ -9,6 +9,8 @@ Sioul's packages, built by GitHub from this version's sources. Sioul is young: k
 | Android 9 and later, 64-bit phones | `Sioul-<version>-android-arm64.apk` | Download it on the phone and open it; when Android asks, allow your browser or file manager to install apps. Signed with Sioul's key: the next version installs over it, your data kept. |
 
 
+Invoices: when your devices share invoices, update them all to this version before you issue one with it. An older Sioul lists a newer invoice as an empty unpaid one, joins your bank's lines to it without paying it, and gives numbers in its own way; it never writes over a newer invoice.
+
 The command line, `sioul`, comes with each computer's package (`sioul mcp` connects an AI agent: see the guide).
 
 Guide, in English and French: https://sioul.aurelienpierre.com/ — what Sioul does, how to start, and the privacy policy. Questions and reports: https://github.com/aurelienpierre/sioul/issues

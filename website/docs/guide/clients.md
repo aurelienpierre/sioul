@@ -36,7 +36,7 @@ Your country's rules decide the rest: Sioul knows those of France, Germany, Belg
 
 For a French micro-entrepreneur, the invoice prints « EI » after your name by itself, your SIREN or SIRET, « TVA non applicable, article 293 B du CGI » under the VAT franchise (the VAT per rate once you are liable for it), the date or period of the service, and what it sells, services or goods. For a business client, it adds no discount for early payment, the late-payment penalties at the ECB's rate plus 10 points, and the €40 recovery fee; for a private person, none of them. For a service to a business in another EU country, it prints « Autoliquidation » and both VAT numbers, under the franchise too; to a business outside the EU, « TVA non applicable – article 259-1 du CGI ». Before issuing, Sioul says what is missing, such as a business client's SIREN, which micro-enterprises must give from 1 September 2027. Elsewhere, the VAT line and the payment details are yours to word.
 
-Each client can have a profile: their legal name, billing and delivery addresses, identifiers, the language, currency and payment terms of their invoices. Without one, a client whose contact names an organisation is billed as a business, any other as a private person. [Your clients](time.md#your-clients)
+Each client can have a profile: their legal name, billing and delivery addresses, identifiers, the language, currency and payment terms of their invoices. Without one, a client is billed as a business; a profile says when the client is a private person. [Your clients](time.md#your-clients)
 
 With the usual prefix, the year, invoice numbers start again each January; with a prefix of your own, they go on from the last one ([Invoices](time.md#invoices)).
 
