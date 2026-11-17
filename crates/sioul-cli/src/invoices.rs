@@ -63,6 +63,18 @@ pub(crate) enum InvoicesCommand {
         /// transfer, card, cash, cheque, direct-debit, other.
         #[arg(long, default_value = "transfer")]
         means: String,
+        /// For an invoice in another currency: what reached you in the books' (euros), as 92.50.
+        #[arg(long)]
+        received: Option<String>,
+    },
+    /// What a payment in another currency came to in the books' (euros): the books count it so.
+    Received {
+        number: String,
+        /// What reached you, as 92.50.
+        amount: String,
+        /// The payment of that day; else its last one with nothing said yet.
+        #[arg(long)]
+        day: Option<String>,
     },
 }
 
@@ -104,7 +116,8 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
         InvoicesCommand::Draft { project } => draft(s, &project),
         InvoicesCommand::Issue { draft } => issue(s, &draft),
         InvoicesCommand::Credit { number, line } => credit(s, &number, &line),
-        InvoicesCommand::Pay { number, day, amount, means } => pay(s, &number, day.as_deref(), amount.as_deref(), &means),
+        InvoicesCommand::Pay { number, day, amount, means, received } => pay(s, &number, day.as_deref(), amount.as_deref(), &means, received.as_deref()),
+        InvoicesCommand::Received { number, amount, day } => received(s, &number, &amount, day.as_deref()),
     }
 }
 
@@ -335,8 +348,12 @@ fn credit(s: &Session, number: &str, lines: &[usize]) -> Result<(), String> {
     show(s, &saved.draft)
 }
 
-fn pay(s: &Session, number: &str, day: Option<&str>, amount: Option<&str>, means: &str) -> Result<(), String> {
+fn pay(s: &Session, number: &str, day: Option<&str>, amount: Option<&str>, means: &str, received: Option<&str>) -> Result<(), String> {
     let folder = invoice::folder();
+    let booked = received.map(cents).transpose()?.map(i64::abs);
+    if booked.is_some() {
+        same_currency(s, number)?;
+    }
     let day = match day {
         Some(text) => text.trim().parse::<Date>().map_err(|_| format!("{}: a day, as 2026-11-16.", one_line(text)))?,
         None => today(),
@@ -348,11 +365,44 @@ fn pay(s: &Session, number: &str, day: Option<&str>, amount: Option<&str>, means
         Some(text) => Some(life::add_payment(&folder, &device(), number, Payment { id: String::new(), date: day.to_string(), amount: cents(text)?, means: means.to_string(), movement: String::new() }, &s.tr)?),
         None => life::pay_rest(&folder, &device(), number, day, means, &s.tr)?,
     };
+    if let (Some(payment), Some(booked)) = (&written, booked) {
+        sioul_core::books::book_payment(&folder, &device(), &payment.id, booked, jiff::Timestamp::now().as_millisecond())?;
+    }
     let all = invoice::all_in(&folder);
     let found = all.iter().find(|i| i.number == number).ok_or_else(|| s.tr.text("invoice-gone", None))?;
     if written.is_none() {
         println!("{}", s.tr.text("invoice-cli-nothing-left", None));
     }
     println!("{}", row(s, found, &all));
+    Ok(())
+}
+
+/// Refused for an invoice in the books' own currency: what it received counts as it is.
+fn same_currency(s: &Session, number: &str) -> Result<(), String> {
+    let found = invoice::find_in(&invoice::folder(), number).ok_or_else(|| s.tr.text("invoice-gone", None))?;
+    let books = sioul_core::books::Settings::of(&s.config.invoice, None).currency;
+    if found.currency.trim().is_empty() || found.currency.eq_ignore_ascii_case(&books) {
+        return Err(s.tr.text("books-cli-same-currency", None));
+    }
+    Ok(())
+}
+
+/// What a payment of `number`, in another currency, came to in the books'
+/// (`books::book_payment`): the payment of `day`, else its last one with
+/// nothing said yet, else its last one.
+fn received(s: &Session, number: &str, amount: &str, day: Option<&str>) -> Result<(), String> {
+    let folder = invoice::folder();
+    same_currency(s, number)?;
+    let found = invoice::find_in(&folder, number).ok_or_else(|| s.tr.text("invoice-gone", None))?;
+    let day = day.map(|text| text.trim().parse::<Date>().map_err(|_| format!("{}: a day, as 2026-11-16.", one_line(text)))).transpose()?;
+    let booked = sioul_core::invoice::lives::Lives::load(&folder).booked;
+    let payments = sioul_core::books::received_of(&found);
+    let chosen = match day {
+        Some(day) => payments.iter().rev().find(|p| p.day == day),
+        None => payments.iter().rev().find(|p| !booked.contains_key(&p.id)).or(payments.last()),
+    };
+    let payment = chosen.ok_or_else(|| s.tr.text("books-cli-no-payment", None))?;
+    sioul_core::books::book_payment(&folder, &device(), &payment.id, cents(amount)?.abs(), jiff::Timestamp::now().as_millisecond())?;
+    println!("{}", s.say("books-cli-received", &[("number", number.to_string()), ("day", payment.day.to_string()), ("amount", s.tr.money(Money(cents(amount)?.abs())))]));
     Ok(())
 }

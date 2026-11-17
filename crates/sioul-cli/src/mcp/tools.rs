@@ -780,6 +780,16 @@ pub const TOOLS: &[Tool] = &[
         run: records::invoices,
     },
     Tool {
+        name: "books",
+        title: "The books",
+        description: "The person's books for a year (this one by default): the receipts book (each payment received, by its day: client, nature, invoice, means, amount, excluding VAT; refunds negative), the declarations of turnover (each period's turnover excluding VAT, the contributions estimated, the day to declare by), the VAT summary when liable to VAT, the DES (services to businesses in other EU countries), and the thresholds watched. Read-only: nothing is declared or filed. What is kept from agents is left out, and the totals then count only what is shown.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({ "year": { "type": "integer", "minimum": 2000, "maximum": 2100, "description": "This year by default." } }), &[]),
+        run: records::books,
+    },
+    Tool {
         name: "reminders",
         title: "Reminders",
         description: "What Sioul will remind the person of in the coming days (14 by default): events, dates asked, waits over, payments planned, papers to renew, contracts renewing, what the money watch noticed; each with when, and whether it was told already. Read-only.",

@@ -371,6 +371,95 @@ pub fn invoices(s: &Session, _args: &Args) -> Result<Answer, String> {
     Ok(Answer { text: rows(&lines), data: json!({ "invoices": out, "kept_from_agents": closed }) })
 }
 
+// The books.
+
+/// The books (`sioul_core::books`), read-only, of a year (this one by
+/// default): the receipts book's rows and totals, the declarations of
+/// turnover, the VAT summary, the DES, the thresholds watched. Each kept to
+/// what the person opened to agents: an invoice's payments only when its
+/// project is open; a receipt no invoice describes only when its budget is
+/// open (as the `budgets` tool's gate says); the rest left out and counted,
+/// and every total then counts only what is shown. The thresholds, which
+/// add up everything, are given only when nothing is kept from agents.
+pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
+    use sioul_core::books::{self, declarations, des, thresholds, vat};
+    let today = sioul_core::zone::now().date();
+    let year = i16::try_from(args.number("year", i64::from(today.year()), 2000, 2100)?).unwrap_or(today.year());
+    let (consent, _) = consent(s);
+    let folder = invoice::folder();
+    let loaded = books::load(&s.config, &folder, today);
+    let currency = loaded.settings.currency.clone();
+    let money = |m: i64| s.tr.money_in(sioul_core::money::Money(m), &currency);
+    // What is open: invoices by their project; budgets by the budgets' gate.
+    let (open_budgets, kept_labels): (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>) = loaded
+        .money
+        .as_ref()
+        .map(|m| {
+            let (ledger, _, kept) = super::read::open_ledger(m.counted.clone(), &consent);
+            (ledger.budgets.iter().map(|b| b.id.clone()).collect(), kept)
+        })
+        .unwrap_or_default();
+    let invoice_open = |i: &invoice::Invoice| consent.allows_projects([i.project.as_str()]);
+    let shown_invoices: Vec<invoice::Invoice> = loaded.invoices.iter().filter(|i| invoice_open(i)).cloned().collect();
+    let input = books::Input { invoices: &shown_invoices, ..loaded.input() };
+    let (first, last) = (Date::new(year, 1, 1).unwrap_or(today), Date::new(year, 12, 31).unwrap_or(today).min(today));
+    // Rows of every invoice's (to keep a payment's bank line from coming back as a receipt of its own), then those open.
+    let every = books::rows(&loaded.input(), first, last, &s.tr);
+    // A receipt no invoice describes: its budget open; one an invoice says (matched or paid): its project too.
+    let movement = |r: &books::Row| r.payment.is_empty() && !r.address.starts_with("sioul:invoice/");
+    let open_row = |r: &books::Row| (!movement(r) || (open_budgets.contains(&r.budget) && !kept_labels.contains(&r.client))) && (r.invoice.is_empty() || consent.allows_projects([r.project.as_str()]));
+    let shown: Vec<books::Row> = every.iter().filter(|r| open_row(r)).cloned().collect();
+    let closed = every.len() - shown.len();
+    let mut lines = vec![format!("The books of {year}, in {currency}.")];
+    let total: i64 = shown.iter().filter_map(|r| r.without_tax).sum();
+    lines.push(format!("Received excluding VAT: {}{}.", money(total), if closed > 0 { " (only what is shown)" } else { "" }));
+    let declared: Vec<declarations::Declaration> = declarations::periods_of_year(&loaded.settings, year, today).into_iter().map(|(a, b, f)| declarations::of_rows(&loaded.settings, &shown, a, b, f, &s.tr)).collect();
+    for d in &declared {
+        lines.extend(declarations::sentences(&s.tr, d, &currency));
+    }
+    let summaries = vat::between(&input, first, last);
+    for summary in &summaries {
+        lines.extend(vat::sentences(&s.tr, summary, &currency));
+    }
+    let des_months = des::between(&input, first, last);
+    for d in &des_months {
+        lines.extend(des::sentences(&s.tr, d, &currency));
+    }
+    // Each thing kept counted once: a payment kept, and an invoice kept that has no payment that year.
+    let kept_rows: std::collections::BTreeSet<&str> = every.iter().filter(|r| !open_row(r)).map(|r| r.invoice.as_str()).collect();
+    let kept = closed + loaded.invoices.iter().filter(|i| !invoice_open(i) && !kept_rows.contains(i.number.as_str())).count();
+    let watched = if kept == 0 && year == today.year() { thresholds::watch(&loaded.input(), today, &s.tr) } else { Vec::new() };
+    lines.extend(watched.iter().map(|w| thresholds::sentence(&s.tr, w, &currency)));
+    if kept > 0 && year == today.year() {
+        lines.push("The thresholds are not given while things are kept from agents: they add up everything.".into());
+    }
+    if shown.is_empty() && kept == 0 {
+        lines.push("No payment received that year.".into());
+    }
+    lines.extend(access::left_out(kept));
+    let data = json!({
+        "year": year,
+        "currency": currency,
+        "rows": shown.iter().map(|r| json!({
+            "day": r.day.to_string(), "client": r.client, "nature": r.nature, "invoice": r.invoice, "means": r.means, "cash": r.cash,
+            "amount": r.amount.map(&money), "without_tax": r.without_tax.map(&money),
+            "foreign": r.foreign.as_ref().map(|(m, code)| s.tr.money_in(sioul_core::money::Money(*m), code)),
+            "address": r.address,
+        })).collect::<Vec<_>>(),
+        "declarations": declared.iter().map(|d| json!({
+            "from": d.from.to_string(), "to": d.to.to_string(), "due": d.due.to_string(), "turnover": money(d.turnover), "contributions": money(d.contributions),
+            "activities": d.lines.iter().map(|l| json!({ "activity": l.activity, "name": l.name, "turnover": money(l.turnover) })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "vat": summaries.iter().map(|v| json!({ "from": v.from.to_string(), "to": v.to.to_string(), "tax": money(v.tax), "base": money(v.base),
+            "rates": v.entries.iter().map(|e| json!({ "category": e.category, "rate": s.tr.percent_bp(e.rate), "base": money(e.base), "tax": money(e.tax) })).collect::<Vec<_>>() })).collect::<Vec<_>>(),
+        "des": des_months.iter().map(|d| json!({ "month": d.key(), "due": d.due.to_string(), "total": money(d.total),
+            "invoices": d.invoices.iter().map(|c| json!({ "number": c.number, "client": c.client, "vat": c.vat, "amount": s.tr.money_in(sioul_core::money::Money(c.amount), &c.currency) })).collect::<Vec<_>>() })).collect::<Vec<_>>(),
+        "thresholds": watched.iter().map(|w| json!({ "id": w.id, "kind": w.kind, "amount": money(w.amount), "turnover": money(w.turnover), "near": w.near.map(|d| d.to_string()), "crossed": w.crossed.map(|d| d.to_string()) })).collect::<Vec<_>>(),
+        "kept_from_agents": kept,
+    });
+    Ok(Answer { text: rows(&lines), data })
+}
+
 // Reminders.
 
 pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {

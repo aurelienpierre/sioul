@@ -661,7 +661,7 @@ fn unreadable_lines_are_said() {
 
 const READING: &[&str] = &[
     "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
-    "letters", "time", "invoices", "reminders", "now",
+    "letters", "time", "invoices", "books", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
 /// names "this computer", never "this device" (docs/i18n.md; decided 3
@@ -874,6 +874,7 @@ fn a_closed_project_is_never_shown() {
         ("find", json!({ "query": "notice" })),
         ("time", json!({})),
         ("invoices", json!({})),
+        ("books", json!({})),
         ("letters", json!({})),
         ("reminders", json!({ "days": 30 })),
         ("papers", json!({})),
@@ -1440,6 +1441,7 @@ fn health_never_reaches_an_agent() {
         ("letters", json!({}), Answers),
         ("time", json!({}), Answers),
         ("invoices", json!({}), Answers),
+        ("books", json!({}), Answers),
         ("draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Workshop", "price": 100 }] }), Answers),
         ("reminders", json!({ "days": 30 }), Answers),
         ("now", json!({}), Answers),
@@ -1863,6 +1865,11 @@ fn an_agent_drafts_invoices_and_never_issues_them() {
     let rows = listed["structuredContent"]["invoices"].as_array().unwrap();
     assert!(rows.iter().any(|r| r["draft"] == id.as_str() && r["status"] == "draft" && r["number"] == ""), "{listed}");
     never_zeugma(&listed, "invoices");
+    // The books: read only, the closed project's invoice left out and counted, no threshold while it is.
+    let books = call(&mut server, "books", json!({}));
+    assert!(books["isError"] != true && books["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "{books}");
+    assert!(books["structuredContent"]["thresholds"].as_array().unwrap().is_empty() && text(&books).contains("not given while things are kept"), "{books}");
+    never_zeugma(&books, "books");
     let nothing = call(&mut server, "draft_invoice", json!({ "client": "North Studio" }));
     assert!(nothing["isError"] == true, "{nothing}");
 }

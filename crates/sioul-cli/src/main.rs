@@ -45,6 +45,7 @@ mod accounts;
 mod dav;
 mod mail;
 mod help;
+mod books;
 mod invoices;
 mod mcp;
 mod money;
@@ -125,8 +126,13 @@ enum Command {
     Movement(money::MovementCommand),
     /// Every mail about money kept on this computer, newest first, and what became of each.
     MoneyMail(money::MoneyMailArgs),
-    /// What a work budget received, as the declaration counts it: the turnover and the receipts register.
+    /// The receipts book of the declaration's period: what to declare, and each payment received.
     Receipts(money::ReceiptsArgs),
+    /// The books: the receipts book, the declarations, the VAT summary, the thresholds, the DES.
+    Books {
+        #[command(subcommand)]
+        command: Option<books::BooksCommand>,
+    },
     /// The invoices you issued and your drafts: list, show, export, draft, issue, credit, pay.
     Invoices {
         #[command(subcommand)]
@@ -409,6 +415,7 @@ fn main() -> ExitCode {
         Command::Movement(command) => money::run(&session, command),
         Command::MoneyMail(args) => money::money_mail(&session, args),
         Command::Receipts(args) => money::receipts(&session, args),
+        Command::Books { command } => books::run(&session, command),
         Command::Invoices { command } => invoices::run(&session, command),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
@@ -695,7 +702,19 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
     };
     let store = path.parent().and_then(|root| sioul_core::movements::Store::load(root).ok()).unwrap_or_default();
     let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: own, imports: &store.imports };
-    for line in view::budgets_lines(&view::budgets_page(&page, &s.tr, today)) {
+    let mut shown = view::budgets_page(&page, &s.tr, today);
+    // A budget that declares: its line from the books, as `sioul receipts` says it.
+    if let Some(money) = own {
+        let folder = sioul_core::invoice::folder();
+        let settings = sioul_core::books::Settings::of(&s.config.invoice, Some(&money.ledger));
+        let invoices = sioul_core::invoice::all_in(&folder);
+        let booked = sioul_core::invoice::lives::Lives::load(&folder).booked;
+        let input = sioul_core::books::Input { settings: &settings, invoices: &invoices, booked: &booked, money: Some(money), budget: None };
+        if let Some(line) = sioul_core::books::declarations::overview_line(&input, today, &s.tr) {
+            shown.say_declared(&line);
+        }
+    }
+    for line in view::budgets_lines(&shown) {
         let indent = line.len() - line.trim_start().len();
         println!("{}{}", &line[..indent], one_line(line.trim_start()));
     }

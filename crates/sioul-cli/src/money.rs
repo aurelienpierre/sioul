@@ -387,7 +387,7 @@ pub(crate) fn money_mail(s: &Session, args: MoneyMailArgs) -> Result<(), String>
     Ok(())
 }
 
-/// The receipts register (`sioul receipts`).
+/// The receipts book of a declaration's period (`sioul receipts`).
 #[derive(clap::Args)]
 pub(crate) struct ReceiptsArgs {
     /// From this day; with --to, the days asked; else the declaration period that holds today.
@@ -395,7 +395,7 @@ pub(crate) struct ReceiptsArgs {
     from: Option<String>,
     #[arg(long)]
     to: Option<String>,
-    /// The work budget, by its id; else the only one that declares.
+    /// Of the receipts no invoice describes, only this budget's, by its id; else every budget that declares.
     #[arg(long)]
     budget: Option<String>,
     /// As CSV, for a spreadsheet or an accountant.
@@ -406,33 +406,44 @@ pub(crate) struct ReceiptsArgs {
     html: bool,
 }
 
-/// `sioul receipts`: what a work budget received, as the declaration counts it.
+/// `sioul receipts`: the receipts book of the declaration period that holds
+/// today, or of the days asked (`sioul_core::books`): the invoices'
+/// payments and refunds, and the receipts of the budgets that declare that
+/// no invoice describes; the declaration first, then the totals and each row.
 pub(crate) fn receipts(s: &Session, args: ReceiptsArgs) -> Result<(), String> {
-    let root = root(s)?;
+    use sioul_core::books::{self, declarations};
     let today = sioul_core::zone::now().date();
-    let words = sioul_core::words::Words::of(&s.config);
-    let books = movements::books(&root, &words, today);
-    let declaring: Vec<&sioul_core::budget::Budget> = books.ledger.budgets.iter().filter(|b| sioul_core::receipts::declares(b)).collect();
-    let budget = match &args.budget {
-        Some(id) => books.ledger.budgets.iter().find(|b| b.id == *id).ok_or_else(|| s.tr.text("movement-no-budget", None))?,
-        None if declaring.len() == 1 => declaring[0],
-        None => return Err(s.tr.text("receipts-which-budget", None)),
+    let loaded = books::load(&s.config, &sioul_core::invoice::folder(), today);
+    if let Some(id) = &args.budget
+        && !loaded.money.as_ref().is_some_and(|m| m.ledger.budgets.iter().any(|b| b.id == *id))
+    {
+        return Err(s.tr.text("movement-no-budget", None));
+    }
+    let declaring = loaded.money.as_ref().is_some_and(|m| m.ledger.budgets.iter().any(sioul_core::receipts::declares));
+    if loaded.invoices.is_empty() && !declaring {
+        return Err(s.tr.text("books-none", None));
+    }
+    let input = books::Input { budget: args.budget.as_deref(), ..loaded.input() };
+    let currency = loaded.settings.currency.clone();
+    let declared = if args.from.is_none() { declarations::holding(&input, today, &s.tr) } else { None };
+    let (from, to) = match (args.from.as_deref().map(day).transpose()?, args.to.as_deref().map(day).transpose()?) {
+        (Some(from), Some(to)) => (from, to),
+        (Some(from), None) => (from, today),
+        (None, _) => declared.as_ref().map_or_else(|| books::period_of(loaded.settings.every, today), |d| (d.from, d.to)),
     };
-    let register = match (args.from.as_deref().map(day).transpose()?, args.to.as_deref().map(day).transpose()?) {
-        (Some(from), Some(to)) => sioul_core::receipts::register_rows(&books, &budget.id, from, to, None),
-        (Some(from), None) => sioul_core::receipts::register_rows(&books, &budget.id, from, today, None),
-        (None, _) => sioul_core::receipts::of_period(&books, budget, today),
-    };
+    let book = books::book(&input, from, to, &s.tr);
     if args.csv {
-        print!("{}", sioul_core::receipts::csv(&s.tr, &register));
+        print!("{}", books::csv(&s.tr, &book));
     } else if args.html {
-        println!("{}", sioul_core::receipts::html(&s.tr, &register, &budget.title));
+        let who = if s.config.invoice.name.trim().is_empty() { s.tr.text("books-name", None) } else { s.config.invoice.name.trim().to_string() };
+        println!("{}", books::html(&s.tr, &book, &who));
     } else {
-        print(&sioul_core::receipts::sentences(&s.tr, &register));
-        let unknown = s.tr.text("receipts-gross-unknown", None);
-        for r in &register.receipts {
-            let gross = r.gross.map_or_else(|| unknown.clone(), |g| s.tr.money(g));
-            println!("  {} · {} · {} · {}{}", sioul_core::moneyview::short_day(&s.tr, r.day), crate::one_line(&r.client), r.means.words(&s.tr), gross, if r.invoice.is_empty() { String::new() } else { format!(" · {}", r.invoice) });
+        if let Some(d) = &declared {
+            print(&declarations::sentences(&s.tr, d, &currency));
+        }
+        print(&books::sentences(&s.tr, &book));
+        for r in &book.rows {
+            println!("  {}", crate::one_line(&crate::books::row_words(s, r, &currency)));
         }
     }
     Ok(())
