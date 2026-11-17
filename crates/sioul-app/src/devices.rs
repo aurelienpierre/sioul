@@ -160,7 +160,7 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
             entry.notifications = notifications;
         }
         entry.acked = acked;
-        entry.parts = parts;
+        entry.parts = Some(parts);
         change(entry);
     });
     match written {
@@ -193,10 +193,17 @@ pub(crate) fn form_changed() {
     let _ = write(|_| {});
 }
 
-/// A part switched on or off here (Settings ▸ Your folder and sharing):
-/// this device's entry says so now, for the others to show it (`Entry::parts`).
-pub(crate) fn parts_changed() {
-    let _ = write(|_| {});
+/// What this device shares may have changed (a part switched, the notes
+/// folder said carried by a sync app, the notes folder moved): its entry
+/// says it now, for the others to show it (`Entry::parts`), when it differs
+/// from what the entry last said; nothing written otherwise. Every exchange
+/// says it too (`write`), whatever path changed it.
+pub(crate) fn parts_now() {
+    let Some((_, Some(_))) = crate::share::vault() else { return };
+    let said = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir())).parts;
+    if said.as_deref() != Some(crate::share::parts_shared().as_slice()) {
+        let _ = write(|_| {});
+    }
 }
 
 /// This device, for the table of your devices (`health::device_table`).

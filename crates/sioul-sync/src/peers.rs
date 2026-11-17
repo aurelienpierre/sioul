@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 /// What this computer saw of your other devices, for the doses: kept here
 /// only (`$XDG_STATE_HOME/sioul/share/peers.json`), never shared.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Peers {
     #[serde(default)]
     pub peers: std::collections::BTreeMap<String, PeerSeen>,

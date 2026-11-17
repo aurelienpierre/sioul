@@ -95,10 +95,11 @@ pub struct Row {
     pub area: String,
     /// The same in words: "Work · Leisure"; unsaid, "Everything comes here".
     pub area_words: String,
-    /// The parts it shares, as its entry says them (`share::PARTS`); none
-    /// when it shares none, or when its Sioul does not say.
-    pub parts: Vec<String>,
-    /// The same in words; when it says none, why.
+    /// The parts it shares, as its entry says them (`share::PARTS`): an
+    /// empty list when it shares none; none (`null`) when its Sioul does not
+    /// say (an older one), or its entry does not read here.
+    pub parts: Option<Vec<String>>,
+    /// The same in words: their names; "It shares no part."; or that its Sioul does not say.
     pub parts_words: String,
     /// Counted as off, as you said: "Count it again".
     pub off: bool,
@@ -254,8 +255,17 @@ fn of_entry(row: &mut Row, entry: &Entry, clock: &Clock) {
         (false, true) => said(words, "share-device-build-older", &[("build", row.version.clone()), ("here", sioul_core::build::DESCRIBED.to_string())]),
         (false, false) => said(words, "share-device-build", &[("build", row.version.clone())]),
     };
-    row.parts = entry.parts.clone();
-    row.parts_words = parts_words(&entry.parts, words).unwrap_or_else(|| words.text("devices-parts-unsaid", None));
+    // An empty list says it shares none; none at all, an older Sioul that does not say (R6).
+    row.parts = entry.parts.as_ref().map(|parts| in_order(parts));
+    row.parts_words = match &row.parts {
+        None => words.text("devices-parts-unsaid", None),
+        Some(parts) => parts_words(parts, words).unwrap_or_else(|| words.text("devices-parts-none-there", None)),
+    };
+}
+
+/// The parts named in `parts`, in the order the sharing lists them (`share::PARTS`).
+fn in_order(parts: &[String]) -> Vec<String> {
+    crate::share::PARTS.iter().filter(|part| parts.iter().any(|p| p == *part)).map(|part| (*part).to_string()).collect()
 }
 
 /// The parts' names, in the order the sharing lists them; none when the list is empty.
@@ -380,12 +390,14 @@ fn here(facts: &Facts, clock: &Clock) -> Row {
     row.older = false;
     row.build = said(words, "share-device-build", &[("build", row.version.clone())]);
     if facts.sharing {
-        row.parts = crate::share::PARTS.iter().filter(|part| facts.parts.iter().any(|p| p == *part)).map(|part| part.to_string()).collect();
-        row.parts_words = parts_words(&row.parts, words).unwrap_or_else(|| words.text("devices-parts-none", None));
+        let parts = in_order(facts.parts);
+        row.parts_words = parts_words(&parts, words).unwrap_or_else(|| words.text("devices-parts-none", None));
+        row.parts = Some(parts);
     } else {
         (row.imported, row.exported) = (0, 0);
         row.shared = words.text("devices-shared-off", None);
-        row.parts = Vec::new();
+        // It shares nothing: said in "Last shared", the parts' cell left empty.
+        row.parts = Some(Vec::new());
         row.parts_words = String::new();
     }
     row
@@ -547,7 +559,7 @@ pub fn read(state: &Path, config: &sioul_core::config::Config, key: Option<&[u8;
 impl Read {
     /// The facts of the table, with what you said of each device.
     pub fn facts<'a>(&'a self, said: &'a BTreeMap<String, Said>, now: i64, zone: TimeZone) -> Facts<'a> {
-        Facts { id: &self.id, own: &self.own, sharing: self.sharing, parts: &self.own.parts, peers: &self.peers, kept: &self.kept, holders: &self.holders, said, computer: self.own.kind == COMPUTER, now, looked: self.looked, zone }
+        Facts { id: &self.id, own: &self.own, sharing: self.sharing, parts: self.own.parts.as_deref().unwrap_or_default(), peers: &self.peers, kept: &self.kept, holders: &self.holders, said, computer: self.own.kind == COMPUTER, now, looked: self.looked, zone }
     }
 }
 
@@ -689,7 +701,7 @@ mod tests {
     fn the_table_lists_this_device_first_with_what_you_said_of_each() {
         let english = Translator::new("en");
         let mut kept = Peers::default();
-        let phone = Entry { form: PHONE.into(), version: "0.0.1".into(), parts: vec!["health".into(), "settings".into()], ..entry("a-phone", "phone", "Moss", false, NOW - 600, true) };
+        let phone = Entry { form: PHONE.into(), version: "0.0.1".into(), parts: Some(vec!["health".into(), "settings".into()]), ..entry("a-phone", "phone", "Moss", false, NOW - 600, true) };
         add(&mut kept, phone, NOW - 590, 0);
         add(&mut kept, Entry { imported: NOW - 90_000, ..entry("b-laptop", "computer", "zeta", true, NOW - 30, true) }, NOW - 25, 0);
         let peers = peers_of(&kept);
@@ -709,19 +721,19 @@ mod tests {
         assert!(here.here && !laptop.here && !phone.here);
         assert_eq!((here.name.as_str(), here.given.as_str(), here.system.as_str(), here.form_words.as_str()), ("Work desk", "Work desk", "desk", "A computer"));
         assert_eq!((here.area.as_str(), here.area_words.as_str(), here.code.as_str(), here.state.as_str()), ("work", "Work", "in-use", "In use now."));
-        assert_eq!((here.parts.clone(), here.parts_words.as_str()), (vec!["settings".to_string(), "time".to_string()], "Settings and accounts, Time"), "in the sharing's own order");
+        assert_eq!((here.parts.clone(), here.parts_words.as_str()), (Some(vec!["settings".to_string(), "time".to_string()]), "Settings and accounts, Time"), "in the sharing's own order");
         assert_eq!((here.version.as_str(), here.older), (sioul_core::build::DESCRIBED, false));
         assert_eq!((laptop.name.as_str(), laptop.given.as_str(), laptop.system.as_str()), ("Attic laptop", "Attic laptop", "zeta"));
         assert_eq!((laptop.area.as_str(), laptop.area_words.as_str()), ("admin+leisure", "Your admin · Leisure"));
-        assert!(laptop.parts.is_empty() && laptop.parts_words == "Its Sioul does not say what it shares.", "{laptop:?}");
+        assert!(laptop.parts.is_none() && laptop.parts_words == "Its Sioul does not say what it shares.", "{laptop:?}");
         assert!(laptop.shared.starts_with("Read the others ") && laptop.shared.contains("; wrote its own "), "two times when they differ: {}", laptop.shared);
         assert_eq!((phone.name.as_str(), phone.given.as_str(), phone.area.as_str(), phone.area_words.as_str()), ("The phone (Moss)", "", "", "Everything comes here"));
-        assert_eq!((phone.parts.clone(), phone.parts_words.as_str()), (vec!["health".to_string(), "settings".to_string()], "Settings and accounts, Health"));
+        assert_eq!((phone.parts.clone(), phone.parts_words.as_str()), (Some(vec!["settings".to_string(), "health".to_string()]), "Settings and accounts, Health"), "in the sharing's own order");
         assert!(phone.older && phone.build.starts_with("Sioul 0.0.1, older than this device's"), "{phone:?}");
         assert!(rows.iter().all(|r| r.id != "gone"), "a word on a device not known here makes no row");
         // As JSON, for the window and `sioul devices --json`: the names of the fields.
         let json = serde_json::to_value(&rows).unwrap();
-        assert_eq!((json[0]["here"].as_bool(), json[0]["area"].as_str(), json[2]["parts"][0].as_str(), json[1]["code"].as_str()), (Some(true), Some("work"), Some("health"), Some("in-use")));
+        assert_eq!((json[0]["here"].as_bool(), json[0]["area"].as_str(), json[2]["parts"][0].as_str(), json[1]["code"].as_str()), (Some(true), Some("work"), Some("settings"), Some("in-use")));
         // In plain text: each device a few lines, its name first.
         let text = plain(&rows, &english).join("\n");
         assert!(text.starts_with("Work desk (this device, named desk by its system)\n  What it is: A computer\n  Now: In use now.\n"), "{text}");
@@ -730,10 +742,18 @@ mod tests {
         // Sharing off: this device alone, what you said of it kept, nothing shared said so.
         let alone = table(&Facts { sharing: false, ..facts.clone() }, &english);
         assert_eq!(alone.len(), 1);
-        assert_eq!((alone[0].name.as_str(), alone[0].area.as_str(), alone[0].shared.as_str(), alone[0].parts.len(), alone[0].parts_words.as_str()), ("Work desk", "work", "This device does not share.", 0, ""));
+        assert_eq!((alone[0].name.as_str(), alone[0].area.as_str(), alone[0].shared.as_str(), alone[0].parts.clone(), alone[0].parts_words.as_str()), ("Work desk", "work", "This device does not share.", Some(Vec::new()), ""));
         // Sharing on with every part switched off here: said, not taken for an older Sioul.
         let none = table(&Facts { parts: &[], ..facts.clone() }, &english);
         assert_eq!(none[0].parts_words, "Nothing travels from this device.");
+        // Another device on this build that shares no part says so; one on an older Sioul does not say (R6).
+        let mut quiet = kept.clone();
+        quiet.peers.get_mut("b-laptop").unwrap().entry.as_mut().unwrap().parts = Some(Vec::new());
+        let rows = table(&Facts { kept: &quiet, ..facts.clone() }, &english);
+        let laptop = rows.iter().find(|r| r.id == "b-laptop").unwrap();
+        assert_eq!((laptop.parts.clone(), laptop.parts_words.as_str()), (Some(Vec::new()), "It shares no part."));
+        assert_eq!(serde_json::to_value(laptop).unwrap()["parts"], serde_json::json!([]));
+        assert_eq!(serde_json::to_value(&rows[2]).unwrap()["parts"], serde_json::json!(["settings", "health"]));
         // From the command line with no window looking: the others as of the
         // last look, one in use then never said silent since; this device closed.
         let closed = Entry { working: false, closed: NOW - 1_800, ..own.clone() };
@@ -779,7 +799,7 @@ mod tests {
             e.id = here.id.clone();
             e.name = "desk".into();
             e.kind = COMPUTER.into();
-            e.parts = vec!["settings".into()];
+            e.parts = Some(vec!["settings".into()]);
             e.start(NOW - 3_600);
             e.close(NOW - 900);
         })
@@ -789,7 +809,7 @@ mod tests {
         assert!(with.sharing && with.looked == Some(NOW - 600) && with.peers.len() == 1 && with.holders.is_empty(), "{with:?}");
         let rows = table(&with.facts(&config.devices, NOW, utc()), &Translator::new("en"));
         assert_eq!(rows.iter().map(|r| (r.id.as_str(), r.code.as_str())).collect::<Vec<_>>(), [(here.id.as_str(), "closed"), ("a-phone", "in-use-then")]);
-        assert_eq!(rows[0].parts, ["settings"], "this device's parts as it last wrote them");
+        assert_eq!(rows[0].parts, Some(vec!["settings".to_string()]), "this device's parts as it last wrote them");
         // Its key not read: the others as kept all the same.
         let without = read(&state, &config, None, NOW);
         assert!(without.sharing && without.peers.len() == 1 && without.holders.is_empty());

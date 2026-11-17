@@ -7154,6 +7154,45 @@ mod tests {
     /// dated a year ahead of this clock is no news and leaves nothing kept;
     /// an opening kept from such a clock is dropped. A `seen` in the future
     /// (this clock set back) is no news of the phone either.
+    /// A copy of a device's entry whose times are those of the copy kept,
+    /// but whose words changed later (a part switched, its kind changed:
+    /// `Entry::stated`), is news: kept, and shown, at the next look, not at
+    /// that device's next exchange; the copy before it put back is none, and
+    /// what the doses know of the device stays as it was (the review of
+    /// phase 1, R1).
+    #[test]
+    fn a_copy_whose_words_changed_later_is_news_though_its_times_did_not_move() {
+        let t0: i64 = 1_791_349_200;
+        let copy = |parts: &[&str], stated: i64| sioul_sync::devices::Entry {
+            id: "phone-id".into(),
+            name: "Moss".into(),
+            kind: sioul_sync::devices::PHONE.into(),
+            started: t0 - 3_600,
+            closed: t0 - 3_000,
+            exported: t0 - 3_010,
+            imported: t0 - 3_010,
+            doses: true,
+            parts: Some(parts.iter().map(|p| p.to_string()).collect()),
+            stated,
+            ..sioul_sync::devices::Entry::default()
+        };
+        let none = sioul_sync::share::Heard::default();
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[copy(&["settings", "health"], t0 - 3_000)], &none, t0);
+        let said = kept.peers["phone-id"].peer.said.clone();
+        // A part switched off there, no time of it moved: taken at the next look.
+        learn(&mut kept, &[], &[copy(&["settings"], t0 + 60)], &none, t0 + 120);
+        assert_eq!(kept.peers["phone-id"].entry.as_ref().and_then(|e| e.parts.clone()), Some(vec!["settings".to_string()]));
+        assert_eq!(kept.peers["phone-id"].peer.seen, t0 + 120, "seen changing then");
+        assert_eq!(kept.peers["phone-id"].peer.said, said, "the doses read the same of it");
+        let rows = device_rows_of(&kept.peers.values().map(|s| s.peer.clone()).collect::<Vec<_>>(), &kept, t0 + 120, &Translator::new("en"));
+        assert_eq!(rows[0].parts_words, "Settings and accounts", "shown at once");
+        // The copy before it, put back by a sync app: no news.
+        learn(&mut kept, &[], &[copy(&["settings", "health"], t0 - 3_000)], &none, t0 + 180);
+        assert_eq!(kept.peers["phone-id"].entry.as_ref().and_then(|e| e.parts.clone()), Some(vec!["settings".to_string()]));
+        assert_eq!(kept.peers["phone-id"].peer.seen, t0 + 120, "not seen changing since");
+    }
+
     #[test]
     fn only_a_newer_copy_of_an_entry_is_news() {
         let t0: i64 = 1_791_349_200; // 05:00

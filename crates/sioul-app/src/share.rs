@@ -174,7 +174,7 @@ fn carried_on_phone(said: Option<bool>, guessed: bool) -> bool {
 /// none does (`Here::notes_carried`). Carried: notes and papers stop
 /// travelling through the sharing here. Returns what went wrong, else "".
 pub(crate) fn set_notes_carried(carried: bool) -> String {
-    between_exchanges(|| {
+    let problem = between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         // Read as it is, never through `here()`, which takes this lock to mend it.
         let mut here = share::Here::load(&state_dir());
@@ -189,7 +189,12 @@ pub(crate) fn set_notes_carried(carried: bool) -> String {
             }
         }
         here.save(&state_dir()).err().unwrap_or_default()
-    })
+    });
+    // Notes and papers may no longer travel from here: the entry says so now (the review of phase 1, R2).
+    if problem.is_empty() {
+        crate::devices::parts_now();
+    }
+    problem
 }
 
 /// A phone's shared storage.
@@ -639,6 +644,10 @@ pub(crate) fn devices() -> String {
         on: bool,
         /// Why it is not, when a folder is set all the same: its key is not held; else "".
         why: String,
+        /// Sharing on, the part "settings" switched off here: what is said
+        /// in the tab stays on this device, and the others' word does not
+        /// come (the review of phase 1, R7); else "".
+        stays: String,
         rows: Vec<crate::health::DeviceRow>,
     }
     let here = here();
@@ -652,7 +661,8 @@ pub(crate) fn devices() -> String {
         None => Vec::new(),
     };
     let why = if vault.is_none() && here.folder_path().is_some() { tr().text("share-key-missing", None) } else { String::new() };
-    json(&Devices { on: vault.is_some(), why, rows: crate::health::device_table(&holders) })
+    let stays = if vault.is_some() && !here.shares("settings", &config) { tr().text("devices-settings-stay", None) } else { String::new() };
+    json(&Devices { on: vault.is_some(), why, stays, rows: crate::health::device_table(&holders) })
 }
 
 /// What you said of a device, written into the shared settings
@@ -1190,7 +1200,7 @@ pub(crate) fn set_part(part: &str, on: bool) -> String {
     });
     // This device's entry says what it shares now, for the others to show it (Settings ▸ Devices).
     if problem.is_empty() {
-        crate::devices::parts_changed();
+        crate::devices::parts_now();
     }
     problem
 }

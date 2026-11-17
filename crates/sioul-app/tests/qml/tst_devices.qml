@@ -37,6 +37,8 @@ Item {
         // Sharing on, why not when a folder is set all the same, and what was asked of Sioul, in order.
         property bool on: true
         property string why: ""
+        // The sentence said while the part "settings" does not travel from here.
+        property string stays: ""
         property var asked: []
         // What you said of each device, as the settings hold it: id → { name, area }.
         property var said: ({ "desk": { name: "Work desk", area: "work" } })
@@ -58,7 +60,7 @@ Item {
                 const word = mock.said[row.id] || {}
                 return Object.assign({}, row, { given: word.name || "", name: word.name || row.system, area: word.area || "", area_words: word.area || "Everything comes here" })
             })
-            return JSON.stringify({ on: mock.on, why: mock.why, rows: rows })
+            return JSON.stringify({ on: mock.on, why: mock.why, stays: mock.stays, rows: rows })
         }
         function deviceSay(id, field, value) {
             mock.asked = mock.asked.concat([["say", id, field, value].join(" ").trim()])
@@ -167,10 +169,12 @@ Item {
             root.width = 1100
             mock.on = true
             mock.why = ""
+            mock.stays = ""
             mock.asked = []
             mock.said = { "desk": { name: "Work desk", area: "work" } }
             root.saved = []
             tab.renaming = ""
+            tab.nameDraft = ""
             tab.removing = ""
             tab.kindOpen = false
             tab.problem = ""
@@ -269,6 +273,51 @@ Item {
             button(card("phone"), "ui-save").clicked()
             compare(mock.asked[1], "say phone name")
             tryVerify(() => named(card("phone"), "deviceName").text === "The phone (Moss)", 2000)
+        }
+
+        // A name being typed survives anything else pressed in the tab, which
+        // reads the devices again and makes every card anew; saving then
+        // writes what was typed, never an emptied field (the review of phase 1, R5).
+        function test_a_name_being_typed_survives_the_cards_made_anew() {
+            named(card("laptop"), "deviceRename").clicked()
+            const field = named(card("laptop"), "deviceNameField")
+            compare(field.text, "", "no name given yet")
+            field.text = "Attic laptop"
+            field.textEdited()
+            // Something else pressed meanwhile: the phone's Leisure, then this device's kind.
+            const before = card("laptop")
+            boxes(card("phone"))[2].toggle()
+            boxes(card("phone"))[2].toggled()
+            tryVerify(() => card("laptop") !== before, 2000, "every card made anew")
+            const again = named(card("laptop"), "deviceNameField")
+            verify(showing(again), "still renaming")
+            compare(again.text, "Attic laptop", "what was typed, kept")
+            named(card("desk"), "deviceKind").clicked()
+            tab.reload()
+            wait(50)
+            compare(named(card("laptop"), "deviceNameField").text, "Attic laptop")
+            button(card("laptop"), "ui-save").clicked()
+            compare(mock.asked, ["say phone area leisure", "say laptop name Attic laptop"])
+            tryVerify(() => named(card("laptop"), "deviceName").text === "Attic laptop", 2000)
+            // Cancel forgets the draft: the next Rename… starts from the name given.
+            named(card("laptop"), "deviceRename").clicked()
+            named(card("laptop"), "deviceNameField").text = "Nope"
+            named(card("laptop"), "deviceNameField").textEdited()
+            button(card("laptop"), "ui-cancel").clicked()
+            named(card("laptop"), "deviceRename").clicked()
+            compare(named(card("laptop"), "deviceNameField").text, "Attic laptop")
+            compare(mock.asked.length, 2)
+        }
+
+        // While the part "settings" does not travel from here, the tab says
+        // that what is said in it stays here (the review of phase 1, R7).
+        function test_what_is_said_here_stays_here_while_settings_do_not_travel() {
+            verify(!showing(named(tab, "devicesStay")), "said only while settings do not travel")
+            mock.stays = "Settings and accounts do not travel from this device: a name or what a device is for, said here, stays here."
+            tab.reload()
+            wait(50)
+            verify(showing(named(tab, "devicesStay")))
+            compare(named(tab, "devicesStay").text, mock.stays)
         }
 
         // What can be done about another device: count it again, forget it,

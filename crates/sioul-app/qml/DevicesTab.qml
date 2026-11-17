@@ -34,8 +34,8 @@ ColumnLayout {
     // rows give it; none while they are not read.
     property var kindRow: null
 
-    // What the core says: { on, why, rows } (`share::devices`).
-    property var view: ({ on: false, why: "", rows: [] })
+    // What the core says: { on, why, stays, rows } (`share::devices`).
+    property var view: ({ on: false, why: "", stays: "", rows: [] })
     readonly property var rows: tab.view.rows || []
     property string problem: ""
     // Wide enough for eight columns: the fields line up as a table.
@@ -48,6 +48,10 @@ ColumnLayout {
     readonly property int between: 10
     // The device being renamed (its id), and the one whose kind is being changed (this one).
     property string renaming: ""
+    // The name being typed there, kept by the tab: anything else pressed in
+    // it reads the devices again and makes every card anew (the review of
+    // phase 1, R5), and the new card's field takes it back.
+    property string nameDraft: ""
     property bool kindOpen: false
     // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
     property string removing: ""
@@ -149,6 +153,16 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: tab.theme.warm
+    }
+    // Settings and accounts do not travel from here: what is said in this tab stays here.
+    Label {
+        objectName: "devicesStay"
+        visible: (tab.view.stays || "") !== ""
+        Layout.fillWidth: true
+        text: tab.view.stays || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
     }
     // Sharing off: why this device is alone (it does not share, or its
     // sharing's key is no longer held), and where sharing is set up.
@@ -349,21 +363,32 @@ ColumnLayout {
                             maximumLength: 60
                             placeholderText: tab.theme.plain(device.row.system || tab.sioul.text("devices-rename-field"))
                             Accessible.name: tab.sioul.text("devices-rename-field")
+                            onTextEdited: tab.nameDraft = nameField.text
                             onAccepted: saveName.clicked()
+                            // A card made anew while its name was being typed: what was typed, again.
+                            Component.onCompleted: {
+                                if (tab.renaming === device.deviceId)
+                                    nameField.text = tab.nameDraft
+                            }
                         }
                         Button {
                             id: saveName
 
                             text: tab.sioul.text("ui-save")
                             onClicked: {
+                                const name = nameField.text
                                 tab.renaming = ""
-                                tab.say(device.deviceId, "name", nameField.text)
+                                tab.nameDraft = ""
+                                tab.say(device.deviceId, "name", name)
                             }
                         }
                         Button {
                             flat: true
                             text: tab.sioul.text("ui-cancel")
-                            onClicked: tab.renaming = ""
+                            onClicked: {
+                                tab.renaming = ""
+                                tab.nameDraft = ""
+                            }
                         }
                     }
                 }
@@ -408,7 +433,8 @@ ColumnLayout {
                         flat: true
                         text: tab.sioul.text("devices-rename")
                         onClicked: {
-                            nameField.text = device.row.given || ""
+                            tab.nameDraft = device.row.given || ""
+                            nameField.text = tab.nameDraft
                             tab.renaming = device.deviceId
                             nameField.forceActiveFocus()
                         }
