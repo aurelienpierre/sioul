@@ -323,6 +323,13 @@ pub struct Line {
     pub own_tax: bool,
     #[serde(default)]
     pub nature: Nature,
+    /// The activity it is declared in for the books (France: "goods-bic",
+    /// "services-bic", "bnc", "cipav"), apart from its nature: a meal eaten
+    /// on the spot or a night's lodging is a service for VAT and a sale for
+    /// URSSAF and the thresholds. Empty: the issuer's activity for its
+    /// nature (`books::line_activity`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub activity: String,
     /// BT-131, in cents: quantity × price / base − discount, to the cent.
     pub amount: i64,
     /// The time it bills, by session key.
@@ -359,6 +366,7 @@ impl Line {
             reason_code: String::new(),
             own_tax: false,
             nature: Nature::Service,
+            activity: String::new(),
             amount: 0,
             sessions: Vec::new(),
         };

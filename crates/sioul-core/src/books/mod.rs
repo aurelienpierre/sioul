@@ -115,11 +115,65 @@ pub struct Settings {
     pub currency: String,
     pub rates: Vec<OwnRate>,
     pub thresholds: Vec<OwnThreshold>,
+    /// The settings that do not read, each its key and what it says: said
+    /// where the books show, never dropped without a word (`unread_sentences`).
+    pub unread: Vec<(String, String)>,
 }
 
 /// A day as settings write it ("2026-03-01"); None for none or one that does not read.
 fn day_of(text: &str) -> Option<Date> {
     text.trim().get(..10).and_then(|d| d.parse().ok())
+}
+
+/// A day said that does not read (not empty, not a day as 2026-03-01).
+fn unread_day(text: &str) -> bool {
+    !text.trim().is_empty() && (text.trim().len() != 10 || day_of(text).is_none())
+}
+
+/// The books' settings of `s` that do not read: a day, a period, a rate.
+fn unread_of(s: &InvoiceSettings) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if unread_day(&s.started) {
+        out.push(("started".to_string(), s.started.clone()));
+    }
+    for (key, value) in [("declare", &s.declare), ("vat_period", &s.vat_period)] {
+        if !value.trim().is_empty() && Every::named(value).is_none() {
+            out.push((key.to_string(), value.clone()));
+        }
+    }
+    if !s.trade.trim().is_empty() && !matches!(s.trade.trim(), "commerce" | "craft" | "liberal") {
+        out.push(("trade".to_string(), s.trade.clone()));
+    }
+    for c in &s.contributions {
+        for (key, value) in [("contribution.from", &c.from), ("contribution.until", &c.until)] {
+            if unread_day(value) {
+                out.push((key.to_string(), value.clone()));
+            }
+        }
+        if !c.rate.is_finite() || c.rate < 0.0 {
+            out.push(("contribution.rate".to_string(), c.rate.to_string()));
+        }
+    }
+    for t in s.thresholds.iter().filter(|t| unread_day(&t.from)) {
+        out.push(("threshold.from".to_string(), t.from.clone()));
+    }
+    out
+}
+
+/// What the books say of their settings that do not read: "In [invoice],
+/// started = “2026-6-12” does not read, and is left aside: a day is
+/// written 2026-06-12, …" (the review of phase 4, P4-17).
+pub fn unread_sentences(tr: &Translator, settings: &Settings) -> Vec<String> {
+    settings
+        .unread
+        .iter()
+        .map(|(key, value)| {
+            let mut args = crate::i18n::args();
+            args.set("key", key.clone());
+            args.set("value", value.clone());
+            tr.text("books-setting-unread", Some(&args))
+        })
+        .collect()
 }
 
 impl Settings {
@@ -168,6 +222,7 @@ impl Settings {
                 .map(|c| OwnRate { kind: c.kind.trim().to_string(), activity: c.activity.trim().to_string(), rate: (c.rate * 100.0).round() as i64, from: day_of(&c.from), until: day_of(&c.until) })
                 .collect(),
             thresholds: s.thresholds.iter().filter(|t| t.amount.is_finite() && t.amount > 0.0).map(|t| OwnThreshold { id: t.id.trim().to_string(), amount: (t.amount * 100.0).round() as i64, from: day_of(&t.from) }).collect(),
+            unread: unread_of(s),
         }
     }
 
@@ -181,9 +236,17 @@ impl Settings {
         self.preset.declaration.as_ref().is_some_and(|d| d.regime == self.regime)
     }
 
-    /// The nature of an activity of the preset's ("goods", "service").
+    /// The kind of an activity of the preset's: "goods" for sales (goods,
+    /// food sold or eaten on the spot, lodging: research-fr §7.2, §8),
+    /// "service" for services and liberal professions.
     pub fn nature_of(&self, activity: &str) -> Option<&'static str> {
         self.preset.activity.iter().find(|a| a.id == activity).map(|a| if a.nature == "goods" { "goods" } else { "service" })
+    }
+
+    /// What a part counts as, sales ("goods") or services: its activity's
+    /// kind; with none said, its nature.
+    pub fn kind_of(&self, nature: &'static str, activity: &str) -> &'static str {
+        if activity.is_empty() { nature } else { self.nature_of(activity).unwrap_or(nature) }
     }
 
     /// The activity that what is of `nature` is declared in: the first
@@ -310,8 +373,12 @@ pub struct Row {
     /// Excluding VAT: the turnover declared and counted against the
     /// thresholds (the same under the franchise).
     pub without_tax: Option<i64>,
-    /// Of what is excluding VAT, the goods' part (a mixed activity shows goods and services apart).
+    /// Of what is excluding VAT, the sales' part (a mixed activity shows sales and services apart).
     pub goods: i64,
+    /// What is excluding VAT, by activity and kind (sales "goods", "service"):
+    /// what the declarations and the thresholds count; for a receipt no
+    /// invoice describes, the first activity said, else none.
+    pub activities: Vec<(String, &'static str, i64)>,
     /// In another currency: the amount in it, and its code.
     pub foreign: Option<(i64, String)>,
     /// Its thing: the invoice's address, else the movement's.
@@ -322,6 +389,8 @@ pub struct Row {
     pub budget: String,
     /// The payment's own id in the invoices' life ("" for a movement's row).
     pub payment: String,
+    /// A bank line's part beyond the invoices whose payments it brought: those invoices.
+    pub beyond: Vec<String>,
 }
 
 impl Row {
@@ -346,6 +415,8 @@ pub struct Total {
     pub quarter: i8,
     pub from: Date,
     pub to: Date,
+    /// The day it stops at, when before its quarter's or its year's end: "until 31 October".
+    pub until: Option<Date>,
     /// VAT included, then excluding it, then its goods' and services' parts
     /// (a receipt whose nature is not said in neither).
     pub amount: i64,
@@ -410,6 +481,25 @@ pub fn load(config: &crate::config::Config, dir: &Path, today: Date) -> Loaded {
     Loaded { settings, invoices: crate::invoice::all_in(dir), booked: lives.booked, told: lives.told, money }
 }
 
+/// A record's day ("2026-11-16", or with a time after it).
+fn day_in(text: &str) -> Option<Date> {
+    text.get(..10).and_then(|d| d.parse().ok())
+}
+
+/// The day the books begin: the start of activity when said; else the
+/// first thing Sioul knows of: the first invoice issued, the first day a
+/// budget that declares says it runs from (`since`), the first receipt one
+/// holds. None while Sioul knows nothing.
+pub fn begin(input: &Input) -> Option<Date> {
+    if let Some(started) = input.settings.started {
+        return Some(started);
+    }
+    let invoice = input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable).filter_map(|i| day_in(&i.date)).min();
+    let since = input.money.and_then(|m| m.ledger.budgets.iter().filter(|b| crate::receipts::declares(b) && input.budget.is_none_or(|only| only == b.id)).filter_map(|b| b.since).min());
+    let receipt = moved(input).iter().map(|m| m.receipt.day).min();
+    [invoice, since, receipt].into_iter().flatten().min()
+}
+
 /// `part` of `whole`, as a share of `of`: `of × part / whole`, rounded half
 /// away from zero; `of` itself when `whole` is nothing.
 pub fn share(part: i64, of: i64, whole: i64) -> i64 {
@@ -419,25 +509,75 @@ pub fn share(part: i64, of: i64, whole: i64) -> i64 {
     i64::try_from(crate::invoice::record::rounded(i128::from(of) * i128::from(part), i128::from(whole))).unwrap_or(of)
 }
 
-/// What a line sells, as an invoice's lines say it: "goods", "service", "both".
-pub fn nature_of(invoice: &Invoice) -> &'static str {
-    let goods = invoice.lines.iter().any(|l| l.nature == Nature::Goods);
-    let services = invoice.lines.iter().any(|l| l.nature == Nature::Service);
-    match (goods, services) {
-        (true, true) => "both",
-        (true, false) => "goods",
-        _ => "service",
+/// The activity a line is declared in (the review of phase 4, P4-13): its
+/// own (`Line::activity`); else the issuer's, when it has one only; else
+/// the first said of its nature; else the first said; "" when none is said.
+/// Its nature still says when its VAT is due; its activity, its rates and
+/// its threshold.
+pub fn line_activity(settings: &Settings, line: &crate::invoice::Line) -> String {
+    if !line.activity.trim().is_empty() {
+        return line.activity.trim().to_string();
     }
+    if settings.activities.len() == 1 {
+        return settings.activities[0].clone();
+    }
+    let nature = if line.nature == Nature::Goods { "goods" } else { "service" };
+    settings.activity_for(nature).or(settings.activity_unsaid()).unwrap_or_default().to_string()
 }
 
-/// Of `amount` excluding VAT on `invoice`, the goods' part: their share of its lines.
-pub fn goods_part(invoice: &Invoice, amount: i64) -> i64 {
-    let goods: i64 = invoice.lines.iter().filter(|l| l.nature == Nature::Goods).map(|l| l.amount).sum();
-    let base = invoice.totals.lines;
-    if base == 0 || goods == 0 {
-        return 0;
+/// How a record's money divides: by activity, each with its kind (sales
+/// "goods" or "service"), on its parts' bases (`vat::parts`, a deposit as
+/// what it pays for, a final invoice less its deposits).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Split {
+    /// (activity, kind, base), in the parts' order.
+    pub parts: Vec<(String, &'static str, i64)>,
+    pub whole: i64,
+    /// Whether its lines deliver goods, provide services (their nature, for VAT).
+    pub goods: bool,
+    pub services: bool,
+}
+
+impl Split {
+    /// A record's split.
+    pub fn of(invoice: &Invoice, all: &[Invoice], settings: &Settings) -> Split {
+        let mut by: BTreeMap<(String, &'static str), i64> = BTreeMap::new();
+        let (mut goods, mut services) = (false, false);
+        for ((nature, activity, _, _), (base, _)) in vat::parts(invoice, all, settings) {
+            goods |= nature == "goods" && base != 0;
+            services |= nature == "service" && base != 0;
+            *by.entry((activity.clone(), settings.kind_of(nature, &activity))).or_default() += base;
+        }
+        let whole = by.values().sum();
+        Split { parts: by.into_iter().map(|((a, k), b)| (a, k, b)).collect(), whole, goods, services }
     }
-    i64::try_from(crate::invoice::record::rounded(i128::from(amount) * i128::from(goods), i128::from(base))).unwrap_or(0)
+
+    /// What it sells, by its lines' nature: "goods", "service", "both".
+    pub fn nature(&self) -> &'static str {
+        match (self.goods, self.services) {
+            (true, true) => "both",
+            (true, false) => "goods",
+            _ => "service",
+        }
+    }
+
+    /// `amount` divided as its parts: each activity and kind's share (the last takes what rounding leaves).
+    pub fn divide(&self, amount: i64) -> Vec<(String, &'static str, i64)> {
+        if self.whole == 0 || self.parts.is_empty() {
+            return Vec::new();
+        }
+        let mut left = amount;
+        let count = self.parts.len();
+        self.parts
+            .iter()
+            .enumerate()
+            .map(|(i, (a, k, b))| {
+                let part = if i + 1 == count { left } else { share(*b, amount, self.whole) };
+                left -= part;
+                (a.clone(), *k, part)
+            })
+            .collect()
+    }
 }
 
 /// One entry of money received on an invoice, or given back on a credit
@@ -483,11 +623,32 @@ pub fn means_words(tr: &Translator, means: &str) -> String {
 }
 
 /// A movement of a budget that declares, as the old register read it, kept
-/// aside until it is known whether an invoice's payment stands for it.
+/// aside until it is known what of it invoices' payments stand for: every
+/// euro of a bank line counts once, through the payments that came from it
+/// and, for what it brought beyond them, as a receipt of its own.
 struct Moved {
     receipt: crate::receipts::Receipt,
     budget: String,
-    taken: bool,
+    /// What no invoice's payment stands for yet, in cents: its gross (what the client paid), else what reached you.
+    left: i64,
+    /// The invoices whose payments took a part of it.
+    by: Vec<String>,
+}
+
+impl Moved {
+    fn whole(&self) -> i64 {
+        self.receipt.gross.map_or(self.receipt.net.cents(), crate::money::Money::cents)
+    }
+
+    /// `amount` of it taken by `invoice`'s payment; what could not be taken.
+    fn take(&mut self, amount: i64, invoice: &str) -> i64 {
+        let taken = amount.min(self.left).max(0);
+        self.left -= taken;
+        if taken > 0 && !self.by.iter().any(|b| b == invoice) {
+            self.by.push(invoice.to_string());
+        }
+        amount - taken
+    }
 }
 
 /// The movements of the budgets that declare (or the one asked), each by
@@ -497,9 +658,24 @@ fn moved(input: &Input) -> Vec<Moved> {
     let mut out = Vec::new();
     for budget in money.ledger.budgets.iter().filter(|b| crate::receipts::declares(b) && input.budget.is_none_or(|only| only == b.id)) {
         let register = crate::receipts::register_rows(money, &budget.id, money.from, money.to, None);
-        out.extend(register.receipts.into_iter().map(|receipt| Moved { receipt, budget: budget.id.clone(), taken: false }));
+        out.extend(register.receipts.into_iter().map(|receipt| {
+            let mut m = Moved { receipt, budget: budget.id.clone(), left: 0, by: Vec::new() };
+            m.left = m.whole();
+            m
+        }));
     }
     out
+}
+
+/// The days around a payment said in another currency within which the
+/// bank's line in the books' currency that brought it is looked for.
+const BOOKED_DAYS: i64 = 14;
+
+/// Cash, as a line's own words say it: "cash", "espèces", "liquide"
+/// (a sale written by hand, a cash deposit at the bank).
+fn cash_said(words: &str) -> bool {
+    let folded: String = crate::text::fold(words).into_iter().collect::<String>().to_lowercase();
+    folded.split(|c: char| !c.is_alphanumeric()).any(|w| matches!(w, "cash" | "especes" | "liquide" | "liquides"))
 }
 
 /// Every payment received from `from` to `to`, in the order of the days
@@ -510,18 +686,31 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
     let within = |d: Date| d >= from && d <= to;
     let mut moved = moved(input);
     let records: Vec<(&Invoice, Vec<Received>)> = input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable).map(|i| (i, received_of(i))).collect();
-    // A movement an invoice's payment came from is that payment: never twice.
-    let paid_by: BTreeSet<&str> = records.iter().flat_map(|(_, r)| r.iter()).map(|p| p.movement.as_str()).filter(|m| !m.is_empty()).collect();
-    for m in &mut moved {
-        if paid_by.contains(m.receipt.address.as_str()) {
-            m.taken = true;
+    let currency = input.settings.currency.as_str();
+    let foreign_of = |invoice: &Invoice| !invoice.currency.trim().is_empty() && !invoice.currency.eq_ignore_ascii_case(currency);
+    // A movement an invoice's payment came from stands for that payment, up
+    // to its amount: one carried payment of the same amount first (a
+    // processor's payout), else in the order of the days.
+    for (invoice, received) in &records {
+        for p in received.iter().filter(|p| !p.movement.is_empty() && p.amount > 0) {
+            let mut rest = p.amount;
+            if let Some(m) = moved.iter_mut().find(|m| m.receipt.address == p.movement && m.left == rest) {
+                rest = m.take(rest, &invoice.number);
+            }
+            for m in moved.iter_mut().filter(|m| m.receipt.address == p.movement) {
+                if rest == 0 {
+                    break;
+                }
+                rest = m.take(rest, &invoice.number);
+            }
         }
     }
-    let currency = input.settings.currency.as_str();
     let mut out = Vec::new();
     for (invoice, received) in &records {
-        let nature = nature_of(invoice);
+        let split = Split::of(invoice, input.invoices, input.settings);
+        let nature = split.nature();
         let client = if invoice.client.first_line().trim().is_empty() { invoice.who() } else { invoice.client.first_line().to_string() };
+        let foreign = foreign_of(invoice);
         for p in received {
             let mut day = p.day;
             // Said by hand, and the bank's line for this invoice found without
@@ -529,21 +718,34 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             // record's own "paid" had no day: the line's is its day.
             if p.movement.is_empty()
                 && p.amount > 0
-                && let Some(m) = moved.iter_mut().find(|m| !m.taken && m.receipt.invoice == invoice.number && (p.id.starts_with("older:") || m.receipt.gross.map(|g| g.cents()) == Some(p.amount) || m.receipt.net.cents() == p.amount))
+                && !foreign
+                && let Some(m) = moved.iter_mut().find(|m| m.left > 0 && m.left == m.whole() && m.receipt.invoice == invoice.number && (p.id.starts_with("older:") || m.left == p.amount || m.receipt.net.cents() == p.amount))
             {
-                m.taken = true;
+                let whole = m.left;
+                m.take(whole, &invoice.number);
                 if p.id.starts_with("older:") {
                     day = m.receipt.day;
+                }
+            }
+            let sign = p.amount.signum();
+            let amount = if foreign { input.booked.get(&p.id).map(|b| sign * b.abs()) } else { Some(p.amount) };
+            // A payment in another currency, said in euros: the bank's line of
+            // those euros around its day is that payment (this invoice's tie
+            // first), never counted again.
+            if let Some(euros) = amount.filter(|a| foreign && *a > 0) {
+                let near = |m: &Moved| m.left > 0 && m.left == m.whole() && (m.left == euros || m.receipt.net.cents() == euros) && days_between(p.day, m.receipt.day).abs() <= BOOKED_DAYS;
+                let found = moved.iter().position(|m| near(m) && m.receipt.invoice == invoice.number).or_else(|| moved.iter().position(near));
+                if let Some(i) = found {
+                    let whole = moved[i].left;
+                    moved[i].take(whole, &invoice.number);
                 }
             }
             if !within(day) {
                 continue;
             }
-            let foreign = !invoice.currency.trim().is_empty() && !invoice.currency.eq_ignore_ascii_case(currency);
-            let sign = p.amount.signum();
-            let amount = if foreign { input.booked.get(&p.id).map(|b| sign * b.abs()) } else { Some(p.amount) };
             // Excluding VAT, as the record's share; in the books' currency, the same share of what it came to.
             let without_tax = amount.map(|a| if foreign { share(crate::invoice::life::received_without_tax(invoice, p.amount), a, p.amount) } else { crate::invoice::life::received_without_tax(invoice, a) });
+            let activities = without_tax.map(|w| split.divide(w)).unwrap_or_default();
             out.push(Row {
                 day,
                 client: client.clone(),
@@ -553,22 +755,27 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
                 cash: p.means == "cash",
                 amount,
                 without_tax,
-                goods: without_tax.map_or(0, |w| goods_part(invoice, w)),
+                goods: activities.iter().filter(|(_, k, _)| *k == "goods").map(|(_, _, a)| a).sum(),
+                activities,
                 foreign: foreign.then(|| (p.amount, invoice.currency.to_uppercase())),
                 address: crate::links::invoice_uri(&invoice.number),
                 project: invoice.project.clone(),
                 budget: String::new(),
                 payment: p.id.clone(),
+                beyond: Vec::new(),
             });
         }
     }
     let invoices: BTreeMap<&str, &Invoice> = input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable).map(|i| (i.number.as_str(), i)).collect();
-    for m in moved.into_iter().filter(|m| !m.taken && within(m.receipt.day)) {
+    for m in moved.into_iter().filter(|m| m.left > 0 && within(m.receipt.day)) {
+        let beyond = !m.by.is_empty();
+        let left = m.left;
         let r = m.receipt;
         // A movement the matching tied to an invoice without a payment written:
-        // the invoice says who and what.
-        let invoice = invoices.get(r.invoice.as_str()).copied();
-        let amount = r.gross.map(crate::money::Money::cents);
+        // the invoice says who and what. What a line brought beyond the
+        // payments it stood for is a receipt of its own: no invoice describes it.
+        let invoice = if beyond { None } else { invoices.get(r.invoice.as_str()).copied() };
+        let amount = if beyond { Some(left) } else { r.gross.map(crate::money::Money::cents) };
         let liable = input.settings.scheme_on(r.day) == "liable";
         let without_tax = match invoice {
             Some(i) => amount.map(|a| crate::invoice::life::received_without_tax(i, a)),
@@ -576,32 +783,39 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             None if liable => None,
             None => amount,
         };
+        let split = invoice.map(|i| Split::of(i, input.invoices, input.settings));
+        // A receipt no invoice describes: the first activity said, its kind; none said, none.
+        let activities = match (&split, without_tax) {
+            (Some(s), Some(w)) => s.divide(w),
+            (None, Some(w)) => input.settings.activity_unsaid().map(|a| vec![(a.to_string(), input.settings.kind_of("service", a), w)]).unwrap_or_else(|| vec![(String::new(), "service", w)]),
+            _ => Vec::new(),
+        };
         out.push(Row {
             day: r.day,
             client: invoice.map_or_else(|| r.client.clone(), |i| i.client.first_line().to_string()),
-            nature: invoice.map(|i| nature_of(i).to_string()).unwrap_or_default(),
-            invoice: r.invoice.clone(),
+            nature: split.as_ref().map(|s| s.nature().to_string()).unwrap_or_default(),
+            invoice: if beyond { String::new() } else { r.invoice.clone() },
             means: r.means.words(tr),
-            cash: false,
+            cash: cash_said(&r.client),
             amount,
             without_tax,
-            goods: match (invoice, without_tax) {
-                (Some(i), Some(w)) => goods_part(i, w),
-                _ => 0,
-            },
+            goods: if invoice.is_some() { activities.iter().filter(|(_, k, _)| *k == "goods").map(|(_, _, a)| a).sum() } else { 0 },
+            activities,
             foreign: None,
             address: r.address.clone(),
             project: invoice.map(|i| i.project.clone()).unwrap_or_default(),
             budget: m.budget,
             payment: String::new(),
+            beyond: m.by,
         });
     }
     out.sort_by(|a, b| (a.day, &a.invoice, &a.client).cmp(&(b.day, &b.invoice, &b.client)));
     out
 }
 
-/// The totals of `rows` from `from` to `to`.
-fn total_of(rows: &[Row], kind: &'static str, from: Date, to: Date) -> Total {
+/// The totals of `rows` from `from` to `to`, a quarter or a year that
+/// would end at `end`: said "until" `to` when it stops before.
+fn total_of(rows: &[Row], kind: &'static str, from: Date, to: Date, end: Date) -> Total {
     let of: Vec<&Row> = rows.iter().filter(|r| r.day >= from && r.day <= to).collect();
     Total {
         kind,
@@ -609,6 +823,7 @@ fn total_of(rows: &[Row], kind: &'static str, from: Date, to: Date) -> Total {
         quarter: quarter_of(from),
         from,
         to,
+        until: (to < end).then_some(to),
         amount: of.iter().filter_map(|r| r.amount).sum(),
         without_tax: of.iter().filter_map(|r| r.without_tax).sum(),
         goods: of.iter().map(|r| r.goods).sum(),
@@ -627,14 +842,14 @@ pub fn book(input: &Input, from: Date, to: Date, tr: &Translator) -> Book {
     let mut totals = Vec::new();
     let mut q = period_of(Every::Quarter, from).0;
     while q <= to {
-        let end = period_of(Every::Quarter, q).1.min(to);
-        totals.push(total_of(&all, "quarter", q, end));
+        let end = period_of(Every::Quarter, q).1;
+        totals.push(total_of(&all, "quarter", q, end.min(to), end));
         q = shift_months(q, 3);
     }
     for year in from.year()..=to.year() {
         let first = Date::new(year, 1, 1).unwrap_or(from);
-        let last = Date::new(year, 12, 31).unwrap_or(to).min(to);
-        totals.push(total_of(&all, "year", first, last));
+        let end = Date::new(year, 12, 31).unwrap_or(to);
+        totals.push(total_of(&all, "year", first, end.min(to), end));
     }
     Book { from, to, currency: input.settings.currency.clone(), rows: all.into_iter().filter(|r| r.day >= from && r.day <= to).collect(), totals }
 }
@@ -644,12 +859,22 @@ pub fn long_day(tr: &Translator, d: Date) -> String {
     format!("{} {}", tr.day_month(d), d.year())
 }
 
-/// A total's name: "First quarter 2026", "2026".
+/// A total's name: "First quarter 2026", "Year 2026"; stopped before its
+/// end, "Fourth quarter 2026, until 31 October 2026".
 pub fn total_name(tr: &Translator, t: &Total) -> String {
     let mut args = crate::i18n::args();
     args.set("quarter", i64::from(t.quarter));
     args.set("year", t.year.to_string());
-    tr.text(if t.kind == "quarter" { "books-total-quarter" } else { "books-total-year" }, Some(&args))
+    let name = tr.text(if t.kind == "quarter" { "books-total-quarter" } else { "books-total-year" }, Some(&args));
+    match t.until {
+        Some(until) => {
+            let mut a = crate::i18n::args();
+            a.set("name", name);
+            a.set("until", long_day(tr, until));
+            tr.text("books-total-until", Some(&a))
+        }
+        None => name,
+    }
 }
 
 /// Whether some row of the book bears VAT: its columns show both amounts then.
@@ -727,12 +952,7 @@ pub fn csv(tr: &Translator, book: &Book) -> String {
             cells.push(r.split().map(|(g, _)| plain_amount(tr, g)).unwrap_or_default());
             cells.push(r.split().map(|(_, s)| plain_amount(tr, s)).unwrap_or_default());
         }
-        let note = match &r.foreign {
-            Some((m, code)) => tr.money_in(crate::money::Money(*m), code),
-            None if r.amount.is_none() => unknown.clone(),
-            None => String::new(),
-        };
-        cells.push(cell(&note));
+        cells.push(cell(&note_of(tr, r, &unknown)));
         cells
     };
     let total_cells = |t: &Total| {
@@ -764,6 +984,21 @@ pub fn csv(tr: &Translator, book: &Book) -> String {
         out.push_str(&line(total_cells(y)));
     }
     out
+}
+
+/// A row's note: its amount in another currency; what the client paid not
+/// known yet; the invoices a bank line's part came beyond.
+fn note_of(tr: &Translator, r: &Row, unknown: &str) -> String {
+    match &r.foreign {
+        Some((m, code)) => tr.money_in(crate::money::Money(*m), code),
+        None if r.amount.is_none() => unknown.to_string(),
+        None if !r.beyond.is_empty() => {
+            let mut args = crate::i18n::args();
+            args.set("numbers", r.beyond.join(", "));
+            tr.text("books-beyond", Some(&args))
+        }
+        None => String::new(),
+    }
 }
 
 /// What a row sold, in words.

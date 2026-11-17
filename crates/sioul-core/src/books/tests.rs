@@ -87,6 +87,162 @@ fn money() -> Money {
     Money { counted: ledger.clone(), ledger, bank, movements, gone, from: day("2026-01-01"), to: day("2027-03-31") }
 }
 
+/// A work budget that declares, its bank account, and these bank lines (day, cents, words, id).
+fn money_with(lines: &str, bank_lines: &[(&str, i64, &str, &str)]) -> Money {
+    let ledger: Ledger = toml::from_str(&format!(
+        "[[budget]]\nid = 'work'\ntitle = 'Work'\nperiod = 'month'\narea = 'work'\nset_aside = 22\n\
+         [[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n{lines}"
+    ))
+    .unwrap();
+    let mut bank = crate::bank::Bank::default();
+    for (date, cents, label, id) in bank_lines {
+        bank.movements.push(crate::bank::Movement { account: "0123456A".into(), date: day(date), amount: Cents(*cents), label: (*label).into(), id: (*id).into() });
+    }
+    let store = Store::default();
+    let words = crate::words::Words::builtin();
+    let input = MoneyInput { ledger: &ledger, bank: &bank, contracts: &[], letters: &[], store: &store, words: &words };
+    let (movements, gone) = derive_with_gone(&input, day("2026-01-01"), day("2027-03-31"), day("2027-01-10"));
+    Money { counted: ledger.clone(), ledger, bank, movements, gone, from: day("2026-01-01"), to: day("2027-03-31") }
+}
+
+/// Every euro of a bank line counts once (the review of phase 4, P4-3,
+/// P4-12): a payment in another currency said in euros joins the bank's
+/// line of those euros; what a line brought beyond the invoice it paid (an
+/// overpayment) is a receipt of its own, "beyond" that invoice.
+#[test]
+fn every_euro_of_a_bank_line_counts_once() {
+    let settings = Settings::of(&french("franchise"), None);
+    let tr = en();
+    // A USD invoice, its payment said as €910, and the bank's €910 the next day.
+    let money = money_with("", &[("2026-12-16", 91_000, "VIR EXAMPLE INC", "U1")]);
+    let usd = vec![Invoice { currency: "USD".into(), ..issued("2026-130", "2026-12-04", client("Example Inc.", "US"), vec![line("Consulting", 100_000, Nature::Service, "O", 0)], "franchise", &[("2026-12-15", 100_000, "transfer")]) }];
+    let booked: BTreeMap<String, i64> = [("p-2026-130-0".to_string(), 91_000)].into();
+    let rows = rows(&input(&settings, &usd, &booked, Some(&money)), day("2026-12-01"), day("2026-12-31"), &tr);
+    assert_eq!(rows.iter().map(|r| (r.day.to_string(), r.amount)).collect::<Vec<_>>(), [("2026-12-15".to_string(), Some(91_000))], "one row of €910, not two");
+    // The client pays €1,250 for an invoice of €1,200: the €50 is a receipt of its own.
+    let money = money_with("", &[("2026-11-10", 125_000, "VIR STUDIO LUMEN FACTURE 2026-131", "O1")]);
+    let address = money.movements.iter().find(|m| m.label.contains("2026-131")).map(|m| m.address()).unwrap();
+    let mut paid = issued("2026-131", "2026-11-02", client("Studio Lumen", "FR"), vec![line("Design", 120_000, Nature::Service, "E", 0)], "franchise", &[]);
+    paid.payments = vec![Payment { id: "b1".into(), date: "2026-11-10".into(), amount: 120_000, means: "transfer".into(), movement: address }];
+    let none = BTreeMap::new();
+    let rows = super::rows(&input(&settings, &[paid], &none, Some(&money)), day("2026-11-01"), day("2026-11-30"), &tr);
+    assert_eq!(rows.iter().map(|r| (r.invoice.as_str(), r.amount, r.beyond.clone())).collect::<Vec<_>>(), [("", Some(5_000), vec!["2026-131".to_string()]), ("2026-131", Some(120_000), Vec::new())]);
+}
+
+/// The franchise counts what the book counts (the review of phase 4,
+/// P4-14): a bank line the matching tied to an invoice with no payment
+/// written; a format-1 record that said no category counts as located here.
+#[test]
+fn the_franchise_counts_what_the_book_counts() {
+    let settings = Settings::of(&french("franchise"), None);
+    let tr = en();
+    let money = money();
+    let tied = vec![issued("2026-002", "2026-11-02", client("Studio Lumen", "FR"), vec![line("Design", 30_000, Nature::Service, "E", 0)], "franchise", &[])];
+    let none = BTreeMap::new();
+    let w = thresholds::watch(&input(&settings, &tied, &none, Some(&money)), day("2026-12-31"), &tr);
+    let services = w.iter().find(|w| w.id == "franchise-services").unwrap();
+    assert!(services.turnover >= 30_000, "the €300 the bank's line paid counts: {services:?}");
+    let mut older = issued("2026-003", "2026-06-02", client("Studio Lumen", "FR"), vec![line("Design", 40_000, Nature::Service, "O", 0)], "none", &[("2026-06-20", 40_000, "")]);
+    older.format = 1;
+    let w = thresholds::watch(&input(&settings, &[older], &none, None), day("2026-12-31"), &tr);
+    assert_eq!(w.iter().find(|w| w.id == "franchise-services").map(|w| w.turnover), Some(40_000), "a format-1 record's line, no category said, is located here");
+}
+
+/// A deposit counts once, as what it pays for (the review of phase 4, P4-2,
+/// P4-7): the DES lists a deposit and its final invoice for the final's
+/// lines in all; a deposit on goods is declared under sales, and the
+/// franchise never counts more than what was sold.
+#[test]
+fn a_deposit_counts_once_as_what_it_pays_for() {
+    let tr = en();
+    let none = BTreeMap::new();
+    let gmbh = Client { ids: vec![Identifier { kind: "vat".into(), value: "DE123456789".into(), printed: true }], ..client("Beispiel GmbH", "DE") };
+    let franchise = Settings::of(&french("franchise"), None);
+    let deposit = Invoice { kind: Kind::Deposit, ..issued("2026-140", "2026-10-05", gmbh.clone(), vec![line("Deposit", 300_000, Nature::Service, "AE", 0)], "franchise", &[("2026-10-06", 300_000, "transfer")]) };
+    let mut last = issued("2026-147", "2026-11-20", gmbh, vec![line("Consulting", 1_000_000, Nature::Service, "AE", 0)], "franchise", &[]);
+    last.deposits = vec![Cited { number: "2026-140".into(), date: "2026-10-05".into(), amount: 300_000 }];
+    last.totals.deposits = 300_000;
+    last.totals.due -= 300_000;
+    let invoices = vec![deposit, last];
+    let months = des::between(&input(&franchise, &invoices, &none, None), day("2026-10-01"), day("2026-11-30"));
+    assert_eq!(months.iter().map(|d| d.total).sum::<i64>(), 1_000_000, "the deposit and the final invoice: the final's lines, once");
+    // A seller of goods: its deposit is a sale, and the count never passes what was sold.
+    let seller = Settings::of(&InvoiceSettings { activity: vec!["goods-bic".into(), "services-bic".into()], ..french("franchise") }, None);
+    let deposit = Invoice { kind: Kind::Deposit, ..issued("2026-150", "2026-03-09", client("Studio Lumen", "FR"), vec![line("Deposit", 300_000, Nature::Service, "E", 0)], "franchise", &[("2026-03-10", 300_000, "transfer")]) };
+    let mut furniture = issued("2026-151", "2026-06-01", client("Studio Lumen", "FR"), vec![line("Furniture", 1_000_000, Nature::Goods, "E", 0)], "franchise", &[("2026-06-20", 700_000, "transfer")]);
+    furniture.deposits = vec![Cited { number: "2026-150".into(), date: "2026-03-09".into(), amount: 300_000 }];
+    furniture.totals.deposits = 300_000;
+    furniture.totals.due -= 300_000;
+    let invoices = vec![deposit, furniture];
+    let i = input(&seller, &invoices, &none, None);
+    let q1 = declarations::holding(&i, day("2026-03-10"), &tr).unwrap();
+    assert_eq!(q1.lines.iter().map(|l| (l.activity.as_str(), l.turnover)).collect::<Vec<_>>(), [("goods-bic", 300_000), ("services-bic", 0)], "{q1:?}");
+    for today in ["2026-06-01", "2026-06-10", "2026-06-20", "2026-12-31"] {
+        let w = thresholds::watch(&i, day(today), &tr);
+        assert!(w.iter().find(|w| w.id == "franchise-goods").unwrap().turnover <= 1_000_000, "{today}: {w:?}");
+    }
+}
+
+/// A line's activity is apart from its nature (the review of phase 4,
+/// P4-13): meals eaten on the spot are services for VAT and sales for
+/// URSSAF and the thresholds.
+#[test]
+fn a_meal_on_the_spot_is_a_sale() {
+    let tr = en();
+    let none = BTreeMap::new();
+    let snack = Settings::of(&InvoiceSettings { activity: vec!["goods-bic".into()], ..french("franchise") }, None);
+    let meals = vec![issued("2026-160", "2026-11-02", Client { kind: "consumer".into(), ..client("Robin Example", "FR") }, vec![line("Lunches", 400_000, Nature::Service, "E", 0)], "franchise", &[("2026-11-02", 400_000, "card")])];
+    let i = input(&snack, &meals, &none, None);
+    let q4 = declarations::holding(&i, day("2026-11-02"), &tr).unwrap();
+    assert_eq!((q4.lines[0].activity.as_str(), q4.lines[0].turnover, q4.unsaid), ("goods-bic", 400_000, 0));
+    assert_eq!(q4.lines[0].social.map(|p| p.rate), Some(1230));
+    let w = thresholds::watch(&i, day("2026-11-30"), &tr);
+    assert_eq!(w.iter().find(|w| w.id == "franchise-goods").map(|w| w.turnover), Some(400_000));
+    assert!(w.iter().all(|w| w.id != "franchise-services"), "no services sold: no services' threshold");
+    // Said on the line, whatever the other activities.
+    let both = Settings::of(&InvoiceSettings { activity: vec!["goods-bic".into(), "services-bic".into()], ..french("franchise") }, None);
+    let mut said = meals[0].clone();
+    said.lines[0].activity = "goods-bic".into();
+    let q4 = declarations::holding(&input(&both, &[said], &none, None), day("2026-11-02"), &tr).unwrap();
+    assert_eq!(q4.lines.iter().map(|l| (l.activity.as_str(), l.turnover)).collect::<Vec<_>>(), [("goods-bic", 400_000), ("services-bic", 0)]);
+}
+
+/// A credit note goes to the DES of the month it is issued, below zero, its
+/// month said to be the customs' guide's; an invoice in another currency is
+/// listed, not added, and said (the review of phase 4, P4-18, P4-17).
+#[test]
+fn the_des_lists_a_credit_note_in_its_own_month() {
+    let settings = Settings::of(&french("franchise"), None);
+    let none = BTreeMap::new();
+    let tr = en();
+    let gmbh = Client { ids: vec![Identifier { kind: "vat".into(), value: "DE123456789".into(), printed: true }], ..client("Beispiel GmbH", "DE") };
+    let mut october = issued("2026-170", "2026-10-30", gmbh.clone(), vec![line("Consulting", 120_000, Nature::Service, "AE", 0)], "franchise", &[]);
+    october.period_to = "2026-10-30".into();
+    let credit = Invoice { kind: Kind::CreditNote, corrects: Some(Cited { number: "2026-170".into(), date: "2026-10-30".into(), amount: 120_000 }), period_to: "2026-10-30".into(), ..issued("2026-175", "2026-12-05", gmbh.clone(), vec![line("Consulting", 20_000, Nature::Service, "AE", 0)], "franchise", &[]) };
+    let dollars = Invoice { currency: "USD".into(), ..issued("2026-176", "2026-12-07", gmbh, vec![line("Consulting", 50_000, Nature::Service, "AE", 0)], "franchise", &[]) };
+    let all = des::between(&input(&settings, &[october, credit, dollars], &none, None), day("2026-10-01"), day("2026-12-31"));
+    assert_eq!(all.iter().map(|d| (d.key(), d.total, d.foreign)).collect::<Vec<_>>(), [("2026-10".to_string(), 120_000, 0), ("2026-12".to_string(), -20_000, 1)]);
+    let said = des::sentences(&tr, &all[1], "EUR");
+    assert_eq!(said[0], "Services to businesses in other EU countries, December 2026 (DES): −€200, and one invoice in another currency not counted, to say in euros; to declare by 14 January 2027.");
+    assert!(said.iter().any(|s| s.starts_with("2026-175 credits an invoice of another month")), "{said:?}");
+}
+
+/// A credit note for what the client never paid needs no refund: it is
+/// never named as waiting for one; one on an invoice paid in full is (the
+/// review of phase 4, P4-10).
+#[test]
+fn a_credit_note_waits_for_a_refund_only_when_money_is_owed_back() {
+    let settings = Settings::of(&french("liable"), None);
+    let none = BTreeMap::new();
+    let disputed = issued("2026-180", "2026-10-10", client("Studio Lumen", "FR"), vec![line("Design", 100_000, Nature::Service, "S", 2000)], "liable", &[("2026-11-04", 96_000, "transfer")]);
+    let credit = Invoice { kind: Kind::CreditNote, corrects: Some(Cited { number: "2026-180".into(), date: "2026-10-10".into(), amount: 120_000 }), ..issued("2026-181", "2026-11-02", client("Studio Lumen", "FR"), vec![line("Design", 20_000, Nature::Service, "S", 2000)], "liable", &[]) };
+    let months = vat::between(&input(&settings, &[disputed.clone(), credit.clone()], &none, None), day("2026-11-01"), day("2026-11-30"));
+    assert!(months[0].credits_not_counted.is_empty(), "the client paid what was left: nothing to give back");
+    let paid_in_full = Invoice { payments: vec![Payment { id: "x".into(), date: "2026-10-20".into(), amount: 120_000, means: "transfer".into(), movement: String::new() }], ..disputed };
+    let months = vat::between(&input(&settings, &[paid_in_full, credit], &none, None), day("2026-11-01"), day("2026-11-30"));
+    assert_eq!(months[0].credits_not_counted, ["2026-181"]);
+}
+
 /// The receipts book (design §6): one row per payment received, on its
 /// day, its invoice's client, nature, number and means, cash said apart;
 /// a bank line the matching tied to an invoice without a payment written
@@ -96,7 +252,8 @@ fn money() -> Money {
 /// came to here is said; quarter and year totals; CSV in French, a page.
 #[test]
 fn the_book_follows_payments() {
-    let settings = Settings::of(&french("franchise"), None);
+    // Sales of prints and liberal services: goods and services apart.
+    let settings = Settings::of(&InvoiceSettings { activity: vec!["goods-bic".into(), "bnc".into()], ..french("franchise") }, None);
     let mut older = issued("2026-001", "2026-12-01", client("Old Client", "FR"), vec![line("Photos", 45_000, Nature::Service, "E", 0)], "franchise", &[]);
     // A format-1 record's own "paid", read on its due day by the life.
     older.payments = vec![Payment { id: "older:2026-001".into(), date: "2026-12-01".into(), amount: 45_000, ..Payment::default() }];
@@ -165,7 +322,7 @@ fn a_taxed_row_keeps_both_amounts() {
     assert_eq!((book.rows[0].amount, book.rows[0].without_tax), (Some(60_000), Some(50_000)));
     assert!(taxed(&book));
     assert_eq!(csv(&tr, &book).lines().next().unwrap(), "Day,Client,Nature,Invoice,Means of payment,Cash,Received,Excluding VAT,Note");
-    assert_eq!(sentences(&tr, &book)[0], "Fourth quarter 2026: €600 received with VAT, €500 excluding it.");
+    assert_eq!(sentences(&tr, &book)[0], "Fourth quarter 2026, until 30 November 2026: €600 received with VAT, €500 excluding it.");
 }
 
 /// Declarations (design §6): per period and activity, the turnover
@@ -175,7 +332,8 @@ fn a_taxed_row_keeps_both_amounts() {
 /// over the preset's while it holds.
 #[test]
 fn declarations_per_period_and_activity() {
-    let s = InvoiceSettings { vl: true, ..french("franchise") };
+    // Begun in 2025: every period of 2026 is said, zero ones too.
+    let s = InvoiceSettings { vl: true, started: "2025-01-01".into(), ..french("franchise") };
     let settings = Settings::of(&s, None);
     assert_eq!((settings.every, settings.trade.as_str()), (Every::Quarter, "liberal"));
     let invoices = vec![issued("2026-020", "2026-10-02", client("Studio Lumen", "FR"), vec![line("Design", 694_000, Nature::Service, "E", 0)], "franchise", &[("2026-11-10", 694_000, "transfer")])];
@@ -232,27 +390,97 @@ fn a_mixed_activity_splits_by_nature() {
     assert_eq!((d.turnover, d.unsaid, d.contributions), (40_000, 40_000, 0));
 }
 
-/// The first declaration gathers the periods from the start of activity
-/// until a due day at least 90 days after the end of the start's period
-/// (URSSAF: monthly, a start in January, due 31 May; quarterly, a start in
-/// the first quarter, due 31 July).
+/// The first declaration gathers the start's period and the ones after it
+/// (the review of phase 4, P4-1; URSSAF's tables, justice.fr's fiche
+/// "Micro-entrepreneur : déclarer son chiffre d'affaires", propulsebyca.fr's
+/// monthly table): monthly, the start month and the three after, due the
+/// last day of the fourth month after the start month, moved off a weekend;
+/// quarterly, the start quarter and the next.
 #[test]
 fn the_first_declaration_gathers_its_first_periods() {
-    let monthly = Settings::of(&InvoiceSettings { declare: "month".into(), started: "2026-01-15".into(), ..french("franchise") }, None);
-    let s = declarations::schedule(&monthly, day("2026-01-01"), day("2026-06-10"));
-    assert_eq!(s[0], (day("2026-01-15"), day("2026-04-30"), true));
-    assert_eq!(s[1], (day("2026-05-01"), day("2026-05-31"), false));
-    // 31 May 2026 is a Sunday: 1 June.
-    assert_eq!(declarations::due_of(&monthly, day("2026-04-30")), day("2026-06-01"));
-    let quarterly = Settings::of(&InvoiceSettings { started: "2026-02-10".into(), ..french("franchise") }, None);
-    let s = declarations::schedule(&quarterly, day("2026-01-01"), day("2026-11-17"));
+    let monthly = |started: &str| Settings::of(&InvoiceSettings { declare: "month".into(), started: started.into(), ..french("franchise") }, None);
+    let first = |started: &str| {
+        let settings = monthly(started);
+        let (from, to, gathered) = declarations::schedule(&settings, day("2020-01-01"), day("2030-12-31"))[0];
+        (from, to, gathered, declarations::due_of(&settings, to))
+    };
+    // January: January to April, due 31 May (a Sunday in 2026: 1 June).
+    assert_eq!(first("2026-01-15"), (day("2026-01-15"), day("2026-04-30"), true, day("2026-06-01")));
+    // March (justice.fr: a start on 6 March 2026, by 31 July 2026): March to June.
+    assert_eq!(first("2026-03-10"), (day("2026-03-10"), day("2026-06-30"), true, day("2026-07-31")));
+    assert_eq!(first("2026-03-06").3, day("2026-07-31"));
+    // May: due 30 September.
+    assert_eq!(first("2026-05-02"), (day("2026-05-02"), day("2026-08-31"), true, day("2026-09-30")));
+    // October: due the last day of February (28 February 2027 is a Sunday: 1 March).
+    assert_eq!(first("2026-10-15"), (day("2026-10-15"), day("2027-01-31"), true, day("2027-03-01")));
+    // A leap year: January 2028, due 31 May 2028; October 2027, due 29 February 2028.
+    assert_eq!(first("2028-01-15").3, day("2028-05-31"));
+    assert_eq!(first("2027-10-04"), (day("2027-10-04"), day("2028-01-31"), true, day("2028-02-29")));
+    // Then each month as any.
+    let s = declarations::schedule(&monthly("2026-03-10"), day("2026-01-01"), day("2026-08-10"));
+    assert_eq!(s[1..].iter().map(|p| (p.0.to_string(), p.2)).collect::<Vec<_>>(), [("2026-07-01".to_string(), false), ("2026-08-01".to_string(), false)]);
+    let quarterly = |started: &str| Settings::of(&InvoiceSettings { started: started.into(), ..french("franchise") }, None);
+    let s = declarations::schedule(&quarterly("2026-02-10"), day("2026-01-01"), day("2026-11-17"));
     assert_eq!(s[0], (day("2026-02-10"), day("2026-06-30"), true));
-    assert_eq!(declarations::due_of(&quarterly, day("2026-06-30")), day("2026-07-31"));
+    assert_eq!(declarations::due_of(&quarterly("2026-02-10"), day("2026-06-30")), day("2026-07-31"));
     assert_eq!(s.iter().map(|p| p.0.to_string()).collect::<Vec<_>>(), ["2026-02-10", "2026-07-01", "2026-10-01"]);
+    // justice.fr: quarterly, a start on 12 April 2026, by 31 October 2026 (a Saturday: 2 November).
+    let s = declarations::schedule(&quarterly("2026-04-12"), day("2026-01-01"), day("2026-12-31"));
+    assert_eq!(s[0], (day("2026-04-12"), day("2026-09-30"), true));
+    assert_eq!(declarations::due_of(&quarterly("2026-04-12"), day("2026-09-30")), day("2026-11-02"));
     // Nothing before the start, nothing declared under another regime.
-    assert!(declarations::schedule(&quarterly, day("2025-01-01"), day("2025-12-31")).is_empty());
+    assert!(declarations::schedule(&quarterly("2026-02-10"), day("2025-01-01"), day("2025-12-31")).is_empty());
     let reel = Settings::of(&InvoiceSettings { regime: "reel".into(), ..french("franchise") }, None);
     assert!(!reel.declares());
+}
+
+/// The books begin with what Sioul knows (the review of phase 4, P4-17):
+/// without a start of activity said, no period before the first invoice
+/// issued is said, not even "declare €0"; nothing known, nothing said. A
+/// period with more given back than received declares €0, and says the
+/// rest is not taken off. A total cut at the day shown says so. A setting
+/// that does not read is said.
+#[test]
+fn the_books_begin_with_what_sioul_knows() {
+    let settings = Settings::of(&french("franchise"), None);
+    let none = BTreeMap::new();
+    let tr = en();
+    assert!(declarations::open_now(&input(&settings, &[], &none, None), day("2026-11-17"), 60, &tr).is_empty(), "nothing known: nothing said");
+    let invoices = vec![issued("2026-110", "2026-10-02", client("Studio Lumen", "FR"), vec![line("Design", 50_000, Nature::Service, "E", 0)], "franchise", &[("2026-10-20", 50_000, "transfer")])];
+    let i = input(&settings, &invoices, &none, None);
+    assert_eq!(begin(&i), Some(day("2026-10-02")));
+    assert!(declarations::holding(&i, day("2026-08-01"), &tr).is_none(), "the third quarter, before anything was known, says nothing");
+    assert_eq!(declarations::of_year(&i, 2026, day("2026-11-17"), &tr).iter().map(|d| d.key()).collect::<Vec<_>>(), ["2026-Q4"]);
+    // More given back than received: €0 declared, the rest said.
+    let refund = Invoice { kind: Kind::CreditNote, ..issued("2027-001", "2027-01-05", client("Studio Lumen", "FR"), vec![line("Design", 50_000, Nature::Service, "E", 0)], "franchise", &[("2027-01-06", 50_000, "transfer")]) };
+    let both = vec![invoices[0].clone(), refund];
+    let q1 = declarations::holding(&input(&settings, &both, &none, None), day("2027-02-01"), &tr).unwrap();
+    assert_eq!((q1.turnover, q1.declared, q1.contributions), (-50_000, 0, 0));
+    assert_eq!(declarations::sentences(&tr, &q1, "EUR")[0], "From 1 January 2027 to 31 March 2027: €0 to declare by 30 April 2027; €500 given back beyond what was received is not taken off: Sioul carries nothing over to another period.");
+    assert_eq!(declarations::sentences(&tr, &q1, "EUR")[1], "Other services, liberal (BNC): −€500, more given back than received: €0 declared.");
+    // A total cut at the day shown.
+    let book = book(&i, day("2026-10-01"), day("2026-10-31"), &tr);
+    assert_eq!(total_name(&tr, &book.totals[0]), "Fourth quarter 2026, until 31 October 2026");
+    // A start that does not read is said, not dropped.
+    let odd = Settings::of(&InvoiceSettings { started: "2026-6-12".into(), ..french("franchise") }, None);
+    assert_eq!(unread_sentences(&tr, &odd), ["In [invoice], started = “2026-6-12” does not read, and is left aside: a day is written 2026-06-12, a period month or quarter, a trade commerce, craft or liberal."]);
+}
+
+/// A payment in another currency not said in euros is never "nothing
+/// received" (the review of phase 4, P4-9): the period says what came in
+/// and asks its euros, on the Porch's note and the Overview too, its amount "at least".
+#[test]
+fn a_foreign_payment_is_never_nothing_received() {
+    let settings = Settings::of(&french("franchise"), None);
+    let invoices = vec![Invoice { currency: "USD".into(), ..issued("2026-120", "2026-12-04", client("Example Inc.", "US"), vec![line("Consulting", 100_000, Nature::Service, "O", 0)], "franchise", &[("2026-12-15", 100_000, "transfer")]) }];
+    let none = BTreeMap::new();
+    let tr = en();
+    let i = input(&settings, &invoices, &none, None);
+    let q4 = declarations::holding(&i, day("2026-12-20"), &tr).unwrap();
+    assert!(q4.least() && q4.declared == 0);
+    assert_eq!(declarations::sentences(&tr, &q4, "EUR")[0], "From 1 October 2026 to 31 December 2026: $1,000 received: say what it came to in euros; to declare by 1 February 2027.");
+    assert_eq!(declarations::porch_note(&tr, &q4, "EUR"), "$1,000 received: say what it came to in euros (sioul invoices received).");
+    assert_eq!(declarations::overview_line(&i, day("2026-12-20"), &tr).as_deref(), Some("Turnover received this quarter, excluding VAT: at least €0, to declare by 1 February 2027. $1,000 received: say what it came to in euros (sioul invoices received)."));
 }
 
 /// The VAT summary (design §6): services' VAT on the payments received,
@@ -293,12 +521,17 @@ fn the_vat_summary_follows_when_vat_is_due() {
     let tr = en();
     assert_eq!(vat::sentences(&tr, &months[0], "EUR")[0], "October 2026: €140 of VAT collected, on €1,500 excluding VAT.");
     assert_eq!(vat::sentences(&tr, &months[0], "EUR")[2], "Reverse charge (the client owes the VAT): €800, no VAT here.");
-    // Under the option for debits, design's VAT on its invoice's day, the credit note's too.
-    let debits = Settings::of(&InvoiceSettings { options: vec!["debits".into()], ..french("liable") }, None);
-    let months = vat::between(&input(&debits, &invoices, &none, None), day("2026-10-01"), day("2026-11-30"));
+    // Under the option for debits, as each invoice printed it (the review of
+    // phase 4, P4-8): design's VAT on its invoice's day, the credit note's too.
+    let with_debits: Vec<Invoice> = invoices.iter().map(|i| Invoice { issuer: crate::invoice::Issuer { options: vec!["debits".into()], ..i.issuer.clone() }, ..i.clone() }).collect();
+    let months = vat::between(&input(&settings, &with_debits, &none, None), day("2026-10-01"), day("2026-11-30"));
     assert_eq!(entries(&months[0])[0], ("S".to_string(), 2000, 120_000, 24_000));
     assert_eq!(entries(&months[1])[0], ("S".to_string(), 2000, 15_000, 3_000));
     assert!(months[1].credits_not_counted.is_empty());
+    // Today's settings never move a past summary: the option taken now changes nothing printed before.
+    let debits_now = Settings::of(&InvoiceSettings { options: vec!["debits".into()], ..french("liable") }, None);
+    let months = vat::between(&input(&debits_now, &invoices, &none, None), day("2026-10-01"), day("2026-11-30"));
+    assert_eq!(entries(&months[0]), [("S".to_string(), 2000, 70_000, 14_000), ("AE".into(), 0, 80_000, 0)]);
     // Under the franchise, no summary.
     assert!(vat::between(&input(&Settings::of(&french("franchise"), None), &invoices[5..], &none, None), day("2026-10-01"), day("2026-11-30")).is_empty());
 }
@@ -326,7 +559,8 @@ fn a_refund_lowers_its_own_period() {
     assert_eq!(q4.rows.iter().map(|r| (r.day.to_string(), r.invoice.as_str(), r.amount, r.without_tax)).collect::<Vec<_>>(), [("2026-10-08".to_string(), "2026-091", Some(-36_000), Some(-30_000))]);
     assert_eq!(q4.totals[0].without_tax, -30_000);
     let d = declarations::holding(&i, day("2026-10-08"), &tr).unwrap();
-    assert_eq!((d.turnover, d.lines[0].social.map(|p| p.amount)), (-30_000, Some(-7_680)));
+    // More given back than received in the period: nothing below zero is declared (the review of phase 4, P4-17).
+    assert_eq!((d.turnover, d.declared, d.lines[0].social.map(|p| p.amount)), (-30_000, 0, Some(0)));
     let q3 = declarations::holding(&i, day("2026-09-20"), &tr).unwrap();
     assert_eq!(q3.turnover, 100_000, "the payment's period keeps what it received");
     let months = vat::between(&i, day("2026-09-01"), day("2026-10-31"));
@@ -364,7 +598,8 @@ fn the_franchise_s_thresholds_are_said_once() {
     assert_eq!((base.turnover, base.amount, base.near, base.crossed), (3_000_000, 3_750_000, Some(day("2026-05-04")), None), "€20,000 reverse charged left out");
     assert!(w.iter().all(|w| !w.id.starts_with("franchise-goods")), "no goods sold: no goods' thresholds");
     let told = BTreeSet::new();
-    let notices = thresholds::to_tell(&w, &told, &tr, "EUR", day("2026-06-10"));
+    let tell = |w: &[thresholds::Watch], told: &BTreeSet<String>, today: &str| thresholds::to_tell(thresholds::notices(w, &[], &tr, "EUR", day(today)), told, &settings);
+    let notices = tell(&w, &told, "2026-06-10");
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].key, "books:franchise-services:2026:near");
     assert_eq!(notices[0].body, "€30,000 counted this year, 80% of the VAT franchise's threshold for services, €37,500. Past it, VAT applies from 1 January 2027.");
@@ -373,7 +608,7 @@ fn the_franchise_s_thresholds_are_said_once() {
     invoices.push(pay("2026-053", "2026-09-01", 800_000, "E"));
     let w = watch(&invoices, "2026-09-02");
     let told: BTreeSet<String> = ["books:franchise-services:2026:near".to_string()].into();
-    let notices = thresholds::to_tell(&w, &told, &tr, "EUR", day("2026-09-02"));
+    let notices = tell(&w, &told, "2026-09-02");
     assert_eq!(notices.iter().map(|n| n.key.as_str()).collect::<Vec<_>>(), ["books:franchise-services:2026:crossed"]);
     assert_eq!(notices[0].title, "VAT applies from 1 January 2027");
     assert!(notices[0].body.ends_with("VAT applies from 1 January 2027: change the tax scheme then (Settings ▸ Invoices)."), "{}", notices[0].body);
@@ -381,19 +616,62 @@ fn the_franchise_s_thresholds_are_said_once() {
     invoices.push(pay("2026-054", "2026-10-14", 400_000, "E"));
     let w = watch(&invoices, "2026-10-14");
     let told: BTreeSet<String> = ["books:franchise-services:2026:near".to_string(), "books:franchise-services:2026:crossed".to_string()].into();
-    let notices = thresholds::to_tell(&w, &told, &tr, "EUR", day("2026-10-14"));
+    let notices = tell(&w, &told, "2026-10-14");
     let higher = notices.iter().find(|n| n.step == thresholds::Step::Higher).unwrap();
     assert_eq!(higher.title, "VAT applies from today, 14 October 2026");
     assert_eq!(higher.body, "€42,000 counted this year, above the VAT franchise's higher threshold for services, €41,250: switch the tax scheme (Settings ▸ Invoices), and invoices to businesses since then get a corrective invoice.");
     assert!(higher.actionable && !thresholds::settled(&settings, higher));
     let switched = Settings::of(&InvoiceSettings { tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }, TaxSetting { from: "2026-10-14".into(), scheme: "liable".into(), mention: String::new() }], ..french("franchise") }, None);
     assert!(thresholds::settled(&switched, higher), "the scheme says VAT from that day");
-    // Every step at once: only the last is told, the earlier marked with it.
-    let notices = thresholds::to_tell(&watch(&invoices, "2026-10-14"), &BTreeSet::new(), &tr, "EUR", day("2026-10-14"));
-    let base = notices.iter().find(|n| n.key.starts_with("books:franchise-services:")).unwrap();
-    assert_eq!((base.step, base.also.clone()), (thresholds::Step::Crossed, vec!["books:franchise-services:2026:near".to_string()]));
+    // One payment past both thresholds: the higher one is said alone, the
+    // base's steps marked with it (the review of phase 4, P4-19).
+    let notices = tell(&watch(&invoices, "2026-10-14"), &BTreeSet::new(), "2026-10-14");
+    assert_eq!(notices.iter().map(|n| n.key.as_str()).collect::<Vec<_>>(), ["books:franchise-services-higher:2026:higher"]);
+    assert_eq!(notices[0].also, ["books:franchise-services:2026:near", "books:franchise-services:2026:crossed"]);
+    // Told, it stays to do: told again at each start until the scheme says VAT (P4-4).
+    let told: BTreeSet<String> = ["books:franchise-services-higher:2026:higher".to_string()].into();
+    let again = |settings: &Settings| thresholds::again(thresholds::notices(&watch(&invoices, "2026-10-20"), &[], &tr, "EUR", day("2026-10-20")), &told, settings);
+    assert_eq!(again(&settings).len(), 1);
+    assert!(again(&switched).is_empty(), "the scheme switched: done");
     // Not watched once VAT applies.
     assert!(thresholds::watch(&input(&switched, &invoices, &none, None), day("2026-10-20"), &tr).iter().all(|w| !w.kind.starts_with("franchise")));
+}
+
+/// The year change (the review of phase 4, P4-5): the franchise's base
+/// threshold crossed last year makes VAT apply on this year's 1 January,
+/// said that day, to do until the scheme says so; a crossing of last year
+/// learned after New Year is said at once; meanwhile this year's franchise
+/// steps are not said. Another preset's thresholds are not watched (P4-16).
+#[test]
+fn the_year_change_is_said() {
+    let settings = Settings::of(&french("franchise"), None);
+    let none = BTreeMap::new();
+    let tr = en();
+    let pay = |number: &str, date: &str, cents: i64| issued(number, date, client("Studio Lumen", "FR"), vec![line("Design", cents, Nature::Service, "E", 0)], "franchise", &[(date, cents, "transfer")]);
+    let invoices = vec![pay("2026-190", "2026-09-20", 3_820_000), pay("2027-001", "2027-01-15", 3_000_000)];
+    let i = input(&settings, &invoices, &none, None);
+    let last = thresholds::watch_year(&i, 2026, day("2026-12-31"), &tr);
+    let notices = thresholds::notices(&thresholds::watch(&i, day("2027-01-01"), &tr), &last, &tr, "EUR", day("2027-01-01"));
+    let effect = notices.iter().find(|n| n.key == "books:franchise-services:2026:effect").unwrap();
+    assert_eq!(effect.title, "From today, VAT applies");
+    assert_eq!(effect.body, "Your turnover of 2026, €38,200, passed the VAT franchise's threshold for services, €37,500. VAT applies from 1 January 2027: switch the tax scheme (Settings ▸ Invoices).");
+    assert!(effect.actionable && !thresholds::settled(&settings, effect));
+    let liable = Settings::of(&InvoiceSettings { tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }, TaxSetting { from: "2027-01-01".into(), scheme: "liable".into(), mention: String::new() }], ..french("franchise") }, None);
+    assert!(thresholds::settled(&liable, effect));
+    // Later in January, this year's franchise steps are not said meanwhile.
+    let notices = thresholds::notices(&thresholds::watch(&i, day("2027-01-20"), &tr), &last, &tr, "EUR", day("2027-01-20"));
+    assert_eq!(notices.iter().find(|n| n.key.ends_with(":effect")).map(|n| n.title.as_str()), Some("VAT has applied since 1 January 2027"));
+    assert!(notices.iter().all(|n| !n.key.contains(":2027:")), "{notices:?}");
+    // A crossing of 30 December, its bank export taken in on 4 January: said at once.
+    let late = vec![pay("2026-191", "2026-03-02", 3_800_000), pay("2026-192", "2026-12-30", 400_000)];
+    let i = input(&settings, &late, &none, None);
+    let last = thresholds::watch_year(&i, 2026, day("2026-12-31"), &tr);
+    let notices = thresholds::to_tell(thresholds::notices(&thresholds::watch(&i, day("2027-01-04"), &tr), &last, &tr, "EUR", day("2027-01-04")), &BTreeSet::new(), &settings);
+    let higher = notices.iter().find(|n| n.key == "books:franchise-services-higher:2026:higher").unwrap();
+    assert_eq!((higher.title.as_str(), higher.actionable), ("VAT applies from 30 December 2026", true));
+    // Germany's thresholds are not researched: none watched.
+    let de = Settings::of(&InvoiceSettings { preset: "de".into(), tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..InvoiceSettings::default() }, None);
+    assert!(thresholds::watch(&input(&de, &late, &none, None), day("2026-12-31"), &tr).is_empty());
 }
 
 /// A payment in another currency counts toward the franchise once what
@@ -452,13 +730,27 @@ fn the_micro_ceilings_over_two_years() {
     let w = thresholds::watch(&input(&settings, &invoices, &none, None), day("2026-06-01"), &tr);
     let ceiling = w.iter().find(|w| w.id == "micro-services").unwrap();
     assert_eq!((ceiling.crossed, ceiling.last_year_above), (Some(day("2026-05-02")), false));
-    let notices = thresholds::to_tell(&w, &BTreeSet::new(), &tr, "EUR", day("2026-06-01"));
+    let tell = |w: &[thresholds::Watch], last: &[thresholds::Watch], today: &str| thresholds::to_tell(thresholds::notices(w, last, &tr, "EUR", day(today)), &BTreeSet::new(), &settings);
+    let notices = tell(&w, &[], "2026-06-01");
     assert_eq!(notices[0].title, "Your turnover passed the micro regime's ceiling");
     let w = thresholds::watch(&input(&settings, &invoices, &none, None), day("2027-03-02"), &tr);
     let ceiling = w.iter().find(|w| w.id == "micro-services").unwrap();
     assert!(ceiling.last_year_above && ceiling.crossed.is_some());
-    let notices = thresholds::to_tell(&w, &BTreeSet::new(), &tr, "EUR", day("2027-03-02"));
+    let notices = tell(&w, &[], "2027-03-02");
     assert_eq!(notices[0].title, "The micro regime ends on 1 January 2028");
+    // On 1 January 2028, said once more: it takes effect (the review of phase 4, P4-5).
+    let i = input(&settings, &invoices, &none, None);
+    let last = thresholds::watch_year(&i, 2027, day("2027-12-31"), &tr);
+    let notices = tell(&thresholds::watch(&i, day("2028-01-01"), &tr), &last, "2028-01-01");
+    let effect = notices.iter().find(|n| n.key == "books:micro-services:2027:effect").unwrap();
+    assert_eq!(effect.title, "From today, the micro regime ends");
+    assert!(effect.actionable);
+    let reel_now = Settings::of(&InvoiceSettings { regime: "reel".into(), ..french("liable") }, None);
+    assert!(thresholds::settled(&reel_now, effect));
+    // 2025's ceiling is in the preset: above in 2025 and 2026, the regime ends on 1 January 2027 (P4-6).
+    let twice = vec![pay("2025-090", "2025-11-02", 8_000_000), pay("2026-091", "2026-10-02", 8_400_000)];
+    let w = thresholds::watch(&input(&settings, &twice, &none, None), day("2026-11-17"), &tr);
+    assert!(w.iter().find(|w| w.id == "micro-services").unwrap().last_year_above, "€80,000 in 2025, above €77,700");
     // Under the real regime, no ceiling watched.
     let reel = Settings::of(&InvoiceSettings { regime: "reel".into(), ..french("liable") }, None);
     assert!(thresholds::watch(&input(&reel, &invoices, &none, None), day("2027-03-02"), &tr).is_empty());
@@ -483,9 +775,26 @@ fn the_des_lists_its_month_s_invoices() {
     assert_eq!(all.len(), 1);
     assert_eq!((all[0].key(), all[0].opens, all[0].due, all[0].total), ("2026-10".to_string(), day("2026-11-01"), day("2026-11-13"), 100_000));
     let tr = en();
-    assert_eq!(des::sentences(&tr, &all[0], "EUR"), ["Services to businesses in other EU countries, October 2026 (DES): €1,000, to declare by 13 November 2026.", "2026-080 · Beispiel GmbH (DE123456789) · €1,200", "2026-081 · Beispiel GmbH (DE123456789) · −€200"]);
+    assert_eq!(des::sentences(&tr, &all[0], "EUR"), ["Services to businesses in other EU countries, October 2026 (DES): €1,000, to declare by 13 November 2026.", "2026-080 · Beispiel GmbH (DE123456789) · €1,200", "2026-081 · Beispiel GmbH (DE123456789) · −€200", "Each value is declared in euros, rounded to the nearest euro."]);
     assert_eq!(des::open_now(&i, day("2026-11-05"), 60).len(), 1);
     assert!(des::open_now(&i, day("2026-10-31"), 60).is_empty(), "its month is not over");
+}
+
+/// The books' line adds up every budget that declares: Overview says it
+/// once, on the first such budget, never the whole again on the next (the
+/// review of phase 4, P4-17).
+#[test]
+fn the_overview_says_the_books_once() {
+    let tr = en();
+    let money = money_with("[[budget]]\nid = 'studio'\ntitle = 'Studio'\nperiod = 'month'\narea = 'work'\nset_aside = 10\n", &[]);
+    let page = crate::view::MoneyPage { ledger: &money.ledger, bank: &money.bank, movements: &money.movements, mail: &[], shown: crate::areas::Area::ALL, own: false, books: Some(&money), imports: &[] };
+    let mut view = crate::view::budgets_page(&page, &tr, day("2026-11-17"));
+    assert_eq!(view.budgets.iter().filter(|c| !c.declare.is_empty()).count(), 2, "both declare");
+    view.say_declared("Turnover received this quarter, excluding VAT: €6,940, to declare by 1 February 2027.");
+    let said: Vec<(&str, &str)> = view.budgets.iter().map(|c| (c.id.as_str(), c.declare.as_str())).collect();
+    assert_eq!(said, [("work", "Turnover received this quarter, excluding VAT: €6,940, to declare by 1 February 2027."), ("studio", "")]);
+    let grouped: Vec<&str> = view.groups.iter().flat_map(|g| g.budgets.iter()).filter(|c| !c.declare.is_empty()).map(|c| c.id.as_str()).collect();
+    assert_eq!(grouped, ["work"], "the Budgets tab's cards alike");
 }
 
 /// What a payment in another currency came to, and the notices told, are
@@ -512,7 +821,7 @@ fn the_books_write_in_the_invoices_life() {
 fn the_preset_says_the_books_rules() {
     let fr = crate::invoice::presets::get("fr");
     let rule = fr.declaration.as_ref().unwrap();
-    assert_eq!((rule.regime.as_str(), rule.periods.clone(), rule.months_after, rule.first_after_days), ("micro", vec!["quarter".to_string(), "month".into()], 1, 90));
+    assert_eq!((rule.regime.as_str(), rule.periods.clone(), rule.months_after, rule.first_periods.month, rule.first_periods.quarter), ("micro", vec!["quarter".to_string(), "month".into()], 1, 4, 2));
     assert_eq!(fr.des.as_ref().map(|d| d.working_day), Some(10));
     assert!(fr.threshold.iter().filter(|t| t.id.contains("goods")).all(|t| t.counts == "all" && t.prorated));
     assert!(fr.threshold.iter().filter(|t| t.kind == "franchise-higher").all(|t| t.corrective));

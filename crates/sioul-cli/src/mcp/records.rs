@@ -413,7 +413,7 @@ pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
     let mut lines = vec![format!("The books of {year}, in {currency}.")];
     let total: i64 = shown.iter().filter_map(|r| r.without_tax).sum();
     lines.push(format!("Received excluding VAT: {}{}.", money(total), if closed > 0 { " (only what is shown)" } else { "" }));
-    let declared: Vec<declarations::Declaration> = declarations::periods_of_year(&loaded.settings, year, today).into_iter().map(|(a, b, f)| declarations::of_rows(&loaded.settings, &shown, a, b, f, &s.tr)).collect();
+    let declared: Vec<declarations::Declaration> = declarations::periods_of_year(&loaded.input(), year, today).into_iter().map(|(a, b, f)| declarations::of_rows(&loaded.settings, &shown, a, b, f, &s.tr)).collect();
     for d in &declared {
         lines.extend(declarations::sentences(&s.tr, d, &currency));
     }

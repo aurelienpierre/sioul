@@ -8234,10 +8234,7 @@ books-declare-cfp = Training contribution (CFP): about { $cfp } ({ $rate }).
 books-declare-cfp-unsaid = The training contribution is not counted until your trade is said: commerce, craft or a liberal profession (Settings ▸ Invoices).
 books-declare-unsaid = { $amount } is in no activity said: say yours (Settings ▸ Invoices), and its contributions are estimated.
 books-declare-estimate = Contributions estimated: { $total }.
-books-declare-foreign = { $n ->
-    [one] One payment in another currency is not counted: say what reached you for it.
-   *[other] { $n } payments in another currency are not counted: say what reached you for each.
-}
+books-declare-foreign = { $foreign } received: say what it came to in euros (sioul invoices received).
 books-vat-head = { $period }: { $tax } of VAT collected, on { $base } excluding VAT.
 books-vat-nothing = { $period }: no VAT collected.
 books-vat-line = { $name }: { $tax } on { $base }.
@@ -8305,3 +8302,29 @@ books-overview = { $every ->
     [yes] at least { $turnover }
    *[no] { $turnover }
 }, to declare by { $due }.
+books-total-until = { $name }, until { $until }
+books-setting-unread = In [invoice], { $key } = “{ $value }” does not read, and is left aside: a day is written 2026-06-12, a period month or quarter, a trade commerce, craft or liberal.
+books-declare-beyond = From { $from } to { $to }: { $turnover } to declare by { $due }; { $beyond } given back beyond what was received is not taken off: Sioul carries nothing over to another period.
+books-declare-line-below = { $name }: { $turnover }, more given back than received: { $zero } declared.
+books-declare-foreign-only = From { $from } to { $to }: { $foreign } received: say what it came to in euros; to declare by { $due }.
+books-foreign-amounts = { $list }
+books-at-least-amount = at least { $amount }
+books-beyond = beyond invoice { $numbers }
+books-des-foreign = Services to businesses in other EU countries, { $month } (DES): { $total }, and { $foreign ->
+    [one] one invoice
+   *[other] { $foreign } invoices
+} in another currency not counted, to say in euros; to declare by { $due }.
+books-des-foreign-note = { $foreign ->
+    [one] One invoice in another currency is not counted: say it in euros (the customs' service gives the rate).
+   *[other] { $foreign } invoices in another currency are not counted: say them in euros (the customs' service gives the rate).
+}
+books-des-credit = { $number } credits an invoice of another month: listed in the month it was issued, below zero, as the customs' online service enters a decrease; which month it belongs to is the customs' guide's to say.
+books-des-rounded = Each value is declared in euros, rounded to the nearest euro.
+books-franchise-effect-title-today = From today, VAT applies
+books-franchise-effect-title = VAT has applied since 1 January { $year }
+books-franchise-effect = Your turnover of { $last }, { $turnover }, passed the { $name }, { $amount }. VAT applies from 1 January { $year }: switch the tax scheme (Settings ▸ Invoices).
+books-micro-effect-title-today = From today, the micro regime ends
+books-micro-effect-title = The micro regime ended on 1 January { $year }
+books-micro-effect = Your turnover passed the { $name } in { $before } and in { $last }. The real regime applies from 1 January { $year }: switch the income regime (Settings ▸ Invoices).
+books-micro-crossed-late-title = Your turnover of { $last } passed the micro regime's ceiling
+books-micro-crossed-late = { $turnover } received in { $last }, above the { $name }, { $amount }: one year above keeps the micro regime; above it again in { $year }, it ends on 1 January after.

@@ -9,10 +9,12 @@
 //!   until dismissed on any device (the notices' words; a Done would settle
 //!   them too), or until two months past their day. Nothing says "late".
 //! - **The thresholds told once** (`tick`): each step of a threshold (80 %,
-//!   crossed, the higher one crossed) told by the device that keeps the
-//!   notices, marked in the invoices' life as it is posted, so that no
-//!   device tells it again; the higher one's notice is to do, until the tax
-//!   scheme says VAT from that day.
+//!   crossed, the higher one crossed) and what takes effect on 1 January,
+//!   told by the device that keeps the notices, marked in the invoices'
+//!   life as it is posted, so that no device tells it as new again; a notice
+//!   to do (the higher one crossed, the franchise lost, the micro regime
+//!   ended) stays until it is done, and is told again at each start until
+//!   then.
 
 use crate::backend::{Shared, load_config, tr};
 use sioul_core::books::{self, declarations, des, thresholds};
@@ -70,23 +72,32 @@ pub(crate) fn porch_items(loaded: &books::Loaded, today: jiff::civil::Date) -> V
             due: d.due,
             who: tr.text("books-porch-declaration", None),
             what: tr.text("books-porch-declare-what", Some(&args)),
-            amount: money(d.turnover),
-            // A zero period said as such ("Nothing received…: declare €0 by…"); else the estimate.
-            note: if d.turnover == 0 && !d.at_least { declarations::sentences(tr, &d, &currency).swap_remove(0) } else { declarations::estimate_line(tr, &d, &currency) },
+            // What to declare, "at least" while a receipt is not known or a payment in another currency not said in euros.
+            amount: if d.least() { tr.text("books-at-least-amount", Some(&{ let mut a = sioul_core::i18n::args(); a.set("amount", money(d.declared)); a })) } else { money(d.declared) },
+            // A payment in another currency to say in euros; a zero period said as such ("Nothing received…: declare €0 by…"); else the estimate.
+            note: declarations::porch_note(tr, &d, &currency),
         });
     }
     for d in des::open_now(&input, today, AFTER_DAYS) {
         let mut args = sioul_core::i18n::args();
         args.set("month", tr.month_year(d.month));
         args.set("due", tr.day_short(d.due));
+        // An invoice in another currency is listed, not added: the total is "at least", and said why.
+        let mut note: Vec<String> = Vec::new();
+        if d.foreign > 0 {
+            let mut a = sioul_core::i18n::args();
+            a.set("foreign", d.foreign as i64);
+            note.push(tr.text("books-des-foreign-note", Some(&a)));
+        }
+        note.extend(d.invoices.iter().map(|c| des::covered_words(tr, c)));
         out.push(Item {
             id: sioul_core::notices::money_id(&format!("books/des/{}", d.key())),
             opens: d.opens,
             due: d.due,
             who: tr.text("books-porch-des", None),
             what: tr.text("books-porch-des-what", Some(&args)),
-            amount: money(d.total),
-            note: d.invoices.iter().map(|c| des::covered_words(tr, c)).collect::<Vec<_>>().join("\n"),
+            amount: if d.foreign > 0 { tr.text("books-at-least-amount", Some(&{ let mut a = sioul_core::i18n::args(); a.set("amount", money(d.total)); a })) } else { money(d.total) },
+            note: note.join("\n"),
         });
     }
     out
@@ -98,10 +109,19 @@ static BUSY: Mutex<()> = Mutex::new(());
 /// The thresholds are looked at this often, at most: a payment's day changes them, never a minute.
 const EVERY: i64 = 15 * 60;
 
+/// Whether the steps told before were said again since this run began (`tick`).
+static TOLD_AGAIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Each minute of the window: at most every quarter of an hour, off the
-/// window's thread, the thresholds' steps not told yet told, by the device
-/// that keeps the notices (as new mail: the one you used last), each marked
-/// told in this device's invoices' life once posted. Never on a phone.
+/// window's thread, by the device that keeps the notices (as new mail: the
+/// one you used last), the thresholds' steps not told yet told, each marked
+/// told in this device's invoices' life once posted; last year's read too
+/// (what takes effect on 1 January, a crossing learned after New Year). At
+/// the run's first look, a step to do told before and not done yet is told
+/// again (the review of phase 4, P4-4). With sharing on, only a device that
+/// shares Drafts and invoices tells, once its files were exchanged since it
+/// started: its marks travel, and it reads every other device's (P4-17).
+/// Never on a phone.
 pub(crate) fn tick(shared: &Arc<Shared>) {
     if cfg!(target_os = "android") {
         return;
@@ -110,8 +130,11 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
     if now - LOOKED.load(Ordering::Relaxed) < EVERY {
         return;
     }
-    LOOKED.store(now, Ordering::Relaxed);
     let active = shared.active.load(Ordering::Relaxed);
+    if crate::share::configured() && (!crate::share::shares("drafts") || !crate::share::last_exchange().is_some_and(|(_, ok)| ok)) {
+        return;
+    }
+    LOOKED.store(now, Ordering::Relaxed);
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let keeper = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
@@ -120,9 +143,16 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
         }
         let today = sioul_core::zone::now().date();
         let loaded = loaded(today);
-        let watches = thresholds::watch(&loaded.input(), today, tr());
-        for notice in thresholds::to_tell(&watches, &loaded.told, tr(), &loaded.settings.currency, today) {
-            tell(notice, today);
+        let input = loaded.input();
+        let last_day = jiff::civil::Date::new(today.year() - 1, 12, 31).unwrap_or(today);
+        let notices = thresholds::notices(&thresholds::watch(&input, today, tr()), &thresholds::watch_year(&input, today.year() - 1, last_day, tr()), tr(), &loaded.settings.currency, today);
+        if !TOLD_AGAIN.swap(true, Ordering::Relaxed) {
+            for notice in thresholds::again(notices.clone(), &loaded.told, &loaded.settings) {
+                tell(notice, today, false);
+            }
+        }
+        for notice in thresholds::to_tell(notices, &loaded.told, &loaded.settings) {
+            tell(notice, today, true);
         }
     });
 }
@@ -133,21 +163,27 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
 /// day. About the budgets, each step by its own key (as the money watch's
 /// warnings), so that two told at one look never replace each other;
 /// opening it opens Budgets, its words saying where the scheme changes.
-/// Marked told (its key and the earlier steps') just before it is posted;
-/// one that waits is offered again at the next look.
-fn tell(notice: thresholds::Notice, today: jiff::civil::Date) {
+/// Marked told (its key and the earlier steps') just before it is posted
+/// (`mark`; a step told again is told already); one that waits is offered
+/// again at the next look.
+fn tell(notice: thresholds::Notice, today: jiff::civil::Date, mark: bool) {
     use sioul_core::attention::Kind as Row;
     use sioul_core::notice::{Class, Kind, Notice};
     let about = sioul_core::notice::address::keyed("sioul:budget/", &notice.key);
     let mut told = Notice::new(about, Kind::Own(Row::Dates), notice.title.clone(), notice.body.clone());
     let mut keys = vec![notice.key.clone()];
     keys.extend(notice.also.iter().cloned());
-    let claim: crate::tell::Claim = Box::new(move || match books::mark_told(&sioul_core::invoice::folder(), &crate::notices::here_id(), &keys, today) {
-        Ok(()) => true,
-        Err(e) => {
-            // Not written: told by none, rather than again and again.
-            eprintln!("sioul: books: {e}");
-            false
+    let claim: crate::tell::Claim = Box::new(move || {
+        if !mark {
+            return true;
+        }
+        match books::mark_told(&sioul_core::invoice::folder(), &crate::notices::here_id(), &keys, today) {
+            Ok(()) => true,
+            Err(e) => {
+                // Not written: told by none, rather than again and again.
+                eprintln!("sioul: books: {e}");
+                false
+            }
         }
     });
     let settled: Option<crate::tell::Settled> = if notice.actionable {
@@ -191,5 +227,32 @@ mod tests {
         assert_eq!(items[1].due, day("2026-11-13"));
         assert!(items[1].note.starts_with("2026-031 · Beispiel GmbH"), "{}", items[1].note);
         assert!(porch_items(&loaded, day("2027-01-05")).iter().all(|i| i.id != "money:books/declaration/2026-Q3"), "two months past its day, it goes");
+    }
+
+    /// An invoice in another currency is listed in the DES, never added: the
+    /// Porch's amount reads "at least", and its note says why before the
+    /// invoices (the review of phase 4, P4-17).
+    #[test]
+    fn the_porch_s_des_says_what_it_does_not_count() {
+        let s = InvoiceSettings { preset: "fr".into(), legal_form: "ei".into(), regime: "micro".into(), activity: vec!["bnc".into()], tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..InvoiceSettings::default() };
+        let reverse = |number: &str, currency: &str, price: i64| {
+            let mut lines = vec![Line { quantity: 1000, unit: "C62".into(), price, base: 1, nature: Nature::Service, ..Line::of_time("Consulting", 0, 0, "AE", 0) }];
+            let totals = sioul_core::invoice::totals::compute(&mut lines, 0, &|_, _| (String::new(), String::new()));
+            let client = Client { kind: "business".into(), name: "Beispiel GmbH".into(), address: Address { country: "DE".into(), city: "Berlin".into(), ..Address::default() }, ..Client::default() };
+            Invoice { format: 2, kind: Kind::Invoice, number: number.into(), date: "2026-10-30".into(), period_to: "2026-10-30".into(), currency: currency.into(), client, lines, totals, ..Invoice::default() }
+        };
+        let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![reverse("2026-031", "EUR", 120_000), reverse("2026-032", "USD", 50_000)], booked: Default::default(), told: Default::default(), money: None };
+        let items = porch_items(&loaded, day("2026-11-05"));
+        let des = items.iter().find(|i| i.id == "money:books/des/2026-10").expect("October's DES");
+        let tr = tr();
+        let mut a = sioul_core::i18n::args();
+        a.set("amount", tr.money_in(sioul_core::money::Money(120_000), "EUR"));
+        assert_eq!(des.amount, tr.text("books-at-least-amount", Some(&a)), "the dollars are not in the total");
+        let note: Vec<&str> = des.note.lines().collect();
+        let mut f = sioul_core::i18n::args();
+        f.set("foreign", 1i64);
+        assert_eq!(note.len(), 3, "{}", des.note);
+        assert_eq!(note[0], tr.text("books-des-foreign-note", Some(&f)));
+        assert!(note[2].starts_with("2026-032 · Beispiel GmbH"), "{}", des.note);
     }
 }

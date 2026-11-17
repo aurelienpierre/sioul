@@ -613,7 +613,8 @@ pub(crate) fn declaration(budget: &str, anchor: &str) -> String {
     let input = loaded.input();
     let currency = loaded.settings.currency.clone();
     let book = books::book(&input, from, to, tr());
-    let mut sentences = Vec::new();
+    // A setting that does not read is said first: what it would change is left aside meanwhile.
+    let mut sentences = books::unread_sentences(tr(), &loaded.settings);
     if let Some(d) = &declared {
         sentences.extend(declarations::sentences(tr(), d, &currency));
     }

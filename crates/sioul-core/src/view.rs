@@ -744,13 +744,15 @@ pub fn budgets_page(page: &MoneyPage, tr: &Translator, today: jiff::civil::Date)
 }
 
 impl BudgetsView {
-    /// The line of every budget that declares (its `declare`), said by the
-    /// books instead (`books::declarations::overview_line`), which hold the
-    /// invoices' payments too: the Overview then says what the declaration
-    /// view says.
+    /// The books' line (`books::declarations::overview_line`), which holds
+    /// the invoices' payments and every budget that declares, said once: on
+    /// the first budget that declares, the others' line taken away, since
+    /// each would say the whole again (the review of phase 4, P4-17). The
+    /// Overview then says what the declaration view says.
     pub fn say_declared(&mut self, line: &str) {
+        let Some(first) = self.budgets.iter().chain(self.groups.iter().flat_map(|g| g.budgets.iter())).find(|c| !c.declare.is_empty()).map(|c| c.id.clone()) else { return };
         for card in self.budgets.iter_mut().chain(self.groups.iter_mut().flat_map(|g| g.budgets.iter_mut())).filter(|c| !c.declare.is_empty()) {
-            card.declare = line.to_string();
+            card.declare = if card.id == first { line.to_string() } else { String::new() };
         }
     }
 }

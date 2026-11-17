@@ -21,11 +21,19 @@
 //!   amount × the days of activity / 365, to the euro (BOI-TVA-DECLA-40-10-10
 //!   §285–295; SP F32353).
 //!
+//! Only the thresholds a preset marks `watched` are watched: France's,
+//! whose counting is researched; Germany's are not, until research says
+//! how § 19 UStG counts (the review of phase 4, P4-16).
+//!
 //! Each step is said once: at 80 % of a base threshold or a ceiling (to
 //! know), on crossing it (to know), and on crossing a higher threshold (to
-//! do, until the tax scheme says VAT from that day). The steps told are
-//! marked in the invoices' life (`books::mark_told`), whichever device told
-//! them: never told again, on any device.
+//! do). What takes effect on 1 January is said on the first start of the
+//! year (to do): the franchise lost, the micro regime ended; a crossing of
+//! last year learned after New Year, at once. The steps told are marked in
+//! the invoices' life (`books::mark_told`), whichever device told them:
+//! never told again as new, on any device; one to do is told again at each
+//! start until it is done, the tax scheme saying VAT from its day or the
+//! income regime changed.
 
 use super::{Input, Row, Settings, days_between, long_day, share};
 use crate::i18n::Translator;
@@ -94,7 +102,9 @@ pub fn key(id: &str, year: i16, step: Step) -> String {
     format!("books:{id}:{year}:{}", step.id())
 }
 
-/// One amount counted, on its day, of a nature.
+/// One amount counted, on its day, of a kind: sales ("goods": goods, food
+/// sold or eaten on the spot, lodging) or services, as its activity says
+/// (the review of phase 4, P4-13); with no activity said, as its nature.
 #[derive(Debug, Clone)]
 struct Counted {
     day: Date,
@@ -102,79 +112,68 @@ struct Counted {
     amount: i64,
 }
 
-/// The nature a receipt no invoice describes counts as: the first activity
-/// said's, else a service.
-fn unsaid_nature(settings: &Settings) -> &'static str {
-    settings.activity_unsaid().and_then(|a| settings.nature_of(a)).unwrap_or("service")
+/// A row of the receipts book as amounts of each kind (`Row::activities`).
+fn of_row(r: &Row) -> Vec<Counted> {
+    r.activities.iter().map(|(_, kind, amount)| Counted { day: r.day, nature: kind, amount: *amount }).collect()
 }
 
-/// A row of the receipts book as amounts of each nature.
-fn of_row(r: &Row, settings: &Settings) -> Vec<Counted> {
-    let Some(without) = r.without_tax else { return Vec::new() };
-    if r.nature.is_empty() {
-        return vec![Counted { day: r.day, nature: unsaid_nature(settings), amount: without }];
-    }
-    vec![Counted { day: r.day, nature: "goods", amount: r.goods }, Counted { day: r.day, nature: "service", amount: without - r.goods }]
+/// Whether a record's line of `category` is located in the country: not
+/// the reverse charge, an intra-EU delivery, an export or outside the
+/// scope. A format-1 record (before November 2026) said no category, only
+/// its VAT mention in words: its lines are located here, never read as
+/// "outside the scope" (the review of phase 4, P4-14).
+fn located(invoice: &Invoice, category: &str) -> bool {
+    invoice.format == 1 || !ELSEWHERE.contains(&category)
 }
 
-/// The turnover as the franchise counts it from `from` to `to`: each
-/// invoice's lines located here, goods on its day (a deposit's on its
-/// payments), services on each payment's day, its share; the receipts no
-/// invoice in the books' currency describes, on their day. A credit note
-/// takes its goods off on its day, its services on the days its refund is
-/// paid back.
+/// The turnover as the franchise counts it from `from` to `to`, from the
+/// receipts book's own rows, so that a bank line counts as the book counts
+/// it (the review of phase 4, P4-14): each row of an invoice, its share of
+/// the invoice's lines located here that count on payment (services, a
+/// deposit's whole), on the row's day, whether a payment was written or the
+/// bank's line tied to the invoice stands for it; each invoice's goods
+/// located here on its day (a deposit's on its payments; an invoice in
+/// another currency's on its payments, its amount here known then only);
+/// the receipts no invoice describes, on their day. A credit note takes its
+/// goods off on its day, its services on the days its refund is paid back.
 fn franchise_counted(input: &Input, rows: &[Row], from: Date, to: Date) -> Vec<Counted> {
     let settings = input.settings;
     let within = |d: Date| d >= from && d <= to;
     let mut out = Vec::new();
-    let ours = |i: &Invoice| !i.number.is_empty() && !i.unreadable && (i.currency.trim().is_empty() || i.currency.eq_ignore_ascii_case(&settings.currency));
-    for invoice in input.invoices.iter().filter(|i| ours(i)) {
-        let Some(day) = invoice.date.get(..10).and_then(|d| d.parse::<Date>().ok()) else { continue };
-        let parts = super::vat::parts(invoice, input.invoices);
-        let deposit = invoice.kind == Kind::Deposit;
-        let located = |category: &str| !ELSEWHERE.contains(&category);
-        if !deposit && within(day) {
-            for (_, (base, _)) in parts.iter().filter(|((n, c, _), _)| *n == "goods" && located(c)) {
-                out.push(Counted { day, nature: "goods", amount: *base });
-            }
-        }
-        if invoice.totals.due <= 0 {
-            continue;
-        }
-        for p in super::received_of(invoice).into_iter().filter(|p| within(p.day)) {
-            for ((nature, _, _), (base, _)) in parts.iter().filter(|((n, c, _), _)| located(c) && (*n == "service" || deposit)) {
-                out.push(Counted { day: p.day, nature, amount: share(*base, p.entry, invoice.totals.due) });
+    let ours = |i: &Invoice| i.currency.trim().is_empty() || i.currency.eq_ignore_ascii_case(&settings.currency);
+    let invoices: std::collections::BTreeMap<&str, &Invoice> = input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable).map(|i| (i.number.as_str(), i)).collect();
+    for invoice in invoices.values().filter(|i| ours(i) && i.kind != Kind::Deposit) {
+        let Some(day) = invoice.date.get(..10).and_then(|d| d.parse::<Date>().ok()).filter(|d| within(*d)) else { continue };
+        for ((nature, activity, category, _), (base, _)) in super::vat::parts(invoice, input.invoices, settings).iter().filter(|((n, ..), _)| *n == "goods") {
+            if located(invoice, category) {
+                out.push(Counted { day, nature: settings.kind_of(nature, activity), amount: *base });
             }
         }
     }
-    // What no invoice in the books' currency describes: as the receipts book
-    // has it, on its day; an invoice in another currency, the share of its
-    // lines located here, goods and services alike on the payment's day (its
-    // amount here is known then only).
-    let numbers: BTreeSet<&str> = input.invoices.iter().filter(|i| ours(i)).map(|i| i.number.as_str()).collect();
-    for r in rows.iter().filter(|r| within(r.day) && !numbers.contains(r.invoice.as_str())) {
-        let foreign = (!r.invoice.is_empty()).then(|| input.invoices.iter().find(|i| i.number == r.invoice && !i.unreadable)).flatten();
-        match (foreign, r.without_tax) {
-            (Some(invoice), Some(without)) => {
-                let parts = super::vat::parts(invoice, input.invoices);
-                let whole: i64 = parts.values().map(|(base, _)| base).sum();
-                for nature in ["goods", "service"] {
-                    let here: i64 = parts.iter().filter(|((n, c, _), _)| *n == nature && !ELSEWHERE.contains(&c.as_str())).map(|(_, (base, _))| base).sum();
-                    if here != 0 && whole != 0 {
-                        out.push(Counted { day: r.day, nature, amount: share(here, without, whole) });
-                    }
-                }
+    for r in rows.iter().filter(|r| within(r.day)) {
+        let Some(without) = r.without_tax else { continue };
+        let Some(invoice) = invoices.get(r.invoice.as_str()) else {
+            out.extend(of_row(r));
+            continue;
+        };
+        let parts = super::vat::parts(invoice, input.invoices, settings);
+        let whole: i64 = parts.values().map(|(base, _)| base).sum();
+        if whole == 0 {
+            continue;
+        }
+        let on_payment = |nature: &str| nature == "service" || invoice.kind == Kind::Deposit || !ours(invoice);
+        for ((nature, activity, category, _), (base, _)) in parts.iter().filter(|((n, ..), _)| on_payment(n)) {
+            if located(invoice, category) {
+                out.push(Counted { day: r.day, nature: settings.kind_of(nature, activity), amount: share(*base, without, whole) });
             }
-            (Some(_), None) => {}
-            (None, _) => out.extend(of_row(r, settings)),
         }
     }
     out
 }
 
-/// The receipts book's rows from `from` to `to`, as amounts of each nature.
-fn received_counted(rows: &[Row], settings: &Settings, from: Date, to: Date) -> Vec<Counted> {
-    rows.iter().filter(|r| r.day >= from && r.day <= to).flat_map(|r| of_row(r, settings)).collect()
+/// The receipts book's rows from `from` to `to`, as amounts of each kind.
+fn received_counted(rows: &[Row], from: Date, to: Date) -> Vec<Counted> {
+    rows.iter().filter(|r| r.day >= from && r.day <= to).flat_map(of_row).collect()
 }
 
 /// The natures the issuer sells: its activities'; none said, those its invoices of `year` sell; else services.
@@ -261,29 +260,38 @@ fn walk(counted: &[Counted], counts: &str, near: i64, limit: i64) -> (i64, Optio
     (sum, reached, above)
 }
 
-/// Where each threshold watched stands in `today`'s year, until `today`:
-/// the franchise's while the franchise holds today, the micro regime's
-/// ceilings under it. None for a preset without thresholds.
+/// Where each threshold watched stands in `today`'s year, until `today`
+/// (`watch_year`).
 pub fn watch(input: &Input, today: Date, tr: &Translator) -> Vec<Watch> {
+    watch_year(input, today.year(), today, tr)
+}
+
+/// Where each threshold watched stood in `year`, until `until` (the year's
+/// last day for a year gone): the franchise's while the franchise held then,
+/// the micro regime's ceilings under it. Only the thresholds the preset
+/// says are watched (`watched`: France's, researched; the review of phase
+/// 4, P4-16). A crossing counts in the year of its day, whatever day it is
+/// learned on.
+pub fn watch_year(input: &Input, year: i16, until: Date, tr: &Translator) -> Vec<Watch> {
     let settings = input.settings;
-    let year = today.year();
-    let first = Date::new(year, 1, 1).unwrap_or(today);
+    let first = Date::new(year, 1, 1).unwrap_or(until);
     let sold = natures(input);
-    let franchise = settings.scheme_on(today) == "franchise";
+    let franchise = settings.scheme_on(until) == "franchise";
     let micro = settings.regime == "micro";
     let mut out = Vec::new();
-    let want_franchise = franchise && settings.preset.threshold.iter().any(|t| t.kind.starts_with("franchise"));
-    let want_micro = micro && settings.preset.threshold.iter().any(|t| t.kind == "micro");
+    let watched = |t: &&Threshold| t.watched;
+    let want_franchise = franchise && settings.preset.threshold.iter().filter(watched).any(|t| t.kind.starts_with("franchise"));
+    let want_micro = micro && settings.preset.threshold.iter().filter(watched).any(|t| t.kind == "micro");
     if !want_franchise && !want_micro {
         return out;
     }
     let last_first = Date::new(year - 1, 1, 1).unwrap_or(first);
-    let rows = super::rows(input, last_first, today, tr);
+    let rows = super::rows(input, last_first, until, tr);
     let at_least = rows.iter().any(|r| r.day >= first && r.without_tax.is_none());
     if want_franchise {
-        let counted = franchise_counted(input, &rows, first, today);
+        let counted = franchise_counted(input, &rows, first, until);
         for kind in ["franchise", "franchise-higher"] {
-            for t in thresholds_on(settings, kind, today).into_iter().filter(|t| t.scheme.is_empty() || t.scheme == "franchise").filter(|t| applies(t, settings, &sold)) {
+            for t in thresholds_on(settings, kind, until).into_iter().filter(|t| t.watched).filter(|t| t.scheme.is_empty() || t.scheme == "franchise").filter(|t| applies(t, settings, &sold)) {
                 let (amount, prorated_from) = amount_in(&t, settings, year);
                 let counts = counts_of(&t, settings);
                 let near = if kind == "franchise" { share(80, amount, 100) } else { i64::MAX };
@@ -293,10 +301,10 @@ pub fn watch(input: &Input, today: Date, tr: &Translator) -> Vec<Watch> {
         }
     }
     if want_micro {
-        let counted = received_counted(&rows, settings, first, today);
+        let counted = received_counted(&rows, first, until);
         let last_end = Date::new(year - 1, 12, 31).unwrap_or(first);
-        let before = received_counted(&rows, settings, last_first, last_end);
-        for t in thresholds_on(settings, "micro", today).into_iter().filter(|t| t.regime.is_empty() || t.regime == settings.regime).filter(|t| applies(t, settings, &sold)) {
+        let before = received_counted(&rows, last_first, last_end);
+        for t in thresholds_on(settings, "micro", until).into_iter().filter(|t| t.watched).filter(|t| t.regime.is_empty() || t.regime == settings.regime).filter(|t| applies(t, settings, &sold)) {
             let (amount, prorated_from) = amount_in(&t, settings, year);
             let counts = counts_of(&t, settings);
             let (turnover, reached, above) = walk(&counted, counts, share(80, amount, 100), amount);
@@ -310,6 +318,18 @@ pub fn watch(input: &Input, today: Date, tr: &Translator) -> Vec<Watch> {
     out
 }
 
+/// What settles a notice to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Settle {
+    /// To know: nothing to settle.
+    Nothing,
+    /// The tax scheme says VAT from that day.
+    Scheme(Date),
+    /// The income regime is no longer the micro regime.
+    Regime,
+}
+
 /// A notice of the books to tell: its key (and the earlier steps marked
 /// told with it), its words, whether it is to do, its day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -318,18 +338,24 @@ pub struct Notice {
     /// Earlier steps of the same watch, marked told with it, never told after it.
     pub also: Vec<String>,
     pub step: Step,
-    /// To do (a higher threshold crossed): it stays until the tax scheme
-    /// says VAT from `day` (`settled`).
+    /// To do: it stays until done (`settle`), and is told again at each
+    /// start while it is not (the review of phase 4, P4-4).
     pub actionable: bool,
+    pub settle: Settle,
     pub title: String,
     pub body: String,
-    /// The day it happened.
+    /// The day it happened (an effect: the 1 January it takes effect).
     pub day: Date,
 }
 
-/// Whether a notice to do is settled: the tax scheme says VAT on its day.
+/// Whether a notice to do is settled: the tax scheme says VAT on its day;
+/// the regime is no longer the micro regime.
 pub fn settled(settings: &Settings, notice: &Notice) -> bool {
-    notice.actionable && settings.scheme_on(notice.day) == "liable"
+    match notice.settle {
+        Settle::Nothing => false,
+        Settle::Scheme(day) => settings.scheme_on(day) == "liable",
+        Settle::Regime => settings.regime != "micro",
+    }
 }
 
 /// A threshold's name in words: "the VAT franchise's threshold for services".
@@ -339,30 +365,82 @@ pub fn name(tr: &Translator, w: &Watch) -> String {
     tr.text(&format!("books-threshold-{family}{higher}-{}", w.counts), None)
 }
 
-/// The steps of `watches` not told yet (`told`), one per watch, the most
-/// advanced: a crossing said, its 80 % is never said after it.
-pub fn to_tell(watches: &[Watch], told: &BTreeSet<String>, tr: &Translator, currency: &str, today: Date) -> Vec<Notice> {
+/// Every notice the watches give, told or not, settled or not (`to_tell`,
+/// `again` choose): this year's steps, one per watch, its most advanced (a
+/// crossing said, its 80 % is never said after it); a higher threshold
+/// crossed is said alone, the base's steps of the same count marked with it
+/// (the review of phase 4, P4-19); and from last year (`last`, its whole
+/// year): what takes effect on this year's 1 January (the franchise lost,
+/// the micro regime's end after two years above), and a crossing learned
+/// after New Year, said at once (P4-5). While last year's crossing ends the
+/// franchise, this year's franchise steps are not said.
+pub fn notices(this: &[Watch], last: &[Watch], tr: &Translator, currency: &str, today: Date) -> Vec<Notice> {
     let money = |m: i64| tr.money_in(crate::money::Money(m), currency);
     let mut out = Vec::new();
-    for w in watches {
-        let steps: Vec<(Step, Date)> = match w.kind.as_str() {
-            "franchise-higher" => w.crossed.map(|d| (Step::Higher, d)).into_iter().collect(),
-            _ => [w.near.map(|d| (Step::Near, d)), w.crossed.map(|d| (Step::Crossed, d))].into_iter().flatten().collect(),
-        };
-        let Some(&(step, day)) = steps.last() else { continue };
-        let k = key(&w.id, w.year, step);
-        if told.contains(&k) {
-            continue;
-        }
-        let also: Vec<String> = steps.iter().filter(|(s, _)| *s != step).map(|(s, _)| key(&w.id, w.year, *s)).collect();
+    let year = today.year();
+    let january = Date::new(year, 1, 1).unwrap_or(today);
+    let args_of = |w: &Watch, day: Date| {
         let mut args = crate::i18n::args();
         args.set("name", name(tr, w));
         args.set("turnover", money(w.turnover));
         args.set("amount", money(w.amount));
         args.set("day", long_day(tr, day));
         args.set("today", if day == today { "yes" } else { "no" });
+        args.set("year", year.to_string());
         args.set("next", (w.year + 1).to_string());
+        args.set("last", w.year.to_string());
+        args.set("before", (w.year - 1).to_string());
         args.set("corrective", if w.corrective { "yes" } else { "no" });
+        args
+    };
+    let higher_of = |watches: &[Watch], w: &Watch| watches.iter().find(|h| h.kind == "franchise-higher" && h.counts == w.counts && h.year == w.year).cloned();
+    // Last year: the effects on this year's 1 January, a crossing learned late.
+    let mut ended_franchise = false;
+    for w in last {
+        match w.kind.as_str() {
+            "franchise" if w.crossed.is_some() && higher_of(last, w).is_none_or(|h| h.crossed.is_none()) => {
+                ended_franchise = true;
+                let args = args_of(w, january);
+                let title = if today == january { "books-franchise-effect-title-today" } else { "books-franchise-effect-title" };
+                out.push(Notice { key: key(&w.id, w.year, Step::Crossed).replace(":crossed", ":effect"), also: vec![key(&w.id, w.year, Step::Near), key(&w.id, w.year, Step::Crossed)], step: Step::Crossed, actionable: true, settle: Settle::Scheme(january), title: tr.text(title, Some(&args)), body: tr.text("books-franchise-effect", Some(&args)), day: january });
+            }
+            "franchise-higher" if w.crossed.is_some() => {
+                ended_franchise = true;
+                let day = w.crossed.unwrap_or(january);
+                let args = args_of(w, day);
+                let base: Vec<String> = last.iter().filter(|b| b.kind == "franchise" && b.counts == w.counts).flat_map(|b| [key(&b.id, b.year, Step::Near), key(&b.id, b.year, Step::Crossed)]).collect();
+                out.push(Notice { key: key(&w.id, w.year, Step::Higher), also: base, step: Step::Higher, actionable: true, settle: Settle::Scheme(day), title: tr.text("books-franchise-higher-title", Some(&args)), body: tr.text("books-franchise-higher", Some(&args)), day });
+            }
+            "micro" if w.crossed.is_some() && w.last_year_above => {
+                let args = args_of(w, january);
+                let title = if today == january { "books-micro-effect-title-today" } else { "books-micro-effect-title" };
+                out.push(Notice { key: key(&w.id, w.year, Step::Crossed).replace(":crossed", ":effect"), also: vec![key(&w.id, w.year, Step::Near), key(&w.id, w.year, Step::Crossed)], step: Step::Crossed, actionable: true, settle: Settle::Regime, title: tr.text(title, Some(&args)), body: tr.text("books-micro-effect", Some(&args)), day: january });
+            }
+            "micro" if w.crossed.is_some() => {
+                let args = args_of(w, january);
+                out.push(Notice { key: key(&w.id, w.year, Step::Crossed), also: vec![key(&w.id, w.year, Step::Near)], step: Step::Crossed, actionable: false, settle: Settle::Nothing, title: tr.text("books-micro-crossed-late-title", Some(&args)), body: tr.text("books-micro-crossed-late", Some(&args)), day: w.crossed.unwrap_or(january) });
+            }
+            _ => {}
+        }
+    }
+    for w in this {
+        if ended_franchise && w.kind.starts_with("franchise") {
+            continue;
+        }
+        let steps: Vec<(Step, Date)> = match w.kind.as_str() {
+            "franchise-higher" => w.crossed.map(|d| (Step::Higher, d)).into_iter().collect(),
+            _ => [w.near.map(|d| (Step::Near, d)), w.crossed.map(|d| (Step::Crossed, d))].into_iter().flatten().collect(),
+        };
+        let Some(&(step, day)) = steps.last() else { continue };
+        // The higher threshold of the same count crossed: said alone, these steps with it.
+        if w.kind == "franchise" && higher_of(this, w).is_some_and(|h| h.crossed.is_some()) {
+            continue;
+        }
+        let mut also: Vec<String> = steps.iter().filter(|(s, _)| *s != step).map(|(s, _)| key(&w.id, w.year, *s)).collect();
+        if w.kind == "franchise-higher" {
+            also.extend(this.iter().filter(|b| b.kind == "franchise" && b.counts == w.counts).flat_map(|b| [key(&b.id, b.year, Step::Near), key(&b.id, b.year, Step::Crossed)]));
+        }
+        let args = args_of(w, day);
         let family = if w.kind == "micro" { "micro" } else { "franchise" };
         let (title, body) = match (step, family) {
             (Step::Near, _) => (format!("books-near-{family}-title"), format!("books-near-{family}")),
@@ -371,9 +449,22 @@ pub fn to_tell(watches: &[Watch], told: &BTreeSet<String>, tr: &Translator, curr
             (Step::Crossed, _) => ("books-franchise-crossed-title".into(), "books-franchise-crossed".into()),
             (Step::Higher, _) => ("books-franchise-higher-title".into(), "books-franchise-higher".into()),
         };
-        out.push(Notice { key: k, also, step, actionable: step == Step::Higher, title: tr.text(&title, Some(&args)), body: tr.text(&body, Some(&args)), day });
+        let settle = if step == Step::Higher { Settle::Scheme(day) } else { Settle::Nothing };
+        out.push(Notice { key: key(&w.id, w.year, step), also, step, actionable: step == Step::Higher, settle, title: tr.text(&title, Some(&args)), body: tr.text(&body, Some(&args)), day });
     }
     out
+}
+
+/// The notices not told yet (`told`) nor settled: told once, whichever
+/// device tells them.
+pub fn to_tell(notices: Vec<Notice>, told: &BTreeSet<String>, settings: &Settings) -> Vec<Notice> {
+    notices.into_iter().filter(|n| !told.contains(&n.key) && !settled(settings, n)).collect()
+}
+
+/// The notices to do told already and not settled: told again at each
+/// start, so that one never goes before it is done (the review of phase 4, P4-4).
+pub fn again(notices: Vec<Notice>, told: &BTreeSet<String>, settings: &Settings) -> Vec<Notice> {
+    notices.into_iter().filter(|n| n.actionable && told.contains(&n.key) && !settled(settings, n)).collect()
 }
 
 /// What the books say of a watch: "The VAT franchise's threshold for

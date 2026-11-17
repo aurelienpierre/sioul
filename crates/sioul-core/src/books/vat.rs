@@ -5,19 +5,21 @@
 //! (each month, or each quarter as set) and per rate, the base and the VAT
 //! collected, as each becomes due (research-fr §8.2, §9.2): on the payments
 //! received for services and for deposit invoices, on the invoice's day for
-//! goods, and for services too under the option for debits. A final invoice
-//! counts what its deposits did not. Lines whose VAT is due elsewhere (the
-//! reverse charge, an intra-EU delivery, an export, outside the scope) are
-//! said with their base and no tax.
+//! goods, and for services too under the option for debits, as each record
+//! printed it when it was issued (its issuer's copy), never as the settings
+//! say today. A final invoice counts what its deposits did not. Lines whose
+//! VAT is due elsewhere (the reverse charge, an intra-EU delivery, an
+//! export, outside the scope) are said with their base and no tax.
 //!
 //! It prepares the return: Sioul files nothing, and the return's period and
 //! day are not in Sioul's sources. Only invoices issued liable to VAT count.
 //! A credit note takes its goods' VAT off on its day, its services' on the
-//! days its refund is paid back (`books::received_of`); one on services of
-//! an invoice that was paid, whose refund is not written, is said, not
-//! counted until it is.
+//! days its refund is paid back (`books::received_of`): VAT comes off only
+//! where it was due. One on services of an invoice paid beyond what it asks
+//! once credited, its refund not written, is said, not counted until it is;
+//! one for what was never paid needs no refund, and counts nothing.
 
-use super::{Every, Input, period_of, shift_days, share};
+use super::{Every, Input, Settings, period_of, shift_days, share};
 use crate::invoice::{Invoice, Kind, Nature};
 use jiff::civil::Date;
 use serde::Serialize;
@@ -49,35 +51,88 @@ pub struct Summary {
     pub foreign: Vec<String>,
 }
 
-/// An invoice's tax by nature ("goods", "service"), category and rate (base, tax), signed (a
-/// credit note's taken off): its breakdown split between goods and services
-/// by its lines' share of each base; a final invoice's less the deposits it
-/// deducts, whose tax counted with them.
-pub fn parts(invoice: &Invoice, all: &[Invoice]) -> BTreeMap<(&'static str, String, i64), (i64, i64)> {
-    let mut out: BTreeMap<(&'static str, String, i64), (i64, i64)> = BTreeMap::new();
-    let mut add = |of: &Invoice, sign: i64| {
-        for b in &of.totals.breakdown {
-            let goods: i64 = of.lines.iter().filter(|l| l.category == b.category && l.rate == b.rate && l.nature == Nature::Goods).map(|l| l.amount).sum();
-            let goods_tax = if b.base == 0 { 0 } else { share(goods, b.tax, b.base) };
-            for (nature, base, tax) in [("goods", goods, goods_tax), ("service", b.base - goods, b.tax - goods_tax)] {
-                if base == 0 && tax == 0 {
-                    continue;
-                }
-                let at = out.entry((nature, b.category.clone(), b.rate)).or_default();
-                at.0 += sign * base;
-                at.1 += sign * tax;
-            }
+/// A part of a record: what it sells (its nature, which says when its VAT
+/// is due and where), the activity it is declared in (`books::line_activity`,
+/// which says its contribution rates and its threshold), its VAT category
+/// and rate.
+pub type Key = (&'static str, String, String, i64);
+
+/// A record's own parts, from its lines and its breakdown: each category
+/// and rate's base and tax split by its lines' nature and activity, the
+/// tax by the share of each base (the last takes what rounding leaves).
+fn own_parts(invoice: &Invoice, settings: &Settings) -> BTreeMap<Key, (i64, i64)> {
+    let mut out: BTreeMap<Key, (i64, i64)> = BTreeMap::new();
+    for b in &invoice.totals.breakdown {
+        let mut groups: BTreeMap<(&'static str, String), i64> = BTreeMap::new();
+        for line in invoice.lines.iter().filter(|l| l.category == b.category && (l.rate == b.rate || !crate::invoice::totals::taxed(&b.category))) {
+            let nature = if line.nature == Nature::Goods { "goods" } else { "service" };
+            *groups.entry((nature, super::line_activity(settings, line))).or_default() += line.amount;
         }
-    };
+        if groups.is_empty() {
+            groups.insert(("service", settings.activity_unsaid().unwrap_or_default().to_string()), b.base);
+        }
+        let lines_base: i64 = groups.values().sum();
+        let (mut base_left, mut tax_left) = (b.base, b.tax);
+        let count = groups.len();
+        for (i, ((nature, activity), amount)) in groups.into_iter().enumerate() {
+            let (base, tax) = if i + 1 == count { (base_left, tax_left) } else { (share(amount, b.base, lines_base), share(amount, b.tax, lines_base)) };
+            base_left -= base;
+            tax_left -= tax;
+            let at = out.entry((nature, activity, b.category.clone(), b.rate)).or_default();
+            at.0 += base;
+            at.1 += tax;
+        }
+    }
+    out
+}
+
+/// `(base, tax)` spread over `like`'s keys in proportion to their bases and
+/// taxes (the last takes what rounding leaves).
+fn spread(like: &BTreeMap<Key, (i64, i64)>, base: i64, tax: i64) -> BTreeMap<Key, (i64, i64)> {
+    let (all_base, all_tax): (i64, i64) = like.values().fold((0, 0), |(b, t), (x, y)| (b + x, t + y));
+    let count = like.len();
+    let (mut base_left, mut tax_left) = (base, tax);
+    let mut out = BTreeMap::new();
+    for (i, (key, (b, t))) in like.iter().enumerate() {
+        let part_base = if i + 1 == count { base_left } else if all_base == 0 { 0 } else { share(*b, base, all_base) };
+        let part_tax = if i + 1 == count { tax_left } else if all_tax == 0 { if all_base == 0 { 0 } else { share(*b, tax, all_base) } } else { share(*t, tax, all_tax) };
+        base_left -= part_base;
+        tax_left -= part_tax;
+        out.insert(key.clone(), (part_base, part_tax));
+    }
+    out
+}
+
+/// The final invoice citing `deposit`, when one was issued.
+fn final_of<'a>(deposit: &Invoice, all: &'a [Invoice]) -> Option<&'a Invoice> {
+    all.iter().find(|f| !f.unreadable && !f.number.is_empty() && f.deposits.iter().any(|c| c.number == deposit.number))
+}
+
+/// A record's parts (`Key`), signed (a credit note's taken off), each its
+/// base and tax, so that a deposit counts once (the review of phase 4, P4-2,
+/// P4-7): a deposit invoice a final invoice cites pays for that invoice's
+/// lines, so it takes their nature and activity, its amount spread over
+/// them, whatever its own line says (before, its own line's, the choice
+/// made when it was issued); a final invoice holds only what its deposits
+/// did not, each deposit taken off its parts in the same proportion.
+pub fn parts(invoice: &Invoice, all: &[Invoice], settings: &Settings) -> BTreeMap<Key, (i64, i64)> {
     let sign = if invoice.kind == Kind::CreditNote { -1 } else { 1 };
-    add(invoice, sign);
+    let mut out = match final_of(invoice, all).filter(|_| invoice.kind == Kind::Deposit) {
+        Some(last) => spread(&own_parts(last, settings), invoice.totals.without_tax, invoice.totals.tax),
+        None => own_parts(invoice, settings),
+    };
+    let own = out.clone();
     for cited in &invoice.deposits {
         if let Some(deposit) = all.iter().find(|d| d.number == cited.number && !d.unreadable) {
-            add(deposit, -sign);
+            for (key, (base, tax)) in spread(&own, deposit.totals.without_tax, deposit.totals.tax) {
+                let at = out.entry(key).or_default();
+                at.0 -= base;
+                at.1 -= tax;
+            }
         }
     }
     out.retain(|_, (base, tax)| *base != 0 || *tax != 0);
-    out
+    out.into_iter().map(|(k, (b, t))| (k, (sign * b, sign * t))).collect()
 }
 
 /// One amount becoming due.
@@ -112,11 +167,14 @@ pub fn between(input: &Input, from: Date, to: Date) -> Vec<Summary> {
             foreign.push((day, invoice.number.clone()));
             continue;
         }
-        let parts = parts(invoice, input.invoices);
+        let parts = parts(invoice, input.invoices, settings);
         let deposit = invoice.kind == Kind::Deposit;
+        // The option for debits as the record printed it, frozen at its issue
+        // (the review of phase 4, P4-8): never today's settings.
+        let debits = invoice.issuer.options.iter().any(|o| o == "debits");
         // Due on the invoice's day: goods (a deposit's on its payment), services under the option for debits.
-        let on_issue = |nature: &str| !deposit && (nature == "goods" || settings.debits);
-        for ((nature, category, rate), (base, tax)) in &parts {
+        let on_issue = |nature: &str| !deposit && (nature == "goods" || debits);
+        for ((nature, _, category, rate), (base, tax)) in &parts {
             if on_issue(nature) {
                 due.push(Due { day, category: category.clone(), rate: *rate, base: *base, tax: *tax });
             }
@@ -126,16 +184,24 @@ pub fn between(input: &Input, from: Date, to: Date) -> Vec<Summary> {
         let whole = invoice.totals.due;
         if whole > 0 {
             for p in &received {
-                for ((nature, category, rate), (base, tax)) in &parts {
+                for ((nature, _, category, rate), (base, tax)) in &parts {
                     if !on_issue(nature) {
                         due.push(Due { day: p.day, category: category.clone(), rate: *rate, base: share(*base, p.entry, whole), tax: share(*tax, p.entry, whole) });
                     }
                 }
             }
         }
-        // A credit note on services of an invoice that was paid, its refund not written yet: said.
-        let credited_paid = || invoice.corrects.as_ref().and_then(|c| input.invoices.iter().find(|i| i.number == c.number && !i.unreadable)).is_some_and(|i| super::received_of(i).iter().any(|p| p.amount > 0));
-        if invoice.kind == Kind::CreditNote && received.is_empty() && parts.keys().any(|(nature, _, _)| !on_issue(nature)) && credited_paid() {
+        // A credit note on services whose invoice was paid beyond what it
+        // still asks once credited, its refund not written yet: money owed
+        // back, said. One for what was never paid needs no refund: it lowers
+        // what is due, and counts nothing (the review of phase 4, P4-10).
+        let owed_back = || {
+            invoice.corrects.as_ref().and_then(|c| input.invoices.iter().find(|i| i.number == c.number && !i.unreadable)).is_some_and(|credited| {
+                let paid: i64 = super::received_of(credited).iter().map(|p| p.amount).sum();
+                paid + credited.credited(input.invoices) > credited.totals.due
+            })
+        };
+        if invoice.kind == Kind::CreditNote && received.is_empty() && parts.keys().any(|(nature, ..)| !on_issue(nature)) && owed_back() {
             credits.push((day, invoice.number.clone()));
         }
     }

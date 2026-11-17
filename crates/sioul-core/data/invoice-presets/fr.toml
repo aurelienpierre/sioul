@@ -422,7 +422,8 @@ nature = "service"
 # goods' ceiling). Left after two consecutive years above, on 1 January
 # after the second. The first year's is prorated: ceiling × days of activity
 # / 365 (SP F32353; URSSAF: a start on 1 March 2026, services, 83,600 ×
-# 306 / 365 = €70,087).
+# 306 / 365 = €70,087). Watched (`watched`): France's thresholds are
+# researched; another preset's are not watched until they are.
 [[threshold]]
 id = "micro-goods"
 kind = "micro"
@@ -430,6 +431,7 @@ regime = "micro"
 activity = ["goods-bic"]
 counts = "all"
 prorated = true
+watched = true
 amount = 20310000
 from = "2026-01-01"
 
@@ -439,8 +441,56 @@ kind = "micro"
 regime = "micro"
 activity = ["services-bic", "bnc", "cipav"]
 prorated = true
+watched = true
 amount = 8360000
 from = "2026-01-01"
+
+# The ceilings before: €188,700 for sales and lodging, €77,700 for services
+# and liberal professions in 2023, 2024 and 2025; €176,200 and €72,600 in
+# 2022 (service-public, actualité A16230 of 5 January 2023, "Modification
+# des seuils des régimes d'imposition de la micro-entreprise pour 2023, 2024
+# et 2025"): so that a second year above is seen in 2026 too.
+[[threshold]]
+id = "micro-goods"
+kind = "micro"
+regime = "micro"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+watched = true
+amount = 18870000
+from = "2023-01-01"
+
+[[threshold]]
+id = "micro-services"
+kind = "micro"
+regime = "micro"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+watched = true
+amount = 7770000
+from = "2023-01-01"
+
+[[threshold]]
+id = "micro-goods"
+kind = "micro"
+regime = "micro"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+watched = true
+amount = 17620000
+from = "2022-01-01"
+
+[[threshold]]
+id = "micro-services"
+kind = "micro"
+regime = "micro"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+watched = true
+amount = 7260000
+from = "2022-01-01"
 
 # VAT franchise thresholds (art. 293 B CGI; SP F21746, checked 1 January
 # 2026; BOI-TVA-DECLA-40-10-10 §130–140), watched while the franchise holds:
@@ -456,6 +506,7 @@ from = "2026-01-01"
 [[threshold]]
 id = "franchise-goods"
 kind = "franchise"
+watched = true
 scheme = "franchise"
 activity = ["goods-bic"]
 counts = "all"
@@ -466,6 +517,7 @@ from = "2026-01-01"
 [[threshold]]
 id = "franchise-goods-higher"
 kind = "franchise-higher"
+watched = true
 scheme = "franchise"
 activity = ["goods-bic"]
 counts = "all"
@@ -477,6 +529,7 @@ from = "2026-01-01"
 [[threshold]]
 id = "franchise-services"
 kind = "franchise"
+watched = true
 scheme = "franchise"
 activity = ["services-bic", "bnc", "cipav"]
 prorated = true
@@ -486,6 +539,7 @@ from = "2026-01-01"
 [[threshold]]
 id = "franchise-services-higher"
 kind = "franchise-higher"
+watched = true
 scheme = "franchise"
 activity = ["services-bic", "bnc", "cipav"]
 prorated = true
@@ -499,14 +553,21 @@ from = "2026-01-01"
 # monthly or quarterly, as chosen (quarterly unless said); due the last day
 # of the month after the period (January → end of February; the first
 # quarter → 30 April), moved to the next working day when it falls on a
-# weekend or a holiday; the first one at least 90 days after the start of
-# activity (a monthly start in January: due 31 May; a quarterly start in the
-# first quarter: due 31 July).
+# weekend or a holiday. The first declaration gathers the start's period and
+# the ones after it: monthly, the start month and the three after, due the
+# last day of the fourth month after the start month (a start in January,
+# due 31 May; in March, 31 July; in October, 28 or 29 February); quarterly,
+# the start quarter and the next (a start in the first quarter, due 31 July;
+# on 12 April, 31 October). Sources: URSSAF's tables (research-fr §7.1);
+# justice.fr, fiche "Micro-entrepreneur : déclarer son chiffre d'affaires"
+# (a start on 6 March 2026, first declaration by 31 July 2026; quarterly, a
+# start on 12 April 2026, by 31 October 2026); propulsebyca.fr's monthly
+# table of the first declarations (dates-declarations).
 [declaration]
 regime = "micro"
 periods = ["quarter", "month"]
 months_after = 1
-first_after_days = 90
+first_periods = { month = 4, quarter = 2 }
 
 # The DES, déclaration européenne de services (douane.gouv.fr, updated
 # 7 February 2025; art. 289 B CGI; BOI-TVA-DECLA-20-20-40): services to

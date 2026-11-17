@@ -8606,10 +8606,7 @@ books-declare-cfp = Contribution à la formation professionnelle (CFP) : envir
 books-declare-cfp-unsaid = La contribution à la formation professionnelle n’est pas comptée tant que votre métier n’est pas dit : commerce, artisanat ou profession libérale (Paramètres ▸ Factures).
 books-declare-unsaid = { $amount } ne relève d’aucune activité dite : dites la vôtre (Paramètres ▸ Factures), et ses cotisations sont estimées.
 books-declare-estimate = Cotisations estimées : { $total }.
-books-declare-foreign = { $n ->
-    [one] Un paiement en une autre devise n’est pas compté : dites ce qu’il vous a rapporté.
-   *[other] { $n } paiements en une autre devise ne sont pas comptés : dites ce que chacun vous a rapporté.
-}
+books-declare-foreign = { $foreign } reçus : dites ce que cela a donné en euros (sioul invoices received).
 books-vat-head = { $period } : { $tax } de TVA collectée, sur { $base } hors TVA.
 books-vat-nothing = { $period } : aucune TVA collectée.
 books-vat-line = { $name } : { $tax } sur { $base }.
@@ -8677,3 +8674,29 @@ books-overview = { $every ->
     [yes] au moins { $turnover }
    *[no] { $turnover }
 }, à déclarer au plus tard le { $due }.
+books-total-until = { $name }, jusqu’au { $until }
+books-setting-unread = Dans [invoice], { $key } = « { $value } » ne se lit pas, et reste de côté : un jour s’écrit 2026-06-12, une période month ou quarter, un métier commerce, craft ou liberal.
+books-declare-beyond = Du { $from } au { $to } : { $turnover } à déclarer au plus tard le { $due } ; les { $beyond } rendus au-delà de ce qui a été encaissé ne sont pas déduits : Sioul ne reporte rien sur une autre période.
+books-declare-line-below = { $name } : { $turnover }, plus rendu qu’encaissé : { $zero } déclarés.
+books-declare-foreign-only = Du { $from } au { $to } : { $foreign } reçus : dites ce que cela a donné en euros ; à déclarer au plus tard le { $due }.
+books-foreign-amounts = { $list }
+books-at-least-amount = au moins { $amount }
+books-beyond = au-delà de la facture { $numbers }
+books-des-foreign = Services à des entreprises d’autres pays de l’UE, { $month } (DES) : { $total }, et { $foreign ->
+    [one] une facture
+   *[other] { $foreign } factures
+} en une autre devise non comptées, à dire en euros ; à déclarer au plus tard le { $due }.
+books-des-foreign-note = { $foreign ->
+    [one] Une facture en une autre devise n’est pas comptée : dites-la en euros (le service des douanes donne le taux).
+   *[other] { $foreign } factures en une autre devise ne sont pas comptées : dites-les en euros (le service des douanes donne le taux).
+}
+books-des-credit = { $number } crédite une facture d’un autre mois : inscrit au mois où il a été émis, en dessous de zéro, comme le service en ligne des douanes saisit une minoration ; le mois auquel il appartient, c’est au guide des douanes de le dire.
+books-des-rounded = Chaque valeur se déclare en euros, arrondie à l’euro le plus proche.
+books-franchise-effect-title-today = À partir d’aujourd’hui, la TVA s’applique
+books-franchise-effect-title = La TVA s’applique depuis le 1er janvier { $year }
+books-franchise-effect = Votre chiffre d’affaires de { $last }, { $turnover }, a dépassé le { $name }, { $amount }. La TVA s’applique à partir du 1er janvier { $year } : changez de régime de TVA (Paramètres ▸ Factures).
+books-micro-effect-title-today = À partir d’aujourd’hui, le régime micro prend fin
+books-micro-effect-title = Le régime micro a pris fin le 1er janvier { $year }
+books-micro-effect = Votre chiffre d’affaires a dépassé le { $name } en { $before } et en { $last }. Le régime réel s’applique à partir du 1er janvier { $year } : changez de régime d’imposition (Paramètres ▸ Factures).
+books-micro-crossed-late-title = Votre chiffre d’affaires de { $last } a dépassé le plafond du régime micro
+books-micro-crossed-late = { $turnover } encaissés en { $last }, au-dessus du { $name }, { $amount } : une année au-dessus garde le régime micro ; au-dessus encore en { $year }, il prend fin au 1er janvier suivant.

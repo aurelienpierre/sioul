@@ -313,6 +313,10 @@ pub struct Threshold {
     /// Crossed, invoices to businesses since that day are corrected (France's higher thresholds).
     #[serde(default)]
     pub corrective: bool,
+    /// Watched by the books (`books::thresholds`): only where the research
+    /// says how it counts (France's); another preset's are data, unwatched.
+    #[serde(default)]
+    pub watched: bool,
     pub amount: i64,
     pub from: Date,
 }
@@ -328,9 +332,30 @@ pub struct DeclarationRule {
     /// Due the last day of the month this many months after the period's,
     /// moved to the next working day.
     pub months_after: u32,
-    /// The first one at least this many days after the start of activity.
+    /// How many periods the first declaration gathers, the start's included:
+    /// France's monthly, four (the start month and the three after);
+    /// quarterly, two.
     #[serde(default)]
-    pub first_after_days: i64,
+    pub first_periods: FirstPeriods,
+}
+
+/// The periods a first declaration gathers, by how often one declares.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct FirstPeriods {
+    #[serde(default = "one_period")]
+    pub month: u32,
+    #[serde(default = "one_period")]
+    pub quarter: u32,
+}
+
+impl Default for FirstPeriods {
+    fn default() -> FirstPeriods {
+        FirstPeriods { month: 1, quarter: 1 }
+    }
+}
+
+fn one_period() -> u32 {
+    1
 }
 
 /// A declaration of services to businesses in other member states (France's
