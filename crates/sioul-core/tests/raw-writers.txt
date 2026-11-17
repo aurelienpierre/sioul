@@ -197,6 +197,8 @@ sioul-core/src/clients.rs	save	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/clients.rs	save	1	std::fs::rename(&temporary, file)
 sioul-core/src/clients.rs	remove	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/clients.rs	remove	1	std::fs::rename(&temporary, file)
+sioul-core/src/clients.rs	change	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/clients.rs	change	1	std::fs::rename(&temporary, file)
 
 # sioul-core/src/own_time.rs: your own time around meetings with others (data), by their UID: no calendar's item.
 sioul-core/src/own_time.rs	set	1	crate::filelock::replace(path, bytes.as_bytes())

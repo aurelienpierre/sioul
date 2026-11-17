@@ -2723,6 +2723,10 @@ invoice-unit-KMT = km
 invoice-unit-LS = lump sum
 invoice-unit-C62 = { "" }
 invoice-check-no-lines = An invoice has at least one line.
+invoice-check-scheme-day = The VAT scheme's start day “{ $day }” in Settings ▸ Invoices does not read as a day: write it as 2027-01-01, so that Sioul knows which scheme a day is under.
+invoice-check-line-vat-unowed = Line { $line } charges VAT, but on { $day } your scheme is “{ $scheme }”: VAT shown on an invoice is owed. Set the line's tax to the scheme's, or change the scheme in Settings ▸ Invoices.
+invoice-check-line-rate-missing = Line { $line } is “VAT at a rate” with no rate: type its rate.
+invoice-check-reset-year = Numbers that start again from 1 each year have the year in them: in Settings ▸ Invoices, write a numbering with {"{"}YYYY{"}"}, or choose that numbers never start again from 1.
 invoice-check-line-unnamed = Each line says what it is.
 invoice-check-credit-cites = A credit note cites the invoice it credits.
 invoice-check-currency = The currency, as three letters: EUR, GBP, CHF.
@@ -2837,6 +2841,13 @@ invoice-to-pay-back = { $amount } to pay back
 invoice-paid-back = Paid back
 invoice-nothing-to-pay-back = Nothing to pay back on this credit note: it credits invoice { $number }, and what was paid on it stays within what it still asks.
 invoice-check-deposit-taken = Deposit invoice { $deposit } is deducted by invoice { $number } already: a deposit is deducted once, unless a credit note cancels that invoice whole.
+invoice-check-deposit-other = Deposit invoice { $deposit } bills another client or another currency: it is deducted only on that client's invoice, in its own currency.
+invoice-check-deposit-credited = Nothing is left of deposit invoice { $deposit } to deduct: its credit notes gave it back.
+invoice-check-deposit-undeducted = { $n ->
+    [one] Deposit invoice { $numbers } of this client is not deducted yet: tick it under Deposits if this invoice is the final one.
+   *[other] Deposit invoices { $numbers } of this client are not deducted yet: tick them under Deposits if this invoice is the final one.
+}
+invoice-draft-newer = This draft was written by a newer Sioul: it opens to be read only. Update Sioul on this device to change it.
 invoice-draft-issued = This draft was issued already, as { $number }: it is taken out.
 invoice-draft-copy-issued = This draft is a copy the sync made of a draft issued since, as { $number }: read it, then discard it (sioul invoices discard).
 invoice-cli-draft-copy = a copy the sync made of draft { $id }
@@ -8455,6 +8466,19 @@ invoices-every-quarter = Each quarter
 invoices-every-month = Each month
 invoices-pattern-wrong = The numbering “{ $pattern }” does not read: { $why }
 invoices-declared-said = Marked as declared.
+invoices-not-declared-said = Marked as not declared.
+invoices-changed-elsewhere = This draft changed elsewhere meanwhile: those changes are taken in, yours with them.
+invoices-deposits-left = { $n ->
+    [one] Deposit invoice { $numbers } is no longer deducted: it bills another client or another currency.
+   *[other] Deposit invoices { $numbers } are no longer deducted: they bill another client or another currency.
+}
+invoices-line-gone = A line you changed was taken out elsewhere meanwhile: your change to it is dropped.
+invoices-time-added = { $n ->
+    [one] One line of time added to the draft ({ $time }).
+   *[other] { $n } lines of time added to the draft ({ $time }).
+}
+invoices-scheme-day-wrong = “{ $day }” does not read as a day: write it 2027-01-01, or 01/01/2027.
+invoices-amount-unread = Not an amount: write 1500, or 1,500.50.
 money-tab-invoices = Invoices
 porch-open-declaration = Open the declaration
 books-declared = Declared
@@ -8475,6 +8499,7 @@ clients-delivery = Delivery address, when it differs
 clients-ids = Its identifiers
 clients-id-add = An identifier
 clients-id-remove = Take this identifier out
+clients-id-printed = Printed
 clients-invoices = Its invoices
 clients-language-usual = Your usual language
 clients-terms = Days
@@ -8508,6 +8533,7 @@ invoices-line-hourly = Price an hour
 invoices-line-more = More
 invoices-line-details = Details, under the line
 invoices-line-discount = Discount
+invoices-line-rate = Rate, %
 invoices-line-tax = Its tax: { $tax }
 invoices-line-own-tax = Its own tax, not your country’s rule
 invoices-line-exemption = Why it bears no VAT here, in words
@@ -8619,4 +8645,4 @@ invoices-settings-rate-percent = Rate, in percent
 invoices-settings-rate-add = A rate of your own
 invoices-settings-platform = Your e-invoicing platform
 invoices-settings-platform-hint = Its name, as you know it
-invoices-settings-platform-help = From September 2027 French businesses receive their invoices through an approved platform (a PA). Until Sioul sends through yours, upload each invoice’s PDF there: it carries its Factur-X data inside.
+invoices-settings-platform-help = From 1 September 2027 your invoices to French businesses go through an approved platform (a PA), and your sales to private clients are reported there instead (e-reporting). Until Sioul sends through yours, upload those invoices’ PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet.

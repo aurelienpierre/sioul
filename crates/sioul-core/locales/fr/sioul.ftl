@@ -2759,6 +2759,10 @@ invoice-unit-KMT = km
 invoice-unit-LS = forfait
 invoice-unit-C62 = { "" }
 invoice-check-no-lines = Une facture a au moins une ligne.
+invoice-check-scheme-day = Le début de régime de TVA « { $day } » dans Paramètres ▸ Factures ne se lit pas comme un jour : écrivez-le 01/01/2027 ou 2027-01-01, pour que Sioul sache sous quel régime tombe un jour.
+invoice-check-line-vat-unowed = La ligne { $line } facture de la TVA, mais le { $day } votre régime est « { $scheme } » : une TVA portée sur une facture est due. Mettez la taxe de la ligne à celle du régime, ou changez le régime dans Paramètres ▸ Factures.
+invoice-check-line-rate-missing = La ligne { $line } est « TVA à un taux » sans taux : saisissez son taux.
+invoice-check-reset-year = Des numéros qui repartent de 1 chaque année contiennent l’année : dans Paramètres ▸ Factures, écrivez une numérotation avec {"{"}YYYY{"}"}, ou choisissez que les numéros ne repartent jamais de 1.
 invoice-check-line-unnamed = Chaque ligne dit ce qu’elle est.
 invoice-check-credit-cites = Un avoir cite la facture qu’il corrige.
 invoice-check-currency = La devise, en trois lettres : EUR, GBP, CHF.
@@ -2873,6 +2877,13 @@ invoice-to-pay-back = { $amount } à rembourser
 invoice-paid-back = Remboursé
 invoice-nothing-to-pay-back = Rien à rembourser sur cet avoir : il porte sur la facture { $number }, et ce qui a été payé sur elle reste dans ce qu’elle demande encore.
 invoice-check-deposit-taken = La facture d’acompte { $deposit } est déjà déduite par la facture { $number } : un acompte se déduit une fois, sauf si un avoir annule cette facture en entier.
+invoice-check-deposit-other = La facture d’acompte { $deposit } concerne un autre client ou une autre devise : elle ne se déduit que sur une facture de ce client, dans sa devise.
+invoice-check-deposit-credited = Il ne reste rien à déduire de la facture d’acompte { $deposit } : ses avoirs l’ont rendue.
+invoice-check-deposit-undeducted = { $n ->
+    [one] La facture d’acompte { $numbers } de ce client n’est pas encore déduite : cochez-la sous Acomptes si cette facture est la facture finale.
+   *[other] Les factures d’acompte { $numbers } de ce client ne sont pas encore déduites : cochez-les sous Acomptes si cette facture est la facture finale.
+}
+invoice-draft-newer = Ce brouillon a été écrit par un Sioul plus récent : il s’ouvre en lecture seule. Mettez Sioul à jour sur cet appareil pour le modifier.
 invoice-draft-issued = Ce brouillon a déjà été émis, sous le numéro { $number } : il est retiré.
 invoice-draft-copy-issued = Ce brouillon est une copie que la synchronisation a faite d’un brouillon émis depuis, sous le numéro { $number } : lisez-le, puis jetez-le (sioul invoices discard).
 invoice-cli-draft-copy = une copie que la synchronisation a faite du brouillon { $id }
@@ -8829,6 +8840,19 @@ invoices-every-quarter = Chaque trimestre
 invoices-every-month = Chaque mois
 invoices-pattern-wrong = La numérotation « { $pattern } » ne se lit pas : { $why }
 invoices-declared-said = Notée comme déclarée.
+invoices-not-declared-said = Notée comme non déclarée.
+invoices-changed-elsewhere = Ce brouillon a changé ailleurs entre-temps : ces changements sont repris, les vôtres avec.
+invoices-deposits-left = { $n ->
+    [one] La facture d’acompte { $numbers } n’est plus déduite : elle concerne un autre client ou une autre devise.
+   *[other] Les factures d’acompte { $numbers } ne sont plus déduites : elles concernent un autre client ou une autre devise.
+}
+invoices-line-gone = Une ligne que vous avez changée a été retirée ailleurs entre-temps : votre changement est abandonné.
+invoices-time-added = { $n ->
+    [one] Une ligne de temps ajoutée au brouillon ({ $time }).
+   *[other] { $n } lignes de temps ajoutées au brouillon ({ $time }).
+}
+invoices-scheme-day-wrong = « { $day } » ne se lit pas comme un jour : écrivez-le 01/01/2027, ou 2027-01-01.
+invoices-amount-unread = Ce n’est pas un montant : écrivez 1500, ou 1 500,50.
 money-tab-invoices = Factures
 porch-open-declaration = Ouvrir la déclaration
 books-declared = Déclarée
@@ -8849,6 +8873,7 @@ clients-delivery = Adresse de livraison, quand elle diffère
 clients-ids = Ses identifiants
 clients-id-add = Un identifiant
 clients-id-remove = Retirer cet identifiant
+clients-id-printed = Imprimé
 clients-invoices = Ses factures
 clients-language-usual = Votre langue habituelle
 clients-terms = Jours
@@ -8882,6 +8907,7 @@ invoices-line-hourly = Prix de l’heure
 invoices-line-more = Plus
 invoices-line-details = Détails, sous la ligne
 invoices-line-discount = Remise
+invoices-line-rate = Taux, %
 invoices-line-tax = Sa taxe : { $tax }
 invoices-line-own-tax = Sa propre taxe, pas la règle de votre pays
 invoices-line-exemption = Pourquoi elle ne porte pas de TVA ici, en mots
@@ -8993,4 +9019,4 @@ invoices-settings-rate-percent = Taux, en pourcentage
 invoices-settings-rate-add = Un taux à vous
 invoices-settings-platform = Votre plateforme de facturation électronique
 invoices-settings-platform-hint = Son nom, tel que vous le connaissez
-invoices-settings-platform-help = À partir de septembre 2027, les entreprises françaises reçoivent leurs factures par une plateforme agréée (une PA). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de chaque facture : il porte ses données Factur-X.
+invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une plateforme agréée (une PA), et vos ventes aux particuliers y sont déclarées à la place (e-reporting). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures. Sous la franchise en base de TVA sans numéro de TVA, ce PDF ne porte pas encore de données Factur-X.

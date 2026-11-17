@@ -244,7 +244,12 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
                 billable: found.is_some_and(Project::is_for_client),
                 unbilled_minutes,
                 unbilled: if unbilled_minutes > 0 { duration(unbilled_minutes) } else { String::new() },
-                unbilled_amount: if unbilled_minutes > 0 && rate > 0.0 { tr.money(amount(unbilled_minutes, rate)) } else { String::new() },
+                // Line by line, as the invoice made of it rounds them (the review of phase 3, F18).
+                unbilled_amount: match found {
+                    Some(project) if unbilled_minutes > 0 && rate > 0.0 => tr.money(Money(crate::invoice::life::time_amount(&all, project, (rate * 100.0).round() as i64))),
+                    None if unbilled_minutes > 0 && rate > 0.0 => tr.money(amount(unbilled_minutes, rate)),
+                    _ => String::new(),
+                },
                 rate,
             }
         })

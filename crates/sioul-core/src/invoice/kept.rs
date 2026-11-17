@@ -55,6 +55,28 @@ pub fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// The SHA-256 of the file at `path`, read again only when its size or its
+/// modification time changed since (the window's list asks it of every
+/// invoice at each read: the review of phase 3, F7); none when it is not there.
+pub fn sha256_of(path: &Path) -> Option<String> {
+    type Seen = std::collections::HashMap<PathBuf, (u64, std::time::SystemTime, String)>;
+    static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    let meta = std::fs::metadata(path).ok()?;
+    let (len, modified) = (meta.len(), meta.modified().ok()?);
+    if let Ok(seen) = SEEN.lock()
+        && let Some((l, m, sha)) = seen.as_ref().and_then(|s| s.get(path))
+        && *l == len
+        && *m == modified
+    {
+        return Some(sha.clone());
+    }
+    let sha = sha256(&std::fs::read(path).ok()?);
+    if let Ok(mut seen) = SEEN.lock() {
+        seen.get_or_insert_with(Default::default).insert(path.to_path_buf(), (len, modified, sha.clone()));
+    }
+    Some(sha)
+}
+
 fn say(tr: &Translator, id: &str, pairs: &[(&str, String)]) -> String {
     let mut args = crate::i18n::args();
     for (k, v) in pairs {
@@ -87,10 +109,10 @@ pub fn state(dir: &Path, invoice: &Invoice) -> State {
         return State::Misnamed(invoice.file.clone());
     }
     let path = path(dir, invoice);
-    match std::fs::read(&path) {
-        Ok(bytes) if sha256(&bytes).eq_ignore_ascii_case(invoice.file_sha256.trim()) => State::Kept(path),
-        Ok(_) => State::Changed(path),
-        Err(_) => State::Missing(path),
+    match sha256_of(&path) {
+        Some(sha) if sha.eq_ignore_ascii_case(invoice.file_sha256.trim()) => State::Kept(path),
+        Some(_) => State::Changed(path),
+        None => State::Missing(path),
     }
 }
 

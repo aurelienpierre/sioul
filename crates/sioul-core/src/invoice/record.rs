@@ -291,6 +291,12 @@ pub enum Nature {
 /// One line (BG-25).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Line {
+    /// Its own id in its draft, given once (`life::line_ids`) and kept at
+    /// issue: the editor names a line by it, never by its place, so that a
+    /// change made elsewhere meanwhile is never written over, and a line of
+    /// time keeps its time whatever moves around it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     /// BT-153.
     pub description: String,
     /// BT-154.
@@ -357,6 +363,7 @@ impl Line {
     /// A line of time: `minutes` at an hourly `price` in cents.
     pub fn of_time(description: &str, minutes: u32, price: i64, category: &str, rate: i64) -> Line {
         let mut line = Line {
+            id: String::new(),
             description: description.to_string(),
             details: String::new(),
             quantity: i64::from(minutes) * 1000,
@@ -563,6 +570,13 @@ pub struct Invoice {
     /// A final invoice: the deposit invoices it deducts.
     #[serde(default)]
     pub deposits: Vec<Cited>,
+    /// A draft: the time taken out of it (session keys), left for a later
+    /// invoice: "Make the invoice" never puts it back (`life::held`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<String>,
+    /// A deposit invoice: the draft it was made from, whose final invoice deducts it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub deposit_of: String,
     /// The client's purchase order (BT-13).
     #[serde(default)]
     pub order: String,

@@ -269,6 +269,112 @@ fn checks_hold_what_the_standard_refuses() {
     assert_eq!(belgian.lines[0].category, "AE");
 }
 
+/// A deposit of this client not deducted yet is said on a final invoice's
+/// draft until it is ticked; one of another client is never offered nor
+/// said (the review of phase 3, F4, F10).
+#[test]
+fn a_deposit_not_deducted_is_said() {
+    let place = Place::new("deposit-said");
+    let s = french("franchise");
+    let first = issued(&place, &deposit(&s, fresh("en"), "Deposit, 30 % of the site", 90_000, day("2026-09-01")), &s, "2026-09-01");
+    let records = all_in(&place.invoices());
+    let mut last = fresh("en");
+    last.lines = vec![sold("The site", 300_000, Nature::Service)];
+    refresh(&mut last, &s, day("2026-10-01"));
+    let said = checks(&last, &s, day("2026-10-01"), &records);
+    assert!(said.iter().any(|c| !c.required && c.text.contains(&first.number) && c.text.contains("not deducted")), "{said:?}");
+    let open = deposits_open(&last, &records);
+    assert_eq!(open.len(), 1);
+    cite_deposits(&mut last, &open, &records, &s, day("2026-10-01"));
+    assert_eq!(last.totals.deposits, 90_000);
+    assert!(checks(&last, &s, day("2026-10-01"), &records).iter().all(|c| !c.text.contains("not deducted")));
+    let mut other = fresh("en");
+    other.client = Client { name: "Atelier Exemple".into(), ..business() };
+    other.client_ref = String::new();
+    other.lines = last.lines.clone();
+    assert!(deposits_open(&other, &records).is_empty(), "another client's deposit is never offered");
+    other.deposits = last.deposits.clone();
+    assert!(checks(&other, &s, day("2026-10-01"), &records).iter().any(|c| c.required && c.text.contains("another client")), "nor deducted");
+}
+
+/// A draft a newer Sioul wrote is read, never written again here: refused
+/// to change and listed among the newer files (the review of phase 3, F13).
+#[test]
+fn a_newer_draft_is_never_written_over() {
+    let place = Place::new("newer-draft");
+    let s = french("franchise");
+    let mut d = fresh("en");
+    d.lines = vec![sold("Advice", 10_000, Nature::Service)];
+    let saved = save_draft(&place.invoices(), &d).unwrap();
+    let path = place.invoices().join(crate::invoice::DRAFTS).join(format!("{}.toml", saved.draft));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("format = 2"), "{text}");
+    std::fs::write(&path, text.replace("format = 2", "format = 3") + "\nshiny = \"kept\"\n").unwrap();
+    let read = draft_in(&place.invoices(), &saved.draft).unwrap();
+    assert!(read.newer);
+    assert!(change_draft(&place.invoices(), &saved.draft, &s, day("2026-11-17"), |d| d.order = "PO-1".into()).is_err());
+    assert!(save_draft(&place.invoices(), &read).is_err());
+    assert!(std::fs::read_to_string(&path).unwrap().contains("shiny"), "never written again");
+    assert_eq!(crate::invoice::newer_in(&place.invoices()), [path]);
+}
+
+/// The reset the numbering follows is the one Settings shows (the review
+/// of phase 3, F20): written with no numbering, it applies to the usual
+/// pattern; from 1 each year is refused, in words, without the year.
+#[test]
+fn the_reset_written_is_the_one_followed() {
+    let never = InvoiceSettings { reset: "never".into(), ..french("franchise") };
+    assert_eq!(pattern_of(&never, Kind::Invoice).unwrap().reset(), Reset::Never);
+    assert_eq!(pattern_of(&french("franchise"), Kind::Invoice).unwrap().reset(), Reset::Yearly);
+    let older = InvoiceSettings { prefix: "F-".into(), ..french("franchise") };
+    assert_eq!(pattern_of(&older, Kind::Invoice).unwrap().reset(), Reset::Never, "a prefix without the year never starts again");
+    let yearly = InvoiceSettings { prefix: "F-".into(), reset: "yearly".into(), ..french("franchise") };
+    assert!(pattern_of(&yearly, Kind::Invoice).is_err());
+    let mut draft = fresh("en");
+    draft.lines = vec![sold("Advice", 10_000, Nature::Service)];
+    refresh(&mut draft, &yearly, day("2026-11-17"));
+    assert!(checks(&draft, &yearly, day("2026-11-17"), &[]).iter().any(|c| c.required && c.text.contains("start again from 1 each year")));
+}
+
+/// A project's "to bill" is the total of the invoice made of it: each line
+/// of time rounded to the cent as the invoice rounds it, never the whole
+/// time at once (the review of phase 3, F18: €751.66, not €751.67).
+#[test]
+fn the_time_to_bill_is_the_invoice_s_total() {
+    let s = french("franchise");
+    let project = Project { rate: Some(55.0), ..project() };
+    let entry = |key: &str, title: &str, minutes: u32| Entry { key: key.into(), start: 1_791_000_000, day: day("2026-11-02"), minutes, project: "lumen".into(), task: String::new(), title: title.into(), note: String::new(), billable: true, invoice: String::new() };
+    let entries = vec![entry("a", "Design", 410), entry("b", "Build", 410)];
+    assert_eq!(time_amount(&entries, &project, 5500), 75_166);
+    let mut draft = from_time(&entries, &project, fresh("en"), &[], &s, day("2026-11-17")).unwrap();
+    refresh(&mut draft, &s, day("2026-11-17"));
+    assert_eq!(draft.totals.without_tax, 75_166);
+}
+
+/// A line's own tax fits the scheme in force on the day of issue (the
+/// review of phase 3, F3, F19): VAT under the franchise refused, VAT at a
+/// rate without its rate refused, a scheme's day that does not read said
+/// and holding the issue back; the scheme's day as people type it read.
+#[test]
+fn a_line_s_tax_fits_the_scheme_of_the_day() {
+    let s = french("franchise");
+    let mut draft = fresh("en");
+    draft.lines = vec![Line { own_tax: true, ..Line::of_time("Advice", 60, 9000, "S", 2000) }];
+    refresh(&mut draft, &s, day("2026-11-16"));
+    let said = checks(&draft, &s, day("2026-11-16"), &[]);
+    assert!(said.iter().any(|c| c.required && c.text.contains("Line 1 charges VAT") && c.text.contains("16 November 2026")), "{said:?}");
+    // Liable from 1 January 2027, typed as people do: the same line fits then, and one without its rate does not.
+    let from = InvoiceSettings { tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }, TaxSetting { from: "01/01/2027".into(), scheme: "liable".into(), mention: String::new() }], ..s.clone() };
+    assert_eq!(scheme_on(&from, day("2027-01-02")).0, "liable");
+    assert!(checks(&draft, &from, day("2027-01-02"), &[]).iter().all(|c| !c.text.contains("charges VAT")), "{:?}", checks(&draft, &from, day("2027-01-02"), &[]));
+    let mut no_rate = draft.clone();
+    no_rate.lines[0].rate = 0;
+    assert!(checks(&no_rate, &from, day("2027-01-02"), &[]).iter().any(|c| c.required && c.text.contains("no rate")));
+    // A day that does not read: said, never taken for another.
+    let odd = InvoiceSettings { tax: vec![TaxSetting { from: "1er janvier 2027".into(), scheme: "liable".into(), mention: String::new() }], ..s.clone() };
+    assert!(checks(&draft, &odd, day("2027-01-02"), &[]).iter().any(|c| c.required && c.text.contains("“1er janvier 2027”")));
+}
+
 /// What the preset asks, said before issue: the issuer's SIREN required, a
 /// French business client's recommended now and required from September
 /// 2027; a number that fails its key refused, a SIRET being given accepted;
@@ -526,7 +632,7 @@ fn deposits_and_payments() {
     assert!(html(&first, &tr).contains("Deposit invoice No. 2026-001"));
     let mut last = fresh("en");
     last.lines = vec![Line { quantity: 1000, unit: "LS".into(), price: 300_000, base: 1, ..Line::of_time("The site", 0, 0, "E", 0) }];
-    cite_deposits(&mut last, std::slice::from_ref(&first), &s, day("2026-10-01"));
+    cite_deposits(&mut last, &[&first], &[], &s, day("2026-10-01"));
     assert_eq!((last.totals.with_tax, last.totals.deposits, last.totals.due), (300_000, 90_000, 210_000));
     let final_invoice = issued(&place, &last, &s, "2026-10-01");
     assert!(html(&final_invoice, &tr).contains("Deposits invoiced (2026-001)"));
@@ -709,6 +815,10 @@ fn each_preset_prints_what_it_requires() {
                     .collect();
                 let mut draft = Invoice { language: "fr".into(), currency: currency_of(&s, ""), client, terms: terms_of(&s, None, None), ..Invoice::default() };
                 draft.lines = vec![Line::of_time("Advice", 60, 9000, "S", 0)];
+                // Elsewhere has no rates of its own: VAT at a rate is typed (F3).
+                if scheme == "liable" && preset.id == presets::ELSEWHERE {
+                    draft.lines = vec![Line { own_tax: true, ..Line::of_time("Advice", 60, 9000, "S", 2000) }];
+                }
                 refresh(&mut draft, &s, day("2026-11-16"));
                 let said = checks(&draft, &s, day("2026-11-16"), &[]);
                 assert!(said.iter().all(|c| !c.required), "{} {scheme} {form}: {said:?}", preset.id);
@@ -719,7 +829,7 @@ fn each_preset_prints_what_it_requires() {
                 if scheme == "franchise" {
                     assert!(page.contains(&issuer_on(&s, day("2026-11-16")).mention), "{}: the franchise's mention:\n{page}", preset.id);
                 }
-                if scheme == "liable" && preset.id != presets::ELSEWHERE {
+                if scheme == "liable" {
                     assert!(draft.totals.tax > 0, "{}: VAT", preset.id);
                 }
                 for note in &draft.notes {
@@ -836,12 +946,12 @@ fn a_cancelled_final_invoice_gives_its_deposits_back() {
     assert!(first.period_from.is_empty() && first.period_to.is_empty(), "no service day on a deposit");
     let mut last = fresh("en");
     last.lines = vec![sold("The site", 300_000, Nature::Service)];
-    cite_deposits(&mut last, std::slice::from_ref(&first), &s, day("2026-10-01"));
+    cite_deposits(&mut last, &[&first], &[], &s, day("2026-10-01"));
     let final_invoice = issued(&place, &last, &s, "2026-10-01");
     let records = all_in(&place.invoices());
     let mut second = fresh("en");
     second.lines = vec![sold("The site, again", 300_000, Nature::Service)];
-    cite_deposits(&mut second, std::slice::from_ref(&first), &s, day("2026-10-02"));
+    cite_deposits(&mut second, &[&first], &records, &s, day("2026-10-02"));
     assert!(checks(&second, &s, day("2026-10-02"), &records).iter().any(|c| c.required && c.text.contains(&final_invoice.number)), "deducted once");
     let cancel = credit(&final_invoice, None, &[], &s, day("2026-10-03"));
     assert_eq!(cancel.totals.due, final_invoice.totals.due, "its deposits deducted too");

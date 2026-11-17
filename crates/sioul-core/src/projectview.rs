@@ -287,7 +287,8 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
         done_tasks: done,
         time: if all > 0 { duration(all) } else { String::new() },
         unbilled: if unbilled > 0 { duration(unbilled) } else { String::new() },
-        unbilled_amount: if unbilled > 0 && rate > 0.0 { tr.money(crate::timereport::amount(unbilled, rate)) } else { String::new() },
+        // Line by line, as the invoice made of it rounds them (the review of phase 3, F18).
+        unbilled_amount: if unbilled > 0 && rate > 0.0 { tr.money(crate::money::Money(crate::invoice::life::time_amount(entries, project, (rate * 100.0).round() as i64))) } else { String::new() },
         moments,
         invoices: invoices
             .iter()

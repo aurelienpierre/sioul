@@ -157,6 +157,12 @@ fn unread_of(s: &InvoiceSettings) -> Vec<(String, String)> {
     for t in s.thresholds.iter().filter(|t| unread_day(&t.from)) {
         out.push(("threshold.from".to_string(), t.from.clone()));
     }
+    // A VAT scheme's day, read as people type it (2027-01-01, 01/01/2027:
+    // `config::read_day`); one that does not read counts for none, said here
+    // and held back at issue (the review of phase 3, F19).
+    for t in s.tax.iter().filter(|t| !t.from.trim().is_empty() && crate::config::read_day(&t.from).is_none()) {
+        out.push(("tax.from".to_string(), t.from.clone()));
+    }
     out
 }
 
@@ -391,15 +397,34 @@ pub struct Row {
     pub payment: String,
     /// A bank line's part beyond the invoices whose payments it brought: those invoices.
     pub beyond: Vec<String>,
-    /// The day the declarations count it on: its own; a refund's, the day
-    /// its money came in while that period is not declared yet; none for a
-    /// refund of money of a period declared already, which corrects that
-    /// declaration instead (`declarations::place_refund`).
-    pub counted_on: Option<Date>,
-    /// A refund counted on no day: the declaration it corrects, its days
-    /// and whether it was the first.
+    /// Where the declarations count it: a receipt, whole on its own day; a
+    /// refund, in parts, one per payment of the credited invoice whose money
+    /// it gives back (the latest first), each where that money came in
+    /// (`declarations::place_refund`).
+    pub counted: Vec<Counted>,
+}
+
+/// Where the declarations count a row, or a part of a refund.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Counted {
+    /// The day it is counted on: the row's own; a refund's part, the day its
+    /// money came in while that period is not declared yet; none for a part
+    /// of money of a period declared already, which corrects that
+    /// declaration instead.
+    pub on: Option<Date>,
+    /// A part counted on no day: the declaration it corrects, its days and
+    /// whether it was the first.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub corrects: Option<(Date, Date, bool)>,
+    /// Its share of the row's amount excluding VAT (a refund's: below zero).
+    pub share: i64,
+}
+
+impl Counted {
+    /// A row counted whole on its day.
+    pub fn whole(day: Date, without_tax: Option<i64>) -> Vec<Counted> {
+        vec![Counted { on: Some(day), corrects: None, share: without_tax.unwrap_or(0) }]
+    }
 }
 
 impl Row {
@@ -761,10 +786,44 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             }
         }
     }
-    // A refund's money came in with the credited invoice's last payment on
-    // or before it: the declarations count it in that period while it is
-    // not declared, else it corrects that declaration (`declarations::place_refund`).
-    let paid_days = |number: &str| -> Vec<Date> { records.iter().filter(|(i, _)| i.number == number && i.kind != Kind::CreditNote).flat_map(|(_, r)| r.iter().filter(|p| p.amount > 0).map(|p| p.day)).collect() };
+    // A refund gives back the money the credited invoice received, the
+    // latest first, after what its earlier refunds gave back: each part is
+    // counted where that money came in, while its declaration is not made,
+    // else it corrects that declaration (`declarations::place_refund`; the
+    // review of phase 3, F12). What no payment on or before it stands for
+    // is counted on its own day.
+    let paid = |number: &str| -> Vec<(Date, i64)> {
+        let mut paid: Vec<(Date, i64)> = records.iter().filter(|(i, _)| i.number == number && i.kind != Kind::CreditNote).flat_map(|(_, r)| r.iter().filter(|p| p.amount > 0).map(|p| (p.day, p.amount))).collect();
+        paid.sort_by(|a, b| b.0.cmp(&a.0));
+        paid
+    };
+    let mut refunds: Vec<(&str, Date, &str, &str, i64)> = records
+        .iter()
+        .filter(|(i, _)| i.kind == Kind::CreditNote)
+        .filter_map(|(i, r)| i.corrects.as_ref().map(|c| (c, i, r)))
+        .flat_map(|(cited, i, r)| r.iter().filter(|p| p.amount < 0).map(move |p| (cited.number.as_str(), p.day, i.number.as_str(), p.id.as_str(), p.entry)))
+        .collect();
+    refunds.sort();
+    let mut left: BTreeMap<&str, Vec<(Date, i64)>> = BTreeMap::new();
+    let mut parts_of: BTreeMap<(&str, &str), Vec<(Date, i64)>> = BTreeMap::new();
+    for (cited, day, number, id, entry) in refunds {
+        let payments = left.entry(cited).or_insert_with(|| paid(cited));
+        let mut rest = entry;
+        let mut parts = Vec::new();
+        for (came, amount) in payments.iter_mut().filter(|(d, a)| *d <= day && *a > 0) {
+            if rest <= 0 {
+                break;
+            }
+            let take = (*amount).min(rest);
+            parts.push((*came, take));
+            *amount -= take;
+            rest -= take;
+        }
+        if rest > 0 {
+            parts.push((day, rest));
+        }
+        parts_of.insert((number, id), parts);
+    }
     let mut begins: Option<Option<Date>> = None;
     let mut out = Vec::new();
     for (invoice, received) in &records {
@@ -809,17 +868,29 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             // (`received_without_tax` signs a credit note's itself: it takes the entry's own amount.)
             let without_tax = amount.map(|a| if foreign { share(crate::invoice::life::received_without_tax(invoice, p.entry), a, p.amount) } else { crate::invoice::life::received_without_tax(invoice, p.entry) });
             let activities = without_tax.map(|w| split.divide(w)).unwrap_or_default();
-            let (counted_on, corrects) = match invoice.corrects.as_ref().filter(|_| invoice.kind == Kind::CreditNote && p.amount < 0) {
-                Some(cited) => {
-                    let came = paid_days(&cited.number).into_iter().filter(|d| *d <= day).max().unwrap_or(day);
+            let counted = match (parts_of.get(&(invoice.number.as_str(), p.id.as_str())), without_tax) {
+                (Some(parts), Some(without)) => {
                     let begin = *begins.get_or_insert_with(|| begin(input));
-                    match declarations::place_refund(input.settings, input.declared, begin, came, day) {
-                        declarations::Placed::Here => (Some(day), None),
-                        declarations::Placed::In(on) => (Some(on), None),
-                        declarations::Placed::Correct(a, b, first) => (None, Some((a, b, first))),
-                    }
+                    // Each part's share excluding VAT, the last taking what rounding leaves.
+                    let whole = p.entry;
+                    let mut given = 0;
+                    let count = parts.len();
+                    parts
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(n, (came, part))| {
+                            let share_of = if n + 1 == count { without - given } else { share(without, part, whole) };
+                            given += share_of;
+                            match declarations::place_refund(input.settings, input.declared, begin, came, day) {
+                                declarations::Placed::Here => Counted { on: Some(day), corrects: None, share: share_of },
+                                declarations::Placed::In(on) => Counted { on: Some(on), corrects: None, share: share_of },
+                                declarations::Placed::Correct(a, b, first) => Counted { on: None, corrects: Some((a, b, first)), share: share_of },
+                            }
+                        })
+                        .collect()
                 }
-                None => (Some(day), None),
+                _ => Counted::whole(day, without_tax),
             };
             out.push(Row {
                 day,
@@ -838,8 +909,7 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
                 budget: String::new(),
                 payment: p.id.clone(),
                 beyond: Vec::new(),
-                counted_on,
-                corrects,
+                counted,
             });
         }
     }
@@ -884,8 +954,7 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             budget: m.budget,
             payment: String::new(),
             beyond: m.by,
-            counted_on: Some(r.day),
-            corrects: None,
+            counted: Counted::whole(r.day, without_tax),
         });
     }
     out.sort_by(|a, b| (a.day, &a.invoice, &a.client).cmp(&(b.day, &b.invoice, &b.client)));
@@ -1185,27 +1254,14 @@ pub fn mark_told(dir: &Path, device: &str, keys: &[String], day: Date) -> Result
     })
 }
 
-/// A declaration said made on `day` (the declaration view's "Declared"),
-/// by its key (`declaration_key`, `des_key`), in this `device`'s life;
-/// returns the entry's id, which an Undo takes back
-/// (`invoice::life::take_back`). Said on any device, it counts on every one.
-pub fn mark_declared(dir: &Path, device: &str, key: &str, day: Date) -> Result<String, String> {
-    let known = lives::Lives::load(dir);
-    let id = lives::declared_id(key, known.next_rank(&format!("declared:{key}/")));
-    lives::change_own(dir, device, |book| book.declared.push(lives::Declared { id: id.clone(), key: key.to_string(), date: day.to_string() }))?;
-    Ok(id)
-}
-
-/// A declaration said not made after all: every entry saying it made, on
-/// any device, taken back from this `device`'s life (a removal each).
-/// Returns the ids taken back.
-pub fn unmark_declared(dir: &Path, device: &str, key: &str) -> Result<Vec<String>, String> {
-    let known = lives::Lives::load(dir);
-    let ids: Vec<String> = lives::books(dir).iter().flat_map(|b| &b.declared).filter(|d| d.key == key && !known.removed.contains(&d.id)).map(|d| d.id.clone()).collect();
-    if !ids.is_empty() {
-        crate::invoice::life::take_back(dir, device, &ids)?;
-    }
-    Ok(ids)
+/// A declaration said made on `day` (`on`: the declaration view's
+/// "Declared"), or said not made (its "Not declared"), by its key
+/// (`declaration_key`, `des_key`), in this `device`'s life, at `at_ms`:
+/// the latest word wins on every device (`lives::Declared`), an Undo being
+/// one more word, the one before said again.
+pub fn mark_declared(dir: &Path, device: &str, key: &str, day: Date, on: bool, at_ms: i64) -> Result<(), String> {
+    let id = lives::declared_id(key, device, at_ms);
+    lives::change_own(dir, device, |book| book.declared.push(lives::Declared { id, key: key.to_string(), date: day.to_string(), on, at: at_ms }))
 }
 
 /// A turnover declaration's key in the life files' `[[declared]]`.

@@ -2444,6 +2444,32 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
     })
 }
 
+/// A day as people write it: as ISO 8601 (2027-01-01), or day first, with
+/// slashes, dots or dashes (01/01/2027, 1.1.2027, 01-01-2027), as a French
+/// form, a German one or a British letter writes it; the year in four
+/// digits. None for anything else, an empty text too: a day that does not
+/// read is said where it matters (`invoice::life::checks`, `books::unread_of`),
+/// never taken for another.
+pub fn read_day(text: &str) -> Option<jiff::civil::Date> {
+    let text = text.trim();
+    if let Some(day) = text.get(..10).and_then(|d| d.parse::<jiff::civil::Date>().ok()) {
+        return Some(day);
+    }
+    let parts: Vec<&str> = text.split(['/', '.', '-']).map(str::trim).collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || p.len() > 4 || !p.chars().all(|c| c.is_ascii_digit())) {
+        return None;
+    }
+    let n = |p: &str| p.parse::<i16>().ok();
+    let (year, month, day) = if parts[0].len() == 4 {
+        (n(parts[0])?, n(parts[1])?, n(parts[2])?)
+    } else if parts[2].len() == 4 {
+        (n(parts[2])?, n(parts[1])?, n(parts[0])?)
+    } else {
+        return None;
+    };
+    jiff::civil::Date::new(year, i8::try_from(month).ok()?, i8::try_from(day).ok()?).ok()
+}
+
 /// The lists of `[invoice]` Settings ▸ Invoices writes whole: identifiers,
 /// the dated VAT schemes, bank accounts, legal lines, your contribution rates.
 pub const INVOICE_LISTS: [&str; 5] = ["id", "tax", "bank", "line", "contribution"];
@@ -2802,6 +2828,16 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A day as people type it (the review of phase 3, F19): ISO, a day
+    /// first with slashes, dots or dashes, a year first; never a day that
+    /// is not one, nor words.
+    #[test]
+    fn a_day_reads_as_people_type_it() {
+        let read = |t: &str| read_day(t).map(|d| d.to_string());
+        assert_eq!((read("2027-01-01"), read(" 01/01/2027 "), read("1.2.2027"), read("2027/02/01"), read("2027-01-01T00:00")), (Some("2027-01-01".into()), Some("2027-01-01".into()), Some("2027-02-01".into()), Some("2027-02-01".into()), Some("2027-01-01".into())));
+        assert_eq!((read("31/02/2027"), read("1er janvier 2027"), read("01/01/27"), read(""), read("2027-1")), (None, None, None, None, None));
+    }
 
     /// An address's colour written into its table, the other keys and
     /// comments kept, taken out again; read back by `Account`.

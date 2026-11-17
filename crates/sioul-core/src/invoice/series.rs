@@ -50,6 +50,14 @@ impl Reset {
     pub fn named(name: &str) -> Reset {
         if name == "never" { Reset::Never } else { Reset::Yearly }
     }
+
+    /// Its name in the settings: "yearly", "never".
+    pub fn id(self) -> &'static str {
+        match self {
+            Reset::Yearly => "yearly",
+            Reset::Never => "never",
+        }
+    }
 }
 
 /// One part of a pattern.
@@ -69,6 +77,10 @@ pub struct Pattern {
     parts: Vec<Part>,
     reset: Reset,
 }
+
+/// What `Pattern::with_reset` says of numbers asked to start again each
+/// year without the year in them (said in words by `life::checks`).
+pub const NEEDS_YEAR: &str = "numbers that start again each year have the year in them, {YYYY}";
 
 impl Pattern {
     /// `text` read: `{YYYY}`, `{YY}`, `{MM}`, `{N}` or `{N:k}` (k digits at
@@ -111,6 +123,20 @@ impl Pattern {
             return Err(format!("“{text}”: numbers that start again each year have the year in them, {{YYYY}}"));
         }
         Ok(Pattern { parts, reset })
+    }
+
+    /// How often its numbers start again from 1.
+    pub fn reset(&self) -> Reset {
+        self.reset
+    }
+
+    /// The same pattern, starting again as `reset` says: refused in words
+    /// when it would start again each year without the year in it.
+    pub fn with_reset(&self, reset: Reset) -> Result<Pattern, String> {
+        if reset == Reset::Yearly && !self.parts.iter().any(|p| matches!(p, Part::Year4 | Part::Year2)) {
+            return Err(NEEDS_YEAR.to_string());
+        }
+        Ok(Pattern { parts: self.parts.clone(), reset })
     }
 
     /// The pattern of Sioul before November 2026: an empty prefix, the year

@@ -181,7 +181,7 @@ pub fn outside(dir: &Path, invoice: &Invoice, journal: &series::Journal) -> Outs
     if invoice.number.is_empty() || invoice.unreadable || invoice.older.is_some() {
         return Outside::default();
     }
-    let record = journal.records.get(&invoice.number).is_some_and(|kept| std::fs::read(dir.join(file_name(&invoice.number))).is_ok_and(|bytes| !kept::sha256(&bytes).eq_ignore_ascii_case(kept.trim())));
+    let record = journal.records.get(&invoice.number).is_some_and(|kept| kept::sha256_of(&dir.join(file_name(&invoice.number))).is_some_and(|sha| !sha.eq_ignore_ascii_case(kept.trim())));
     let file = matches!(kept::state(dir, invoice), kept::State::Changed(_) | kept::State::Misnamed(_));
     Outside { record, file }
 }
@@ -285,8 +285,32 @@ pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
-    crate::changes::said(crate::changes::Kind::Projects);
+    crate::changes::said(crate::changes::Kind::Invoices);
     Ok(())
+}
+
+/// A draft's revision: the SHA-256 of its file's bytes as they are now, cut
+/// to 16 digits; "" when it is not there. The editor sends back the one it
+/// read with each change (`edit::save`), so that a change made elsewhere
+/// meanwhile is kept and said.
+pub fn draft_revision(dir: &Path, id: &str) -> String {
+    draft_file(dir, id).and_then(|path| std::fs::read(path).ok()).map(|bytes| kept::sha256(&bytes)[..16].to_string()).unwrap_or_default()
+}
+
+/// The records and drafts of `dir` a newer Sioul wrote (a later `format`):
+/// read where they can be, never written here; said in the window's list.
+pub fn newer_in(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for folder in [dir.to_path_buf(), dir.join(DRAFTS)] {
+        let Ok(entries) = std::fs::read_dir(&folder) else { continue };
+        for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)) {
+            if std::fs::read_to_string(&path).is_ok_and(|t| lives::format_of(&t) > record::FORMAT) {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// Keeps a draft in `dir` (its id given when it has none); returns it.
@@ -300,6 +324,10 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
     }
     if !draft_id_ok(&draft.draft) {
         return Err(format!("“{}” is no draft's id", draft.draft));
+    }
+    // A newer Sioul's draft is never written over with what this one does not know (the review of phase 3, F13).
+    if draft.newer || draft_file(dir, &draft.draft).and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| lives::format_of(&t) > record::FORMAT) {
+        return Err(format!("{}: written by a newer Sioul; update Sioul on this device to change it.", draft.draft));
     }
     draft.format = record::FORMAT;
     let text = toml::to_string(&draft).map_err(|e| e.to_string())?;
@@ -320,7 +348,7 @@ pub fn remove_draft(dir: &Path, id: &str) -> Result<bool, String> {
     let Some(path) = draft_file(dir, id) else { return Ok(false) };
     match std::fs::remove_file(&path) {
         Ok(()) => {
-            crate::changes::said(crate::changes::Kind::Projects);
+            crate::changes::said(crate::changes::Kind::Invoices);
             Ok(true)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),

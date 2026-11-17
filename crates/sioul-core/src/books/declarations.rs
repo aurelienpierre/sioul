@@ -220,13 +220,16 @@ pub fn of_days(input: &Input, from: Date, to: Date, first: bool, tr: &Translator
 /// The declaration of the days `from` to `to`, from the receipts book's
 /// `rows` (those of other days left aside): an agent's are those open to it.
 pub fn of_rows(settings: &Settings, rows: &[Row], from: Date, to: Date, first: bool, tr: &Translator) -> Declaration {
-    // Each row on the day it is counted (a refund's may be its money's, or none: `place_refund`).
+    // Each row, or each part of a refund, on the day it is counted (a
+    // refund's part on its money's, or none: `place_refund`); a part of a
+    // period declared already corrects it, said in the period of the refund.
     let corrections: Vec<Correction> = rows
         .iter()
-        .filter(|r| r.counted_on.is_none() && r.day >= from && r.day <= to)
-        .filter_map(|r| r.corrects.map(|(a, b, f)| Correction { every: settings.every, from: a, to: b, first: f, amount: -r.without_tax.unwrap_or(0), day: r.day }))
+        .filter(|r| r.day >= from && r.day <= to)
+        .flat_map(|r| r.counted.iter().filter(|c| c.on.is_none()).filter_map(move |c| c.corrects.map(|(a, b, f)| Correction { every: settings.every, from: a, to: b, first: f, amount: -c.share, day: r.day })))
         .collect();
-    let rows: Vec<&Row> = rows.iter().filter(|r| r.counted_on.is_some_and(|d| d >= from && d <= to)).collect();
+    let counted = |c: &super::Counted| c.on.is_some_and(|d| d >= from && d <= to);
+    let rows: Vec<&Row> = rows.iter().filter(|r| r.counted.iter().any(counted)).collect();
     let mut lines: Vec<Line> = settings.activities.iter().map(|a| Line { activity: a.clone(), name: settings.activity_name(a, tr.language()), turnover: 0, social: None, vl: None }).collect();
     let mut social: Vec<i64> = vec![0; lines.len()];
     let mut vl: Vec<i64> = vec![0; lines.len()];
@@ -236,23 +239,27 @@ pub fn of_rows(settings: &Settings, rows: &[Row], from: Date, to: Date, first: b
     let at = |amount: i64, bp: i64| i64::try_from(crate::invoice::record::rounded(i128::from(amount) * i128::from(bp), 10_000)).unwrap_or(0);
     for r in rows.iter().copied() {
         let Some(without) = r.without_tax else { continue };
-        // Its parts by the activity of each line (`Row::activities`): a meal
-        // eaten on the spot under sales, whatever its nature; a receipt no
-        // invoice describes in the first activity said.
-        for (activity, _, amount) in r.activities.iter().filter(|(_, _, a)| *a != 0) {
-            let amount = *amount;
-            let Some(i) = lines.iter().position(|l| l.activity == *activity) else {
-                unsaid += amount;
-                continue;
-            };
-            lines[i].turnover += amount;
-            social[i] += rate("social", &lines[i].activity, r.day).map_or(0, |bp| at(amount, bp));
-            if settings.vl {
-                vl[i] += rate("vl", &lines[i].activity, r.day).map_or(0, |bp| at(amount, bp));
+        for c in r.counted.iter().filter(|c| counted(c)) {
+            let day = c.on.unwrap_or(r.day);
+            // Its parts by the activity of each line (`Row::activities`): a
+            // meal eaten on the spot under sales, whatever its nature; a
+            // receipt no invoice describes in the first activity said. A
+            // refund's part takes the same share of each, at the rates of
+            // the day it is counted on.
+            for (activity, amount) in scaled(&r.activities, c.share, without).into_iter().filter(|(_, a)| *a != 0) {
+                let Some(i) = lines.iter().position(|l| l.activity == activity) else {
+                    unsaid += amount;
+                    continue;
+                };
+                lines[i].turnover += amount;
+                social[i] += rate("social", &lines[i].activity, day).map_or(0, |bp| at(amount, bp));
+                if settings.vl {
+                    vl[i] += rate("vl", &lines[i].activity, day).map_or(0, |bp| at(amount, bp));
+                }
             }
-        }
-        if !settings.trade.is_empty() {
-            cfp += rate("cfp", &settings.trade, r.day).map_or(0, |bp| at(without, bp));
+            if !settings.trade.is_empty() {
+                cfp += rate("cfp", &settings.trade, day).map_or(0, |bp| at(c.share, bp));
+            }
         }
     }
     for (i, line) in lines.iter_mut().enumerate() {
@@ -287,6 +294,26 @@ pub fn of_rows(settings: &Settings, rows: &[Row], from: Date, to: Date, first: b
         foreign: rows.iter().filter(|r| r.without_tax.is_none()).filter_map(|r| r.foreign.clone()).collect(),
         corrections,
     }
+}
+
+/// A row's amounts by activity for `part` of its amount excluding VAT
+/// `whole`: its own when the part is whole, else each activity's same
+/// share, the last taking what rounding leaves.
+fn scaled(activities: &[(String, &'static str, i64)], part: i64, whole: i64) -> Vec<(String, i64)> {
+    if part == whole || whole == 0 {
+        return activities.iter().map(|(a, _, x)| (a.clone(), *x)).collect();
+    }
+    let mut given = 0;
+    let count = activities.len();
+    activities
+        .iter()
+        .enumerate()
+        .map(|(n, (a, _, x))| {
+            let s = if n + 1 == count { part - given } else { super::share(part, *x, whole) };
+            given += s;
+            (a.clone(), s)
+        })
+        .collect()
 }
 
 /// What came in other currencies and is not said in euros, by currency:

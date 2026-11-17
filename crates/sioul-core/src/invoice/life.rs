@@ -71,7 +71,8 @@ pub fn regime_of(s: &InvoiceSettings) -> String {
 /// own VAT line kept word for word as the mention.
 pub fn scheme_on(s: &InvoiceSettings, day: Date) -> (String, String) {
     let preset = preset_of(s);
-    let set = s.tax.iter().filter(|t| t.from.parse::<Date>().map_or(t.from.trim().is_empty(), |from| from <= day)).max_by_key(|t| t.from.parse::<Date>().unwrap_or(Date::MIN));
+    // A day as people write it (2027-01-01, 01/01/2027); one that does not read counts for none, and a check says it (`checks`).
+    let set = s.tax.iter().filter(|t| crate::config::read_day(&t.from).map_or(t.from.trim().is_empty(), |from| from <= day)).max_by_key(|t| crate::config::read_day(&t.from).unwrap_or(Date::MIN));
     let scheme = match set {
         Some(t) => t.scheme.trim().to_string(),
         None if older_french(s) => "franchise".into(),
@@ -98,13 +99,20 @@ pub fn marked_name(name: &str, mark: &str) -> String {
     if said { name.to_string() } else { format!("{name} {mark}") }
 }
 
-/// The numbering pattern of `kind`: the settings', else the older prefix's.
+/// The numbering pattern of `kind`: the settings', else the older prefix's;
+/// the reset said in the settings applies to either (a prefix without the
+/// year cannot start again each year: refused in words), so that the reset
+/// Settings shows is the one the numbering follows.
 pub fn pattern_of(s: &InvoiceSettings, kind: Kind) -> Result<Pattern, String> {
     let reset = Reset::named(s.reset.trim());
     if kind == Kind::CreditNote && !s.credit_pattern.trim().is_empty() {
         return Pattern::parse(s.credit_pattern.trim(), reset);
     }
-    if s.pattern.trim().is_empty() { Ok(Pattern::of_prefix(&s.prefix)) } else { Pattern::parse(s.pattern.trim(), reset) }
+    if !s.pattern.trim().is_empty() {
+        return Pattern::parse(s.pattern.trim(), reset);
+    }
+    let usual = Pattern::of_prefix(&s.prefix);
+    if s.reset.trim().is_empty() { Ok(usual) } else { usual.with_reset(reset) }
 }
 
 /// The issuer as the settings say it on `day`: its preset, legal form,
@@ -286,6 +294,34 @@ pub fn for_client(s: &InvoiceSettings, reference: &str, clients: &crate::clients
     draft
 }
 
+/// A project's billable time not billed yet among `entries`, as its
+/// invoice's lines group it: a line per task or note (its title, else the
+/// project's), its minutes and its sessions, in the order first worked on.
+pub fn time_lines(entries: &[Entry], project: &Project) -> Vec<(String, u32, Vec<String>)> {
+    let mut grouped: Vec<(i64, String, u32, Vec<String>)> = Vec::new();
+    for entry in entries.iter().filter(|e| e.project == project.id && e.billable && e.invoice.is_empty() && e.minutes > 0) {
+        let label = if entry.title.trim().is_empty() { project.title.clone() } else { entry.title.clone() };
+        match grouped.iter_mut().find(|(_, l, _, _)| *l == label) {
+            Some((first, _, minutes, keys)) => {
+                *first = (*first).min(entry.start);
+                *minutes += entry.minutes;
+                keys.push(entry.key.clone());
+            }
+            None => grouped.push((entry.start, label, entry.minutes, vec![entry.key.clone()])),
+        }
+    }
+    grouped.sort_by_key(|(first, ..)| *first);
+    grouped.into_iter().map(|(_, label, minutes, keys)| (label, minutes, keys)).collect()
+}
+
+/// What a project's time not billed yet comes to at `price` (cents an
+/// hour), each of its lines rounded to the cent as its invoice rounds them
+/// (`Line::net`): the project's "to bill" and the invoice made of it are
+/// never a cent apart (the review of phase 3, F18).
+pub fn time_amount(entries: &[Entry], project: &Project, price: i64) -> i64 {
+    time_lines(entries, project).iter().map(|(label, minutes, _)| Line::of_time(label, *minutes, price, "", 0).net()).sum()
+}
+
 /// A draft of a project's billable time not billed yet, among `entries`: a
 /// line per task or note, its time at the project's rate (the settings'
 /// when it has none), in the order first worked on; the service's period
@@ -301,20 +337,7 @@ pub fn from_time(entries: &[Entry], project: &Project, mut draft: Invoice, recor
     let price = (project.rate.unwrap_or(s.rate) * 100.0).round() as i64;
     let issuer = issuer_on(s, today);
     let (category, rate) = default_tax(&issuer, &draft.client, Nature::Service, today);
-    let mut grouped: Vec<(i64, String, u32, Vec<String>)> = Vec::new();
-    for entry in &billed {
-        let label = if entry.title.trim().is_empty() { project.title.clone() } else { entry.title.clone() };
-        match grouped.iter_mut().find(|(_, l, _, _)| *l == label) {
-            Some((first, _, minutes, keys)) => {
-                *first = (*first).min(entry.start);
-                *minutes += entry.minutes;
-                keys.push(entry.key.clone());
-            }
-            None => grouped.push((entry.start, label, entry.minutes, vec![entry.key.clone()])),
-        }
-    }
-    grouped.sort_by_key(|(first, ..)| *first);
-    draft.lines.extend(grouped.into_iter().map(|(_, label, minutes, keys)| Line { sessions: keys, ..Line::of_time(&label, minutes, price, &category, rate) }));
+    draft.lines.extend(time_lines(&entries, project).into_iter().map(|(label, minutes, keys)| Line { sessions: keys, ..Line::of_time(&label, minutes, price, &category, rate) }));
     draft.period_from = billed.iter().map(|e| e.day).min().map(|d| d.to_string()).unwrap_or_default();
     draft.period_to = billed.iter().map(|e| e.day).max().map(|d| d.to_string()).unwrap_or_default();
     draft.period_default = false;
@@ -396,10 +419,62 @@ pub fn deposit(s: &InvoiceSettings, mut draft: Invoice, description: &str, amoun
     draft
 }
 
-/// A final invoice deducts the deposit invoices it cites, with tax.
-pub fn cite_deposits(draft: &mut Invoice, deposits: &[Invoice], s: &InvoiceSettings, today: Date) {
-    draft.deposits = deposits.iter().filter(|d| d.kind == Kind::Deposit && !d.number.is_empty()).map(|d| Cited { number: d.number.clone(), date: d.date.clone(), amount: d.totals.with_tax }).collect();
+/// A final invoice deducts the deposit invoices it cites: what is left of
+/// each, with tax, after its credit notes among `all` (`deposit_left`).
+pub fn cite_deposits(draft: &mut Invoice, deposits: &[&Invoice], all: &[Invoice], s: &InvoiceSettings, today: Date) {
+    draft.deposits = deposits.iter().filter(|d| d.kind == Kind::Deposit && !d.number.is_empty()).map(|d| Cited { number: d.number.clone(), date: d.date.clone(), amount: deposit_left(d, all) }).collect();
     refresh(draft, s, today);
+}
+
+/// Each line without an id given one: an id is given once and kept.
+pub fn line_ids(draft: &mut Invoice) {
+    for line in draft.lines.iter_mut().filter(|l| l.id.is_empty()) {
+        line.id = crate::ids::new().chars().filter(char::is_ascii_alphanumeric).take(10).collect();
+    }
+}
+
+/// What is left of a deposit invoice to deduct: its amount with tax, less
+/// its credit notes among `all`.
+pub fn deposit_left(deposit: &Invoice, all: &[Invoice]) -> i64 {
+    (deposit.totals.with_tax - deposit.credited(all)).max(0)
+}
+
+/// Whether two invoices bill the same client: the reference it was chosen
+/// by (a profile, a contact, a name), else the first line of its name.
+pub fn same_client(a: &Invoice, b: &Invoice) -> bool {
+    let (x, y) = (a.client_ref.trim(), b.client_ref.trim());
+    if !x.is_empty() && x == y {
+        return true;
+    }
+    let (x, y) = (a.client.first_line().trim(), b.client.first_line().trim());
+    !x.is_empty() && x.eq_ignore_ascii_case(y)
+}
+
+/// The final invoices among `all` that deduct `deposit` and are not credited whole.
+pub fn deducted_by<'a>(deposit: &Invoice, all: &'a [Invoice]) -> Vec<&'a Invoice> {
+    all.iter().filter(|r| r.kind == Kind::Invoice && !r.unreadable && !r.number.is_empty() && r.deposits.iter().any(|d| d.number == deposit.number) && r.credited(all) < r.totals.due.max(1)).collect()
+}
+
+/// The issued deposit invoices a final invoice `draft` may deduct: of the
+/// same client (`same_client`), in its currency, something left of them
+/// after their credit notes, deducted by no live final invoice.
+pub fn deposits_open<'a>(draft: &Invoice, all: &'a [Invoice]) -> Vec<&'a Invoice> {
+    all.iter()
+        .filter(|r| r.kind == Kind::Deposit && !r.number.is_empty() && !r.unreadable)
+        .filter(|r| r.currency.eq_ignore_ascii_case(&draft.currency) && same_client(r, draft))
+        .filter(|r| deposit_left(r, all) > 0 && deducted_by(r, all).iter().all(|f| f.number == draft.number && !draft.number.is_empty()))
+        .collect()
+}
+
+/// A draft's deposits made again from the records: what is left of each
+/// after its credit notes; the day it was issued.
+pub fn recite(draft: &mut Invoice, all: &[Invoice]) {
+    for cited in &mut draft.deposits {
+        if let Some(deposit) = all.iter().find(|r| r.number == cited.number && r.kind == Kind::Deposit && !r.unreadable) {
+            cited.amount = deposit_left(deposit, all);
+            cited.date = deposit.date.clone();
+        }
+    }
 }
 
 /// A draft made as it would be issued on `day`: the issuer as the settings
@@ -409,6 +484,7 @@ pub fn cite_deposits(draft: &mut Invoice, deposits: &[Invoice], s: &InvoiceSetti
 /// and the totals. The person's own notes stay.
 pub fn refresh(draft: &mut Invoice, s: &InvoiceSettings, day: Date) {
     draft.format = FORMAT;
+    line_ids(draft);
     draft.issuer = issuer_on(s, day);
     // Each line placed where its VAT is due (`placed`), unless its tax is
     // its own (set by you, or kept from the invoice a credit note credits).
@@ -526,6 +602,10 @@ fn legal_notes(draft: &Invoice, s: &InvoiceSettings, preset: &Preset) -> Vec<Not
 /// and kept; an issued invoice is never changed: a credit note answers it.
 pub fn change_draft(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, change: impl FnOnce(&mut Invoice)) -> Result<Invoice, String> {
     let mut draft = super::draft_in(dir, id).ok_or_else(|| format!("{id}: no such draft here"))?;
+    // Written by a newer Sioul: never written over with what this one does not know.
+    if draft.newer {
+        return Err(format!("{id}: written by a newer Sioul; update Sioul on this device to change it."));
+    }
     change(&mut draft);
     draft.number.clear();
     draft.draft = id.to_string();
@@ -560,10 +640,34 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date, records: &[Invoic
         say(true, preset.why_not.get(&language).to_string());
     }
     if let Err(e) = pattern_of(s, draft.kind) {
-        say(true, e);
+        say(true, if e == super::series::NEEDS_YEAR { words("invoice-check-reset-year") } else { e });
     }
     if draft.lines.is_empty() {
         say(true, words("invoice-check-no-lines"));
+    }
+    // The day a VAT scheme starts, as written in Settings: one that does not
+    // read counts for none, so it is said and holds the issue back (F19).
+    for tax in s.tax.iter().filter(|t| !t.from.trim().is_empty() && crate::config::read_day(&t.from).is_none()) {
+        let mut args = crate::i18n::args();
+        args.set("day", tax.from.trim().to_string());
+        say(true, tr.text("invoice-check-scheme-day", Some(&args)));
+    }
+    // Each line's tax as the scheme in force on the day of issue allows it
+    // (F3): no VAT under the franchise or without a scheme (art. 283-3 CGI:
+    // VAT shown on an invoice is owed), and VAT at a rate with its rate
+    // (EN 16931, BR-S-05). A credit note keeps the tax its invoice was billed with.
+    if draft.kind != Kind::CreditNote {
+        for (n, line) in draft.lines.iter().enumerate() {
+            let mut args = crate::i18n::args();
+            args.set("line", (n + 1) as i64);
+            if issuer.scheme != "liable" && (line.rate > 0 || line.category == "S") {
+                args.set("scheme", tr.text(&format!("invoices-scheme-{}", if issuer.scheme.is_empty() { "none" } else { issuer.scheme.as_str() }), None));
+                args.set("day", crate::books::long_day(&tr, day));
+                say(true, tr.text("invoice-check-line-vat-unowed", Some(&args)));
+            } else if issuer.scheme == "liable" && line.category == "S" && line.rate <= 0 {
+                say(true, tr.text("invoice-check-line-rate-missing", Some(&args)));
+            }
+        }
     }
     if draft.lines.iter().any(|l| l.description.trim().is_empty()) {
         say(true, words("invoice-check-line-unnamed"));
@@ -618,6 +722,29 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date, records: &[Invoic
         let home = presets::vat_territory(&issuer.address.country);
         args.set("country", crate::clients::country(&home).map_or(home.clone(), |c| c.name(&language).to_string()));
         say(false, tr.text("invoice-check-client-country-assumed", Some(&args)));
+    }
+    // A deposit is deducted for its own client, in its own currency, while
+    // something of it is left after its credit notes (the review of phase 3, F4).
+    for cited in draft.deposits.iter().filter(|_| draft.kind == Kind::Invoice) {
+        let Some(deposit) = records.iter().find(|r| r.number == cited.number && r.kind == Kind::Deposit && !r.unreadable) else { continue };
+        let mut args = crate::i18n::args();
+        args.set("deposit", cited.number.clone());
+        if !same_client(deposit, draft) || !deposit.currency.eq_ignore_ascii_case(&draft.currency) {
+            say(true, tr.text("invoice-check-deposit-other", Some(&args)));
+        } else if deposit_left(deposit, records) == 0 {
+            say(true, tr.text("invoice-check-deposit-credited", Some(&args)));
+        }
+    }
+    // A deposit of this client not deducted yet is said, so that a final
+    // invoice never forgets it (the review of phase 3, F10).
+    if draft.kind == Kind::Invoice && draft.number.is_empty() {
+        let open: Vec<String> = deposits_open(draft, records).into_iter().filter(|d| !draft.deposits.iter().any(|c| c.number == d.number)).map(|d| d.number.clone()).collect();
+        if !open.is_empty() {
+            let mut args = crate::i18n::args();
+            args.set("numbers", open.join(", "));
+            args.set("n", open.len() as i64);
+            say(false, tr.text("invoice-check-deposit-undeducted", Some(&args)));
+        }
     }
     // A deposit invoice is deducted by one final invoice at a time: a final
     // invoice credited whole gives its deposits back.
@@ -917,10 +1044,16 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         args.set("number", done.number.clone());
         return Err(tr.text("invoice-draft-copy-issued", Some(&args)));
     }
+    // Written by a newer Sioul: issued there, never here without what it holds.
+    if invoice.newer {
+        return Err(tr.text("invoice-draft-newer", None));
+    }
     if let Some((clients, contacts)) = steps.clients {
         refresh_client(&mut invoice, clients, contacts);
     }
     invoice.date = day.to_string();
+    // Its deposits as they are now: what is left of each after its credit notes.
+    recite(&mut invoice, &records);
     refresh(&mut invoice, s, day);
     let blocking: Vec<String> = checks(&invoice, s, day, &records).into_iter().filter(|c| c.required).map(|c| c.text).collect();
     if !blocking.is_empty() {

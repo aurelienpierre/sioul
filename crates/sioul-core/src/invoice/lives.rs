@@ -173,19 +173,33 @@ pub struct Told {
     pub date: String,
 }
 
-/// A declaration said made, by its key ("declaration:2026-Q4",
-/// "des:2026-10"), on its day: the declaration view's "Declared". Its id
-/// (`declared_id`) lets an Undo take it back.
+/// A declaration said made, or said not made, by its key
+/// ("declaration:2026-Q4", "des:2026-10"): the declaration view's
+/// "Declared" and "Not declared", and their Undo. Each is a dated entry,
+/// the latest said (`at`) winning on every device, so that an older word,
+/// an Undo among them, never takes back a newer one (the review of phase 3, F16).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Declared {
     pub id: String,
     pub key: String,
+    /// The day it was declared, as said.
     pub date: String,
+    /// Declared (true) or said not declared (false).
+    #[serde(default = "yes")]
+    pub on: bool,
+    /// When it was said, Unix milliseconds: the latest wins.
+    #[serde(default)]
+    pub at: i64,
 }
 
-/// A declaration said made, the `n`th time it is said after being taken back.
-pub fn declared_id(key: &str, n: u32) -> String {
-    format!("declared:{key}/{n}")
+fn yes() -> bool {
+    true
+}
+
+/// A word on a declaration, made of what it says: its key, the device
+/// that said it and when, so that two devices never give one id.
+pub fn declared_id(key: &str, device: &str, at: i64) -> String {
+    format!("declared:{key}/{device}/{at}")
 }
 
 /// A device's name as a file name: letters, digits and dashes.
@@ -300,17 +314,19 @@ impl Lives {
         said.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
         let booked: BTreeMap<String, i64> = said.into_iter().map(|b| (b.payment.clone(), b.amount)).collect();
         let told: BTreeSet<String> = books.iter().flat_map(|b| &b.told).map(|t| t.key.clone()).collect();
-        let mut declared: BTreeMap<String, String> = BTreeMap::new();
+        // Each declaration's latest word, on every device: declared on its day, or not.
+        let mut latest: BTreeMap<String, &Declared> = BTreeMap::new();
         for d in books.iter().flat_map(|b| &b.declared) {
             ids.insert(d.id.clone());
             if removed.contains(&d.id) {
                 continue;
             }
-            let at = declared.entry(d.key.clone()).or_insert_with(|| d.date.clone());
-            if d.date < *at {
-                *at = d.date.clone();
+            let newer = latest.get(&d.key).is_none_or(|kept| (d.at, &d.id) > (kept.at, &kept.id));
+            if newer {
+                latest.insert(d.key.clone(), d);
             }
         }
+        let declared: BTreeMap<String, String> = latest.into_iter().filter(|(_, d)| d.on).map(|(k, d)| (k, d.date.clone())).collect();
         Lives { payments, settled, sent, removed, ids, newer: Vec::new(), booked, told, declared }
     }
 
@@ -532,6 +548,26 @@ mod tests {
         let cash = Book { payments: vec![Paid { means: "cash".into(), ..paid("2026-005", "2026-11-01", 20_000, "") }], ..Book::default() };
         let transfer = Book { payments: vec![paid("2026-005", "2026-11-02", 20_000, "acct/c")], ..Book::default() };
         assert_eq!(read(&[transfer, cash], 50_000).paid(), 40_000);
+    }
+
+    /// "Declared" and "Not declared" are dated words, the latest winning on
+    /// every device (the review of phase 3, F16): an older Undo said on the
+    /// phone never takes back a newer "Declared" said on the desk.
+    #[test]
+    fn the_latest_word_on_a_declaration_wins() {
+        let word = |device: &str, on: bool, at: i64| Declared { id: declared_id("declaration:2026-Q3", device, at), key: "declaration:2026-Q3".into(), date: "2026-10-20".into(), on, at };
+        let desk = Book { declared: vec![word("desk-1", true, 2_000)], ..Book::default() };
+        let phone = Book { declared: vec![word("phone-2", false, 1_000)], ..Book::default() };
+        assert_eq!(Lives::of(&[phone.clone(), desk.clone()]).declared.get("declaration:2026-Q3").map(String::as_str), Some("2026-10-20"), "the older Undo loses");
+        let later = Book { declared: vec![word("phone-2", false, 1_000), word("phone-2", false, 3_000)], ..Book::default() };
+        assert!(Lives::of(&[desk.clone(), later]).declared.is_empty(), "the newer Not declared wins");
+        // A word of an older Sioul (no time, declared) still counts, and its removal still takes it back.
+        let older = Book { declared: vec![Declared { id: "declared:declaration:2026-Q3".into(), key: "declaration:2026-Q3".into(), date: "2026-10-05".into(), on: true, at: 0 }], ..Book::default() };
+        let read: Declared = toml::from_str("id = \"x\"\nkey = \"k\"\ndate = \"2026-10-05\"\n").unwrap();
+        assert!(read.on, "an older Sioul's word says declared");
+        assert_eq!(Lives::of(std::slice::from_ref(&older)).declared.len(), 1);
+        let taken = Book { removed: vec![Removed { id: "declared:declaration:2026-Q3".into() }], ..older };
+        assert!(Lives::of(&[taken]).declared.is_empty());
     }
 
     /// Two devices write their own files; a newer format is read, never written over (G13).

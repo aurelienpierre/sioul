@@ -161,7 +161,7 @@ pub(crate) fn valid() -> Vec<Sample> {
     let deposit = numbered(deposit, "2026-005");
     add("fr-deposit", s.clone(), deposit.clone());
     let mut last = issued(&s, french_client(), "fr", "EUR", vec![line("Mission de conseil", 5000, "DAY", 40000, Nature::Service, "S", 2000)], "2026-006", "2026-12-15");
-    life::cite_deposits(&mut last, &[deposit], &s, day("2026-12-15"));
+    life::cite_deposits(&mut last, &[&deposit], &[], &s, day("2026-12-15"));
     add("fr-final", s.clone(), last);
 
     // Goods to a business in another member state (exempt delivery), and an export outside the EU.

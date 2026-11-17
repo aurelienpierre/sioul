@@ -171,9 +171,174 @@ pub fn save(file: &Path, profile: &Profile) -> Result<String, String> {
         let temporary = file.with_extension("toml.new");
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
         std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
-        crate::changes::said(crate::changes::Kind::Projects);
+        crate::changes::said(crate::changes::Kind::Invoices);
         Ok(profile.id)
     })
+}
+
+/// What a profile's form changed, each field when it changed; an empty
+/// text takes the key out (its default comes back).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ProfileChange {
+    /// A new profile's contact (`sioul:contact/<uid>`).
+    pub contact: Option<String>,
+    pub kind: Option<String>,
+    pub name: Option<String>,
+    /// The billing address, field by field.
+    pub lines: Option<Vec<String>>,
+    pub postcode: Option<String>,
+    pub city: Option<String>,
+    pub country: Option<String>,
+    /// The delivery address, field by field; all empty: no delivery address.
+    pub delivery_lines: Option<Vec<String>>,
+    pub delivery_postcode: Option<String>,
+    pub delivery_city: Option<String>,
+    pub delivery_country: Option<String>,
+    /// Every identifier, with whether it is printed.
+    pub ids: Option<Vec<Identifier>>,
+    pub language: Option<String>,
+    pub currency: Option<String>,
+    /// Days; "" for the settings'.
+    pub terms_days: Option<String>,
+    pub end_of_month: Option<bool>,
+    pub email: Option<String>,
+    pub order: Option<String>,
+}
+
+impl ProfileChange {
+    /// A new profile made of it.
+    fn profile(&self) -> Profile {
+        let text = |o: &Option<String>| o.as_deref().unwrap_or("").trim().to_string();
+        let delivery = Address { lines: self.delivery_lines.clone().unwrap_or_default(), postcode: text(&self.delivery_postcode), city: text(&self.delivery_city), country: text(&self.delivery_country) };
+        Profile {
+            id: String::new(),
+            contact: text(&self.contact),
+            kind: self.kind.clone().filter(|k| !k.trim().is_empty()).unwrap_or_else(business),
+            name: text(&self.name),
+            address: Address { lines: self.lines.clone().unwrap_or_default(), postcode: text(&self.postcode), city: text(&self.city), country: text(&self.country) },
+            delivery: (!delivery.is_empty() || !delivery.country.is_empty()).then_some(delivery),
+            ids: self.ids.clone().unwrap_or_default(),
+            language: text(&self.language),
+            currency: text(&self.currency),
+            terms_days: self.terms_days.as_deref().and_then(|t| t.trim().parse().ok()),
+            end_of_month: self.end_of_month.filter(|e| *e),
+            email: text(&self.email),
+            order: text(&self.order),
+        }
+    }
+}
+
+/// What the form changed written into the profile `id` of `file`, key by
+/// key (`ProfileChange`): every other key of it, its comments, an
+/// identifier's `printed`, the delivery address's fields, stay as they
+/// were written, by hand or by a newer Sioul (the review of phase 3, F6). A
+/// profile not there yet is made. Under the file's lock, as `save`.
+/// Returns its id.
+pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, String> {
+    let found = crate::filelock::with_lock(file, || -> Result<Option<String>, String> {
+        let fail = |e: String| format!("{}: {e}", file.display());
+        let Ok(text) = std::fs::read_to_string(file) else { return Ok(None) };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(list) = doc.get_mut(TABLE).and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
+        let Some(table) = list.iter_mut().find(|t| !id.is_empty() && t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(None) };
+        let texts = |table: &mut dyn toml_edit::TableLike, key: &str, value: &Option<String>| {
+            if let Some(v) = value {
+                if v.trim().is_empty() {
+                    table.remove(key);
+                } else {
+                    put(table, key, toml_edit::value(v.trim()));
+                }
+            }
+        };
+        texts(table, "kind", &change.kind);
+        texts(table, "name", &change.name);
+        texts(table, "language", &change.language);
+        texts(table, "currency", &change.currency.as_ref().map(|c| c.trim().to_uppercase()));
+        texts(table, "email", &change.email);
+        texts(table, "order", &change.order);
+        // An address, field by field, in its own table as it was written (inline or not).
+        let address = |table: &mut toml_edit::Table, key: &str, lines: &Option<Vec<String>>, fields: [(&str, &Option<String>); 3]| {
+            if lines.is_none() && fields.iter().all(|(_, v)| v.is_none()) {
+                return;
+            }
+            if !table.contains_key(key) {
+                table.insert(key, toml_edit::value(toml_edit::InlineTable::new()));
+            }
+            let Some(at) = table.get_mut(key).and_then(Item::as_table_like_mut) else { return };
+            if let Some(lines) = lines {
+                let kept: toml_edit::Array = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+                put(at, "lines", toml_edit::value(kept));
+            }
+            for (field, value) in fields {
+                texts(at, field, value);
+            }
+            let empty = at.iter().all(|(_, v)| v.as_str().is_some_and(|s| s.trim().is_empty()) || v.as_array().is_some_and(|a| a.is_empty()));
+            if empty && key == "delivery" {
+                table.remove(key);
+            }
+        };
+        address(table, "address", &change.lines, [("postcode", &change.postcode), ("city", &change.city), ("country", &change.country)]);
+        address(table, "delivery", &change.delivery_lines, [("postcode", &change.delivery_postcode), ("city", &change.delivery_city), ("country", &change.delivery_country)]);
+        if let Some(ids) = &change.ids {
+            let mut array = toml_edit::Array::new();
+            for i in ids.iter().filter(|i| !i.value.trim().is_empty()) {
+                let mut one = toml_edit::InlineTable::new();
+                one.insert("kind", i.kind.trim().into());
+                one.insert("value", i.value.trim().into());
+                one.insert("printed", i.printed.into());
+                array.push(one);
+            }
+            if array.is_empty() {
+                table.remove("ids");
+            } else {
+                put(table, "ids", toml_edit::value(array));
+            }
+        }
+        if let Some(days) = &change.terms_days {
+            match days.trim().parse::<i64>() {
+                Ok(n) if n >= 0 => put(table, "terms_days", toml_edit::value(n)),
+                _ => {
+                    table.remove("terms_days");
+                }
+            }
+        }
+        if let Some(end) = change.end_of_month {
+            if end {
+                put(table, "end_of_month", toml_edit::value(true));
+            } else {
+                table.remove("end_of_month");
+            }
+        }
+        // What it now says must read back as a profile, else nothing is written.
+        toml::from_str::<Manifest>(&doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        let temporary = file.with_extension("toml.new");
+        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
+        crate::changes::said(crate::changes::Kind::Invoices);
+        Ok(Some(id.to_string()))
+    })?;
+    match found {
+        Some(id) => Ok(id),
+        None => save(file, &change.profile()),
+    }
+}
+
+/// `item` written at `key` of `table`: a key there keeps its place, the
+/// comments before it and the spaces around its value.
+fn put(table: &mut dyn toml_edit::TableLike, key: &str, item: Item) {
+    match table.get_mut(key) {
+        Some(old) => {
+            let mut item = item;
+            if let (Some(was), Some(now)) = (old.as_value(), item.as_value_mut()) {
+                *now.decor_mut() = was.decor().clone();
+            }
+            *old = item;
+        }
+        None => {
+            table.insert(key, item);
+        }
+    }
 }
 
 /// A profile taken out of `file`; Ok(false) when it was not there.
@@ -188,7 +353,7 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
         let temporary = file.with_extension("toml.new");
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
         std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
-        crate::changes::said(crate::changes::Kind::Projects);
+        crate::changes::said(crate::changes::Kind::Invoices);
         Ok(true)
     })
 }
@@ -379,6 +544,40 @@ mod tests {
         assert_eq!(resolve("Fernhill", &Clients::default(), &[]).0.name, "Fernhill");
         assert!(remove(&file, &id).unwrap());
         assert_eq!(Clients::load(&root).unwrap().list.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The profile's form changes only what it changed, key by key (the
+    /// review of phase 3, F6): comments, keys a newer Sioul wrote, an
+    /// identifier left unprinted and the delivery address's fields stay.
+    #[test]
+    fn a_profile_s_form_changes_only_what_it_changed() {
+        let root = std::env::temp_dir().join(format!("sioul-clients-change-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let file = file_in(&root);
+        let written = "# Who I bill.\n\n[[client]]\nid = \"lumen\"\n# Since the first job.\nname = \"Studio Lumen SARL\"\nkind = \"business\"\nmood = \"kept by a newer Sioul\"\naddress = { lines = [\"1 rue de l’Exemple\"], postcode = \"75002\", city = \"Paris\", country = \"FR\" }\nids = [{ kind = \"siren\", value = \"904 123 452\", printed = false }]\nterms_days = 45\n\n[client.delivery]\nlines = [\"Entrepôt\", \"2 quai de l’Exemple\"]\npostcode = \"75004\"\ncity = \"Paris\"\n";
+        std::fs::write(&file, written).unwrap();
+        let only = ProfileChange { name: Some("Studio Lumen".into()), city: Some("Lyon".into()), postcode: Some("69002".into()), ..ProfileChange::default() };
+        assert_eq!(change(&file, "lumen", &only).unwrap(), "lumen");
+        let text = std::fs::read_to_string(&file).unwrap();
+        for kept in ["# Who I bill.", "# Since the first job.", "mood = \"kept by a newer Sioul\"", "printed = false", "terms_days = 45", "\"Entrepôt\"", "postcode = \"75004\"", "lines = [\"1 rue de l’Exemple\"]"] {
+            assert!(text.contains(kept), "{kept} kept: {text}");
+        }
+        let clients = Clients::load(&root).unwrap();
+        let lumen = clients.get("lumen").unwrap();
+        assert_eq!((lumen.name.as_str(), lumen.address.city.as_str(), lumen.address.postcode.as_str(), lumen.address.country.as_str()), ("Studio Lumen", "Lyon", "69002", "FR"));
+        assert_eq!((lumen.delivery.as_ref().map(|d| d.city.as_str()), lumen.ids[0].printed, lumen.terms_days), (Some("Paris"), false, Some(45)));
+        // An emptied delivery address is taken out; terms emptied go back to the settings'.
+        let emptied = ProfileChange { delivery_lines: Some(Vec::new()), delivery_postcode: Some(String::new()), delivery_city: Some(String::new()), terms_days: Some(String::new()), ..ProfileChange::default() };
+        change(&file, "lumen", &emptied).unwrap();
+        let clients = Clients::load(&root).unwrap();
+        let lumen = clients.get("lumen").unwrap();
+        assert_eq!((lumen.delivery.is_none(), lumen.terms_days, lumen.ids[0].printed), (true, None, false));
+        assert!(std::fs::read_to_string(&file).unwrap().contains("mood = "));
+        // A profile not there yet is made of what the form says.
+        let made = change(&file, "", &ProfileChange { name: Some("Robin Example".into()), kind: Some("consumer".into()), ..ProfileChange::default() }).unwrap();
+        assert_eq!(Clients::load(&root).unwrap().get(&made).map(|p| p.kind.as_str()), Some("consumer"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

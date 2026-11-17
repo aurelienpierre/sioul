@@ -477,6 +477,10 @@ fn the_books_begin_with_what_sioul_knows() {
     // A start that does not read is said, not dropped.
     let odd = Settings::of(&InvoiceSettings { started: "2026-6-12".into(), ..french("franchise") }, None);
     assert_eq!(unread_sentences(&tr, &odd), ["In [invoice], started = “2026-6-12” does not read, and is left aside: a day is written 2026-06-12, a period month or quarter, a trade commerce, craft or liberal."]);
+    // A VAT scheme's day as people type it reads; one that does not is said (the review of phase 3, F19).
+    let scheme = |from: &str| Settings::of(&InvoiceSettings { tax: vec![TaxSetting { from: from.into(), scheme: "liable".into(), mention: String::new() }], ..french("franchise") }, None);
+    assert!(unread_sentences(&tr, &scheme("01/01/2027")).is_empty());
+    assert_eq!(unread_sentences(&tr, &scheme("1er janvier 2027")), ["In [invoice], tax.from = “1er janvier 2027” does not read, and is left aside: a day is written 2026-06-12, a period month or quarter, a trade commerce, craft or liberal."]);
 }
 
 /// A payment in another currency not said in euros is never "nothing
@@ -618,6 +622,49 @@ fn a_refund_follows_its_money_s_declaration() {
     let w = thresholds::watch(&input(&franchise, &[pay, back], &none, None), day("2026-05-01"), &tr);
     let base = w.iter().find(|w| w.id == "franchise-services").unwrap();
     assert_eq!((base.turnover, base.near), (2_900_000, Some(day("2026-03-02"))), "80 % reached on 2 March, even if a refund came after");
+}
+
+/// A refund is split across the credited invoice's payments, the latest
+/// first, after what earlier refunds of it gave back (the review of phase
+/// 3, F12): each part goes where its payment's money came in, a declared
+/// period corrected, one not declared yet lowered.
+#[test]
+fn a_refund_is_split_across_the_payments_it_gives_back() {
+    let settings = Settings::of(&InvoiceSettings { vl: true, ..french("liable") }, None);
+    let paid = issued("2026-095", "2026-09-01", client("Studio Lumen", "FR"), vec![line("Design", 100_000, Nature::Service, "S", 2000)], "liable", &[("2026-09-10", 108_000, "transfer"), ("2026-10-02", 12_000, "transfer")]);
+    let note = |number: &str, net: i64, on: &str, back: i64| Invoice {
+        kind: Kind::CreditNote,
+        corrects: Some(Cited { number: "2026-095".into(), date: "2026-09-01".into(), amount: 120_000 }),
+        ..issued(number, "2026-10-03", client("Studio Lumen", "FR"), vec![line("Design", net, Nature::Service, "S", 2000)], "liable", &[(on, back, "transfer")])
+    };
+    let none = BTreeMap::new();
+    let tr = en();
+    let q3 = declarations::holding(&input(&settings, std::slice::from_ref(&paid), &none, None), day("2026-09-20"), &tr).unwrap();
+    let said = BTreeMap::from([(format!("declaration:{}", q3.key()), day("2026-10-20"))]);
+    let q3_correction = |amount: i64| declarations::Correction { every: Every::Quarter, from: day("2026-07-01"), to: day("2026-09-30"), first: false, amount, day: day("2026-10-25") };
+    // €1,200 given back on 25 October: €120 of 2 October's money, counted in the fourth quarter; €1,080 of 10 September's, the third quarter declared on 20 October: corrected by €900.
+    let whole = vec![paid.clone(), note("2026-096", 100_000, "2026-10-25", 120_000)];
+    let i = Input { declared: &said, ..input(&settings, &whole, &none, None) };
+    let q3 = declarations::holding(&i, day("2026-09-20"), &tr).unwrap();
+    assert_eq!(q3.turnover, 90_000, "the declaration made stays as it was");
+    let q4 = declarations::holding(&i, day("2026-10-25"), &tr).unwrap();
+    assert_eq!(q4.turnover, 0);
+    assert_eq!(q4.corrections, [q3_correction(90_000)]);
+    // The book keeps one refund, on its day, whole.
+    let rows = crate::books::rows(&i, day("2026-10-01"), day("2026-12-31"), &tr);
+    let refund = rows.iter().find(|r| r.invoice == "2026-096").unwrap();
+    assert_eq!((refund.amount, refund.without_tax, refund.counted.len()), (Some(-120_000), Some(-100_000), 2));
+    // Not declared yet: the third quarter is lowered by €900, the fourth by €100.
+    let i = input(&settings, &whole, &none, None);
+    assert_eq!(declarations::holding(&i, day("2026-09-20"), &tr).unwrap().turnover, 0);
+    let q4 = declarations::holding(&i, day("2026-10-25"), &tr).unwrap();
+    assert_eq!((q4.turnover, q4.corrections.len()), (0, 0));
+    // An earlier refund of €120 gave 2 October's money back: the later one of €1,080 is all 10 September's.
+    let twice = vec![paid.clone(), note("2026-097", 10_000, "2026-10-03", 12_000), note("2026-098", 90_000, "2026-10-25", 108_000)];
+    let i = Input { declared: &said, ..input(&settings, &twice, &none, None) };
+    let q4 = declarations::holding(&i, day("2026-10-25"), &tr).unwrap();
+    assert_eq!(q4.turnover, 0);
+    assert_eq!(q4.corrections, [q3_correction(90_000)]);
 }
 
 /// The franchise's thresholds (BOI-TVA-DECLA-40-10-10 §180): operations
