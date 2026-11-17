@@ -241,6 +241,8 @@ It is made by one person, in the open: no support is promised. Questions and rep
 
 ## Where to start
 
+New to Sioul? [Getting started](guide/getting-started.md) holds the essentials on one page, from the install to a second device, and [Going further](guide/going-further.md) follows it. Step by step:
+
 1. [Install Sioul](guide/install.md).
 2. [Take the first steps](guide/first-steps.md): add your mail, your calendars and contacts, your Google account, the websites you check.
 3. [Set your hours](guide/hours.md), so that work, admin and rest each have their time.

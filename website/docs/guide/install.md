@@ -203,4 +203,6 @@ What Sioul then asks for, and what changes in use: [On a phone or a tablet](firs
 
 ## Next
 
+[Getting started](getting-started.md): the essentials on one page, from your mail to a second device.
+
 [First steps](first-steps.md): adding your mail, your calendars and contacts, Google, and the sites you check.

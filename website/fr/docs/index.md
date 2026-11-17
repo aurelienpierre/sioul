@@ -241,6 +241,8 @@ Il est fait par une seule personne, au grand jour : aucune assistance n’est 
 
 ## Par où commencer {#where-to-start}
 
+Vous découvrez Sioul ? [Bien démarrer](guide/getting-started.md) tient l’essentiel sur une page, de l’installation à un second appareil, et [Aller plus loin](guide/going-further.md) le prolonge. Pas à pas :
+
 1. [Installez Sioul](guide/install.md).
 2. [Faites les premiers pas](guide/first-steps.md) : ajoutez vos courriels, vos agendas et contacts, votre compte Google, les sites que vous consultez.
 3. [Réglez vos heures](guide/hours.md), pour que le travail, les démarches et le repos aient chacun leur temps.

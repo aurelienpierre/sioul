@@ -24,8 +24,10 @@ nav = [
   { "Guide" = [
     { "Accueil" = "index.md" },
     { "Pour commencer" = [
+      { "L’essentiel" = "guide/getting-started.md" },
       { "Installer" = "guide/install.md" },
       { "Premiers pas" = "guide/first-steps.md" },
+      { "Aller plus loin" = "guide/going-further.md" },
       { "Travailler pour des clients" = "guide/clients.md" },
     ] },
     { "La fenêtre" = [

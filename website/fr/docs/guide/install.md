@@ -203,4 +203,6 @@ Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléph
 
 ## Ensuite {#next}
 
+[Bien démarrer](getting-started.md) : l’essentiel sur une page, de vos courriels à un second appareil.
+
 [Premiers pas](first-steps.md) : ajouter vos courriels, vos agendas et contacts, Google, et les sites que vous consultez.

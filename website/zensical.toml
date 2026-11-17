@@ -23,8 +23,10 @@ nav = [
   { "User guide" = [
     { "Home" = "index.md" },
     { "Getting started" = [
+      { "The essentials" = "guide/getting-started.md" },
       { "Install" = "guide/install.md" },
       { "First steps" = "guide/first-steps.md" },
+      { "Going further" = "guide/going-further.md" },
       { "Working for clients" = "guide/clients.md" },
     ] },
     { "The window" = [
