@@ -8,7 +8,7 @@ default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync",
 [workspace.package]
 version = "0.0.11"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.92"
 authors = ["Aurélien Pierre"]
 repository = "https://github.com/aurelienpierre/sioul"
 license = "GPL-3.0-or-later"

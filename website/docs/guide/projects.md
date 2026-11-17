@@ -26,7 +26,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 **New project** (or **New ▾ ▸ A project**):
 
 - **Name**.
-- **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its postal address.
+- **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
 - Without it, the project is yours. **Yours, outside work** keeps its tasks in view in quiet time, with family and friends.
 - **Where it stands**: open, waiting, or closed.
 
@@ -39,7 +39,9 @@ On the left, every project, with its open tasks and the time left to bill. On th
 - **On one line of time**: what is **coming** first (dates asked of its open tasks, events), then what happened **before**, newest first: tasks done, mail, notes changed, time noted, invoices.
 - **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
-- **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
+- **Make the invoice**, when billable time waits to be billed: a draft of that time opens in the editor, in Budgets ▸ Invoices, where you check it and issue it. A project with a draft already gets that draft back, with the time noted since added ([The editor](time.md#the-editor)).
+- **Its client's profile**, on a project for a client: one line, such as "Client profile: A business · France · 904 123 452", or "No client profile yet: invoices bill it as a business, from its card.", with **Client profile…** ([Your clients](time.md#your-clients)).
+- **Its invoices**: each opens its pane in Budgets ▸ Invoices, with **Paid…**, **Write the mail**, **Print again** and **Credit note…** ([An issued invoice's pane](time.md#an-issued-invoice)). The **Paid** box beside each says it is paid, by transfer, today.
 - **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
 
 ## Mail that comes here by itself {#mail-that-comes-here-by-itself}

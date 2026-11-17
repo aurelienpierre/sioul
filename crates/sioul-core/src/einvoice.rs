@@ -186,26 +186,57 @@ fn embedded_files(pdf: &[u8]) -> Vec<String> {
             data_start += 1;
         }
         let Some(end) = find(pdf, b"endstream", data_start) else { break };
-        let mut data = &pdf[data_start..end];
-        while let [rest @ .., b'\r' | b'\n'] = data {
-            data = rest;
+        let mut to_end = &pdf[data_start..end];
+        while let [rest @ .., b'\r' | b'\n'] = to_end {
+            to_end = rest;
         }
-        let bytes = if compact.contains("/FlateDecode") {
-            use std::io::Read;
-            let mut inflated = Vec::new();
-            match flate2::read::ZlibDecoder::new(data).take(LARGEST).read_to_end(&mut inflated) {
-                Ok(_) => inflated,
-                Err(_) => continue,
-            }
-        } else {
-            data.to_vec()
-        };
-        if let Ok(text) = String::from_utf8(bytes) {
+        // Read to the stream's `/Length` when its dictionary writes it:
+        // compressed data may end with a byte that reads as a line's end.
+        // Else, or when that does not read, up to "endstream", the line's
+        // end before it taken off.
+        let by_length = direct_length(&dictionary).filter(|n| data_start + n <= end).map(|n| &pdf[data_start..data_start + n]);
+        let flate = compact.contains("/FlateDecode");
+        if let Some(text) = by_length.into_iter().chain([to_end]).find_map(|data| decoded(data, flate)) {
             out.push(text);
         }
         from = end + 9;
     }
     out
+}
+
+/// A stream's data as text: inflated when `flate`; None when it does not
+/// inflate or is no UTF-8.
+fn decoded(data: &[u8], flate: bool) -> Option<String> {
+    let bytes = if flate {
+        use std::io::Read;
+        let mut inflated = Vec::new();
+        flate2::read::ZlibDecoder::new(data).take(LARGEST).read_to_end(&mut inflated).ok()?;
+        inflated
+    } else {
+        data.to_vec()
+    };
+    String::from_utf8(bytes).ok()
+}
+
+/// A stream dictionary's `/Length` when it is written there as a number;
+/// None when it is a reference to another object (`/Length 12 0 R`) or
+/// missing. `/Length1`, a font's, is another key.
+fn direct_length(dictionary: &str) -> Option<usize> {
+    let mut rest = dictionary;
+    while let Some(at) = rest.find("/Length") {
+        rest = &rest[at + "/Length".len()..];
+        if rest.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+            continue;
+        }
+        let value = rest.trim_start();
+        let digits = value.len() - value.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        let after = value[digits..].trim_start();
+        if digits == 0 || after.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        return value[..digits].parse().ok();
+    }
+    None
 }
 
 #[cfg(test)]
@@ -263,6 +294,22 @@ mod tests {
         // A PDF with nothing embedded, or something else embedded: none.
         assert_eq!(from_pdf(b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"), None);
         assert_eq!(from_pdf(&pdf_with("<note>hello</note>")), None);
+    }
+
+    /// A stream is read to its `/Length`: compressed data whose last byte
+    /// reads as a line's end stays whole; a length that is a reference
+    /// falls back to the line before "endstream".
+    #[test]
+    fn a_stream_is_read_to_its_length() {
+        use std::io::Write;
+        let deflated = |text: &str| {
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+            z.write_all(text.as_bytes()).unwrap();
+            z.finish().unwrap()
+        };
+        let xml = (0..100_000).map(|n| format!("{CII}<!-- {n} -->")).find(|x| deflated(x).last() == Some(&b'\n')).expect("an XML whose stream ends with a line feed");
+        assert_eq!(from_pdf(&pdf_with(&xml)).map(|i| i.number), Some("FA-2026-0042".into()));
+        assert_eq!((direct_length("<< /Length 1741 /Type /EmbeddedFile >>"), direct_length("<</Length 12 0 R>>"), direct_length("<< /Length1 900 /Length 31 >>")), (Some(1741), None, Some(31)));
     }
 
     #[test]

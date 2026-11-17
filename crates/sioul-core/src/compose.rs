@@ -76,6 +76,12 @@ pub struct Draft {
     /// What it belongs with: a task, an event, a note (`links`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<String>,
+    /// The invoice it was written to carry, by its number ("Write the
+    /// mail"): sent with that invoice's kept file to someone else than
+    /// yourself, the invoice is sent, whatever address you typed (the
+    /// second review of phase 3, R11). "" for every other mail.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub invoice: String,
     /// Its copy of the message answered or forwarded was kept as it came
     /// ([`Draft::keep_original`], from 19 October 2026): never a decrypted
     /// one, so the look at the copies written before (`draftcopies`) passes

@@ -114,7 +114,14 @@ impl Fixture {
             papers: vec![crate::papers::Paper { id: "id-card".into(), title: "Identity card".into(), renewal: "renew-card".into(), ..Default::default() }],
             letters: Some(letters),
             contracts: vec![crate::contracts::Contract { id: "energy".into(), title: "Electricity".into(), party: "Énergie Exemple".into(), paper: "energy-contract".into(), ..Default::default() }],
-            invoices: vec![crate::invoice::Invoice { number: "2026-002".into(), date: "2026-10-30".into(), project: "studio".into(), client: "North Studio".into(), total_cents: 120_000, ..Default::default() }],
+            invoices: vec![crate::invoice::Invoice {
+                number: "2026-002".into(),
+                date: "2026-10-30".into(),
+                project: "studio".into(),
+                client: crate::invoice::Client { name: "North Studio".into(), ..Default::default() },
+                totals: crate::invoice::Totals { due: 120_000, ..Default::default() },
+                ..Default::default()
+            }],
             sessions: vec![crate::timelog::Session { task: "pay-rent".into(), minutes: 10, ..Default::default() }, crate::timelog::Session { task: "pay-rent".into(), minutes: 5, ..Default::default() }],
             agendas: vec![("school-trip".into(), "leo".into())],
             taken: vec![("school-trip".into(), "sam@example.org".into())],

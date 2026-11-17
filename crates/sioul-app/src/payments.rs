@@ -191,7 +191,9 @@ pub(crate) fn move_movement(key: &str, choice: &str, parts: &str) -> String {
 }
 
 /// "Not the same payment": the source `source`, probably joined to the
-/// movement `key`, kept apart from the rest of it for good. Returns what went wrong, else "".
+/// movement `key`, kept apart from the rest of it for good; what a bank
+/// line among them paid on your invoices taken back with it (the second
+/// review, G4). Returns what went wrong, else "".
 pub(crate) fn not_same(key: &str, source: &str) -> String {
     let (root, _, books, at) = match found(key) {
         Ok(found) => found,
@@ -200,7 +202,7 @@ pub(crate) fn not_same(key: &str, source: &str) -> String {
     let movement = &books.movements[at];
     // Apart from the movement's steadiest key among its other sources.
     let Some(other) = movements::steadiest_of(movement.sources.iter().filter(|s| s.key != source)) else { return String::new() };
-    acts::not_same(&root, source, other).err().unwrap_or_default()
+    acts::not_same_paid(&root, source, other, &crate::notices::here_id()).err().unwrap_or_default()
 }
 
 /// The movements that may be the same payment as `key`'s: the same way,

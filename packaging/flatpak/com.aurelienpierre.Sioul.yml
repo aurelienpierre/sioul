@@ -100,6 +100,8 @@ modules:
       - install -Dm644 data/com.aurelienpierre.Sioul.desktop /app/share/applications/com.aurelienpierre.Sioul.desktop
       - install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml /app/share/metainfo/com.aurelienpierre.Sioul.metainfo.xml
       - mkdir -p /app/share/icons && cp -r data/icons/hicolor /app/share/icons/
+      # The works of others inside the programs, with their licences (NOTICES.md).
+      - install -Dm644 -t /app/share/licenses/sioul NOTICES.md crates/sioul-core/data/fonts/LICENSE-Liberation crates/sioul-core/data/LICENSE-iso-codes crates/sioul-app/fonts/LICENSE-DejaVu crates/sioul-app/icons/COPYING-ICONS
     sources:
       - type: dir
         path: ../..

@@ -2369,7 +2369,10 @@ map-none = Aucun contact n’a encore d’adresse placée.
 set-map-tiles = Tuiles de carte
 set-map-tiles-help = D’où viennent les images de la carte, en https://…/{"{"}z{"}"}/{"{"}x{"}"}/{"{"}y{"}"}.png. Vide : celles d’OpenStreetMap, demandées avec mesure et gardées.
 set-invoice-name = Votre nom ou raison sociale
-set-invoice-name-help = Imprimé en haut de vos factures. En France, un entrepreneur individuel écrit « EI » juste après son nom : « Camille Exemple EI ».
+set-invoice-name-help = Imprimé en haut de vos factures. En France, Sioul écrit lui-même « EI » après le nom d’un entrepreneur individuel ; un nom qui le dit déjà le garde une fois.
+set-invoice-legal-form = Forme juridique
+set-invoice-legal-form-help = Un entrepreneur individuel français (micro-entrepreneur compris) a « EI » après son nom, imprimé par Sioul ; une société non.
+set-invoice-legal-form-unsaid = Pas encore dite
 set-invoice-address = Votre adresse
 set-invoice-address-help = Sur plusieurs lignes, comme sur une enveloppe.
 set-invoice-siret = SIRET
@@ -2381,7 +2384,7 @@ set-invoice-prefix-help = Vide : l’année, et les numéros repartent chaque 
 set-invoice-currency = Devise
 set-invoice-currency-help = Un code de trois lettres : EUR, USD, CHF.
 set-invoice-payment = Modalités de paiement
-set-invoice-payment-help = Imprimées en bas : IBAN, délai, pénalités de retard.
+set-invoice-payment-help = Imprimées en bas : IBAN, comment payer. Les mentions de retard de paiement que votre pays demande sont imprimées par Sioul.
 set-invoice-folder = Les factures vont dans
 set-invoice-folder-help = Le dossier de leurs PDF ; « Documents/Factures » dans votre dossier personnel s’il est vide.
 set-invoice-rate = Une heure coûte
@@ -2720,6 +2723,122 @@ invoice-amount = Montant
 invoice-total = Total
 invoice-siret = SIRET { $siret }
 invoice-late = En cas de retard de paiement, pénalités au taux de trois fois le taux d’intérêt légal et indemnité forfaitaire de 40 € pour frais de recouvrement (Code de commerce, art. L441-10 et D441-5). Pas d’escompte pour paiement anticipé.
+invoice-credit-to = Avoir pour
+invoice-delivery = Livré à
+invoice-title-invoice = Facture n° { $number }
+invoice-title-credit-note = Avoir n° { $number }
+invoice-title-deposit = Facture d’acompte n° { $number }
+invoice-draft-title-invoice = Brouillon de facture
+invoice-draft-title-credit-note = Brouillon d’avoir
+invoice-draft-title-deposit = Brouillon de facture d’acompte
+invoice-corrects = Avoir sur la facture n° { $number } du { $date }
+invoice-nature-services = Prestations de services
+invoice-nature-goods = Livraisons de biens
+invoice-nature-both = Livraisons de biens et prestations de services
+invoice-order = Votre commande : { $order }
+invoice-description = Désignation
+invoice-quantity = Quantité
+invoice-unit-price = Prix unitaire HT
+invoice-per-hour = { $price } / h
+invoice-line-discount = Remise : { $amount }
+invoice-vat-rate = TVA
+invoice-total-without-tax = Total HT
+invoice-vat-on = TVA { $rate } sur { $base }
+invoice-total-with-tax = Total TTC
+invoice-deposits-deducted = Acomptes facturés ({ $numbers })
+invoice-amount-due = Net à payer
+invoice-insurance = Assurance professionnelle : { $insurance }
+invoice-unit-HUR = h
+invoice-unit-MIN = min
+invoice-unit-DAY = { $count ->
+    [one] jour
+   *[other] jours
+}
+invoice-unit-MON = mois
+invoice-unit-KMT = km
+invoice-unit-LS = forfait
+invoice-unit-C62 = { "" }
+invoice-check-no-lines = Une facture a au moins une ligne.
+invoice-check-scheme-day = Le début de régime de TVA « { $day } » dans Paramètres ▸ Factures ne se lit pas comme un jour : écrivez-le 01/01/2027 ou 2027-01-01, pour que Sioul sache sous quel régime tombe un jour.
+invoice-check-line-vat-unowed = La ligne { $line } facture de la TVA, mais le { $day } votre régime est « { $scheme } » : une TVA portée sur une facture est due. Mettez la taxe de la ligne à celle du régime, ou changez le régime dans Paramètres ▸ Factures.
+invoice-check-line-rate-missing = La ligne { $line } est « TVA à un taux » sans taux : saisissez son taux.
+invoice-check-reset-year = Des numéros qui repartent de 1 chaque année contiennent l’année : dans Paramètres ▸ Factures, écrivez une numérotation avec {"{"}YYYY{"}"}, ou choisissez que les numéros ne repartent jamais de 1.
+invoice-check-line-unnamed = Chaque ligne dit ce qu’elle est.
+invoice-check-credit-cites = Un avoir cite la facture qu’il corrige.
+invoice-check-currency = La devise, en trois lettres : EUR, GBP, CHF.
+invoice-check-own-id-wrong = Votre { $name } « { $value } » ne passe pas sa vérification : un chiffre est peut-être faux.
+invoice-check-client-id-wrong = Le { $name } du client, « { $value } », ne passe pas sa vérification : un chiffre est peut-être faux.
+invoice-check-terms-long = Entre professionnels, le paiement est dû en { $days } jours au plus.
+invoice-check-penalty-low = Un taux de pénalités de retard sous { $floor } n’est pas permis entre professionnels.
+invoice-check-legal-form = Votre forme juridique, désormais un réglage à part : entrepreneur individuel (« EI » est alors imprimé après votre nom), ou société. Paramètres ▸ Factures.
+invoice-check-scheme-offered = Le régime de TVA « { $scheme } » n’est pas de ceux de votre pays ({ $schemes }) : Paramètres ▸ Factures.
+invoice-check-client-country = Le pays du client : là où est due la TVA d’une entreprise en dépend. Donnez au client une adresse, ou un pays dans sa fiche.
+invoice-check-client-country-assumed = Le pays du client est pris pour le vôtre ({ $country }) : son adresse n’en nomme aucun. Si le client est ailleurs, donnez-lui un pays dans sa fiche, ou le pays en dernière ligne de son adresse.
+invoice-check-line-exemption = Une ligne sans TVA ici dit pourquoi : écrivez sa raison sur la ligne.
+invoice-check-two-late-fees = Vos coordonnées de paiement parlent de pénalités de retard, et Sioul imprime les siennes : gardez-en une. Retirez-les de vos coordonnées de paiement (et donnez votre taux à Sioul, penalty_rate, s’il diffère), ou éteignez les lignes de Sioul ([[invoice.line]] id = "penalties" et "indemnity", off = true).
+invoice-check-unprintable = La police des factures ne sait pas imprimer ces caractères : { $characters }. Écrivez-les en lettres latines, ou retirez-les.
+invoice-check-iban-wrong = L’IBAN « { $iban } » ne passe pas sa vérification : un caractère est peut-être faux. Les factures ne portent pas de QR code de paiement pour lui.
+invoice-check-right-to-left = Sioul ne sait pas encore imprimer l’écriture de droite à gauche sur les factures (ces caractères sortiraient à l’envers) : { $characters }. Écrivez ces mots en lettres latines.
+invoice-check-price-negative = Ligne { $line } : un prix unitaire sous zéro n’est pas une ligne de facture (EN 16931, BR-27). Donnez une remise à la ligne, ou faites un avoir.
+invoice-check-unit-unknown = Ligne { $line } : « { $unit } » n’est pas une unité que Sioul connaît. Prenez une heure, une minute, un jour, une unité, un mois, un kilomètre ou un forfait.
+invoice-check-own-country = Votre pays, « { $country } » : Sioul ne le connaît pas. Écrivez son nom ou ses deux lettres, comme FR, BE ou US, dans Paramètres ▸ Factures.
+invoice-check-client-country-unknown = Le pays du client, « { $country } » : Sioul ne le connaît pas. Écrivez son nom ou ses deux lettres, comme BE, DE ou US, dans la fiche du client.
+invoice-check-delivery-country = Le pays de l’adresse de livraison, « { $country } » : Sioul ne le connaît pas. Écrivez son nom ou ses deux lettres, comme BE, DE ou US.
+invoice-xml-older = Une facture d’avant novembre 2026 ne porte pas de données électroniques.
+invoice-xml-franchise-no-vat = Le PDF de cette facture ne portera pas encore de données Factur-X : en franchise sans numéro de TVA, la règle française qui dit quel numéro donner à la place (BR-FR-CO-16) reste à lire. Le PDF est une facture complète ; les factures électroniques sont demandées aux petites entreprises à partir du 1er septembre 2027.
+invoice-xml-seller-vat = Le PDF de cette facture ne portera pas de données Factur-X : sa TVA demande votre numéro de TVA, ou votre numéro fiscal. Le PDF est une facture complète.
+invoice-xml-client-vat = Le PDF de cette facture ne portera pas de données Factur-X : une autoliquidation, ou une livraison vers un autre pays de l’UE, demande le numéro de TVA du client. Le PDF est une facture complète.
+invoice-xml-seller-id = Le PDF de cette facture ne portera pas de données Factur-X : il y faut un de vos identifiants, un numéro d’immatriculation ou fiscal. Le PDF est une facture complète.
+invoice-xml-seller-country = Le PDF de cette facture ne portera pas de données Factur-X : il y faut votre pays, dans Paramètres ▸ Factures. Le PDF est une facture complète.
+invoice-xml-outside-mixed = Le PDF de cette facture ne portera pas de données Factur-X : dans la norme européenne, des lignes hors du champ de la TVA font une facture à elles seules. Le PDF est une facture complète.
+invoice-xml-client-country = Le PDF de cette facture ne portera pas de données Factur-X : le pays du client n’est pas un pays que Sioul connaît. Le PDF est une facture complète.
+invoice-xml-lines = Le PDF de cette facture ne portera pas de données Factur-X : l’unité ou le prix d’une ligne n’est pas de ceux que la norme européenne accepte. Le PDF est une facture complète.
+invoice-xml-deposit-period = Le PDF de cette facture ne portera pas de données Factur-X : un acompte pour des biens envoyés dans un autre pays de l’UE dit la période qu’il couvre. Le PDF est une facture complète.
+invoice-xml-discount = Remise
+invoice-qr = Scannez pour payer par virement
+invoice-page = { $title } · page { $page } sur { $pages }
+invoice-drafts-part-off = Activez « Brouillons et factures » dans le Partage pour émettre des factures sur cet appareil, ou émettez-les sur l’appareil qui l’a.
+invoice-draft-gone = Ce brouillon n’est plus là.
+invoice-time-billed-meanwhile = Une partie de ce temps a été facturée entre-temps sur la facture { $number } : refaites le brouillon avec le temps qui reste.
+invoice-status-draft = brouillon
+invoice-status-issued = émise
+invoice-status-sent = envoyée
+invoice-status-partly-paid = payée en partie
+invoice-status-paid = payée
+invoice-status-credited = annulée par avoir
+invoice-kind-invoice = facture
+invoice-kind-credit-note = avoir
+invoice-kind-deposit = facture d’acompte
+invoice-cli-draft = brouillon { $id }
+invoice-cli-due = à payer avant le { $date }
+invoice-cli-left = { $amount } restent à payer
+invoice-cli-unreadable = { $number } : son enregistrement ne se lit plus ; son numéro reste donné.
+invoice-cli-missing = { $number } n’a pas d’enregistrement sur cet appareil.
+invoice-cli-none = Pas encore de facture ni de brouillon.
+invoice-cli-payment = { $amount } payés le { $date } ({ $means })
+invoice-cli-drafted = Brouillon { $id } gardé ; rien n’est numéroté avant que vous l’émettiez : sioul invoices issue { $id }
+invoice-cli-issued = Facture { $number } émise : { $amount }.
+invoice-cli-credit-of-credit = Un avoir se corrige par une facture, pas par un autre avoir.
+invoice-cli-nothing-left = Il ne restait rien à payer.
+invoice-cli-no-pdf = Pas là : imprimez-le depuis la page de son projet, « Imprimer à nouveau ».
+invoice-cli-pdf = PDF : { $path }
+invoice-csv-number = Numéro
+invoice-csv-kind = Type
+invoice-csv-date = Date
+invoice-csv-client = Client
+invoice-csv-currency = Devise
+invoice-csv-without-tax = Hors taxes
+invoice-csv-tax = TVA
+invoice-csv-due = Net à payer
+invoice-csv-paid = Payé
+invoice-csv-status = État
+percent-value = { $value } %
+currency-symbol-USD = $ US
+currency-symbol-GBP = £
+money-symbol-positive = { $value }{" "}{ $symbol }
+money-symbol-negative = −{ $value }{" "}{ $symbol }
+money-code-positive = { $value }{" "}{ $symbol }
+money-code-negative = −{ $value }{" "}{ $symbol }
 time-no-project = Sans projet
 time-gone-project = Un projet qui n’existe plus
 time-week-of = Semaine du { $day }
@@ -2740,6 +2859,44 @@ project-ai-help = Un agent que vous connectez avec sioul mcp voit alors son nom 
 invoice-nothing = Aucun temps facturable n’attend d’être facturé.
 invoice-gone = Cette facture n’existe plus.
 invoice-marked-paid = Facture { $number } marquée payée.
+invoice-paid-by-bank = Payée, d’après votre banque : facture { $numbers }.
+project-credit-note = Avoir { $number }
+project-deposit = Facture d’acompte { $number }
+invoice-credits = avoir sur la facture { $number }
+invoice-payment-too-much = Un paiement de plus que ce qui reste à payer ({ $left }) n’est pas écrit.
+invoice-check-credit-too-much = Il reste { $left } à créditer sur la facture { $number } (avoirs émis : { $notes }) : un avoir n’en donne pas plus.
+invoice-paid-beyond = { $amount } sont arrivés au-delà de ce que les factures demandaient.
+invoice-cli-open-sioul = Ouvrez d’abord Sioul sur cet ordinateur : le partage allumé, les factures ne sont numérotées que tant que sa fenêtre les garde ici.
+invoice-cli-missing-in = { $sequence } : le numéro { $n } n’a pas d’enregistrement sur cet appareil.
+invoice-client-kind-business = entreprise
+invoice-client-kind-consumer = particulier
+invoice-client-kind-public = organisme public
+invoice-status-credit-note = avoir
+invoice-status-to-pay-back = à rembourser
+invoice-to-pay-back = { $amount } à rembourser
+invoice-paid-back = Remboursé
+invoice-nothing-to-pay-back = Rien à rembourser sur cet avoir : il porte sur la facture { $number }, et ce qui a été payé sur elle reste dans ce qu’elle demande encore.
+invoice-check-deposit-taken = La facture d’acompte { $deposit } est déjà déduite par la facture { $number } : un acompte se déduit une fois, sauf si un avoir annule cette facture en entier.
+invoice-check-credit-deposit-deducted = La facture d’acompte { $deposit } est déduite par la facture { $number } : faites plutôt un avoir sur la facture { $number }, ou annulez-la d’abord.
+invoice-draft-moved = Ce brouillon a changé ailleurs depuis sa lecture : il est relu ici ; regardez-le, puis émettez.
+invoice-check-deposit-other = La facture d’acompte { $deposit } concerne un autre client ou une autre devise : elle ne se déduit que sur une facture de ce client, dans sa devise.
+invoice-check-deposit-credited = Il ne reste rien à déduire de la facture d’acompte { $deposit } : ses avoirs l’ont rendue.
+invoice-check-deposit-undeducted = { $n ->
+    [one] La facture d’acompte { $numbers } de ce client n’est pas encore déduite : cochez-la sous Acomptes si cette facture est la facture finale.
+   *[other] Les factures d’acompte { $numbers } de ce client ne sont pas encore déduites : cochez-les sous Acomptes si cette facture est la facture finale.
+}
+invoice-draft-newer = Ce brouillon a été écrit par un Sioul plus récent : il s’ouvre en lecture seule. Mettez Sioul à jour sur cet appareil pour le modifier.
+invoice-draft-issued = Ce brouillon a déjà été émis, sous le numéro { $number } : il est retiré.
+invoice-draft-copy-issued = Ce brouillon est une copie que la synchronisation a faite d’un brouillon émis depuis, sous le numéro { $number } : lisez-le, puis jetez-le (sioul invoices discard).
+invoice-cli-draft-copy = une copie que la synchronisation a faite du brouillon { $id }
+invoice-cli-twice = { $number } a été donné deux fois, à { $first } et à { $second } ({ $file }) : émettez un avoir pour l’une, puis facturez-la à nouveau.
+invoice-cli-newer = { $file } a été écrit par un Sioul plus récent : mettez Sioul à jour sur cet appareil pour le voir tel qu’il est.
+invoice-cli-discarded = Brouillon { $id } jeté.
+invoice-client-kind-unsaid = une entreprise, faute de fiche client qui dise autre chose ; une fiche avec kind = "consumer" facture un particulier
+invoice-paid-fee = { $amount } gardés par le prestataire de paiement, pour sa commission.
+porch-invoices-twice-who = Factures
+porch-invoices-twice-what = Un numéro donné deux fois
+porch-invoices-twice-note = La facture { $numbers } a été numérotée deux fois, par deux appareils à la fois : émettez un avoir pour l’une de chaque, puis facturez-la à nouveau.
 invoice-folder-name = Factures
 invoice-budget-line = Facture { $number }, { $client }
 invoice-budget-origin = Facture { $number }, faite par Sioul : attendue jusqu’à son paiement.
@@ -2807,6 +2964,14 @@ invoice-paid = Payée
 invoice-print = Imprimer à nouveau
 invoice-written = La facture est dans { $path }.
 invoice-not-written = La facture n’a pas pu être écrite dans { $path }.
+invoice-kept-changed = Le fichier de la facture { $number } a changé après son émission : Imprimer à nouveau le refait tel qu’il était, quand Sioul le peut.
+invoice-kept-missing = Le fichier de la facture { $number } n’est pas sur cet appareil : Imprimer à nouveau le refait tel qu’il était, quand Sioul le peut.
+invoice-kept-refused = Le fichier de la facture { $number } n’est pas celui émis, et Sioul ne peut pas le refaire tel qu’il était : il n’est pas remis. Son enregistrement : { $record }. Le fichier : { $file }.
+invoice-kept-lost = Le fichier de la facture { $number } n’est pas sur cet appareil, et Sioul ne peut pas le refaire tel qu’il était : il arrive avec les factures de vos autres appareils, à moins qu’il ait été retiré. Son enregistrement : { $record }. Le fichier : { $file }.
+invoice-kept-misnamed = L’enregistrement de la facture { $number } nomme un autre fichier, « { $file } » : rien n’est remis. Son enregistrement : { $record }.
+invoice-kept-none = La facture { $number } n’a pas gardé de fichier : elle a été émise avant que Sioul les garde.
+invoice-set-aside = Un fichier de la facture { $number } n’avait pas d’enregistrement (une émission arrêtée en chemin) : mis de côté dans { $folder }.
+invoice-issued-not-copied = La facture { $number } est émise ; sa copie n’a pas pu être écrite dans { $path } : Imprimer à nouveau quand ce dossier sera là.
 time-note = Noter du temps
 time-field-project = Pour
 time-field-length = Combien de temps
@@ -3335,7 +3500,7 @@ porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a
 porch-sites = Sites
 porch-about-sites = Ce que vos sites ont signalé pendant votre absence, une ligne par site. Ouvrir un site lit ses nouvelles.
 porch-money = Argent
-porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte. L’argent du travail seulement aux heures de travail.
+porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte ; et chaque déclaration de chiffre d’affaires ou DES à faire, du jour où elle s’ouvre jusqu’à ce que vous l’écartiez. L’argent du travail seulement aux heures de travail.
 porch-open-budgets = Ouvrir dans Budgets
 # The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
 due-state-planned = Prévu
@@ -8196,11 +8361,50 @@ cli-money-mail--tied = Seulement les courriels liés à un mouvement
 cli-money-mail--untied = Seulement les courriels liés à aucun
 cli-money-mail--area = À quoi il sert : work, admin, leisure, séparés par des virgules
 cli-money-mail--kind = received, paid, order, bill ou refund
-cli-receipts = Ce qu’un budget de travail a reçu, comme la déclaration le compte : le chiffre d’affaires et le livre des recettes
+cli-receipts = Le livre des recettes de la période de déclaration : ce qu’il faut déclarer, et chaque paiement reçu
 cli-receipts--from = À partir de ce jour ; avec --to, les jours demandés ; sinon la période de déclaration qui contient aujourd’hui
-cli-receipts--budget = Le budget de travail, par son identifiant ; sinon le seul qui déclare
+cli-receipts--budget = Des recettes qu’aucune facture ne décrit, seulement celles de ce budget, par son identifiant ; sinon tous les budgets qui déclarent
 cli-receipts--csv = En CSV, pour un tableur ou un comptable
 cli-receipts--html = En page à imprimer (la fenêtre l’imprime en PDF, comme les factures)
+cli-invoices = Les factures que vous avez émises et vos brouillons : lister, montrer, exporter, préparer, émettre, faire un avoir, encaisser
+cli-invoices-list = Chaque facture et chaque brouillon, du plus récent au plus ancien, avec où chacun en est
+cli-invoices-list--client = Seulement celles de ce client, par une partie de son nom
+cli-invoices-list--year = Seulement celles de cette année
+cli-invoices-list--status = draft, issued, sent, partly-paid, paid, credited, credit-note, to-pay-back
+cli-invoices-show = Une facture ou un brouillon, par son numéro ou l’identifiant du brouillon : ses lignes, ses totaux, ce qui lui manque encore
+cli-invoices-export = Toutes les factures en tableau (CSV), l’une d’elles en page à imprimer, ou son PDF
+cli-invoices-export--pdf = Le PDF de cette facture tel qu’il a été émis, copié où vont vos factures ; son chemin
+cli-invoices-export--html = La page à imprimer de cette facture (HTML), comme l’aperçu d’un brouillon la montre
+cli-invoices-export--year = Seulement celles de cette année
+cli-invoices-draft = Un brouillon du temps facturable d’un projet pas encore facturé ; rien n’est numéroté
+cli-invoices-draft--project = Le projet, par son identifiant
+cli-invoices-issue = Émet un brouillon : le numérote, garde son PDF et son enregistrement, marque son temps ; vous au clavier
+cli-invoices-issue--draft = L’identifiant du brouillon (sioul invoices list le donne)
+cli-invoices-credit = Un avoir pour une facture, en brouillon : toutes ses lignes, ou celles données
+cli-invoices-credit--line = Une ligne à créditer, comptée à partir de 1 ; à répéter pour d’autres. Aucune : toutes
+cli-invoices-pay = Un paiement reçu pour une facture, ou remboursé sur un avoir
+cli-invoices-pay--day = Le jour où il est arrivé, comme 2026-11-16 ; aujourd’hui sinon
+cli-invoices-pay--amount = Ce qui est arrivé, comme 120.50 ; ce qui reste à payer sinon
+cli-invoices-pay--means = transfer, card, cash, cheque, direct-debit, other
+cli-invoices-pay--received = Pour une facture en une autre devise : ce qui vous est parvenu dans celle des livres (en euros), comme 92.50
+cli-invoices-received = Ce qu’un paiement en une autre devise a donné dans celle des livres (en euros) : les livres le comptent ainsi
+cli-invoices-received--amount = Ce qui vous est parvenu, comme 92.50
+cli-invoices-received--day = Le paiement de ce jour ; sinon son dernier dont rien n’a encore été dit
+cli-books = Les livres : le livre des recettes, les déclarations, le récapitulatif de TVA, les seuils, la DES
+cli-books-receipts = Le livre des recettes : une ligne par paiement reçu, par jour, avec les totaux de ses trimestres et de ses années
+cli-books-receipts--year = Celui de cette année ; l’année en cours sinon
+cli-books-receipts--from = À partir de ce jour ; avec --to, les jours demandés
+cli-books-receipts--csv = En CSV, pour un tableur ou un comptable
+cli-books-receipts--html = En page à imprimer (la fenêtre l’imprime en PDF)
+cli-books-declarations = Les déclarations de chiffre d’affaires d’une année, jusqu’à celle d’aujourd’hui : quoi déclarer, quand, les cotisations estimées
+cli-books-declarations--year = Celles de l’année en cours sinon
+cli-books-vat = Le récapitulatif de TVA d’une année, période par période et taux par taux, pour qui est redevable de la TVA ; rien n’est déposé
+cli-books-vat--year = Celui de l’année en cours sinon
+cli-books-thresholds = Les seuils surveillés cette année, et où en est le chiffre d’affaires
+cli-books-des = Les DES d’une année : les services à des entreprises d’autres pays de l’UE, mois par mois, avec leurs factures
+cli-books-des--year = Celles de l’année en cours sinon
+cli-invoices-discard = Jette un brouillon : rien n’était numéroté
+cli-invoices-discard--draft = L’identifiant du brouillon (sioul invoices list le donne)
 cli-account = Les comptes de courriel : ajouter, lister, tester, changer un mot de passe, retirer
 cli-account-add = Trouve le serveur à partir de l’adresse, demande le mot de passe, le teste, ajoute le compte et relève ses courriels
 cli-account-add--id = Un nom court pour le compte (par défaut : d’après le domaine)
@@ -8402,3 +8606,432 @@ cli-help-summary = Affiche l’aide (un résumé avec « -h »)
 cli-version = Affiche la version
 cli-help-command = Affiche ce message ou l’aide des commandes données
 cli-help-command--subcommand = Affiche l’aide de ces commandes
+
+## Les livres (`books`) : le livre des recettes, les déclarations, le récapitulatif de TVA, les seuils, la DES.
+books-means-unsaid = non dit
+books-means-transfer = Virement
+books-means-card = Carte
+books-means-cash = Espèces
+books-means-cheque = Chèque
+books-means-direct-debit = Prélèvement
+books-means-other = Autre
+books-cash = espèces
+books-total-quarter = { $quarter ->
+    [1] Premier trimestre { $year }
+    [2] Deuxième trimestre { $year }
+    [3] Troisième trimestre { $year }
+   *[4] Quatrième trimestre { $year }
+}
+books-total-year = Année { $year }
+books-total = { $name } : { $least ->
+    [yes] au moins { $amount }
+   *[no] { $amount }
+} encaissés.
+books-total-taxed = { $name } : { $least ->
+    [yes] au moins { $amount }
+   *[no] { $amount }
+} encaissés TVA comprise, { $without } hors TVA.
+books-foreign-not-counted = { $n ->
+    [one] Un paiement en { $currency } n’est pas compté : dites ce qu’il vous a rapporté (sioul invoices received).
+   *[other] { $n } paiements en une autre devise ne sont pas comptés : dites ce que chacun vous a rapporté (sioul invoices received).
+}
+books-column-day = Jour
+books-column-client = Client
+books-column-nature = Nature
+books-column-invoice = Facture
+books-column-means = Moyen de paiement
+books-column-cash = Espèces
+books-column-amount = Encaissé
+books-column-without-tax = Hors TVA
+books-column-goods = Biens
+books-column-services = Services
+books-column-note = Note
+books-title = Livre des recettes de { $name }, du { $from } au { $to }
+books-name = votre entreprise
+books-vat-rate = TVA { $rate }
+books-vat-category-ae = Autoliquidation (le client doit la TVA)
+books-vat-category-k = Livraisons intracommunautaires (exonérées)
+books-vat-category-g = Exportations (exonérées)
+books-vat-category-o = Hors du champ de la TVA
+books-vat-category-e = Exonéré
+books-vat-category-z = Taux zéro
+books-period-days = du { $from } au { $to }
+books-declare = Du { $from } au { $to } : { $least ->
+    [yes] au moins { $turnover }
+   *[no] { $turnover }
+} encaissés hors TVA, à déclarer au plus tard le { $due }.
+books-declare-nothing = Rien d’encaissé du { $from } au { $to } : déclarez { $zero } au plus tard le { $due }.
+books-declare-line = { $name } : { $turnover } ; cotisations d’environ { $social } ({ $rate }).
+books-declare-vl = Impôt sur le revenu payé avec (versement libératoire) : environ { $vl } ({ $rate }).
+books-declare-line-no-rate = { $name } : { $turnover }.
+books-declare-cfp = Contribution à la formation professionnelle (CFP) : environ { $cfp } ({ $rate }).
+books-declare-cfp-unsaid = La contribution à la formation professionnelle n’est pas comptée tant que votre métier n’est pas dit : commerce, artisanat ou profession libérale (Paramètres ▸ Factures).
+books-declare-unsaid = { $amount } ne relève d’aucune activité dite : dites la vôtre (Paramètres ▸ Factures), et ses cotisations sont estimées.
+books-declare-estimate = Cotisations estimées : { $total }.
+books-declare-foreign = { $foreign } reçus : dites ce que cela a donné en euros (sioul invoices received).
+books-vat-head = { $period } : { $tax } de TVA collectée, sur { $base } hors TVA.
+books-vat-nothing = { $period } : aucune TVA collectée.
+books-vat-line = { $name } : { $tax } sur { $base }.
+books-vat-line-untaxed = { $name } : { $base }, sans TVA ici.
+books-vat-credits = Avoirs sur des services avec de l’argent encore à rendre, non comptés tant qu’il n’est pas rendu : { $numbers }.
+books-vat-foreign = Factures en une autre devise, non comptées : { $numbers }.
+books-vat-files-nothing = Sioul prépare votre déclaration de TVA ; il ne dépose rien.
+books-threshold-franchise-all = seuil de la franchise en base de TVA
+books-threshold-franchise-goods = seuil de la franchise en base de TVA pour les ventes
+books-threshold-franchise-service = seuil de la franchise en base de TVA pour les services
+books-threshold-franchise-higher-all = seuil majoré de la franchise en base de TVA
+books-threshold-franchise-higher-goods = seuil majoré de la franchise en base de TVA pour les ventes
+books-threshold-franchise-higher-service = seuil majoré de la franchise en base de TVA pour les services
+books-threshold-micro-all = plafond du régime micro
+books-threshold-micro-goods = plafond du régime micro pour les ventes
+books-threshold-micro-service = plafond du régime micro pour les services
+books-threshold-status = { $least ->
+    [yes] Au moins { $turnover } comptés
+   *[no] { $turnover } comptés
+} cette année pour le { $name }, { $amount }.
+books-threshold-above = { $least ->
+    [yes] Au moins { $turnover } comptés
+   *[no] { $turnover } comptés
+} cette année, au-dessus du { $name }, { $amount }.
+books-threshold-prorated = Calculé au prorata de vos jours d’activité depuis le { $started } : { $full } pour une année entière.
+books-near-franchise-title = Votre chiffre d’affaires approche du seuil de la franchise en base de TVA
+books-near-franchise = { $turnover } comptés cette année, 80 % du { $name }, { $amount }. Au-delà, la TVA s’applique à partir du 1er janvier { $next }.
+books-near-micro-title = Votre chiffre d’affaires approche du plafond du régime micro
+books-near-micro = { $turnover } encaissés cette année, 80 % du { $name }, { $amount }. Au-dessus deux années de suite, le régime micro prend fin.
+books-franchise-crossed-title = La TVA s’applique à partir du 1er janvier { $next }
+books-franchise-crossed = { $turnover } comptés cette année, au-dessus du { $name }, { $amount }. La TVA s’applique à partir du 1er janvier { $next } : changez de régime de TVA à cette date (Paramètres ▸ Factures).
+books-franchise-higher-title = La TVA s’applique à partir { $today ->
+    [yes] d’aujourd’hui, { $day }
+   *[no] du { $day }
+}
+books-franchise-higher = { $turnover } comptés cette année, au-dessus du { $name }, { $amount } : changez de régime de TVA (Paramètres ▸ Factures){ $corrective ->
+    [yes] , et les factures aux entreprises depuis ce jour reçoivent une facture rectificative.
+   *[no] .
+}
+books-micro-crossed-title = Votre chiffre d’affaires a dépassé le plafond du régime micro
+books-micro-crossed = { $turnover } encaissés cette année, au-dessus du { $name }, { $amount } : le régime micro reste cette année ; une deuxième année de suite au-dessus y met fin au 1er janvier suivant.
+books-micro-ends-title = Le régime micro prend fin le 1er janvier { $next }
+books-micro-ends = { $turnover } encaissés cette année, au-dessus du { $name } pour la deuxième année de suite : le régime micro prend fin le 1er janvier { $next } ; le régime réel s’applique à partir de cette date (Paramètres ▸ Factures).
+books-des = Services à des entreprises d’autres pays de l’UE, { $month } (DES) : { $total }, à déclarer au plus tard le { $due }.
+books-porch-declaration = Déclaration de chiffre d’affaires
+books-porch-declare-what = { $period } · au plus tard le { $due }
+books-porch-des = DES, services aux entreprises de l’UE
+books-porch-des-what = { $month } · au plus tard le { $due }
+books-for-the-books = Les livres
+books-file-name = Livre des recettes, du { $from } au { $to }
+books-none = Aucune recette pour l’instant : les livres commencent avec une facture émise, ou un budget de travail qui déclare.
+books-row-without = { $amount } hors TVA
+books-cli-no-declaration = Aucune déclaration de chiffre d’affaires : votre pays ou votre régime n’en demande pas ici (Paramètres ▸ Factures).
+books-cli-no-vat = Pas de récapitulatif de TVA : aucune facture émise en étant redevable de la TVA cette année.
+books-cli-no-threshold = Aucun seuil surveillé : la franchise ou le régime micro ne s’applique pas ici.
+books-cli-no-des = Aucune DES cette année : aucun service à une entreprise d’un autre pays de l’UE.
+books-cli-not-counted = non compté
+books-cli-no-payment = Aucun paiement de ce jour pour cette facture.
+books-cli-received = Le paiement du { $day } de la facture { $number } compte pour { $amount } dans les livres.
+books-cli-same-currency = Cette facture est dans la devise des livres : ce qu’elle a reçu compte tel quel.
+books-overview = { $every ->
+    [month] Chiffre d’affaires encaissé ce mois-ci
+   *[quarter] Chiffre d’affaires encaissé ce trimestre
+}, hors TVA : { $least ->
+    [yes] au moins { $turnover }
+   *[no] { $turnover }
+}, à déclarer au plus tard le { $due }.
+books-total-until = { $name }, jusqu’au { $until }
+books-setting-unread = Dans [invoice], { $key } = « { $value } » ne se lit pas, et reste de côté : un jour s’écrit 2026-06-12, une période month ou quarter, un métier commerce, craft ou liberal.
+books-declare-beyond = Du { $from } au { $to } : { $turnover } à déclarer au plus tard le { $due } ; les { $beyond } rendus au-delà de ce qui a été encaissé ne sont pas déduits : Sioul ne reporte rien sur une autre période.
+books-declare-line-below = { $name } : { $turnover }, plus rendu qu’encaissé : { $zero } déclarés.
+books-declare-foreign-only = Du { $from } au { $to } : { $foreign } reçus : dites ce que cela a donné en euros ; à déclarer au plus tard le { $due }.
+books-foreign-amounts = { $list }
+books-at-least-amount = au moins { $amount }
+books-beyond = au-delà de la facture { $numbers }
+books-des-foreign = Services à des entreprises d’autres pays de l’UE, { $month } (DES) : { $total }, et { $foreign ->
+    [one] une facture
+   *[other] { $foreign } factures
+} en une autre devise non comptées, à dire en euros ; à déclarer au plus tard le { $due }.
+books-des-foreign-note = { $foreign ->
+    [one] Une facture en une autre devise n’est pas comptée : dites-la en euros (le service des douanes donne le taux).
+   *[other] { $foreign } factures en une autre devise ne sont pas comptées : dites-les en euros (le service des douanes donne le taux).
+}
+books-des-credit = { $number } crédite une facture d’un autre mois : inscrit au mois où il a été émis, en dessous de zéro, comme le service en ligne des douanes saisit une minoration ; le mois auquel il appartient, c’est au guide des douanes de le dire.
+books-des-rounded = Chaque valeur se déclare en euros, arrondie à l’euro le plus proche.
+books-franchise-effect-title-today = À partir d’aujourd’hui, la TVA s’applique
+books-franchise-effect-title = La TVA s’applique depuis le 1er janvier { $year }
+books-franchise-effect = Votre chiffre d’affaires de { $last }, { $turnover }, a dépassé le { $name }, { $amount }. La TVA s’applique à partir du 1er janvier { $year } : changez de régime de TVA (Paramètres ▸ Factures).
+books-micro-effect-title-today = À partir d’aujourd’hui, le régime micro prend fin
+books-micro-effect-title = Le régime micro a pris fin le 1er janvier { $year }
+books-micro-effect = Votre chiffre d’affaires a dépassé le { $name } en { $before } et en { $last }. Le régime réel s’applique à partir du 1er janvier { $year } : changez de régime d’imposition (Paramètres ▸ Factures).
+books-micro-crossed-late-title = Votre chiffre d’affaires de { $last } a dépassé le plafond du régime micro
+books-micro-crossed-late = { $turnover } encaissés en { $last }, au-dessus du { $name }, { $amount } : une année au-dessus garde le régime micro ; au-dessus encore en { $year }, il prend fin au 1er janvier suivant.
+books-declare-correct = La fiche de l’Urssaf dit de corriger la déclaration déjà faite pour cet argent ({ $period }) : { $amount } hors TVA rendus le { $day }, comptés dans aucune période ici.
+set-invoice-block = Factures
+set-invoice-block-help = Qui envoie vos factures, comment elles sont numérotées et ce qu’elles impriment, comme votre pays le demande ; les réglages des livres ; la plateforme des factures électroniques.
+books-mark-declaration = Déclaration : { $period }
+books-mark-des = DES : { $month }
+invoices-status-draft = brouillon
+invoices-status-unpaid = pas encore payée
+invoices-status-partly-paid = payée en partie
+invoices-status-paid = payée
+invoices-status-credited = annulée par un avoir
+invoices-status-credit-note = avoir
+invoices-status-to-pay-back = à rembourser
+invoices-left-to-pay = { $amount } restent à payer
+invoices-left-to-pay-back = { $amount } à rembourser
+invoices-sent-on = envoyée le { $day }
+invoices-missing-run = Les numéros { $first } à { $last } n’ont aucun enregistrement sur cet appareil.
+invoices-missing-run-in = { $sequence } : les numéros { $first } à { $last } n’ont aucun enregistrement sur cet appareil.
+invoices-tax-rate = TVA { $rate }
+invoices-category-s = TVA à un taux
+invoices-category-z = TVA à taux zéro
+invoices-category-e = Exonérée de TVA
+invoices-category-ae = Autoliquidation
+invoices-category-k = Livraison dans un autre pays de l’UE
+invoices-category-g = Exportation hors de l’UE
+invoices-category-o = Hors du champ de la TVA
+invoices-unit-HUR = Heures
+invoices-unit-MIN = Minutes
+invoices-unit-DAY = Jours
+invoices-unit-C62 = Unités
+invoices-unit-MON = Mois
+invoices-unit-KMT = Kilomètres
+invoices-unit-LS = Forfait
+invoices-language-en = Anglais
+invoices-language-fr = Français
+invoices-in-language-en = factures en anglais
+invoices-in-language-fr = factures en français
+invoices-client-kind-business = Une entreprise
+invoices-client-kind-consumer = Un particulier
+invoices-client-kind-public = Un organisme public
+invoices-deposit-no-amount = Dites le montant de l’acompte, ou sa part de la facture.
+invoices-deposit-on = Acompte sur : { $what }
+invoices-deposit-line = Acompte
+invoices-discarded = { $title } supprimé.
+invoices-record-changed = L’enregistrement de cette facture a été modifié hors de Sioul depuis son émission ({ $path }) : une facture émise ne se modifie jamais ; un avoir y répond.
+invoices-file-changed = Le fichier de cette facture a été modifié hors de Sioul depuis son émission ({ $path }) : Imprimer à nouveau rend le fichier émis, refait depuis son enregistrement.
+invoices-paid-line = { $amount } reçus le { $day }, { $means }
+invoices-paid-back-line = { $amount } remboursés le { $day }, { $means }
+invoices-pay-no-amount = Dites le montant reçu.
+invoices-paid-said = { $amount } reçus sur la facture { $number }.
+invoices-paid-back-said = { $amount } remboursés sur l’avoir { $number }.
+invoices-credit-of-credit = Un avoir ne s’annule pas par un avoir : émettez plutôt une facture.
+invoices-mail-print-first = Cette facture, d’avant novembre 2026, n’a pas gardé de fichier : appuyez d’abord sur Imprimer à nouveau, puis sur Écrire le courriel ({ $path }).
+invoices-mail-body = Bonjour,
+
+    Vous trouverez en pièce jointe : { $title }, d’un montant de { $amount }, à régler au plus tard le { $due }.
+
+    Bien cordialement,
+    { $name }
+invoices-mail-body-no-due = Bonjour,
+
+    Vous trouverez en pièce jointe : { $title }, d’un montant de { $amount }.
+
+    Bien cordialement,
+    { $name }
+invoices-mail-body-credit = Bonjour,
+
+    Vous trouverez en pièce jointe : { $title }, d’un montant de { $amount }.
+
+    Bien cordialement,
+    { $name }
+invoices-id-vat = Numéro de TVA
+invoices-id-other = Un autre identifiant
+invoices-client-no-name = Un client a un nom, ou un contact.
+invoices-scheme-none = Pas assujetti à la TVA
+invoices-scheme-franchise = Franchise en base de TVA
+invoices-scheme-liable = Redevable de la TVA
+invoices-every-quarter = Chaque trimestre
+invoices-every-month = Chaque mois
+invoices-pattern-wrong = La numérotation « { $pattern } » ne se lit pas : { $why }
+invoices-declared-said = Notée comme déclarée.
+invoices-number-missing = Saisissez un nombre.
+invoices-unread-holds = Un nombre ci-dessus ne se lit pas, donc n’a pas été enregistré : corrigez-le, puis émettez.
+invoices-not-saved-stay = Pas enregistré : { $why } Appuyez encore sur Retour pour quitter sans ces changements.
+invoices-not-saved = Pas enregistré : { $why }
+invoices-deposit-less = sur { $whole }, ses avoirs ont rendu le reste
+invoices-set-aside = { $time } de temps retiré de ce brouillon, non facturé ici.
+invoices-put-back = Remettre
+invoices-draft-replaced = { $n ->
+    [one] Le brouillon pour { $drafts } a été changé sur un autre appareil avant que vos changements d’ici soient partis : sa version a remplacé la vôtre, gardée parmi les versions précédentes.
+   *[other] Les brouillons pour { $drafts } ont été changés sur un autre appareil avant que vos changements d’ici soient partis : ses versions ont remplacé les vôtres, gardées parmi les versions précédentes.
+}
+invoices-client-changed-elsewhere = Cette fiche a changé ailleurs : rouvrez-la.
+invoices-read-again = Ce brouillon a changé ailleurs : il est montré tel qu’il est maintenant.
+invoices-not-declared-said = Notée comme non déclarée.
+invoices-changed-elsewhere = Ce brouillon a changé ailleurs entre-temps : ces changements sont repris, les vôtres avec.
+invoices-deposits-left = { $n ->
+    [one] La facture d’acompte { $numbers } n’est plus déduite : elle concerne un autre client ou une autre devise.
+   *[other] Les factures d’acompte { $numbers } ne sont plus déduites : elles concernent un autre client ou une autre devise.
+}
+invoices-line-gone = Une ligne que vous avez changée a été retirée ailleurs entre-temps : votre changement est abandonné.
+invoices-time-added = { $n ->
+    [one] Une ligne de temps ajoutée au brouillon ({ $time }).
+   *[other] { $n } lignes de temps ajoutées au brouillon ({ $time }).
+}
+invoices-scheme-day-wrong = « { $day } » ne se lit pas comme un jour : écrivez-le 01/01/2027, ou 2027-01-01.
+invoices-amount-unread = Ce n’est pas un montant : écrivez 1500, ou 1 500,50.
+money-tab-invoices = Factures
+porch-open-declaration = Ouvrir la déclaration
+books-declared = Déclarée
+books-not-declared = Pas déclarée
+books-declared-on = { $what }, déclarée le
+clients-bill = Facturer ce client
+clients-profile = Fiche client
+clients-profile-about = Ce que les factures de ce client impriment, gardé dans votre dossier de notes à côté de vos projets (sioul-clients.toml), jamais dans la fiche de contact sur votre serveur.
+clients-profile-line = Fiche client : { $profile }
+clients-profile-none = Pas encore de fiche client : les factures le facturent comme une entreprise, d’après sa fiche de contact.
+clients-profile-change = Fiche client…
+clients-profile-make = Faire sa fiche client…
+clients-name = Nom légal, tel que les factures l’impriment
+clients-street = Rue, sur des lignes
+clients-postcode = Code postal
+clients-city = Ville
+clients-delivery = Adresse de livraison, quand elle diffère
+clients-ids = Ses identifiants
+clients-id-add = Un identifiant
+clients-id-remove = Retirer cet identifiant
+clients-id-printed = Imprimé
+clients-invoices = Ses factures
+clients-language-usual = Votre langue habituelle
+clients-terms = Jours
+clients-email = L’adresse où ses factures sont envoyées
+invoices-new = Nouvelle
+invoices-none = Pas encore de facture. « Faire la facture » d’un projet, « Facturer ce client » d’un contact, ou Nouvelle, en font une.
+invoices-any-client = Tous les clients
+invoices-any-year = Toutes les années
+invoices-any-status = Tous les états
+invoices-changed-outside = modifiée hors de Sioul
+invoices-menu = Ce qu’on peut en faire
+invoices-client = Client
+invoices-client-choose = Qui elle facture : un client, un contact, un nom
+invoices-client-other = Un autre client
+invoices-client-as-typed = Facturer « { $name } » tel qu’écrit
+invoices-client-traits = Type et pays…
+invoices-country = Pays
+invoices-country-unsaid = pays non dit
+invoices-issued-when = Émise le { $day }, quand vous appuyez sur Émettre.
+invoices-service = Prestation
+invoices-service-default = Le jour de la prestation est celui de l’émission, sauf si vous dites un autre jour ou une période.
+invoices-lines = Lignes
+invoices-time-lines = { $n ->
+    [one] Une ligne de temps
+   *[other] { $n } lignes de temps
+}
+invoices-line-what = Ce que c’est
+invoices-line-quantity = Quantité
+invoices-line-price = Prix unitaire
+invoices-line-hourly = Prix de l’heure
+invoices-line-more = Plus
+invoices-line-details = Détails, sous la ligne
+invoices-line-discount = Remise
+invoices-line-rate = Taux, %
+invoices-line-tax = Sa taxe : { $tax }
+invoices-line-own-tax = Sa propre taxe, pas la règle de votre pays
+invoices-line-exemption = Pourquoi elle ne porte pas de TVA ici, en mots
+invoices-line-remove = Retirer cette ligne
+invoices-line-add = Une ligne
+invoices-nature-service = Une prestation de services
+invoices-nature-goods = Des biens
+invoices-activity-usual = Votre activité pour elle
+invoices-deposits = Acomptes qu’elle déduit
+invoices-terms-notes = Conditions, notes, langue et devise
+invoices-terms-days = Payable sous, en jours
+invoices-end-of-month = fin de mois
+invoices-due-on = Payable au plus tard le { $day }
+invoices-order = Le bon de commande du client
+invoices-currency = Devise
+invoices-notes = Vos notes, imprimées sous les lignes
+invoices-issue = Émettre
+invoices-deposit-of = Facture d’acompte…
+invoices-discard = Supprimer
+invoices-keep-draft = Garder en brouillon
+invoices-preview = Aperçu de la facture
+invoices-draft-copy = une copie que la synchronisation a faite du brouillon { $id }
+invoices-paid-ask = Payée…
+invoices-paid-back-ask = Remboursé…
+invoices-paid-title = Payée : { $title }
+invoices-paid-back-title = Remboursé : { $title }
+invoices-paid-save = Payée
+invoices-paid-back-save = Remboursé
+invoices-pay-day = Le
+invoices-pay-means = Par
+invoices-pay-amount = Montant
+invoices-pay-partly = Une partie, c’est un paiement partiel : les paiements s’additionnent, et ce qui reste n’est pas encore payé.
+invoices-payments = Paiements
+invoices-paid-back-list = Remboursements
+invoices-write-mail = Écrire le courriel
+invoices-credit-ask = Avoir…
+invoices-credit-title = Un avoir pour la { $title }
+invoices-credit-about = Une facture émise ne se modifie jamais : un avoir y répond. Toutes ses lignes l’annulent ; certaines la corrigent.
+invoices-credit-make = Faire l’avoir
+invoices-credit-none = Cochez au moins une ligne.
+invoices-credited-by = annulée par l’avoir { $numbers }
+invoices-deducted-by = déduite par { $numbers }
+invoices-final-ask = Facture finale…
+invoices-deposit-title = Une facture d’acompte
+invoices-deposit-share = Une part de la facture, en pourcentage
+invoices-deposit-amount = Un montant, hors TVA
+invoices-deposit-amount-hint = Montant, hors TVA
+invoices-deposit-what = Ce qu’elle paie d’avance
+invoices-deposit-about = La facture finale la déduit une fois émise : cochez-la sous « Acomptes qu’elle déduit ».
+invoices-deposit-make = Faire la facture d’acompte
+invoices-settings-form-asked = Votre forme juridique, désormais un réglage à part, est demandée une fois : un entrepreneur individuel (micro-entrepreneur compris) imprime « EI » après le nom, une société non.
+invoices-settings-preset = Les règles de votre pays
+invoices-settings-unsupported = { $country } (non pris en charge)
+invoices-settings-asks = Avant qu’une facture soit émise, votre pays demande :
+invoices-settings-ids = Vos identifiants
+invoices-settings-printed = imprimé
+invoices-settings-remove = Le retirer
+invoices-settings-id-add = Un identifiant
+invoices-settings-older-siret = Votre SIRET d’avant, { $siret }, est imprimé tant qu’aucun identifiant n’est dit ici.
+invoices-settings-scheme-now = TVA aujourd’hui : { $scheme }.
+invoices-settings-more = Plus
+invoices-settings-regime = Régime d’imposition pour les livres
+invoices-settings-unsaid = Non dit
+invoices-settings-schemes = Régime de TVA, à partir d’un jour
+invoices-settings-from-always = À partir du (toujours)
+invoices-settings-until-always = Jusqu’au (sans fin)
+invoices-settings-scheme-add = À partir d’un autre jour
+invoices-settings-trade-name = Nom commercial
+invoices-settings-postcode = Code postal
+invoices-settings-city = Ville
+invoices-settings-email = Courriel imprimé sur les factures
+invoices-settings-banks = Comptes bancaires
+invoices-settings-holder = Titulaire
+invoices-settings-bank-add = Un compte
+invoices-settings-iban-wrong = cet IBAN ne passe pas sa vérification
+invoices-settings-qr = Le QR code de paiement sur les factures en euros
+invoices-settings-penalty = Taux des pénalités de retard, en pourcentage
+invoices-settings-language-window = La langue de Sioul
+invoices-settings-pattern = Numérotation
+invoices-settings-reset-yearly = depuis 1 chaque année
+invoices-settings-reset-never = jamais depuis 1 à nouveau
+invoices-settings-credit-pattern = Numérotation propre aux avoirs
+invoices-settings-next = Le prochain numéro : { $number }
+invoices-settings-lines = Lignes imprimées
+invoices-settings-own-line = Une ligne à vous
+invoices-settings-line-own-words = Avec vos mots (vide : tel qu’écrit au-dessus)
+invoices-settings-line-text = Ses mots
+invoices-settings-line-add = Une ligne à vous
+invoices-settings-insurance = Assurance professionnelle, telle qu’imprimée
+invoices-settings-capital = Capital social, tel qu’imprimé
+invoices-settings-books = Les livres
+invoices-settings-activities = Vos activités
+invoices-settings-declare = Déclarer
+invoices-settings-vl = Versement libératoire, payé avec chaque déclaration
+invoices-settings-trade = Contribution à la formation, au titre de
+invoices-settings-trade-unsaid = Comme votre activité le dit
+invoices-settings-trade-commerce = Commerce
+invoices-settings-trade-craft = Artisanat
+invoices-settings-trade-liberal = Profession libérale
+invoices-settings-started = Le jour où vous avez commencé
+invoices-settings-vat-period = Le récapitulatif de TVA
+invoices-settings-debits = TVA sur les débits (une option prise auprès des impôts)
+invoices-settings-rates = Des taux à vous (ACRE, un taux que l’Urssaf vous a donné)
+invoices-settings-rate-social = Cotisations sociales
+invoices-settings-rate-vl = Versement libératoire
+invoices-settings-rate-cfp = Contribution à la formation professionnelle
+invoices-settings-rate-activity = Activité
+invoices-settings-rate-percent = Taux, en pourcentage
+invoices-settings-rate-add = Un taux à vous
+invoices-settings-platform = Votre plateforme de facturation électronique
+invoices-settings-platform-hint = Son nom, tel que vous le connaissez
+invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une plateforme agréée (une PA), et vos ventes aux particuliers y sont déclarées à la place (e-reporting). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures. Sous la franchise en base de TVA sans numéro de TVA, ce PDF ne porte pas encore de données Factur-X.

@@ -34,7 +34,7 @@ SioulWindow {
     // The documentation's pictures (SIOUL_GRAB_STEPS=demo) are a landscape screen;
     // with SIOUL_GRAB_PHONE (or SIOUL_GRAB_STEPS=phone), a phone's: 412 by 891, its layout.
     readonly property bool phoneGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "phone" || sioul.grabPhone())
-    readonly property bool demoGrab: sioul.grabFolder() !== "" && sioul.grabSteps() === "demo" && !window.phoneGrab
+    readonly property bool demoGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "demo" || sioul.grabSteps() === "invoices") && !window.phoneGrab
     // A tablet's pictures (SIOUL_GRAB_STEPS=tablet): each page at 1280 by 800, the device a
     // tablet, without the window's own title bar and with touch, as on Android; a
     // computer's layout, since the room decides it, never the system.
@@ -501,6 +501,9 @@ SioulWindow {
 
         function onStateChanged() {
             if (Qt.application.state === Qt.ApplicationSuspended || Qt.application.state === Qt.ApplicationHidden) {
+                // What was typed in an invoice's editor, written before Android may end Sioul.
+                if (window.budgetsPage)
+                    window.budgetsPage.flushInvoices()
                 // No text field keeps the focus in the back (the keyboard goes
                 // with it): Qt's text handles would keep asking Android for the
                 // clipboard, refused.
@@ -863,8 +866,9 @@ SioulWindow {
             window.openPage("contract", item.key || decodeURIComponent(item.uri.slice("sioul:contract/".length)))
         } else if (item.kind === "letter")
             window.openLetter(item.key || decodeURIComponent((item.uri || "").slice("sioul:letter/".length)))
+        // An invoice without a card here (paid, a credit note): its pane in Money ▸ Invoices.
         else if (item.kind === "invoice")
-            window.page = 7
+            window.openInvoice(item.key || decodeURIComponent((item.uri || "").slice("sioul:invoice/".length)))
         // A project's address, or as it was written before the one name ("sioul:case/").
         else if (item.kind === "project")
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
@@ -955,6 +959,27 @@ SioulWindow {
         cardHost.leave()
         window.page = 7
         projectsPage.open(id)
+    }
+
+    // Money ▸ Invoices, a draft in its editor: a project's Make the invoice, a contact's Bill this client.
+    function openInvoiceDraft(id) {
+        cardHost.leave()
+        window.page = 9
+        budgetsPage.openInvoiceDraft(id)
+    }
+
+    // Money ▸ Invoices, an issued invoice in its pane.
+    function openInvoice(number) {
+        cardHost.leave()
+        window.page = 9
+        budgetsPage.openInvoice(number)
+    }
+
+    // The declaration view at a day of its period ("" today's): the Porch's declaration and DES rows.
+    function openDeclaration(anchor) {
+        cardHost.leave()
+        window.page = 9
+        budgetsPage.openDeclaration(anchor, -1)
     }
 
     // A project's tasks, as a board, a list or a calendar.
@@ -1142,6 +1167,9 @@ SioulWindow {
             window.focusWindow.quitting = true
             window.focusWindow.close()
         }
+        // What was typed in an invoice's editor, written before Sioul quits (the review of phase 3, F11).
+        if (window.budgetsPage)
+            window.budgetsPage.flushInvoices()
         sioul.flush()
         if (Qt.platform.os !== "android")
             Qt.quit()
@@ -1339,7 +1367,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -3437,6 +3465,40 @@ SioulWindow {
                 () => budgetsPage.showTab(0),
                 () => window.close()
             ]
+            // Money ▸ Invoices on the demo's invented business (docs/projects.md, the guide's
+            // pictures): a project's page with its client's profile, its Make the invoice in
+            // the editor, its time unfolded and its preview; issued, its pane; Paid…; the
+            // list; Settings ▸ Invoices. A phone's layout with "phone" (run.sh).
+            readonly property var invoicesSteps: [
+                () => window.page = 7,
+                () => projectsPage.openFirst(),
+                () => {},
+                () => grabber.save("project-client"),
+                () => projectsPage.makeInvoice(),
+                () => {},
+                () => {},
+                () => grabber.save("invoice-editor"),
+                () => budgetsPage.invoices.editor.toPreview(),
+                // Once the page is laid out, at its very end.
+                () => budgetsPage.invoices.editor.toPreview(),
+                () => grabber.save("invoice-preview"),
+                () => budgetsPage.invoices.editor.issueNow(),
+                () => {},
+                () => {},
+                () => grabber.save("invoice-issued"),
+                () => budgetsPage.invoices.askPaid(budgetsPage.invoices.invoice),
+                () => {},
+                () => grabber.saveWindow("invoice-paid"),
+                () => budgetsPage.invoices.closeForms(),
+                () => budgetsPage.invoices.back(),
+                () => {},
+                () => grabber.save("invoices"),
+                () => window.showParameters("invoice"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-invoices"),
+                () => window.close()
+            ]
             readonly property var bankSteps: [
                 () => window.page = 9,
                 () => sioul.status = JSON.parse(sioul.importBank("file://" + grabber.folder + "/../releve-banque.csv")).said,
@@ -5218,7 +5280,8 @@ SioulWindow {
                     return ""
                 }
                 const wide = (item, depth) => {
-                    if (depth > 60 || !item.visible)
+                    // A row scrolled sideways (the Money tabs on a phone) is wider on purpose.
+                    if (depth > 60 || !item.visible || sideways(item))
                         return
                     const kind = String(item).split("(")[0]
                     if ((kind.indexOf("RowLayout") >= 0 || kind.indexOf("GridLayout") >= 0) && item.implicitWidth > window.width - 16)

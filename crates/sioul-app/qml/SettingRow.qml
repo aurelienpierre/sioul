@@ -43,7 +43,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -299,6 +299,21 @@ ColumnLayout {
                 about: field.setting.help
                 title: field.setting.group === "" ? field.sioul.text("unsubscribed-group") : ""
                 onEnded: field.changedElsewhere()
+            }
+        }
+    }
+
+    // Settings ▸ Invoices (InvoiceSettings.qml): the preset first, then what it asks, the rest under More.
+    Loader {
+        active: field.setting.kind === "invoicing"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            InvoiceSettings {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
             }
         }
     }
@@ -1302,7 +1317,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

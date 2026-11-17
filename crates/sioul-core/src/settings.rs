@@ -102,6 +102,11 @@ pub enum Kind {
     /// list, each topic's seeds and senders' rules, Rename and Remove, the
     /// groups Sioul noticed with "Name it" (docs/topics.md). Nothing in `value`.
     Topics,
+    /// Invoices, the window's own block (`InvoiceSettings.qml`): the country's
+    /// preset first, then what it asks, the rest under "More"; the books'
+    /// settings; the e-invoicing platform. The window reads and writes them
+    /// itself (`invoice_settings`, `set_invoice_setting`). Nothing in `value`.
+    Invoicing,
     /// Leaving the lists of the mail you called spam, the window's own block
     /// (`LeaveSpam.qml`): a row when there are some, found off the window's
     /// thread (`leave_spam_look`), and its sheet (docs/client.md,
@@ -732,17 +737,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.section = "invoices".into();
             b.group = tr.text("set-invoice-group", None);
             let invoice = &config.invoice;
-            for (field, kind, value) in [
-                ("name", Kind::Text, invoice.name.clone()),
-                ("address", Kind::Long, invoice.address.clone()),
-                ("siret", Kind::Text, invoice.siret.clone()),
-                ("vat", Kind::Text, invoice.vat.clone()),
-                ("prefix", Kind::Text, invoice.prefix.clone()),
-                ("currency", Kind::Text, if invoice.currency.is_empty() { "EUR".into() } else { invoice.currency.clone() }),
-                ("payment", Kind::Long, invoice.payment.clone()),
-            ] {
-                b.push(&format!("invoice.{field}"), &format!("invoice-{field}"), kind, SettingValue::Text(value));
-            }
+            // The issuer, the numbering, the lines, the books and the platform:
+            // the window's own block, the preset first (an older table's
+            // legal form asked there once, `invoice::life::checks`).
+            b.push("invoice", "invoice-block", Kind::Invoicing, SettingValue::Text(String::new()));
             b.push("invoice.folder", "invoice-folder", Kind::Folder, SettingValue::Text(invoice.folder.clone()));
             let s = b.push("invoice.rate", "invoice-rate", Kind::Float, SettingValue::Float(invoice.rate));
             Builder::range(s, 0.0, 2000.0, 5.0, "/h");
@@ -1600,10 +1598,24 @@ mod tests {
                 // colour: "screen_colours", "calmer_colours".
                 "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
-                "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat",
-                "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
+                "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
+                "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
         );
+        // The invoices' keys of before November 2026 keep their meaning: a
+        // table written with them alone is read as it was (`invoice::life`:
+        // France, an EI, the micro regime and the franchise for a VAT line
+        // citing 293 B; "elsewhere" otherwise). Settings ▸ Invoices is the
+        // window's own block (`Kind::Invoicing`), which asks such a table its
+        // legal form once (the app's `invoices::settings_view`).
+        let older: Config = toml::from_str("[invoice]\nname = \"Camille Exemple EI\"\naddress = \"2 place de l’Exemple\\n69001 Lyon\"\nsiret = \"732 829 320 00017\"\nvat = \"TVA non applicable, art. 293 B du CGI\"\nprefix = \"\"\ncurrency = \"EUR\"\npayment = \"IBAN FR76\"\nrate = 60.0\n").unwrap();
+        let shown: Vec<Setting> = for_view("parameters", &older, &tr, &[], None).into_iter().filter(|s| s.section == "invoices").collect();
+        assert_eq!(shown.iter().map(|s| (s.key.as_str(), s.kind)).collect::<Vec<_>>(), [("invoice", Kind::Invoicing), ("invoice.folder", Kind::Folder), ("invoice.rate", Kind::Float)]);
+        assert_eq!(crate::invoice::life::legal_form_of(&older.invoice), "", "a table from before says none");
+        let today: jiff::civil::Date = "2026-11-16".parse().unwrap();
+        assert_eq!(crate::invoice::life::preset_of(&older.invoice).id, "fr");
+        assert_eq!(crate::invoice::life::scheme_on(&older.invoice, today), ("franchise".to_string(), "TVA non applicable, art. 293 B du CGI".to_string()));
+        assert_eq!(crate::invoice::life::issuer_on(&older.invoice, today).name, "Camille Exemple EI", "as typed: the form not said yet");
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
         assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);

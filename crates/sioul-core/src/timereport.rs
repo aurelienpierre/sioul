@@ -153,6 +153,16 @@ pub struct TimeView {
     pub sentence: String,
 }
 
+/// A cell of a spreadsheet: text, never a formula. One starting with "=",
+/// "+", "-", "@", a tab or a return (a task made from someone's mail,
+/// `=HYPERLINK(…)`, a client's name) would run in the spreadsheet; a quote
+/// before it keeps it text. Quoted when it holds the separator, a quote or a
+/// line's end.
+pub fn csv_cell(text: &str, sep: char) -> String {
+    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text.to_string() };
+    if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
+}
+
 /// A project's billable time from `from` to `to` (both included), as a
 /// spreadsheet reads it: what was done, how many hours, at what rate, for how
 /// much, one line per task (or note), then the total. Nothing else: a full
@@ -161,12 +171,7 @@ pub struct TimeView {
 pub fn billable_csv(all: &[Entry], project: &Project, from: Date, to: Date, default_rate: f64, french: bool, words: [&str; 5]) -> String {
     let (sep, decimal) = if french { (';', ',') } else { (',', '.') };
     let number = |value: f64| format!("{value:.2}").replace('.', &decimal.to_string());
-    // A title is text, never a formula: one starting with "=", "+", "-", "@" (a task made from
-    // someone's mail, `=HYPERLINK(…)`) would run in the spreadsheet; a quote before it keeps it text.
-    let field = |text: &str| {
-        let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text.to_string() };
-        if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
-    };
+    let field = |text: &str| csv_cell(text, sep);
     let rate = project.rate.unwrap_or(default_rate);
     let mut by_what: Vec<(String, u32)> = Vec::new();
     for e in all.iter().filter(|e| e.project == project.id && e.billable && e.day >= from && e.day <= to) {
@@ -239,7 +244,12 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
                 billable: found.is_some_and(Project::is_for_client),
                 unbilled_minutes,
                 unbilled: if unbilled_minutes > 0 { duration(unbilled_minutes) } else { String::new() },
-                unbilled_amount: if unbilled_minutes > 0 && rate > 0.0 { tr.money(amount(unbilled_minutes, rate)) } else { String::new() },
+                // Line by line, as the invoice made of it rounds them (the review of phase 3, F18).
+                unbilled_amount: match found {
+                    Some(project) if unbilled_minutes > 0 && rate > 0.0 => tr.money(Money(crate::invoice::life::time_amount(&all, project, (rate * 100.0).round() as i64))),
+                    None if unbilled_minutes > 0 && rate > 0.0 => tr.money(amount(unbilled_minutes, rate)),
+                    _ => String::new(),
+                },
                 rate,
             }
         })

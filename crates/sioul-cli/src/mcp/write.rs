@@ -429,6 +429,81 @@ pub fn add_note(s: &Session, args: &Args) -> Result<Answer, String> {
     Ok(Answer { text, data: json!({ "uri": uri, "path": path, "links": links }) })
 }
 
+/// A draft invoice, only when the person asked for one (`draft_invoice`):
+/// of a project's unbilled time, with lines of its own, or both; never
+/// issued, sent nor paid here: a number and money are the person's. A
+/// closed project's time is refused, as everywhere.
+pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
+    use sioul_core::invoice::{self, Line, Nature, life};
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    let today = sioul_core::zone::now().date();
+    let settings = &s.config.invoice;
+    let project = match args.line("project")? {
+        Some(asked) => {
+            let id = asked.strip_prefix("sioul:project/").map(sioul_core::notes::decode).unwrap_or_else(|| asked.clone());
+            Some(loaded.projects.iter().find(|p| p.id == id).cloned().ok_or_else(|| format!("No project “{}”.", one_line(&asked)))?)
+        }
+        None => None,
+    };
+    may_write(&consent, &project.iter().map(|p| p.id.clone()).collect::<Vec<_>>())?;
+    let root = s.config.notes_root_path();
+    let clients = root.as_deref().and_then(|r| sioul_core::clients::Clients::load(r).ok()).unwrap_or_default();
+    let reference = args.line("client")?.or_else(|| project.as_ref().and_then(|p| p.client.clone())).unwrap_or_default();
+    let mut draft = life::for_client(settings, &reference, &clients, &loaded.contacts, s.tr.language(), today);
+    let from_time = if args.has("from_time") { args.flag("from_time")? } else { project.is_some() };
+    if let Some(project) = &project {
+        draft.project = project.id.clone();
+        draft.project_title = project.title.clone();
+        if from_time {
+            let entries = sioul_core::timereport::entries(&sioul_core::timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
+            let records = invoice::all_in(&invoice::folder());
+            // Never time a draft holds already, nor time taken out of one of the project's drafts (R15).
+            let entries = life::untaken(entries, &invoice::drafts_in(&invoice::folder()), &project.id);
+            if let Some(timed) = life::from_time(&entries, project, draft.clone(), &records, settings, today) {
+                draft = timed;
+            }
+        }
+    }
+    let issuer = life::issuer_on(settings, today);
+    for given in args.raw("lines").and_then(serde_json::Value::as_array).into_iter().flatten() {
+        let description = given["description"].as_str().map(str::trim).filter(|d| !d.is_empty()).ok_or("Each line has a “description”.")?;
+        let price = given["price"].as_f64().filter(|p| p.is_finite() && p.abs() < 1e9).ok_or("Each line has a “price”, a number.")?;
+        // EN 16931 takes no unit price below zero (BR-27): less to pay is a credit note, made from the invoice.
+        if price < 0.0 {
+            return Err(format!("“{}”: a price below zero is no invoice line. Bill what is done; a credit note answers an invoice issued.", one_line(description)));
+        }
+        let quantity = given["quantity"].as_f64().filter(|q| q.is_finite() && *q > 0.0 && *q < 1e9).unwrap_or(1.0);
+        // UN/ECE Recommendation 20's codes Sioul offers, from a code or a word ("hrs", "jours"); any other refused.
+        let unit = match given["unit"].as_str().map(str::trim).filter(|u| !u.is_empty()) {
+            None => "C62",
+            Some(word) => invoice::units::code(word).ok_or_else(|| format!("“{}”: no unit Sioul knows. Use HUR (an hour), MIN, DAY, C62 (a unit), MON, KMT or LS (a lump sum).", one_line(word)))?,
+        };
+        let nature = if given["goods"].as_bool().unwrap_or(false) { Nature::Goods } else { Nature::Service };
+        let (category, rate) = life::default_tax(&issuer, &draft.client, nature, today);
+        let line = Line { quantity: (quantity * 1000.0).round() as i64, unit: unit.to_string(), price: sioul_core::money::Money::from_units(price).cents(), base: 1, nature, ..Line::of_time(description, 0, 0, &category, rate) };
+        draft.lines.push(line);
+    }
+    if draft.lines.is_empty() {
+        return Err(if project.is_some() { s.tr.text("invoice-nothing", None) } else { "Nothing to bill: give `lines`, or a `project` with time not billed yet.".into() });
+    }
+    // The service's day or period, when the person said it; else the day of issue.
+    if let Some(from) = args.date("service_from")? {
+        draft.period_from = from.to_string();
+        draft.period_to = args.date("service_to")?.unwrap_or(from).to_string();
+        draft.period_default = false;
+    }
+    life::refresh(&mut draft, settings, today);
+    let saved = invoice::save_draft(&invoice::folder(), &draft)?;
+    let missing: Vec<String> = life::checks(&saved, settings, today, &invoice::all_in(&invoice::folder())).into_iter().map(|c| format!("{} {}", if c.required { "Needed before issuing:" } else { "Worth adding:" }, c.text)).collect();
+    let mut text = format!("Draft {} kept: {} · {}. Nothing is numbered: the person issues it from Sioul.", saved.draft, one_line(saved.client.first_line()), s.tr.money_in(saved.total(), &saved.currency));
+    for line in &missing {
+        text.push('\n');
+        text.push_str(&one_line(line));
+    }
+    Ok(Answer { text, data: json!({ "draft": saved.draft, "client": saved.client.first_line(), "amount": s.tr.money_in(saved.total(), &saved.currency), "lines": saved.lines.len(), "missing": missing }) })
+}
+
 /// The account a message goes out from: the one asked or the message's,
 /// else the first by priority, among those Sioul sends from.
 fn sender<'a>(s: &'a Session, asked: Option<&str>) -> Result<&'a Account, String> {

@@ -26,7 +26,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 **Nouveau projet** (ou **Nouveau ▾ ▸ Un projet**) :
 
 - **Nom**.
-- **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent son adresse postale.
+- **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent sa fiche de client quand il en a une ([Vos clients](time.md#your-clients)), sinon son adresse postale.
 - Sans cela, le projet est à vous. **À vous, hors travail** garde ses tâches en vue pendant le calme, avec la famille et les amis.
 - **Où il en est** : ouvert, en attente ou fermé.
 
@@ -39,7 +39,9 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 - **Sur une ligne de temps** : d’abord ce qui est **À venir** (les dates demandées de ses tâches ouvertes, les événements), puis ce qui s’est passé **Avant**, du plus récent au plus ancien : tâches faites, courriels, notes modifiées, temps noté, factures.
 - **Ses tâches**, en **Tableau**, en **Liste** ou en **Gantt** : chacun ouvre la page [Tâches](tasks.md), limitée à ce projet. Le **Gantt** est celui de la page Tâches ([Liste, Tableau, Gantt](tasks.md#list-board-timeline)) : chaque tâche sur ses jours, la date demandée en petit losange.
 - **Noter du temps** : une réunion, un appel, un travail fait loin du minuteur.
-- **Faire la facture**, quand du temps facturable attend d’être facturé. Voir [Le temps et les factures](time.md).
+- **Faire la facture**, quand du temps facturable attend d’être facturé : un brouillon de ce temps s’ouvre dans l’éditeur, dans Budgets ▸ Factures, où vous le vérifiez et l’émettez. Un projet qui a déjà un brouillon retrouve ce brouillon, avec le temps noté depuis ajouté ([L’éditeur](time.md#the-editor)).
+- **La fiche de son client**, sur un projet pour un client : une ligne, comme « Fiche client : Une entreprise · France · 904 123 452 », ou « Pas encore de fiche client : les factures le facturent comme une entreprise, d’après sa fiche de contact. », avec **Fiche client…** ([Vos clients](time.md#your-clients)).
+- **Ses factures** : chacune ouvre son volet dans Budgets ▸ Factures, avec **Payée…**, **Écrire le courriel**, **Imprimer à nouveau** et **Avoir…** ([Le volet d’une facture émise](time.md#an-issued-invoice)). La case **Payée** à côté de chacune dit qu’elle est payée, par virement, aujourd’hui.
 - **Ajouter ▾** et **Lier à…**, au bas : quelque chose de nouveau lié au projet, ou un lien vers ce qui existe, comme le contact du client ; **Liens**, tout ce que le projet tient et ce à quoi c’est lié ([Les liens](ties.md)).
 
 ## Les courriels qui arrivent ici tout seuls {#mail-that-comes-here-by-itself}

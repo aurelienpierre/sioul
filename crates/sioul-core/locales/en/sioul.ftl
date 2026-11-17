@@ -623,8 +623,8 @@ receipts-which-budget = Say which budget: --budget and its id. Only a work budge
 receipts-for-declaration = For the declaration
 receipts-previous = The period before
 receipts-next = The period after
-receipts-save = Save the receipts register…
-receipts-saved = The receipts register is saved in { $path }, as a spreadsheet (CSV) and as a PDF.
+receipts-save = Save the receipts book…
+receipts-saved = The receipts book is saved in { $path }, as a spreadsheet (CSV) and as a PDF.
 receipts-file-name = Receipts register, { $budget }, { $from } to { $to }
 receipts-none = No budget declares: a work budget that sets money aside for taxes, or says how often it declares, has a register.
 # The budgets page from one income to the next (docs/accounting.md, "The budgets page").
@@ -2333,7 +2333,10 @@ map-none = No contact has a postal address placed yet.
 set-map-tiles = Map tiles
 set-map-tiles-help = Where map images come from, as https://…/{"{"}z{"}"}/{"{"}x{"}"}/{"{"}y{"}"}.png. Empty: OpenStreetMap's, fetched sparingly and kept.
 set-invoice-name = Your name or business name
-set-invoice-name-help = Printed at the top of your invoices. In France, a sole trader (entrepreneur individuel) writes « EI » right after the name: « Camille Exemple EI ».
+set-invoice-name-help = Printed at the top of your invoices. In France, Sioul writes « EI » after the name of a sole trader (entrepreneur individuel) itself; a name that says it already keeps it once.
+set-invoice-legal-form = Legal form
+set-invoice-legal-form-help = A French entrepreneur individuel (micro-entrepreneur included) gets « EI » after the name, printed by Sioul; a company does not.
+set-invoice-legal-form-unsaid = Not said yet
 set-invoice-address = Your address
 set-invoice-address-help = On lines, as on an envelope.
 set-invoice-siret = SIRET
@@ -2345,7 +2348,7 @@ set-invoice-prefix-help = Empty: the year, and numbers start again each January 
 set-invoice-currency = Currency
 set-invoice-currency-help = A three-letter code: EUR, USD, CHF.
 set-invoice-payment = Payment details
-set-invoice-payment-help = Printed at the bottom: IBAN, terms, late fees.
+set-invoice-payment-help = Printed at the bottom: IBAN, how to pay. The late-payment lines your country asks for are printed by Sioul.
 set-invoice-folder = Invoices go into
 set-invoice-folder-help = The folder of their PDFs; "Documents/Invoices" in your home when empty.
 set-invoice-rate = An hour costs
@@ -2684,6 +2687,122 @@ invoice-amount = Amount
 invoice-total = Total
 invoice-siret = SIRET { $siret }
 invoice-late = Late payment: penalties at three times the French legal interest rate, and a fixed €40 recovery fee (Code de commerce, art. L441-10 and D441-5). No discount for early payment.
+invoice-credit-to = Credited to
+invoice-delivery = Delivered to
+invoice-title-invoice = Invoice No. { $number }
+invoice-title-credit-note = Credit note No. { $number }
+invoice-title-deposit = Deposit invoice No. { $number }
+invoice-draft-title-invoice = Draft invoice
+invoice-draft-title-credit-note = Draft credit note
+invoice-draft-title-deposit = Draft deposit invoice
+invoice-corrects = Credits invoice No. { $number } of { $date }
+invoice-nature-services = Services
+invoice-nature-goods = Goods
+invoice-nature-both = Goods and services
+invoice-order = Your order: { $order }
+invoice-description = Description
+invoice-quantity = Quantity
+invoice-unit-price = Unit price
+invoice-per-hour = { $price } / h
+invoice-line-discount = Discount: { $amount }
+invoice-vat-rate = VAT
+invoice-total-without-tax = Total excluding VAT
+invoice-vat-on = VAT { $rate } on { $base }
+invoice-total-with-tax = Total including VAT
+invoice-deposits-deducted = Deposits invoiced ({ $numbers })
+invoice-amount-due = Amount due
+invoice-insurance = Professional insurance: { $insurance }
+invoice-unit-HUR = h
+invoice-unit-MIN = min
+invoice-unit-DAY = { $count ->
+    [one] day
+   *[other] days
+}
+invoice-unit-MON = month
+invoice-unit-KMT = km
+invoice-unit-LS = lump sum
+invoice-unit-C62 = { "" }
+invoice-check-no-lines = An invoice has at least one line.
+invoice-check-scheme-day = The VAT scheme's start day “{ $day }” in Settings ▸ Invoices does not read as a day: write it as 2027-01-01, so that Sioul knows which scheme a day is under.
+invoice-check-line-vat-unowed = Line { $line } charges VAT, but on { $day } your scheme is “{ $scheme }”: VAT shown on an invoice is owed. Set the line's tax to the scheme's, or change the scheme in Settings ▸ Invoices.
+invoice-check-line-rate-missing = Line { $line } is “VAT at a rate” with no rate: type its rate.
+invoice-check-reset-year = Numbers that start again from 1 each year have the year in them: in Settings ▸ Invoices, write a numbering with {"{"}YYYY{"}"}, or choose that numbers never start again from 1.
+invoice-check-line-unnamed = Each line says what it is.
+invoice-check-credit-cites = A credit note cites the invoice it credits.
+invoice-check-currency = The currency, as three letters: EUR, GBP, CHF.
+invoice-check-own-id-wrong = Your { $name } “{ $value }” does not pass its check: one digit may be wrong.
+invoice-check-client-id-wrong = The client’s { $name } “{ $value }” does not pass its check: one digit may be wrong.
+invoice-check-terms-long = Between businesses, payment is due within { $days } days at most.
+invoice-check-penalty-low = A late-payment rate below { $floor } is not allowed between businesses.
+invoice-check-legal-form = Your legal form, now a setting of its own: an entrepreneur individuel (« EI » is then printed after your name), or a company. Settings ▸ Invoices.
+invoice-check-scheme-offered = The VAT scheme “{ $scheme }” is not one of your country’s ({ $schemes }): Settings ▸ Invoices.
+invoice-check-client-country = The client’s country: where the VAT of a business is due depends on it. Give the client an address, or a country in its profile.
+invoice-check-client-country-assumed = The client’s country is taken as yours ({ $country }): its address names none. If the client is elsewhere, give it a country in its profile, or the country on its address’s last line.
+invoice-check-line-exemption = A line without VAT here says why: write its reason on the line.
+invoice-check-two-late-fees = Your payment details speak of late fees, and Sioul prints its own: keep one. Take them out of your payment details (and set your rate as Sioul’s, penalty_rate, if it differs), or turn Sioul’s lines off ([[invoice.line]] id = "penalties" and "indemnity", off = true).
+invoice-check-unprintable = The invoice’s font cannot print these characters: { $characters }. Write them in Latin letters, or leave them out.
+invoice-check-iban-wrong = The IBAN “{ $iban }” does not pass its check: one character may be wrong. Invoices carry no payment QR code for it.
+invoice-check-right-to-left = Sioul cannot print right-to-left writing on invoices yet (these characters would come out backwards): { $characters }. Write these words in Latin letters.
+invoice-check-price-negative = Line { $line }: a unit price below zero is no invoice line (EN 16931, BR-27). Give the line a discount, or make a credit note.
+invoice-check-unit-unknown = Line { $line }: “{ $unit }” is no unit Sioul knows. Use an hour, a minute, a day, a unit, a month, a kilometre or a lump sum.
+invoice-check-own-country = Your country, “{ $country }”: Sioul does not know it. Write its name or its two letters, as FR, BE or US, in Settings ▸ Invoices.
+invoice-check-client-country-unknown = The client’s country, “{ $country }”: Sioul does not know it. Write its name or its two letters, as BE, DE or US, in the client’s profile.
+invoice-check-delivery-country = The delivery address’s country, “{ $country }”: Sioul does not know it. Write its name or its two letters, as BE, DE or US.
+invoice-xml-older = An invoice from before November 2026 carries no electronic data.
+invoice-xml-franchise-no-vat = This invoice’s PDF will carry no Factur-X data yet: under the franchise without a VAT number, the French rule that says which number to give instead (BR-FR-CO-16) is still to be read. The PDF is a complete invoice; electronic invoices are asked of small businesses from 1 September 2027.
+invoice-xml-seller-vat = This invoice’s PDF will carry no Factur-X data: its VAT asks for your VAT number, or your tax number. The PDF is a complete invoice.
+invoice-xml-client-vat = This invoice’s PDF will carry no Factur-X data: a reverse charge, or a delivery to another EU country, asks for the client’s VAT number. The PDF is a complete invoice.
+invoice-xml-seller-id = This invoice’s PDF will carry no Factur-X data: it asks for one of your identifiers, a registration or a tax number. The PDF is a complete invoice.
+invoice-xml-seller-country = This invoice’s PDF will carry no Factur-X data: it asks for your country, in Settings ▸ Invoices. The PDF is a complete invoice.
+invoice-xml-outside-mixed = This invoice’s PDF will carry no Factur-X data: in the European standard, lines outside the scope of VAT make an invoice of their own. The PDF is a complete invoice.
+invoice-xml-client-country = This invoice’s PDF will carry no Factur-X data: the client’s country is not one Sioul knows. The PDF is a complete invoice.
+invoice-xml-lines = This invoice’s PDF will carry no Factur-X data: a line’s unit or price is not one the European standard takes. The PDF is a complete invoice.
+invoice-xml-deposit-period = This invoice’s PDF will carry no Factur-X data: a deposit for goods sent to another EU country says the period it covers. The PDF is a complete invoice.
+invoice-xml-discount = Discount
+invoice-qr = Scan to pay by transfer
+invoice-page = { $title } · page { $page } of { $pages }
+invoice-drafts-part-off = Turn on Drafts and invoices in Sharing to issue invoices on this device, or issue them on the device that has it.
+invoice-draft-gone = This draft is no longer there.
+invoice-time-billed-meanwhile = Some of this time was billed meanwhile on invoice { $number }: make the draft again from the time left.
+invoice-status-draft = draft
+invoice-status-issued = issued
+invoice-status-sent = sent
+invoice-status-partly-paid = partly paid
+invoice-status-paid = paid
+invoice-status-credited = credited
+invoice-kind-invoice = invoice
+invoice-kind-credit-note = credit note
+invoice-kind-deposit = deposit invoice
+invoice-cli-draft = draft { $id }
+invoice-cli-due = due { $date }
+invoice-cli-left = { $amount } left to pay
+invoice-cli-unreadable = { $number }: its record no longer reads; its number stays given.
+invoice-cli-missing = { $number } has no record on this device.
+invoice-cli-none = No invoice nor draft yet.
+invoice-cli-payment = paid { $amount } on { $date } ({ $means })
+invoice-cli-drafted = Draft { $id } kept; nothing is numbered until you issue it: sioul invoices issue { $id }
+invoice-cli-issued = Invoice { $number } issued: { $amount }.
+invoice-cli-credit-of-credit = A credit note is credited by an invoice, not by another credit note.
+invoice-cli-nothing-left = Nothing was left to pay.
+invoice-cli-no-pdf = Not there: print it from its project’s page, “Print again”.
+invoice-cli-pdf = PDF: { $path }
+invoice-csv-number = Number
+invoice-csv-kind = Kind
+invoice-csv-date = Date
+invoice-csv-client = Client
+invoice-csv-currency = Currency
+invoice-csv-without-tax = Without tax
+invoice-csv-tax = Tax
+invoice-csv-due = Due
+invoice-csv-paid = Paid
+invoice-csv-status = Status
+percent-value = { $value }%
+currency-symbol-USD = $
+currency-symbol-GBP = £
+money-symbol-positive = { $symbol }{ $value }
+money-symbol-negative = −{ $symbol }{ $value }
+money-code-positive = { $symbol } { $value }
+money-code-negative = −{ $symbol } { $value }
 time-no-project = No project
 time-gone-project = A project no longer there
 time-week-of = Week of { $day }
@@ -2704,6 +2823,44 @@ project-ai-help = An agent you connect with sioul mcp then sees its name and wha
 invoice-nothing = No billable time is waiting to be billed.
 invoice-gone = This invoice is no longer there.
 invoice-marked-paid = Invoice { $number } marked paid.
+invoice-paid-by-bank = Paid, as your bank says: invoice { $numbers }.
+project-credit-note = Credit note { $number }
+project-deposit = Deposit invoice { $number }
+invoice-credits = credits invoice { $number }
+invoice-payment-too-much = A payment of more than is left to pay ({ $left }) is not written.
+invoice-check-credit-too-much = Invoice { $number } has { $left } left to credit (credit notes issued: { $notes }): a credit note gives no more.
+invoice-paid-beyond = { $amount } came beyond what the invoices asked.
+invoice-cli-open-sioul = Open Sioul on this computer first: with sharing on, invoices are numbered only while its window keeps them here.
+invoice-cli-missing-in = { $sequence }: number { $n } has no record on this device.
+invoice-client-kind-business = business
+invoice-client-kind-consumer = person
+invoice-client-kind-public = public body
+invoice-status-credit-note = credit note
+invoice-status-to-pay-back = to pay back
+invoice-to-pay-back = { $amount } to pay back
+invoice-paid-back = Paid back
+invoice-nothing-to-pay-back = Nothing to pay back on this credit note: it credits invoice { $number }, and what was paid on it stays within what it still asks.
+invoice-check-deposit-taken = Deposit invoice { $deposit } is deducted by invoice { $number } already: a deposit is deducted once, unless a credit note cancels that invoice whole.
+invoice-check-credit-deposit-deducted = Deposit invoice { $deposit } is deducted by invoice { $number }: credit invoice { $number } instead, or cancel it first.
+invoice-draft-moved = This draft changed elsewhere since it was read: it is read again here; look at it, then issue.
+invoice-check-deposit-other = Deposit invoice { $deposit } bills another client or another currency: it is deducted only on that client's invoice, in its own currency.
+invoice-check-deposit-credited = Nothing is left of deposit invoice { $deposit } to deduct: its credit notes gave it back.
+invoice-check-deposit-undeducted = { $n ->
+    [one] Deposit invoice { $numbers } of this client is not deducted yet: tick it under Deposits if this invoice is the final one.
+   *[other] Deposit invoices { $numbers } of this client are not deducted yet: tick them under Deposits if this invoice is the final one.
+}
+invoice-draft-newer = This draft was written by a newer Sioul: it opens to be read only. Update Sioul on this device to change it.
+invoice-draft-issued = This draft was issued already, as { $number }: it is taken out.
+invoice-draft-copy-issued = This draft is a copy the sync made of a draft issued since, as { $number }: read it, then discard it (sioul invoices discard).
+invoice-cli-draft-copy = a copy the sync made of draft { $id }
+invoice-cli-twice = { $number } was given twice, to { $first } and to { $second } ({ $file }): issue a credit note for one, then invoice it again.
+invoice-cli-newer = { $file } was written by a newer Sioul: update Sioul on this device to see it as it is.
+invoice-cli-discarded = Draft { $id } discarded.
+invoice-client-kind-unsaid = a business, as no client profile says otherwise; a profile with kind = "consumer" bills a person
+invoice-paid-fee = { $amount } kept by the processor, as its fee.
+porch-invoices-twice-who = Invoices
+porch-invoices-twice-what = A number given twice
+porch-invoices-twice-note = Invoice { $numbers } was given twice, by two devices at once: issue a credit note for one of each, then invoice it again.
 invoice-folder-name = Invoices
 invoice-budget-line = Invoice { $number }, { $client }
 invoice-budget-origin = Invoice { $number }, made by Sioul: expected until paid.
@@ -2771,6 +2928,14 @@ invoice-paid = Paid
 invoice-print = Print again
 invoice-written = The invoice is in { $path }.
 invoice-not-written = The invoice could not be written into { $path }.
+invoice-kept-changed = The file of invoice { $number } changed after it was issued: Print again makes it again as it was, when Sioul can.
+invoice-kept-missing = The file of invoice { $number } is not on this device: Print again makes it again as it was, when Sioul can.
+invoice-kept-refused = The file of invoice { $number } is not the one issued, and Sioul cannot make it again as it was: it is not handed out. Its record: { $record }. The file: { $file }.
+invoice-kept-lost = The file of invoice { $number } is not on this device, and Sioul cannot make it again as it was: it comes with your other devices’ invoices, unless it was taken away. Its record: { $record }. The file: { $file }.
+invoice-kept-misnamed = The record of invoice { $number } names another file, “{ $file }”: nothing is handed out. Its record: { $record }.
+invoice-kept-none = Invoice { $number } kept no file: it was issued before Sioul kept them.
+invoice-set-aside = A file of invoice { $number } had no record (an issue stopped halfway): set aside in { $folder }.
+invoice-issued-not-copied = Invoice { $number } is issued; its copy could not be written into { $path }: Print again once that folder is there.
 time-note = Note time
 time-field-project = For
 time-field-length = How long
@@ -3299,7 +3464,7 @@ porch-about-phone = What your phone brought: the calls it declined, the calls yo
 porch-sites = Sites
 porch-about-sites = What your sites notified while you were away, a row per site. Opening a site reads its news.
 porch-money = Money
-porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account. Work money only in work's hours.
+porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account; and each declaration of turnover or DES to make, from the day it opens, until you dismiss it. Work money only in work's hours.
 porch-open-budgets = Open in Budgets
 # The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
 due-state-planned = Planned
@@ -8067,3 +8232,432 @@ topics-named-sites = Named from your senders' sites.
 topics-named-preset = Named after the topic preset most of its mail matches.
 topics-named-none = No name proposed: no topic preset and no kind of site holds most of it.
 topics-groups-waiting = Groups come once more mail is kept here.
+
+## The books (`books`): the receipts book, the declarations, the VAT summary, the thresholds, the DES.
+books-means-unsaid = not said
+books-means-transfer = Bank transfer
+books-means-card = Card
+books-means-cash = Cash
+books-means-cheque = Cheque
+books-means-direct-debit = Direct debit
+books-means-other = Other
+books-cash = cash
+books-total-quarter = { $quarter ->
+    [1] First quarter { $year }
+    [2] Second quarter { $year }
+    [3] Third quarter { $year }
+   *[4] Fourth quarter { $year }
+}
+books-total-year = Year { $year }
+books-total = { $name }: { $least ->
+    [yes] at least { $amount }
+   *[no] { $amount }
+} received.
+books-total-taxed = { $name }: { $least ->
+    [yes] at least { $amount }
+   *[no] { $amount }
+} received with VAT, { $without } excluding it.
+books-foreign-not-counted = { $n ->
+    [one] One payment in { $currency } is not counted: say what reached you for it (sioul invoices received).
+   *[other] { $n } payments in another currency are not counted: say what reached you for each (sioul invoices received).
+}
+books-column-day = Day
+books-column-client = Client
+books-column-nature = Nature
+books-column-invoice = Invoice
+books-column-means = Means of payment
+books-column-cash = Cash
+books-column-amount = Received
+books-column-without-tax = Excluding VAT
+books-column-goods = Goods
+books-column-services = Services
+books-column-note = Note
+books-title = Receipts book of { $name }, { $from } to { $to }
+books-name = your business
+books-vat-rate = VAT { $rate }
+books-vat-category-ae = Reverse charge (the client owes the VAT)
+books-vat-category-k = Intra-EU deliveries (exempt)
+books-vat-category-g = Exports (exempt)
+books-vat-category-o = Outside the scope of VAT
+books-vat-category-e = Exempt
+books-vat-category-z = Zero rate
+books-period-days = { $from } to { $to }
+books-declare = From { $from } to { $to }: { $least ->
+    [yes] at least { $turnover }
+   *[no] { $turnover }
+} received excluding VAT, to declare by { $due }.
+books-declare-nothing = Nothing received from { $from } to { $to }: declare { $zero } by { $due }.
+books-declare-line = { $name }: { $turnover }; contributions about { $social } ({ $rate }).
+books-declare-vl = Income tax paid with them (versement libératoire): about { $vl } ({ $rate }).
+books-declare-line-no-rate = { $name }: { $turnover }.
+books-declare-cfp = Training contribution (CFP): about { $cfp } ({ $rate }).
+books-declare-cfp-unsaid = The training contribution is not counted until your trade is said: commerce, craft or a liberal profession (Settings ▸ Invoices).
+books-declare-unsaid = { $amount } is in no activity said: say yours (Settings ▸ Invoices), and its contributions are estimated.
+books-declare-estimate = Contributions estimated: { $total }.
+books-declare-foreign = { $foreign } received: say what it came to in euros (sioul invoices received).
+books-vat-head = { $period }: { $tax } of VAT collected, on { $base } excluding VAT.
+books-vat-nothing = { $period }: no VAT collected.
+books-vat-line = { $name }: { $tax } on { $base }.
+books-vat-line-untaxed = { $name }: { $base }, no VAT here.
+books-vat-credits = Credit notes on services with money still to pay back, not counted until it is paid back: { $numbers }.
+books-vat-foreign = Invoices in another currency, not counted: { $numbers }.
+books-vat-files-nothing = Sioul prepares your VAT return; it files nothing.
+books-threshold-franchise-all = VAT franchise's threshold
+books-threshold-franchise-goods = VAT franchise's threshold for sales
+books-threshold-franchise-service = VAT franchise's threshold for services
+books-threshold-franchise-higher-all = VAT franchise's higher threshold
+books-threshold-franchise-higher-goods = VAT franchise's higher threshold for sales
+books-threshold-franchise-higher-service = VAT franchise's higher threshold for services
+books-threshold-micro-all = micro regime's ceiling
+books-threshold-micro-goods = micro regime's ceiling for sales
+books-threshold-micro-service = micro regime's ceiling for services
+books-threshold-status = { $least ->
+    [yes] At least { $turnover }
+   *[no] { $turnover }
+} counted this year against the { $name }, { $amount }.
+books-threshold-above = { $least ->
+    [yes] At least { $turnover }
+   *[no] { $turnover }
+} counted this year, above the { $name }, { $amount }.
+books-threshold-prorated = Prorated to your days of activity since { $started }: { $full } for a whole year.
+books-near-franchise-title = Your turnover nears the VAT franchise's threshold
+books-near-franchise = { $turnover } counted this year, 80% of the { $name }, { $amount }. Past it, VAT applies from 1 January { $next }.
+books-near-micro-title = Your turnover nears the micro regime's ceiling
+books-near-micro = { $turnover } received this year, 80% of the { $name }, { $amount }. Above it two years in a row, the micro regime ends.
+books-franchise-crossed-title = VAT applies from 1 January { $next }
+books-franchise-crossed = { $turnover } counted this year, above the { $name }, { $amount }. VAT applies from 1 January { $next }: change the tax scheme then (Settings ▸ Invoices).
+books-franchise-higher-title = VAT applies from { $today ->
+    [yes] today, { $day }
+   *[no] { $day }
+}
+books-franchise-higher = { $turnover } counted this year, above the { $name }, { $amount }: switch the tax scheme (Settings ▸ Invoices){ $corrective ->
+    [yes] , and invoices to businesses since then get a corrective invoice.
+   *[no] .
+}
+books-micro-crossed-title = Your turnover passed the micro regime's ceiling
+books-micro-crossed = { $turnover } received this year, above the { $name }, { $amount }: the micro regime stays this year; a second year above in a row ends it on 1 January after it.
+books-micro-ends-title = The micro regime ends on 1 January { $next }
+books-micro-ends = { $turnover } received this year, above the { $name } for the second year in a row: the micro regime ends on 1 January { $next }; the real regime applies from then (Settings ▸ Invoices).
+books-des = Services to businesses in other EU countries, { $month } (DES): { $total }, to declare by { $due }.
+books-porch-declaration = Declaration of turnover
+books-porch-declare-what = { $period } · by { $due }
+books-porch-des = DES, services to EU businesses
+books-porch-des-what = { $month } · by { $due }
+books-for-the-books = The books
+books-file-name = Receipts book, { $from } to { $to }
+books-none = No receipt yet: the books begin with an invoice issued, or a work budget that declares.
+books-row-without = { $amount } excluding VAT
+books-cli-no-declaration = No declaration of turnover: your country or your regime asks none here (Settings ▸ Invoices).
+books-cli-no-vat = No VAT summary: no invoice issued liable to VAT this year.
+books-cli-no-threshold = No threshold watched: neither the franchise nor the micro regime applies here.
+books-cli-no-des = No DES this year: no service to a business in another EU country.
+books-cli-not-counted = not counted
+books-cli-no-payment = No payment of that day on this invoice.
+books-cli-received = The payment of { $day } on invoice { $number } counts as { $amount } in the books.
+books-cli-same-currency = This invoice is in the books' currency: what it received counts as it is.
+books-overview = { $every ->
+    [month] Turnover received this month
+   *[quarter] Turnover received this quarter
+}, excluding VAT: { $least ->
+    [yes] at least { $turnover }
+   *[no] { $turnover }
+}, to declare by { $due }.
+books-total-until = { $name }, until { $until }
+books-setting-unread = In [invoice], { $key } = “{ $value }” does not read, and is left aside: a day is written 2026-06-12, a period month or quarter, a trade commerce, craft or liberal.
+books-declare-beyond = From { $from } to { $to }: { $turnover } to declare by { $due }; { $beyond } given back beyond what was received is not taken off: Sioul carries nothing over to another period.
+books-declare-line-below = { $name }: { $turnover }, more given back than received: { $zero } declared.
+books-declare-foreign-only = From { $from } to { $to }: { $foreign } received: say what it came to in euros; to declare by { $due }.
+books-foreign-amounts = { $list }
+books-at-least-amount = at least { $amount }
+books-beyond = beyond invoice { $numbers }
+books-des-foreign = Services to businesses in other EU countries, { $month } (DES): { $total }, and { $foreign ->
+    [one] one invoice
+   *[other] { $foreign } invoices
+} in another currency not counted, to say in euros; to declare by { $due }.
+books-des-foreign-note = { $foreign ->
+    [one] One invoice in another currency is not counted: say it in euros (the customs' service gives the rate).
+   *[other] { $foreign } invoices in another currency are not counted: say them in euros (the customs' service gives the rate).
+}
+books-des-credit = { $number } credits an invoice of another month: listed in the month it was issued, below zero, as the customs' online service enters a decrease; which month it belongs to is the customs' guide's to say.
+books-des-rounded = Each value is declared in euros, rounded to the nearest euro.
+books-franchise-effect-title-today = From today, VAT applies
+books-franchise-effect-title = VAT has applied since 1 January { $year }
+books-franchise-effect = Your turnover of { $last }, { $turnover }, passed the { $name }, { $amount }. VAT applies from 1 January { $year }: switch the tax scheme (Settings ▸ Invoices).
+books-micro-effect-title-today = From today, the micro regime ends
+books-micro-effect-title = The micro regime ended on 1 January { $year }
+books-micro-effect = Your turnover passed the { $name } in { $before } and in { $last }. The real regime applies from 1 January { $year }: switch the income regime (Settings ▸ Invoices).
+books-micro-crossed-late-title = Your turnover of { $last } passed the micro regime's ceiling
+books-micro-crossed-late = { $turnover } received in { $last }, above the { $name }, { $amount }: one year above keeps the micro regime; above it again in { $year }, it ends on 1 January after.
+books-declare-correct = URSSAF’s sheet says to correct the declaration already made for that money ({ $period }): { $amount } excluding VAT given back on { $day }, counted in no period here.
+set-invoice-block = Invoices
+set-invoice-block-help = Who sends your invoices, how they are numbered and what they print, as your country asks; the books’ settings; the platform for electronic invoices.
+books-mark-declaration = Declaration: { $period }
+books-mark-des = DES: { $month }
+invoices-status-draft = draft
+invoices-status-unpaid = not paid yet
+invoices-status-partly-paid = partly paid
+invoices-status-paid = paid
+invoices-status-credited = credited
+invoices-status-credit-note = credit note
+invoices-status-to-pay-back = to pay back
+invoices-left-to-pay = { $amount } left to pay
+invoices-left-to-pay-back = { $amount } to pay back
+invoices-sent-on = sent on { $day }
+invoices-missing-run = { $first } to { $last } have no record on this device.
+invoices-missing-run-in = { $sequence }: numbers { $first } to { $last } have no record on this device.
+invoices-tax-rate = VAT { $rate }
+invoices-category-s = VAT at a rate
+invoices-category-z = VAT at zero
+invoices-category-e = Exempt from VAT
+invoices-category-ae = Reverse charge
+invoices-category-k = Delivery to another EU country
+invoices-category-g = Export outside the EU
+invoices-category-o = Outside the scope of VAT
+invoices-unit-HUR = Hours
+invoices-unit-MIN = Minutes
+invoices-unit-DAY = Days
+invoices-unit-C62 = Units
+invoices-unit-MON = Months
+invoices-unit-KMT = Kilometres
+invoices-unit-LS = Lump sum
+invoices-language-en = English
+invoices-language-fr = French
+invoices-in-language-en = invoices in English
+invoices-in-language-fr = invoices in French
+invoices-client-kind-business = A business
+invoices-client-kind-consumer = A person
+invoices-client-kind-public = A public body
+invoices-deposit-no-amount = Say the deposit’s amount, or its share of the invoice.
+invoices-deposit-on = Deposit on: { $what }
+invoices-deposit-line = Deposit
+invoices-discarded = { $title } discarded.
+invoices-record-changed = This invoice’s record was changed outside Sioul since it was issued ({ $path }): an issued invoice is never changed; a credit note answers it.
+invoices-file-changed = This invoice’s file was changed outside Sioul since it was issued ({ $path }): Print again gives back the file issued, made again from its record.
+invoices-paid-line = { $amount } received on { $day }, { $means }
+invoices-paid-back-line = { $amount } paid back on { $day }, { $means }
+invoices-pay-no-amount = Say the amount received.
+invoices-paid-said = { $amount } received on invoice { $number }.
+invoices-paid-back-said = { $amount } paid back on credit note { $number }.
+invoices-credit-of-credit = A credit note is not credited: issue an invoice instead.
+invoices-mail-print-first = This invoice, from before November 2026, kept no file: press Print again first, then Write the mail ({ $path }).
+invoices-mail-body = Hello,
+
+    Please find attached: { $title }, of { $amount }, payable by { $due }.
+
+    Kind regards,
+    { $name }
+invoices-mail-body-no-due = Hello,
+
+    Please find attached: { $title }, of { $amount }.
+
+    Kind regards,
+    { $name }
+invoices-mail-body-credit = Hello,
+
+    Please find attached: { $title }, of { $amount }.
+
+    Kind regards,
+    { $name }
+invoices-id-vat = VAT number
+invoices-id-other = Another identifier
+invoices-client-no-name = A client has a name, or a contact.
+invoices-scheme-none = Not registered for VAT
+invoices-scheme-franchise = Small-business exemption (franchise)
+invoices-scheme-liable = Liable for VAT
+invoices-every-quarter = Each quarter
+invoices-every-month = Each month
+invoices-pattern-wrong = The numbering “{ $pattern }” does not read: { $why }
+invoices-declared-said = Marked as declared.
+invoices-number-missing = Type a number.
+invoices-unread-holds = A number above does not read, so it was not saved: correct it, then issue.
+invoices-not-saved-stay = Not saved: { $why } Press Back once more to leave without these changes.
+invoices-not-saved = Not saved: { $why }
+invoices-deposit-less = of { $whole }, its credit notes gave the rest back
+invoices-set-aside = { $time } of time taken out of this draft, not billed here.
+invoices-put-back = Put back
+invoices-draft-replaced = { $n ->
+    [one] The draft for { $drafts } was changed on another device before your changes here went out: its version replaced yours, kept among the earlier versions.
+   *[other] The drafts for { $drafts } were changed on another device before your changes here went out: its versions replaced yours, kept among the earlier versions.
+}
+invoices-client-changed-elsewhere = This profile changed elsewhere: open it again.
+invoices-read-again = This draft changed elsewhere: it is shown as it is now.
+invoices-not-declared-said = Marked as not declared.
+invoices-changed-elsewhere = This draft changed elsewhere meanwhile: those changes are taken in, yours with them.
+invoices-deposits-left = { $n ->
+    [one] Deposit invoice { $numbers } is no longer deducted: it bills another client or another currency.
+   *[other] Deposit invoices { $numbers } are no longer deducted: they bill another client or another currency.
+}
+invoices-line-gone = A line you changed was taken out elsewhere meanwhile: your change to it is dropped.
+invoices-time-added = { $n ->
+    [one] One line of time added to the draft ({ $time }).
+   *[other] { $n } lines of time added to the draft ({ $time }).
+}
+invoices-scheme-day-wrong = “{ $day }” does not read as a day: write it 2027-01-01, or 01/01/2027.
+invoices-amount-unread = Not an amount: write 1500, or 1,500.50.
+money-tab-invoices = Invoices
+porch-open-declaration = Open the declaration
+books-declared = Declared
+books-not-declared = Not declared
+books-declared-on = { $what }, declared on
+clients-bill = Bill this client
+clients-profile = Client profile
+clients-profile-about = What this client’s invoices print, kept in your notes folder beside your projects (sioul-clients.toml), never in the card on your contacts’ server.
+clients-profile-line = Client profile: { $profile }
+clients-profile-none = No client profile yet: invoices bill it as a business, from its card.
+clients-profile-change = Client profile…
+clients-profile-make = Make its client profile…
+clients-name = Legal name, as invoices print it
+clients-street = Street, on lines
+clients-postcode = Postcode
+clients-city = City
+clients-delivery = Delivery address, when it differs
+clients-ids = Its identifiers
+clients-id-add = An identifier
+clients-id-remove = Take this identifier out
+clients-id-printed = Printed
+clients-invoices = Its invoices
+clients-language-usual = Your usual language
+clients-terms = Days
+clients-email = The address its invoices are mailed to
+invoices-new = New
+invoices-none = No invoice yet. A project’s Make the invoice, a contact’s Bill this client, or New, make one.
+invoices-any-client = Every client
+invoices-any-year = Every year
+invoices-any-status = Every status
+invoices-changed-outside = changed outside Sioul
+invoices-menu = What can be done with it
+invoices-client = Client
+invoices-client-choose = Who it bills: a client, a contact, a name
+invoices-client-other = Another client
+invoices-client-as-typed = Bill “{ $name }” as written
+invoices-client-traits = Kind and country…
+invoices-country = Country
+invoices-country-unsaid = country not said
+invoices-issued-when = Issued on { $day }, when you press Issue.
+invoices-service = Service
+invoices-service-default = The service’s day is the issue’s, unless you say another day or period.
+invoices-lines = Lines
+invoices-time-lines = { $n ->
+    [one] One line of time
+   *[other] { $n } lines of time
+}
+invoices-line-what = What it is
+invoices-line-quantity = Quantity
+invoices-line-price = Unit price
+invoices-line-hourly = Price an hour
+invoices-line-more = More
+invoices-line-details = Details, under the line
+invoices-line-discount = Discount
+invoices-line-rate = Rate, %
+invoices-line-tax = Its tax: { $tax }
+invoices-line-own-tax = Its own tax, not your country’s rule
+invoices-line-exemption = Why it bears no VAT here, in words
+invoices-line-remove = Take this line out
+invoices-line-add = A line
+invoices-nature-service = A service
+invoices-nature-goods = Goods
+invoices-activity-usual = Your activity for it
+invoices-deposits = Deposits it deducts
+invoices-terms-notes = Terms, notes, language and currency
+invoices-terms-days = Payable within, in days
+invoices-end-of-month = at the end of that month
+invoices-due-on = Payable by { $day }
+invoices-order = The client’s purchase order
+invoices-currency = Currency
+invoices-notes = Your notes, printed under the lines
+invoices-issue = Issue
+invoices-deposit-of = Deposit invoice…
+invoices-discard = Discard
+invoices-keep-draft = Keep as draft
+invoices-preview = Preview
+invoices-draft-copy = a copy the sync made of draft { $id }
+invoices-paid-ask = Paid…
+invoices-paid-back-ask = Paid back…
+invoices-paid-title = Paid: { $title }
+invoices-paid-back-title = Paid back: { $title }
+invoices-paid-save = Paid
+invoices-paid-back-save = Paid back
+invoices-pay-day = On
+invoices-pay-means = By
+invoices-pay-amount = Amount
+invoices-pay-partly = A part of it is a partial payment: the payments add up, and the rest stays not paid yet.
+invoices-payments = Payments
+invoices-paid-back-list = Paid back
+invoices-write-mail = Write the mail
+invoices-credit-ask = Credit note…
+invoices-credit-title = A credit note for { $title }
+invoices-credit-about = An issued invoice is never changed: a credit note answers it. Every line cancels it; some correct it.
+invoices-credit-make = Make the credit note
+invoices-credit-none = Tick at least one line.
+invoices-credited-by = credited by { $numbers }
+invoices-deducted-by = deducted by { $numbers }
+invoices-final-ask = Final invoice…
+invoices-deposit-title = A deposit invoice
+invoices-deposit-share = A share of the invoice, in percent
+invoices-deposit-amount = An amount, excluding VAT
+invoices-deposit-amount-hint = Amount, excluding VAT
+invoices-deposit-what = What it is for
+invoices-deposit-about = The final invoice deducts it once it is issued: tick it under “Deposits it deducts”.
+invoices-deposit-make = Make the deposit invoice
+invoices-settings-form-asked = Your legal form, now a setting of its own, is asked once: an entrepreneur individuel (micro-entrepreneur included) prints « EI » after the name, a company does not.
+invoices-settings-preset = Your country’s rules
+invoices-settings-unsupported = { $country } (not supported)
+invoices-settings-asks = Before an invoice is issued, your country asks:
+invoices-settings-ids = Your identifiers
+invoices-settings-printed = printed
+invoices-settings-remove = Take it out
+invoices-settings-id-add = An identifier
+invoices-settings-older-siret = Your SIRET of before, { $siret }, is printed until an identifier is said here.
+invoices-settings-scheme-now = VAT today: { $scheme }.
+invoices-settings-more = More
+invoices-settings-regime = Income regime for the books
+invoices-settings-unsaid = Not said
+invoices-settings-schemes = VAT scheme, from a day on
+invoices-settings-from-always = From (always)
+invoices-settings-until-always = Until (no end)
+invoices-settings-scheme-add = From another day
+invoices-settings-trade-name = Trade name
+invoices-settings-postcode = Postcode
+invoices-settings-city = City
+invoices-settings-email = Email printed on invoices
+invoices-settings-banks = Bank accounts
+invoices-settings-holder = Holder
+invoices-settings-bank-add = An account
+invoices-settings-iban-wrong = this IBAN does not pass its check
+invoices-settings-qr = The payment QR code on euro invoices
+invoices-settings-penalty = Late-payment rate, in percent
+invoices-settings-language-window = Sioul’s language
+invoices-settings-pattern = Numbering
+invoices-settings-reset-yearly = from 1 each year
+invoices-settings-reset-never = never from 1 again
+invoices-settings-credit-pattern = Credit notes’ own numbering
+invoices-settings-next = The next number: { $number }
+invoices-settings-lines = Lines printed
+invoices-settings-own-line = A line of your own
+invoices-settings-line-own-words = In your own words (empty: as written above)
+invoices-settings-line-text = Its words
+invoices-settings-line-add = A line of your own
+invoices-settings-insurance = Professional insurance, as printed
+invoices-settings-capital = Share capital, as printed
+invoices-settings-books = The books
+invoices-settings-activities = Your activities
+invoices-settings-declare = Declare
+invoices-settings-vl = Versement libératoire, paid with each declaration
+invoices-settings-trade = Training contribution, as a trade of
+invoices-settings-trade-unsaid = As your activity tells
+invoices-settings-trade-commerce = Commerce
+invoices-settings-trade-craft = Craft
+invoices-settings-trade-liberal = Liberal profession
+invoices-settings-started = The day you started
+invoices-settings-vat-period = The VAT summary
+invoices-settings-debits = VAT on debits (an option taken with the tax office)
+invoices-settings-rates = Rates of your own (ACRE, a rate URSSAF gave you)
+invoices-settings-rate-social = Social contributions
+invoices-settings-rate-vl = Versement libératoire
+invoices-settings-rate-cfp = Training contribution
+invoices-settings-rate-activity = Activity
+invoices-settings-rate-percent = Rate, in percent
+invoices-settings-rate-add = A rate of your own
+invoices-settings-platform = Your e-invoicing platform
+invoices-settings-platform-hint = Its name, as you know it
+invoices-settings-platform-help = From 1 September 2027 your invoices to French businesses go through an approved platform (a PA), and your sales to private clients are reported there instead (e-reporting). Until Sioul sends through yours, upload those invoices’ PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet.

@@ -389,15 +389,25 @@ pub(crate) fn save_reserve(id: &str, edit: &str) -> String {
     result.err().unwrap_or_default()
 }
 
-/// A bank export taken in; returns what it added, in a sentence, or what went wrong.
-pub(crate) fn import(file: &str) -> (bool, String) {
+/// What the matching wrote on your invoices while an export was taken in, a bank line at a time.
+pub(crate) type Paid = Vec<sioul_core::movements::acts::InvoicePaid>;
+
+/// A bank export taken in; returns what it added, in a sentence, or what
+/// went wrong, and the payments it wrote on your invoices.
+pub(crate) fn import(file: &str) -> (bool, String, Paid) {
     import_into(file, "")
 }
 
 /// An export taken in as one bank account's (`account` empty: as the export
 /// names itself). The number the export gives is kept with the account, so
 /// that what was read under it before is the account's too.
-pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
+pub(crate) fn import_into(file: &str, account: &str) -> (bool, String, Paid) {
+    let mut paid = Vec::new();
+    let (ok, said) = import_noting(file, account, &mut paid);
+    (ok, said, paid)
+}
+
+fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
     let path = crate::backend::local_path(file);
     let config = load_config();
     let Some(root) = config.notes_root_path() else { return (false, tr().text("papers-no-store", None)) };
@@ -425,12 +435,13 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
     // sharing takes too; its holds kept apart, its new lines resolved against what
     // was planned and announced (`movements::acts::take_in`).
     let words = sioul_core::words::Words::of(&config);
-    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date()) {
+    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date(), &crate::notices::here_id()) {
         Ok(added) => added,
         Err(e) => return (false, e),
     };
     let mut args = sioul_core::i18n::args();
     args.set("read", added.read as i64);
     args.set("new", added.new as i64);
+    *paid = added.paid;
     (true, tr().text("bank-imported", Some(&args)))
 }

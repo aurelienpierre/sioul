@@ -1,0 +1,665 @@
+# France. Sources: docs/research/invoicing.md, from the research of
+# 16 November 2026 (Légifrance, BOFiP, service-public, URSSAF).
+# Abbreviations: CGI = Code général des impôts; ann. II = its annexe II;
+# C. com. = Code de commerce; SP = entreprendre.service-public.gouv.fr.
+# Legal form, income regime and VAT scheme are chosen apart: an EI
+# micro-entrepreneur may be liable for VAT (past the franchise's thresholds,
+# or by option) and still declare to URSSAF as a micro-entrepreneur; a
+# company may be under the franchise.
+id = "fr"
+country = "FR"
+currency = "EUR"
+name.en = "France"
+name.fr = "France"
+# Selling to consumers under VAT, software that records their payments must
+# be certified or attested (art. 286 I 3° bis CGI, BOI-TVA-DECLA-30-10-30);
+# Sioul has neither. Under the franchise it is not needed (art. 286 II-2).
+limits.en = "Liable for VAT, recording payments from consumers asks for software with a certificate or an attestation (art. 286 I 3° bis CGI): Sioul has none. Sioul makes no VAT return."
+limits.fr = "Redevable de la TVA, enregistrer les paiements de particuliers demande un logiciel certifié ou attesté (art. 286 I 3° bis du CGI) : Sioul n’a ni l’un ni l’autre. Sioul ne fait pas de déclaration de TVA."
+# 30 days after the service unless agreed otherwise; at most 60 days from
+# the invoice, or 45 days end of month (C. com. L441-10 I).
+terms_days = 30
+terms_max_days = 60
+
+# « EI » placed right after the name, nothing in between, on every
+# professional document (C. com. R526-27, décret 2022-725), whatever the
+# VAT: Sioul adds it. A micro-entrepreneur is an EI.
+[[legal_form]]
+id = "ei"
+name.en = "Sole trader (entrepreneur individuel, micro-entrepreneur included)"
+name.fr = "Entrepreneur individuel (micro-entrepreneur compris)"
+mark = "EI"
+
+# Companies: their form, capital and register are printed (C. com. R123-237,
+# as the design asks; the research of November 2026 read that article for
+# sole traders only).
+[[legal_form]]
+id = "eurl"
+name.en = "EURL"
+name.fr = "EURL"
+company = true
+
+[[legal_form]]
+id = "sasu"
+name.en = "SASU"
+name.fr = "SASU"
+company = true
+
+[[legal_form]]
+id = "sarl"
+name.en = "SARL"
+name.fr = "SARL"
+company = true
+
+[[legal_form]]
+id = "sas"
+name.en = "SAS"
+name.fr = "SAS"
+company = true
+
+[[legal_form]]
+id = "sa"
+name.en = "SA"
+name.fr = "SA"
+company = true
+
+# The books: micro (art. 50-0 and 102 ter CGI; URSSAF declarations of the
+# turnover received, excluding VAT when liable) or réel.
+[[regime]]
+id = "micro"
+name.en = "Micro-entrepreneur (micro regime)"
+name.fr = "Micro-entrepreneur (régime micro)"
+
+[[regime]]
+id = "reel"
+name.en = "Real regime (réel)"
+name.fr = "Régime réel"
+
+# SIREN, SIRET accepted (C. com. R123-237 1°, 3°; L441-9).
+[[identifier]]
+kind = "siren"
+name.en = "SIREN"
+name.fr = "SIREN"
+check = "siren"
+
+[[identifier]]
+kind = "siret"
+name.en = "SIRET"
+name.fr = "SIRET"
+check = "siret"
+
+# "RCS" and the city of its court registry, for a trader or a company
+# registered there (C. com. R123-237 2°). None for a liberal profession.
+[[identifier]]
+kind = "rcs"
+name.en = "RCS (trade register)"
+name.fr = "RCS (ville du greffe)"
+before.en = "RCS"
+before.fr = "RCS"
+
+# Liable for VAT: required (ann. II art. 242 nonies A I-2°). Under the
+# franchise: not required (ann. II art. 242 nonies A II), except for services
+# to a business in another member state (BOI-TVA-DECLA-30-20-20-20 §50–60).
+[[identifier]]
+kind = "vat"
+name.en = "EU VAT number"
+name.fr = "N° de TVA intracommunautaire"
+check = "vat"
+
+[[identifier]]
+kind = "other"
+name.en = "Other"
+name.fr = "Autre"
+
+[[require]]
+field = "name"
+why.en = "Your name, as invoices print it."
+why.fr = "Votre nom, tel que les factures l’impriment."
+
+[[require]]
+field = "address"
+why.en = "Your business address (Code de commerce L441-9)."
+why.fr = "L’adresse de votre entreprise (code de commerce, L441-9)."
+
+[[require]]
+any = ["siren", "siret"]
+why.en = "Your SIREN or SIRET (Code de commerce R123-237). While it is being given, write « en cours d’attribution » as your SIRET: « SIRET en cours d’attribution » is printed (SP F31808)."
+why.fr = "Votre SIREN ou SIRET (code de commerce, R123-237). En attendant qu’il soit attribué, écrivez « en cours d’attribution » comme SIRET : « SIRET en cours d’attribution » est imprimé (SP F31808)."
+
+# Both VAT numbers on a reverse-charge invoice and on an intra-EU delivery
+# (ann. II art. 242 nonies A I-4°, I-13°), even under the franchise, whose
+# relief from showing one's VAT number does not reach these operations
+# (art. 242 nonies A II c; BOI-TVA-DECLA-30-20-20-20 §50–60).
+[[require]]
+any = ["vat"]
+category = ["AE", "K"]
+why.en = "Your EU VAT number: services to a business in another EU country carry it, even under the franchise; your tax office gives it."
+why.fr = "Votre numéro de TVA intracommunautaire : les prestations à une entreprise d’un autre pays de l’UE le portent, même en franchise ; votre service des impôts le donne."
+
+[[require]]
+any = ["vat"]
+scheme = ["liable"]
+why.en = "Your VAT number (ann. II CGI, art. 242 nonies A I-2°)."
+why.fr = "Votre numéro de TVA (annexe II du CGI, art. 242 nonies A I-2°)."
+
+# An EI trader registered at the RCS prints it too (R123-237 2°); an artisan
+# or a liberal profession is not registered there.
+[[require]]
+any = ["rcs"]
+form = ["ei"]
+activity = ["goods-bic", "services-bic"]
+level = "recommended"
+why.en = "The city of your trade register (RCS), if you are registered there as a trader."
+why.fr = "La ville de votre greffe (RCS), si vous y êtes immatriculé comme commerçant."
+
+[[require]]
+any = ["rcs"]
+form = ["company"]
+why.en = "The city of your trade register (RCS)."
+why.fr = "La ville de votre greffe (RCS)."
+
+[[require]]
+field = "capital"
+form = ["company"]
+why.en = "Your company’s share capital."
+why.fr = "Le capital social de votre société."
+
+# VAT due in another currency is also said in euros, at the ECB's rate
+# (art. 289 IV CGI; BOI-TVA-DECLA-30-20-20-10 §380–400): Sioul does not
+# convert yet.
+[[require]]
+field = "currency-when-taxed"
+scheme = ["liable"]
+why.en = "An invoice with VAT in another currency also says its VAT in euros: Sioul cannot convert yet, so issue it in euros."
+why.fr = "Une facture avec TVA dans une autre devise donne aussi sa TVA en euros : Sioul ne sait pas encore convertir, émettez-la en euros."
+
+# A business liable for VAT: its VAT number (ann. II art. 242 nonies A I-4°),
+# which may be left out at €150 or less except across borders.
+[[require]]
+who = "client"
+any = ["vat"]
+scheme = ["liable"]
+client = ["business"]
+zone = ["domestic"]
+level = "recommended"
+why.en = "The client’s VAT number."
+why.fr = "Le numéro de TVA du client."
+
+[[require]]
+who = "client"
+field = "name"
+why.en = "The client’s name."
+why.fr = "Le nom du client."
+
+[[require]]
+who = "client"
+field = "address"
+client = ["business", "public"]
+why.en = "The client’s address (Code de commerce L441-9)."
+why.fr = "L’adresse du client (code de commerce, L441-9)."
+
+# A consumer may object to their address being printed (SP F31808).
+[[require]]
+who = "client"
+field = "address"
+client = ["consumer"]
+level = "recommended"
+why.en = "The client’s address, unless they would rather it not be printed."
+why.fr = "L’adresse du client, sauf s’il préfère qu’elle n’y soit pas."
+
+# The client's SIREN: ann. II art. 242 nonies A I-1°, new wording, for
+# micro-enterprises from 1 September 2027; recommended until then.
+[[require]]
+who = "client"
+any = ["siren", "siret"]
+client = ["business"]
+zone = ["domestic"]
+level = "recommended"
+until = "2027-09-01"
+why.en = "The client’s SIREN: asked on invoices to French businesses from September 2027."
+why.fr = "Le SIREN du client : demandé sur les factures aux entreprises françaises à partir de septembre 2027."
+
+[[require]]
+who = "client"
+any = ["siren", "siret"]
+client = ["business"]
+zone = ["domestic"]
+from = "2027-09-01"
+why.en = "The client’s SIREN, which invoices to French businesses carry since 1 September 2027."
+why.fr = "Le SIREN du client, que les factures aux entreprises françaises portent depuis le 1er septembre 2027."
+
+# A business in another member state: its VAT number (ann. II art. 242 nonies A I-4°).
+[[require]]
+who = "client"
+any = ["vat"]
+category = ["AE", "K"]
+why.en = "The client’s EU VAT number."
+why.fr = "Le numéro de TVA intracommunautaire du client."
+
+[tax]
+schemes = ["franchise", "liable"]
+
+# The franchise (art. 293 B CGI): no VAT shown (art. 293 E CGI); the mention
+# of BOI-TVA-DECLA-40-10-20 §50. VAT law moves into the CIBS on 1 January
+# 2027 (ordonnance 2025-1247, date moved by 2026-671); the CGI wording stays
+# valid until 30 June 2028, and the CIBS article number is not settled
+# (L. 223-3 or L. 233-3): the person may write the new one once it is.
+[tax.franchise]
+category = "E"
+reason_code = "VATEX-FR-FRANCHISE"
+
+[[tax.franchise.mention]]
+from = "2000-01-01"
+text = "TVA non applicable, article 293 B du CGI"
+
+# Liable: the rates of the CGI (art. 278: 20 %; 278 bis to 279 bis: 10 %;
+# 278-0 bis: 5.5 %; 281 quater ff.: 2.1 %), not part of the research of
+# November 2026: the rates as known in mid-2026; check them before relying on them.
+[[tax.rates]]
+from = "2014-01-01"
+rates = [
+    { rate = 2000, name.en = "standard", name.fr = "normal" },
+    { rate = 1000, name.en = "intermediate", name.fr = "intermédiaire" },
+    { rate = 550, name.en = "reduced", name.fr = "réduit" },
+    { rate = 210, name.en = "special", name.fr = "particulier" },
+]
+
+# An exempt line under VAT cites its exemption (ann. II art. 242 nonies A
+# I-12°): the person writes it on the line; no default is given.
+[tax.exempt]
+category = "E"
+
+# Where a line's VAT is due, the first rule that applies. A business
+# client's services in another member state, whatever the scheme: taxed
+# there, its client owes the VAT; "Autoliquidation" (ann. II art. 242 nonies
+# A I-13°; citing the article is not required, BOI-TVA-DECLA-30-20-20-10
+# §520–540), both VAT numbers; never the franchise's mention, the operation
+# not being located in France (research-fr §10.1).
+[[tax.place]]
+id = "eu-service"
+scheme = ["franchise", "liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["service"]
+category = "AE"
+reason_code = "VATEX-EU-AE"
+mention.en = "Reverse charge"
+mention.fr = "Autoliquidation"
+
+# Liable, goods to a business in another member state: an exempt intra-EU
+# delivery, "Exonération, art. 262 ter I du CGI", both VAT numbers
+# (research-fr §10.4, §13 (b)). Under the franchise, the franchise applies
+# to these deliveries too (art. 262 ter I-1°; BOI-TVA-DECLA-40-50): no rule.
+[[tax.place]]
+id = "eu-goods"
+scheme = ["liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["goods"]
+category = "K"
+reason_code = "VATEX-EU-IC"
+mention.en = "Exonération, art. 262 ter I du CGI"
+mention.fr = "Exonération, art. 262 ter I du CGI"
+
+# A service to a business outside the EU: located outside France (art.
+# 259-1° CGI), outside the scope of French VAT, whatever the scheme. The
+# words are the practice the research found (research-fr §10.3, secondary):
+# "TVA non applicable – article 259-1 du CGI".
+[[tax.place]]
+id = "abroad-service"
+scheme = ["franchise", "liable"]
+zone = ["abroad"]
+client = ["business", "public"]
+nature = ["service"]
+category = "O"
+reason_code = "VATEX-EU-O"
+mention.en = "TVA non applicable – article 259-1 du CGI"
+mention.fr = "TVA non applicable – article 259-1 du CGI"
+
+# Liable, goods exported outside the EU: exempt (category G); the research
+# gives no words for it, so the line says its own, and a check asks them.
+[[tax.place]]
+id = "abroad-goods"
+scheme = ["liable"]
+zone = ["abroad"]
+nature = ["goods"]
+category = "G"
+reason_code = "VATEX-EU-G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas : écrivez-les sur la ligne."
+
+[[line]]
+id = "capital"
+form = ["company"]
+subject = "REG"
+text.en = "{ $form } with a share capital of { $capital }"
+text.fr = "{ $form } au capital de { $capital }"
+
+# Opting for VAT on debits is said on the invoice (ann. II art. 242 nonies A I-11° bis).
+[[line]]
+id = "debits"
+option = "debits"
+scheme = ["liable"]
+subject = "TXD"
+text.en = "VAT paid on debits."
+text.fr = "Option pour le paiement de la taxe d’après les débits."
+
+# Business clients only (C. com. L441-9, L441-10; SP F31808): the conditions
+# of escompte ("néant" is the usual wording), the penalty rate, the €40
+# indemnity (D441-5). Never printed for a consumer; nor for a public body,
+# whose late payments follow the Code de la commande publique, which the
+# research did not read (the review of phase 1, F29): your own lines there.
+[[line]]
+id = "escompte"
+subject = "AAB"
+client = ["business"]
+text.en = "Discount for early payment: none."
+text.fr = "Escompte pour paiement anticipé : néant."
+
+[[line]]
+id = "penalties"
+subject = "PMD"
+client = ["business"]
+text.en = "Late payment: penalties due from the day after the due date, without reminder, at { $rate } (Code de commerce, art. L441-10)."
+text.fr = "En cas de retard de paiement, pénalités exigibles dès le lendemain de la date d’échéance, sans rappel, au taux de { $rate } (art. L441-10 du code de commerce)."
+
+[[line]]
+id = "indemnity"
+subject = "PMT"
+client = ["business"]
+text.en = "Fixed indemnity for recovery costs: €40 (Code de commerce, art. L441-10 and D441-5)."
+text.fr = "Indemnité forfaitaire pour frais de recouvrement : 40 € (art. L441-10 et D441-5 du code de commerce)."
+
+# ECB main refinancing rate + 10 points, the rate in force on 1 January for
+# the first half-year, on 1 July for the second (L441-10 II); a contract may
+# set another, not below three times the legal interest rate. ECB rates from
+# ecb.europa.eu (key ECB interest rates); the legal rate for professional
+# creditors from the arrêté of 26 June 2026 (SP A15398).
+[penalty]
+points = 1000
+floor_times = 3
+default_note.en = "ECB rate + 10 points"
+default_note.fr = "taux BCE + 10 points"
+reference = [
+    { from = "2025-06-11", rate = 215 },
+    { from = "2026-06-17", rate = 240 },
+    { from = "2026-09-16", rate = 265 },
+]
+legal = [
+    { from = "2026-01-01", rate = 262 },
+    { from = "2026-07-01", rate = 275 },
+]
+
+# Activities for the books and the URSSAF declaration (autoentrepreneur.urssaf.fr).
+[[activity]]
+id = "goods-bic"
+name.en = "Sales of goods (BIC)"
+name.fr = "Ventes de marchandises (BIC)"
+nature = "goods"
+
+[[activity]]
+id = "services-bic"
+name.en = "Commercial or craft services (BIC)"
+name.fr = "Prestations de services commerciales ou artisanales (BIC)"
+nature = "service"
+
+[[activity]]
+id = "bnc"
+name.en = "Other services, liberal (BNC)"
+name.fr = "Autres prestations de services, libérales (BNC)"
+nature = "service"
+
+[[activity]]
+id = "cipav"
+name.en = "Regulated liberal profession (CIPAV)"
+name.fr = "Profession libérale réglementée (CIPAV)"
+nature = "service"
+
+# Micro regime ceilings, turnover received in the calendar year, excluding
+# VAT (art. 50-0 and 102 ter CGI; SP F32353, checked 21 February 2026):
+# watched under the micro regime only. Mixed activity: the whole turnover
+# within €203,100, its services within €83,600 (`counts = "all"` on the
+# goods' ceiling). Left after two consecutive years above, on 1 January
+# after the second. The first year's is prorated: ceiling × days of activity
+# / 365 (SP F32353; URSSAF: a start on 1 March 2026, services, 83,600 ×
+# 306 / 365 = €70,087). Watched (`watched`): France's thresholds are
+# researched; another preset's are not watched until they are.
+[[threshold]]
+id = "micro-goods"
+kind = "micro"
+regime = "micro"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+watched = true
+amount = 20310000
+from = "2026-01-01"
+
+[[threshold]]
+id = "micro-services"
+kind = "micro"
+regime = "micro"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+watched = true
+amount = 8360000
+from = "2026-01-01"
+
+# The ceilings before: €188,700 for sales and lodging, €77,700 for services
+# and liberal professions in 2023, 2024 and 2025; €176,200 and €72,600 in
+# 2022 (service-public, actualité A16230 of 5 January 2023, "Modification
+# des seuils des régimes d'imposition de la micro-entreprise pour 2023, 2024
+# et 2025"): so that a second year above is seen in 2026 too.
+[[threshold]]
+id = "micro-goods"
+kind = "micro"
+regime = "micro"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+watched = true
+amount = 18870000
+from = "2023-01-01"
+
+[[threshold]]
+id = "micro-services"
+kind = "micro"
+regime = "micro"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+watched = true
+amount = 7770000
+from = "2023-01-01"
+
+[[threshold]]
+id = "micro-goods"
+kind = "micro"
+regime = "micro"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+watched = true
+amount = 17620000
+from = "2022-01-01"
+
+[[threshold]]
+id = "micro-services"
+kind = "micro"
+regime = "micro"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+watched = true
+amount = 7260000
+from = "2022-01-01"
+
+# VAT franchise thresholds (art. 293 B CGI; SP F21746, checked 1 January
+# 2026; BOI-TVA-DECLA-40-10-10 §130–140), watched while the franchise holds:
+# the base one crossed, VAT from 1 January next year; the higher one
+# crossed, VAT from that day (BOI-TVA-DECLA-40-10-20 §160), and invoices to
+# taxable clients for operations since then are corrected (§170). Counted:
+# operations located in France, excluding VAT, goods at delivery, services
+# at payment (BOI-TVA-DECLA-40-10-10 §180); mixed activity, the whole within
+# €85,000 and the services within €37,500 (§160). Prorated to the days of
+# activity in the first year, the higher one then applying (§285–295).
+# Lawyers' and authors' own thresholds are left out; software is not an
+# author's.
+[[threshold]]
+id = "franchise-goods"
+kind = "franchise"
+watched = true
+scheme = "franchise"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+amount = 8500000
+from = "2026-01-01"
+
+[[threshold]]
+id = "franchise-goods-higher"
+kind = "franchise-higher"
+watched = true
+scheme = "franchise"
+activity = ["goods-bic"]
+counts = "all"
+prorated = true
+corrective = true
+amount = 9350000
+from = "2026-01-01"
+
+[[threshold]]
+id = "franchise-services"
+kind = "franchise"
+watched = true
+scheme = "franchise"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+amount = 3750000
+from = "2026-01-01"
+
+[[threshold]]
+id = "franchise-services-higher"
+kind = "franchise-higher"
+watched = true
+scheme = "franchise"
+activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+corrective = true
+amount = 4125000
+from = "2026-01-01"
+
+# The URSSAF declaration of the micro regime (autoentrepreneur.urssaf.fr,
+# "L'essentiel du statut", read 16 November 2026): the turnover received in
+# each period, excluding VAT, one amount per activity, zero periods too;
+# monthly or quarterly, as chosen (quarterly unless said); due the last day
+# of the month after the period (January → end of February; the first
+# quarter → 30 April), moved to the next working day when it falls on a
+# weekend or a holiday. The first declaration gathers the start's period and
+# the ones after it: monthly, the start month and the three after, due the
+# last day of the fourth month after the start month (a start in January,
+# due 31 May; in March, 31 July; in October, 28 or 29 February); quarterly,
+# the start quarter and the next (a start in the first quarter, due 31 July;
+# on 12 April, 31 October). Sources: URSSAF's tables (research-fr §7.1);
+# justice.fr, fiche "Micro-entrepreneur : déclarer son chiffre d'affaires"
+# (a start on 6 March 2026, first declaration by 31 July 2026; quarterly, a
+# start on 12 April 2026, by 31 October 2026); propulsebyca.fr's monthly
+# table of the first declarations (dates-declarations).
+[declaration]
+regime = "micro"
+periods = ["quarter", "month"]
+months_after = 1
+first_periods = { month = 4, quarter = 2 }
+
+# The DES, déclaration européenne de services (douane.gouv.fr, updated
+# 7 February 2025; art. 289 B CGI; BOI-TVA-DECLA-20-20-40): services to
+# businesses in another member state, taxed there by the reverse charge,
+# declared month by month, at the latest the 10th working day of the
+# following month; under the franchise, the paper form cerfa 13694 may be
+# sent instead.
+[des]
+category = ["AE"]
+nature = ["service"]
+working_day = 10
+
+# Contributions on turnover received from 1 January 2026, metropolitan
+# France (autoentrepreneur.urssaf.fr, "L'essentiel du statut", read
+# 16 November 2026), under the micro regime, on turnover excluding VAT:
+# social contributions, the versement libératoire, and the CFP by trade
+# (commerçants 0.1 %, artisans 0.3 %, liberal professions 0.2 %). ACRE and
+# the chambers' tax are left out: a rate of your own covers ACRE
+# (`[[invoice.contribution]]`).
+[[contribution]]
+regime = "micro"
+kind = "social"
+activity = "goods-bic"
+rate = 1230
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "social"
+activity = "services-bic"
+rate = 2120
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "social"
+activity = "bnc"
+rate = 2560
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "social"
+activity = "cipav"
+rate = 2320
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "vl"
+activity = "goods-bic"
+rate = 100
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "vl"
+activity = "services-bic"
+rate = 170
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "vl"
+activity = "bnc"
+rate = 220
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "vl"
+activity = "cipav"
+rate = 220
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "cfp"
+activity = "commerce"
+rate = 10
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "cfp"
+activity = "craft"
+rate = 30
+from = "2026-01-01"
+
+[[contribution]]
+regime = "micro"
+kind = "cfp"
+activity = "liberal"
+rate = 20
+from = "2026-01-01"

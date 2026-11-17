@@ -146,6 +146,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.movements = sioul_sync::share::MOVEMENTS_SHARED;
         // It has the persons' store: it travels once every device says so.
         entry.persons = sioul_sync::share::PERSONS_SHARED;
+        // It has the client profiles' store: it travels once every device says so.
+        entry.clients = sioul_sync::share::CLIENTS_SHARED;
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
         // It keeps its own table whatever comes, and says whether it learns now

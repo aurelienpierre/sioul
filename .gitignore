@@ -24,6 +24,7 @@ venv/
 client_secret*.json
 # What packaging writes inside the tree.
 /build/
+/android/package/assets/licenses/
 /.flatpak-builder/
 /packaging/windows/Output/
 *.dmg

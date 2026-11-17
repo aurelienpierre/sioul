@@ -97,16 +97,70 @@ On a computer, or a tablet without a SIM, the multimedia messages sent from it t
 
 ## Invoices
 
-Printed on the invoices you make from [Time](time.md#invoices) and [Projects](projects.md):
+What your invoices print and how your books count, as your country asks. Your country comes first, then what it requires; the rest is folded under **More** and **The books**. Each value is saved when you leave its field, a choice at once, as everywhere in Settings.
 
-- **Your name or business name**, **Your address** (on lines, as on an envelope); in France, an entrepreneur individuel writes « EI » right after the name (« Camille Exemple EI »), which French law asks for;
-- **SIRET**, or the business number where you are; empty until you are registered;
-- **VAT line**: for a French micro-entrepreneur, « TVA non applicable, art. 293 B du CGI »;
-- **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…; left empty, the prefix is the year, so numbering starts again each year, while a prefix of your own goes on counting;
-- **Currency**: a three-letter code, such as EUR, USD, CHF;
-- **Payment details**: printed at the bottom: bank details, terms, late fees;
-- **Invoices go into**: the folder of their PDFs, `Documents/Invoices` in your home folder when empty;
+<figure markdown="span">
+  [![Settings ▸ Invoices: its sentence at the top; Your country's rules, France; Legal form; Your name or business name; what your country asks before an invoice is issued; Your identifiers, a SIRET, printed; "VAT today: Small-business exemption (franchise)."; then More, folded.](../assets/screens/settings-invoices.png){ loading=lazy }](../assets/screens/settings-invoices.png "Open the picture at full size")
+  <figcaption>Your country first, then what it asks.</figcaption>
+</figure>
+
+- **At the top, once**, when your invoice settings were made before November 2026: your legal form, with a button for each. An entrepreneur individuel (micro-entrepreneur included) prints « EI » after the name; a company does not.
+- **Your country's rules**: France, Germany, Belgium, the United Kingdom, Switzerland, or **Elsewhere** for any other country, where every identifier and line is your own. Spain and Italy are listed as not supported, and Sioul says why ([Your country's rules](time.md#your-countrys-rules)).
+- **Legal form**, when your country's rules name forms: in France, *Sole trader (entrepreneur individuel, micro-entrepreneur included)*, EURL, SASU, SARL, SAS or SA; in Germany, Belgium, the United Kingdom and Switzerland, a sole trader or a company. *Not said yet* comes first: settings made before November 2026 say none, and your next invoice waits until you choose, so that a company under the VAT franchise never reads « EI ».
+- **Your name or business name**. French law asks an entrepreneur individuel's name to carry « EI »: Sioul prints it right after the name for you (« Camille Exemple EI ») when your legal form says you are one, and a name that says it already keeps it once.
+- **Before an invoice is issued, your country asks:** what it requires of you, in sentences.
+- **Your identifiers**: each with its kind (a SIREN or a SIRET, a VAT number, your trade register's city, another your country names), its number, and **printed** (an identifier not printed does not count for what your country requires). In France, a number that fails its check (a digit wrong) holds the invoice back until it is right. While your SIRET is being given, write « en cours d'attribution » as your SIRET: your invoices print « SIRET en cours d'attribution », the wording service-public.gouv.fr gives for it. A SIRET written in your settings before November 2026 is printed until you say an identifier here.
+- **VAT today**, in a sentence: "VAT today: Small-business exemption (franchise)."
+
+**More**, folded:
+
+- **Income regime for the books**: in France, micro or réel.
+- **VAT scheme, from a day on**: not registered, the small-business exemption (franchise), or liable for VAT, each from its day, which you pick or type in a date field (2027-01-01); the first scheme needs no day, and holds until the next one's. Under the franchise, write its line in your own words when you want another than your country's (« TVA non applicable, article 293 B du CGI » in France). **From another day** adds the next scheme, with today as its day until you pick another: when your turnover passes a threshold, add the day VAT applies from ([What reaches you](notifications.md#sioul-s-own)). A day typed with slashes is read day first, whatever language the window speaks: 01/02/2027 is 1 February 2027, and the field then shows 2027-02-01. A day written by hand in the configuration file is read the same way (2027-01-01, or 01/01/2027 with the day first); one that does not read is said at the top of this block, and your invoices wait until it reads: it is never ignored.
+- **Trade name**, **Your address**, **Postcode**, **City**, **Country**, and the **Email printed on invoices**. **Write the mail** sends from that address when it is one of your accounts.
+- **Bank accounts**: holder, IBAN and BIC, printed on your invoices; an IBAN that does not pass its check is said. **The payment QR code on euro invoices**: on an invoice in euros, the first IBAN whose key holds goes into a QR code to pay by transfer, with the holder's name.
+- **Payment details**: printed at the bottom. In France, Sioul prints the late-payment lines itself for business clients (no discount for early payment, the penalties, the €40 fee): leave them out of these details. Details that speak of late fees hold an invoice to a business back until you keep yours or Sioul's, so that an invoice never states two rates: take them out of the details (and give your own rate below, when it differs), or turn Sioul's lines off under **Lines printed**.
+- **Payable within, in days**, and **at the end of that month**: when payment is due, unless a client's profile says otherwise.
+- **Late-payment rate, in percent**: yours, when it is not your country's default (in France, the ECB's rate plus 10 points).
+- The invoices' language (Sioul's language, English or French) and currency (three letters, such as EUR, USD, CHF), unless a client's profile gives others.
+- **Numbering**: `{YYYY}-{N:3}` gives 2026-001, 2026-002… (the year `{YYYY}` or `{YY}`, the month `{MM}`, and one counter, `{N}`, or `{N:4}` for four digits at least), **from 1 each year** or **never from 1 again**, shown as your numbering follows it: with no numbering written, your choice applies to the usual one, and a prefix of your own without the year, from settings made before November 2026, cannot start from 1 each year, which Sioul says in words; **Credit notes' own numbering**, when credit notes have a series of their own. With the year in the numbering, **never from 1 again** goes on from the last number you issued: chosen after 2025-041 and 2026-016, it gives 2026-017 next (2027-017 if that invoice is issued the year after), never 2026-042. "The next number: 2026-002" shows what comes, so a change of this choice shows its effect at once; a numbering that does not read says why, and is not kept. Settings made before November 2026 keep their prefix until you write a numbering here.
+- **Lines printed**: each of your country's lines with its switch and, when you want, its text in your own words; then your own lines, with **A line of your own**. France's are the no-discount line, the penalties, the €40 fee, a company's capital and VAT on debits.
+- **Professional insurance, as printed** (insurer, contact, coverage), and a company's **Share capital, as printed**.
+
+**The books**, folded, in France ([The declaration](budgets.md#the-declaration)):
+
+- **Your activities**: what you sell, one or two: sales of goods (BIC), commercial or craft services (BIC), other services, liberal (BNC), or a regulated liberal profession (CIPAV). Your declarations have a line for each; a payment's goods go to your goods activity, its services to your services one. With none ticked, your turnover is counted with no contribution estimated, and the declaration says so.
+- **Declare**: each quarter or each month, as you chose with URSSAF; not said, as your work budget says, else each quarter.
+- **Versement libératoire, paid with each declaration**: when you chose it, income tax paid with each declaration, 1 %, 1.7 % or 2.2 % of your turnover.
+- **Training contribution, as a trade of**: commerce, craft or a liberal profession, for the training contribution (CFP: 0.1 %, 0.3 % or 0.2 %); **As your activity tells** takes it from your activity where it tells (sales of goods: commerce; BNC or CIPAV: liberal), and otherwise the CFP is said not counted.
+- **The day you started** (2026-06-12): your first year's thresholds are prorated to your days of activity, your first declaration gathers your first months as URSSAF asks (declaring each month, the month you started and the three after; each quarter, the quarter you started and the next), and your books begin that day. Without it, they begin with the first invoice or receipt Sioul knows of. A day Sioul cannot read is said at the top, and left aside.
+- **The VAT summary**: each month, or each quarter, when you are liable for VAT.
+- **VAT on debits (an option taken with the tax office)**.
+- **Rates of your own (ACRE, a rate URSSAF gave you)**: social contributions, the versement libératoire or the training contribution; the activity (for the training contribution, your trade: `commerce`, `craft` or `liberal`); the rate in percent; from a day, until a day. ACRE is one: Sioul cannot know it was granted to you, so write its rate, until the end of the third quarter after your start.
+
+**Your e-invoicing platform**: the name of the approved platform (a PA) you use. From 1 September 2027, your invoices to French businesses go through such a platform, and your sales to private clients are reported there instead (e-reporting); until Sioul sends through yours, upload those invoices' PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet ([Write the mail](time.md#write-the-mail)).
+
+Under the block, two more:
+
+- **Invoices go into**: the folder where a copy of each invoice's file goes when it is issued or printed again, `Documents/Invoices` in your home folder when empty; the file itself is kept beside the invoice, and travels with it;
 - **An hour costs**: the rate when a project does not set its own.
+
+Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, a business client's address (a client without a profile is billed as a business), a client's country when their address leaves it unknown, or, for settings made before, your legal form, holds it back, with a sentence saying what to add. So do a line that charges VAT while your VAT scheme on the day of issue is the franchise, or none, since VAT shown on an invoice is owed; a line "VAT at a rate" without its rate; and a VAT scheme's day that does not read. The editor shows them before you press **Issue** ([The editor](time.md#the-editor)).
+
+**Still in the configuration file** ([Where settings are kept](#where-settings-are-kept), under `[invoice]`), one setting of your books:
+
+- `[[invoice.threshold]]`: a threshold of your own over Sioul's of the same `id`, from a day: `amount`, in euros, and `from`. The `id`s are `franchise-services`, `franchise-services-higher`, `franchise-goods`, `franchise-goods-higher`, `micro-services` and `micro-goods`. Lawyers and authors, whose franchise thresholds differ, are not in Sioul's rules: write yours.
+
+```toml
+[invoice]
+trade = "liberal"
+
+[[invoice.threshold]]
+id = "franchise-services"
+amount = 50000
+from = "2026-01-01"
+```
+
+Everything Settings ▸ Invoices shows is kept in that same table, `[invoice]`, which you can still read and change by hand: [the developers' notes](../dev/projects.md#invoices) list every key. The rates and thresholds are France's for 2026, as URSSAF and the tax administration publish them, each with its day: an update of Sioul brings the next ones, and yours stay over them.
 
 ## Each page's own settings
 

@@ -2095,6 +2095,20 @@ files = {toml_list([W.choir_note])}
 from_domains = ["{W.choir}"]
 """)
 
+    # The library's client profile (docs/projects.md, "Client profiles"): tied to
+    # its head librarian's card, a business billed with its made-up SIREN.
+    p.write(n / "sioul-clients.toml", f"""# Client profiles (docs/notes-folder.md, docs/projects.md).
+
+[[client]]
+id = "fernhill"
+contact = "sioul:contact/demo-contact-iris"
+kind = "business"
+name = {toml_string(W.library_name)}
+address = {{ lines = [{toml_string(street("2 Rue de l'Exemple"))}], postcode = "69006", city = "Lyon", country = "FR" }}
+ids = [{{ kind = "siren", value = "904 123 452", printed = true }}]
+email = "{t("accounts", "compta")}@{W.library}"
+""")
+
     write_budgets(p, by_key)
     write_bank(p)
     write_contracts(p)
@@ -2198,21 +2212,21 @@ area = "leisure"
 budget = "work"
 date = {paid_sep}
 amount = 990
-label = {toml_string(t("Invoice 2026-014, Fernhill Library", "Facture 2026-014, Médiathèque des Fougères"))}
-links = ["sioul:invoice/2026-014", "sioul:project/fernhill"]
+label = {toml_string(t("Invoice 2026-001, Fernhill Library", "Facture 2026-001, Médiathèque des Fougères"))}
+links = ["sioul:invoice/2026-001", "sioul:project/fernhill"]
 
 [[line]]
 budget = "work"
 date = {first.replace(day=20)}
 amount = 720
-label = {toml_string(t("Invoice 2026-016, Silkworks Studio (illustrations), expected", "Facture 2026-016, Studio La Soierie (illustrations), attendue"))}
+label = {toml_string(t("Invoice 2026-003, Silkworks Studio (illustrations), expected", "Facture 2026-003, Studio La Soierie (illustrations), attendue"))}
 planned = true
 
 [[line]]
 budget = "work"
 date = {first.replace(day=22)}
 amount = 660
-label = {toml_string(t("Invoice 2026-015, Fernhill Library (mock-up), expected", "Facture 2026-015, Médiathèque des Fougères (maquette), attendue"))}
+label = {toml_string(t("Invoice 2026-002, Fernhill Library (mock-up), expected", "Facture 2026-002, Médiathèque des Fougères (maquette), attendue"))}
 planned = true
 links = ["sioul:project/fernhill"]
 
@@ -2320,14 +2334,14 @@ def write_bank(p: Profile):
             add("bank", d(day), amount, label)
     # What does not come back.
     for offset, amount, label in [(-50, -9.50, "CB CINEMA STUDIO 9"),
-                                  (-44, 660.00, t("VIR FERNHILL LIBRARY FACT 2026-013", "VIR MEDIATHEQUE FOUGERES FACT 2026-013")),
+                                  (-44, 660.00, t("VIR FERNHILL LIBRARY SUMMER WORKSHOPS", "VIR MEDIATHEQUE FOUGERES ATELIERS ETE")),
                                   (-31, -23.00, t("CB RAIL TICKETS", "CB BILLETS TRAIN")),
-                                  (-26, 450.00, t("VIR SILKWORKS STUDIO FACT 2026-012", "VIR STUDIO LA SOIERIE FACT 2026-012")),
+                                  (-26, 450.00, t("VIR SILKWORKS STUDIO POSTERS", "VIR STUDIO LA SOIERIE AFFICHES")),
                                   (-24, -8.60, t("CB PHARMACY CENTRAL", "CB PHARMACIE CENTRALE")), (-20, -14.50, t("CB BOOKSHOP LA PAGE", "CB LIBRAIRIE LA PAGE")),
                                   (-13, 18.50, t("VIR HEALTH COVER REFUND", "VIR CAISSE SANTE REMBOURSEMENT")),
                                   (-15, -90.00, t("VIR TWO RIVERS VOICES CHOIR FEE", "VIR CHOEUR DEUX RIVIERES COTISATION"))]:
         add("bank", c.weekday_before(offset), amount, label)
-    rows.append((paid_day(c), "bank", 990.00, t("VIR FERNHILL LIBRARY FACT 2026-014", "VIR MEDIATHEQUE FOUGERES FACT 2026-014")))
+    rows.append((paid_day(c), "bank", 990.00, t("VIR FERNHILL LIBRARY FACT 2026-001", "VIR MEDIATHEQUE FOUGERES FACT 2026-001")))
     for offset, amount, label in [(-40, -9.00, t("Tidal Notes music", "Disquaire Notes")), (-20, 25.00, t("Payment from Ewan Price (print)", "Paiement de Lucie Perrin (tirage)")),
                                   (-4, -48.00, t("Foundry North", "Fonderie du Nord")), (-11, -12.00, W.paper_name),
                                   (-33, 40.00, t("Payment from Lise Moreau (print)", "Paiement de Lise Moreau (tirage)"))]:
@@ -2553,11 +2567,11 @@ def write_time(p: Profile):
             return
         sessions.append(dict(task=("demo-task-" + task) if task else "", project=project, start=unix(moment), minutes=minutes, note=note, invoice=invoice))
 
-    # The first stage, billed (invoice 2026-014): eighteen hours over two weeks.
+    # The first stage, billed (invoice 2026-001, the first Sioul numbered): eighteen hours over two weeks.
     first_stage = t("Kick-off at the library|Site map|Content inventory|Typefaces|Colours|Wireframes|Navigation|Accessibility review|Revisions",
                     "Lancement à la médiathèque|Plan du site|Inventaire des contenus|Polices|Couleurs|Maquettes fil de fer|Navigation|Revue d'accessibilité|Corrections").split("|")
     for note, offset in zip(first_stage, (-28, -27, -26, -25, -24, -21, -20, -19, -18)):
-        session(c.monday + timedelta(days=offset), "09:30", 120, project="fernhill", note=note, invoice="2026-014")
+        session(c.monday + timedelta(days=offset), "09:30", 120, project="fernhill", note=note, invoice="2026-001")
     # The mock-up, not billed yet; the portfolio, for no one. A task's sessions
     # carry no note but the last one, where you stopped.
     for offset, start, minutes, task, note in [
@@ -2598,7 +2612,7 @@ def write_time(p: Profile):
 
 
 def invoice_day(c: Clock) -> date:
-    """The day invoice 2026-014 was made: the Friday after its last session."""
+    """The day invoice 2026-001 was made: the Friday after its last session."""
     return c.monday - timedelta(days=17)
 
 
@@ -2612,7 +2626,7 @@ def paid_day(c: Clock) -> date:
 
 def write_invoices(p: Profile, sessions: list):
     c = p.clock
-    billed = [s for s in sessions if s["invoice"] == "2026-014"]
+    billed = [s for s in sessions if s["invoice"] == "2026-001"]
     day = invoice_day(c)
     lines = []
     for s in billed:
@@ -2620,7 +2634,7 @@ def write_invoices(p: Profile, sessions: list):
         lines.append(f'[[lines]]\nlabel = {toml_string(s["note"])}\nminutes = {s["minutes"]}\nrate = 55.0\ncents = {cents}\n')
     total = sum(round(s["minutes"] / 60 * 55 * 100) for s in billed)
     keys = [f'{s["start"]}:{s["project"]}:{s["minutes"]}' for s in billed]
-    p.write(p.data / "invoices" / "2026-014.toml", f"""number = "2026-014"
+    p.write(p.data / "invoices" / "2026-001.toml", f"""number = "2026-001"
 date = "{day}"
 due = "{day + timedelta(days=30)}"
 project = "fernhill"
@@ -2909,15 +2923,35 @@ waits = true
 gather = true
 gathered = ["09:00", "13:00", "18:00"]
 
+# Invoices as Settings ▸ Invoices writes them since November 2026 (docs/projects.md):
+# France's preset, a sole trader under the micro regime and the VAT franchise,
+# a made-up SIRET that passes its check, the documented example IBAN.
 [invoice]
+preset = "fr"
+legal_form = "ei"
+regime = "micro"
 name = "Noa Ferrand"
-address = {toml_string(street("8 Rue de l'Exemple") + chr(10) + "69004 Lyon")}
-siret = "000 000 000 00000"
-vat = {toml_string(t("VAT not applicable, art. 293 B of the French tax code", "TVA non applicable, art. 293 B du CGI"))}
+address = {toml_string(street("8 Rue de l'Exemple"))}
+postcode = "69004"
+city = "Lyon"
 prefix = "2026-"
 rate = 50.0
 currency = "EUR"
-payment = {toml_string(t("IBAN FR76 0000 0000 0000 0000 0000 000, within 30 days.", "IBAN FR76 0000 0000 0000 0000 0000 000, à 30 jours."))}
+activity = ["bnc"]
+declare = "quarter"
+payment = {toml_string(t("By transfer, within 30 days.", "Par virement, à 30 jours."))}
+
+[[invoice.id]]
+kind = "siret"
+value = "123 456 782 00002"
+
+[[invoice.tax]]
+scheme = "franchise"
+
+[[invoice.bank]]
+holder = "Noa Ferrand"
+iban = "FR76 3000 6000 0112 3456 7890 189"
+bic = "EXMPFRPP"
 
 # Other apps by time, set on the phone and shared with the settings (docs/attention.md,
 # §1.3): the chat app let through during work, held otherwise.

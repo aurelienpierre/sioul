@@ -33,7 +33,7 @@ use crate::budget::{MailLine, MailState};
 use crate::payments::PaymentKind;
 
 /// What an export taken in did.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TakenIn {
     /// Its lines read, and those new.
     pub read: usize,
@@ -42,12 +42,26 @@ pub struct TakenIn {
     pub holds: usize,
     /// New lines the matching joined to what was planned or announced.
     pub joined: usize,
+    /// What the matching wrote on your invoices, a bank line at a time, for
+    /// the window to say it with Undo.
+    pub paid: Vec<InvoicePaid>,
+}
+
+/// One bank line the matching joined to your invoices' planned lines, and
+/// what it wrote on them (`invoice::life::take_bank_line`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InvoicePaid {
+    /// The movement's key and the bank line's, as the store links them: an
+    /// Undo keeps them apart from then on (`not_same`).
+    pub movement: String,
+    pub source: String,
+    pub taken: crate::invoice::life::Taken,
 }
 
 /// An export taken in (see the module's notes). `statement` as `bank::read`
 /// gives it, its account named already (a card's own name when the export
 /// gives none).
-pub fn take_in(root: &Path, statement: &Statement, title: &str, words: &crate::words::Words, today: Date) -> Result<TakenIn, String> {
+pub fn take_in(root: &Path, statement: &Statement, title: &str, words: &crate::words::Words, today: Date, device: &str) -> Result<TakenIn, String> {
     let account = if statement.account.is_empty() { "account".to_string() } else { statement.account.clone() };
     let known: BTreeSet<(String, String)> = Bank::load(root)?.movements.iter().map(|m| (m.account.clone(), m.id.clone())).collect();
     let added = Bank::change(root, |bank| bank.import(statement, title))?;
@@ -76,28 +90,35 @@ pub fn take_in(root: &Path, statement: &Statement, title: &str, words: &crate::w
             edit.import(&card, first, last);
         })?;
     }
-    let joined = resolve(root, words, &new, today)?;
-    Ok(TakenIn { read: added.read, new: added.new, holds: holds.len(), joined })
+    let (joined, paid) = resolve(root, words, &new, today, device)?;
+    Ok(TakenIn { read: added.read, new: added.new, holds: holds.len(), joined, paid })
 }
 
 /// Each of the bank's lines `new` (an export's name of its account, the
 /// bank's id) that the matching joins to what was planned or announced, kept
 /// as a link of the store (sure or probable) by that one's steadiest key,
 /// unless a link holds it already: it stays joined whatever the matching
-/// says later, until you correct it. Returns how many were kept.
-pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)], today: Date) -> Result<usize, String> {
+/// says later, until you correct it. A bank line joined to your invoices'
+/// planned lines pays them, in this `device`'s life of the invoices
+/// (`invoice::life::take_bank_line`): split across them, never more than
+/// each has left, the bank line taken in as the evidence of a payment said
+/// by hand; only in the invoices' own currency (a line in another is not
+/// joined to them). Returns how many were kept, and what was written.
+pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)], today: Date, device: &str) -> Result<(usize, Vec<InvoicePaid>), String> {
     if new.is_empty() {
-        return Ok(0);
+        return Ok((0, Vec::new()));
     }
     let ledger = Ledger::load(root).unwrap_or_default();
     let bank = Bank::load(root)?;
     let days: Vec<Date> = bank.movements.iter().filter(|m| new.contains(&(m.account.clone(), m.id.clone()))).map(|m| m.date).collect();
-    let (Some(first), Some(last)) = (days.iter().min().copied(), days.iter().max().copied()) else { return Ok(0) };
+    let (Some(first), Some(last)) = (days.iter().min().copied(), days.iter().max().copied()) else { return Ok((0, Vec::new())) };
     let contracts = crate::contracts::Contracts::load(root).map(|c| c.list).unwrap_or_default();
     let letters = crate::letters::Letters::load(root).map(|l| l.list).unwrap_or_default();
     let store = Store::load(root)?;
     let input = Input { ledger: &ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words };
     let all = derive(&input, shifted(first, -70), shifted(last, 70), today);
+    // Your invoices, for their currency and their payments.
+    let invoices = crate::invoice::all_in(&crate::invoice::folder());
     // A line's key as the movements name it: its declared account's id, else the export's name.
     let key_of = |(account, id): &(String, String)| bank_key(&accounts::account_of(&ledger, account).map_or_else(|| account.clone(), |a| a.id.clone()), id);
     let linked: BTreeSet<&str> = store.links.iter().map(|l| l.source.as_str()).collect();
@@ -112,11 +133,16 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
             continue;
         }
         let Some(expected) = steadiest(m.sources.iter().filter(|s| !matches!(s.kind, Kind::Bank | Kind::Hold))) else { continue };
+        // Your invoices are paid in their own currency: a line in another is never theirs.
+        let known: Vec<&crate::invoice::Invoice> = invoices_of(m).iter().filter_map(|n| invoices.iter().find(|i| i.number == *n)).collect();
+        if !known.is_empty() && !known.iter().any(|i| i.currency.eq_ignore_ascii_case(&m.currency)) {
+            continue;
+        }
         let probable = m.sources.iter().find(|s| s.key == key).is_some_and(|s| s.probable);
         keep.push((expected.to_string(), key, probable));
     }
     if keep.is_empty() {
-        return Ok(0);
+        return Ok((0, Vec::new()));
     }
     Store::edit(root, |edit| {
         for (movement, source, probable) in &keep {
@@ -124,18 +150,77 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
         }
     })?;
     // An invoice you issued, paid: its client's card tied to the payment (design §1.1).
-    let invoices = crate::invoice::all_in(&crate::invoice::folder());
     let ties: Vec<(String, Payer)> = keep
         .iter()
         .filter_map(|(movement, _, _)| {
             let number = movement.strip_prefix("sioul:invoice/").map(crate::notes::decode).or_else(|| all.iter().find(|m| m.has(movement)).and_then(|m| m.sources.iter().find(|s| s.kind == Kind::Invoice)).map(|s| crate::links::id_of(&s.key)))?;
             let invoice = invoices.iter().find(|i| i.number == number)?;
             let address = all.iter().find(|m| m.has(movement)).map(|m| m.address())?;
-            Some((address, Payer { address: None, name: invoice.client.lines().next().unwrap_or("").to_string() }))
+            Some((address, Payer { address: None, name: invoice.client.first_line().to_string() }))
         })
         .collect();
     let _ = tie_payers(root, &ties);
-    Ok(keep.len())
+    // Each bank line joined to your invoices' lines: their payments, split
+    // across them, the oldest first, in this device's life of the invoices.
+    // What the client paid counts: the gross and the day paid at its
+    // processor, when its export says them, its fee a fee (G6); through a
+    // processor whose export said only what came, a line short of what is
+    // owed by at most its usual fee settles them, the difference its fee.
+    let folder = crate::invoice::folder();
+    let country = crate::processors::country_of(words).to_string();
+    let mut paid = Vec::new();
+    for (movement, key, _) in &keep {
+        let Some(m) = all.iter().find(|m| m.has(movement)) else { continue };
+        let numbers = invoices_of(m);
+        if numbers.is_empty() {
+            continue;
+        }
+        let Some(line) = bank.movements.iter().find(|b| key_of(&(b.account.clone(), b.id.clone())) == *key) else { continue };
+        let account = accounts::account_of(&ledger, &line.account).map_or_else(|| line.account.clone(), |a| a.id.clone());
+        let line_key = crate::movements::line_key(&account, line.date, line.amount.cents(), &line.label);
+        let gross_known = m.gross.is_some() && m.gross_currency.is_none();
+        let processor = accounts::account_of(&ledger, &line.account).and_then(|a| crate::processors::known().by_id(a.kind())).or_else(|| crate::processors::known().by_label(&line.label));
+        let usual = |cents: i64| processor.and_then(|p| p.about_fee(crate::money::Money(cents), &country)).map_or(0, |f| f.cents());
+        let bank_line = crate::invoice::life::BankLine {
+            key: &line_key,
+            day: m.paid_day(),
+            amount: if gross_known { m.gross_or_net().cents() } else { line.amount.cents() },
+            fee: if gross_known { m.fee_total().cents() } else { 0 },
+            currency: &m.currency,
+            usual_fee: (!gross_known && processor.is_some()).then_some(&usual as &dyn Fn(i64) -> i64),
+        };
+        let taken = crate::invoice::life::take_bank_line(&folder, device, &numbers, &bank_line)?;
+        if !taken.entries.is_empty() || taken.overpaid > 0 {
+            paid.push(InvoicePaid { movement: movement.clone(), source: key.clone(), taken });
+        }
+    }
+    Ok((keep.len(), paid))
+}
+
+/// "Not the same payment": `a` and `b` (a movement's steadiest key, a
+/// source's key) never one movement again, and what a bank line among them
+/// paid on your invoices taken back, in this `device`'s life of the
+/// invoices (the second review, G4). Returns the payments taken back.
+pub fn not_same_paid(root: &Path, a: &str, b: &str, device: &str) -> Result<Vec<String>, String> {
+    not_same(root, a, b)?;
+    let ledger = Ledger::load(root).unwrap_or_default();
+    let bank = Bank::load(root)?;
+    let mut taken = Vec::new();
+    for key in [a, b] {
+        let Some(line) = bank.movements.iter().find(|l| bank_key(&accounts::account_of(&ledger, &l.account).map_or_else(|| l.account.clone(), |x| x.id.clone()), &l.id) == key) else { continue };
+        let account = accounts::account_of(&ledger, &line.account).map_or_else(|| line.account.clone(), |x| x.id.clone());
+        let line_key = crate::movements::line_key(&account, line.date, line.amount.cents(), &line.label);
+        taken.extend(crate::invoice::life::take_back_line(&crate::invoice::folder(), device, &line_key)?);
+    }
+    Ok(taken)
+}
+
+/// The numbers of the invoices whose planned lines a movement joined: one,
+/// or several when one transfer pays them together.
+fn invoices_of(m: &Movement) -> Vec<String> {
+    let mut out: Vec<String> = m.sources.iter().filter(|s| s.kind == Kind::Invoice).map(|s| crate::links::id_of(&s.key)).collect();
+    out.dedup();
+    out
 }
 
 /// How a message about money is matched: a receipt or an order as a card

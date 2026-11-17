@@ -193,8 +193,8 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     let now = Zoned::now().timestamp().as_second();
     sioul_core::timelog::record(&sioul_core::timelog::Session { project: "taxes".into(), start: now - 2 * 3600, minutes: 45, note: "Zeugma call".into(), ..Default::default() }).unwrap();
     let today = Zoned::now().date().to_string();
-    let bill = sioul_core::invoice::Invoice { number: "2026-099".into(), date: today.clone(), due: today, project: "taxes".into(), project_title: "Zeugma taxes".into(), client: "Zeugma Ltd".into(), total_cents: 5000, currency: "EUR".into(), ..Default::default() };
-    sioul_core::invoice::save_in(&sioul_core::invoice::folder(), &bill).unwrap();
+    let bill = sioul_core::invoice::Invoice { number: "2026-099".into(), date: today.clone(), due: today, project: "taxes".into(), project_title: "Zeugma taxes".into(), client: sioul_core::invoice::Client { name: "Zeugma Ltd".into(), ..Default::default() }, totals: sioul_core::invoice::Totals { due: 5000, ..Default::default() }, currency: "EUR".into(), ..Default::default() };
+    sioul_core::invoice::keep_issued(&sioul_core::invoice::folder(), &bill).unwrap();
     let letter = sioul_core::letters::Letter {
         id: "zeugma-letter".into(),
         file: "letters/2026/zeugma-letter.pdf".into(),
@@ -661,7 +661,7 @@ fn unreadable_lines_are_said() {
 
 const READING: &[&str] = &[
     "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
-    "letters", "time", "invoices", "reminders", "now",
+    "letters", "time", "invoices", "books", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
 /// names "this computer", never "this device" (docs/i18n.md; decided 3
@@ -685,7 +685,7 @@ fn the_agents_texts_say_this_computer() {
     }
 }
 
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
+const WRITING: &[&str] = &["add_task", "draft_invoice", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -874,6 +874,7 @@ fn a_closed_project_is_never_shown() {
         ("find", json!({ "query": "notice" })),
         ("time", json!({})),
         ("invoices", json!({})),
+        ("books", json!({})),
         ("letters", json!({})),
         ("reminders", json!({ "days": 30 })),
         ("papers", json!({})),
@@ -1440,6 +1441,8 @@ fn health_never_reaches_an_agent() {
         ("letters", json!({}), Answers),
         ("time", json!({}), Answers),
         ("invoices", json!({}), Answers),
+        ("books", json!({}), Answers),
+        ("draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Workshop", "price": 100 }] }), Answers),
         ("reminders", json!({ "days": 30 }), Answers),
         ("now", json!({}), Answers),
         ("spam_status", json!({}), Answers),
@@ -1838,6 +1841,68 @@ fn a_closed_project_s_invoice_is_kept_by_its_address() {
     let tied = call(&mut server, "link", json!({ "from": "sioul:task/receipt", "to": "sioul:invoice/2026-099" }));
     assert!(tied["isError"] == true, "{tied}");
     never_zeugma(&tied, "link");
+}
+
+/// An agent drafts an invoice when the person asks, and nothing more: the
+/// draft has no number, the invoices it lists say it is a draft; a closed
+/// project's time is refused, its name never said.
+#[test]
+fn an_agent_drafts_invoices_and_never_issues_them() {
+    let _home = home();
+    let mut server = server();
+    let closed = call(&mut server, "draft_invoice", json!({ "project": "taxes" }));
+    assert!(closed["isError"] == true, "{closed}");
+    never_zeugma(&closed, "draft_invoice");
+    let issued_before = sioul_core::invoice::all_in(&sioul_core::invoice::folder()).len();
+    let made = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Workshop", "quantity": 2, "unit": "DAY", "price": 450 }] }));
+    assert!(made["isError"] != true, "{made}");
+    let id = made["structuredContent"]["draft"].as_str().unwrap().to_string();
+    assert!(text(&made).contains("Nothing is numbered"), "{made}");
+    let draft = sioul_core::invoice::draft_in(&sioul_core::invoice::folder(), &id).unwrap();
+    assert_eq!((draft.number.as_str(), draft.totals.lines, draft.client.name.as_str()), ("", 90_000, "North Studio"));
+    assert_eq!(sioul_core::invoice::all_in(&sioul_core::invoice::folder()).len(), issued_before, "nothing issued");
+    let listed = call(&mut server, "invoices", json!({}));
+    let rows = listed["structuredContent"]["invoices"].as_array().unwrap();
+    assert!(rows.iter().any(|r| r["draft"] == id.as_str() && r["status"] == "draft" && r["number"] == ""), "{listed}");
+    never_zeugma(&listed, "invoices");
+    // The books: read only, the closed project's invoice left out and counted, no threshold while it is.
+    let books = call(&mut server, "books", json!({}));
+    assert!(books["isError"] != true && books["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "{books}");
+    assert!(books["structuredContent"]["thresholds"].as_array().unwrap().is_empty() && text(&books).contains("not given while things are kept"), "{books}");
+    never_zeugma(&books, "books");
+    let nothing = call(&mut server, "draft_invoice", json!({ "client": "North Studio" }));
+    assert!(nothing["isError"] == true, "{nothing}");
+    // A word for a unit is read as its code; a unit Sioul does not know, or
+    // a price below zero (EN 16931, BR-27), is refused with a sentence.
+    let hours = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Advice", "quantity": 3, "unit": "hrs", "price": 80 }] }));
+    let id = hours["structuredContent"]["draft"].as_str().unwrap().to_string();
+    assert_eq!(sioul_core::invoice::draft_in(&sioul_core::invoice::folder(), &id).unwrap().lines[0].unit, "HUR");
+    let bushels = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Grain", "unit": "PCE", "price": 5 }] }));
+    assert!(bushels["isError"] == true && text(&bushels).contains("no unit Sioul knows"), "{bushels}");
+    let below = call(&mut server, "draft_invoice", json!({ "client": "North Studio", "lines": [{ "description": "Discount", "price": -100 }] }));
+    assert!(below["isError"] == true && text(&below).contains("below zero"), "{below}");
+}
+
+/// The agents' books under the micro regime (the review of phase 4, P4-11):
+/// while anything is kept from agents (here a closed project's invoice),
+/// each declaration gives its period and its day alone, its amounts withheld
+/// as the thresholds are, since each adds up everything; a first declaration
+/// begun the year before is given whole, from its first day.
+#[test]
+fn an_agent_s_books_withhold_what_adds_up_everything() {
+    let home = home();
+    let path = home.root.join("config/sioul/books-micro.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    let year = sioul_core::zone::now().date().year();
+    std::fs::write(&path, format!("{config}\n[invoice]\npreset = \"fr\"\nlegal_form = \"ei\"\nregime = \"micro\"\nactivity = [\"bnc\"]\ndeclare = \"month\"\nstarted = \"{}-12-01\"\n", year - 1)).unwrap();
+    let mut server = Server::new(&path, "en");
+    let books = call(&mut server, "books", json!({}));
+    assert!(books["isError"] != true && books["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "{books}");
+    let declarations = books["structuredContent"]["declarations"].as_array().unwrap();
+    assert!(!declarations.is_empty() && declarations.iter().all(|d| d["withheld"] == true && d.get("to_declare").is_none()), "{books}");
+    assert_eq!(declarations[0]["from"], format!("{}-12-01", year - 1), "the first declaration, begun last year, whole: {books}");
+    assert!(text(&books).contains("The amounts to declare are not given while things are kept from agents"), "{books}");
+    never_zeugma(&books, "books");
 }
 
 #[test]

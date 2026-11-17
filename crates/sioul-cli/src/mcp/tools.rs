@@ -772,12 +772,22 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "invoices",
         title: "Invoices",
-        description: "The invoices the person issued, newest first: number, date, client, amount, when payment is due, and whether it is paid. Read-only: nothing is issued, sent or marked paid.",
+        description: "The person's invoice drafts, then the invoices, credit notes and deposit invoices they issued, newest first: number (none on a draft, which has its draft id), kind, date, client, amount in its currency, when payment is due, and where it stands (draft, not paid yet, partly paid, paid, credited). Read-only: nothing is issued, sent or marked paid.",
         writes: false,
         idempotent: true,
         open_world: false,
         schema: || object(json!({}), &[]),
         run: records::invoices,
+    },
+    Tool {
+        name: "books",
+        title: "The books",
+        description: "The person's books for a year (this one by default): the receipts book (each payment received, by its day: client, nature, invoice, means, amount, excluding VAT; refunds negative), the declarations of turnover (each period's turnover excluding VAT, the contributions estimated, the day to declare by), the VAT summary when liable to VAT, the DES (services to businesses in other EU countries), and the thresholds watched. Read-only: nothing is declared or filed. What is kept from agents is left out, and the totals then count only what is shown.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({ "year": { "type": "integer", "minimum": 2000, "maximum": 2100, "description": "This year by default." } }), &[]),
+        run: records::books,
     },
     Tool {
         name: "reminders",
@@ -829,6 +839,34 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: write::add_task,
+    },
+    Tool {
+        name: "draft_invoice",
+        title: "Draft an invoice",
+        description: "Saves a draft invoice, only when the person asked for one: from a project's billable time not billed yet (`project`, with `from_time`), with lines of its own (`lines`), or both. Its client is the project's, or `client` as named. A draft has no number: it is never issued, sent nor paid here; the person reads it and issues it from Sioul. Says what the draft still lacks before it can be issued. Nothing else changes.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "project": { "type": "string", "description": "The project, by its id or its address sioul:project/<id>." },
+                    "from_time": { "type": "boolean", "description": "Bill the project's time not billed yet (true by default with a project)." },
+                    "client": { "type": "string", "description": "Who it bills, when not the project's client: a name, or sioul:contact/<UID>." },
+                    "service_from": { "type": "string", "description": "The day the service was done, or began (2026-10-05); the day of issue when unsaid." },
+                    "service_to": { "type": "string", "description": "The day it ended, for a period." },
+                    "lines": { "type": "array", "items": { "type": "object", "properties": {
+                        "description": { "type": "string" },
+                        "quantity": { "type": "number", "description": "1 by default." },
+                        "unit": { "type": "string", "description": "UN/ECE code: C62 (one, the default), HUR, MIN, DAY, MON, KMT, LS; a word such as \"hours\" or \"jours\" is read as its code, any other unit refused." },
+                        "price": { "type": "number", "description": "The unit price excluding tax, in the invoice's currency: 450 or 62.5; never below zero." },
+                        "goods": { "type": "boolean", "description": "Goods rather than a service." }
+                    }, "required": ["description", "price"] } },
+                }),
+                &[],
+            )
+        },
+        run: write::draft_invoice,
     },
     Tool {
         name: "add_steps",

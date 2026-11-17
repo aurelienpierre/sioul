@@ -376,6 +376,46 @@ impl Translator {
         format!("{sign}{}", self.digits(m))
     }
 
+    /// An amount in `currency` (ISO 4217): euros as `money` writes them;
+    /// pounds and dollars with their sign, any other currency with its code
+    /// ("CHF 1,234.50", "1 234,50 CHF").
+    pub fn money_in(&self, m: Money, currency: &str) -> String {
+        let code = currency.trim().to_uppercase();
+        if code.is_empty() || code == "EUR" {
+            return self.money(m);
+        }
+        let symbol = self.text(&format!("currency-symbol-{code}"), None);
+        let known = !symbol.is_empty() && !symbol.starts_with("currency-symbol-");
+        let mut args = FluentArgs::new();
+        args.set("value", self.digits(m));
+        args.set("symbol", if known { symbol } else { code });
+        let id = match (known, m.is_negative()) {
+            (true, false) => "money-symbol-positive",
+            (true, true) => "money-symbol-negative",
+            (false, false) => "money-code-positive",
+            (false, true) => "money-code-negative",
+        };
+        self.text(id, Some(&args))
+    }
+
+    /// A rate in basis points, as a percentage: "12.40%", "12,40 %"; "20%" when whole.
+    pub fn percent_bp(&self, bp: i64) -> String {
+        let (units, hundredths) = (bp.abs() / 100, bp.abs() % 100);
+        let sign = if bp < 0 { "−" } else { "" };
+        let digits = if hundredths == 0 { format!("{sign}{units}") } else { format!("{sign}{units}{}{hundredths:02}", self.text("decimal-separator", None)).trim_end_matches('0').to_string() };
+        let mut args = FluentArgs::new();
+        args.set("value", digits);
+        self.text("percent-value", Some(&args))
+    }
+
+    /// A quantity in thousandths: "3", "1.5", "0.125"; "1,5" in French.
+    pub fn thousandths(&self, q: i64) -> String {
+        let (units, rest) = (q.abs() / 1000, q.abs() % 1000);
+        let sign = if q < 0 { "−" } else { "" };
+        let grouped = group_thousands(units, &self.text("thousands-separator", None));
+        if rest == 0 { format!("{sign}{grouped}") } else { format!("{sign}{grouped}{}{}", self.text("decimal-separator", None), format!("{rest:03}").trim_end_matches('0')) }
+    }
+
     /// The digits of an amount, grouped, without sign.
     fn digits(&self, m: Money) -> String {
         let (units, cents) = m.split();
@@ -750,6 +790,22 @@ mod tests {
         assert_eq!(Translator::new("en").money(Money(-123456)), "−€1,234.56");
         assert_eq!(Translator::new("fr").money(Money(-123456)), "−1\u{202f}234,56\u{a0}€");
         assert_eq!(Translator::new("fr").money(Money(25000)), "250\u{a0}€");
+    }
+
+    /// An amount in its own currency (an invoice's): euros as always, pounds
+    /// and dollars with their sign, any other with its code; never a € for
+    /// another currency.
+    #[test]
+    fn money_in_its_own_currency() {
+        let (en, fr) = (Translator::new("en"), Translator::new("fr"));
+        assert_eq!(en.money_in(Money(123450), "EUR"), en.money(Money(123450)));
+        assert_eq!(en.money_in(Money(123450), "usd"), "$1,234.50");
+        assert_eq!(en.money_in(Money(-2000), "GBP"), "−£20");
+        assert_eq!(en.money_in(Money(123450), "CHF"), "CHF 1,234.50");
+        assert_eq!(fr.money_in(Money(123450), "USD"), "1\u{202f}234,50\u{a0}$ US");
+        assert_eq!(fr.money_in(Money(123450), "CHF"), "1\u{202f}234,50\u{a0}CHF");
+        assert_eq!((en.percent_bp(2000), en.percent_bp(550), fr.percent_bp(1240)), ("20%".to_string(), "5.5%".to_string(), "12,4\u{202f}%".to_string()));
+        assert_eq!((en.thousandths(1500), fr.thousandths(2_000_125)), ("1.5".to_string(), "2\u{202f}000,125".to_string()));
     }
 
     #[test]

@@ -915,20 +915,32 @@ pub struct WeatherSettings {
     pub longitude: Option<f64>,
 }
 
+/// Settings ▸ Invoices: who issues invoices and how (docs/projects.md,
+/// "Invoices"). The country's preset, the legal form, the income regime and
+/// the VAT scheme are four settings of their own: a French EI
+/// micro-entrepreneur may be liable for VAT, a company under the franchise.
+/// A table from before November 2026 (name, address, siret, vat, prefix,
+/// payment) keeps working as it was: its `vat` mentioning 293 B makes it
+/// France, an EI, the micro regime and the franchise with that very
+/// mention; any other is "elsewhere", its lines printed as they were
+/// (`invoice::life::issuer_on`).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct InvoiceSettings {
     #[serde(default)]
     pub name: String,
-    /// Postal address, on lines.
+    /// Postal address, on lines (the street, or the whole address as on an envelope).
     #[serde(default)]
     pub address: String,
-    /// SIRET, or the business number where you are.
+    /// SIRET, or the business number where you are (before November 2026;
+    /// now an identifier among `ids`, read as one when `ids` has none).
     #[serde(default)]
     pub siret: String,
-    /// The VAT line: "TVA non applicable, art. 293 B du CGI" for a French micro-entrepreneur.
+    /// The VAT line: "TVA non applicable, art. 293 B du CGI" for a French
+    /// micro-entrepreneur under the franchise (before November 2026; now the
+    /// franchise's mention, `tax`).
     #[serde(default)]
     pub vat: String,
-    /// Invoice numbers start with it: "2026-".
+    /// Invoice numbers start with it: "2026-" (before November 2026; now `pattern`).
     #[serde(default)]
     pub prefix: String,
     /// An hour's fee when a project does not say.
@@ -942,6 +954,178 @@ pub struct InvoiceSettings {
     /// Payment details printed at the bottom: IBAN, terms.
     #[serde(default)]
     pub payment: String,
+    /// The country's preset (`invoice::presets`): "fr", "de", "be", "uk",
+    /// "ch", "elsewhere"; empty: from `vat`, as before.
+    #[serde(default)]
+    pub preset: String,
+    /// A legal form of the preset's: "ei" (France: « EI » printed after the
+    /// name), "sasu", "sole", "company"…
+    #[serde(default)]
+    pub legal_form: String,
+    /// The income regime for the books: "micro", "reel".
+    #[serde(default)]
+    pub regime: String,
+    #[serde(default)]
+    pub trade_name: String,
+    #[serde(default)]
+    pub postcode: String,
+    #[serde(default)]
+    pub city: String,
+    /// The address's country, ISO 3166-1 ("FR"); the preset's when empty.
+    #[serde(default)]
+    pub country: String,
+    #[serde(default)]
+    pub email: String,
+    /// Identifiers: `[[invoice.id]]` kind, value, printed.
+    #[serde(default, rename = "id")]
+    pub ids: Vec<IdSetting>,
+    /// The VAT scheme from a day on: `[[invoice.tax]]` from, scheme ("none",
+    /// "franchise", "liable"), mention (the franchise's, editable).
+    #[serde(default)]
+    pub tax: Vec<TaxSetting>,
+    /// Options printed: "debits" (France: VAT on debits).
+    #[serde(default)]
+    pub options: Vec<String>,
+    /// A company's share capital, as printed: "1 000 €".
+    #[serde(default)]
+    pub capital: String,
+    /// Activities for the books: "goods-bic", "services-bic", "bnc", "cipav".
+    #[serde(default)]
+    pub activity: Vec<String>,
+    /// Payment terms: days after the invoice (the preset's when unsaid), at the end of that month or not.
+    #[serde(default)]
+    pub terms_days: Option<u32>,
+    #[serde(default)]
+    pub end_of_month: bool,
+    /// The late-payment rate, in percent, when not the preset's default (France: ECB rate + 10 points).
+    #[serde(default)]
+    pub penalty_rate: Option<f64>,
+    /// Bank accounts: `[[invoice.bank]]` holder, iban, bic.
+    #[serde(default, rename = "bank")]
+    pub banks: Vec<BankSetting>,
+    /// Professional insurance, as printed: insurer, contact, coverage.
+    #[serde(default)]
+    pub insurance: String,
+    /// The numbering pattern: "{YYYY}-{N:3}"; from `prefix` when empty.
+    #[serde(default)]
+    pub pattern: String,
+    /// "yearly" or "never"; with `pattern` only.
+    #[serde(default)]
+    pub reset: String,
+    /// Credit notes' own pattern; empty: the invoices' series.
+    #[serde(default)]
+    pub credit_pattern: String,
+    /// The legal lines: `[[invoice.line]]` id (a preset line's, to change or
+    /// take out with `off = true`; none for a line of your own), text, subject.
+    #[serde(default, rename = "line")]
+    pub lines: Vec<LineSetting>,
+    /// The invoices' language by default ("en", "fr"); a client's own first.
+    #[serde(default)]
+    pub language: String,
+    /// The books (`books`): how often turnover is declared, "month" or
+    /// "quarter"; unsaid, as a budget that declares says, else the preset's first.
+    #[serde(default)]
+    pub declare: String,
+    /// The versement libératoire of income tax, paid with each declaration (France).
+    #[serde(default)]
+    pub vl: bool,
+    /// The trade the training contribution (CFP) is counted for: "commerce",
+    /// "craft", "liberal"; unsaid, from the activity where it tells.
+    #[serde(default)]
+    pub trade: String,
+    /// The day the activity started, "2026-03-01": the first year's
+    /// thresholds are prorated, the first declaration gathers its first periods.
+    #[serde(default)]
+    pub started: String,
+    /// The VAT summary's period: "month" (unsaid) or "quarter".
+    #[serde(default)]
+    pub vat_period: String,
+    /// Contribution rates of your own, each over the preset's from a day
+    /// (ACRE's, a rate URSSAF gave you): `[[invoice.contribution]]` kind
+    /// ("social", "vl", "cfp"), activity, rate (percent), from, until.
+    #[serde(default, rename = "contribution")]
+    pub contributions: Vec<ContributionSetting>,
+    /// Thresholds of your own, each over the preset's from a day:
+    /// `[[invoice.threshold]]` id (the preset's), amount, from.
+    #[serde(default, rename = "threshold")]
+    pub thresholds: Vec<ThresholdSetting>,
+    /// The EPC payment QR code on euro invoices with an IBAN; on unless `false`.
+    #[serde(default)]
+    pub qr: Option<bool>,
+    /// The e-invoicing platform you use (France's plateforme agréée, a PA),
+    /// by its name: until Sioul sends through it, you upload each invoice's
+    /// PDF there, its Factur-X data inside (the guide says how).
+    #[serde(default)]
+    pub platform: String,
+}
+
+/// A contribution rate of your own, from a day, until a day.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct ContributionSetting {
+    pub kind: String,
+    /// The activity ("bnc") or, for the CFP, the trade ("liberal").
+    pub activity: String,
+    /// In percent: 12.8 for 12.8 %.
+    pub rate: f64,
+    /// "2026-03-01"; empty: always.
+    #[serde(default)]
+    pub from: String,
+    /// The last day it holds; empty: no end.
+    #[serde(default)]
+    pub until: String,
+}
+
+/// A threshold of your own, over the preset's of the same id from a day.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct ThresholdSetting {
+    pub id: String,
+    /// In the preset's currency: 37500 for €37,500.
+    pub amount: f64,
+    #[serde(default)]
+    pub from: String,
+}
+
+/// An identifier as Settings keeps it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct IdSetting {
+    pub kind: String,
+    pub value: String,
+    #[serde(default = "yes")]
+    pub printed: bool,
+}
+
+/// The VAT scheme from a day on.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct TaxSetting {
+    /// "2026-01-01"; empty: always.
+    #[serde(default)]
+    pub from: String,
+    pub scheme: String,
+    #[serde(default)]
+    pub mention: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct BankSetting {
+    #[serde(default)]
+    pub holder: String,
+    #[serde(default)]
+    pub iban: String,
+    #[serde(default)]
+    pub bic: String,
+}
+
+/// A legal line as Settings keeps it.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct LineSetting {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub off: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
@@ -2260,6 +2444,69 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
     })
 }
 
+/// A day as people write it: as ISO 8601 (2027-01-01), or day first, with
+/// slashes, dots or dashes (01/01/2027, 1.1.2027, 01-01-2027), as a French
+/// form, a German one or a British letter writes it; the year in four
+/// digits. None for anything else, an empty text too: a day that does not
+/// read is said where it matters (`invoice::life::checks`, `books::unread_of`),
+/// never taken for another.
+pub fn read_day(text: &str) -> Option<jiff::civil::Date> {
+    let text = text.trim();
+    if let Some(day) = text.get(..10).and_then(|d| d.parse::<jiff::civil::Date>().ok()) {
+        return Some(day);
+    }
+    let parts: Vec<&str> = text.split(['/', '.', '-']).map(str::trim).collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || p.len() > 4 || !p.chars().all(|c| c.is_ascii_digit())) {
+        return None;
+    }
+    let n = |p: &str| p.parse::<i16>().ok();
+    let (year, month, day) = if parts[0].len() == 4 {
+        (n(parts[0])?, n(parts[1])?, n(parts[2])?)
+    } else if parts[2].len() == 4 {
+        (n(parts[2])?, n(parts[1])?, n(parts[0])?)
+    } else {
+        return None;
+    };
+    jiff::civil::Date::new(year, i8::try_from(month).ok()?, i8::try_from(day).ok()?).ok()
+}
+
+/// The lists of `[invoice]` Settings ▸ Invoices writes whole: identifiers,
+/// the dated VAT schemes, bank accounts, legal lines, your contribution rates.
+pub const INVOICE_LISTS: [&str; 5] = ["id", "tax", "bank", "line", "contribution"];
+
+/// Writes one of `[invoice]`'s lists whole (`INVOICE_LISTS`), as
+/// `[[invoice.<list>]]` tables in their order, each a table of its texts,
+/// numbers and switches; an empty one is taken out. The rest of the file
+/// and its comments stay; what would not read back is refused
+/// (`write_document`).
+pub fn set_invoice_list(path: &Path, list: &str, rows: &[toml::Table]) -> Result<(), String> {
+    if !INVOICE_LISTS.contains(&list) {
+        return Err(format!("invoice.{list}: no such list"));
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if !doc.contains_key("invoice") {
+            doc["invoice"] = Item::Table(Table::new());
+        }
+        let invoice = doc["invoice"].as_table_mut().ok_or_else(|| format!("{}: invoice is not a table", path.display()))?;
+        if rows.is_empty() {
+            invoice.remove(list);
+        } else {
+            let mut tables = ArrayOfTables::new();
+            for row in rows {
+                let written: DocumentMut = toml::to_string(row).map_err(|e| e.to_string())?.parse().map_err(|e| format!("{e}"))?;
+                let mut table = Table::new();
+                for (key, item) in written.iter() {
+                    table.insert(key, item.clone());
+                }
+                tables.push(table);
+            }
+            invoice.insert(list, Item::ArrayOfTables(tables));
+        }
+        write_document(path, &doc)
+    })
+}
+
 /// Writes the mail filters whole, in their order, as `[[mail.filter]]`
 /// tables, each condition and each action an inline table on a line of its
 /// own (`rules::Filter`); the rest of the file and its comments stay. None:
@@ -2581,6 +2828,16 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A day as people type it (the review of phase 3, F19): ISO, a day
+    /// first with slashes, dots or dashes, a year first; never a day that
+    /// is not one, nor words.
+    #[test]
+    fn a_day_reads_as_people_type_it() {
+        let read = |t: &str| read_day(t).map(|d| d.to_string());
+        assert_eq!((read("2027-01-01"), read(" 01/01/2027 "), read("1.2.2027"), read("2027/02/01"), read("2027-01-01T00:00")), (Some("2027-01-01".into()), Some("2027-01-01".into()), Some("2027-02-01".into()), Some("2027-02-01".into()), Some("2027-01-01".into())));
+        assert_eq!((read("31/02/2027"), read("1er janvier 2027"), read("01/01/27"), read(""), read("2027-1")), (None, None, None, None, None));
+    }
 
     /// An address's colour written into its table, the other keys and
     /// comments kept, taken out again; read back by `Account`.
@@ -3016,6 +3273,36 @@ mod tests {
         set_filters(&path, &[]).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(read(&path).is_empty() && !text.contains("[[mail.filter]]") && text.contains("threads = true"), "{text}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Settings ▸ Invoices writes `[invoice]`'s lists whole, the rest of the
+    /// file and its comments kept; an empty list taken out; a list Sioul
+    /// does not know, or rows that would not read, refused.
+    #[test]
+    fn invoice_lists_are_written_whole() {
+        let path = std::env::temp_dir().join(format!("sioul-invoice-lists-{}.toml", std::process::id()));
+        std::fs::write(&path, "# Mine\n[invoice]\nname = \"Camille Exemple\" # as printed\n\n[[invoice.bank]]\niban = \"FR76 3000 6000 0112 3456 7890 189\"\n").unwrap();
+        let row = |pairs: &[(&str, toml::Value)]| pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<toml::Table>();
+        let banks = [
+            row(&[("holder", "Camille Exemple".into()), ("iban", "FR76 3000 6000 0112 3456 7890 189".into()), ("bic", "EXMPFRPP".into())]),
+            row(&[("iban", "BE68 5390 0754 7034".into())]),
+        ];
+        set_invoice_list(&path, "bank", &banks).unwrap();
+        let read = |path: &Path| Config::load(path).unwrap().invoice;
+        let invoice = read(&path);
+        assert_eq!(invoice.banks.iter().map(|b| (b.holder.as_str(), b.bic.as_str())).collect::<Vec<_>>(), [("Camille Exemple", "EXMPFRPP"), ("", "")]);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# Mine") && text.contains("# as printed"), "{text}");
+        set_invoice_list(&path, "id", &[row(&[("kind", "siret".into()), ("value", "732 829 320 00017".into()), ("printed", true.into())])]).unwrap();
+        set_invoice_list(&path, "tax", &[row(&[("from", "2026-01-01".into()), ("scheme", "franchise".into())]), row(&[("from", "2027-03-14".into()), ("scheme", "liable".into())])]).unwrap();
+        let invoice = read(&path);
+        assert_eq!((invoice.ids.len(), invoice.tax.len(), invoice.banks.len(), invoice.name.as_str()), (1, 2, 2, "Camille Exemple"));
+        set_invoice_list(&path, "bank", &[]).unwrap();
+        assert!(read(&path).banks.is_empty() && !std::fs::read_to_string(&path).unwrap().contains("[[invoice.bank]]"));
+        assert!(set_invoice_list(&path, "nope", &[]).is_err());
+        assert!(set_invoice_list(&path, "tax", &[row(&[("from", "2026-01-01".into())])]).is_err(), "a scheme is asked: never written");
+        assert_eq!(read(&path).tax.len(), 2);
         let _ = std::fs::remove_file(&path);
     }
 

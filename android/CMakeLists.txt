@@ -117,6 +117,20 @@ target_link_options(sioul PRIVATE "-Wl,-z,max-page-size=16384")
 # itself are written packed (RELR, read by Android 9 and later).
 target_link_options(sioul PRIVATE "-Wl,--exclude-libs,ALL" "-Wl,--pack-dyn-relocs=android+relr" "-Wl,--use-android-relr-tags")
 
+# The works of others inside the program, with their licences (NOTICES.md):
+# copied into the package's assets when the build is configured, and again
+# when one of them changes, so that the APK carries them in assets/licenses/
+# as every other package carries them in its licenses folder.
+foreach(notice
+        NOTICES.md
+        crates/sioul-core/data/fonts/LICENSE-Liberation
+        crates/sioul-core/data/LICENSE-iso-codes
+        crates/sioul-app/fonts/LICENSE-DejaVu
+        crates/sioul-app/icons/COPYING-ICONS)
+    get_filename_component(notice_name "${notice}" NAME)
+    configure_file("${SIOUL_ROOT}/${notice}" "${CMAKE_CURRENT_SOURCE_DIR}/package/assets/licenses/${notice_name}" COPYONLY)
+endforeach()
+
 math(EXPR SIOUL_VERSION_CODE "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
 set_target_properties(sioul PROPERTIES
     # The manifest, the icon, the backup rules (package/).

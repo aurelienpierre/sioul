@@ -32,6 +32,9 @@ use std::sync::Mutex;
 pub const ALIVE: i64 = 5 * 60;
 /// How long a computer keeps a part before acting on it.
 pub const SETTLING: i64 = 90;
+/// How often the window renews its claims (each minute): a claim not
+/// renewed for two of these is no running window's.
+pub const RENEWED_EVERY: i64 = 60;
 /// How long a claim on a part that stays put (invoices) still holds it once
 /// lapsed, unless it says it closed: a computer whose sync stopped, or whose
 /// claims a phone's sync app brings half an hour late, may still be numbering
@@ -40,9 +43,10 @@ pub const SETTLING: i64 = 90;
 pub const UNCLOSED: i64 = 24 * 3600;
 
 /// Who keeps a part, as the claims say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Rule {
     /// The computer used most recently: medicines' reminders.
+    #[default]
     FollowsYou,
     /// The one that took it last, on purpose: invoices' numbers.
     StaysPut,
@@ -67,6 +71,12 @@ pub struct Claim {
     /// said until then is known; none from a Sioul that does not say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wrote: Option<(u32, u64)>,
+    /// For invoices: each series' last number this computer knows
+    /// (`sioul_core::invoice::series::Journal::lasts`), so that a computer
+    /// whose records have not come yet still never gives one of them again;
+    /// none from a Sioul that does not say, nor for another part.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub series: BTreeMap<String, u64>,
     /// It closed then (quit, or put away): it marks nothing until it says otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed: bool,
@@ -213,12 +223,36 @@ static KEPT: Mutex<BTreeMap<String, (String, i64)>> = Mutex::new(BTreeMap::new()
 /// `wrote` how far it wrote its records. Returns who keeps it now.
 #[allow(clippy::too_many_arguments)]
 pub fn renew(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, active: i64, take: bool, rule: Rule, wrote: Option<(u32, u64)>) -> Result<Keeper, String> {
+    renew_with(folder, key, part, computer, Renewal { now, active, take, rule, wrote, series: None })
+}
+
+/// What a renewal says, beside the part and the computer.
+#[derive(Debug, Clone, Default)]
+pub struct Renewal {
+    pub now: i64,
+    pub active: i64,
+    pub take: bool,
+    pub rule: Rule,
+    pub wrote: Option<(u32, u64)>,
+    /// For invoices: each series' last number known here; None keeps what the claim said.
+    pub series: Option<BTreeMap<String, u64>>,
+}
+
+/// `renew`, with each series' last number for invoices: the claim carries
+/// the larger of what it said and what is known now, never less.
+pub fn renew_with(folder: &Path, key: &[u8; 32], part: &str, computer: &str, renewal: Renewal) -> Result<Keeper, String> {
+    let Renewal { now, active, take, rule, wrote, series } = renewal;
     let mut claims = read(folder, key, part);
     let old = claims.iter().find(|c| c.computer == computer).cloned();
     // A claim that lapsed, or closed, starts again: its age counts from now.
     let since = old.as_ref().filter(|c| c.until > now && !c.closed).map_or(now, |c| c.since);
     let taken = if take { now } else { old.as_ref().map_or(0, |c| c.taken) };
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, closed: false, pad: String::new() };
+    let mut kept = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    for (sequence, last) in series.unwrap_or_default() {
+        let at = kept.entry(sequence).or_insert(0);
+        *at = (*at).max(last);
+    }
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, series: kept, closed: false, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     claims.retain(|c| c.computer != computer);
     claims.push(claim);
@@ -231,6 +265,18 @@ fn write(folder: &Path, key: &[u8; 32], part: &str, computer: &str, claim: &Clai
     let sealed = |pad: usize| serde_json::to_vec(&Claim { pad: ".".repeat(pad), ..claim.clone() }).map(|plain| crate::share::seal(key, &bound(part, computer), &plain)).map_err(|e| e.to_string());
     let pad = crate::share::pad_for(&path, |pad| sealed(pad).map_or(0, |s| s.len() as u64));
     crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
+}
+
+/// Each series' largest last number among every computer's claim on
+/// `part`, live, lapsed or closed: a number one of them gave is never given
+/// again, whichever keeps the part now.
+pub fn claimed_series(claims: &[Claim]) -> BTreeMap<String, u64> {
+    let mut out: BTreeMap<String, u64> = BTreeMap::new();
+    for (sequence, last) in claims.iter().flat_map(|c| c.series.iter()) {
+        let at = out.entry(sequence.clone()).or_insert(0);
+        *at = (*at).max(*last);
+    }
+    out
 }
 
 /// Who keeps `part`, as read now, without claiming it.
@@ -263,12 +309,70 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
     Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since }
 }
 
+/// Why invoices may not be numbered on a computer now, as the claims on
+/// them say (`may_number`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Numbering {
+    /// It may.
+    Yes,
+    /// Its own claim is closed, or not renewed for two periods: no window
+    /// of Sioul runs there to keep the invoices.
+    NotRunning,
+    /// Another computer keeps them: its name.
+    Elsewhere(String),
+    /// Kept here, not long enough for the others to know it yet; or
+    /// another computer closed with records not read here yet.
+    Settling,
+    /// Another computer holding them has not been heard from lately.
+    OthersSilent,
+}
+
+/// Whether `computer` may number invoices now (a part that stays put), as
+/// `claims` say, read at `now` (`read`: whether everything a computer
+/// wrote up to its round and number is read here): its own claim alive and
+/// renewed within two periods (`RENEWED_EVERY`), never a closed one; the
+/// keeper; kept long enough for the others to know it, counted from when
+/// it claimed without a break or took the invoices on purpose, whichever is
+/// later (`SETTLING`); no other computer closed with records not read here
+/// (`closed_unread`); every other computer holding them heard from in the
+/// last three minutes. The window and the command line ask the same.
+pub fn may_number(claims: &[Claim], computer: &str, now: i64, read: impl Fn(&str, (u32, u64)) -> bool) -> Numbering {
+    let Some(own) = claims.iter().find(|c| c.computer == computer && !c.closed && c.until > now && now - c.renewed <= 2 * RENEWED_EVERY) else { return Numbering::NotRunning };
+    let Some(chosen) = choose(claims, Rule::StaysPut, now) else { return Numbering::NotRunning };
+    if chosen.computer != computer {
+        return Numbering::Elsewhere(chosen.name.clone());
+    }
+    let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && holds(c, Rule::StaysPut, now)).collect();
+    if !others.is_empty() && now - own.since.max(own.taken) < SETTLING {
+        return Numbering::Settling;
+    }
+    if closed_unread(claims, computer, now, read).is_some() {
+        return Numbering::Settling;
+    }
+    if others.iter().map(|c| c.renewed).min().is_some_and(|heard| now - heard > 3 * 60) {
+        return Numbering::OthersSilent;
+    }
+    Numbering::Yes
+}
+
 /// This computer's claim on `part` closed: Sioul quits, or is put away on a
 /// phone. It keeps nothing, and says how far it wrote its records, so the
 /// others know everything it marked before it closed.
 pub fn close(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>) -> Result<(), String> {
+    close_with(folder, key, part, computer, now, wrote, None)
+}
+
+/// `close`, with each series' last number known now for invoices (the
+/// journal's, which an issue just before may have raised): the closed claim
+/// carries the larger of it and what it said.
+pub fn close_with(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>, known: Option<BTreeMap<String, u64>>) -> Result<(), String> {
     let old = read(folder, key, part).into_iter().find(|c| c.computer == computer);
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, closed: true, pad: String::new() };
+    let mut series = old.as_ref().map(|c| c.series.clone()).unwrap_or_default();
+    for (sequence, last) in known.unwrap_or_default() {
+        let at = series.entry(sequence).or_insert(0);
+        *at = (*at).max(last);
+    }
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, series, closed: true, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     if let Ok(mut kept) = KEPT.lock() {
         kept.remove(part);
@@ -332,6 +436,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Each claim carries the last number of each series its computer gave
+    /// (the invoicing's phase 1): kept through a renewal that says nothing,
+    /// never lowered, kept when it closes; every computer reads the largest.
+    #[test]
+    fn a_claim_carries_the_last_numbers() {
+        let dir = folder("series");
+        let key = [4u8; 32];
+        let said = |n: u64| Some(BTreeMap::from([("2026-{N:3}".to_string(), n)]));
+        let renewal = |now: i64, series| Renewal { now, active: now, take: false, rule: Rule::StaysPut, wrote: None, series };
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1000, said(7))).unwrap();
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1060, None)).unwrap();
+        renew_with(&dir, &key, "invoices-series", "desk", renewal(1120, said(5))).unwrap();
+        renew_with(&dir, &key, "invoices-series", "laptop", renewal(1130, said(3))).unwrap();
+        close(&dir, &key, "invoices-series", "desk", 1200, None).unwrap();
+        let claims = claims(&dir, &key, "invoices-series");
+        assert_eq!(claims.iter().find(|c| c.computer == "desk").map(|c| c.series.clone()), said(7), "never lowered, kept when closed");
+        assert_eq!(claimed_series(&claims), said(7).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The review of 3273f2d, R2: the desk makes an invoice and quits; its
     /// closed claim comes to the laptop ahead of the record holding the
     /// invoice. The laptop keeps the invoices, settled, but numbers nothing
@@ -385,5 +509,25 @@ mod tests {
         renew(&dir, &key, "follows", "desktop", 1000, 1000, false, Rule::FollowsYou, None).unwrap();
         assert!(renew(&dir, &key, "follows", "phone", 1600, 1600, false, Rule::FollowsYou, None).unwrap().mine);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The window and the command line ask the same (the second review,
+    /// G10): a claim not renewed for two minutes, or closed, is no running
+    /// window's; settled from when the invoices were taken on purpose, not
+    /// from the claim's age; another computer's silence said.
+    #[test]
+    fn numbering_asks_the_claims_as_the_window_does() {
+        let claim = |computer: &str, since: i64, renewed: i64, taken: i64| Claim { computer: computer.into(), name: computer.into(), since, renewed, until: renewed + ALIVE, taken, ..Claim::default() };
+        let read_all = |_: &str, _: (u32, u64)| true;
+        let now = 10_000;
+        assert_eq!(may_number(&[claim("desk", 1000, now - 30, 0)], "desk", now, read_all), Numbering::Yes);
+        assert_eq!(may_number(&[claim("desk", 1000, now - 3 * RENEWED_EVERY, 0)], "desk", now, read_all), Numbering::NotRunning, "no window renews it");
+        assert_eq!(may_number(&[Claim { closed: true, ..claim("desk", 1000, now - 10, 0) }], "desk", now, read_all), Numbering::NotRunning, "closed");
+        // Taken on purpose ten seconds ago, the laptop still holding them: settling, whatever the claim's age.
+        let both = [claim("desk", 1000, now - 5, now - 10), claim("laptop", 2000, now - 20, 0)];
+        assert_eq!(may_number(&both, "desk", now, read_all), Numbering::Settling);
+        let silent = [claim("desk", 1000, now - 5, now - 200), claim("laptop", 2000, now - 250, 0)];
+        assert_eq!(may_number(&silent, "desk", now, read_all), Numbering::OthersSilent, "the laptop not heard from lately");
+        assert_eq!(may_number(&both, "laptop", now, read_all), Numbering::Elsewhere("desk".into()));
     }
 }

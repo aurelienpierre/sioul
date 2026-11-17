@@ -604,7 +604,8 @@ pub struct BudgetCard {
     /// What it is for: "work", "admin", "leisure".
     pub area: &'static str,
     /// A work budget that declares: "Turnover received this quarter: €6,940,
-    /// to declare by 31 January." (`receipts::period_line`); "" otherwise.
+    /// to declare by 31 January." (`receipts::period_line`), said by the books
+    /// where the preset asks declarations (`BudgetsView::say_declared`); "" otherwise.
     pub declare: String,
     /// "monthly", "mensuel".
     pub period: String,
@@ -739,6 +740,20 @@ pub fn budgets_page(page: &MoneyPage, tr: &Translator, today: jiff::civil::Date)
         mail: page.mail.iter().filter(|l| l.state != MailState::Ignored).map(|l| mail_row(ledger, page.mail, l, tr)).collect(),
         choices: ledger.budgets.iter().map(|b| Choice { id: b.id.clone(), title: b.title.clone() }).collect(),
         incomes: incomes(ledger, tr),
+    }
+}
+
+impl BudgetsView {
+    /// The books' line (`books::declarations::overview_line`), which holds
+    /// the invoices' payments and every budget that declares, said once: on
+    /// the first budget that declares, the others' line taken away, since
+    /// each would say the whole again (the review of phase 4, P4-17). The
+    /// Overview then says what the declaration view says.
+    pub fn say_declared(&mut self, line: &str) {
+        let Some(first) = self.budgets.iter().chain(self.groups.iter().flat_map(|g| g.budgets.iter())).find(|c| !c.declare.is_empty()).map(|c| c.id.clone()) else { return };
+        for card in self.budgets.iter_mut().chain(self.groups.iter_mut().flat_map(|g| g.budgets.iter_mut())).filter(|c| !c.declare.is_empty()) {
+            card.declare = if card.id == first { line.to_string() } else { String::new() };
+        }
     }
 }
 

@@ -122,6 +122,7 @@
 //! - [`budget`]: budgets, reserves, and the lines between them.
 //! - [`accounts`]: bank accounts, and the budgets each movement goes to.
 //! - [`bank`]: the money watch: the bank's exports held against the recurring payments.
+//! - [`books`]: the receipts book from the invoices' payments, the declarations of turnover, the VAT summary, the thresholds watched, the DES.
 //! - [`movements`]: money movements: each sum in or out once, with every source that tells of it.
 //! - [`matching`]: telling that two things tell of one payment: keys, a score, one to one.
 //! - [`einvoice`]: Factur-X and UBL invoices, which carry their own data.
@@ -196,6 +197,7 @@ pub mod availability;
 pub mod attention;
 pub mod bank;
 pub mod blocks;
+pub mod books;
 pub mod budget;
 pub mod build;
 pub mod callback;
@@ -203,6 +205,7 @@ pub mod calls;
 pub mod capabilities;
 // The chain of ties from one thing (docs/research/link-graph.md).
 pub mod chain;
+pub mod clients;
 pub mod capacity;
 pub mod capture;
 pub mod changes;
