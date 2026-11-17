@@ -50,7 +50,7 @@ Code: `crates/sioul-sync/src/send.rs`, on `mail-send` 0.6.
 - **The copy in Sent**: IMAP APPEND, read, except at Gmail and Microsoft, which file their own. A copy that could not be filed is said; the message is not sent again.
 
 ## Finding servers
-- **Mail** (`discover.rs`): Thunderbird's autoconfiguration format, HTTPS only: `https://autoconfig.<domain>/mail/config-v1.1.xml`, then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, then Mozilla's ISPDB (`autoconfig.thunderbird.net`, told the domain only), then a guess (`imap.<domain>`, `mail.<domain>`, port 993), said as a guess. **Not used**: SRV records (RFC 6186), which [architecture.md](architecture.md) names; Microsoft's Autodiscover.
+- **Mail** (`discover.rs`): Thunderbird's autoconfiguration format, HTTPS only: `https://autoconfig.<domain>/mail/config-v1.1.xml`, then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, then Mozilla's ISPDB (`autoconfig.thunderbird.net`, told the domain only); Google's and Microsoft's servers by the MX; the ISPDB again, by the names of the hosts that receive the domain's mail, as Thunderbird asks it (the name registered under a public suffix at the shortest: the Public Suffix List); the domain's SRV records (RFC 6186's `_imaps._tcp` and `_submission._tcp`, RFC 8314's `_submissions._tcp`), said as read in unsigned records; then a guess (`imap.<domain>`, `mail.<domain>`, port 993), said as a guess. A server read in the records or guessed is offered only when it shows a certificate valid for its own name. The order, what is told to whom and the sending server: [client.md](client.md), "Accounts: finding the servers". **Not used**: `_imap._tcp` (STARTTLS on 143); Microsoft's Autodiscover.
 - **Calendars and contacts** (`dav.rs`, `candidates`): the address given; RFC 6764's `/.well-known/caldav` and `/.well-known/carddav` on the domain and on `caldav.` and `carddav.` hosts; the known places of murena.io and e.email, fastmail.com, icloud.com and me.com, posteo.de, mailbox.org; port 2080 of the mail server (cPanel hosts). No SRV or TXT lookups. Redirections are followed by hand, five at most, within the same domain (`sites::domain_of`), Google's excepted: each request carries the password.
 - **What a server offers** (`scout.rs`): a Nextcloud's `status.php` (product, version) without a password; its OCS capabilities with the calendars' password, to name its apps (calendars and contacts are taken; Files, Notes, Talk, Deck, Mail, Bookmarks, Tables, Forms and Photos are said "not yet").
 
@@ -280,6 +280,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
 | Microsoft's sign-in, IMAP and SMTP | stand-ins of its token endpoint and of Exchange's IMAP and SMTP answers; Windows' Credential Manager in the Windows CI job, for a 4 KB refresh token | [microsoft.md](microsoft.md), "What was tested" |
 | Yahoo's mail: its servers found, its refusal of a password said with where to make an app password | Thunderbird's entry for yahoo.com as a fixture; a stand-in sending server on the computer; no Yahoo account, no login sent to Yahoo | [client.md](client.md), "Signing in to the servers" |
+| Finding the server of a domain kept at a host | Thunderbird's entry for ovh.net as a fixture; stand-ins for the settings files, the MX, the SRV records; a TLS server on the computer with a certificate made for the tests | [client.md](client.md), "Accounts: finding the servers" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
 | OpenPGP | GnuPG 2.4, both ways | [client.md](client.md), "As built" |
 | Bitwarden | its key-derivation vectors; the live cloud with a made-up account; a real vault, in daily use | [sites.md](sites.md), "Bitwarden"; 6 October 2026 |
@@ -296,6 +297,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 - An invitation accepted on a server that schedules itself (Nextcloud, Google, iCloud): one answer reaching the organizer, the event shown answered or not elsewhere.
 - Google itself: the sign-in, CalDAV, CardDAV, Google Tasks.
 - Yahoo Mail itself, with an app password: receiving, sending, the words of its refusals.
+- A mailbox at a host for a domain of one's own (OVH's `ssl0.ovh.net`): found from the address, a message sent; a domain that publishes SRV records.
 - GitHub itself with a fine-grained token, since 098a9d5.
 - A YubiKey on GitHub, Google and Proton in Sites; a call with the microphone and the camera, and changing them during a real call (Jitsi, Google Meet, Teams: only fake devices and a stand-in page were used); sharing a screen in a real call, on X11 and on Wayland; a PDF a site shows.
 - Discord itself staying logged in after Sioul quits (a test page doing as it does is checked: `tools/check-sites.py quit`).

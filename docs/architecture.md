@@ -23,7 +23,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.
 - **Calendars and contacts**: CalDAV (RFC 4791) and CardDAV (RFC 6352), through a small client of Sioul's own (`sioul_sync::dav`). Tasks are VTODO with RFC 9253 relationships.
 - **Discovery**: Mozilla ISPDB and providers' autoconfig, SRV records (RFC 6186), DAV well-known URLs (RFC 6764).
-- **What is built of these**, what each feature needs from a server or another program, and how far each was tried: [compatibility.md](compatibility.md). Not built yet: CONDSTORE and QRESYNC to keep folders in step (CONDSTORE serves only the filters' claim on a message), JMAP, SRV records.
+- **What is built of these**, what each feature needs from a server or another program, and how far each was tried: [compatibility.md](compatibility.md). Not built yet: CONDSTORE and QRESYNC to keep folders in step (CONDSTORE serves only the filters' claim on a message), JMAP, SRV records for calendars and contacts (mail's are read: [client.md](client.md), "Accounts: finding the servers").
 
 ## Crates, and their licences
 | Use | Crate | Licence |

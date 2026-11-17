@@ -34,7 +34,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
-| Finding your server | your address | Murena's, by hand | providers that publish their settings, and those in Thunderbird's list | a server found by guessing is said to be a guess, to check |
+| Finding your server | your address | Murena's, by hand; each step against stand-ins | providers that publish their settings, and those in Thunderbird's list; a domain of your own kept at a host the list knows (OVH's hosting mailboxes: `ssl0.ovh.net`), or whose records name its mail servers | a server found in your domain's records or by guessing is said so, to check; a name that is only an alias of your host's server is not offered: type the name your host gives. Not tried with a real mailbox at a host |
 | Receiving and keeping mail | IMAP over an encrypted connection (port 993, or 143 with STARTTLS), your password | GreenMail, a test server; Murena, in daily use since 4 October 2026 | Fastmail, Posteo, mailbox.org, your host's, your own Dovecot; iCloud Mail with an app password | fetching changes nothing on the server; no unencrypted connection |
 | Codes within seconds | IDLE, which most servers have | — | most servers | without it, Sioul looks every two minutes |
 | Archive, delete, junk, move | MOVE, else UIDPLUS; folders marked by their purpose | GreenMail: archive, delete | most servers | without MOVE and UIDPLUS, the original stays marked as deleted until another program clears it; unmarked folders are found by their names, and a missing Trash, Junk or Archive is made |

@@ -78,7 +78,7 @@ Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne part
 
 1. Ouvrez **Comptes** (l’icône en forme de personne), puis l’onglet **Ajouter un compte**.
 2. Sous « Ajouter un compte de courriel », tapez votre **adresse électronique** et choisissez **Trouver le serveur**.
-3. Sioul dit ce qu’il a trouvé et d’où : les réglages de votre fournisseur lui-même, la liste des fournisseurs de Thunderbird, ou une supposition, dite comme telle, à vérifier avant d’aller plus loin.
+3. Sioul dit ce qu’il a trouvé et d’où : les réglages de votre fournisseur lui-même, la liste des fournisseurs de Thunderbird, les enregistrements de votre domaine, ou une supposition. Les deux derniers sont dits comme tels, à vérifier avant d’aller plus loin. Quand il ne trouve rien, le formulaire s’ouvre vide pour que vous tapiez le serveur : voir [Votre propre domaine chez un hébergeur](#your-own-domain-at-a-host).
 4. Tapez votre **mot de passe**. Il va dans le trousseau de votre système, nulle part ailleurs.
 5. Choisissez **Se connecter et ajouter**. Sioul essaie le mot de passe avant de garder quoi que ce soit, puis relève vos courriels récents.
 
@@ -89,6 +89,23 @@ Outlook.com, Hotmail, Live, MSN et Microsoft 365 ne prennent aucun mot de passe�
 Relever les courriels ne change rien sur votre serveur de courriel. Sioul n’y écrit que lorsque vous agissez : ouvrir un courriel le marque comme lu, comme dans tout logiciel de courriel ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
 Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages de cette adresse** et cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que ses courriels n’atteignent jamais vos soirées. Voir [Les heures](hours.md).
+
+### Votre propre domaine chez un hébergeur {#your-own-domain-at-a-host}
+
+Une adresse à un domaine à vous, dont un hébergeur garde les courriels (OVH, votre hébergeur web) : Sioul cherche le serveur de l’hébergeur. Il interroge la liste des fournisseurs de Thunderbird sur les serveurs qui reçoivent les courriels de votre domaine, puis lit les enregistrements de votre domaine, et dit lequel a servi. Pour les boîtes d’hébergement d’OVH, il trouve `ssl0.ovh.net` tout seul.
+
+Sioul ne propose plus `imap.` suivi de votre domaine, sauf si ce nom marche. Chez beaucoup d’hébergeurs, ce n’est qu’un alias du serveur de l’hébergeur, dont le certificat nomme l’hébergeur : aucun logiciel de courriel ne peut s’y connecter sûrement, et Sioul le proposait, puis échouait.
+
+Quand Sioul ne trouve rien, le formulaire s’ouvre avec **Serveur** vide :
+
+1. Tapez le nom de serveur que votre hébergeur donne dans ses pages d’aide, et non `imap.` suivi de votre domaine.
+2. Vérifiez **Identifiant** : la plupart des hébergeurs demandent votre adresse entière.
+3. Si votre hébergeur donne un autre serveur pour l’envoi, dépliez **Serveur d’envoi, s’il ne se trouve pas** et tapez son nom, son port et son chiffrement. Laissé vide, Sioul trouve le serveur d’envoi au premier courriel que vous envoyez. Celui que vous tapez est essayé avec votre mot de passe avant que rien ne soit gardé.
+4. Tapez votre mot de passe, puis choisissez **Se connecter et ajouter**.
+
+Si Sioul dit qu’un certificat est pour un autre nom, le nom demandé est un tel alias. Remplacez-le par le nom donné dans l’aide de votre hébergeur. Ne le prenez pas dans le message : sur un réseau auquel vous ne vous fiez pas, un autre serveur a pu répondre.
+
+Un compte ajouté avant cela, dont les courriels ne partent pas parce que son serveur d’envoi a été gardé sous la forme `smtp.` suivi de votre domaine : au prochain courriel, Sioul cherche de nouveau le serveur d’envoi et garde celui qui marche. Pas encore essayé avec une vraie boîte chez un hébergeur.
 
 ### Gmail et Google Workspace {#gmail-and-google-workspace}
 

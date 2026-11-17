@@ -196,8 +196,10 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 | Your calendar and contacts server, or Google | your calendars, tasks and contacts, both ways | always |
 | Your mobile carrier, through your phone | a text or a multimedia message you send from a computer, its pictures written again without their details | when you send one |
 | The sites you pin | what any browser sends them | when they are open |
-| Your provider's own settings page, and Thunderbird's list of providers | your address's domain, to find the server | when you add an account |
-| Your system's DNS resolver | lookups of senders' domains, to check them | when mail arrives, and when your spam filter's training downloads your mail |
+| Your provider's own settings page | your address, to find the server | when you add an account |
+| Thunderbird's list of providers | your address's domain, then the names of the servers that receive its mail, never your address | when you add an account, and at the first message an account sends |
+| A server named in your domain's records, or guessed from its name | an encrypted handshake and nothing else, to check its certificate | when you add an account, and at the first message an account sends |
+| Your system's DNS resolver | lookups of senders' domains, to check them; your own domain's mail servers and service records, to find your server | when mail arrives, and when your spam filter's training downloads your mail; when you add an account, and at the first message an account sends |
 | A mailing list's own unsubscribe address | a one-click request, with nothing of yours but what the list wrote in it; or a short message to that address, from yours; or its page, in your browser | only when you choose **Unsubscribe**; the one-click request alone also when you say **Spam** on a message from a proven sender (a switch in the Mail page's ⚙), or choose to [leave the lists of the mail you called spam](mail.md#unsubscribing), each with ten seconds to undo |
 | Open-Meteo | the coordinates of the place you chose, rounded to two decimals, or the name of a town you search | only if you choose a place for the weather; every half hour at most |
 | OpenStreetMap's geocoder (Nominatim); when it finds nothing, the Base Adresse Nationale (your region France), then Photon (komoot) | your contacts' postal addresses, once each, nothing else | only after you choose **Place them** |

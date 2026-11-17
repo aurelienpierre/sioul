@@ -78,7 +78,7 @@ Already using Sioul on another device? On a device that does not share yet, the 
 
 1. Open **Accounts** (the person icon), then the **Add an account** tab.
 2. Under "Add a mail account", type your **email address** and choose **Find the server**.
-3. Sioul says what it found and where from: your provider's own settings, Thunderbird's list of providers, or a guess, said as such, to check before going on.
+3. Sioul says what it found and where from: your provider's own settings, Thunderbird's list of providers, your domain's own records, or a guess. The last two are said as such, to check before going on. When it finds nothing, the form opens empty for you to type the server: see [Your own domain at a host](#your-own-domain-at-a-host).
 4. Type your **password**. It goes to your system's keyring, nowhere else.
 5. Choose **Connect and add**. Sioul tests the password before keeping anything, then fetches your recent mail.
 
@@ -89,6 +89,23 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 take no password at all: you s
 Fetching changes nothing on your mail server. Sioul writes there only when you act: opening a message marks it read, as any mail program does; archiving, deleting and moving happen ten seconds after you asked, so that "Undo" can stop them.
 
 Then, on the address's card in **Your accounts**, unfold **Settings for this address** and tick **What this address is for**: work, your admin, leisure, or several. Until you say, an address counts as work, so that it never reaches your evenings. See [Hours](hours.md).
+
+### Your own domain at a host {#your-own-domain-at-a-host}
+
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then reads your domain's own records, and says which it used. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself.
+
+Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
+
+When Sioul finds nothing, the form opens with **Server** empty:
+
+1. Type the server name your host gives in its help pages, not `imap.` followed by your domain.
+2. Check **Login**: most hosts want your whole address.
+3. If your host gives another server for sending, unfold **Sending server, when it cannot be found** and type its name, port and encryption. Left empty, Sioul finds the sending server at the first message you send. One you type is tried with your password before anything is kept.
+4. Type your password, then choose **Connect and add**.
+
+If Sioul says that a certificate is for another name, the name asked is such an alias. Replace it with the name from your host's help. Do not take it from the message: on a network you do not trust, another server could have answered.
+
+An account added before this, whose messages do not leave because its sending server was kept as `smtp.` followed by your domain: at the next message, Sioul looks for the sending server again and keeps the one that works. Not yet tried with a real mailbox at a host.
 
 ### Gmail and Google Workspace
 
