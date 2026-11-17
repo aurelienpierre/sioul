@@ -142,6 +142,34 @@ scheme = "franchise"
 
 Une société dit sa forme juridique, même en franchise : avec `preset = "fr"` et sans `legal_form`, vos factures sont celles d’un entrepreneur individuel ; des réglages faits avant, avec pour seule indication une mention de TVA qui cite l’article 293 B, attendent votre choix.
 
+**Pour vos livres** ([La déclaration](budgets.md#the-declaration)), dans la même table du fichier de configuration, en attendant que Paramètres ▸ Factures les montre. Les phrases qui vous envoient à Paramètres ▸ Factures pour votre activité, votre métier ou votre régime de TVA veulent dire ces lignes d’ici là :
+
+- `activity` : ce que vous vendez, une ou deux activités : `goods-bic` (ventes de marchandises, BIC), `services-bic` (prestations de services commerciales ou artisanales, BIC), `bnc` (autres prestations de services, libérales, BNC), `cipav` (profession libérale réglementée, CIPAV). Vos déclarations ont une ligne pour chacune ; les biens d’un paiement vont à votre activité de biens, ses services à celle de services. Sans elle, votre chiffre d’affaires est compté sans cotisations estimées, et la déclaration le dit.
+- `declare` : `quarter` ou `month`, comme vous l’avez choisi auprès de l’URSSAF ; sinon, comme le dit votre budget de travail, et à défaut chaque trimestre.
+- `vl = true` quand vous avez choisi le versement libératoire : l’impôt sur le revenu payé avec chaque déclaration, 1 %, 1,7 % ou 2,2 % de votre chiffre d’affaires.
+- `trade` : `commerce`, `craft` (l’artisanat) ou `liberal`, pour la contribution à la formation professionnelle (CFP : 0,1 %, 0,3 % ou 0,2 %) ; sinon, Sioul le prend de votre activité quand elle le dit (ventes de marchandises : commerce ; BNC ou CIPAV : profession libérale), et dit autrement que la CFP n’est pas comptée.
+- `started` : le jour où votre activité a commencé (`2026-06-12`) : les seuils de votre première année sont calculés au prorata de vos jours d’activité, et votre première déclaration regroupe vos premiers mois, comme l’URSSAF les compte.
+- `vat_period` : `month`, sauf si vous dites `quarter` : la période de votre récapitulatif de TVA, quand vous êtes redevable de la TVA.
+- `[[invoice.contribution]]` : un taux à vous par-dessus celui de Sioul, d’un jour à un autre : `kind` (`social`, `vl` ou `cfp`), `activity` (votre métier, pour la CFP), `rate` en pour cent, `from`, `until`. L’ACRE en est un : Sioul ne peut pas savoir qu’elle vous a été accordée, alors écrivez son taux, jusqu’à la fin du troisième trimestre qui suit votre début.
+- `[[invoice.threshold]]` : un seuil à vous par-dessus celui de Sioul de même `id`, à partir d’un jour : `amount`, en euros, et `from`. Les `id` sont `franchise-services`, `franchise-services-higher`, `franchise-goods`, `franchise-goods-higher`, `micro-services` et `micro-goods`. Les avocats et les auteurs, dont les seuils de franchise diffèrent, ne sont pas dans les règles de Sioul : écrivez les vôtres.
+
+```toml
+[invoice]
+activity = ["bnc"]
+declare = "quarter"
+vl = true
+started = "2026-06-12"
+
+[[invoice.contribution]]
+kind = "social"
+activity = "bnc"
+rate = 12.8
+from = "2026-06-12"
+until = "2027-03-31"
+```
+
+Les taux et les seuils sont ceux de la France pour 2026, tels que l’URSSAF et l’administration fiscale les publient, chacun avec son jour : une mise à jour de Sioul apporte les suivants, et les vôtres restent par-dessus.
+
 ## Les réglages propres à chaque page {#each-pages-own-settings}
 
 Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙ au bout de la première rangée de cette page :

@@ -142,6 +142,34 @@ scheme = "franchise"
 
 A company says its legal form, even under the franchise: with `preset = "fr"` and no `legal_form`, your invoices are an entrepreneur individuel's; settings made before, with only a VAT line citing article 293 B, wait for your choice.
 
+**For your books** ([The declaration](budgets.md#the-declaration)), in the same table of the configuration file, until Settings ▸ Invoices shows them. The sentences that send you to Settings ▸ Invoices for your activity, your trade or your tax scheme mean these lines until then:
+
+- `activity`: what you sell, one or two: `goods-bic` (sales of goods, BIC), `services-bic` (commercial or craft services, BIC), `bnc` (other services, liberal, BNC), `cipav` (a regulated liberal profession, CIPAV). Your declarations have a line for each; a payment's goods go to your goods activity, its services to your services one. Unsaid, your turnover is counted with no contribution estimated, and the declaration says so.
+- `declare`: `quarter` or `month`, as you chose with URSSAF; unsaid, as your work budget says, else each quarter.
+- `vl = true` when you chose the versement libératoire: income tax paid with each declaration, 1 %, 1.7 % or 2.2 % of your turnover.
+- `trade`: `commerce`, `craft` or `liberal`, for the training contribution (CFP: 0.1 %, 0.3 % or 0.2 %); unsaid, Sioul takes it from your activity where it tells (sales of goods: commerce; BNC or CIPAV: liberal), and otherwise says the CFP is not counted.
+- `started`: the day your activity started (`2026-06-12`): your first year's thresholds are prorated to your days of activity, and your first declaration gathers your first months, as URSSAF counts them.
+- `vat_period`: `month`, unless you say `quarter`: the period of your VAT summary, when you are liable for VAT.
+- `[[invoice.contribution]]`: a rate of your own over Sioul's, from a day until a day: `kind` (`social`, `vl` or `cfp`), `activity` (your trade, for the CFP), `rate` in percent, `from`, `until`. ACRE is one: Sioul cannot know it was granted to you, so write its rate, until the end of the third quarter after your start.
+- `[[invoice.threshold]]`: a threshold of your own over Sioul's of the same `id`, from a day: `amount`, in euros, and `from`. The `id`s are `franchise-services`, `franchise-services-higher`, `franchise-goods`, `franchise-goods-higher`, `micro-services` and `micro-goods`. Lawyers and authors, whose franchise thresholds differ, are not in Sioul's rules: write yours.
+
+```toml
+[invoice]
+activity = ["bnc"]
+declare = "quarter"
+vl = true
+started = "2026-06-12"
+
+[[invoice.contribution]]
+kind = "social"
+activity = "bnc"
+rate = 12.8
+from = "2026-06-12"
+until = "2027-03-31"
+```
+
+The rates and thresholds are France's for 2026, as URSSAF and the tax administration publish them, each with its day: an update of Sioul brings the next ones, and yours stay over them.
+
 ## Each page's own settings
 
 One setting, one place. What belongs to a page is behind the ⚙ at the end of that page's first row:

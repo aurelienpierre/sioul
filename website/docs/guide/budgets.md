@@ -114,7 +114,15 @@ Rules in the budget file can send a sender's or a word's payments to a budget by
 
 ## The declaration {#the-declaration}
 
-A work budget that sets money aside for taxes, or says how often it declares, has **For the declaration** in Movements: its money in over the declaration's quarter or month, by the day each payment was paid, even when it reached your bank later. "Turnover received from 1 October to 31 December: €6,940, paid by clients. €6,735 reached your accounts after €205 of fees. To declare by 31 January." Its rows are your **receipts register**: the day, the client, the invoice, the means of payment, what was paid. **Save the receipts register…** writes it as a spreadsheet file (CSV) and as a PDF. A payment whose amount paid is not known yet says so, and the total then reads "at least".
+**For the declaration**, in Movements, shows your books for one declaration's period, once a work budget sets money aside for taxes (or says how often it declares) or once you issued an invoice: all your invoices and every work budget that declares, together. The arrows go to the period before and the period after. From the top:
+
+- **What to declare, and by when**: the turnover you received in the quarter or the month, excluding VAT, for each of your activities, with the contributions estimated at URSSAF's rates of the day each payment came, the versement libératoire when you chose it, and the training contribution (CFP): "From 1 October 2026 to 31 December 2026: €6,940 received excluding VAT, to declare by 1 February 2027." A period with nothing received is declared too: "Nothing received from 1 July 2026 to 30 September 2026: declare €0 by 2 November 2026." A day that falls on a weekend moves to the Monday, as URSSAF moves it; public holidays are not counted, so the day said may come a day or two before URSSAF's, never after. Once you say when your activity started, your first declaration gathers your first months, as URSSAF counts them ([Settings ▸ Invoices](settings.md#invoices)). The contributions are an estimate: URSSAF counts them when you declare, on its own site.
+- **When you are liable for VAT**: the VAT you collected, month by month (or quarter by quarter, as you set it) and rate by rate: on the payments you received for services, on the invoice's day for goods, and for services too when you chose VAT on debits. "Sioul prepares your VAT return; it files nothing."
+- **Services to businesses in other EU countries**: the declaration of each month (DES), with the invoices it covers and its day ([The Porch](porch.md#the-sections)).
+- **The quarter's and the year's totals**, and this year, **where each threshold stands**: "€30,100 counted this year against the VAT franchise's threshold for services, €37,500." Nearing it and passing it are each said once ([What reaches you](notifications.md#sioul-s-own)).
+- **Your receipts book**, below: each payment received, on its day: the client (the invoice's, not your bank's words), what you sold (goods, services or both), the invoice, how it was paid (cash said apart) and, when you are liable for VAT, the amount excluding it. A payment no invoice describes still comes from your work budget, at what the client paid, on the day it was paid, even when it reached your bank later. One payment is never counted twice, whether your bank showed it, you marked the invoice **Paid**, or both. A refund paid back on a credit note is a line of its own, below zero, on the day the money went back.
+
+**Save the receipts book…** writes the book as a spreadsheet file (CSV: a column for cash, goods and services apart when you sell both, each quarter's total after its days and the year's last) and as a PDF. A payment whose amount paid is not known yet says so, and the totals then read "at least"; a payment in another currency counts once you say what reached you in euros ([Paid, and credit notes](time.md#paid-and-credit-notes)). Each declaration also waits on the Porch from the day you can make it ([The Porch](porch.md#the-sections)). Overview's line beside a work budget that declares says the same, from your books: "Turnover received this quarter, excluding VAT: €6,940, to declare by 1 February 2027."
 
 ## Bank accounts {#bank-accounts}
 
@@ -193,11 +201,11 @@ Your bank's site can be kept in [Sites](sites.md): Sioul fills your login from B
 
 ### In the terminal {#in-the-terminal}
 
-`sioul budgets` prints what the page says, every area at once: each account until its next income, each budget in words, what is coming week by week, the reserves, and the payments mail proposes. `sioul movements` lists every movement with the same filters (`--from`, `--to`, `--account`, `--budget`, `--in`, `--out`, `--min`, `--max`, `--area`, `--search`, `--json`); `sioul movement show`, `add`, `change`, `remove` and `back` make, change and remove one, as the window does; `sioul money-mail` lists the mail about money and what became of it; `sioul receipts --csv` writes the receipts register.
+`sioul budgets` prints what the page says, every area at once: each account until its next income, each budget in words, what is coming week by week, the reserves, and the payments mail proposes. `sioul movements` lists every movement with the same filters (`--from`, `--to`, `--account`, `--budget`, `--in`, `--out`, `--min`, `--max`, `--area`, `--search`, `--json`); `sioul movement show`, `add`, `change`, `remove` and `back` make, change and remove one, as the window does; `sioul money-mail` lists the mail about money and what became of it; `sioul receipts --csv` writes the receipts book of the declaration's period, and `sioul books` says your declarations, your VAT, your thresholds and your DES ([Time and invoices](time.md#from-the-command-line)).
 
 ### With an AI agent {#with-an-ai-agent}
 
-If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read what this page says: each account's sentences, each budget in words, what is coming and the reserves, every movement and the mail about money, in the budgets you opened to it. When you ask, it can write, change or remove a movement as the window does, each said in the window with **Undo**; these are records, never payments: it cannot move money, and it sees account numbers masked.
+If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read what this page says: each account's sentences, each budget in words, what is coming and the reserves, every movement and the mail about money, in the budgets you opened to it; and your books, the payments of the projects and budgets you opened to it only, the thresholds only when nothing is kept from it. When you ask, it can write, change or remove a movement as the window does, each said in the window with **Undo**; these are records, never payments: it cannot move money, and it sees account numbers masked.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -218,6 +226,8 @@ Most people who keep a budget sort money into kinds of their own, from two to on
 Irregular income is common: in a year of household diaries, monthly income varied by about 40 % (Hannagan & Morduch 2015), and getting through a lean month and a large expense together took about six weeks of take-home pay (Farrell, Greig & Yu 2019). So reserves are counted in weeks of your own spending, and a work budget can set aside a share of each payment for taxes as it arrives, as money set apart in an envelope is kept (Soman & Cheema 2011).
 
 A micro-entrepreneur declares what clients paid, before any fee (CGI art. 102 ter), received when the platform or the processor received it, even when it reaches the bank later (BOFiP, BOI-BNC-BASE-20-10-10 §80). So each payment keeps what was paid, its fees and what arrived, and the day it was paid; the budgets count what arrived, the declaration what was paid, and the receipts register lists each payment, never the payout that batched them. Every ledger that handles fees well makes them part of the payment (hledger, GnuCash), and a payout a move between your own accounts; apps without them leave you to split each payment by hand.
+
+The law asks a micro-entrepreneur for a book of receipts in the order of the days they came, each with its client, what was sold, how it was paid (cash apart) and its invoice, totalled each quarter and each year (Code de commerce, L123-28; CGI, art. 50-0, 102 ter and 286; BOFiP, BOI-BIC-DECLA-30-30), and URSSAF asks each month or quarter what was received, a period with nothing too, by a day it moves after a weekend (autoentrepreneur.urssaf.fr). So the book is made from the payments on your invoices, by the day each came, and each period says what to declare and by when, a zero one too, with the contributions as an estimate: URSSAF counts, Sioul prepares, and a day to declare by is a day, never "late".
 
 A small loss feels smaller told with the larger gain it comes with (Thaler 1985; theory, with mixed support). So a fee is said inside its payment's row, never as a row or a total of its own.
 
@@ -304,7 +314,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 | A processor's payout is a move between your accounts | ✓ | ✓¹ | ✓² | ✓ | ✓⁵ | ✓⁵ | ? |
 | A payout tied to the payments it carried, without the processor's file | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ? |
 | Every mail about money kept, each saying what became of it | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | partly⁶ |
-| The turnover to declare, by the day paid, and the receipts register | ✓ | ? | ? | ? | ? | ? | ? |
+| The turnover to declare, by the day paid, and the receipts book from your invoices' payments | ✓⁷ | ? | ? | ? | ? | ? | ? |
 
 1. Its PayPal rules write three postings per payment: the gross, the net, the fee; the withdrawal is a transfer between two accounts.
 2. A transaction of several splits, a payment's deductions among them.
@@ -312,6 +322,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 4. A split by hand, with a fee line; no field for a fee.
 5. A transfer is a pair of transactions between two of your accounts.
 6. Its attachment inbox keeps receipts waiting for their transaction.
+7. France's rules: the declaration of each period per activity, with its day and the contributions estimated; for an issuer liable for VAT, the VAT collected; the VAT franchise's thresholds and the micro regime's ceilings, each step said once; the DES. Prepared, never filed.
 
 ??? info "Sources"
     Read on 8 October 2026; the rows on the next income, what is coming, a payment's sources and matching, on 4 November 2026.
@@ -338,6 +349,8 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 
 **Sealed between devices.** With **Projects and money** on, each change to the three files is sealed with XChaCha20-Poly1305 (a random 192-bit nonce each), bound to the device that wrote it, its place and its time, under a key made from your passphrase by Argon2id (64 MiB, three passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 
-**The AI agent.** Its `budgets`, `movements`, `get_movement` and `money_mail` tools read through the same views as the window, in the budgets opened to agents, and mask IBANs ("[IBAN …0189]"); `add_movement`, `update_movement`, `delete_movement` and `same_movement` write as the window's acts do, each said in the window with Undo, never a payment.
+**The AI agent.** Its `budgets`, `movements`, `get_movement` and `money_mail` tools read through the same views as the window, in the budgets opened to agents, and mask IBANs ("[IBAN …0189]"); `add_movement`, `update_movement`, `delete_movement` and `same_movement` write as the window's acts do, each said in the window with Undo, never a payment. Its `books` tool reads the books, leaving out and counting what is kept from it.
+
+**The books.** Made from your invoices' payments, each read in one place, a credit note's below zero, and from your work budgets' receipts that no invoice describes, a movement that an invoice's payment came from counted once; the declarations, the VAT summary, the thresholds and the DES follow France's rules, kept as dated data (`crates/sioul-core/data/invoice-presets/fr.toml`), which a rate or a threshold of your own in `[invoice]` replaces from a day ([Settings ▸ Invoices](settings.md#invoices)). A day to declare by is the last day of the month after the period, moved past a weekend; the DES's, the 10th weekday of the next month. A threshold's step, once told, is written in your invoices' life files (`[[told]]`), which travel with **Drafts and invoices**, so that no device tells it again.
 
 **Contracts.** The usual notices proposed are France's: three months for a tenant (one in a furnished flat or a tight area); one month for insurances and health covers after their first year (loi Hamon); at most ten days for phone and internet after twelve months; none for energy (art. L224-13 of the consumer code). Online, a cancel button has been required since 1 June 2023 (loi 2022-1158).

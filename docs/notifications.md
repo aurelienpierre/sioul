@@ -10,7 +10,7 @@ Before this, about fifteen files each built their own notifications, each with i
 
 `sioul_core::notice` (crates/sioul-core/src/notice.rs).
 
-**`Notice { about, hint, kind, title, body, actions, until, icon }`**:
+**`Notice { about, hint, kind, title, body, actions, until, icon, class_said }`**:
 
 - **`about`**: the thing, by its address, the same addresses the links and the MCP tools use. **A click on the notice opens it.**
 - **`hint`**: where this device last saw it, for the window to find it at once: a message's file, an event's file and the time it is for (`…/yoga.ics#1793520000`).
@@ -18,6 +18,7 @@ Before this, about fifteen files each built their own notifications, each with i
 - **`actions`**: buttons, each a verb on the thing (`Act`): `Open { address, hint }`, `Copy(text)` (a code: the notice has done its work then, and goes), `Verb(name)` (one of the window's own: "read-language:de").
 - **`until`**: the thing's own end, when it has one: a code's expiry, an event's start, a call's last ring.
 - **`icon`**: a theme's name, or a file (a site's own icon, sent as `image-path`); "" the kind's own.
+- **`class_said`**: its class, when its source says another than its kind's (`Notice::of_class`, "Two classes", below); none, its kind's.
 
 `Notice::key()`, its kind and its thing (`move|sioul:move`), is what a new notice replaces: one "Time to move" at most; a meal's notice at its time takes its heads-up's place; a chat's next message in the same conversation takes the last one's.
 
@@ -55,6 +56,8 @@ Ids and tags inside an address are percent-encoded (`/`, `#`, `%`, `?`, spaces�
 The time running (`time`) is no notice: a status, while a focus session runs (`notify::ongoing`), resident, changed in place. Other apps' notifications on a phone (`app-automatons`, `app-at-once`) are never Sioul's to post. Neither has a class.
 
 An event's own alarm is to do: its row is locked through a pause and a do-not-disturb ([attention.md](attention.md#3-the-usual-matrix)), and only what is to do passes them.
+
+A source may say its notice is to do though its kind's row is to know (`Notice::of_class`, `class_said`; `Notice::class` gives the class said, and a kind without a class, the time running or another app's notification, stays without): the books' notice of a VAT franchise's higher threshold crossed is a date's, told as the Dates row says, and to do, since it asks a setting changed and stays until it is ([projects.md](projects.md#the-books); "The window", below). It passes a pause or a do-not-disturb only as its row does: the dates never pierce.
 
 **`notice::decide(notice, output, moment, minutes, now) -> Decision`** says it all at once: `Post(Shape { class, urgency, timeout_ms, transient, resident, key, close_at })`, `Wait(until)` (not now, still worth telling until then) or `Drop(why)` (`NotOurs`, `NotTold`, `Away`, `Held`, `Over`). Its inputs:
 
@@ -95,6 +98,7 @@ An event's own alarm is to do: its row is locked through a pause and a do-not-di
 | A meal's heads-up and its notice at its time; the night's | health.rs `needs_tick`, reviews.rs `show_notice` | needs, to know | `sioul:need/<block>` | its minutes; the one at its time in the heads-up's place |
 | Work hours are over | reviews.rs `tick` | work-over, to know | `sioul:day/work:<date>` | its minutes, or the work day closed |
 | Dates, waits, payments, papers, contracts | remind.rs, `Reminder::notice` | dates, to know | its task, budget's line, paper, contract; a money watch's warning `sioul:budget/#<its key>` (two at once are two notices) | its minutes |
+| A threshold of the books: 80 % of a base threshold or a ceiling, one crossed, a higher one crossed | books.rs `tick`, `tell` | dates, as the Dates row says; to know, to do for a higher threshold (`of_class`) | `sioul:settings/invoices`; at 80 %, `sioul:budget/` | its minutes; a higher threshold's, until the tax scheme says VAT from its day (`thresholds::settled`) |
 | The time to leave | remind.rs | before, to know | `sioul:event/<UID>#<start>` | its event's start |
 | An event's own alarm | remind.rs | alarms, to do | `sioul:event/<UID>#<start>` | a quarter of an hour after its event began |
 | A code | backend.rs `notify_codes`, `CodeView::notice` | codes, to do | its message | expired, copied, or its message read or dismissed |
@@ -105,6 +109,8 @@ An event's own alarm is to do: its row is locked through a pause and a do-not-di
 | Calendar files for an older Sioul | outside.rs `to_older` | minor, to know | none (the process leaves) | its minutes |
 
 **Sites**: every message a site notifies is kept for the Porch and the next gathering, told or not. The Sites page keeps a web notice (`QWebEngineNotification`, which Qt gives to JavaScript and would collect) only when Sioul told it (`siteNotified` answers whether it posted or waits), by its site and its key (`webNotices`): its tag, "" without one, so that the next takes the last one's place, as the same tag does; it goes once its site is opened, or after an hour. A click on Sioul's notice opens the site, then calls the kept notice's `click()`. Its `closed` (the site withdrew it) settles Sioul's notice for a call alone (answered, or over: `sites::withdrawn`); a message's stays its minutes, since some sites close their own after a few seconds. The notice carries the site's own icon from the cache of icons. **"Your sites have news"** names what is new since it last rang: each site's notification is marked told once named, as the notice is posted (`sites::Notice::told`, a key an older Sioul passes over); the Porch keeps them all until the site is seen. A call in a site pierces whenever its cell lets it come (`Kind::pierces`), as what you set or asked for does.
+
+**The books' thresholds** ([projects.md](projects.md#the-books)): looked at each minute of the window at most every quarter of an hour (a payment's day changes them, never a minute), off the window's thread, and only on the computer that keeps the notices, as new mail's are kept (`share::keeper("notices")`: the one used last), once its claim is settled; never on a phone. Each step not told yet is told once, its most advanced (`thresholds::to_tell`): its key, and those of the earlier steps it stands for, are written in this device's invoices' life (`[[told]]`, `books::mark_told`) as the claim made just before it is posted, read as the union of every device's, so that no device tells it again; a mark that cannot be written tells nothing, and the step comes again at the next look. One that cannot come now waits as a date does, kept and told again at the window's minute, and offered again at the next look until it is posted. Each is about the budgets by its own key (`sioul:budget/#<its key>`, as the money watch's warnings), so that two told at one look never replace each other; a click opens Budgets, and its words say where the tax scheme changes: Settings ▸ Invoices, which shows it from phase 3 on; until then the configuration file (`[[invoice.tax]]`). The higher threshold's stays, resident, until the scheme says VAT from its day.
 
 **The agenda leaves the notifications** (decision 3): the evening reminder of tomorrow's events is no longer made, on any device (`reminders::event_reminders`); `[reminders] events` is no longer read, its setting gone. Today's and tomorrow's events stay on the Porch and the widgets. The event's own alarm rings on the computer, never on a phone or a tablet: Android's calendar app rings it there.
 

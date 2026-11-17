@@ -44,6 +44,8 @@ With the usual prefix, the year, invoice numbers start again each January; with 
 
 **Billable time, as a spreadsheet (CSV)**: one project, a stretch of time (this month, last month, from one day to another), one line per task with its hours, its rate and its amount, then the total. A title that came from someone's mail is written as plain text, never as a formula. [A spreadsheet of billable time](time.md#a-spreadsheet-of-billable-time)
 
+**Your receipts book and your declarations**: each payment received on your invoices, on its day, with the client, what you sold, the invoice and how it was paid, totalled by quarter and by year, as a spreadsheet (CSV) and a PDF; for each quarter or month, what to declare to URSSAF and by when, with the contributions estimated, which the Porch shows from the day the declaration can be made. [The declaration](budgets.md#the-declaration)
+
 ## On your desktop and your laptop {#on-your-desktop-and-your-laptop}
 
 Time noted on one device is on the others a minute later, and so are the invoices: sealed end to end, through a folder your sync already carries (Nextcloud, Dropbox, Syncthing). There is no server of ours in between. Projects travel with your notes folder, or through the same sharing where no sync carries that folder; tasks and events through your calendar's server. One device numbers the invoices, so that a number is never given twice. [Sharing between your devices](sharing.md)
@@ -58,11 +60,10 @@ Outside your working hours, client projects and the Time page rest: "Work projec
 
 - **Invoices in the window**: one list of every invoice and draft, an editor for any line (a fixed price, expenses, goods), Settings ▸ Invoices by country, client profiles in Contacts. For now, **Make the invoice** bills hours; lines of other kinds come from an [AI agent's](ai-agent.md) draft, issued from the command line. Quotes are not made yet.
 - **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Sioul makes PDF invoices only, for now; later, each one carries its Factur-X ([Time and invoices](time.md#not-there-yet)).
-- **The books**: the receipts book made from your invoices' payments, the URSSAF declarations by category, and a word when you near a threshold.
 
 ## Why it works this way {#why-it-works-this-way}
 
-- People who work for themselves declare and pay their own taxes, where an employer does it for employees (Milanez & Bratta 2019), and compliance costs weigh most on the smallest businesses (Evans 2003). People with a disability work for themselves more often: 9.1 % of those employed in the US in 2025, against 5.9 % of others (U.S. Bureau of Labor Statistics 2026). So Sioul carries a small business's admin too, from the client's first mail to the paid invoice.
+- People who work for themselves declare and pay their own taxes, where an employer does it for employees (Milanez & Bratta 2019), and compliance costs weigh most on the smallest businesses (Evans 2003). People with a disability work for themselves more often: 9.1 % of those employed in the US in 2025, against 5.9 % of others (U.S. Bureau of Labor Statistics 2026). So Sioul carries a small business's admin too, from the client's first mail to the paid invoice and its declaration.
 - With irregular income, what matters is how long the money lasts: monthly income varied by 39 % over a year of household diaries (Hannagan & Morduch 2015). So a work budget can set aside a share of each payment for taxes as it arrives, and reserves count in weeks of your own spending.
 
 More in [what the research says](../dev/research.md), findings 31 and 44.
