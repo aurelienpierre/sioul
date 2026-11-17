@@ -156,3 +156,12 @@ trusted_authserv_ids = ["mx.google.com"]
 [[site]]
 id = "proton"
 url = "https://mail.proton.me"
+
+# What you said of each of your devices (docs/database.md, "Devices"), by
+# its id in the sharing between your devices: the name you give it, and what
+# it is for (work, admin, leisure, joined by +). Settings ▸ Devices writes
+# these, from any of your devices; a device nothing is said of is for
+# everything, under its system's name.
+# [device."0d0f3a52-6f0c-4f4e-9b62-2f0f6f1f7a11"]
+# name = "Work laptop"
+# area = "work"

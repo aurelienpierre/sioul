@@ -137,6 +137,7 @@
 //!
 //! - [`areas`]: what things are for (work, your admin, leisure), and which time is for what.
 //! - [`areafilter`]: a page's filter by area (Mail's All addresses): ticked as the hours say, or as you ticked until they change.
+//! - [`device_said`]: what you said of each of your devices: the name you give it, what it is for.
 //! - [`window`]: working hours: the days and hours work can reach you.
 //! - [`quiet`]: the time now (work, admin, a meal, sleep, leisure), and what comes then.
 //! - [`needs`]: the day's needs, set first: meals, naps and night sleep.
@@ -224,6 +225,7 @@ pub mod ahead;
 pub mod dayview;
 pub mod demands;
 pub mod device_kind;
+pub mod device_said;
 pub mod description;
 pub mod doses;
 pub mod draftcopies;
