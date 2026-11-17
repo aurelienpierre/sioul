@@ -753,6 +753,109 @@ mod tests {
         assert_eq!(Here::among(computer.with_cell(Time::Work, Some(Area::default())), &[], Week::default()).unheld, Area::PERSONAL);
     }
 
+    /// A source file's code: what comes before its tests, its comment lines left out.
+    fn code_of(path: &std::path::Path) -> String {
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let code = text.split("\n#[cfg(test)]\nmod ").next().unwrap_or_default();
+        code.lines().filter(|line| !line.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n")
+    }
+
+    /// Every source of every crate, by its path from `crates/`.
+    fn sources() -> Vec<(String, String)> {
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+            entries.sort();
+            for path in entries {
+                if path.is_dir() {
+                    walk(&path, root, out);
+                } else if path.extension().is_some_and(|x| x == "rs") && path.file_name().is_some_and(|n| n != "tests.rs") {
+                    out.push((path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"), code_of(&path)));
+                }
+            }
+        }
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut out = Vec::new();
+        for one in ["sioul-core", "sioul-sync", "sioul-learn", "sioul-cli", "sioul-app"] {
+            walk(&crates.join(one).join("src"), &crates, &mut out);
+        }
+        assert!(out.len() > 200, "the sources were not found: {}", out.len());
+        out
+    }
+
+    /// Every caller of the rule, sorted (docs/areas.md, "What each device is
+    /// for"): a caller about what this device shows or tells now asks the
+    /// device (`Here::brings`, `keeps_back`, through `Mode` or `Now`); one
+    /// about the person's own week asks the hours (`in_view`). Each file
+    /// that calls either is named here with how many calls of each it holds
+    /// and why; a new call fails until it is sorted, and the failure gives
+    /// the line to add or change. With nothing said of a device, the two
+    /// answer alike (`a_device_nothing_is_said_of_narrows_nothing`), so that
+    /// nothing a caller shows or tells changes until the person says what a
+    /// device is for.
+    #[test]
+    fn every_caller_of_the_rule_is_sorted() {
+        // (file, calls of the hours' rule, calls of the device's rule, why)
+        let sorted: [(&str, usize, usize, &str); 17] = [
+            ("sioul-core/src/areas.rs", 2, 1, "the rule itself: `Here::brings` falls back on the hours with nothing said of the device, or for a thing with no area; `keeps_back` asks both to say which is the reason"),
+            ("sioul-core/src/plan.rs", 3, 0, "the plan gives a task room in the hours of its area: the person's week, the same on every device"),
+            ("sioul-core/src/attention.rs", 3, 9, "hours: this row and this address never meet in your week (`meets_at`); what you set or asked for is held by the hour alone (`own`); the hour's answer beside the device's, to say which holds a message (`letter`). Device: `Now::brings` and `keeps_back`, and step 8 of the pipeline for dates, mail, other apps' messages and sites"),
+            ("sioul-core/src/quiet.rs", 0, 4, "`Mode::brings`, `keeps_back` and `elsewhere`; what the task pages keep now (`QuietTasks`)"),
+            ("sioul-core/src/areafilter.rs", 0, 1, "the filter's ticks, for Mail and Budgets"),
+            ("sioul-core/src/mailbox.rs", 0, 2, "an address rests, and says whether the hour or this device is the reason"),
+            ("sioul-core/src/view.rs", 0, 1, "the Mail page's accounts: an address rests"),
+            ("sioul-core/src/appnotes.rs", 0, 2, "an app's notifications with a For, on a phone, and why one waits"),
+            ("sioul-core/src/overlaps.rs", 0, 0, "the agenda's conflicts to say now: asked through its caller's `brings`"),
+            ("sioul-sync/src/lease.rs", 0, 5, "which device tells: each device's cell, read with the claims (`Dispatch::brings`)"),
+            ("sioul-sync/src/fetch.rs", 0, 1, "not the rule: another `brings`, which mail a fetch brings (`fetch::Control`)"),
+            ("sioul-app/src/sites.rs", 0, 3, "the sites listed, their news on the Porch, the gathered notification"),
+            ("sioul-app/src/notices.rs", 0, 5, "the Porch: sites, money, the books' items, the agenda's conflicts, invoices numbered twice"),
+            ("sioul-app/src/pim.rs", 0, 1, "the agenda's conflicts said now"),
+            ("sioul-app/src/backend.rs", 0, 0, "the status line: asked through `areafilter::device_line`"),
+            ("sioul-app/src/dispatch.rs", 0, 0, "the lines of the devices that count: no rule asked"),
+            ("sioul-app/src/steps.rs", 0, 0, "a phone's mail round: asked through the pipeline (`could_tell`)"),
+        ];
+        // A call by its name: not the end of a longer name (`pin_view(`).
+        let calls = |code: &str, name: &str| code.match_indices(name).filter(|(at, _)| !code[..*at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_')).count();
+        let mut found: Vec<(String, usize, usize)> = Vec::new();
+        for (file, code) in sources() {
+            // The rule's own definition is no call of it.
+            let hours = calls(&code, "in_view(") - code.matches("fn in_view(").count();
+            let device = code.matches(".brings(").count() + code.matches(".keeps_back(").count();
+            if hours + device > 0 {
+                found.push((file, hours, device));
+            }
+        }
+        for (file, hours, device) in &found {
+            let named = sorted.iter().find(|(name, _, _, _)| name == file);
+            assert_eq!(named.map(|(_, h, d, _)| (*h, *d)), Some((*hours, *device)), "{file} calls the hours' rule {hours} times and the device's {device} times: sort each call (the device's for what this device shows or tells now, the hours' for the person's own week) and name it in this test as (\"{file}\", {hours}, {device}, why)");
+        }
+        for (file, hours, device, _) in sorted.iter().filter(|(_, hours, device, _)| hours + device > 0) {
+            assert!(found.iter().any(|(name, _, _)| name == file), "{file} is named with {hours} and {device} calls and holds none");
+        }
+    }
+
+    /// The doses and everything of Health never read what a device is for:
+    /// neither the rule, nor a device's line, nor the entry's word that its
+    /// Sioul follows devices (`areas`). The health lease and what the doses
+    /// read of an entry (`Entry::said`) stay as they were.
+    #[test]
+    fn the_health_path_reads_no_device_cell() {
+        let health = ["sioul-core/src/health.rs", "sioul-core/src/doses.rs", "sioul-core/src/dose_backs.rs", "sioul-core/src/dose_reminders.rs", "sioul-core/src/needs.rs", "sioul-app/src/health.rs", "sioul-app/src/alarms.rs", "sioul-app/src/wake.rs"];
+        let never = [".brings(", ".keeps_back(", "in_view(", "areas::Line", "areas::Here", "areas::Lines", "Lines {", "dispatch::", "Dispatch", "keeper_for(", "told_by(", ".areas", ".elsewhere(", ".on(&"];
+        let sources = sources();
+        for file in health {
+            let code = &sources.iter().find(|(name, _)| name == file).unwrap_or_else(|| panic!("{file} is not among the sources")).1;
+            assert!(code.len() > 1000, "{file} reads empty");
+            for word in never {
+                assert!(!code.contains(word), "{file} holds {word}: the doses and Health never read what a device is for");
+            }
+        }
+        // What the doses read of an entry (`Entry::said`) names no area.
+        let devices = &sources.iter().find(|(name, _)| name == "sioul-sync/src/devices.rs").expect("the entries").1;
+        let said = devices.split("pub fn said(").nth(1).and_then(|rest| rest.split("\n    }\n").next()).expect("Entry::said");
+        assert!(!said.contains("areas"), "what the doses read of an entry names no area:\n{said}");
+    }
+
     #[test]
     fn areas_read() {
         assert_eq!(Area::parse(" Démarches "), Some(Area::ADMIN));
