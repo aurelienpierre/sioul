@@ -155,6 +155,10 @@ jobs:
           rm -f "$RUNNER_TEMP/sioul.keystore"
           "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs "$apk"
           ls -l dist
+          # The works of others inside the program travel with their licences (NOTICES.md).
+          for notice in NOTICES.md LICENSE-Liberation LICENSE-iso-codes LICENSE-DejaVu COPYING-ICONS; do
+            unzip -l "$apk" "assets/licenses/$notice" > /dev/null || { echo "The APK lacks assets/licenses/$notice" >&2; exit 1; }
+          done
 
       # Android 15 runs on phones with 16 KB memory pages, where a library
       # aligned for 4 KB alone does not load: each library's segments, and
