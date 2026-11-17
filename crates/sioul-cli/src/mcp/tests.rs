@@ -1874,6 +1874,28 @@ fn an_agent_drafts_invoices_and_never_issues_them() {
     assert!(nothing["isError"] == true, "{nothing}");
 }
 
+/// The agents' books under the micro regime (the review of phase 4, P4-11):
+/// while anything is kept from agents (here a closed project's invoice),
+/// each declaration gives its period and its day alone, its amounts withheld
+/// as the thresholds are, since each adds up everything; a first declaration
+/// begun the year before is given whole, from its first day.
+#[test]
+fn an_agent_s_books_withhold_what_adds_up_everything() {
+    let home = home();
+    let path = home.root.join("config/sioul/books-micro.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    let year = sioul_core::zone::now().date().year();
+    std::fs::write(&path, format!("{config}\n[invoice]\npreset = \"fr\"\nlegal_form = \"ei\"\nregime = \"micro\"\nactivity = [\"bnc\"]\ndeclare = \"month\"\nstarted = \"{}-12-01\"\n", year - 1)).unwrap();
+    let mut server = Server::new(&path, "en");
+    let books = call(&mut server, "books", json!({}));
+    assert!(books["isError"] != true && books["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "{books}");
+    let declarations = books["structuredContent"]["declarations"].as_array().unwrap();
+    assert!(!declarations.is_empty() && declarations.iter().all(|d| d["withheld"] == true && d.get("to_declare").is_none()), "{books}");
+    assert_eq!(declarations[0]["from"], format!("{}-12-01", year - 1), "the first declaration, begun last year, whole: {books}");
+    assert!(text(&books).contains("The amounts to declare are not given while things are kept from agents"), "{books}");
+    never_zeugma(&books, "books");
+}
+
 #[test]
 fn things_outside_projects_can_be_closed() {
     let home = home();

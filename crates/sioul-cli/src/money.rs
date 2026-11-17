@@ -425,7 +425,9 @@ pub(crate) fn receipts(s: &Session, args: ReceiptsArgs) -> Result<(), String> {
     }
     let input = books::Input { budget: args.budget.as_deref(), ..loaded.input() };
     let currency = loaded.settings.currency.clone();
-    let declared = if args.from.is_none() { declarations::holding(&input, today, &s.tr) } else { None };
+    // What to declare is the books' whole, every budget's and every invoice's;
+    // `--budget` keeps only the book's rows of that budget (the review of phase 4, P4-17).
+    let declared = if args.from.is_none() { declarations::holding(&loaded.input(), today, &s.tr) } else { None };
     let (from, to) = match (args.from.as_deref().map(day).transpose()?, args.to.as_deref().map(day).transpose()?) {
         (Some(from), Some(to)) => (from, to),
         (Some(from), None) => (from, today),

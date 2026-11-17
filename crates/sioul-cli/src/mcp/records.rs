@@ -403,8 +403,12 @@ pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
     let shown_invoices: Vec<invoice::Invoice> = loaded.invoices.iter().filter(|i| invoice_open(i)).cloned().collect();
     let input = books::Input { invoices: &shown_invoices, ..loaded.input() };
     let (first, last) = (Date::new(year, 1, 1).unwrap_or(today), Date::new(year, 12, 31).unwrap_or(today).min(today));
+    // The year's periods, a first declaration begun the year before whole (the review of phase 4, P4-11).
+    let periods = declarations::periods_of_year(&loaded.input(), year, today);
+    let start = periods.iter().map(|p| p.0).min().map_or(first, |p| p.min(first));
     // Rows of every invoice's (to keep a payment's bank line from coming back as a receipt of its own), then those open.
-    let every = books::rows(&loaded.input(), first, last, &s.tr);
+    let span = books::rows(&loaded.input(), start, last, &s.tr);
+    let every: Vec<books::Row> = span.iter().filter(|r| r.day >= first).cloned().collect();
     // A receipt no invoice describes: its budget open; one an invoice says (matched or paid): its project too.
     let movement = |r: &books::Row| r.payment.is_empty() && !r.address.starts_with("sioul:invoice/");
     let open_row = |r: &books::Row| (!movement(r) || (open_budgets.contains(&r.budget) && !kept_labels.contains(&r.client))) && (r.invoice.is_empty() || consent.allows_projects([r.project.as_str()]));
@@ -413,9 +417,20 @@ pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
     let mut lines = vec![format!("The books of {year}, in {currency}.")];
     let total: i64 = shown.iter().filter_map(|r| r.without_tax).sum();
     lines.push(format!("Received excluding VAT: {}{}.", money(total), if closed > 0 { " (only what is shown)" } else { "" }));
-    let declared: Vec<declarations::Declaration> = declarations::periods_of_year(&loaded.input(), year, today).into_iter().map(|(a, b, f)| declarations::of_rows(&loaded.settings, &shown, a, b, f, &s.tr)).collect();
+    // Each declaration adds up everything, as the thresholds do: its amounts
+    // only while nothing is kept from agents; else its period and its day alone.
+    let open_span: Vec<books::Row> = span.iter().filter(|r| open_row(r)).cloned().collect();
+    let all_open = span.len() == open_span.len() && shown_invoices.len() == loaded.invoices.len();
+    let declared: Vec<declarations::Declaration> = periods.iter().map(|(a, b, f)| declarations::of_rows(&loaded.settings, &open_span, *a, *b, *f, &s.tr)).collect();
     for d in &declared {
-        lines.extend(declarations::sentences(&s.tr, d, &currency));
+        if all_open {
+            lines.extend(declarations::sentences(&s.tr, d, &currency));
+        } else {
+            lines.push(format!("{}: to declare by {}.", declarations::period_name(&s.tr, d), d.due));
+        }
+    }
+    if !all_open && !declared.is_empty() {
+        lines.push("The amounts to declare are not given while things are kept from agents: each adds up everything.".into());
     }
     let summaries = vat::between(&input, first, last);
     for summary in &summaries {
@@ -446,10 +461,10 @@ pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
             "foreign": r.foreign.as_ref().map(|(m, code)| s.tr.money_in(sioul_core::money::Money(*m), code)),
             "address": r.address,
         })).collect::<Vec<_>>(),
-        "declarations": declared.iter().map(|d| json!({
-            "from": d.from.to_string(), "to": d.to.to_string(), "due": d.due.to_string(), "turnover": money(d.turnover), "contributions": money(d.contributions),
+        "declarations": declared.iter().map(|d| if all_open { json!({
+            "from": d.from.to_string(), "to": d.to.to_string(), "due": d.due.to_string(), "to_declare": money(d.declared), "at_least": d.least(), "contributions": money(d.contributions),
             "activities": d.lines.iter().map(|l| json!({ "activity": l.activity, "name": l.name, "turnover": money(l.turnover) })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
+        }) } else { json!({ "from": d.from.to_string(), "to": d.to.to_string(), "due": d.due.to_string(), "withheld": true }) }).collect::<Vec<_>>(),
         "vat": summaries.iter().map(|v| json!({ "from": v.from.to_string(), "to": v.to.to_string(), "tax": money(v.tax), "base": money(v.base),
             "rates": v.entries.iter().map(|e| json!({ "category": e.category, "rate": s.tr.percent_bp(e.rate), "base": money(e.base), "tax": money(e.tax) })).collect::<Vec<_>>() })).collect::<Vec<_>>(),
         "des": des_months.iter().map(|d| json!({ "month": d.key(), "due": d.due.to_string(), "total": money(d.total),

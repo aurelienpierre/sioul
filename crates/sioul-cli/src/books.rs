@@ -63,8 +63,8 @@ pub(crate) fn run(s: &Session, command: Option<BooksCommand>) -> Result<(), Stri
     let bounds = |year: i16| (Date::new(year, 1, 1).unwrap_or(today), Date::new(year, 12, 31).unwrap_or(today).min(today));
     match command {
         None => {
-            // Now: the declarations to make, this year's thresholds, the DES to make, the period's VAT.
-            let mut said = Vec::new();
+            // Now: a setting that does not read, the declarations to make, this year's thresholds, the DES to make, the period's VAT.
+            let mut said = books::unread_sentences(&s.tr, &loaded.settings);
             let open = declarations::open_now(&input, today, 60, &s.tr);
             for d in open.iter().chain(declarations::holding(&input, today, &s.tr).iter()) {
                 said.extend(declarations::sentences(&s.tr, d, &currency));
