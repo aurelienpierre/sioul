@@ -71,6 +71,8 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
         // from their files: today's slots of time for you, do-not-disturb.
         let (all, holds) = reminders::gather(&config, &s.tr, &now);
         let stamp = now.timestamp().as_second();
+        // On this device: a work date waits where work does not come (docs/areas.md, "What each device is for").
+        let holds = holds.on(&sioul_sync::dispatch::Known::read(&config, &config::state_dir(), stamp).lines());
         let moment = sioul_core::notice::moment_from_files(&config, &now, present());
         relevant.retain(|(_, at)| *at > stamp);
         for reminder in reminders::due(all, &dir, stamp, &holds) {

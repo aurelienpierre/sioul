@@ -140,11 +140,13 @@ enum Command {
         #[command(subcommand)]
         command: Option<invoices::InvoicesCommand>,
     },
-    /// Your devices, this one first: what each is, how it is now, when it last opened and shared, its Sioul, what you say it is for, what it shares.
+    /// Your devices, this one first: what each is, how it is now, when it last opened and shared, its Sioul, what you say it is for, what comes forward on it at each time, what it shares. `for` and `at` say what a device is for.
     Devices {
-        /// The table in JSON: a row per device, this device first.
+        /// The table in JSON: a row per device, this device first, each with its cells; and the grid's own lines.
         #[arg(long)]
         json: bool,
+        #[command(subcommand)]
+        command: Option<devices::DevicesCommand>,
     },
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
@@ -425,7 +427,7 @@ fn main() -> ExitCode {
         Command::Receipts(args) => money::receipts(&session, args),
         Command::Books { command } => books::run(&session, command),
         Command::Invoices { command } => invoices::run(&session, command),
-        Command::Devices { json } => devices::run(&session, json),
+        Command::Devices { json, command } => devices::run(&session, json, command),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),
