@@ -118,12 +118,15 @@ fn of_row(r: &Row) -> Vec<Counted> {
 }
 
 /// Whether a record's line of `category` is located in the country: not
-/// the reverse charge, an intra-EU delivery, an export or outside the
-/// scope. A format-1 record (before November 2026) said no category, only
-/// its VAT mention in words: its lines are located here, never read as
-/// "outside the scope" (the review of phase 4, P4-14).
+/// the reverse charge to a client elsewhere, an intra-EU delivery, an
+/// export or outside the scope; a domestic reverse charge (the client, in
+/// the country, owes the VAT) is located here, where the client is read by
+/// the one table of countries (`books::zone`). A format-1 record (before
+/// November 2026) said no category, only its VAT mention in words: its
+/// lines are located here, never read as "outside the scope" (the review of
+/// phase 4, P4-14).
 fn located(invoice: &Invoice, category: &str) -> bool {
-    invoice.format == 1 || !ELSEWHERE.contains(&category)
+    invoice.format == 1 || !ELSEWHERE.contains(&category) || (category == "AE" && super::zone(invoice) == "domestic")
 }
 
 /// The turnover as the franchise counts it from `from` to `to`, from the

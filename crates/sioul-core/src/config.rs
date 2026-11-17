@@ -1049,6 +1049,9 @@ pub struct InvoiceSettings {
     /// `[[invoice.threshold]]` id (the preset's), amount, from.
     #[serde(default, rename = "threshold")]
     pub thresholds: Vec<ThresholdSetting>,
+    /// The EPC payment QR code on euro invoices with an IBAN; on unless `false`.
+    #[serde(default)]
+    pub qr: Option<bool>,
 }
 
 /// A contribution rate of your own, from a day, until a day.

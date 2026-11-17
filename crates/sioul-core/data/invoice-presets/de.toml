@@ -154,9 +154,12 @@ reason_code = "VATEX-EU-IC"
 why.en = "An intra-EU delivery carries the words of its exemption, which Sioul’s sources do not give for Germany: write them on the line."
 why.fr = "Une livraison intracommunautaire porte les mots de son exonération, que les sources de Sioul ne donnent pas pour l’Allemagne : écrivez-les sur la ligne."
 
+# Under the franchise too: a service to a business outside the EU is
+# located there, and the franchise's mention would not say why it bears no
+# VAT; the research gives no words for it (the second review, G17).
 [[tax.place]]
 id = "abroad-service"
-scheme = ["liable"]
+scheme = ["franchise", "liable"]
 zone = ["abroad"]
 client = ["business", "public"]
 nature = ["service"]
@@ -169,6 +172,18 @@ why.fr = "Une prestation à une entreprise hors de l’UE n’est pas taxée en 
 id = "abroad-goods"
 scheme = ["liable"]
 zone = ["abroad"]
+nature = ["goods"]
+category = "G"
+reason_code = "VATEX-EU-G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give for Germany: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas pour l’Allemagne : écrivez-les sur la ligne."
+
+# Under the franchise, goods to a business outside the EU: the same.
+[[tax.place]]
+id = "abroad-goods-franchise"
+scheme = ["franchise"]
+zone = ["abroad"]
+client = ["business", "public"]
 nature = ["goods"]
 category = "G"
 reason_code = "VATEX-EU-G"

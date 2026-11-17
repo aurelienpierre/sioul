@@ -93,7 +93,7 @@ The rest of this page builds Sioul from its sources: for Linux distributions wit
 
 ## What it needs
 
-- **Rust** 1.89 or newer, with Cargo.
+- **Rust** 1.92 or newer, with Cargo.
 - **A C++ compiler**: the window is partly written in C++.
 - **D-Bus** development files, on Linux: for the system keyring, where passwords go, and for notifications.
 - **Qt 6.9 or newer** (Sioul is built and used with Qt 6.11), with these modules: Qt Declarative (QML and Qt Quick), Qt WebEngine with Qt WebChannel and Qt PDF, Qt Multimedia, Qt Positioning, Qt Location and Qt Image Formats.
@@ -134,7 +134,7 @@ Optional, and installable later:
 
     The D-Bus development files, a C++ compiler, and Qt 6.9 or newer with the modules above, and their QML modules. Distributions name them differently: Debian and Ubuntu as `qt6-…-dev` and `qml6-module-…`, Arch as `qt6-…`. Your release must ship Qt 6.9 or newer.
 
-    Rust from [rustup.rs](https://rustup.rs) when your release's own is older than 1.89.
+    Rust from [rustup.rs](https://rustup.rs) when your release's own is older than 1.92.
 
 Sioul is developed on Fedora: other systems have not been tried. If a module is missing, the build stops, or the window does not open and Qt names the missing module in its messages (`QT_FORCE_STDERR_LOGGING=1 sioul-app` shows them in the terminal). A word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) then helps the next person.
 

@@ -55,7 +55,7 @@ fn issued(number: &str, date: &str, who: Client, mut lines: Vec<Line>, scheme: &
         issuer: crate::invoice::Issuer { preset: "fr".into(), scheme: scheme.into(), ..crate::invoice::Issuer::default() },
         lines,
         totals,
-        payments: payments.iter().enumerate().map(|(i, (date, amount, means))| Payment { id: format!("p-{number}-{i}"), date: (*date).into(), amount: *amount, means: (*means).into(), movement: String::new() }).collect(),
+        payments: payments.iter().enumerate().map(|(i, (date, amount, means))| Payment { id: format!("p-{number}-{i}"), date: (*date).into(), amount: *amount, means: (*means).into(), ..Payment::default() }).collect(),
         ..Invoice::default()
     }
 }
@@ -121,12 +121,22 @@ fn every_euro_of_a_bank_line_counts_once() {
     assert_eq!(rows.iter().map(|r| (r.day.to_string(), r.amount)).collect::<Vec<_>>(), [("2026-12-15".to_string(), Some(91_000))], "one row of €910, not two");
     // The client pays €1,250 for an invoice of €1,200: the €50 is a receipt of its own.
     let money = money_with("", &[("2026-11-10", 125_000, "VIR STUDIO LUMEN FACTURE 2026-131", "O1")]);
-    let address = money.movements.iter().find(|m| m.label.contains("2026-131")).map(|m| m.address()).unwrap();
+    // The bank's share, keyed by its line as the matching writes it (`movements::line_key`: the bank account's id, day, amount, label).
+    let key = crate::movements::line_key("main", day("2026-11-10"), 125_000, "VIR STUDIO LUMEN FACTURE 2026-131");
     let mut paid = issued("2026-131", "2026-11-02", client("Studio Lumen", "FR"), vec![line("Design", 120_000, Nature::Service, "E", 0)], "franchise", &[]);
-    paid.payments = vec![Payment { id: "b1".into(), date: "2026-11-10".into(), amount: 120_000, means: "transfer".into(), movement: address }];
+    paid.payments = vec![Payment { id: crate::invoice::lives::bank_id(&key, "2026-131"), date: "2026-11-10".into(), amount: 120_000, means: "transfer".into(), line: key, ..Payment::default() }];
     let none = BTreeMap::new();
     let rows = super::rows(&input(&settings, &[paid], &none, Some(&money)), day("2026-11-01"), day("2026-11-30"), &tr);
     assert_eq!(rows.iter().map(|r| (r.invoice.as_str(), r.amount, r.beyond.clone())).collect::<Vec<_>>(), [("", Some(5_000), vec!["2026-131".to_string()]), ("2026-131", Some(120_000), Vec::new())]);
+    // Through a processor: the payment is what the client paid, on its day,
+    // the fee apart (phase 1's G6), and the bank's line only the net: that
+    // line is the payment, never counted again beside it; the gross is declared.
+    let money = money_with("", &[("2026-11-12", 9_700, "STRIPE PAYMENTS EU", "S1")]);
+    let key = crate::movements::line_key("main", day("2026-11-12"), 9_700, "STRIPE PAYMENTS EU");
+    let mut card = issued("2026-140", "2026-11-05", client("Studio Lumen", "FR"), vec![line("Prints", 10_000, Nature::Service, "E", 0)], "franchise", &[]);
+    card.payments = vec![Payment { id: crate::invoice::lives::bank_id(&key, "2026-140"), date: "2026-11-12".into(), amount: 10_000, means: "transfer".into(), line: key, fee: 300 }];
+    let rows = super::rows(&input(&settings, &[card], &none, Some(&money)), day("2026-11-01"), day("2026-11-30"), &tr);
+    assert_eq!(rows.iter().map(|r| (r.invoice.as_str(), r.amount, r.without_tax)).collect::<Vec<_>>(), [("2026-140", Some(10_000), Some(10_000))], "the gross, once");
 }
 
 /// The franchise counts what the book counts (the review of phase 4,
@@ -238,7 +248,7 @@ fn a_credit_note_waits_for_a_refund_only_when_money_is_owed_back() {
     let credit = Invoice { kind: Kind::CreditNote, corrects: Some(Cited { number: "2026-180".into(), date: "2026-10-10".into(), amount: 120_000 }), ..issued("2026-181", "2026-11-02", client("Studio Lumen", "FR"), vec![line("Design", 20_000, Nature::Service, "S", 2000)], "liable", &[]) };
     let months = vat::between(&input(&settings, &[disputed.clone(), credit.clone()], &none, None), day("2026-11-01"), day("2026-11-30"));
     assert!(months[0].credits_not_counted.is_empty(), "the client paid what was left: nothing to give back");
-    let paid_in_full = Invoice { payments: vec![Payment { id: "x".into(), date: "2026-10-20".into(), amount: 120_000, means: "transfer".into(), movement: String::new() }], ..disputed };
+    let paid_in_full = Invoice { payments: vec![Payment { id: "x".into(), date: "2026-10-20".into(), amount: 120_000, means: "transfer".into(), ..Payment::default() }], ..disputed };
     let months = vat::between(&input(&settings, &[paid_in_full, credit], &none, None), day("2026-11-01"), day("2026-11-30"));
     assert_eq!(months[0].credits_not_counted, ["2026-181"]);
 }
@@ -588,7 +598,8 @@ fn a_refund_lowers_its_own_period() {
 #[test]
 fn the_franchise_s_thresholds_are_said_once() {
     let settings = Settings::of(&french("franchise"), None);
-    let pay = |number: &str, date: &str, cents: i64, category: &str| issued(number, date, client("Studio Lumen", "FR"), vec![line("Design", cents, Nature::Service, category, 0)], "franchise", &[(date, cents, "transfer")]);
+    // The reverse charge to a business in another member state (a client in France would make it a domestic one, located here).
+    let pay = |number: &str, date: &str, cents: i64, category: &str| issued(number, date, if category == "AE" { client("Beispiel GmbH", "DE") } else { client("Studio Lumen", "FR") }, vec![line("Design", cents, Nature::Service, category, 0)], "franchise", &[(date, cents, "transfer")]);
     let mut invoices = vec![pay("2026-050", "2026-03-02", 2_000_000, "E"), pay("2026-051", "2026-05-04", 1_000_000, "E"), pay("2026-052", "2026-06-01", 2_000_000, "AE")];
     let none = BTreeMap::new();
     let tr = en();
@@ -768,6 +779,10 @@ fn the_des_lists_its_month_s_invoices() {
         issued("2026-080", "2026-10-30", gmbh.clone(), vec![line("Consulting", 120_000, Nature::Service, "AE", 0)], "franchise", &[]),
         Invoice { kind: Kind::CreditNote, ..issued("2026-081", "2026-10-31", gmbh, vec![line("Consulting", 20_000, Nature::Service, "AE", 0)], "franchise", &[]) },
         issued("2026-082", "2026-10-31", client("Studio Lumen", "FR"), vec![line("Design", 50_000, Nature::Service, "E", 0)], "franchise", &[]),
+        // A reverse charge in France itself (a subcontractor's, its client
+        // in France by the table of countries): no DES's. Nor Monaco's, France for VAT.
+        issued("2026-083", "2026-10-31", client("Bâtiment Exemple", "France"), vec![line("Masonry", 70_000, Nature::Service, "AE", 0)], "franchise", &[]),
+        issued("2026-084", "2026-10-31", client("Exemple SAM", "MC"), vec![line("Masonry", 30_000, Nature::Service, "AE", 0)], "franchise", &[]),
     ];
     let none = BTreeMap::new();
     let i = input(&settings, &invoices, &none, None);

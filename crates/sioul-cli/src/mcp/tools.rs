@@ -858,8 +858,8 @@ pub const TOOLS: &[Tool] = &[
                     "lines": { "type": "array", "items": { "type": "object", "properties": {
                         "description": { "type": "string" },
                         "quantity": { "type": "number", "description": "1 by default." },
-                        "unit": { "type": "string", "description": "UN/ECE code: C62 (one, the default), HUR, DAY, MON, KMT, LS." },
-                        "price": { "type": "number", "description": "The unit price excluding tax, in the invoice's currency: 450 or 62.5." },
+                        "unit": { "type": "string", "description": "UN/ECE code: C62 (one, the default), HUR, MIN, DAY, MON, KMT, LS; a word such as \"hours\" or \"jours\" is read as its code, any other unit refused." },
+                        "price": { "type": "number", "description": "The unit price excluding tax, in the invoice's currency: 450 or 62.5; never below zero." },
                         "goods": { "type": "boolean", "description": "Goods rather than a service." }
                     }, "required": ["description", "price"] } },
                 }),

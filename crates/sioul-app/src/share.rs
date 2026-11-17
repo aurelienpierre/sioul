@@ -1523,14 +1523,15 @@ pub(crate) fn claimed_series(part: &str) -> std::collections::BTreeMap<String, u
     sioul_sync::lease::claimed_series(&sioul_sync::lease::claims(&folder, &key, part))
 }
 
-/// Whether another computer closed its claim on `part` with records not
-/// all read here yet (`lease::closed_unread`); sharing off, none.
-pub(crate) fn closed_unread(part: &str) -> bool {
+/// Whether this computer may number invoices now, as every computer's
+/// claims on `part` say (`lease::may_number`, which the command line asks
+/// too); sharing off, it may.
+pub(crate) fn may_number(part: &str) -> sioul_sync::lease::Numbering {
     let here = share::Here::load(&state_dir());
-    let Some((folder, key)) = sealed(attached(&here)) else { return false };
+    let Some((folder, key)) = sealed(attached(&here)) else { return sioul_sync::lease::Numbering::Yes };
     let heard = share::heard(&memory_path(), &here.id);
     let claims = sioul_sync::lease::claims(&folder, &key, part);
-    sioul_sync::lease::closed_unread(&claims, &here.id, jiff::Timestamp::now().as_second(), |computer, wrote| heard.complete(computer, wrote)).is_some()
+    sioul_sync::lease::may_number(&claims, &here.id, jiff::Timestamp::now().as_second(), |computer, wrote| heard.complete(computer, wrote))
 }
 
 /// Whether this device's claims are renewed now: always, but on a phone with Sioul put away.

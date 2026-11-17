@@ -15,9 +15,10 @@
 //! day are not in Sioul's sources. Only invoices issued liable to VAT count.
 //! A credit note takes its goods' VAT off on its day, its services' on the
 //! days its refund is paid back (`books::received_of`): VAT comes off only
-//! where it was due. One on services of an invoice paid beyond what it asks
-//! once credited, its refund not written, is said, not counted until it is;
-//! one for what was never paid needs no refund, and counts nothing.
+//! where it was due. One on services with money still to pay back (its
+//! invoice paid beyond what it asks once credited: `Invoice::to_pay_back`)
+//! is said, its VAT not taken off until paid back; one for what was never
+//! paid needs no refund, and counts nothing.
 
 use super::{Every, Input, Settings, period_of, shift_days, share};
 use crate::invoice::{Invoice, Kind, Nature};
@@ -45,7 +46,7 @@ pub struct Summary {
     pub entries: Vec<Entry>,
     pub base: i64,
     pub tax: i64,
-    /// Credit notes on services of a paid invoice, of the period, whose refund is not written: not counted yet.
+    /// Credit notes on services of the period with money still to pay back: not counted until paid back.
     pub credits_not_counted: Vec<String>,
     /// Invoices in another currency, not counted.
     pub foreign: Vec<String>,
@@ -191,17 +192,13 @@ pub fn between(input: &Input, from: Date, to: Date) -> Vec<Summary> {
                 }
             }
         }
-        // A credit note on services whose invoice was paid beyond what it
-        // still asks once credited, its refund not written yet: money owed
-        // back, said. One for what was never paid needs no refund: it lowers
-        // what is due, and counts nothing (the review of phase 4, P4-10).
-        let owed_back = || {
-            invoice.corrects.as_ref().and_then(|c| input.invoices.iter().find(|i| i.number == c.number && !i.unreadable)).is_some_and(|credited| {
-                let paid: i64 = super::received_of(credited).iter().map(|p| p.amount).sum();
-                paid + credited.credited(input.invoices) > credited.totals.due
-            })
-        };
-        if invoice.kind == Kind::CreditNote && received.is_empty() && parts.keys().any(|(nature, ..)| !on_issue(nature)) && owed_back() {
+        // A credit note on services with money still to pay back (its
+        // invoice paid beyond what it asks once credited: `to_pay_back`, as
+        // the invoices' life reads it), its refund not all written yet: said,
+        // its services' VAT not taken off until paid back. One for what was
+        // never paid needs no refund: it lowers what is due, and counts
+        // nothing (the review of phase 4, P4-10).
+        if invoice.kind == Kind::CreditNote && parts.keys().any(|(nature, ..)| !on_issue(nature)) && invoice.to_pay_back(input.invoices) > 0 {
             credits.push((day, invoice.number.clone()));
         }
     }

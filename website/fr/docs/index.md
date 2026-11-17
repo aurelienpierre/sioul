@@ -114,7 +114,7 @@ Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez e
 - **Un projet par client**, dont les courriels lui arrivent tout seuls : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
 - **Le temps compté pendant le travail**, par le minuteur de concentration, ou en quelques touches pour une réunion ou un appel : `1h30`. Le même relevé apprend au plan [combien de temps prennent les choses](guide/time.md#how-long-things-take).
 - **Ce qui reste à facturer**, pour chaque projet, en heures et en argent, toujours en vue.
-- **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, la plupart des mentions que la loi française demande (vous ajoutez « EI » après votre nom), un PDF ; puis l’argent attendu dans votre budget jusqu’au paiement.
+- **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, les mentions que demande la loi de votre pays (en France, « EI » après votre nom), un PDF/A-3 qui porte sa facture électronique Factur-X, gardé tel qu’émis ; puis l’argent attendu dans votre budget jusqu’au paiement.
 - **Un tableur pour votre comptable**, et le même temps et les mêmes factures sur votre ordinateur de bureau et votre portable, scellés de bout en bout.
 
 Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturation à côté, et pas d’abonnement : vos clients et vos factures restent dans vos propres fichiers. [Travailler pour des clients](guide/clients.md)

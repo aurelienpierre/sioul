@@ -32,6 +32,9 @@ use std::sync::Mutex;
 pub const ALIVE: i64 = 5 * 60;
 /// How long a computer keeps a part before acting on it.
 pub const SETTLING: i64 = 90;
+/// How often the window renews its claims (each minute): a claim not
+/// renewed for two of these is no running window's.
+pub const RENEWED_EVERY: i64 = 60;
 /// How long a claim on a part that stays put (invoices) still holds it once
 /// lapsed, unless it says it closed: a computer whose sync stopped, or whose
 /// claims a phone's sync app brings half an hour late, may still be numbering
@@ -306,6 +309,52 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
     Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since }
 }
 
+/// Why invoices may not be numbered on a computer now, as the claims on
+/// them say (`may_number`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Numbering {
+    /// It may.
+    Yes,
+    /// Its own claim is closed, or not renewed for two periods: no window
+    /// of Sioul runs there to keep the invoices.
+    NotRunning,
+    /// Another computer keeps them: its name.
+    Elsewhere(String),
+    /// Kept here, not long enough for the others to know it yet; or
+    /// another computer closed with records not read here yet.
+    Settling,
+    /// Another computer holding them has not been heard from lately.
+    OthersSilent,
+}
+
+/// Whether `computer` may number invoices now (a part that stays put), as
+/// `claims` say, read at `now` (`read`: whether everything a computer
+/// wrote up to its round and number is read here): its own claim alive and
+/// renewed within two periods (`RENEWED_EVERY`), never a closed one; the
+/// keeper; kept long enough for the others to know it, counted from when
+/// it claimed without a break or took the invoices on purpose, whichever is
+/// later (`SETTLING`); no other computer closed with records not read here
+/// (`closed_unread`); every other computer holding them heard from in the
+/// last three minutes. The window and the command line ask the same.
+pub fn may_number(claims: &[Claim], computer: &str, now: i64, read: impl Fn(&str, (u32, u64)) -> bool) -> Numbering {
+    let Some(own) = claims.iter().find(|c| c.computer == computer && !c.closed && c.until > now && now - c.renewed <= 2 * RENEWED_EVERY) else { return Numbering::NotRunning };
+    let Some(chosen) = choose(claims, Rule::StaysPut, now) else { return Numbering::NotRunning };
+    if chosen.computer != computer {
+        return Numbering::Elsewhere(chosen.name.clone());
+    }
+    let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && holds(c, Rule::StaysPut, now)).collect();
+    if !others.is_empty() && now - own.since.max(own.taken) < SETTLING {
+        return Numbering::Settling;
+    }
+    if closed_unread(claims, computer, now, read).is_some() {
+        return Numbering::Settling;
+    }
+    if others.iter().map(|c| c.renewed).min().is_some_and(|heard| now - heard > 3 * 60) {
+        return Numbering::OthersSilent;
+    }
+    Numbering::Yes
+}
+
 /// This computer's claim on `part` closed: Sioul quits, or is put away on a
 /// phone. It keeps nothing, and says how far it wrote its records, so the
 /// others know everything it marked before it closed.
@@ -460,5 +509,25 @@ mod tests {
         renew(&dir, &key, "follows", "desktop", 1000, 1000, false, Rule::FollowsYou, None).unwrap();
         assert!(renew(&dir, &key, "follows", "phone", 1600, 1600, false, Rule::FollowsYou, None).unwrap().mine);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The window and the command line ask the same (the second review,
+    /// G10): a claim not renewed for two minutes, or closed, is no running
+    /// window's; settled from when the invoices were taken on purpose, not
+    /// from the claim's age; another computer's silence said.
+    #[test]
+    fn numbering_asks_the_claims_as_the_window_does() {
+        let claim = |computer: &str, since: i64, renewed: i64, taken: i64| Claim { computer: computer.into(), name: computer.into(), since, renewed, until: renewed + ALIVE, taken, ..Claim::default() };
+        let read_all = |_: &str, _: (u32, u64)| true;
+        let now = 10_000;
+        assert_eq!(may_number(&[claim("desk", 1000, now - 30, 0)], "desk", now, read_all), Numbering::Yes);
+        assert_eq!(may_number(&[claim("desk", 1000, now - 3 * RENEWED_EVERY, 0)], "desk", now, read_all), Numbering::NotRunning, "no window renews it");
+        assert_eq!(may_number(&[Claim { closed: true, ..claim("desk", 1000, now - 10, 0) }], "desk", now, read_all), Numbering::NotRunning, "closed");
+        // Taken on purpose ten seconds ago, the laptop still holding them: settling, whatever the claim's age.
+        let both = [claim("desk", 1000, now - 5, now - 10), claim("laptop", 2000, now - 20, 0)];
+        assert_eq!(may_number(&both, "desk", now, read_all), Numbering::Settling);
+        let silent = [claim("desk", 1000, now - 5, now - 200), claim("laptop", 2000, now - 250, 0)];
+        assert_eq!(may_number(&silent, "desk", now, read_all), Numbering::OthersSilent, "the laptop not heard from lately");
+        assert_eq!(may_number(&both, "laptop", now, read_all), Numbering::Elsewhere("desk".into()));
     }
 }

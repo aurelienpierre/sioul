@@ -8,6 +8,8 @@ use super::*;
 use crate::config::{IdSetting, LineSetting, TaxSetting};
 use crate::invoice::record::Status;
 use crate::invoice::{all_in, draft_in, drafts_in, find_in, html, remove_draft, save_draft};
+use crate::clients::{Clients, Profile};
+use crate::contacts::{Contact, Labeled};
 use crate::timelog::{self, Session};
 use std::path::PathBuf;
 
@@ -123,7 +125,7 @@ fn issued(place: &Place, draft: &Invoice, s: &InvoiceSettings, on: &str) -> Invo
     if !ledger.exists() {
         std::fs::write(&ledger, "").unwrap();
     }
-    issue(&place.invoices(), &saved.draft, s, day(on), &here(), &Steps { time: Some(&time), ledger: Some((&ledger, "work")) }, &en()).unwrap()
+    issue(&place.invoices(), &saved.draft, s, day(on), &here(), &Steps { time: Some(&time), ledger: Some((&ledger, "work")), clients: None }, &en()).unwrap()
 }
 
 /// The time of a project billed once: a line per note, its time at the
@@ -141,7 +143,7 @@ fn an_invoice_bills_each_hour_once() {
     // 2026-001 was given before.
     let (time, ledger) = steps(&place);
     crate::invoice::write_new(&place.invoices(), &Invoice { number: "2026-001".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
-    let issued = issue(&place.invoices(), &saved.draft, &s, day("2026-10-05"), &here(), &Steps { time: Some(&time), ledger: Some((&ledger, "work")) }, &en()).unwrap();
+    let issued = issue(&place.invoices(), &saved.draft, &s, day("2026-10-05"), &here(), &Steps { time: Some(&time), ledger: Some((&ledger, "work")), clients: None }, &en()).unwrap();
     assert_eq!((issued.number.as_str(), issued.due.as_str(), issued.series.as_str()), ("2026-002", "2026-11-04", "2026-{N:3}"));
     assert!(timelog::sessions_in(&time).iter().all(|x| x.invoice == "2026-002"), "its time marked");
     assert!(drafts_in(&place.invoices()).is_empty(), "the draft is the invoice now");
@@ -243,6 +245,30 @@ fn an_older_table_keeps_its_words() {
     assert_eq!(marked_name("Leila Eid", "EI"), "Leila Eid EI");
 }
 
+/// What EN 16931 refuses is said before issue: a unit price below zero, a
+/// unit Sioul does not know, a country that is none; a country in words is
+/// read as its code (`clients::country`), its zone with it.
+#[test]
+fn checks_hold_what_the_standard_refuses() {
+    let s = french("franchise");
+    let mut draft = fresh("en");
+    draft.lines = vec![Line::of_time("Advice", 60, 9000, "E", 0)];
+    refresh(&mut draft, &s, day("2026-11-16"));
+    assert!(checks(&draft, &s, day("2026-11-16"), &[]).iter().all(|c| !c.required));
+    let mut odd = draft.clone();
+    odd.lines[0].price = -9000;
+    odd.lines[0].unit = "PCE".into();
+    odd.client.address.country = "Atlantis".into();
+    let said: Vec<String> = checks(&odd, &s, day("2026-11-16"), &[]).into_iter().filter(|c| c.required).map(|c| c.text).collect();
+    assert!(said.iter().any(|t| t.contains("below zero")) && said.iter().any(|t| t.contains("“PCE”")) && said.iter().any(|t| t.contains("“Atlantis”")), "{said:?}");
+    // In words, another member state: the reverse charge, as with its code.
+    let mut belgian = draft.clone();
+    belgian.client.address.country = "Belgique".into();
+    belgian.client.ids = vec![Identifier { kind: "vat".into(), value: "BE0123456749".into(), printed: true }];
+    refresh(&mut belgian, &s, day("2026-11-16"));
+    assert_eq!(belgian.lines[0].category, "AE");
+}
+
 /// What the preset asks, said before issue: the issuer's SIREN required, a
 /// French business client's recommended now and required from September
 /// 2027; a number that fails its key refused, a SIRET being given accepted;
@@ -256,8 +282,10 @@ fn checks_say_what_is_missing() {
     draft.lines = vec![Line::of_time("Advice", 60, 9000, "E", 0)];
     refresh(&mut draft, &s, day("2026-11-16"));
     let now = checks(&draft, &s, day("2026-11-16"), &[]);
-    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false], "{now:?}");
+    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false, false], "{now:?}");
     assert!(now[0].text.contains("SIREN") && now[0].text.contains("September 2027"), "{now:?}");
+    // Under the franchise without a VAT number, its PDF carries no Factur-X data yet: said only.
+    assert!(now[1].text.contains("Factur-X"), "{now:?}");
     let later = checks(&draft, &s, day("2027-09-01"), &[]);
     assert!(later.iter().any(|c| c.required && c.text.contains("SIREN")), "{later:?}");
     s.ids = vec![IdSetting { kind: "siren".into(), value: "732 829 321".into(), printed: true }];
@@ -390,7 +418,7 @@ fn issuing_is_all_or_nothing() {
     let time = place.time();
     let tr = en();
     let broken = place.root.join("notes").join("missing").join("budget.toml");
-    let failed = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &here(), &Steps { time: Some(&time), ledger: Some((&broken, "work")) }, &tr);
+    let failed = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &here(), &Steps { time: Some(&time), ledger: Some((&broken, "work")), clients: None }, &tr);
     assert!(failed.is_err());
     assert!(all_in(&place.invoices()).is_empty(), "no record");
     assert_eq!(series::Journal::load(&place.invoices()), Journal::default(), "the journal as before");
@@ -398,16 +426,16 @@ fn issuing_is_all_or_nothing() {
     assert!(draft_in(&place.invoices(), &draft.draft).is_some(), "the draft kept");
     // Sharing on, invoices not shared from here: refused, in words.
     let off = Numbering { device: DESK.into(), sharing: true, drafts_shared: false, claimed: BTreeMap::new() };
-    let refused = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &off, &Steps { time: Some(&time), ledger: None }, &tr).unwrap_err();
+    let refused = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &off, &Steps { time: Some(&time), ledger: None, clients: None }, &tr).unwrap_err();
     assert!(refused.contains("Drafts and invoices"), "{refused}");
     // Another device numbered up to 2026-007: the claim counts.
     let claimed = Numbering { device: DESK.into(), sharing: true, drafts_shared: true, claimed: BTreeMap::from([("2026-{N:3}".to_string(), 7u64)]) };
-    let issued = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &claimed, &Steps { time: Some(&time), ledger: None }, &tr).unwrap();
+    let issued = issue(&place.invoices(), &draft.draft, &s, day("2026-10-05"), &claimed, &Steps { time: Some(&time), ledger: None, clients: None }, &tr).unwrap();
     assert_eq!(issued.number, "2026-008");
     assert_eq!(series::Journal::load(&place.invoices()).series["2026-{N:3}"].last, 8);
     // A second draft of the same time, made before: refused, its time billed.
     let again = save_draft(&place.invoices(), &from_time(&entries, &project(), fresh("en"), &[], &s, day("2026-10-05")).unwrap()).unwrap();
-    let twice = issue(&place.invoices(), &again.draft, &s, day("2026-10-06"), &here(), &Steps { time: Some(&time), ledger: None }, &tr).unwrap_err();
+    let twice = issue(&place.invoices(), &again.draft, &s, day("2026-10-06"), &here(), &Steps { time: Some(&time), ledger: None, clients: None }, &tr).unwrap_err();
     assert!(twice.contains("2026-008"), "{twice}");
     // A record deleted by hand: its number is not given again; the gap is said.
     crate::invoice::remove_issued(&place.invoices(), "2026-008").unwrap();
@@ -448,7 +476,7 @@ fn a_credit_note_cancels_and_frees_the_time() {
     let invoice = issued(&place, &from_time(&entries, &project(), fresh("en"), &[], &s, day("2026-10-05")).unwrap(), &s, "2026-10-05");
     assert!(std::fs::read_to_string(place.ledger()).unwrap().contains("amount = 90.0"));
     // The call's line only: a correction; its time freed, the rest stays billed.
-    let some = credit(&invoice, Some(&[1]), &s, day("2026-10-07"));
+    let some = credit(&invoice, Some(&[1]), &[], &s, day("2026-10-07"));
     assert_eq!((some.kind, some.corrects.as_ref().map(|c| c.number.as_str())), (Kind::CreditNote, Some("2026-001")));
     let note = issued(&place, &some, &s, "2026-10-07");
     assert_eq!((note.number.as_str(), note.totals.due), ("2026-002", 3000), "in the invoices' series");
@@ -462,20 +490,21 @@ fn a_credit_note_cancels_and_frees_the_time() {
     assert_eq!(credit_note.status(&all), Status::CreditNote);
     assert!(pay_rest(&place.invoices(), DESK, "2026-002", day("2026-10-08"), "", &en()).is_err(), "no Paid on a credit note");
     let page = html(&note, &en());
-    assert!(page.contains("Credit note No. 2026-002") && page.contains("2026-001") && !page.contains("Late payment"), "{page}");
+    // A business's credit note carries the payment lines too, as French rules ask of every invoice (BR-FR-05; phase 2, P2-6).
+    assert!(page.contains("Credit note No. 2026-002") && page.contains("2026-001") && page.contains("Late payment"), "{page}");
     // More than is left to credit: refused, the credit notes named.
-    let all_again = credit(kept, None, &s, day("2026-10-08"));
+    let all_again = credit(kept, None, &[], &s, day("2026-10-08"));
     let said = checks(&all_again, &s, day("2026-10-08"), &all);
     assert!(said.iter().any(|c| c.required && c.text.contains("2026-002")), "{said:?}");
     // The rest credited: the invoice is credited, all its time free, its budget line gone.
-    issued(&place, &credit(kept, Some(&[0]), &s, day("2026-10-08")), &s, "2026-10-08");
+    issued(&place, &credit(kept, Some(&[0]), &[], &s, day("2026-10-08")), &s, "2026-10-08");
     let all = all_in(&place.invoices());
     assert_eq!(all.iter().find(|i| i.number == "2026-001").unwrap().status(&all), Status::Credited);
     assert!(timelog::sessions_in(&place.time()).iter().all(|x| x.invoice.is_empty()));
     assert!(!std::fs::read_to_string(place.ledger()).unwrap().contains("sioul:invoice/2026-001"), "nothing expected any more");
     // Liable for VAT since: a credit note of a franchise invoice still carries no VAT, and its mention.
     let liable = InvoiceSettings { tax: vec![TaxSetting { from: "2026-10-06".into(), scheme: "liable".into(), mention: String::new() }, TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..s.clone() };
-    let late = credit(&invoice, Some(&[0]), &liable, day("2026-10-08"));
+    let late = credit(&invoice, Some(&[0]), &[], &liable, day("2026-10-08"));
     assert_eq!((late.totals.tax, late.lines[0].category.as_str()), (0, "E"));
     assert!(html(&late, &en()).contains("293 B"), "{}", html(&late, &en()));
     // A draft changes freely: a line added, the totals made again; it stays a draft.
@@ -518,10 +547,18 @@ fn deposits_and_payments() {
     assert_eq!(find_in(&place.invoices(), "2026-002").unwrap().payments.len(), 0);
 }
 
-/// The bank's lines (F1, F2, F9): a payment said by hand takes in the bank
-/// line as its evidence, never a second payment; one transfer for two
-/// invoices pays each, the oldest first, the rest said; a line in another
-/// currency writes nothing.
+/// A bank line the matching joined (`BankLine`), of `amount` cents on `on`.
+fn line<'a>(key: &'a str, on: &str, amount: i64, currency: &'a str) -> BankLine<'a> {
+    BankLine { key, day: day(on), amount, fee: 0, currency, usual_fee: None }
+}
+
+/// The bank's lines (F1, F2, F9; the second review's G1, G5, G6): "Paid"
+/// said by hand then the bank's line count once, the line's payment first;
+/// one transfer for two invoices pays each, the oldest first, the rest
+/// said; the same line again writes nothing; a line in another currency
+/// writes nothing; instalments said by hand are each taken in by the line
+/// of their amount, their days kept; a processor's gross is the payment,
+/// and a net short of what is owed by at most its usual fee settles it.
 #[test]
 fn a_bank_line_pays_what_is_left() {
     let place = Place::new("bank");
@@ -533,27 +570,77 @@ fn a_bank_line_pays_what_is_left() {
     let mut second = fresh("en");
     second.lines = vec![sold("Site", 70_000, Nature::Service)];
     let b = issued(&place, &second, &s, "2026-10-02");
-    // Paid by hand, then the bank's line comes: its evidence, no second payment.
-    let hand = pay_rest(&place.invoices(), DESK, &a.number, day("2026-10-20"), "transfer", &tr).unwrap().unwrap();
-    let taken = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), "sioul:movement/m1", day("2026-10-21"), 50_000, "EUR").unwrap();
+    // Paid by hand, then the bank's line comes: one payment, the line's.
+    pay_rest(&place.invoices(), DESK, &a.number, day("2026-10-20"), "transfer", &tr).unwrap().unwrap();
+    let taken = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), &line("acct/m1", "2026-10-21", 50_000, "EUR")).unwrap();
     assert_eq!((taken.entries.len(), taken.overpaid), (1, 0));
     let paid = find_in(&place.invoices(), &a.number).unwrap().payments;
-    assert_eq!((paid.len(), paid[0].id.as_str(), paid[0].movement.as_str(), paid[0].date.as_str()), (1, hand.id.as_str(), "sioul:movement/m1", "2026-10-21"));
-    // The evidence's Undo: the hand payment is said by hand again.
+    assert_eq!((paid.len(), paid[0].line.as_str(), paid[0].date.as_str(), paid[0].amount), (1, "acct/m1", "2026-10-21", 50_000));
+    // The line's Undo: "Paid" said by hand stands again.
     take_back(&place.invoices(), DESK, &taken.ids()).unwrap();
-    assert_eq!(find_in(&place.invoices(), &a.number).unwrap().payments[0].movement, "");
+    let paid = find_in(&place.invoices(), &a.number).unwrap().payments;
+    assert_eq!((paid.len(), paid[0].line.as_str(), paid[0].amount), (1, "", 50_000));
     unpay(&place.invoices(), DESK, &a.number, &tr).unwrap();
     // One transfer of €1,250 for both: each paid, the oldest first, €50 beyond.
-    let both = take_bank_line(&place.invoices(), DESK, &[b.number.clone(), a.number.clone()], "sioul:movement/m2", day("2026-11-02"), 125_000, "EUR").unwrap();
+    let both = take_bank_line(&place.invoices(), DESK, &[b.number.clone(), a.number.clone()], &line("acct/m2", "2026-11-02", 125_000, "EUR")).unwrap();
     assert_eq!((both.entries.iter().map(|(n, _, amount)| (n.as_str(), *amount)).collect::<Vec<_>>(), both.overpaid), (vec![(a.number.as_str(), 50_000), (b.number.as_str(), 70_000)], 5_000));
     let all = all_in(&place.invoices());
     assert!(all.iter().all(|i| i.status(&all) == Status::Paid));
-    // Again with the same line: nothing more.
-    assert_eq!(take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), "sioul:movement/m2", day("2026-11-02"), 50_000, "EUR").unwrap().entries.len(), 0);
+    // The same line again, on another device: nothing more.
+    assert_eq!(take_bank_line(&place.invoices(), "phone-2", std::slice::from_ref(&a.number), &line("acct/m2", "2026-11-02", 50_000, "EUR")).unwrap().entries.len(), 0);
+    // "Not the same payment" on that line: its payments taken back, on every invoice (G4).
+    assert_eq!(take_back_line(&place.invoices(), DESK, "acct/m2").unwrap().len(), 2);
+    let all = all_in(&place.invoices());
+    assert!(all.iter().all(|i| i.payments.is_empty()));
     // A line in dollars on euro invoices: nothing written.
-    take_back(&place.invoices(), DESK, &both.ids()).unwrap();
-    let usd = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), "sioul:movement/m3", day("2026-11-03"), 50_000, "USD").unwrap();
+    let usd = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), &line("acct/m3", "2026-11-03", 50_000, "USD")).unwrap();
     assert!(usd.entries.is_empty() && usd.overpaid == 50_000);
+    // Instalments said by hand (G5): €200 on 1 October, €300 on 3 November; the €300 transfer is the second's.
+    add_payment(&place.invoices(), DESK, &a.number, Payment { date: "2026-10-01".into(), amount: 20_000, means: "transfer".into(), ..Payment::default() }, &tr).unwrap();
+    add_payment(&place.invoices(), DESK, &a.number, Payment { date: "2026-11-03".into(), amount: 30_000, means: "transfer".into(), ..Payment::default() }, &tr).unwrap();
+    let third = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&a.number), &line("acct/m4", "2026-11-04", 30_000, "EUR")).unwrap();
+    assert_eq!(third.overpaid, 0, "nothing came beyond");
+    let read = find_in(&place.invoices(), &a.number).unwrap();
+    let days: Vec<(&str, i64, &str)> = read.payments.iter().map(|p| (p.date.as_str(), p.amount, p.line.as_str())).collect();
+    assert_eq!(days, [("2026-10-01", 20_000, ""), ("2026-11-03", 30_000, "acct/m4")]);
+    // Through a processor (G6): its gross is the payment, its fee a fee; only its net known, a net short by at most its usual fee settles it.
+    let gross = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&b.number), &BankLine { fee: 2_405, ..line("paypal/m5", "2026-11-05", 70_000, "EUR") }).unwrap();
+    assert_eq!((gross.entries[0].2, gross.fee, gross.overpaid), (70_000, 2_405, 0));
+    take_back(&place.invoices(), DESK, &gross.ids()).unwrap();
+    let usual = |cents: i64| cents * 34 / 1000 + 35;
+    let net = take_bank_line(&place.invoices(), DESK, std::slice::from_ref(&b.number), &BankLine { usual_fee: Some(&usual), ..line("paypal/m6", "2026-11-06", 67_620, "EUR") }).unwrap();
+    assert_eq!((net.entries[0].2, net.fee), (70_000, 2_380));
+    let all = all_in(&place.invoices());
+    assert_eq!(all.iter().find(|i| i.number == b.number).unwrap().status(&all), Status::Paid);
+}
+
+/// Money paid back (the second review, G15): an invoice paid, then
+/// cancelled by a credit note: the credit note has it to pay back, takes a
+/// "Paid back", and the receipts over both months net to nothing.
+#[test]
+fn a_credit_note_pays_back_what_was_paid() {
+    let place = Place::new("refund");
+    let s = french("franchise");
+    let tr = en();
+    let mut bill = fresh("en");
+    bill.lines = vec![sold("Workshop", 100_000, Nature::Service)];
+    let invoice = issued(&place, &bill, &s, "2026-10-01");
+    pay_rest(&place.invoices(), DESK, &invoice.number, day("2026-10-10"), "transfer", &tr).unwrap();
+    let note = issued(&place, &credit(&invoice, None, &[], &s, day("2026-11-02")), &s, "2026-11-02");
+    let all = all_in(&place.invoices());
+    let read = all.iter().find(|i| i.number == note.number).unwrap();
+    assert_eq!((read.status(&all), read.to_pay_back(&all), read.left(&all)), (Status::ToPayBack, 100_000, 100_000));
+    assert_eq!(all.iter().find(|i| i.number == invoice.number).unwrap().status(&all), Status::Credited);
+    pay_rest(&place.invoices(), DESK, &note.number, day("2026-11-05"), "transfer", &tr).unwrap().unwrap();
+    let all = all_in(&place.invoices());
+    assert_eq!(all.iter().find(|i| i.number == note.number).unwrap().status(&all), Status::CreditNote);
+    assert_eq!(received(&all, day("2026-11-01"), day("2026-11-30")).get("service"), Some(&-100_000), "a negative receipt on its day");
+    assert!(received(&all, day("2026-10-01"), day("2026-11-30")).is_empty(), "nets to nothing");
+    assert!(add_payment(&place.invoices(), DESK, &note.number, Payment { date: "2026-11-06".into(), amount: 100_001, means: "transfer".into(), ..Payment::default() }, &tr).is_err(), "never more than it pays back");
+    // Paid back in an amount said since: "Paid back" covers the rest, once.
+    add_payment(&place.invoices(), DESK, &note.number, Payment { date: "2026-11-06".into(), amount: 40_000, means: "transfer".into(), ..Payment::default() }, &tr).unwrap();
+    let all = all_in(&place.invoices());
+    assert_eq!(all.iter().find(|i| i.number == note.number).unwrap().paid(), 100_000);
 }
 
 /// A draft's service day (F24): the day of issue when nothing says it,
@@ -641,4 +728,163 @@ fn each_preset_prints_what_it_requires() {
             }
         }
     }
+}
+
+/// Where a client is (the second review, G2, G8, G11): without a profile, a
+/// business whatever its card says; Monaco is France for VAT and prints as
+/// Monaco; Morocco is outside the EU; a country Sioul does not know is
+/// asked for; a VAT number's prefix tells the country an address does not;
+/// an identifier counts only when it is printed.
+#[test]
+fn where_a_client_is() {
+    let on = day("2026-11-16");
+    let fr = Translator::new("fr");
+    let mut liable = french("liable");
+    liable.ids.push(IdSetting { kind: "vat".into(), value: crate::invoice::ids::vat_fr_of(SIREN).unwrap(), printed: true });
+    let client_of = |address: &str| {
+        let card = Contact { uid: "c-1".into(), name: "Léa Exemple".into(), addresses: vec![Labeled { label: String::new(), value: address.into() }], ..Contact::default() };
+        crate::clients::resolve("sioul:contact/c-1", &Clients::default(), std::slice::from_ref(&card)).0
+    };
+    assert_eq!(crate::clients::resolve("Garage Exemple SARL", &Clients::default(), &[]).0.kind, "business", "a name alone");
+    let monaco = client_of("1 avenue de l’Exemple\n98000 Monaco\nMonaco");
+    assert_eq!((monaco.kind.as_str(), monaco.address.country.as_str()), ("business", "MC"), "a card without an organisation");
+    let mut draft = fresh("fr");
+    draft.client = monaco;
+    draft.lines = vec![Line::of_time("Conseil", 60, 9000, "S", 0)];
+    refresh(&mut draft, &liable, on);
+    assert_eq!((draft.lines[0].category.as_str(), draft.lines[0].rate), ("S", 2000), "French VAT in Monaco");
+    assert!(draft.notes.iter().any(|n| n.legal == "penalties"), "a business's lines");
+    let page = html(&draft, &fr);
+    assert!(page.contains("Monaco") && !page.contains("259-1"), "{page}");
+    let franchise = french("franchise");
+    refresh(&mut draft, &franchise, on);
+    assert!(html(&draft, &fr).contains("293 B"));
+    // Morocco: a service outside the EU, outside the scope; its name printed in the invoice's language.
+    draft.client = client_of("12 rue de l’Exemple\nCasablanca\nMaroc");
+    refresh(&mut draft, &liable, on);
+    assert_eq!((draft.lines[0].category.as_str(), draft.totals.tax), ("O", 0));
+    let page = html(&draft, &fr);
+    assert!(page.contains("259-1") && page.contains("Maroc") && !page.contains(">MA<"), "{page}");
+    // A country Sioul does not know: asked, never taken for France.
+    draft.client = client_of("1 Example Way\nNarnia");
+    refresh(&mut draft, &liable, on);
+    assert!(checks(&draft, &liable, on, &[]).iter().any(|c| c.required && c.text.contains("pays du client")), "{:?}", checks(&draft, &liable, on, &[]));
+    // An address without its country, a Belgian VAT number: Belgium.
+    draft.client = Client { kind: "business".into(), name: "Atelier Bruxelles".into(), address: Address::from_text("Rue de l’Exemple 1\n1000 Bruxelles"), ids: vec![Identifier { kind: "vat".into(), value: "BE0417497106".into(), printed: true }], ..Client::default() };
+    refresh(&mut draft, &liable, on);
+    assert_eq!(draft.lines[0].category, "AE");
+    // The issuer's VAT number kept off the page (G11): asked all the same on a reverse-charge invoice.
+    let mut hidden = french("franchise");
+    hidden.ids.push(IdSetting { kind: "vat".into(), value: crate::invoice::ids::vat_fr_of(SIREN).unwrap(), printed: false });
+    refresh(&mut draft, &hidden, on);
+    assert!(checks(&draft, &hidden, on, &[]).iter().any(|c| c.required && c.text.contains("TVA intracommunautaire")), "{:?}", checks(&draft, &hidden, on, &[]));
+    // Belgium under its franchise, a service to a business outside the EU (G17): its words asked.
+    let belgian = InvoiceSettings { preset: "be".into(), name: "Atelier Exemple".into(), address: "Rue de l’Exemple 1".into(), postcode: "1000".into(), city: "Bruxelles".into(), tax: vec![TaxSetting { from: String::new(), scheme: "franchise".into(), mention: String::new() }], ..InvoiceSettings::default() };
+    draft.client = client_of("12 rue de l’Exemple\nCasablanca\nMaroc");
+    refresh(&mut draft, &belgian, on);
+    assert_eq!(draft.lines[0].category, "O");
+    assert!(checks(&draft, &belgian, on, &[]).iter().any(|c| c.required && c.text.contains("hors de l’UE")), "{:?}", checks(&draft, &belgian, on, &[]));
+}
+
+/// Drafts (the second review, G12): a draft's client follows its profile
+/// until it is issued; a draft issued already (a crash before it went) is
+/// refused and taken out; a sync app's conflicted copy of a draft is
+/// listed, said a copy, and discarded.
+#[test]
+fn drafts_follow_their_profile_and_are_never_issued_twice() {
+    let place = Place::new("drafts");
+    let s = french("franchise");
+    let on = day("2026-11-16");
+    let root = place.root.join("notes");
+    let file = crate::clients::file_in(&root);
+    let lumen = Profile { name: "Studio Lumen SARL".into(), address: business().address, ids: business().ids, ..Profile::default() };
+    let id = crate::clients::save(&file, &lumen).unwrap();
+    let mut draft = for_client(&s, &id, &Clients::load(&root).unwrap(), &[], "en", on);
+    draft.lines = vec![sold("Advice", 9000, Nature::Service)];
+    let saved = save_draft(&place.invoices(), &draft).unwrap();
+    crate::clients::save(&file, &Profile { id: id.clone(), name: "Studio Lumen SAS".into(), ..lumen }).unwrap();
+    let clients = Clients::load(&root).unwrap();
+    let time = place.time();
+    let steps = Steps { time: Some(&time), ledger: None, clients: Some((&clients, &[])) };
+    let made = issue(&place.invoices(), &saved.draft, &s, on, &here(), &steps, &en()).unwrap();
+    assert_eq!(made.client.name, "Studio Lumen SAS", "as its profile says it now");
+    // Its draft left behind (a crash before it went): refused, taken out.
+    save_draft(&place.invoices(), &saved).unwrap();
+    let again = issue(&place.invoices(), &saved.draft, &s, on, &here(), &steps, &en()).unwrap_err();
+    assert!(again.contains(&made.number), "{again}");
+    assert!(draft_in(&place.invoices(), &saved.draft).is_none());
+    // A conflicted copy of a draft: listed as a copy, never hidden; discarded.
+    let other = save_draft(&place.invoices(), &draft).unwrap();
+    let drafts = place.invoices().join(crate::invoice::DRAFTS);
+    std::fs::copy(drafts.join(format!("{}.toml", other.draft)), drafts.join(format!("{} (conflicted copy 2026-11-20 103000).toml", other.draft))).unwrap();
+    let listed = drafts_in(&place.invoices());
+    let copy = listed.iter().find(|d| !d.copy_of.is_empty()).unwrap();
+    assert_eq!((listed.len(), copy.copy_of.as_str()), (2, other.draft.as_str()));
+    assert!(remove_draft(&place.invoices(), &copy.draft.clone()).unwrap());
+    assert_eq!(drafts_in(&place.invoices()).len(), 1);
+}
+
+/// Deposits (the second review, G17): a deposit invoice prints no service
+/// day; a final invoice deducting deposits is cancelled whole by a credit
+/// note that deducts them too, which gives them back; a deposit is
+/// deducted by one final invoice at a time.
+#[test]
+fn a_cancelled_final_invoice_gives_its_deposits_back() {
+    let place = Place::new("deposits-back");
+    let s = french("franchise");
+    let first = issued(&place, &deposit(&s, fresh("en"), "Deposit, 30 % of the site", 90_000, day("2026-09-01")), &s, "2026-09-01");
+    assert!(first.period_from.is_empty() && first.period_to.is_empty(), "no service day on a deposit");
+    let mut last = fresh("en");
+    last.lines = vec![sold("The site", 300_000, Nature::Service)];
+    cite_deposits(&mut last, std::slice::from_ref(&first), &s, day("2026-10-01"));
+    let final_invoice = issued(&place, &last, &s, "2026-10-01");
+    let records = all_in(&place.invoices());
+    let mut second = fresh("en");
+    second.lines = vec![sold("The site, again", 300_000, Nature::Service)];
+    cite_deposits(&mut second, std::slice::from_ref(&first), &s, day("2026-10-02"));
+    assert!(checks(&second, &s, day("2026-10-02"), &records).iter().any(|c| c.required && c.text.contains(&final_invoice.number)), "deducted once");
+    let cancel = credit(&final_invoice, None, &[], &s, day("2026-10-03"));
+    assert_eq!(cancel.totals.due, final_invoice.totals.due, "its deposits deducted too");
+    assert!(checks(&cancel, &s, day("2026-10-03"), &records).iter().all(|c| !c.required), "{:?}", checks(&cancel, &s, day("2026-10-03"), &records));
+    issued(&place, &cancel, &s, "2026-10-03");
+    let records = all_in(&place.invoices());
+    assert!(checks(&second, &s, day("2026-10-04"), &records).iter().all(|c| !c.text.contains("Deposit invoice")), "given back");
+}
+
+/// A format-1 invoice credited line by line (G17): the line's time, found
+/// by its name among the time noted, is freed to be billed again.
+#[test]
+fn a_format_1_line_credited_frees_its_time() {
+    let place = Place::new("older-credit");
+    let s = french("franchise");
+    let entries = noted(&place, &[(1_790_000_000, 60, "Build the site"), (1_790_010_000, 30, "Call")]);
+    let keys: Vec<String> = entries.iter().map(|e| format!("\"{}\"", e.key)).collect();
+    let older = format!("number = \"2026-001\"\ndate = \"2026-10-05\"\ndue = \"2026-11-04\"\nproject = \"lumen\"\nproject_title = \"Studio Lumen\"\nclient = \"Studio Lumen\"\nclient_address = \"1 rue de l’Exemple\\n75002 Paris\"\nsessions = [{}]\ntotal_cents = 9000\ncurrency = \"EUR\"\n\n[[lines]]\nlabel = \"Build the site\"\nminutes = 60\nrate = 60.0\ncents = 6000\n\n[[lines]]\nlabel = \"Call\"\nminutes = 30\nrate = 60.0\ncents = 3000\n\n[issuer]\nname = \"Camille Exemple EI\"\naddress = \"2 place de l’Exemple\\n69001 Lyon\"\nsiret = \"{SIRET}\"\nvat = \"TVA non applicable, art. 293 B du CGI\"\npayment = \"IBAN FR76 0000\"\n", keys.join(", "));
+    std::fs::create_dir_all(place.invoices()).unwrap();
+    std::fs::write(place.invoices().join("2026-001.toml"), older).unwrap();
+    timelog::update_in(&place.time(), &entries.iter().map(|e| e.key.clone()).collect::<Vec<_>>(), |x| x.invoice = "2026-001".into()).unwrap();
+    let invoice = find_in(&place.invoices(), "2026-001").unwrap();
+    let call = credit(&invoice, Some(&[1]), &entries_of(&place), &s, day("2026-10-07"));
+    assert_eq!(call.lines[0].sessions.len(), 1);
+    issued(&place, &call, &s, "2026-10-07");
+    let marks: Vec<(u32, String)> = timelog::sessions_in(&place.time()).into_iter().map(|x| (x.minutes, x.invoice)).collect();
+    assert_eq!(marks, [(60, "2026-001".to_string()), (30, String::new())]);
+    assert!(billed(&all_in(&place.invoices())).len() == 1, "the call's time free");
+}
+
+/// A failed issue's undo takes its own number out of this device's journal,
+/// only while the journal says it (G14): a number given meanwhile stays.
+#[test]
+fn a_failed_issue_forgets_its_own_number_only() {
+    let place = Place::new("forget");
+    let dir = place.invoices();
+    let last = |n: u64| series::Last { last: n, number: format!("2026-{n:03}"), day: "2026-11-16".into() };
+    let sequence = "2026-{N:3}";
+    let journal = |n: u64| Journal { format: 1, series: BTreeMap::from([(sequence.to_string(), last(n))]) };
+    journal(13).save(&dir, DESK).unwrap();
+    forget_number(&dir, DESK, sequence, 12, Some(&last(11))).unwrap();
+    assert_eq!(Journal::own(&dir, DESK).unwrap().series[sequence].last, 13, "another's number stays");
+    journal(12).save(&dir, DESK).unwrap();
+    forget_number(&dir, DESK, sequence, 12, Some(&last(11))).unwrap();
+    assert_eq!(Journal::own(&dir, DESK).unwrap().series[sequence].last, 11);
 }

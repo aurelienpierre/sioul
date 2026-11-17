@@ -8,31 +8,75 @@
 //! device writes, so that the sync never makes a conflicted copy of it. An
 //! older Sioul lists only the folder's top files: it never sees these.
 //!
-//! Each file holds entries, each with its own id: payments, a bank line
-//! taken in as a payment's evidence, the day an invoice was sent, and
-//! removals (an Undo, a "Not paid"), which name the entry they take back,
-//! whichever device wrote it. Reading merges every device's file by union;
-//! a removal wins over what it removes.
+//! Each file holds entries, none naming another, so that nothing dangles
+//! when one is taken back:
+//! - `[[payment]]`: money received, with its amount: said by hand, its id
+//!   made of what it says (`hand_id`: the same payment said on two devices
+//!   is one); or a bank line's share for an invoice, its id made of the
+//!   line's key, the same on every device (`movements::line_key`), and the
+//!   invoice (`bank_id`: the same export taken in on two devices is one);
+//! - `[[settled]]`: "Paid", said on a day: what the other payments leave,
+//!   read each time, so that Paid said on two devices, or before or after
+//!   the bank's line, never counts twice (`settled_id`);
+//! - `[[removed]]`: an entry taken back by its id (an Undo, "Not paid",
+//!   "Not the same payment"), whichever device wrote it;
+//! - `[[sent]]`: the day an invoice was sent.
+//!
+//! Reading merges every device's file by union, an id once (the first
+//! file's word on it), a removal winning; a bank line split across
+//! invoices on two devices at once counts as the first file split it. Then
+//! each invoice's payments are read (`Lives::apply`): the bank's first,
+//! each taken in by a payment said by hand with room for it, of its very
+//! amount, else the nearest in days (never one said in cash), which keeps
+//! its own day and amount; then "Paid" covers what is left. On a credit
+//! note the same entries say money paid back (`Invoice::to_pay_back`).
 //!
 //! A format-1 record (before November 2026) is never written at all: its
-//! own `paid` reads as a payment from before (`older:<number>`), which an
+//! own `paid` reads as "Paid" on its due day (`older:<number>`), which an
 //! older Sioul ticking Paid changes, and which a removal here takes back.
+//!
+//! A file of a newer format is read where it can be, never written over,
+//! and said (`Lives::newer`).
 //!
 //! The books write here too (`books`): what a payment in another currency
 //! came to in the books' own (`booked`), and the books' notices told (a
 //! threshold's step), each once whichever device told it.
 
-use super::record::{Invoice, Payment};
+use super::record::{Invoice, Kind, Payment};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// The life's folder, in the invoices' folder.
 pub const FOLDER: &str = "life";
+/// The format of the life's files this Sioul writes.
+pub const FORMAT: u32 = 1;
 
 /// The id of a format-1 record's own word that it was paid.
 pub fn older_id(number: &str) -> String {
     format!("older:{number}")
+}
+
+/// A payment said by hand: what it says, and its rank among the same said
+/// on this device (two payments alike, both said here, are two).
+pub fn hand_id(invoice: &str, date: &str, amount: i64, means: &str, n: u32) -> String {
+    format!("hand:{invoice}/{date}/{amount}/{means}/{n}")
+}
+
+/// A bank line's share for an invoice: the line's key and the invoice.
+pub fn bank_id(line: &str, invoice: &str) -> String {
+    format!("bank:{line}/{invoice}")
+}
+
+/// "Paid" on an invoice, the `n`th time it is said after being taken back.
+pub fn settled_id(invoice: &str, n: u32) -> String {
+    format!("settled:{invoice}/{n}")
+}
+
+/// What a payment in another currency came to, said at `at` (Unix
+/// milliseconds) for the payment `payment`: the books' entry (`booked`).
+pub fn booked_id(payment: &str, at: i64) -> String {
+    format!("booked:{payment}/{at}")
 }
 
 /// One device's file.
@@ -43,7 +87,7 @@ pub struct Book {
     #[serde(default, rename = "payment")]
     pub payments: Vec<Paid>,
     #[serde(default)]
-    pub evidence: Vec<Evidence>,
+    pub settled: Vec<Settled>,
     #[serde(default)]
     pub removed: Vec<Removed>,
     #[serde(default)]
@@ -58,29 +102,37 @@ fn one() -> u32 {
     1
 }
 
-/// A payment on an invoice.
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
+/// Money received on an invoice, with its amount (on a credit note: paid back).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Paid {
     pub id: String,
     pub invoice: String,
+    /// The day it was paid (a processor's, for what came through one).
     pub date: String,
+    /// What the client paid, in cents.
     pub amount: i64,
     #[serde(default)]
     pub means: String,
-    /// The bank line's movement it came from; empty when said by hand.
+    /// The bank line it came from (`movements::line_key`); empty when said by hand.
     #[serde(default)]
-    pub movement: String,
+    pub line: String,
+    /// What a processor kept of it, in cents.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fee: i64,
 }
 
-/// A bank line taken in as the evidence of a payment said by hand: the
-/// payment is that line's money, never a second payment.
+/// "Paid", said on a day: what the other payments leave.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Evidence {
+pub struct Settled {
     pub id: String,
-    pub payment: String,
-    pub movement: String,
-    /// The bank's day.
+    pub invoice: String,
     pub date: String,
+    #[serde(default)]
+    pub means: String,
 }
 
 /// An entry taken back (by its id), whichever device wrote it.
@@ -124,37 +176,53 @@ fn device_file(dir: &Path, device: &str) -> PathBuf {
     dir.join(FOLDER).join(format!("{name}.toml"))
 }
 
-/// Every device's file of `dir`.
-pub fn books(dir: &Path) -> Vec<Book> {
-    let Ok(entries) = std::fs::read_dir(dir.join(FOLDER)) else { return Vec::new() };
+/// A file's `format`, as written (1 when it says none).
+pub(crate) fn format_of(text: &str) -> u32 {
+    text.parse::<toml::Table>().ok().and_then(|t| t.get("format").and_then(toml::Value::as_integer)).map_or(1, |f| u32::try_from(f).unwrap_or(u32::MAX))
+}
+
+/// Every device's file of `dir`, in their names' order, and those a newer
+/// Sioul wrote (read where they could be).
+fn read_books(dir: &Path) -> (Vec<Book>, Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir.join(FOLDER)) else { return (Vec::new(), Vec::new()) };
     let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
     paths.sort();
-    paths
-        .iter()
-        .filter_map(|p| {
-            let text = std::fs::read_to_string(p).ok()?;
-            match toml::from_str::<Book>(&text) {
-                Ok(book) => Some(book),
-                Err(e) => {
-                    eprintln!("Sioul: {}: an invoices' life file that does not read, left as it is: {e}", p.display());
-                    None
-                }
-            }
-        })
-        .collect()
+    let mut books = Vec::new();
+    let mut newer = Vec::new();
+    for path in paths {
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        if format_of(&text) > FORMAT {
+            eprintln!("Sioul: {}: written by a newer Sioul, read where it can be, never written here", path.display());
+            newer.push(path.clone());
+        }
+        match toml::from_str::<Book>(&text) {
+            Ok(book) => books.push(book),
+            Err(e) => eprintln!("Sioul: {}: an invoices' life file that does not read, left as it is: {e}", path.display()),
+        }
+    }
+    (books, newer)
+}
+
+/// Every device's file of `dir`.
+pub fn books(dir: &Path) -> Vec<Book> {
+    read_books(dir).0
 }
 
 /// What every device's files say, merged.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Lives {
-    /// Payments by invoice, each once, in the order written.
-    pub payments: BTreeMap<String, Vec<Payment>>,
+    /// Payments with an amount, by invoice, each id once, a removal winning.
+    pub payments: BTreeMap<String, Vec<Paid>>,
+    /// "Paid" said and not taken back, by invoice.
+    pub settled: BTreeMap<String, Vec<Settled>>,
     /// The day each invoice was sent (the first said).
     pub sent: BTreeMap<String, String>,
     /// Ids taken back.
     pub removed: BTreeSet<String>,
-    /// Each payment's evidence, by the payment's id: (evidence id, movement, bank's day).
-    pub evidence: BTreeMap<String, (String, String, String)>,
+    /// Every id written, taken back or not: a new entry never takes one.
+    pub ids: BTreeSet<String>,
+    /// Files a newer Sioul wrote: read where they could be, never written here.
+    pub newer: Vec<PathBuf>,
     /// What a payment in another currency came to in the books', by the payment's id (the last said).
     pub booked: BTreeMap<String, i64>,
     /// The books' notices told, by key.
@@ -164,32 +232,39 @@ pub struct Lives {
 impl Lives {
     /// Every device's file of `dir`, merged by union.
     pub fn load(dir: &Path) -> Lives {
-        Lives::of(&books(dir))
+        let (books, newer) = read_books(dir);
+        Lives { newer, ..Lives::of(&books) }
     }
 
     pub fn of(books: &[Book]) -> Lives {
         let removed: BTreeSet<String> = books.iter().flat_map(|b| b.removed.iter().map(|r| r.id.clone())).collect();
-        let mut evidence: BTreeMap<String, (String, String, String)> = BTreeMap::new();
-        for e in books.iter().flat_map(|b| &b.evidence).filter(|e| !removed.contains(&e.id)) {
-            evidence.entry(e.payment.clone()).or_insert_with(|| (e.id.clone(), e.movement.clone(), e.date.clone()));
+        let mut ids: BTreeSet<String> = removed.clone();
+        // A bank line's shares, as the first file that took it in split it.
+        let mut line_book: BTreeMap<&str, usize> = BTreeMap::new();
+        for (n, book) in books.iter().enumerate() {
+            for p in book.payments.iter().filter(|p| !p.line.is_empty()) {
+                line_book.entry(p.line.as_str()).or_insert(n);
+            }
         }
         let mut seen: BTreeSet<String> = BTreeSet::new();
-        let mut payments: BTreeMap<String, Vec<Payment>> = BTreeMap::new();
-        for p in books.iter().flat_map(|b| &b.payments) {
-            if removed.contains(&p.id) || !seen.insert(p.id.clone()) {
+        let mut payments: BTreeMap<String, Vec<Paid>> = BTreeMap::new();
+        for (n, book) in books.iter().enumerate() {
+            for p in &book.payments {
+                ids.insert(p.id.clone());
+                let theirs = p.line.is_empty() || line_book.get(p.line.as_str()) == Some(&n);
+                if removed.contains(&p.id) || !theirs || !seen.insert(p.id.clone()) {
+                    continue;
+                }
+                payments.entry(p.invoice.clone()).or_default().push(p.clone());
+            }
+        }
+        let mut settled: BTreeMap<String, Vec<Settled>> = BTreeMap::new();
+        for s in books.iter().flat_map(|b| &b.settled) {
+            ids.insert(s.id.clone());
+            if removed.contains(&s.id) || !seen.insert(s.id.clone()) {
                 continue;
             }
-            let mut payment = Payment { id: p.id.clone(), date: p.date.clone(), amount: p.amount, means: p.means.clone(), movement: p.movement.clone() };
-            // A payment said by hand, its bank line found since: that line's day and movement.
-            if payment.movement.is_empty()
-                && let Some((_, movement, date)) = evidence.get(&p.id)
-            {
-                payment.movement = movement.clone();
-                if !date.is_empty() {
-                    payment.date = date.clone();
-                }
-            }
-            payments.entry(p.invoice.clone()).or_default().push(payment);
+            settled.entry(s.invoice.clone()).or_default().push(s.clone());
         }
         let mut sent: BTreeMap<String, String> = BTreeMap::new();
         for s in books.iter().flat_map(|b| &b.sent) {
@@ -199,95 +274,250 @@ impl Lives {
             }
         }
         // The last said of each payment.
+        ids.extend(books.iter().flat_map(|b| &b.booked).map(|b| b.id.clone()));
         let mut said: Vec<&Booked> = books.iter().flat_map(|b| &b.booked).filter(|b| !removed.contains(&b.id)).collect();
         said.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
         let booked: BTreeMap<String, i64> = said.into_iter().map(|b| (b.payment.clone(), b.amount)).collect();
         let told: BTreeSet<String> = books.iter().flat_map(|b| &b.told).map(|t| t.key.clone()).collect();
-        Lives { payments, sent, removed, evidence, booked, told }
+        Lives { payments, settled, sent, removed, ids, newer: Vec::new(), booked, told }
     }
 
-    /// The records given their life: their payments, the day they were
-    /// sent; a format-1 record's own "paid", unless taken back, as a
-    /// payment from before of its whole amount.
+    /// The records given their life: their payments as read (`counted`),
+    /// the day they were sent. Invoices first, then credit notes, whose
+    /// money to pay back follows what their invoice was paid.
     pub fn apply(&self, records: &mut [Invoice]) {
-        for invoice in records.iter_mut().filter(|i| !i.unreadable) {
-            let mut payments = Vec::new();
-            if let Some(older) = invoice.older.as_ref().filter(|o| o.paid) {
-                let id = older_id(&invoice.number);
-                if !self.removed.contains(&id) {
-                    let _ = older;
-                    let date = if invoice.due.is_empty() { invoice.date.clone() } else { invoice.due.clone() };
-                    let mut payment = Payment { id: id.clone(), date, amount: invoice.totals.due, means: String::new(), movement: String::new() };
-                    if let Some((_, movement, day)) = self.evidence.get(&id) {
-                        payment.movement = movement.clone();
-                        if !day.is_empty() {
-                            payment.date = day.clone();
-                        }
-                    }
-                    payments.push(payment);
-                }
+        let view: &[Invoice] = records;
+        // Each invoice's credit notes, by day: "Paid" covers what it asked the day it was said.
+        let mut credits: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
+        for note in view.iter().filter(|c| c.kind == Kind::CreditNote && !c.number.is_empty()) {
+            if let Some(cited) = &note.corrects {
+                credits.entry(cited.number.clone()).or_default().push((note.date.clone(), note.totals.due));
             }
-            payments.extend(self.payments.get(&invoice.number).cloned().unwrap_or_default());
-            invoice.payments = payments;
+        }
+        for invoice in records.iter_mut().filter(|i| !i.unreadable && i.kind != Kind::CreditNote) {
+            let due = invoice.totals.due;
+            let notes = credits.get(&invoice.number).cloned().unwrap_or_default();
+            let asked = move |day: &str| due - notes.iter().filter(|(on, _)| on.as_str() <= day).map(|(_, amount)| amount).sum::<i64>();
+            invoice.payments = self.counted(invoice, &asked);
             invoice.sent = self.sent.get(&invoice.number).cloned().unwrap_or_default();
         }
+        let view: &[Invoice] = records;
+        let shares: Vec<(usize, i64)> = view.iter().enumerate().filter(|(_, r)| !r.unreadable && r.kind == Kind::CreditNote).map(|(n, r)| (n, r.pay_back_share(view))).collect();
+        for (n, share) in shares {
+            let note = &mut records[n];
+            note.payments = self.counted(note, &|_: &str| share);
+            note.sent = self.sent.get(&note.number).cloned().unwrap_or_default();
+        }
+    }
+
+    /// One invoice's payments as read: the bank's, each taken in by a
+    /// payment said by hand with room for it (of its very amount first,
+    /// else the nearest in days; never one in cash), whose day and amount
+    /// stay; what is left of a bank line beyond them counts as its own;
+    /// then "Paid" (a format-1 record's own word among them) covers what is
+    /// left of what the invoice asked on the first day it was said
+    /// (`asked`: its amount less the credit notes issued by then; on a
+    /// credit note, what it pays back), on that day.
+    fn counted(&self, invoice: &Invoice, asked: &dyn Fn(&str) -> i64) -> Vec<Payment> {
+        let all: &[Paid] = self.payments.get(&invoice.number).map_or(&[], Vec::as_slice);
+        let mut bank: Vec<&Paid> = all.iter().filter(|p| !p.line.is_empty()).collect();
+        bank.sort_by(|a, b| (a.date.as_str(), a.id.as_str()).cmp(&(b.date.as_str(), b.id.as_str())));
+        let hand: Vec<&Paid> = all.iter().filter(|p| p.line.is_empty()).collect();
+        let mut room: Vec<i64> = hand.iter().map(|h| if h.means == "cash" { 0 } else { h.amount.max(0) }).collect();
+        let mut found: Vec<String> = vec![String::new(); hand.len()];
+        let mut out = Vec::new();
+        for b in bank {
+            let mut rest = b.amount;
+            while rest > 0 {
+                let open: Vec<usize> = (0..hand.len()).filter(|i| room[*i] > 0).collect();
+                let near = |i: &&usize| (days_apart(&hand[**i].date, &b.date), hand[**i].id.as_str());
+                let Some(&i) = open.iter().filter(|i| room[**i] == rest).min_by_key(near).or_else(|| open.iter().min_by_key(near)) else { break };
+                let take = room[i].min(rest);
+                room[i] -= take;
+                rest -= take;
+                if found[i].is_empty() {
+                    found[i] = b.line.clone();
+                }
+            }
+            if rest > 0 {
+                out.push(Payment { id: b.id.clone(), date: b.date.clone(), amount: rest, means: if b.means.is_empty() { "transfer".into() } else { b.means.clone() }, line: b.line.clone(), fee: b.fee });
+            }
+        }
+        for (h, line) in hand.iter().zip(found) {
+            out.push(Payment { id: h.id.clone(), date: h.date.clone(), amount: h.amount, means: h.means.clone(), line, fee: 0 });
+        }
+        let mut said: Vec<Settled> = self.settled.get(&invoice.number).cloned().unwrap_or_default();
+        if invoice.older.as_ref().is_some_and(|o| o.paid) && !self.removed.contains(&older_id(&invoice.number)) {
+            let date = if invoice.due.is_empty() { invoice.date.clone() } else { invoice.due.clone() };
+            said.push(Settled { id: older_id(&invoice.number), invoice: invoice.number.clone(), date, means: String::new() });
+        }
+        if let Some(first) = said.iter().min_by(|a, b| (a.date.as_str(), a.id.as_str()).cmp(&(b.date.as_str(), b.id.as_str()))) {
+            let left = asked(&first.date) - out.iter().map(|p| p.amount).sum::<i64>();
+            if left > 0 {
+                out.push(Payment { id: first.id.clone(), date: first.date.clone(), amount: left, means: first.means.clone(), line: String::new(), fee: 0 });
+            }
+        }
+        out.sort_by(|a, b| (a.date.as_str(), a.id.as_str()).cmp(&(b.date.as_str(), b.id.as_str())));
+        out
+    }
+
+    /// What a new bank line cannot pay again on `number`: what the bank's
+    /// lines paid it, and what was said paid in cash, which no bank line
+    /// ever takes in. Payments said by hand otherwise, and "Paid", are no
+    /// bound: a bank line is their evidence.
+    pub fn bound(&self, number: &str) -> i64 {
+        self.payments.get(number).map_or(0, |all| all.iter().filter(|p| !p.line.is_empty() || p.means == "cash").map(|p| p.amount).sum())
+    }
+
+    /// Whether `id` was ever written, taken back or not.
+    pub fn knows(&self, id: &str) -> bool {
+        self.ids.contains(id)
+    }
+
+    /// The next rank of entries whose ids are `prefix` and a number.
+    pub fn next_rank(&self, prefix: &str) -> u32 {
+        self.ids.iter().filter_map(|id| id.strip_prefix(prefix)?.parse::<u32>().ok()).max().unwrap_or(0) + 1
+    }
+
+    /// The ids of what was said by hand on `number`, still standing: its
+    /// payments with no bank line, "Paid", a format-1 record's own word.
+    pub fn said_by_hand(&self, number: &str, older_paid: bool) -> Vec<String> {
+        let payments = self.payments.get(number).into_iter().flatten().filter(|p| p.line.is_empty()).map(|p| p.id.clone());
+        let settled = self.settled.get(number).into_iter().flatten().map(|s| s.id.clone());
+        let older = (older_paid && !self.removed.contains(&older_id(number))).then(|| older_id(number));
+        payments.chain(settled).chain(older).collect()
+    }
+
+    /// The ids of the payments the bank line `line` made, still standing, on any invoice.
+    pub fn of_line(&self, line: &str) -> Vec<String> {
+        self.payments.values().flatten().filter(|p| p.line == line).map(|p| p.id.clone()).collect()
+    }
+}
+
+/// How many days apart two days are (a day that does not read: far).
+fn days_apart(a: &str, b: &str) -> i64 {
+    match (a.parse::<jiff::civil::Date>(), b.parse::<jiff::civil::Date>()) {
+        (Ok(a), Ok(b)) => i64::from((a - b).get_days().abs()),
+        _ => i64::MAX,
     }
 }
 
 /// This device's own file changed by `change`, under its lock: read,
-/// changed, written whole. No other device writes it.
+/// changed, written whole (`write_whole`). No other device writes it; one
+/// a newer Sioul wrote is never written over.
 pub fn change_own<R>(dir: &Path, device: &str, change: impl FnOnce(&mut Book) -> R) -> Result<R, String> {
     let path = device_file(dir, device);
     crate::filelock::with_lock(&path, || {
         let mut book = match std::fs::read_to_string(&path) {
+            Ok(text) if format_of(&text) > FORMAT => return Err(format!("{}: written by a newer Sioul; update Sioul on this device to change it.", path.display())),
             Ok(text) => toml::from_str::<Book>(&text).map_err(|e| format!("{}: {e}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Book::default(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
         };
         let out = change(&mut book);
-        book.format = 1;
+        book.format = FORMAT;
         let text = toml::to_string(&book).map_err(|e| e.to_string())?;
         super::write_whole(&path, &text)?;
         Ok(out)
     })
 }
 
-/// A new entry's id.
-pub fn new_id() -> String {
-    crate::ids::new()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::invoice::record::Totals;
 
-    /// Two devices write their own files; reading merges them; a removal
-    /// written on one device takes back the other's payment; a bank line
-    /// taken in as evidence gives a hand payment its movement and day.
+    fn dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sioul-lives-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn paid(invoice: &str, date: &str, amount: i64, line: &str) -> Paid {
+        let id = if line.is_empty() { hand_id(invoice, date, amount, "transfer", 1) } else { bank_id(line, invoice) };
+        Paid { id, invoice: invoice.into(), date: date.into(), amount, means: "transfer".into(), line: line.into(), fee: 0 }
+    }
+
+    fn settled(invoice: &str, date: &str) -> Settled {
+        Settled { id: settled_id(invoice, 1), invoice: invoice.into(), date: date.into(), means: "transfer".into() }
+    }
+
+    fn read(books: &[Book], due: i64) -> Invoice {
+        let mut records = vec![Invoice { number: "2026-005".into(), kind: Kind::Invoice, totals: Totals { due, ..Totals::default() }, ..Invoice::default() }];
+        Lives::of(books).apply(&mut records);
+        records.remove(0)
+    }
+
+    /// One payment said on two devices before they exchange counts once
+    /// (the second review, G1): Paid on the phone and the bank's line on
+    /// the desk; Paid on both; the same export on both; the same payment
+    /// typed on both.
+    #[test]
+    fn a_payment_counts_once_whatever_the_devices_did() {
+        let phone = Book { settled: vec![settled("2026-005", "2026-11-10")], ..Book::default() };
+        let desk = Book { payments: vec![paid("2026-005", "2026-11-12", 120_000, "acct/2026-11-12/120000/ab12")], ..Book::default() };
+        let both = read(&[desk.clone(), phone.clone()], 120_000);
+        assert_eq!((both.paid(), both.payments.len(), both.payments[0].line.as_str()), (120_000, 1, "acct/2026-11-12/120000/ab12"));
+        assert_eq!(read(&[phone.clone(), phone.clone()], 120_000).paid(), 120_000, "Paid on two devices");
+        assert_eq!(read(&[desk.clone(), desk.clone()], 120_000).paid(), 120_000, "the same export taken in twice");
+        let typed = Book { payments: vec![paid("2026-005", "2026-11-10", 50_000, "")], ..Book::default() };
+        assert_eq!(read(&[typed.clone(), typed], 120_000).paid(), 50_000, "the same payment typed on two devices");
+        // A bank line split on two devices at once: as the first file split it.
+        let split = Book { payments: vec![Paid { amount: 70_000, ..paid("2026-005", "2026-11-12", 0, "acct/2026-11-12/120000/ab12") }, paid("2026-006", "2026-11-12", 50_000, "acct/2026-11-12/120000/ab12")], ..Book::default() };
+        let lives = Lives::of(&[desk, split]);
+        assert!(!lives.payments.contains_key("2026-006"), "the desk's split stands");
+    }
+
+    /// A bank line taken in on one device while "Paid" is taken back on
+    /// another (G3): the bank's payment stays, nothing dangles. An older
+    /// Sioul's Paid on a format-1 invoice the bank paid (G7): once.
+    #[test]
+    fn nothing_dangles_when_an_entry_is_taken_back() {
+        let phone = Book { settled: vec![settled("2026-005", "2026-11-10")], removed: vec![Removed { id: settled_id("2026-005", 1) }], ..Book::default() };
+        let desk = Book { payments: vec![paid("2026-005", "2026-11-12", 80_000, "acct/2026-11-12/80000/cd34")], ..Book::default() };
+        let read_back = read(&[desk.clone(), phone], 80_000);
+        assert_eq!((read_back.paid(), read_back.payments[0].line.as_str()), (80_000, "acct/2026-11-12/80000/cd34"));
+        let mut older = vec![Invoice { number: "2026-005".into(), kind: Kind::Invoice, due: "2026-10-01".into(), totals: Totals { due: 80_000, ..Totals::default() }, older: Some(crate::invoice::record::Older { paid: true, ..Default::default() }), ..Invoice::default() }];
+        Lives::of(std::slice::from_ref(&desk)).apply(&mut older);
+        assert_eq!((older[0].paid(), older[0].payments.len()), (80_000, 1));
+    }
+
+    /// The bank's line and payments said by hand in instalments (G5): each
+    /// line taken in by the one of its very amount, else the nearest in
+    /// days; the hand payment's day kept; cash never taken in.
+    #[test]
+    fn a_bank_line_is_the_evidence_of_its_own_amount() {
+        let hand = Book { payments: vec![paid("2026-005", "2026-10-01", 20_000, ""), paid("2026-005", "2026-11-03", 30_000, "")], ..Book::default() };
+        let bank = Book { payments: vec![paid("2026-005", "2026-11-04", 30_000, "acct/2026-11-04/30000/ef56")], ..Book::default() };
+        let read_back = read(&[bank, hand], 50_000);
+        let days: Vec<(&str, i64, &str)> = read_back.payments.iter().map(|p| (p.date.as_str(), p.amount, p.line.as_str())).collect();
+        assert_eq!(days, [("2026-10-01", 20_000, ""), ("2026-11-03", 30_000, "acct/2026-11-04/30000/ef56")]);
+        // Paid by hand at once (€500), then two transfers: the hand payment's evidence both.
+        let whole = Book { payments: vec![paid("2026-005", "2026-11-01", 50_000, "")], ..Book::default() };
+        let two = Book { payments: vec![paid("2026-005", "2026-11-02", 30_000, "acct/a"), paid("2026-005", "2026-11-05", 20_000, "acct/b")], ..Book::default() };
+        assert_eq!(read(&[two, whole], 50_000).paid(), 50_000);
+        // In cash: a transfer is another payment.
+        let cash = Book { payments: vec![Paid { means: "cash".into(), ..paid("2026-005", "2026-11-01", 20_000, "") }], ..Book::default() };
+        let transfer = Book { payments: vec![paid("2026-005", "2026-11-02", 20_000, "acct/c")], ..Book::default() };
+        assert_eq!(read(&[transfer, cash], 50_000).paid(), 40_000);
+    }
+
+    /// Two devices write their own files; a newer format is read, never written over (G13).
     #[test]
     fn each_device_writes_its_own_life() {
-        let dir = std::env::temp_dir().join(format!("sioul-lives-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let paid = |id: &str, amount: i64, movement: &str| Paid { id: id.into(), invoice: "2026-005".into(), date: "2026-11-10".into(), amount, means: "transfer".into(), movement: movement.into() };
-        change_own(&dir, "desk-1", |b| b.payments.push(paid("a", 50_000, ""))).unwrap();
-        change_own(&dir, "phone-2", |b| {
-            b.payments.push(paid("b", 20_000, "sioul:movement/x"));
-            b.payments.push(paid("a", 50_000, ""));
-        })
-        .unwrap();
+        let dir = dir("own");
+        change_own(&dir, "desk-1", |b| b.payments.push(paid("2026-005", "2026-11-10", 50_000, ""))).unwrap();
+        change_own(&dir, "phone-2", |b| b.settled.push(settled("2026-005", "2026-11-11"))).unwrap();
         let lives = Lives::load(&dir);
-        assert_eq!(lives.payments["2026-005"].iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["a", "b"], "each once");
-        change_own(&dir, "phone-2", |b| {
-            b.removed.push(Removed { id: "b".into() });
-            b.evidence.push(Evidence { id: "e".into(), payment: "a".into(), movement: "sioul:movement/y".into(), date: "2026-11-12".into() });
-        })
-        .unwrap();
-        let lives = Lives::load(&dir);
-        let a = &lives.payments["2026-005"];
-        assert_eq!(a.len(), 1);
-        assert_eq!((a[0].movement.as_str(), a[0].date.as_str()), ("sioul:movement/y", "2026-11-12"));
+        assert_eq!((lives.payments["2026-005"].len(), lives.settled["2026-005"].len()), (1, 1));
         let files = std::fs::read_dir(dir.join(FOLDER)).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "toml")).count();
         assert_eq!(files, 2, "one file per device");
+        let laptop = dir.join(FOLDER).join("laptop-3.toml");
+        std::fs::write(&laptop, "format = 2\n\n[[payment]]\nid = \"x\"\ninvoice = \"2026-006\"\ndate = \"2026-11-12\"\namount = 100\nwhat = \"something new\"\n").unwrap();
+        let lives = Lives::load(&dir);
+        assert_eq!((lives.newer.len(), lives.payments.contains_key("2026-006")), (1, true), "read where it can be, and said");
+        assert!(change_own(&dir, "laptop-3", |b| b.sent.clear()).is_err(), "never written over");
+        assert!(std::fs::read_to_string(&laptop).unwrap().contains("something new"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

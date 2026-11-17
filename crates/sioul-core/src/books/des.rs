@@ -80,7 +80,11 @@ pub fn between(input: &Input, from: Date, to: Date) -> Vec<Des> {
     let (first, last) = (from.first_of_month(), to.last_of_month());
     let mut months: std::collections::BTreeMap<Date, Vec<Covered>> = std::collections::BTreeMap::new();
     let mut elsewhere: std::collections::BTreeMap<Date, Vec<String>> = std::collections::BTreeMap::new();
-    for invoice in input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable) {
+    // Only a client in another member state: the reverse charge of a domestic
+    // operation (France's subcontracting in construction) is no DES's. Where
+    // the client is, by the one table of countries (`books::zone`).
+    let other_member = |i: &Invoice| super::zone(i) == "eu";
+    for invoice in input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable && other_member(i)) {
         // A credit note in the month it is issued; any other record in its service's.
         let credit = invoice.kind == Kind::CreditNote;
         let when = if credit { invoice.date.get(..10).and_then(|d| d.parse::<Date>().ok()) } else { service_day(invoice) };

@@ -467,11 +467,19 @@ pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
     for given in args.raw("lines").and_then(serde_json::Value::as_array).into_iter().flatten() {
         let description = given["description"].as_str().map(str::trim).filter(|d| !d.is_empty()).ok_or("Each line has a “description”.")?;
         let price = given["price"].as_f64().filter(|p| p.is_finite() && p.abs() < 1e9).ok_or("Each line has a “price”, a number.")?;
+        // EN 16931 takes no unit price below zero (BR-27): less to pay is a credit note, made from the invoice.
+        if price < 0.0 {
+            return Err(format!("“{}”: a price below zero is no invoice line. Bill what is done; a credit note answers an invoice issued.", one_line(description)));
+        }
         let quantity = given["quantity"].as_f64().filter(|q| q.is_finite() && *q > 0.0 && *q < 1e9).unwrap_or(1.0);
-        let unit = given["unit"].as_str().map(str::trim).filter(|u| !u.is_empty() && u.len() <= 3 && u.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("C62");
+        // UN/ECE Recommendation 20's codes Sioul offers, from a code or a word ("hrs", "jours"); any other refused.
+        let unit = match given["unit"].as_str().map(str::trim).filter(|u| !u.is_empty()) {
+            None => "C62",
+            Some(word) => invoice::units::code(word).ok_or_else(|| format!("“{}”: no unit Sioul knows. Use HUR (an hour), MIN, DAY, C62 (a unit), MON, KMT or LS (a lump sum).", one_line(word)))?,
+        };
         let nature = if given["goods"].as_bool().unwrap_or(false) { Nature::Goods } else { Nature::Service };
         let (category, rate) = life::default_tax(&issuer, &draft.client, nature, today);
-        let line = Line { quantity: (quantity * 1000.0).round() as i64, unit: unit.to_uppercase(), price: sioul_core::money::Money::from_units(price).cents(), base: 1, nature, ..Line::of_time(description, 0, 0, &category, rate) };
+        let line = Line { quantity: (quantity * 1000.0).round() as i64, unit: unit.to_string(), price: sioul_core::money::Money::from_units(price).cents(), base: 1, nature, ..Line::of_time(description, 0, 0, &category, rate) };
         draft.lines.push(line);
     }
     if draft.lines.is_empty() {

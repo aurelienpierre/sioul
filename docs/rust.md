@@ -18,13 +18,13 @@ default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync",
 [workspace.package]
 version = "0.0.5"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.92"
 ```
 
 - **`default-members`**: what `cargo build` and `cargo test` take when no package is named. The window is left out, so that a computer without Qt builds the rest. `-p` names one: `cargo build -p sioul-app`.
 - **`version`**: Sioul's version, once for every crate (each says `version.workspace = true`); Android's build reads it there too ([android-basics.md](android-basics.md#building-the-apk)).
 - **`edition = "2024"`**: the edition of the language the code is written in. A few things in the code are new in it: `unsafe extern "C"` blocks, `#[unsafe(no_mangle)]`, and `if let … && let …` chains (below). The [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/index.html) lists the changes.
-- **`rust-version = "1.89"`**: the oldest compiler that builds Sioul.
+- **`rust-version = "1.92"`**: the oldest compiler that builds Sioul (krilla, which writes the invoices' PDFs, asks for it).
 - **`[workspace.dependencies]`**: each dependency's version is set once, at the root; a crate says `serde.workspace = true` in its own `Cargo.toml` to take it.
 - **Profiles**: `[profile.dev]` keeps debug builds small (line tables only, no debug information for dependencies), and builds the cryptography crates optimised even in debug builds, since a passphrase's key derivation (Argon2) takes seconds without it.
 

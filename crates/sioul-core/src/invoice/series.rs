@@ -29,6 +29,8 @@ pub const OLD_JOURNAL: &str = "series.toml";
 pub const LOCK: &str = "numbering";
 /// The usual pattern: the year, a dash, three digits at least.
 pub const PATTERN: &str = "{YYYY}-{N:3}";
+/// The format of the journals this Sioul writes.
+pub const FORMAT: u32 = 1;
 
 /// How often numbers start again from 1.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -220,6 +222,7 @@ impl Journal {
         paths.sort();
         paths.push(dir.join(OLD_JOURNAL));
         let mut out = Journal::default();
+        // A newer Sioul's journal read where it can be: its last numbers count all the same.
         for journal in paths.iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Journal>(&t).ok()) {
             for (sequence, last) in journal.series {
                 if out.series.get(&sequence).is_none_or(|kept| kept.last < last.last) {
@@ -242,10 +245,24 @@ impl Journal {
         std::fs::read_to_string(Journal::own_path(dir, device)).ok().and_then(|t| toml::from_str(&t).ok())
     }
 
-    /// Written as this device's own journal, whole, through a file beside it.
+    /// Written as this device's own journal, whole, through a file beside
+    /// it; never over one a newer Sioul wrote.
     pub fn save(&self, dir: &Path, device: &str) -> Result<(), String> {
-        let text = toml::to_string(&Journal { format: 1, ..self.clone() }).map_err(|e| e.to_string())?;
-        super::write_whole(&Journal::own_path(dir, device), &text)
+        let path = Journal::own_path(dir, device);
+        if std::fs::read_to_string(&path).is_ok_and(|t| super::lives::format_of(&t) > FORMAT) {
+            return Err(format!("{}: written by a newer Sioul; update Sioul on this device to issue invoices here.", path.display()));
+        }
+        let text = toml::to_string(&Journal { format: FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
+        super::write_whole(&path, &text)
+    }
+
+    /// The journals of `dir` a newer Sioul wrote: read where they can be, never written here.
+    pub fn newer(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        paths.push(dir.join(OLD_JOURNAL));
+        paths.retain(|p| std::fs::read_to_string(p).is_ok_and(|t| super::lives::format_of(&t) > FORMAT));
+        paths.sort();
+        paths
     }
 
     /// Each sequence's last number, as a device's claim carries them.

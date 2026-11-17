@@ -50,8 +50,10 @@ pub struct InvoiceRow {
     pub kind: String,
     /// "issued", "sent", "partly-paid", "paid", "credited", "credit-note".
     pub status: String,
-    /// A credit note's words: what it credits; empty for an invoice.
+    /// A credit note's words: what it credits, what it has to pay back; empty for an invoice.
     pub note: String,
+    /// A credit note with money to pay back, or paid back: its box says "Paid back".
+    pub pay_back: bool,
 }
 
 /// A project's page.
@@ -297,11 +299,22 @@ pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[I
                     Some(cited) if i.kind == crate::invoice::Kind::CreditNote => {
                         let mut args = crate::i18n::args();
                         args.set("number", cited.number.clone());
-                        tr.text("invoice-credits", Some(&args))
+                        let credits = tr.text("invoice-credits", Some(&args));
+                        let back = i.to_pay_back(invoices);
+                        if back > 0 {
+                            let mut args = crate::i18n::args();
+                            args.set("amount", tr.money_in(crate::money::Money(back), &i.currency));
+                            format!("{credits} · {}", tr.text("invoice-to-pay-back", Some(&args)))
+                        } else {
+                            credits
+                        }
                     }
                     _ => String::new(),
                 };
-                InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money_in(i.total(), &i.currency), paid: status.settled(), kind: i.kind.id().into(), status: status.id().into(), note }
+                // A credit note's box: "Paid back", while it has money to pay back or paid some.
+                let pay_back = i.kind == crate::invoice::Kind::CreditNote && i.pay_back_share(invoices) > 0;
+                let paid = if i.kind == crate::invoice::Kind::CreditNote { pay_back && status == crate::invoice::Status::CreditNote } else { status.settled() };
+                InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money_in(i.total(), &i.currency), paid, kind: i.kind.id().into(), status: status.id().into(), note, pay_back }
             })
             .collect(),
     }

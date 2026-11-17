@@ -197,10 +197,12 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
 /// names (`sioul:contact/<uid>`) or of the name it gives; without one, the
 /// contact's card (its organisation and name, its first postal address, its
 /// country when the address's last line names one), or the name as written.
-/// Without a profile, the client's kind is guessed: a card with an
-/// organisation is a business, else a person; the invoice keeps the guess
-/// and says it, and a profile corrects it. The profile comes back too, for
-/// its language, currency and terms.
+/// Without a profile, the client is billed as a business, whatever its card
+/// says: the side that keeps the lines a business's invoice must carry,
+/// harmless on a person's (the second review, G8); only a profile saying
+/// "consumer" bills a person. The draft says the kind, so that a profile
+/// can change it. The profile comes back too, for its language, currency
+/// and terms.
 pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) -> (Client, Option<&'a Profile>) {
     let reference = reference.trim();
     let uid = reference.strip_prefix("sioul:contact/").map(crate::notes::decode);
@@ -230,7 +232,7 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
     match contact {
         Some(card) => (
             Client {
-                kind: if card.org.trim().is_empty() { "consumer".into() } else { "business".into() },
+                kind: "business".into(),
                 name: card_name(card),
                 address: card_address(&card.addresses.first().map(|a| a.value.clone()).unwrap_or_default()),
                 email: card.emails.first().map(|e| e.value.clone()).unwrap_or_default(),
@@ -238,19 +240,87 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
             },
             None,
         ),
-        None => (Client { kind: "consumer".into(), name: reference.to_string(), ..Client::default() }, None),
+        None => (Client { kind: "business".into(), name: reference.to_string(), ..Client::default() }, None),
     }
 }
 
 /// A card's postal address, on its lines; its last line, when it names a
-/// country ("Belgique", "Deutschland"), becomes the address's country.
+/// country ("Belgique", "Deutschland", "Maroc"), becomes the address's
+/// country (`country`). A last line that names none Sioul knows and is no
+/// postal line (one with a digit: a postcode) stays, and says the country
+/// is not known (`country_unsaid`).
 pub fn card_address(text: &str) -> Address {
     let mut address = Address::from_text(text);
-    if let Some(code) = address.lines.last().and_then(|l| crate::invoice::presets::country_code(l)) {
+    if let Some(found) = address.lines.last().and_then(|l| country(l)) {
         address.lines.pop();
-        address.country = code.to_string();
+        address.country = found.code.to_string();
     }
     address
+}
+
+/// Whether an address without a country says none Sioul can read: its last
+/// line is no postal line (no digit, so no postcode), and names no country
+/// Sioul knows ("Narnia", "Québec"): where it is cannot be told. An address
+/// whose last line is postal is written for the issuer's own post.
+pub fn country_unsaid(address: &Address) -> bool {
+    if !address.country.trim().is_empty() || !address.postcode.trim().is_empty() || !address.city.trim().is_empty() {
+        return false;
+    }
+    address.lines.iter().rev().find(|l| !l.trim().is_empty()).is_some_and(|last| !last.chars().any(|c| c.is_ascii_digit()) && country(last).is_none())
+}
+
+/// A country invoices know (ISO 3166-1): its code, and its name in English and in French.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Country {
+    pub code: &'static str,
+    pub en: &'static str,
+    pub fr: &'static str,
+}
+
+impl Country {
+    /// Its name as an invoice in `language` prints it: French, else English.
+    pub fn name(&self, language: &str) -> &'static str {
+        if language.starts_with("fr") { self.fr } else { self.en }
+    }
+}
+
+/// Every country with its names (`data/countries.tsv`, from the iso-codes
+/// project): code, English name, French name, other names.
+const COUNTRIES: &str = include_str!("../data/countries.tsv");
+
+/// The country `text` names: a code ("BE", "BEL"), or a name in English,
+/// French, German, Spanish, Italian, Dutch, Portuguese or the country's own
+/// languages ("Belgique", "Deutschland", "Maroc", "日本"); None for any other
+/// text. The one table of countries: an invoice's checks, its zone and its
+/// Factur-X data read it too.
+pub fn country(text: &str) -> Option<&'static Country> {
+    static TABLE: std::sync::OnceLock<(Vec<Country>, std::collections::HashMap<String, usize>)> = std::sync::OnceLock::new();
+    let (list, names) = TABLE.get_or_init(|| {
+        let mut list = Vec::new();
+        let mut names = std::collections::HashMap::new();
+        for line in COUNTRIES.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()) {
+            let mut fields = line.split('\t');
+            let (Some(code), Some(en), Some(fr)) = (fields.next(), fields.next(), fields.next()) else { continue };
+            let others = fields.next().unwrap_or("");
+            let at = list.len();
+            for name in [code, en, fr].into_iter().chain(others.split('|')) {
+                names.entry(folded_name(name)).or_insert(at);
+            }
+            list.push(Country { code, en, fr });
+        }
+        (list, names)
+    });
+    let key = folded_name(text);
+    if key.is_empty() {
+        return None;
+    }
+    names.get(&key).map(|at| &list[*at])
+}
+
+/// A name as countries are looked up: folded, its ends' spaces and dots taken off.
+fn folded_name(text: &str) -> String {
+    let folded: String = crate::text::fold(text.trim()).into_iter().collect();
+    folded.split_whitespace().collect::<Vec<_>>().join(" ").trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string()
 }
 
 /// A card's name as invoices print it: its organisation, then the person.
@@ -298,8 +368,10 @@ mod tests {
         let brussels = Contact { uid: "b-1".into(), name: "Léa Exemple".into(), org: "Atelier Bruxelles".into(), addresses: vec![Labeled { label: String::new(), value: "Rue de l’Exemple 1\n1000 Bruxelles\nBelgique".into() }], ..Contact::default() };
         let (client, _) = resolve("sioul:contact/b-1", &Clients::default(), std::slice::from_ref(&brussels));
         assert_eq!((client.kind.as_str(), client.address.country.as_str(), client.address.lines.len()), ("business", "BE", 2));
+        // A card without an organisation, a name alone: a business all the same (G8); only a profile makes a person.
         let person = Contact { uid: "p-1".into(), name: "Sam Exemple".into(), ..Contact::default() };
-        assert_eq!(resolve("sioul:contact/p-1", &Clients::default(), std::slice::from_ref(&person)).0.kind, "consumer", "a person");
+        assert_eq!(resolve("sioul:contact/p-1", &Clients::default(), std::slice::from_ref(&person)).0.kind, "business");
+        assert_eq!(resolve("Garage Exemple", &Clients::default(), &[]).0.kind, "business");
         // No profile: the card, as before; else the name as written.
         let nobody = Clients::default();
         let (card, none) = resolve("sioul:contact/anna-1", &nobody, std::slice::from_ref(&anna));
@@ -308,5 +380,24 @@ mod tests {
         assert!(remove(&file, &id).unwrap());
         assert_eq!(Clients::load(&root).unwrap().list.len(), 1);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Countries (G2): by their codes and their names in many languages, as
+    /// an address's last line writes them; printed in the invoice's
+    /// language; a last line that names none and is no postal line says the
+    /// country is not known.
+    #[test]
+    fn countries_are_read_by_their_names() {
+        let code = |text: &str| country(text).map(|c| c.code);
+        assert_eq!((code("Belgique"), code(" Deutschland "), code("BE"), code("Royaume-Uni"), code("Maroc"), code("日本"), code("Narnia")), (Some("BE"), Some("DE"), Some("BE"), Some("GB"), Some("MA"), Some("JP"), None));
+        assert_eq!((code("USA"), code("États-Unis"), code("Pays-Bas"), code("Suisse"), code("MONACO")), (Some("US"), Some("US"), Some("NL"), Some("CH"), Some("MC")));
+        // The codes an invoice's data writes (phase 2, P2-5): "UK" is GB, "EL"
+        // (Greece's in VAT numbers) GR, a code in small letters its own; no
+        // other text is a country, Northern Ireland's VAT prefix XI included.
+        assert_eq!((code("UK"), code("EL"), code(" be "), code("ZZ"), code("XI"), code("")), (Some("GB"), Some("GR"), Some("BE"), None, None, None));
+        assert_eq!((country("MA").unwrap().name("fr"), country("MA").unwrap().name("en")), ("Maroc", "Morocco"));
+        assert!(country_unsaid(&Address::from_text("1 Example Way\nNarnia")));
+        assert!(!country_unsaid(&Address::from_text("1 rue de l’Exemple\n75002 Paris")), "a postal line: written for the issuer's own post");
+        assert!(!country_unsaid(&card_address("Rue de l’Exemple 1\n1000 Bruxelles\nBelgique")));
     }
 }

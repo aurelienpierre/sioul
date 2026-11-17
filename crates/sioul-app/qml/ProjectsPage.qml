@@ -84,7 +84,7 @@ Item {
         return page.sioul.textWith("money-positive", "value", digits)
     }
 
-    // The invoice of the hours not billed yet, printed where invoices go, then shown.
+    // The invoice of the hours not billed yet, its issued file copied where invoices go, then shown.
     function makeInvoice() {
         const made = JSON.parse(page.sioul.makeInvoice(page.openId))
         page.invoicesElsewhere = made.elsewhere === true
@@ -95,15 +95,25 @@ Item {
         page.printInvoice(made)
     }
 
+    // An issued invoice's file comes as it was kept, copied by the core: never
+    // printed again. Only an invoice from before November 2026, which kept
+    // none, is printed from its page, as it always was.
     function printInvoice(made) {
-        const failed = pdf.write(made.html, made.pdf)
+        const failed = made.html ? pdf.write(made.html, made.pdf) : ""
         if (failed !== "") {
             page.problem = page.sioul.textWith("invoice-not-written", "path", failed)
             return
         }
-        page.sioul.status = page.sioul.textWith("invoice-written", "path", made.pdf)
+        // Where it is, and what the issue found to say (the checks' notes, a
+        // copy that could not be written): the status line.
+        const said = []
+        if (made.pdf)
+            said.push(page.sioul.textWith("invoice-written", "path", made.pdf))
+        if (made.said)
+            said.push(made.said)
+        page.sioul.status = said.join(" ")
         // Shown in your PDF reader, except while the window takes its own pictures.
-        if (page.sioul.grabFolder() === "")
+        if (made.pdf && page.sioul.grabFolder() === "")
             Qt.openUrlExternally(page.theme.fileUrl(made.pdf))
     }
 
@@ -443,15 +453,16 @@ Item {
 
                         Label {
                             Layout.fillWidth: true
-                            // A credit note says what it credits; it is never paid.
+                            // A credit note says what it credits, and what it has to pay back.
                             text: [bill.modelData.number, bill.modelData.date, bill.modelData.total, bill.modelData.note || ""].filter(t => t !== "").join("  ·  ")
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: page.theme.text
                         }
                         CheckBox {
-                            visible: bill.modelData.kind !== "credit-note"
-                            text: page.sioul.text("invoice-paid")
+                            // A credit note's box says "Paid back", while it has money to pay back.
+                            visible: bill.modelData.kind !== "credit-note" || bill.modelData.pay_back
+                            text: page.sioul.text(bill.modelData.kind === "credit-note" ? "invoice-paid-back" : "invoice-paid")
                             checked: bill.modelData.paid
                             onToggled: page.problem = page.sioul.setInvoicePaid(bill.modelData.number, checked)
                         }

@@ -1,0 +1,98 @@
+# The invoices Sioul issues, checked by an outside validator: their PDF/A-3,
+# and the Factur-X XML they carry against its schema and the EN 16931 rules
+# (docs/projects.md, "The issued file").
+#
+# sioul-core's ignored test `invoice::samples::write_fixtures` writes, as
+# Sioul issues them, one invoice per country's preset and VAT scheme (and a
+# credit note, a deposit invoice and the final one, three pages of lines)
+# into valid/, one made wrong on purpose (its totals a cent off) into
+# invalid/ with the rule it breaks beside it, and the French franchise
+# without a VAT number, which carries no XML yet (design §12, question 1),
+# into without-xml/. Mustang (mustangproject.org, Apache-2.0) reads each
+# with veraPDF, the EN 16931 schematron and the French rules of XP Z12-012
+# inside: tools/einvoice/validate.sh then expects every file of valid/ to
+# pass with no word from the French rules, the one of invalid/ to fail for
+# its own rule, and the PDF/A of without-xml/ to pass; it lists every
+# warning. The invoices are made up; no invoice ever goes to an online
+# validator.
+#
+# Runs on each push to main that touches what goes into an invoice's file
+# (its code, presets, fonts, words, the formatting of money, percents,
+# durations and settings, the core's dependencies), and by hand, as the
+# other workflows do. Linux alone: the files are the same on every system.
+# Versions checked on 17 November 2026: Mustang CLI 2.26.0 (25 August 2026,
+# its jar pinned by the SHA-256 its GitHub release gives), and the actions
+# by their major versions, as android.yml and pages.yml take them:
+# actions/setup-java v6 (v6.3.0; Temurin 21), actions/checkout v7 (v7.0.1),
+# Swatinem/rust-cache v2 (v2.9.2), actions/upload-artifact v7 (v7.0.2).
+
+name: Electronic invoices
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/sioul-core/src/invoice/**"
+      - "crates/sioul-core/src/i18n.rs"
+      - "crates/sioul-core/src/money.rs"
+      - "crates/sioul-core/src/timereport.rs"
+      - "crates/sioul-core/src/config.rs"
+      - "crates/sioul-core/data/invoice-presets/**"
+      - "crates/sioul-core/data/fonts/**"
+      - "crates/sioul-core/locales/**"
+      - "crates/sioul-core/Cargo.toml"
+      - "tools/einvoice/**"
+      - "Cargo.lock"
+      - ".github/workflows/e-invoices.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  MUSTANG_VERSION: 2.26.0
+  MUSTANG_SHA256: 42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736
+
+jobs:
+  validate:
+    name: Factur-X and PDF/A, by Mustang
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e-invoices
+          cache-on-failure: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Mustang, checked
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/Mustang-CLI.jar" "https://github.com/ZUGFeRD/mustangproject/releases/download/core-$MUSTANG_VERSION/Mustang-CLI-$MUSTANG_VERSION.jar"
+          echo "$MUSTANG_SHA256  $RUNNER_TEMP/Mustang-CLI.jar" | sha256sum -c -
+
+      - name: The invoices, as Sioul issues them
+        env:
+          SIOUL_INVOICE_FIXTURES: ${{ runner.temp }}/invoices
+        run: |
+          cargo test --release --locked -p sioul-core --lib -- --ignored --exact invoice::samples::write_fixtures
+          ls -R "$RUNNER_TEMP/invoices"
+
+      - name: Each valid one passes, the broken one fails for its own rule
+        run: tools/einvoice/validate.sh "$RUNNER_TEMP/Mustang-CLI.jar" "$RUNNER_TEMP/invoices"
+
+      - name: The invoices and Mustang's reports, when something failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e-invoices
+          path: ${{ runner.temp }}/invoices
+          retention-days: 7

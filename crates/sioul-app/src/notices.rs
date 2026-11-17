@@ -321,7 +321,8 @@ const MONEY_DAYS: u32 = 14;
 fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
     let mode = crate::backend::mode_now();
     let tr = tr();
-    let mut rows = shortfall();
+    let mut rows = invoices_twice(now);
+    rows.extend(shortfall());
     let coming = sioul_core::due::coming(now.date(), MONEY_DAYS);
     let items = crate::books::porch_items(&crate::books::loaded(now.date()), now.date());
     let every: Vec<String> = coming.iter().map(|c| rules::money_id(&c.address)).chain(rows.iter().flat_map(|(_, ids)| ids.iter().cloned())).chain(items.iter().map(|i| i.id.clone())).collect();
@@ -443,6 +444,27 @@ fn shortfall() -> Vec<(Value, Vec<String>)> {
             (row(notice, vec![id.clone()], Vec::new(), json!({ "note": sentence })), vec![id])
         })
         .collect()
+}
+
+/// Invoice numbers two devices gave at once (`invoice::twice_in`: a sync
+/// app's conflicted copy of a record): one calm row for them all, in work's
+/// hours, until it is dismissed or none is left (the second review, G9).
+fn invoices_twice(now: &jiff::Zoned) -> Vec<(Value, Vec<String>)> {
+    let twice = sioul_core::invoice::twice_in(&sioul_core::invoice::folder());
+    let mode = crate::backend::mode_now();
+    if twice.is_empty() || !sioul_core::areas::in_view(sioul_core::areas::Area::WORK, mode.time, mode.week) {
+        return Vec::new();
+    }
+    let tr = tr();
+    let mut numbers: Vec<String> = twice.iter().map(|t| t.number.clone()).collect();
+    numbers.sort();
+    numbers.dedup();
+    let id = rules::money_id(&format!("invoices-twice/{}", numbers.join(",")));
+    let at = twice.iter().filter_map(|t| std::fs::metadata(&t.copy).and_then(|m| m.modified()).ok()).filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64).max().unwrap_or_else(|| now.timestamp().as_millisecond());
+    let day = jiff::Timestamp::from_millisecond(at).map(|t| t.to_zoned(now.time_zone().clone()).date()).unwrap_or(now.date());
+    let note = say("porch-invoices-twice-note", &[("numbers", numbers.join(", "))]);
+    let notice = Notice { address: format!("sioul:invoice/{}", numbers[0]), at, when: tr.day_short(day), who: tr.text("porch-invoices-twice-who", None), what: tr.text("porch-invoices-twice-what", None), ..Notice::new(Kind::Money, id.clone(), "money").with_area(Some(sioul_core::areas::Area::WORK)) };
+    vec![(row(notice, vec![id.clone()], Vec::new(), json!({ "note": note })), vec![id])]
 }
 
 /// A movement's row in words: who, its state ("Planned", "Not seen on its

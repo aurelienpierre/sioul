@@ -465,62 +465,22 @@ pub fn get(id: &str) -> &'static Preset {
 /// client: another member state's business is billed by the EU's rules.
 pub const EU: [&str; 27] = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"];
 
-/// Country names, as an address's last line writes them, in English,
-/// French and the country's own language, for the countries an invoice
-/// most often goes to: their ISO 3166-1 code.
-const COUNTRIES: &[(&str, &[&str])] = &[
-    ("AT", &["austria", "autriche", "osterreich"]),
-    ("BE", &["belgium", "belgique", "belgie", "belgien"]),
-    ("BG", &["bulgaria", "bulgarie"]),
-    ("CY", &["cyprus", "chypre"]),
-    ("CZ", &["czechia", "czech republic", "tchequie", "republique tcheque", "cesko"]),
-    ("DE", &["germany", "allemagne", "deutschland"]),
-    ("DK", &["denmark", "danemark", "danmark"]),
-    ("EE", &["estonia", "estonie", "eesti"]),
-    ("ES", &["spain", "espagne", "espana"]),
-    ("FI", &["finland", "finlande", "suomi"]),
-    ("FR", &["france"]),
-    ("GR", &["greece", "grece", "hellas"]),
-    ("HR", &["croatia", "croatie", "hrvatska"]),
-    ("HU", &["hungary", "hongrie", "magyarorszag"]),
-    ("IE", &["ireland", "irlande", "eire"]),
-    ("IT", &["italy", "italie", "italia"]),
-    ("LT", &["lithuania", "lituanie", "lietuva"]),
-    ("LU", &["luxembourg", "luxemburg"]),
-    ("LV", &["latvia", "lettonie", "latvija"]),
-    ("MT", &["malta", "malte"]),
-    ("NL", &["netherlands", "the netherlands", "pays-bas", "pays bas", "nederland", "holland", "hollande"]),
-    ("PL", &["poland", "pologne", "polska"]),
-    ("PT", &["portugal"]),
-    ("RO", &["romania", "roumanie"]),
-    ("SE", &["sweden", "suede", "sverige"]),
-    ("SI", &["slovenia", "slovenie", "slovenija"]),
-    ("SK", &["slovakia", "slovaquie", "slovensko"]),
-    ("GB", &["united kingdom", "royaume-uni", "royaume uni", "uk", "great britain", "grande-bretagne", "england", "angleterre", "scotland", "ecosse", "wales"]),
-    ("CH", &["switzerland", "suisse", "schweiz", "svizzera"]),
-    ("NO", &["norway", "norvege", "norge"]),
-    ("IS", &["iceland", "islande"]),
-    ("LI", &["liechtenstein"]),
-    ("MC", &["monaco"]),
-    ("AD", &["andorra", "andorre"]),
-    ("US", &["united states", "united states of america", "usa", "etats-unis", "etats unis"]),
-    ("CA", &["canada"]),
-];
-
-/// The ISO 3166-1 code of a country an address's line names ("Belgique",
-/// "Deutschland", "BE"); None for a line that names none Sioul knows.
-pub fn country_code(line: &str) -> Option<&'static str> {
-    let folded: String = crate::text::fold(line.trim()).into_iter().collect::<String>().trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
-    if folded.is_empty() {
-        return None;
+/// The VAT territory a country belongs to, as far as Sioul's sources say:
+/// Monaco's is France's (Directive 2006/112/EC, art. 7: transactions with
+/// Monaco are treated as transactions with France), while its addresses
+/// say Monaco. Other territories wait for research of their own.
+pub fn vat_territory(country: &str) -> String {
+    match country.trim().to_uppercase().as_str() {
+        "MC" => "FR".into(),
+        other => other.to_string(),
     }
-    COUNTRIES.iter().find(|(code, names)| folded.eq_ignore_ascii_case(code) || names.iter().any(|n| *n == folded)).map(|(code, _)| *code)
 }
 
 /// Where a client in `client` is from an issuer in `issuer`: "domestic",
-/// "eu" (another member state, the issuer's in the EU too), "abroad".
+/// "eu" (another member state, the issuer's in the EU too), "abroad"; by
+/// their VAT territories (`vat_territory`).
 pub fn zone(issuer: &str, client: &str) -> &'static str {
-    let (issuer, client) = (issuer.trim().to_uppercase(), client.trim().to_uppercase());
+    let (issuer, client) = (vat_territory(issuer), vat_territory(client));
     // Greece writes "EL" in VAT numbers, "GR" in addresses.
     let eu = |c: &str| EU.contains(&c) || c == "EL";
     if client.is_empty() || client == issuer {
@@ -666,6 +626,6 @@ mod tests {
         assert_eq!(zone("FR", "be"), "eu");
         assert_eq!(zone("FR", "CH"), "abroad");
         assert_eq!(zone("GB", "FR"), "abroad");
-        assert_eq!((country_code("Belgique"), country_code(" Deutschland "), country_code("BE"), country_code("Royaume-Uni"), country_code("Narnia")), (Some("BE"), Some("DE"), Some("BE"), Some("GB"), None));
+        assert_eq!((zone("FR", "MC"), zone("MC", "FR"), zone("FR", "MA"), zone("FR", "BE"), zone("FR", "")), ("domestic", "domestic", "abroad", "eu", "domestic"));
     }
 }

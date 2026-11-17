@@ -218,7 +218,7 @@ mod tests {
         let mut lines = vec![Line { quantity: 1000, unit: "C62".into(), price: 120_000, base: 1, nature: Nature::Service, ..Line::of_time("Consulting", 0, 0, "AE", 0) }];
         let totals = sioul_core::invoice::totals::compute(&mut lines, 0, &|_, _| (String::new(), String::new()));
         let client = Client { kind: "business".into(), name: "Beispiel GmbH".into(), address: Address { country: "DE".into(), city: "Berlin".into(), ..Address::default() }, ..Client::default() };
-        let invoice = Invoice { format: 2, kind: Kind::Invoice, number: "2026-031".into(), date: "2026-09-30".into(), period_to: "2026-10-02".into(), currency: "EUR".into(), client, lines, totals, payments: vec![Payment { id: "p".into(), date: "2026-09-30".into(), amount: 120_000, means: "transfer".into(), movement: String::new() }], ..Invoice::default() };
+        let invoice = Invoice { format: 2, kind: Kind::Invoice, number: "2026-031".into(), date: "2026-09-30".into(), period_to: "2026-10-02".into(), currency: "EUR".into(), issuer: sioul_core::invoice::Issuer { preset: "fr".into(), ..Default::default() }, client, lines, totals, payments: vec![Payment { id: "p".into(), date: "2026-09-30".into(), amount: 120_000, means: "transfer".into(), ..Payment::default() }], ..Invoice::default() };
         let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![invoice], booked: Default::default(), told: Default::default(), money: None };
         let _: Input = loaded.input();
         let items = porch_items(&loaded, day("2026-11-05"));
@@ -239,7 +239,7 @@ mod tests {
             let mut lines = vec![Line { quantity: 1000, unit: "C62".into(), price, base: 1, nature: Nature::Service, ..Line::of_time("Consulting", 0, 0, "AE", 0) }];
             let totals = sioul_core::invoice::totals::compute(&mut lines, 0, &|_, _| (String::new(), String::new()));
             let client = Client { kind: "business".into(), name: "Beispiel GmbH".into(), address: Address { country: "DE".into(), city: "Berlin".into(), ..Address::default() }, ..Client::default() };
-            Invoice { format: 2, kind: Kind::Invoice, number: number.into(), date: "2026-10-30".into(), period_to: "2026-10-30".into(), currency: currency.into(), client, lines, totals, ..Invoice::default() }
+            Invoice { format: 2, kind: Kind::Invoice, number: number.into(), date: "2026-10-30".into(), period_to: "2026-10-30".into(), currency: currency.into(), issuer: sioul_core::invoice::Issuer { preset: "fr".into(), ..Default::default() }, client, lines, totals, ..Invoice::default() }
         };
         let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![reverse("2026-031", "EUR", 120_000), reverse("2026-032", "USD", 50_000)], booked: Default::default(), told: Default::default(), money: None };
         let items = porch_items(&loaded, day("2026-11-05"));

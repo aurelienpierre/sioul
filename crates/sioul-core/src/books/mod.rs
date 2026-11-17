@@ -500,6 +500,20 @@ pub fn begin(input: &Input) -> Option<Date> {
     [invoice, since, receipt].into_iter().flatten().min()
 }
 
+/// Where a record's client is from its issuer: "domestic", "eu" (another
+/// member state), "abroad", "unknown"; by the one table of countries
+/// (`clients::country`, through `life::zone_of`: the client's address, else
+/// its VAT number's prefix; Monaco is France for VAT), from the record's own
+/// copies; an issuer copy that names no country is its preset's country's.
+pub fn zone(invoice: &Invoice) -> &'static str {
+    if invoice.issuer.address.country.trim().is_empty() {
+        let mut issuer = invoice.issuer.clone();
+        issuer.address.country = crate::invoice::presets::get(&invoice.issuer.preset).country.clone();
+        return crate::invoice::life::zone_of(&issuer, &invoice.client);
+    }
+    crate::invoice::life::zone_of(&invoice.issuer, &invoice.client)
+}
+
 /// `part` of `whole`, as a share of `of`: `of × part / whole`, rounded half
 /// away from zero; `of` itself when `whole` is nothing.
 pub fn share(part: i64, of: i64, whole: i64) -> i64 {
@@ -592,8 +606,12 @@ pub struct Received {
     /// The entry's own amount, never signed: its share of the record's totals.
     pub entry: i64,
     pub means: String,
-    /// The bank line's movement it came from; "" when said by hand.
-    pub movement: String,
+    /// The bank line it came from, or that was found for it when said by
+    /// hand (`movements::line_key`); "" when none.
+    pub line: String,
+    /// What a processor kept of it: the bank received `entry − fee`; the
+    /// books count the whole, what the client paid.
+    pub fee: i64,
 }
 
 /// The money an issued record received (an invoice, a deposit invoice), or
@@ -608,7 +626,7 @@ pub fn received_of(invoice: &Invoice) -> Vec<Received> {
         .iter()
         .filter_map(|p| {
             let day = p.date.get(..10)?.parse::<Date>().ok()?;
-            Some(Received { id: p.id.clone(), day, amount: sign * p.amount, entry: p.amount, means: p.means.clone(), movement: p.movement.clone() })
+            Some(Received { id: p.id.clone(), day, amount: sign * p.amount, entry: p.amount, means: p.means.clone(), line: p.line.clone(), fee: p.fee })
         })
         .collect()
 }
@@ -628,6 +646,9 @@ pub fn means_words(tr: &Translator, means: &str) -> String {
 /// and, for what it brought beyond them, as a receipt of its own.
 struct Moved {
     receipt: crate::receipts::Receipt,
+    /// The keys of the bank lines it came from (`movements::line_key`), as
+    /// the invoices' life names the line a payment came from.
+    lines: Vec<String>,
     budget: String,
     /// What no invoice's payment stands for yet, in cents: its gross (what the client paid), else what reached you.
     left: i64,
@@ -655,11 +676,26 @@ impl Moved {
 /// its day paid, over every day the money knows.
 fn moved(input: &Input) -> Vec<Moved> {
     let Some(money) = input.money else { return Vec::new() };
+    // Each bank line's key, by its source's key (`movements::bank_key`), as
+    // the matching computes it when it writes a payment (`movements::acts`).
+    let keys: BTreeMap<String, String> = money
+        .bank
+        .movements
+        .iter()
+        .map(|l| {
+            let account = crate::accounts::account_of(&money.ledger, &l.account).map_or_else(|| l.account.clone(), |a| a.id.clone());
+            (crate::movements::bank_key(&account, &l.id), crate::movements::line_key(&account, l.date, l.amount.cents(), &l.label))
+        })
+        .collect();
+    let lines_of = |address: &str| -> Vec<String> {
+        money.movements.iter().find(|m| m.address() == address).map_or_else(Vec::new, |m| m.sources.iter().filter(|s| s.kind == crate::movements::Kind::Bank).filter_map(|s| keys.get(&s.key).cloned()).collect())
+    };
     let mut out = Vec::new();
     for budget in money.ledger.budgets.iter().filter(|b| crate::receipts::declares(b) && input.budget.is_none_or(|only| only == b.id)) {
         let register = crate::receipts::register_rows(money, &budget.id, money.from, money.to, None);
         out.extend(register.receipts.into_iter().map(|receipt| {
-            let mut m = Moved { receipt, budget: budget.id.clone(), left: 0, by: Vec::new() };
+            let lines = lines_of(&receipt.address);
+            let mut m = Moved { receipt, lines, budget: budget.id.clone(), left: 0, by: Vec::new() };
             m.left = m.whole();
             m
         }));
@@ -688,19 +724,25 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
     let records: Vec<(&Invoice, Vec<Received>)> = input.invoices.iter().filter(|i| !i.number.is_empty() && !i.unreadable).map(|i| (i, received_of(i))).collect();
     let currency = input.settings.currency.as_str();
     let foreign_of = |invoice: &Invoice| !invoice.currency.trim().is_empty() && !invoice.currency.eq_ignore_ascii_case(currency);
-    // A movement an invoice's payment came from stands for that payment, up
-    // to its amount: one carried payment of the same amount first (a
-    // processor's payout), else in the order of the days.
+    // A movement whose bank line a payment came from (`Payment::line`, the
+    // line's key, the same on every device) stands for that payment, up to
+    // its amount: one carried payment of the same amount first (a
+    // processor's payout), else in the order of the days. A payment through
+    // a processor is its gross, the fee apart, and the bank's line its net:
+    // the line is taken whole by it, never counted again beside it.
+    let mut found_day: BTreeMap<String, Date> = BTreeMap::new();
     for (invoice, received) in &records {
-        for p in received.iter().filter(|p| !p.movement.is_empty() && p.amount > 0) {
+        for p in received.iter().filter(|p| !p.line.is_empty() && p.amount > 0) {
             let mut rest = p.amount;
-            if let Some(m) = moved.iter_mut().find(|m| m.receipt.address == p.movement && m.left == rest) {
+            if let Some(m) = moved.iter_mut().find(|m| m.lines.contains(&p.line) && m.left == rest) {
+                found_day.entry(p.id.clone()).or_insert(m.receipt.day);
                 rest = m.take(rest, &invoice.number);
             }
-            for m in moved.iter_mut().filter(|m| m.receipt.address == p.movement) {
+            for m in moved.iter_mut().filter(|m| m.lines.contains(&p.line)) {
                 if rest == 0 {
                     break;
                 }
+                found_day.entry(p.id.clone()).or_insert(m.receipt.day);
                 rest = m.take(rest, &invoice.number);
             }
         }
@@ -712,11 +754,12 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
         let client = if invoice.client.first_line().trim().is_empty() { invoice.who() } else { invoice.client.first_line().to_string() };
         let foreign = foreign_of(invoice);
         for p in received {
-            let mut day = p.day;
-            // Said by hand, and the bank's line for this invoice found without
-            // being matched to it: that line is this payment. A format-1
-            // record's own "paid" had no day: the line's is its day.
-            if p.movement.is_empty()
+            // A format-1 record's own "paid" had no day (it reads on the due
+            // day): the bank line found for it gives its day.
+            let mut day = if p.id.starts_with("older:") { found_day.get(&p.id).copied().unwrap_or(p.day) } else { p.day };
+            // Said by hand, no bank line found for it, and the bank's line for
+            // this invoice tied to it by the matching: that line is this payment.
+            if p.line.is_empty()
                 && p.amount > 0
                 && !foreign
                 && let Some(m) = moved.iter_mut().find(|m| m.left > 0 && m.left == m.whole() && m.receipt.invoice == invoice.number && (p.id.starts_with("older:") || m.left == p.amount || m.receipt.net.cents() == p.amount))
@@ -744,7 +787,8 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
                 continue;
             }
             // Excluding VAT, as the record's share; in the books' currency, the same share of what it came to.
-            let without_tax = amount.map(|a| if foreign { share(crate::invoice::life::received_without_tax(invoice, p.amount), a, p.amount) } else { crate::invoice::life::received_without_tax(invoice, a) });
+            // (`received_without_tax` signs a credit note's itself: it takes the entry's own amount.)
+            let without_tax = amount.map(|a| if foreign { share(crate::invoice::life::received_without_tax(invoice, p.entry), a, p.amount) } else { crate::invoice::life::received_without_tax(invoice, p.entry) });
             let activities = without_tax.map(|w| split.divide(w)).unwrap_or_default();
             out.push(Row {
                 day,
@@ -1088,7 +1132,7 @@ pub fn html(tr: &Translator, book: &Book, name: &str) -> String {
 /// What a payment in another currency came to in the books' (the euros
 /// that reached you), said in this `device`'s life: the books count it so.
 pub fn book_payment(dir: &Path, device: &str, payment: &str, amount: i64, at_ms: i64) -> Result<(), String> {
-    lives::change_own(dir, device, |book| book.booked.push(lives::Booked { id: lives::new_id(), payment: payment.to_string(), amount, at: at_ms }))
+    lives::change_own(dir, device, |book| book.booked.push(lives::Booked { id: lives::booked_id(payment, at_ms), payment: payment.to_string(), amount, at: at_ms }))
 }
 
 /// The books' notices of `keys` marked told, on `day`, in this `device`'s

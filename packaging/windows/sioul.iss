@@ -50,6 +50,12 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 ; The program, the command line, and everything windeployqt gathered beside them.
 Source: "..\..\target\release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion; Excludes: "*.pdb,*.d,build\*,deps\*,incremental\*,.fingerprint\*,examples\*"
 Source: "sioul.ico"; DestDir: "{app}"; Flags: ignoreversion
+; The works of others inside the programs, with their licences (NOTICES.md).
+Source: "..\..\NOTICES.md"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\crates\sioul-core\data\fonts\LICENSE-Liberation"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\crates\sioul-core\data\LICENSE-iso-codes"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\crates\sioul-app\fonts\LICENSE-DejaVu"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\crates\sioul-app\icons\COPYING-ICONS"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Sioul"; Filename: "{app}\sioul-app.exe"; IconFilename: "{app}\sioul.ico"
