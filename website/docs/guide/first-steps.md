@@ -114,6 +114,10 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Use an app password**: make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification; **Make an app password** opens the page in your browser), paste it under **App password (from Google)**, then **Connect and add**.
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
+When Google's page says that app passwords are not available for your account, one of four things is so: 2-Step Verification is off; it is set up for security keys only; the account belongs to a work, a school or another organisation; or it has Advanced Protection. **Sign in with Google** is then the way. Changing your Google password revokes every app password: make a new one for Sioul afterwards.
+
+A Google Workspace address (your own domain at Google) takes **Sign in with Google** only: Google offers such accounts no app password, and since 1 May 2025 lets no other program sign in to them with a password.
+
 Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On Android, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
 
 ### Yahoo Mail {#yahoo-mail}

@@ -78,7 +78,7 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft 
 
 Three forms, one after the other:
 
-- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password; for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
+- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail, **Use an app password** or **Sign in with Google** instead of a password; for a Google Workspace address, **Sign in with Google**; for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 
@@ -133,7 +133,7 @@ Sioul only uses the key: it never asks for its Admin PIN, never changes or unblo
 ## Going further {#going-further}
 
 - **A Google key of your own**: Google gives Gmail's mail access only to apps it has reviewed. Until Sioul's is, **Use a Google key of my own** takes the client ID and secret of a Google app you make once in Google Cloud (about fifteen minutes, the steps shown). A copy of Sioul built without a Google key of its own asks for yours for calendars too; the copies released so far are built without one. This "key" is an app's name and secret, not a security key ([First steps](first-steps.md#gmail-and-google-workspace)).
-- **An app password** for Gmail works too, without Google's sign-in.
+- **An app password** for Gmail works too, without Google's sign-in, with a personal Google account. When Google's page says the setting is not available, 2-Step Verification is off or set up for security keys only, the account belongs to a work, a school or another organisation (a Google Workspace address), or it has Advanced Protection. Changing your Google password revokes every app password.
 - **The AI shield's key**, for addresses that let the AI read them first, is kept in the keyring like a password; **Forget the key** removes it ([the Porch](porch.md#a-public-address-protected)).
 - **Sharing the security key with GnuPG**: add the line `pcsc-shared` to `~/.gnupg/scdaemon.conf`, and both use the key in turn.
 
@@ -209,7 +209,8 @@ As of October 2026, from each app's own documentation.
     - Bitwarden Help: filling on Android, <https://bitwarden.com/help/auto-fill-android/>, read 8 October 2026.
     - Gmail Help: Gmail in other mail apps, <https://support.google.com/mail/answer/6078445>, read 8 October 2026.
     - Gmail Help: adding other accounts in the Gmail app, <https://support.google.com/mail/answer/21289>, read 8 October 2026.
-    - Google Account Help: app passwords, <https://support.google.com/accounts/answer/185833>, read 8 October 2026.
+    - Google Account Help: app passwords, <https://support.google.com/accounts/answer/185833>, read 17 November 2026.
+    - Google Workspace Admin: control access to less secure apps, <https://knowledge.workspace.google.com/admin/apps/control-access-to-less-secure-apps>, read 17 November 2026.
     - Google Account Help: security keys for 2-Step Verification, <https://support.google.com/accounts/answer/6103523>, read 8 October 2026.
     - Google Account Help: passkeys, <https://support.google.com/accounts/answer/13548313>, read 8 October 2026.
     - Google Workspace Admin: hosted S/MIME, <https://knowledge.workspace.google.com/admin/gmail/advanced/turn-on-hosted-s-mime-for-message-encryption>, read 8 October 2026.

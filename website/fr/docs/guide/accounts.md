@@ -78,7 +78,7 @@ Le compte de courriel Outlook.com, Hotmail, Live, MSN ou Microsoft 365 connecté
 
 Trois formulaires, l’un après l’autre :
 
-- **Ajouter un compte de courriel** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe ; pour Yahoo Mail, un mot de passe d’application comme mot de passe (**Créer un mot de passe d’application** ouvre la page de sécurité de votre compte Yahoo) ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**. Pour un domaine à vous gardé chez un hébergeur, Sioul cherche le serveur de l’hébergeur ; s’il n’en trouve pas, le formulaire s’ouvre vide pour le nom de serveur que donne votre hébergeur, et **Serveur d’envoi, s’il ne se trouve pas** prend un autre serveur pour l’envoi ([Votre propre domaine chez un hébergeur](first-steps.md#your-own-domain-at-a-host)).
+- **Ajouter un compte de courriel** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe ; pour une adresse Google Workspace, **Se connecter avec Google** ; pour Yahoo Mail, un mot de passe d’application comme mot de passe (**Créer un mot de passe d’application** ouvre la page de sécurité de votre compte Yahoo) ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**. Pour un domaine à vous gardé chez un hébergeur, Sioul cherche le serveur de l’hébergeur ; s’il n’en trouve pas, le formulaire s’ouvre vide pour le nom de serveur que donne votre hébergeur, et **Serveur d’envoi, s’il ne se trouve pas** prend un autre serveur pour l’envoi ([Votre propre domaine chez un hébergeur](first-steps.md#your-own-domain-at-a-host)).
 - **Ajouter des contacts et agendas** : depuis un serveur CalDAV et CardDAV, comme Nextcloud, Fastmail, iCloud ou votre hébergeur.
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
 
@@ -133,7 +133,7 @@ Sioul ne fait qu’utiliser la clé : il ne demande jamais son code PIN d’ad
 ## Pour aller plus loin {#going-further}
 
 - **Une clé Google à vous** : Google ne donne l’accès aux courriels de Gmail qu’aux applications qu’il a examinées. Tant que celle de Sioul ne l’est pas, **Utiliser une clé Google à moi** prend l’identifiant client et le secret d’une application Google que vous créez une fois dans Google Cloud (environ un quart d’heure, les étapes montrées). Une copie de Sioul construite sans clé Google à elle demande la vôtre pour les agendas aussi ; les copies publiées jusqu’ici sont construites sans. Cette « clé » est le nom et le secret d’une application, pas une clé de sécurité ([Premiers pas](first-steps.md#gmail-and-google-workspace)).
-- **Un mot de passe d’application** pour Gmail marche aussi, sans la connexion de Google.
+- **Un mot de passe d’application** pour Gmail marche aussi, sans la connexion de Google, avec un compte Google personnel. Quand la page de Google dit que le réglage n’est pas disponible, la validation en deux étapes est désactivée ou configurée pour des clés de sécurité seulement, le compte est celui d’un travail, d’un établissement scolaire ou d’une autre organisation (une adresse Google Workspace), ou il a la Protection Avancée de Google. Changer le mot de passe de votre compte Google révoque tous les mots de passe d’application.
 - **La clé du bouclier IA**, pour les adresses qui laissent l’IA les lire d’abord, est gardée dans le trousseau comme un mot de passe ; **Oublier la clé** la retire ([le Porche](porch.md#a-public-address-protected)).
 - **Partager la clé de sécurité avec GnuPG** : ajoutez la ligne `pcsc-shared` à `~/.gnupg/scdaemon.conf`, et les deux se servent de la clé à tour de rôle.
 
@@ -209,7 +209,8 @@ En octobre 2026, d’après la documentation de chaque application.
     - Aide de Bitwarden : le remplissage sous Android, <https://bitwarden.com/help/auto-fill-android/>, lu le 8 octobre 2026.
     - Aide de Gmail : Gmail dans d’autres logiciels de courriel, <https://support.google.com/mail/answer/6078445>, lu le 8 octobre 2026.
     - Aide de Gmail : ajouter d’autres comptes dans l’application Gmail, <https://support.google.com/mail/answer/21289>, lu le 8 octobre 2026.
-    - Aide du compte Google : les mots de passe d’application, <https://support.google.com/accounts/answer/185833>, lu le 8 octobre 2026.
+    - Aide du compte Google : les mots de passe d’application, <https://support.google.com/accounts/answer/185833>, lu le 17 novembre 2026.
+    - Aide des administrateurs Google Workspace : contrôler l’accès des applications moins sécurisées, <https://knowledge.workspace.google.com/admin/apps/control-access-to-less-secure-apps>, lu le 17 novembre 2026.
     - Aide du compte Google : les clés de sécurité pour la validation en deux étapes, <https://support.google.com/accounts/answer/6103523>, lu le 8 octobre 2026.
     - Aide du compte Google : les clés d’accès, <https://support.google.com/accounts/answer/13548313>, lu le 8 octobre 2026.
     - Administration de Google Workspace : S/MIME hébergé, <https://knowledge.workspace.google.com/admin/gmail/advanced/turn-on-hosted-s-mime-for-message-encryption>, lu le 8 octobre 2026.
