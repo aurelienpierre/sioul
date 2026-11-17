@@ -93,6 +93,9 @@ pub enum Status {
     Credited,
     /// An issued credit note: never paid nor unpaid, it credits an invoice.
     CreditNote,
+    /// A credit note for an invoice paid beyond what it now asks: that
+    /// money is to be paid back, until a "paid back" says it was.
+    ToPayBack,
 }
 
 impl Status {
@@ -105,11 +108,12 @@ impl Status {
             Status::Paid => "paid",
             Status::Credited => "credited",
             Status::CreditNote => "credit-note",
+            Status::ToPayBack => "to-pay-back",
         }
     }
 
     pub fn named(name: &str) -> Option<Status> {
-        [Status::Draft, Status::Issued, Status::Sent, Status::PartlyPaid, Status::Paid, Status::Credited, Status::CreditNote].into_iter().find(|s| s.id() == name)
+        [Status::Draft, Status::Issued, Status::Sent, Status::PartlyPaid, Status::Paid, Status::Credited, Status::CreditNote, Status::ToPayBack].into_iter().find(|s| s.id() == name)
     }
 
     /// Settled: nothing left to pay (a credit note never has anything to pay).
@@ -143,15 +147,15 @@ impl Address {
     }
 
     /// The address on lines: its street, then postcode and city; its
-    /// country's code when it is not `home`'s.
-    pub fn text(&self, home: &str) -> String {
+    /// country, when it is not `home`'s, by its name in `language` (G17).
+    pub fn text(&self, home: &str, language: &str) -> String {
         let mut out: Vec<String> = self.lines.iter().filter(|l| !l.trim().is_empty()).cloned().collect();
         let town = [self.postcode.trim(), self.city.trim()].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
         if !town.is_empty() {
             out.push(town);
         }
         if !self.country.trim().is_empty() && !self.country.trim().eq_ignore_ascii_case(home.trim()) {
-            out.push(self.country.trim().to_uppercase());
+            out.push(crate::clients::country(&self.country).map_or_else(|| self.country.trim().to_uppercase(), |c| c.name(language).to_string()));
         }
         out.join("\n")
     }
@@ -444,11 +448,12 @@ pub struct Note {
     pub legal: String,
 }
 
-/// A payment received, from the invoice's life (`lives`): never written
-/// into its record.
+/// A payment received (on a credit note: money paid back), as the
+/// invoice's life reads it (`lives`): never written into its record.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Payment {
-    /// Its id in the life's files (`older:<number>` for a format-1 record's own word).
+    /// Its entry's id in the life's files (`lives`: `hand:`, `bank:`,
+    /// `settled:`, `older:<number>` for a format-1 record's own word).
     #[serde(default)]
     pub id: String,
     pub date: String,
@@ -456,9 +461,13 @@ pub struct Payment {
     /// "transfer", "card", "cash", "cheque", "direct-debit", "other".
     #[serde(default)]
     pub means: String,
-    /// The bank line's movement it was matched with; empty when said by hand.
+    /// The bank line it came from, or that was found for it when said by
+    /// hand (`movements::line_key`); empty when none.
     #[serde(default)]
-    pub movement: String,
+    pub line: String,
+    /// What a processor kept of it, in cents: the bank received `amount − fee`.
+    #[serde(default)]
+    pub fee: i64,
 }
 
 /// Payment terms: days after the issue, at the end of that month or not.
@@ -574,6 +583,14 @@ pub struct Invoice {
     /// A record that no longer reads: its number only, never written over.
     #[serde(skip)]
     pub unreadable: bool,
+    /// Written by a newer Sioul (a later `format`): read where it could
+    /// be, and said, so that you update Sioul here to see it as it is.
+    #[serde(skip)]
+    pub newer: bool,
+    /// A draft's file that is a sync's conflicted copy of another draft:
+    /// its name, said beside the draft, never hidden (`drafts_in`).
+    #[serde(skip)]
+    pub copy_of: String,
 }
 
 impl Invoice {
@@ -621,7 +638,7 @@ impl Invoice {
             return Status::Draft;
         }
         if self.kind == Kind::CreditNote {
-            return Status::CreditNote;
+            return if self.to_pay_back(all) > 0 { Status::ToPayBack } else { Status::CreditNote };
         }
         let credited = self.credited(all);
         let paid = self.paid();
@@ -640,12 +657,42 @@ impl Invoice {
         }
     }
 
-    /// What is left to pay, in cents (never below zero).
+    /// What is left to pay, in cents (never below zero); on a credit note,
+    /// what is left to pay back.
     pub fn left(&self, all: &[Invoice]) -> i64 {
+        if self.kind == Kind::CreditNote {
+            return self.to_pay_back(all);
+        }
         if self.status(all).settled() {
             return 0;
         }
         (self.totals.due - self.paid() - self.credited(all)).max(0)
+    }
+
+    /// A credit note's share of what was paid on the invoice it credits
+    /// beyond what that invoice still asks (its amount less every credit
+    /// note): the money it gives back, its paid-back entries aside. Shared
+    /// among the invoice's credit notes in their numbers' order, each up to
+    /// its own amount. 0 for anything but an issued credit note.
+    pub fn pay_back_share(&self, all: &[Invoice]) -> i64 {
+        let Some(cited) = self.corrects.as_ref().filter(|_| self.kind == Kind::CreditNote && !self.number.is_empty()) else { return 0 };
+        let Some(invoice) = all.iter().find(|i| i.number == cited.number && !i.unreadable && i.kind != Kind::CreditNote) else { return 0 };
+        let mut over = (invoice.paid() - (invoice.totals.due - invoice.credited(all)).max(0)).max(0);
+        let mut notes: Vec<&Invoice> = all.iter().filter(|c| c.kind == Kind::CreditNote && !c.number.is_empty() && c.corrects.as_ref().is_some_and(|x| x.number == invoice.number)).collect();
+        notes.sort_by(|a, b| super::natural(&a.number, &b.number));
+        for note in notes {
+            let share = over.min(note.totals.due.max(0));
+            if note.number == self.number {
+                return share;
+            }
+            over -= share;
+        }
+        0
+    }
+
+    /// What a credit note still has to pay back (`pay_back_share` less what it paid back).
+    pub fn to_pay_back(&self, all: &[Invoice]) -> i64 {
+        (self.pay_back_share(all) - self.paid()).max(0)
     }
 
     /// What is left to credit on it: its amount less the credit notes issued for it.
@@ -663,11 +710,13 @@ impl Invoice {
 }
 
 /// A record's text read: format 2 as it is; format 1 (no `format` key) as an
-/// issued invoice of kind 380 with time lines; None when it reads neither way.
+/// issued invoice of kind 380 with time lines; a newer format as format 2
+/// where it reads so, said (`Invoice::newer`); None when it reads no way.
 pub fn read(text: &str) -> Option<Invoice> {
     let table: toml::Table = text.parse().ok()?;
     match table.get("format").and_then(toml::Value::as_integer) {
         Some(2) => toml::from_str::<Invoice>(text).ok(),
+        Some(f) if f > 2 => toml::from_str::<Invoice>(text).ok().map(|i| Invoice { newer: true, ..i }),
         Some(_) => None,
         None => toml::from_str::<V1>(text).ok().map(V1::into_invoice),
     }
@@ -763,6 +812,20 @@ impl V1 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An older Sioul (before November 2026) reads a record as `V1`, the
+    /// struct of main a9407a1d, and writes back whole what it read when its
+    /// Paid is ticked: a format-2 record must never read so, or Paid on an
+    /// older device would write it over without its lines, its taxes and
+    /// its client (the second review, G16). It stays a number to it, which
+    /// it never gives again and lists in no project.
+    #[test]
+    fn an_older_sioul_never_reads_a_format_2_record_as_its_own() {
+        let issued = Invoice { format: FORMAT, number: "2026-012".into(), date: "2026-11-16".into(), due: "2026-12-16".into(), currency: "EUR".into(), project: "lumen".into(), project_title: "Studio Lumen".into(), client: Client { name: "Studio Lumen".into(), ..Client::default() }, lines: vec![Line::of_time("Advice", 60, 9000, "E", 0)], ..Invoice::default() };
+        let text = toml::to_string(&issued).unwrap();
+        assert!(toml::from_str::<V1>(&text).is_err(), "{text}");
+        assert_eq!(read(&text).map(|i| i.number), Some("2026-012".to_string()));
+    }
 
     #[test]
     fn amounts_round_as_en_16931_does() {

@@ -1,0 +1,255 @@
+# Countries (ISO 3166-1), for the country an address's last line names and
+# the name an invoice prints: code, English name, French name, other names
+# (English, French, German, Spanish, Italian, Dutch, Portuguese, the
+# country's own languages, usual short names), "|" between them.
+# Names from the iso-codes project (iso_3166-1 and its translations,
+# LGPL-2.1-or-later), and a few usual short ones (USA, UK, Holland).
+AW	Aruba	Aruba	ABW
+AF	Afghanistan	Afghanistan	AFG|Afeganistão|Afganistán|Islamic Republic of Afghanistan|Islamische Republik Afghanistan|Islamitische Republiek Afghanistan|Repubblica islamica dell'Afghanistan|República Islámica de Afganistán|República Islâmica do Afeganistão|République islamique d'Afghanistan
+AO	Angola	Angola	AGO|Repubblica d'Angola|Republic of Angola|Republiek Angola|Republik Angola|República de Angola|République d'Angola
+AI	Anguilla	Anguilla	AIA|Anguila
+AX	Åland Islands	Îles Åland	ALA|Ilhas Alanda|Islas Äland|Isole Åland|Åland, Îles|Åland-Inseln|Ålandseilanden
+AL	Albania	Albanie	ALB|Albanien|Albanië|Albânia|Repubblica d'Albania|Republic of Albania|Republiek Albanië|Republik Albanien|Republika e Shqipërisë|República da Albânia|República de Albania|République d'Albanie|Shqipëri
+AD	Andorra	Andorre	AND|Fürstentum Andorra|Principado de Andorra|Principality of Andorra|Principat d'Andorra|Principato d'Andorra|Principauté d'Andorre|Vorstendom Andorra
+AE	United Arab Emirates	Émirats arabes unis	ARE|EAU|Emirados Árabes Unidos|Emirati Arabi Uniti|Emiratos Árabes Unidos|UAE|Vereinigte Arabische Emirate|Verenigde Arabische Emiraten|الإمارات العربيّة المتحدّة
+AR	Argentina	Argentine	ARG|Argentijnse Republiek|Argentine Republic|Argentinien|Argentinische Republik|Argentinië|Repubblica argentina|República Argentina|République d'Argentine
+AM	Armenia	Arménie	ARM|Armenien|Armenië|Arménia|Repubblica d'Armenia|Republic of Armenia|Republiek Armenië|Republik Armenien|República da Arménia|República de Armenia|République d'Arménie|Հայաստան|Հայաստանի Հանրապետություն
+AS	American Samoa	Samoa américaines	ASM|Amerikaans-Samoa|Amerikanisch-Samoa|Samoa Americana|Samoa Estadounidense|Samoa americane
+AQ	Antarctica	Antarctique	ATA|Antarktis|Antartide|Antártida
+TF	French Southern Territories	Terres australes françaises	ATF|Franse Zuidelijke Gebieden|Französische Süd- und Antarktisgebiete|Territori francesi meridionali|Territorios Franceses del Sur|Territórios Franceses do Sul
+AG	Antigua and Barbuda	Antigua-et-Barbuda	ATG|Antigua e Barbuda|Antigua en Barbuda|Antigua und Barbuda|Antigua y Barbuda|Antígua e Barbuda
+AU	Australia	Australie	AUS|Australien|Australië|Austrália
+AT	Austria	Autriche	AUT|Oostenrijk|Repubblica d'Austria|Republic of Austria|Republiek Oostenrijk|Republik Österreich|República da Áustria|República de Austria|République d'Autriche|Áustria|Österreich
+AZ	Azerbaijan	Azerbaïdjan	AZE|Aserbaidschan|Azerbaigian|Azerbaijão|Azerbaiyán|Azerbeidzjan|Azərbaycan|Repubblica dell'Azerbaigian|Republic of Azerbaijan|Republiek Azerbeidzjan|Republik Aserbaidschan|República de Azerbaiyán|República do Azerbaijão|République d'Azerbaïdjan
+BI	Burundi	Burundi	BDI|Repubblica del Burundi|Republic of Burundi|Republiek Burundi|Republik Burundi|República de Burundi|República do Burundi|République du Burundi
+BE	Belgium	Belgique	BEL|Belgie|Belgien|Belgio|België|Bélgica|Kingdom of Belgium|Koninkrijk België|Königreich Belgien|Regno del Belgio|Reino da Bélgica|Reino de Bélgica|Royaume de Belgique
+BJ	Benin	Bénin	BEN|Benim|Benín|Repubblica del Benin|Republic of Benin|Republiek Benin|Republik Benin|República de Benín|República do Benim|République du Bénin
+BQ	Bonaire, Sint Eustatius and Saba	Bonaire, Saint-Eustache et Saba	BES|Bonaire, Santo Eustáquio e Saba|Bonaire, Sint Eustatius en Saba|Bonaire, Sint Eustatius und Saba|Islas BES (Caribe Neerlandés)|Paesi Bassi caraibici
+BF	Burkina Faso	Burkina Faso	BFA|Burquina Faso
+BD	Bangladesh	Bangladesh	BGD|Bangladeche|Bangladesch|Bangladés|People's Republic of Bangladesh|Repubblica Popolare del Bangladesh|República Popular de Bangladés|República Popular do Bangladeche|République populaire du Bengladesh|Volksrepubliek Bangladesh|Volksrepublik Bangladesh|গণপ্রজাতন্ত্রী বাংলাদেশ|বাংলাদেশ
+BG	Bulgaria	Bulgarie	BGR|Bulgarien|Bulgarije|Bulgária|Repubblica di Bulgaria|Republic of Bulgaria|Republiek Bulgarije|Republik Bulgarien|República da Bulgária|República de Bulgaria|République de Bulgarie|България|Република България
+BH	Bahrain	Bahreïn	BHR|Bahrein|Baréin|Barém|Kingdom of Bahrain|Koninkrijk Bahrein|Königreich Bahrain|Regno del Bahrein|Reino de Baréin|Reino do Barém|Royaume de Bahreïn
+BS	Bahamas	Bahamas	BHS|Bahama's|Commonwealth de las Bahamas|Commonwealth delle Bahamas|Commonwealth der Bahamas|Commonwealth des Bahamas|Commonwealth of the Bahamas|Comunidade das Bahamas|Gemenebest van de Bahama's
+BA	Bosnia and Herzegovina	Bosnie-Herzégovine	BIH|Bosna i Hercegovina|Bosnia ed Erzegovina|Bosnia y Herzegovina|Bosnia-Erzegovina|Bosnien und Herzegowina|Bosnië en Herzegovina|Bósnia e Herzegovina|Republic of Bosnia and Herzegovina|Republiek Bosnië en Herzegovina|Republika Bosna i Hercegovina|República da Bósnia-Herzegóvina|República de Bosnia y Hercegovina|République de Bosnie et Herzégovine|Босна и Херцеговина|Република Босна и Херцеговина
+BL	Saint Barthélemy	Saint-Barthélemy	BLM|San Bartolomé
+BY	Belarus	Bélarus	BLR|Bielorrusia|Bielorussia|Bielorússia|Repubblica di Bielorussia|Republic of Belarus|Republiek Belarus|Republik Belarus|República da Bielorússia|República de Bielorrusia|République du Bélarus|Wit-Rusland|Беларусь|Рэспубліка Беларусь
+BZ	Belize	Belize	BLZ|Belice
+BM	Bermuda	Bermudes	BMU|Bermudas|Islas Bermudas
+BO	Bolivia	Bolivie	BOL|Bolivia, Estado plurinacional de|Bolivia, Multinationale Staat|Bolivia, Plurinational State of|Bolivia, Stato Plurinazionale della|Bolivie, état plurinational de|Bolivien|Bolivien, Plurinationaler Staat|Bolívia|Bolívia, Estado Plurinacional da|Estado Plurinacional da Bolívia|Estado plurinacional de Bolivia|Multinationale Staat Bolivia|Plurinational State of Bolivia|Plurinationaler Staat Bolivien|Stato Plurinazionale della Bolivia|État plurinational de Bolivie
+BR	Brazil	Brésil	BRA|Brasil|Brasile|Brasilien|Brazilië|Federale Republiek Brazilië|Federative Republic of Brazil|Föderative Republik Brasilien|Repubblica Federale del Brasile|República Federativa de Brasil|República Federativa do Brasil|République fédérale du Brésil
+BB	Barbados	Barbade	BRB
+BN	Brunei Darussalam	Brunéi Darussalam	BRN|Brunei
+BT	Bhutan	Bhoutan	BTN|Bután|Butão|Kingdom of Bhutan|Koninkrijk Bhutan|Königreich Bhutan|Regno del Bhutan|Reino de Bután|Reino do Butão|Royaume du Bouthan
+BV	Bouvet Island	Île Bouvet	BVT|Bouvet-Insel|Bouveteiland|Ilha Bouvet|Isla Bouvet|Isola Bouvet
+BW	Botswana	Botswana	BWA|Botsuana|Repubblica del Botswana|Republic of Botswana|Republiek Botswana|Republik Botsuana|República de Botsuana|República do Botsuana|République du Botswana
+CF	Central African Republic	République centrafricaine	CAF|Centraal-Afrikaanse Republiek|Repubblica Centrafricana|República Centro-Africana|República Centroafricana|Zentralafrikanische Republik
+CA	Canada	Canada	CAN|Canadá|Kanada
+CC	Cocos (Keeling) Islands	Îles Cocos	CCK|Cocos (Keeling), Îles|Cocoseilanden (Keelingeilanden)|Ilhas Cocos|Islas Cocos (Keeling)|Isole Cocos (Keeling)|Kokos-(Keeling-)Inseln
+CH	Switzerland	Suisse	CHE|Confederación Suiza|Confederazione svizzera|Confederação Suíça|Confédération helvétique|Confédération suisse|Schweiz|Schweizerische Eidgenossenschaft|Suiza|Suíça|Svizra|Svizzera|Swiss Confederation|Zwitserland|Zwitserse Bondsstaat
+CL	Chile	Chili	CHL|Cile|Repubblica del Cile|Republic of Chile|Republiek Chili|Republik Chile|República de Chile|República do Chile|République du Chili
+CN	China	Chine	CHN|Cina|People's Republic of China|Repubblica Popolare Cinese|República Popular China|República Popular da China|République populaire de Chine|Volksrepubliek China|Volksrepublik China|中华人民共和国|中国
+CI	Côte d'Ivoire	Côte d'Ivoire	CIV|Costa d'Avorio|Costa de Marfíl|Costa do Marfim|Ivoorkust|Ivory Coast|Repubblica della Costa d'Avorio|Republic of Côte d'Ivoire|Republiek Ivoorkust|Republik Côte d'Ivoire|República da Costa do Marfim|República de Costa de Marfíl|République de Côte d'Ivoire
+CM	Cameroon	Cameroun	CMR|Camarões|Camerun|Camerún|Kameroen|Kamerun|Repubblica del Camerun|Republic of Cameroon|Republiek Kameroen|Republik Kamerun|República del Camerún|República dos Camarões|République du Cameroun
+CD	Democratic Republic of the Congo	République démocratique du Congo	COD|Congo, Democratische Republiek|Congo, República Democrática del|Congo, República Democrática do|Congo, The Democratic Republic of the|DR Congo|Demokratische Republik Kongo|RD Congo|RDC|Repubblica democratica del Congo
+CG	Congo	République du Congo	COG|Kongo|Repubblica del Congo|Republic of the Congo|Republiek Congo|Republik Kongo|República del Congo|República do Congo
+CK	Cook Islands	Îles Cook	COK|Cookeilanden|Cookinseln|Ilhas Cook|Islas Cook|Isole Cook
+CO	Colombia	Colombie	COL|Colômbia|Kolumbien|Repubblica di Colombia|Republic of Colombia|Republiek Colombia|Republik Kolumbien|República da Colômbia|República de Colombia|République de Colombie
+KM	Comoros	Comores	COM|Comore|Comoren|Comores, Islas|Komoren|Unie van de Comoren|Union des Comores|Union of the Comoros|Unione delle Comore|União das Comores|Unión de las Comores|Vereinigung der Komoren
+CV	Cabo Verde	Cap-Vert	CPV|Capo Verde|Kaapverdië|Kap Verde|Repubblica di Capo Verde|Republic of Cabo Verde|Republiek Kaapverdië|Republik Kap Verde|República de Cabo Verde|République du Cap-Vert
+CR	Costa Rica	Costa Rica	CRI|Repubblica di Costa Rica|Republic of Costa Rica|Republiek Costa Rica|Republik Costa Rica|República da Costa Rica|República de Costa Rica|République du Costa Rica
+CU	Cuba	Cuba	CUB|Kuba|Repubblica di Cuba|Republic of Cuba|Republiek Cuba|Republik Kuba|República de Cuba|République de Cuba
+CW	Curaçao	Curaçao	CUW|Curazao|Curação
+CX	Christmas Island	Île Christmas	CXR|Christmas, Île|Christmaseiland|Ilha Natal|Isla de Navidad|Isola di Natale|Weihnachtsinseln
+KY	Cayman Islands	Îles Caïmans	CYM|Cayman-Inseln|Ilhas Caimão|Islas Caimán|Isole Cayman|Kaaimaneilanden
+CY	Cyprus	Chypre	CYP|Chipre|Cipro|Kıbrıs|Kıbrıs Cumhuriyeti|Repubblica di Cipro|Republic of Cyprus|Republiek Cyprus|Republik Zypern|República de Chipre|République de Chypre|Zypern|Κυπριακή Δημοκρατία|Κύπρος
+CZ	Czechia	Tchéquie	CZE|Cechia|Chequia|Chéquia|Czech Republic|Repubblica Ceca|República Checa|République tchèque|Tschechien|Tschechische Republik|Tsjechië|Česko|Česká republika
+DE	Germany	Allemagne	Alemanha|Alemania|BRD|Bondsrepubliek Duitsland|Bundesrepublik Deutschland|DEU|Deutschland|Duitsland|Federal Republic of Germany|Germania|RFA|Repubblica Federale di Germania|República Federal da Alemanha|República Federal de Alemania|République fédérale d'Allemagne
+DJ	Djibouti	Djibouti	DJI|Dschibuti|Gibuti|Repubblica di Gibuti|Republic of Djibouti|Republiek Djibouti|Republik Dschibuti|República de Yibuti|República do Djibouti|République de Djibouti|Yibuti
+DM	Dominica	Dominique	Commonwealth Dominica|Commonwealth de Dominica|Commonwealth de la Dominique|Commonwealth di Dominica|Commonwealth of Dominica|Comunidade da Dominica|DMA|Gemenebest van Dominica
+DK	Denmark	Danemark	DNK|Danimarca|Danmark|Denemarken|Dinamarca|Dänemark|Kingdom of Denmark|Kongeriget Danmark|Koninkrijk Denemarken|Königreich Dänemark|Regno di Danimarca|Reino da Dinamarca|Reino de Dinamarca|Royaume du Danemark
+DO	Dominican Republic	République dominicaine	DOM|Dominicaanse Republiek|Dominikanische Republik|Repubblica Dominicana|República Dominicana
+DZ	Algeria	Algérie	Algerien|Algerije|Argélia|DZA|Democratische Volksrepubliek Algerije|Demokratische Volksrepublik Algerien|People's Democratic Republic of Algeria|Repubblica Democratica Popolare di Algeria|República Democrática Popular de Argelia|República Democrática e Popular da Argélia|République algérienne démocratique et populaire|الجزائر|الجمهورية الجزائرية الديمقراطية الشعبية
+EC	Ecuador	Équateur	ECU|Equador|Repubblica dell'Ecuador|Republic of Ecuador|Republiek Ecuador|Republik Ecuador|República del Ecuador|República do Equador|République d'Équateur
+EG	Egypt	Égypte	Arab Republic of Egypt|Arabische Republiek Egypte|Arabische Republik Ägypten|EGY|Egipto|Egito|Egitto|Egypte|Repubblica araba d'Egitto|República Árabe de Egipto|República Árabe do Egito|République arabe d'Égypte|Ägypten|جمهوريّة مصر العربيّة|مصر
+ER	Eritrea	Érythrée	ERI|Eritreia|Estado de Eritrea|Estados da Eritreia|L'État d'Érythrée|Staat Eritrea|Stato di Eritrea|the State of Eritrea
+EH	Western Sahara	Sahara occidental	ESH|Saara Ocidental|Sahara Occidental|Sahara occidentale|Westelijke Sahara|Westsahara
+ES	Spain	Espagne	ESP|Espainia|Espanha|Espaniako Erresuma|Espanya|España|Kingdom of Spain|Koninkrijk Spanje|Königreich Spanien|Regne d'Espanya|Regno di Spagna|Reino de Espanha|Reino de España|Royaume d'Espagne|Spagna|Spanien|Spanje
+EE	Estonia	Estonie	EST|Eesti|Eesti Vabariik|Estland|Estónia|Repubblica d'Estonia|Republic of Estonia|Republiek Estland|Republik Estland|República da Estónia|República de Estonia|République d'Estonie
+ET	Ethiopia	Éthiopie	Demokratische Bundesrepublik Äthiopien|ETH|Ethiopië|Etiopia|Etiopía|Etiópia|Federal Democratic Republic of Ethiopia|Federale Democratische Republiek Ethiopië|Repubblica Federale Democratica d'Etiopia|República Democrática Federal da Etiópia|República Federal Democrática de Etiopía|République fédérale démocratique d'Éthiopie|Äthiopien|ጒት፥ጵ።
+FI	Finland	Finlande	FIN|Finlandia|Finlândia|Finnland|Repubblica di Finlandia|Republic of Finland|Republiek Finland|Republik Finnland|Republiken Finland|República da Finlândia|República de Finlandia|République de Finlande|Suomen tasavalta|Suomi
+FJ	Fiji	Fidji	FJI|Fidschi|Figi|Fiyi|Repubblica di Figi|Republic of Fiji|Republiek Fiji|Republik Fidschi|República das Fiji|República de Fiyi|République des Fidji
+FK	Falkland Islands	Îles Malouines	FLK|Falkland Islands (Malvinas)|Falklandeilanden (Malvinas)|Falklandinseln (Malwinen)|Ilhas Falkland (Malvinas)|Islas Falkland (Malvinas)|Isole Falkland (Malvine)|Malouines, Îles (Falkland)
+FR	France	France	FRA|Francia|Frankreich|Frankrijk|Franse Republiek|Französische Republik|França|French Republic|Repubblica francese|República Francesa|République française
+FO	Faroe Islands	Îles Féroé	FRO|Faeröer|Färöer-Inseln|Føroyar|Ilhas Faroé|Islas Feroe|Isole Fær Øer
+FM	Micronesia	Micronésie	Estados Federados da Micronésia|Estados Federados de Micronesia|FSM|Federale Staten van Micronesia|Federated States of Micronesia|Föderierte Staaten von Mikronesien|Micronesia, Estados Federados de|Micronesia, Federated States of|Micronésia, Estados Federados da|Micronésie, États fédérés de|Mikronesien, Föderierte Staaten von|Stati federati di Micronesia|États fédérés de Micronésie
+GA	Gabon	Gabon	GAB|Gabonese Republic|Gabun|Gabunische Republik|Gabão|Gabón|Repubblica Gabonese|Republiek Gabon|República Gabonesa|République gabonaise
+GB	United Kingdom	Royaume-Uni	An Ríocht Aontaithe|Angleterre|Britain|England|GBR|Grande-Bretagne|Great Britain|Irlande du Nord|Northern Ireland|Pays de Galles|Regno Unito|Regno Unito di Gran Bretagna e d'Irlanda del Nord|Reino Unido|Reino Unido da Grã-Bretanha e Irlanda do Norte|Reino Unido de Gran Bretaña e Irlanda del Norte|Royaume-Uni de Grande-Bretagne et d'Irlande du Nord|Ríocht Aontaithe na Breataine Móire agus Thuaisceart Éireann|Scotland|Teyrnas Unedig Prydain Fawr a Gogledd Iwerddon|U.K.|UK|United Kingdom of Great Britain and Northern Ireland|Vereinigtes Königreich|Vereinigtes Königreich Großbritannien und Nordirland|Verenigd Koninkrijk|Verenigd Koninkrijk van Groot-Brittannië en Noord-Ierland|Wales|Y Deyrnas Unedig|Écosse
+GE	Georgia	Géorgie	GEO|Georgien|Geórgia|საქართველო
+GG	Guernsey	Guernesey	GGY
+GH	Ghana	Ghana	GHA|Gana|Repubblica del Ghana|Republic of Ghana|Republiek Ghana|Republik Ghana|República de Ghana|República do Gana|République du Ghana
+GI	Gibraltar	Gibraltar	GIB|Gibilterra
+GN	Guinea	Guinée	GIN|Guinee|Guiné|Repubblica di Guinea|Republic of Guinea|Republiek Guinee|Republik Guinea|República da Guiné|República de Guinea|République de Guinée
+GP	Guadeloupe	Guadeloupe	GLP|Guadalupa|Guadalupe
+GM	Gambia	Gambie	GMB|Gâmbia|Repubblica del Gambia|Republic of the Gambia|Republiek Gambia|Republik Gambia|República da Gâmbia|República de Gambia|République de Gambie
+GW	Guinea-Bissau	Guinée-Bissau	GNB|Guinea-Bisáu|Guinee-Bissau|Guiné-Bissáu|Repubblica di Guinea-Bissau|Republic of Guinea-Bissau|Republiek Guinee-Bissau|Republik Guinea-Bissau|República da Guiné-Bissáu|República de Guinea-Bissau|République de Guinée-Bissau
+GQ	Equatorial Guinea	Guinée Équatoriale	Equatoriaal-Guinea|GNQ|Guinea Ecuatorial|Guinea equatoriale|Guiné Equatorial|Repubblica della Guinea Equatoriale|Republic of Equatorial Guinea|Republiek Equatoriaal-Guinea|Republik Äquatorialguinea|República da Guiné Equatorial|República de Guinea Ecuatorial|République de Guinée Équatoriale|Äquatorialguinea
+GR	Greece	Grèce	GRC|Grecia|Griechenland|Griekenland|Grécia|Hellas|Helleense Republiek|Hellenic Republic|Hellenische Republik|Repubblica Ellenica|República Helénica|République grecque|Ελλάδα|Ελλάς|Ελληνική Δημοκρατία
+GD	Grenada	Grenade	GRD|Granada
+GL	Greenland	Groënland	GRL|Groenland|Groenlandia|Gronelândia|Grönland
+GT	Guatemala	Guatemala	GTM|Repubblica del Guatemala|Republic of Guatemala|Republiek Guatemala|Republik Guatemala|República da Guatemala|República de Guatemala|République du Guatemala
+GF	French Guiana	Guyane française	Frans-Guyana|Französisch-Guyana|GUF|Guayana Francesa|Guiana Francesa|Guyana francese
+GU	Guam	Guam	GUM
+GY	Guyana	Guyana	GUY|Guiana|Kooperative Republik Guyana|Repubblica Cooperativa di Guyana|Republic of Guyana|Republiek Guyana|República da Guiana|República de Guyana|République de Guyana
+HK	Hong Kong	Hong Kong	HKG|Hong Kong Special Administrative Region of China|Hong Kong, Região de Administração Especial da China|Hongkong|Regione amministrativa speciale di Hong Kong della Repubblica Popolare Cinese|Región Administrativa Especial China de Hong Kong|Région spéciale administrative chinoise de Hong-Kong|Sonderverwaltungsregion Hongkong|Speciale Administratieve Regio Hongkong van de Volksrepubliek China
+HM	Heard Island and McDonald Islands	Îles Heard-et-MacDonald	HMD|Heard und McDonaldinseln|Heardeiland en McDonaldeilanden|Ilha Heard e Ilhas McDonald|Isla Heard e Islas McDonald|Isole Heard e McDonald
+HN	Honduras	Honduras	HND|Repubblica dell'Honduras|Republic of Honduras|Republiek Honduras|Republik Honduras|República das Honduras|República de Honduras|République du Honduras
+HR	Croatia	Croatie	Croacia|Croazia|Croácia|HRV|Hrvatska|Kroatien|Kroatië|Repubblica di Croazia|Republic of Croatia|Republiek Kroatië|Republik Kroatien|Republika Hrvatska|República da Croácia|República de Croacia|République de Croatie
+HT	Haiti	Haïti	HTI|Haití|Repubblica di Haiti|Republic of Haiti|Republiek Haïti|Republik Haiti|República de Haití|República do Haiti|République de Haïti
+HU	Hungary	Hongrie	HUN|Hongarije|Hungria|Hungría|Magyarország|Ungarn|Ungheria
+ID	Indonesia	Indonésie	IDN|Indonesien|Indonesië|Indonésia|Negara Kesatuan Republik Indonesia|Repubblica d'Indonesia|Republic of Indonesia|Republiek Indonesië|Republik Indonesien|República da Indonésia|República de Indonesia|République d'Indonésie
+IM	Isle of Man	Île de Man	Eiland Man|IMN|Ilha de Man|Insel Man|Isla de Man|Isola di Man
+IN	India	Inde	IND|Indien|Repubblica dell'India|Republic of India|Republiek India|Republik Indien|República da Índia|República de la India|République d'Inde|Índia|भारत|भारतीय गणराज्य
+IO	British Indian Ocean Territory	Territoire britannique de l'océan Indien	Britisches Territorium im Indischen Ozean|Brits Indische Oceaanterritorium|IOT|Territorio Británico del Océano Índico|Territorio britannico dell'Oceano Indiano|Território Britânico do Oceano Índico
+IE	Ireland	Irlande	Eire|IRL|Ierland|Irland|Irlanda|Éire
+IR	Iran	Iran	IRN|Iran, Islamic Republic of|Iran, Islamische Republik|Iran, République islamique d'|Irán|Irán, República islámica de|Irão|Irão, República Islâmica do|Islamic Republic of Iran|Islamische Republik Iran|Islamitische Republiek Iran|Repubblica Islamica dell'Iran|República Islámica de Irán|República Islâmica do Irão|République islamique d'Iran|ایران، جمهوری اسلامی|جمهوری اسلامی ایران
+IQ	Iraq	Irak	IRQ|Iraque|Repubblica d'Iraq|Republic of Iraq|Republiek Irak|Republik Irak|República de Irak|República do Iraque|République d'Iraq
+IS	Iceland	Islande	IJsland|ISL|Island|Islanda|Islandia|Islândia|Lýðveldið Ísland|Repubblica d'Islanda|Republic of Iceland|Republiek IJsland|Republik Island|República da Islândia|República de Islandia|République d'Islande|Ísland
+IL	Israel	Israël	Estado de Israel|ISR|Israele|Staat Israel|Staat Israël|State of Israel|Stato d'Israele|État d'Israël|ישראל|מדינת ישראל
+IT	Italy	Italie	ITA|Italia|Italiaanse Republiek|Italian Republic|Italien|Italienische Republik|Italië|Itália|Repubblica Italiana|República Italiana|République italienne
+JM	Jamaica	Jamaïque	Giamaica|JAM|Jamaika
+JE	Jersey	Jersey	JEY
+JO	Jordan	Jordanie	Giordania|Haschemitisches Königreich Jordanien|Hashemite Kingdom of Jordan|Hasjemitisch Koninkrijk Jordanië|JOR|Jordania|Jordanien|Jordanië|Jordânia|Regno Hascimita di Giordania|Reino Hachemita da Jordânia|Reino Hachemí de Jordania|Royaume hachémite de Jordanie|الأردن|المملكة الأردنيّة الهاشميّة
+JP	Japan	Japon	Giappone|JPN|Japão|Japón|日本
+KZ	Kazakhstan	Kazakhstan	Cazaquistão|KAZ|Kasachstan|Kazachstan|Kazajistán|Kazakistan|Repubblica del Kazakistan|Republic of Kazakhstan|Republiek Kazachstan|Republik Kasachstan|República de Kazajistán|República do Cazaquistão|République du Kazakhstan
+KE	Kenya	Kenya	KEN|Kenia|Quénia|Repubblica del Kenya|Republic of Kenya|Republiek Kenia|Republik Kenia|República de Kenia|República do Quénia|République du Kenya
+KG	Kyrgyzstan	Kirghizistan	KGZ|Kirgisische Republik|Kirgisistan|Kirgizische Republiek|Kirgizië|Kirguistán|Kyrgyz Republic|Quirguistão|Repubblica del Kirghizistan|República Kirguiza|República do Quirgistão|République kirghize
+KH	Cambodia	Cambodge	Cambodja|Cambogia|Camboja|Camboya|KHM|Kambodscha|Kingdom of Cambodia|Koninkrijk Cambodja|Königreich Kambodscha|Regno di Cambogia|Reino de Camboya|Reino do Camboja|Royaume du Cambodge
+KI	Kiribati	Kiribati	KIR|Repubblica di Kiribati|Republic of Kiribati|Republiek Kiribati|Republik Kiribati|República de Kiribati|République de Kiribati
+KN	Saint Kitts and Nevis	Saint-Christophe-et-Niévès	KNA|Saint Kitts e Nevis|Saint Kitts en Nevis|San Cristóbal y Nieves|St. Kitts und Nevis|São Cristóvão e Nevis
+KR	South Korea	Corée du Sud	Corea del Sud|Corea del Sur|Corea del sud|Corea, República de|Coreia do Sul|Coreia, República da|Corée|Corée, République de|KOR|Korea|Korea, Republic of|Korea, Republiek|Korea, Republik|Südkorea|Zuid-Korea|대한민국
+KW	Kuwait	Koweït	Estado de Kuwait|Estado do Kuwait|KWT|Koeweit|Staat Koeweit|Staat Kuwait|State of Kuwait|Stato del Kuwait|État du Koweït
+LA	Laos	Laos	LAO|Lao People's Democratic Republic|Lao, République démocratique populaire|Laos Democratische Volksrepubliek|Laos, Demokratische Volksrepublik|República Democrática Popular de Lao|República Democrática Popular do Laos
+LB	Lebanon	Liban	LBN|Lebanese Republic|Libanesische Republik|Libano|Libanon|Líbano|Repubblica libanese|Republiek Libanon|República Libanesa|República do Líbano|République libanaise|الجمهوريّة اللّبنانيّة|لبنان
+LR	Liberia	Libéria	LBR|Repubblica di Liberia|Republic of Liberia|Republiek Liberia|Republik Liberia|República da Libéria|República de Liberia|République du Libéria
+LY	Libya	Libye	LBY|Libia|Libië|Libyen|Líbia
+LC	Saint Lucia	Sainte-Lucie	LCA|Santa Lucía|Santa Lúcia|St. Lucia
+LI	Liechtenstein	Liechtenstein	Fürstentum Liechtenstein|LIE|Principado de Liechtenstein|Principado do Liechtenstein|Principality of Liechtenstein|Principato del Liechtenstein|Principauté du Liechtenstein|Vorstendom Liechtenstein
+LK	Sri Lanka	Sri Lanka	Democratic Socialist Republic of Sri Lanka|Democratische Socialistische Republiek Sri Lanka|Demokratische sozialistische Republik Sri Lanka|LKA|Repubblica Democratica Socialista dello Sri Lanka|República Democrática Socialista do Sri Lanka|República Socialista Democrática de Sri Lanka|République démocratique socialiste de Sri Lanka
+LS	Lesotho	Lesotho	Kingdom of Lesotho|Koninkrijk Lesotho|Königreich Lesotho|LSO|Lesoto|Regno del Lesotho|Reino de Lesoto|Reino do Lesoto|Royaume du Lesotho
+LT	Lithuania	Lituanie	LTU|Lietuva|Lietuvos Respublika|Litauen|Litouwen|Lituania|Lituânia|Repubblica di Lituania|Republic of Lithuania|Republiek Litouwen|Republik Litauen|República da Lituânia|República de Lituania|République de Lituanie
+LU	Luxembourg	Luxembourg	Gran Ducado de Luxemburgo|Grand Duchy of Luxembourg|Grand-duché du Luxembourg|Granducato di Lussemburgo|Groothertogdom Luxemburg|Großherzogtum Luxemburg|Grã-Ducado do Luxemburgo|LUX|Lussemburgo|Luxemburg|Luxemburgo
+LV	Latvia	Lettonie	LVA|Latvija|Latvijas Republika|Letland|Letonia|Lettland|Lettonia|Letónia|Repubblica di Lettonia|Republic of Latvia|Republiek Letland|Republik Lettland|República da Letónia|República de Letonia|République de Lettonie
+MO	Macao	Macau	MAC|Macao Special Administrative Region of China|Macau, Região Especial de Administração Chinesa|Regione Amministrativa Speciale di Macao della Repubblica Popolare Cinese|Región Administrativa Especial China de Macao|Région spéciale administrative chinoise de Macao|Sonderverwaltungsregion Macao|Speciale Administratieve Regio Macau van de Volksrepubliek China
+MF	Saint Martin (French part)	Saint-Martin (partie française)	MAF|Saint Martin (Französischer Teil)|Saint-Martin (Francia)|San Martín (zona francesa)|Sint-Maarten (Frans deel)|São Martin (Território Francês)
+MA	Morocco	Maroc	Kingdom of Morocco|Koninkrijk Marokko|Königreich Marokko|MAR|Marocco|Marokko|Marrocos|Marruecos|Regno del Marocco|Reino de Marrocos|Reino de Marruecos|Royaume du Maroc|المغرب|المملكة المغربيّة
+MC	Monaco	Monaco	Fürstentum Monaco|MCO|Mónaco|Principado de Mónaco|Principado do Mónaco|Principality of Monaco|Principato di Monaco|Principauté de Monaco|Vorstendom Monaco
+MD	Moldova	Moldavie	MDA|Moldau|Moldau, Republik|Moldavia|Moldavia, República de|Moldavië|Moldavië, Republiek|Moldova, Republic of|Moldova, Republica|Moldova, République de|Moldávia|Moldávia, República da|Repubblica di Moldavia|Republic of Moldova|Republica Moldova|Republiek Moldavië|Republik Moldau|República da Moldávia|República de Moldavia|République de Moldova
+MG	Madagascar	Madagascar	MDG|Madagaskar|Madagáscar|Repubblica del Madagascar|Republic of Madagascar|Republiek Madagaskar|Republik Madagaskar|República de Madagascar|República de Madagáscar|République de Madagascar
+MV	Maldives	Maldives	Islas Maldivas|MDV|Maldivas|Maldive|Maldiven|Malediven|Repubblica delle Maldive|Republic of Maldives|Republiek der Maldiven|Republik Malediven|República das Maldivas|República de Maldivas|République des Maldives
+MX	Mexico	Mexique	Estados Unidos Mexicanos|MEX|Messico|Mexiko|México|Stati Uniti Messicani|United Mexican States|Vereinigte Mexikanische Staaten|Verenigde Mexicaanse Staten|États-Unis du Mexique
+MH	Marshall Islands	Îles Marshall	Ilhas Marshall|Islas Marshall|Isole Marshall|MHL|Marshalleilanden|Marshallinseln|Repubblica delle Isole Marshall|Republic of the Marshall Islands|Republiek der Marshalleilanden|Republik Marshallinseln|República das Ilhas Marshall|República de las Islas Marshall|République des Îles Marshall
+MK	North Macedonia	Macédoine du Nord	MKD|Macedonia|Macedonia del Nord|Macedonia del Norte|Macedónia do Norte|Macédoine|Noord-Macedonië|Nordmazedonien|Repubblica di Macedonia del Nord|Republic of North Macedonia|Republiek Noord-Macedonië|Republik Nordmazedonien|República da Macedónia do Norte|República de Macedonia del Norte|République de Macédoine du Nord
+ML	Mali	Mali	MLI|Malí|Repubblica del Mali|Republic of Mali|Republiek Mali|Republik Mali|República de Mali|República do Mali|République du Mali
+MT	Malta	Malte	MLT|Repubblica di Malta|Republic of Malta|Republiek Malta|Republik Malta|República de Malta|République de Malte
+MM	Myanmar	Birmanie	Birmania|Birmânia|MMR|Repubblica cooperativistica di Myanmar|Republic of Myanmar|Republiek Myanmar|Republik Myanmar|República da Birmânia|República de la Unión de Myanmar|République de Myanmar
+ME	Montenegro	Monténégro	MNE|Црна Гора
+MN	Mongolia	Mongolie	MNG|Mongolei|Mongolië|Mongólia
+MP	Northern Mariana Islands	Îles Mariannes du Nord	Commonwealth Nördliche Mariana-Inseln|Commonwealth de las Islas Marianas del Norte|Commonwealth delle Isole Marianne settentrionali|Commonwealth des îles Mariannes du Nord|Commonwealth of the Northern Mariana Islands|Comunidade das Ilhas Marianas do Norte|Gemenebest van de Noordelijke Marianen|Ilhas Marianas do Norte|Islas Marianas del Norte|Isole Marianne Settentrionali|MNP|Noordelijke Marianen|Nördliche Marianen
+MZ	Mozambique	Mozambique	MOZ|Mosambik|Mozambico|Moçambique|Repubblica del Mozambico|Republic of Mozambique|Republiek Mozambique|Republik Mosambik|República de Mozambique|República de Moçambique|République du Mozambique
+MR	Mauritania	Mauritanie	Islamic Republic of Mauritania|Islamische Republik Mauretanien|Islamitische Republiek Mauritanië|MRT|Mauretanien|Mauritanië|Mauritânia|Repubblica islamica di Mauritania|República Islámica de Mauritania|República Islâmica da Mauritânia|République islamique de Mauritanie
+MS	Montserrat	Montserrat	MSR|Monserrate
+MQ	Martinique	Martinique	MTQ|Martinica
+MU	Mauritius	Maurice	MUS|Mauricio|Maurizio|Maurícia|Repubblica di Mauritius|Republic of Mauritius|Republiek Mauritius|Republik Mauritius|República de Mauricio|República de Maurícias|République de l'Île Maurice
+MW	Malawi	Malawi	MWI|Malaui|Repubblica del Malawi|Republic of Malawi|Republiek Malawi|Republik Malawi|República de Malawi|República do Malawi|République du Malawi
+MY	Malaysia	Malaisie	MYS|Malasia|Maleisië|Malásia
+YT	Mayotte	Mayotte	MYT
+NA	Namibia	Namibie	NAM|Namibië|Namíbia|Repubblica di Namibia|Republic of Namibia|Republiek Namibië|Republik Namibia|República da Namíbia|República de Namibia|République de Namibie
+NC	New Caledonia	Nouvelle-Calédonie	NCL|Neukaledonien|Nieuw-Caledonië|Nova Caledónia|Nueva Caledonia|Nuova Caledonia
+NE	Niger	Niger	NER|Níger|Repubblica del Niger|Republic of the Niger|Republiek Niger|Republik Niger|República del Níger|República do Níger|République du Niger
+NF	Norfolk Island	Île Norfolk	Ilha Norfolk|Isla Norfolk|Isola Norfolk|NFK|Norfolk|Norfolkinsel
+NG	Nigeria	Nigeria	Bundesrepublik Nigeria|Federal Republic of Nigeria|Federale Republiek Nigeria|NGA|Nigéria|Repubblica federale della Nigeria|República Federal da Nigéria|República Federal de Nigeria|République fédérale du Nigeria
+NI	Nicaragua	Nicaragua	NIC|Nicarágua|Repubblica di Nicaragua|Republic of Nicaragua|Republiek Nicaragua|Republik Nicaragua|República da Nicarágua|República de Nicaragua|République du Nicaragua
+NU	Niue	Nioue	NIU
+NL	Netherlands	Pays-Bas	Holland|Hollande|Kingdom of the Netherlands|Koninkrijk der Nederlanden|Königreich der Niederlande|NLD|Nederland|Niederlande|Paesi Bassi|Pays bas|Países Baixos|Países Bajos|Regno dei Paesi Bassi|Reino de los Países Bajos|Reino dos Países Baixos|Royaume des Pays-Bas|The Netherlands
+NO	Norway	Norvège	Kingdom of Norway|Kongeriket Noreg|Kongeriket Norge|Koninkrijk Noorwegen|Königreich Norwegen|NOR|Noorwegen|Noreg|Norge|Noruega|Norvegia|Norwegen|Regno di Norvegia|Reino da Noruega|Reino de Noruega|Royaume de Norvège
+NP	Nepal	Népal	Demokratische Bundesrepublik Nepal|Federal Democratic Republic of Nepal|Federale Democratische Republiek van Nepal|NPL|Repubblica federale democratica del Nepal|República Democrática Federal do Nepal|República Federal Democrática de Nepal|République fédérale démocratique du Népal
+NR	Nauru	Nauru	NRU|Repubblica di Nauru|Republic of Nauru|Republiek Nauru|Republik Nauru|República de Nauru|République de Nauru
+NZ	New Zealand	Nouvelle-Zélande	NZL|Neuseeland|Nieuw-Zeeland|Nova Zelândia|Nueva Zelanda|Nuova Zelanda
+OM	Oman	Oman	OMN|Omán|Omã|Sultanaat Oman|Sultanat Oman|Sultanat d'Oman|Sultanate of Oman|Sultanato de Omán|Sultanato de Omã|Sultanato dell'Oman
+PK	Pakistan	Pakistan	Islamic Republic of Pakistan|Islamische Republik Pakistan|Islamitische Republiek Pakistan|PAK|Pakistán|Paquistão|Repubblica islamica del Pakistan|República Islámica de Pakistán|República Islâmica do Paquistão|République islamique du Pakistan|پاکستان
+PA	Panama	Panama	PAN|Panamá|Repubblica di Panama|Republic of Panama|Republiek Panama|Republik Panama|República de Panamá|República do Panamá|République du Panama
+PN	Pitcairn	Îles Pitcairn	PCN|Pitcairneilanden
+PE	Peru	Pérou	PER|Perù|Perú|Repubblica del Perù|Republic of Peru|Republiek Peru|Republik Peru|República del Perú|República do Peru|République du Pérou
+PH	Philippines	Philippines	Filipijnen|Filipinas|Filippine|PHL|Philippinen|Repubblica delle Filippine|Republic of the Philippines|Republiek der Filipijnen|Republik der Philippinen|República das Filipinas|República de Filipinas|République des Philippines
+PW	Palau	Palaos	PLW|Repubblica di Palau|Republic of Palau|Republiek Palau|Republik Palau|República de Palau|République de Palau
+PG	Papua New Guinea	Papouasie-Nouvelle-Guinée	Estado Independente de Papua-Nova Guiné|Estado Independiente de Papúa Nueva Guinea|Independent State of Papua New Guinea|Onafhankelijke Staat Papua Nieuw Guinea|PNG|Papoea-Nieuw-Guinea|Papua Nova Guiné|Papua Nuova Guinea|Papua-Neuguinea|Papúa Nueva Guinea|Stato indipendente di Papua Nuova Guinea|Unabhängiger Staat Papua-Neuguinea|État indépendant de Papouasie-Nouvelle-Guinée
+PL	Poland	Pologne	POL|Polen|Polonia|Polska|Polónia|Repubblica di Polonia|Republic of Poland|Republiek Polen|Republik Polen|República da Polónia|República de Polonia|Rzeczpospolita Polska|République de Pologne
+PR	Puerto Rico	Porto Rico	PRI|Portorico
+KP	North Korea	Corée du Nord	Corea del Nord|Corea del Norte|Corea, República Democrática Popular de|Coreia do Norte|Coreia, República Popular Democrática da|Corée, République populaire démocratique de|Democratic People's Republic of Korea|Democratische Volksrepubliek Korea|Demokratische Volksrepublik Korea|Korea, Democratic People's Republic of|Korea, Democratische Volksrepubliek|Korea, Demokratische Volksrepublik|Noord-Korea|Nordkorea|PRK|Repubblica democratica popolare di Corea|República Popular Democrática da Coreia|República Popular Democrática de Corea|République démocratique populaire de Corée
+PT	Portugal	Portugal	PRT|Portogallo|Portugese Republiek|Portugiesische Republik|Portuguese Republic|Repubblica del Portogallo|República Portuguesa|République portugaise
+PY	Paraguay	Paraguay	PRY|Paraguai|Repubblica del Paraguay|Republic of Paraguay|Republiek Paraguay|Republik Paraguay|República del Paraguay|República do Paraguai|République du Paraguay
+PS	Palestine	Palestine	Estado da Palestina|Estado de Palestina|L'État de Palestine|PSE|Palestina, Estado da|Palestina, Estado de|Palestina, Staat|Palestina, Stato di|Palestine, State of|Palestine, État de|Palästina, Staat|Staat Palestina|Staat Palästina|Stato di Palestina|the State of Palestine
+PF	French Polynesia	Polynésie française	Frans-Polynesië|Französisch-Polynesien|PYF|Polinesia Francesa|Polinesia francese|Polinésia Francesa
+QA	Qatar	Qatar	Catar|Estado de Qatar|Estado do Catar|Katar|QAT|Staat Katar|Staat Qatar|State of Qatar|Stato del Qatar|État du Qatar|دولة قطر|قطر
+RE	Réunion	La Réunion	Ilha Reunião|REU|Reunión|Riunione|Réunion, Île de la
+RO	Romania	Roumanie	ROU|Roemenië|România|Roménia|Rumanía|Rumänien
+RU	Russia	Russie	Federación Rusa|Federação Russa|RUS|Rusland|Russian Federation|Russie, Fédération de|Russische Föderation|Российская Федерация
+RW	Rwanda	Rwanda	RWA|Repubblica del Ruanda|Republiek Rwanda|Republik Ruanda|República de Ruanda|República do Ruanda|Ruanda|Rwandese Republic|République rwandaise
+SA	Saudi Arabia	Arabie saoudite	Arabia Saudita|Arabia Saudí|Arábia Saudita|Kingdom of Saudi Arabia|Koninkrijk Saudi-Arabië|Königreich Saudi-Arabien|Regno dell'Arabia Saudita|Reino da Arábia Saudita|Reino de Arabia Saudí|Royaume d'Arabie saoudite|SAU|Saoedi-Arabië|Saudi-Arabien|السّعوديّة|المملكة العربيّة السّعوديّة
+SD	Sudan	Soudan	Repubblica del Sudan|Republic of the Sudan|Republiek Soedan|Republik Sudan|República de Sudán|República do Sudão|République du Soudan|SDN|Soedan|Sudán|Sudão
+SN	Senegal	Sénégal	Repubblica del Senegal|Republic of Senegal|Republiek Senegal|Republik Senegal|República del Senegal|República do Senegal|République du Sénégal|SEN
+SG	Singapore	Singapour	Repubblica di Singapore|Republic of Singapore|Republiek Singapore|Republik Singapur|República de Singapur|República de Singapura|République de Singapour|SGP|Singapur|Singapura
+GS	South Georgia and the South Sandwich Islands	Géorgie du Sud et les îles Sandwich du Sud	Georgia del Sud e Isole Sandwich Australi|Ilhas Geórgia do Sul e Sandwich do Sul|Islas Georgias del Sur y Sándwich del Sur|SGS|South Georgia und die Südlichen Sandwichinseln|Zuid-Georgia en de Zuidelijke Sandwicheilanden
+SH	Saint Helena, Ascension and Tristan da Cunha	Sainte-Hélène, Ascension et Tristan da Cunha	SHN|Sant'Elena, Ascensione e Tristan da Cunha|Santa Elena, Ascensión y Tristán de Acuña|Santa Helena, Ascensão e Tristão da Cunha|Sint-Helena, Ascension en Tristan da Cunha|St. Helena, Ascension und Tristan da Cunha
+SJ	Svalbard and Jan Mayen	Svalbard et île Jan Mayen	SJM|Spitsbergen en Jan Mayen|Svalbard e Jan Mayen|Svalbard und Jan Mayen|Svalbard y Jan Mayen
+SB	Solomon Islands	Îles Salomon	Ilhas Salomão|Islas Salomón|Isole Salomone|SLB|Salomon, Îles|Salomoninseln|Salomonseilanden
+SL	Sierra Leone	Sierra Leone	Repubblica della Sierra Leone|Republic of Sierra Leone|Republiek Sierra Leone|Republik Sierra Leone|República da Serra Leoa|República de Sierra Leona|République de Sierra Leone|SLE|Serra Leoa|Sierra Leona
+SV	El Salvador	Salvador	Repubblica di El Salvador|Republic of El Salvador|Republiek El Salvador|Republik El Salvador|República de El Salvador|République d'El Salvador|SLV
+SM	San Marino	Saint-Marin	Repubblica di San Marino|Republic of San Marino|Republiek San Marino|Republik San Marino|República de San Marino|République de San Marin|SMR
+SO	Somalia	Somalie	Bundesrepublik Somalia|Federal Republic of Somalia|Federale Republiek Somalië|Repubblica federale di Somalia|República Federal da Somália|República Federal de Somalia|République fédérale de Somalie|SOM|Somalië|Somália
+PM	Saint Pierre and Miquelon	Saint-Pierre-et-Miquelon	SPM|Saint Pierre e Miquelon|Saint-Pierre e Miquelon|Saint-Pierre en Miquelon|San Pedro y Miquelon|St. Pierre und Miquelon
+RS	Serbia	Serbie	Repubblica di Serbia|Republic of Serbia|Republiek Servië|Republik Serbien|República da Sérvia|República de Serbia|République de Serbie|SRB|Serbien|Servië|Sérvia|Република Србија|Србија
+SS	South Sudan	Soudan du Sud	Repubblica del Sudan del Sud|Republic of South Sudan|Republiek Zuid-Soedan|Republik Südsudan|República de Sudán del Sur|República do Sudão do Sul|République du Soudan du Sud|SSD|Sudan del sud|Sudán del Sur|Sudão do Sul|Südsudan|Zuid-Soedan
+ST	Sao Tome and Principe	Sao Tomé-et-Principe	Democratic Republic of Sao Tome and Principe|Democratische Republiek Sao Tomé en Principe|Demokratische Republik São Tomé und Príncipe|Repubblica democratica di São Tomé e Príncipe|República Democrática de Santo Tomé y Príncipe|República Democrática de São Tomé e Príncipe|République démocratique de Sao Tomé et Principe|STP|Santo Tomé y Príncipe|Sao Tomé en Principe|São Tomé e Príncipe|São Tomé und Príncipe
+SR	Suriname	Surinam	Repubblica di Suriname|Republic of Suriname|Republiek Suriname|Republik Suriname|República de Surinam|República do Suriname|République du Surinam|SUR|Surinám
+SK	Slovakia	Slovaquie	Eslovaquia|Eslováquia|Repubblica slovacca|República Eslovaca|République slovaque|SVK|Slovaakse Republiek|Slovacchia|Slovak Republic|Slovensko|Slovenská republika|Slowakei|Slowakije|Slowakische Republik
+SI	Slovenia	Slovénie	Eslovenia|Eslovénia|Repubblica di Slovenia|Republic of Slovenia|Republiek Slovenië|Republik Slowenien|Republika Slovenija|República da Eslovénia|República de Eslovenia|République de Slovénie|SVN|Slovenija|Slovenië|Slowenien
+SE	Sweden	Suède	Kingdom of Sweden|Koninkrijk Zweden|Konungariket Sverige|Königreich Schweden|Regno di Svezia|Reino da Suécia|Reino de Suecia|Royaume de Suède|SWE|Schweden|Suecia|Suécia|Sverige|Svezia|Zweden
+SZ	Eswatini	Eswatini	Esuatini|Kingdom of Eswatini|Koninkrijk Eswatini|Königreich Eswatini|Regno di Eswatini|Reino da Suazilândia|Reino de Esuatini|Royaume d’Eswatini|SWZ|Suazilândia
+SX	Sint Maarten (Dutch part)	Saint-Martin (partie néerlandaise)	Isla de San Martín (zona holandesa)|SXM|Saint-Martin (Niederländischer Teil)|Sint Maarten (Nederlands deel)|Sint Maarten (Olanda)|São Martinho (Países Baixos)
+SC	Seychelles	Seychelles	Repubblica delle Seychelles|Republic of Seychelles|Republiek Seychellen|Republik Seychellen|República das Seychelles|República de las Seychelles|République des Seychelles|SYC|Seychellen
+SY	Syria	Syrie	República Árabe Síria|República árabe de Siria|SYR|Siria|Syrian Arab Republic|Syrien|Syrien, Arabische Republik|Syrienne, République arabe|Syrië|Síria
+TC	Turks and Caicos Islands	Îles Turques-et-Caïques	Ilhas Turcas e Caicos|Islas Turcas y Caicos|Isole Turks e Caicos|TCA|Turks- en Caicoseilanden|Turks- und Caicosinseln
+TD	Chad	Tchad	Chade|Ciad|Repubblica del Ciad|Republic of Chad|Republiek Tsjaad|Republik Tschad|República del Chad|República do Chade|République du Tchad|TCD|Tschad|Tsjaad
+TG	Togo	Togo	Repubblica del Togo|Republiek Togo|Republik Togo|República Togolesa|République togolaise|TGO|Togolese Republic
+TH	Thailand	Thaïlande	Kingdom of Thailand|Koninkrijk Thailand|Königreich Thailand|Regno di Thailandia|Reino da Tailândia|Reino de Tailandia|Royaume de Thaïlande|THA|Tailandia|Tailândia|Thailandia|ราชอาณาจักรไทย|ไทย
+TJ	Tajikistan	Tadjikistan	Repubblica del Tagikistan|Republic of Tajikistan|Republiek Tadzjikistan|Republik Tadschikistan|República de Tayikistán|República do Tajiquistão|République du Tadjikistan|TJK|Tadschikistan|Tadzjikistan|Tagikistan|Tajiquistão|Tayikistán
+TK	Tokelau	Tokelau	TKL
+TM	Turkmenistan	Turkménistan	TKM|Turkmenistán|Turquemenistão
+TL	Timor-Leste	Timor oriental	Democratic Republic of Timor-Leste|Democratische Republiek Oost-Timor|Demokratische Republik Timor-Leste|Oost-Timor|Repubblica Democratica di Timor Est|República Democrática de Timor Oriental|República Democrática de Timor-Leste|République démocratique du Timor-Leste|TLS|Timor Est|Timor Oriental
+TO	Tonga	Tonga	Kingdom of Tonga|Koninkrijk Tonga|Königreich Tonga|Regno di Tonga|Reino de Tonga|Royaume des Tonga|TON
+TT	Trinidad and Tobago	Trinité-et-Tobago	Repubblica di Trinidad e Tobago|Republic of Trinidad and Tobago|Republiek Trinidad en Tobago|Republik Trinidad und Tobago|República de Trinidad y Tobago|República de Trinidade e Tobago|République de Trinité et Tobago|TTO|Trindade e Tobago|Trinidad e Tobago|Trinidad en Tobago|Trinidad und Tobago|Trinidad y Tobago
+TN	Tunisia	Tunisie	Repubblica tunisina|Republic of Tunisia|Republiek Tunesië|República da Tunísia|República de Túnez|République de Tunisie|TUN|Tunesien|Tunesische Republik|Tunesië|Tunez|Tunísia|الجمهورية التونسية|تونس
+TR	Türkiye	Turquie	Repubblica di Turchia|Republic of Türkiye|Republiek Turkije|Republik Türkei|República da Turquia|República de Turquía|République de Turquie|TUR|Turchia|Turkey|Turkije|Turquia|Turquía|Türkei|Türkiye Cumhuriyeti
+TV	Tuvalu	Tuvalu	TUV
+TW	Taiwan	Taïwan	TWN|Taiwan, Chinesische Provinz|Taiwan, Province of China|Taiwan, Província da China|Taiwan, Repubblica di Cina|Taiwán|Taiwán, Provincia de China|Taïwan, province de Chine|中華民國|臺灣
+TZ	Tanzania	Tanzanie	Repubblica unita di Tanzania|República Unida da Tanzânia|República Unida de Tanzania|République unie de Tanzanie|TZA|Tansania|Tansania, Vereinigte Republik|Tanzania, República unida de|Tanzania, United Republic of|Tanzanie, République unie de|Tanzânia|Tanzânia, República Unida da|United Republic of Tanzania|Vereinigte Republik Tansania|Verenigde Republiek Tanzania
+UG	Uganda	Ouganda	Oeganda|Repubblica dell'Uganda|Republic of Uganda|Republiek Oeganda|Republik Uganda|República de Uganda|República do Uganda|République d'Ouganda|UGA
+UA	Ukraine	Ukraine	Oekraïne|UKR|Ucraina|Ucrania|Ucrânia|Україна
+UM	United States Minor Outlying Islands	Îles mineures éloignées des États-Unis	Ilhas Menores Distantes dos Estados Unidos|Islas Ultramarinas Menores de Estados Unidos|Isole minori esterne degli Stati Uniti d'America|Kleine afgelegen eilanden van de Verenigde Staten|UMI
+UY	Uruguay	Uruguay	Eastern Republic of Uruguay|Oostelijke Republiek Uruguay|Repubblica orientale dell'Uruguay|Republik Östlich des Uruguay|República Oriental del Uruguay|República Oriental do Uruguai|République orientale d'Uruguay|URY|Uruguai
+US	United States	États-Unis	Amerika|Estados Unidos|Estados Unidos da América|Estados Unidos de América|Etats-Unis|Etats-Unis d'Amérique|Stati Uniti|Stati Uniti d'America|U.S.|U.S.A.|US|USA|United States of America|Vereinigte Staaten|Vereinigte Staaten von Amerika|Verenigde Staten|Verenigde Staten van Amerika|États-Unis d'Amérique|États-Unis d’Amérique
+UZ	Uzbekistan	Ouzbékistan	Oezbekistan|Repubblica dell'Uzbekistan|Republic of Uzbekistan|Republiek Oezbekistan|Republik Usbekistan|República de Uzbekistán|República do Uzbequistão|République d'Ouzbékistan|UZB|Usbekistan|Uzbekistán|Uzbequistão
+VA	Vatican City	Vatican	Cité du Vatican|Heiliger Stuhl (Staat Vatikanstadt)|Holy See (Vatican City State)|Saint-Siège (état de la cité du Vatican)|Santa Sede (Ciudad Estado del Vaticano)|Santa Sede (Stato della Città del Vaticano)|Santa Sé (Estado da Cidade do Vaticano)|VAT|Vaticaanstad, Staat
+VC	Saint Vincent and the Grenadines	Saint-Vincent-et-les-Grenadines	Saint Vincent e Grenadine|Saint Vincent en de Grenadines|San Vicente y las Granadinas|St. Vincent und die Grenadinen|São Vicente e Granadinas|VCT
+VE	Venezuela	Vénézuela	Bolivariaanse Republiek Venezuela|Bolivarian Republic of Venezuela|Bolivarische Republik Venezuela|Repubblica bolivariana del Venezuela|República Bolivariana da Venezuela|República Bolivariana de Venezuela|République bolivarienne du Vénézuela|VEN|Venezuela, Bolivariaanse Republiek|Venezuela, Bolivarian Republic of|Venezuela, Bolivarische Republik|Venezuela, Repubblica bolivariana del|Venezuela, República Bolivariana da|Venezuela, República Bolivariana de|Vénézuela, république bolivarienne du
+VG	British Virgin Islands	Îles Vierges britanniques	Britische Jungferninseln|Britse Maagdeneilanden|Ilhas Virgens Britânicas|Ilhas Virgens, Britânicas|Islas Vírgenes Británicas|Islas Vírgenes, Británicas|Isole Vergini britanniche|Isole Vergini, Regno Unito|Maagdeneilanden, Britse|VGB|Virgin Islands, British
+VI	United States Virgin Islands	Îles Vierges des États-Unis	Amerikaanse Maagdeneilanden|Amerikanische Jungferninseln|Ilhas Virgens dos Estados Unidos|Ilhas Virgens, Estados Unidos|Islas Vírgenes de los Estados Unidos|Islas Vírgenes, de EEUU.|Isole Vergini statunitensi|Isole Vergini, U.S.A.|Maagdeneilanden, Amerikaanse|VIR|Virgin Islands of the United States|Virgin Islands, U.S.|Îles Vierges des États-Unis d'Amérique|Îles Vierges, États-Unis
+VN	Vietnam	Viêt Nam	Nước Cộng Hoà Xã Hội Việt Nam|Repubblica socialista del Vietnam|República Socialista de Vietnam|República Socialista do Vietname|République socialiste du Viet Nam|Socialist Republic of Viet Nam|Socialistische Republiek Vietnam|Sozialistische Republik Vietnam|VNM|Viet Nam|Vietname|Việt Nam
+VU	Vanuatu	Vanuatu	Repubblica di Vanuatu|Republic of Vanuatu|Republiek Vanuatu|Republik Vanuatu|República de Vanuatu|République du Vanuatu|VUT
+WF	Wallis and Futuna	Wallis et Futuna	WLF|Wallis e Futuna|Wallis en Futuna|Wallis und Futuna|Wallis y Futuna
+WS	Samoa	Samoa	Estado Independente de Samoa|Estado Independiente de Samoa|Independent State of Samoa|Onafhankelijke Staat Samoa|Stato indipendente di Samoa|Unabhängiger Staat Samoa|WSM|État indépendant de Samoa
+YE	Yemen	Yémen	Iémen|Jemen|Repubblica dello Yemen|Republic of Yemen|Republiek Jemen|Republik Jemen|República del Yemen|República do Iémen|République du Yémen|YEM
+ZA	South Africa	Afrique du Sud	Repubblica sudafricana|Republic of South Africa|Republiek Zuid-Afrika|Republiek van Suid-Afrika|Republik Südafrika|República da África do Sul|República de Sudáfrica|République d'Afrique du Sud|Sudafrica|Sudáfrica|Suid-Afrika|Südafrika|ZAF|Zuid-Afrika|África do Sul
+ZM	Zambia	Zambie	Repubblica dello Zambia|Republic of Zambia|Republiek Zambia|Republik Sambia|República da Zâmbia|República de Zambia|République de Zambie|Sambia|ZMB|Zâmbia
+ZW	Zimbabwe	Zimbabwe	Repubblica dello Zimbabwe|Republic of Zimbabwe|Republiek Zimbabwe|Republik Simbabwe|República de Zimbabue|República do Zimbábue|République du Zimbabwe|Simbabwe|ZWE|Zimbabue|Zimbábue

@@ -1184,6 +1184,18 @@ pub fn bank_key(account: &str, id: &str) -> String {
     format!("bank:{account}/{id}")
 }
 
+/// A bank line's key for what it paid on your invoices
+/// (`invoice::lives`): its account, its day, its amount in cents and a
+/// digest of its label, the same on every device that takes in the same
+/// line, whatever ids each export gives it.
+pub fn line_key(account: &str, day: Date, cents: i64, label: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let folded: String = crate::text::fold(label.trim()).into_iter().collect();
+    let digest = Sha256::digest(folded.split_whitespace().collect::<Vec<_>>().join(" ").as_bytes());
+    let short: String = digest.iter().take(6).map(|b| format!("{b:02x}")).collect();
+    format!("{account}/{day}/{cents}/{short}")
+}
+
 /// A hold's key: `hold:<account>/<id>`.
 pub fn hold_key(account: &str, id: &str) -> String {
     format!("hold:{account}/{id}")

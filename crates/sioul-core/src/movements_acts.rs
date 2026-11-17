@@ -162,7 +162,12 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
     let _ = tie_payers(root, &ties);
     // Each bank line joined to your invoices' lines: their payments, split
     // across them, the oldest first, in this device's life of the invoices.
+    // What the client paid counts: the gross and the day paid at its
+    // processor, when its export says them, its fee a fee (G6); through a
+    // processor whose export said only what came, a line short of what is
+    // owed by at most its usual fee settles them, the difference its fee.
     let folder = crate::invoice::folder();
+    let country = crate::processors::country_of(words).to_string();
     let mut paid = Vec::new();
     for (movement, key, _) in &keep {
         let Some(m) = all.iter().find(|m| m.has(movement)) else { continue };
@@ -171,12 +176,43 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
             continue;
         }
         let Some(line) = bank.movements.iter().find(|b| key_of(&(b.account.clone(), b.id.clone())) == *key) else { continue };
-        let taken = crate::invoice::life::take_bank_line(&folder, device, &numbers, &m.address(), line.date, line.amount.cents(), &m.currency)?;
+        let account = accounts::account_of(&ledger, &line.account).map_or_else(|| line.account.clone(), |a| a.id.clone());
+        let line_key = crate::movements::line_key(&account, line.date, line.amount.cents(), &line.label);
+        let gross_known = m.gross.is_some() && m.gross_currency.is_none();
+        let processor = accounts::account_of(&ledger, &line.account).and_then(|a| crate::processors::known().by_id(a.kind())).or_else(|| crate::processors::known().by_label(&line.label));
+        let usual = |cents: i64| processor.and_then(|p| p.about_fee(crate::money::Money(cents), &country)).map_or(0, |f| f.cents());
+        let bank_line = crate::invoice::life::BankLine {
+            key: &line_key,
+            day: m.paid_day(),
+            amount: if gross_known { m.gross_or_net().cents() } else { line.amount.cents() },
+            fee: if gross_known { m.fee_total().cents() } else { 0 },
+            currency: &m.currency,
+            usual_fee: (!gross_known && processor.is_some()).then_some(&usual as &dyn Fn(i64) -> i64),
+        };
+        let taken = crate::invoice::life::take_bank_line(&folder, device, &numbers, &bank_line)?;
         if !taken.entries.is_empty() || taken.overpaid > 0 {
             paid.push(InvoicePaid { movement: movement.clone(), source: key.clone(), taken });
         }
     }
     Ok((keep.len(), paid))
+}
+
+/// "Not the same payment": `a` and `b` (a movement's steadiest key, a
+/// source's key) never one movement again, and what a bank line among them
+/// paid on your invoices taken back, in this `device`'s life of the
+/// invoices (the second review, G4). Returns the payments taken back.
+pub fn not_same_paid(root: &Path, a: &str, b: &str, device: &str) -> Result<Vec<String>, String> {
+    not_same(root, a, b)?;
+    let ledger = Ledger::load(root).unwrap_or_default();
+    let bank = Bank::load(root)?;
+    let mut taken = Vec::new();
+    for key in [a, b] {
+        let Some(line) = bank.movements.iter().find(|l| bank_key(&accounts::account_of(&ledger, &l.account).map_or_else(|| l.account.clone(), |x| x.id.clone()), &l.id) == key) else { continue };
+        let account = accounts::account_of(&ledger, &line.account).map_or_else(|| line.account.clone(), |x| x.id.clone());
+        let line_key = crate::movements::line_key(&account, line.date, line.amount.cents(), &line.label);
+        taken.extend(crate::invoice::life::take_back_line(&crate::invoice::folder(), device, &line_key)?);
+    }
+    Ok(taken)
 }
 
 /// The numbers of the invoices whose planned lines a movement joined: one,

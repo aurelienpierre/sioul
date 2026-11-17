@@ -74,17 +74,17 @@ fn current(invoice: &Invoice, tr: &Translator) -> String {
     }
     // The issuer's country said only to a client abroad, the client's only when abroad.
     let client_country = if invoice.client.address.country.trim().is_empty() { home.clone() } else { invoice.client.address.country.clone() };
-    seller.push(lines_html(&issuer.address.text(&client_country)));
+    seller.push(lines_html(&issuer.address.text(&client_country, &language)));
     seller.extend(issuer.ids.iter().filter(|i| i.printed && !i.value.trim().is_empty()).map(|i| id_line(&i.kind, &i.value)));
     if !issuer.email.is_empty() {
         seller.push(escape(&issuer.email));
     }
     let client = &invoice.client;
     let mut buyer: Vec<String> = vec![format!("<span class=\"muted\">{}</span>", escape(&tr.text(if invoice.kind == Kind::CreditNote { "invoice-credit-to" } else { "invoice-to" }, None))), format!("<b>{}</b>", lines_html(&client.name))];
-    buyer.push(lines_html(&client.address.text(&home)));
+    buyer.push(lines_html(&client.address.text(&home, &language)));
     buyer.extend(client.ids.iter().filter(|i| i.printed && !i.value.trim().is_empty()).map(|i| id_line(&i.kind, &i.value)));
     if let Some(delivery) = client.delivery.as_ref().filter(|d| !d.is_empty() && **d != client.address) {
-        buyer.push(format!("<span class=\"muted\">{}</span><br>{}", escape(&tr.text("invoice-delivery", None)), lines_html(&delivery.text(&home))));
+        buyer.push(format!("<span class=\"muted\">{}</span><br>{}", escape(&tr.text("invoice-delivery", None)), lines_html(&delivery.text(&home, &language))));
     }
     let title = if invoice.number.is_empty() {
         tr.text(&format!("invoice-draft-title-{}", invoice.kind.id()), None)
@@ -282,10 +282,10 @@ fn older(invoice: &Invoice, tr: &Translator) -> String {
          <p class=\"muted\">{late}</p>\
          </body></html>",
         issuer = escape(&invoice.issuer.name),
-        issuer_address = lines_html(&invoice.issuer.address.text("")),
+        issuer_address = lines_html(&invoice.issuer.address.text("", tr.language())),
         to = escape(&tr.text("invoice-to", None)),
         client = escape(&invoice.client.name),
-        client_address = lines_html(&invoice.client.address.text("")),
+        client_address = lines_html(&invoice.client.address.text("", tr.language())),
         title = escape(&say(tr, "invoice-title", &[("number", invoice.number.clone())])),
         dated = escape(&say(tr, "invoice-dated", &[("date", date_of(tr, &invoice.date))])),
         due = escape(&say(tr, "invoice-due", &[("date", date_of(tr, &invoice.due))])),

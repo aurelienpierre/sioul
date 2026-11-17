@@ -318,27 +318,26 @@ fn pdf_path(invoice: &Invoice) -> PathBuf {
 /// ({"error", "elsewhere"}: "elsewhere" offers to make them here); None when they can.
 fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
     let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
-    let (keeper, unwritten) = crate::share::keeper(INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
-    let now = jiff::Timestamp::now().as_second();
+    // This computer's claim renewed first, then read as every computer's
+    // claims say, as the command line reads it (`lease::may_number`).
+    let (_, unwritten) = crate::share::keeper(INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
     let refused = |text: String, elsewhere: bool| Some(serde_json::json!({ "error": text, "elsewhere": elsewhere }).to_string());
     // Sharing set up but its key unreadable (a keyring locked): the others'
     // claims cannot be read, so nothing says this device may number.
     if unwritten || (crate::share::configured() && !crate::share::on()) {
         return refused(tr().text("invoice-unchecked", None), false);
     }
-    if !keeper.mine {
-        return refused(say("invoice-elsewhere", &[("computer", keeper.name)]), true);
+    use sioul_sync::lease::Numbering;
+    match crate::share::may_number(INVOICES) {
+        Numbering::Yes => None,
+        Numbering::Elsewhere(name) => refused(say("invoice-elsewhere", &[("computer", name)]), true),
+        // Kept here not long enough yet, or another computer closed with
+        // records not read here yet: its last invoice may be in them
+        // (review of 3273f2d, R2); put away on a phone, nothing renewed.
+        Numbering::Settling | Numbering::NotRunning => refused(tr().text("invoice-settling", None), false),
+        // Another computer alive but not heard from lately: the sync may hold its claim back.
+        Numbering::OthersSilent => refused(tr().text("invoice-others-silent", None), false),
     }
-    // Another computer closed with records not read here yet: its last
-    // invoice may be in them (review of 3273f2d, R2).
-    if !keeper.settled || crate::share::closed_unread(INVOICES) {
-        return refused(tr().text("invoice-settling", None), false);
-    }
-    // Another computer alive but not heard from lately: the sync may hold its claim back.
-    if keeper.others > 0 && now - keeper.others_heard > 3 * 60 {
-        return refused(tr().text("invoice-others-silent", None), false);
-    }
-    None
 }
 
 /// The lease's name for invoices' numbers.
@@ -392,7 +391,8 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
         let numbering = life::Numbering { device: crate::notices::here_id(), sharing: crate::share::configured(), drafts_shared: crate::share::shares("drafts"), claimed: crate::share::claimed_series(INVOICES) };
         let ledger = store.root.join(budget::LEDGER);
         let budget_id = project.budget.clone().unwrap_or_default();
-        let steps = life::Steps { time: None, ledger: (!budget_id.is_empty()).then_some((ledger.as_path(), budget_id.as_str())) };
+        let contacts = &loaded(shared).contacts;
+        let steps = life::Steps { time: None, ledger: (!budget_id.is_empty()).then_some((ledger.as_path(), budget_id.as_str())), clients: Some((&clients, contacts)) };
         let made = match life::issue(&folder, &draft.draft, settings, today, &numbering, &steps, tr()) {
             Ok(made) => made,
             Err(e) => {
@@ -459,10 +459,16 @@ pub(crate) fn say_matched_payments(qt: &QtThread, shared: &Arc<Shared>, paid: cr
     let mut numbers: Vec<String> = paid.iter().flat_map(|p| p.taken.entries.iter().map(|(n, _, _)| n.clone())).collect();
     numbers.dedup();
     let over: i64 = paid.iter().map(|p| p.taken.overpaid).sum();
+    let fee: i64 = paid.iter().map(|p| p.taken.fee).sum();
     let mut line = if numbers.is_empty() { String::new() } else { say("invoice-paid-by-bank", &[("numbers", numbers.join(", "))]) };
     if over > 0 {
         let more = say("invoice-paid-beyond", &[("amount", tr().money(sioul_core::money::Money(over)))]);
         line = [line, more].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+    }
+    // What a processor kept, said as its fee (G6).
+    if fee > 0 {
+        let kept = say("invoice-paid-fee", &[("amount", tr().money(sioul_core::money::Money(fee)))]);
+        line = [line, kept].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
     }
     work::refresh(qt, shared);
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {

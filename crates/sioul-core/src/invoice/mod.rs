@@ -68,33 +68,63 @@ fn read_file(path: &Path) -> Option<Invoice> {
     Some(Invoice { number, unreadable: true, ..Invoice::default() })
 }
 
-/// The issued records of `dir`, one per number, their life not read: a
-/// second file holding a number another holds (a sync app's conflicted
-/// copy, a copy by hand) is said in the log and left aside; the record kept
-/// is the file its number names. The series journal of before (`series.toml`)
-/// is no invoice.
-pub fn records_in(dir: &Path) -> Vec<Invoice> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+/// A number two files hold: a sync app's conflicted copy of a record, which
+/// only two devices giving the same number make now (records are never
+/// written again). Said in `sioul invoices` and on the Porch, until one of
+/// them is answered by a credit note and invoiced again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Twice {
+    pub number: String,
+    /// The file its number names, which Sioul reads, and the other.
+    pub kept: PathBuf,
+    pub copy: PathBuf,
+    /// Whom each bills, as their first lines say.
+    pub clients: (String, String),
+}
+
+/// The issued records of `dir`, one per number, their life not read, and
+/// the numbers two files hold (`Twice`): the record kept is the file its
+/// number names; a copy that is the same invoice (an older Sioul's Paid
+/// aside, which counts if either says it) is no second one.
+fn records_and_twice(dir: &Path) -> (Vec<Invoice>, Vec<Twice>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return (Vec::new(), Vec::new()) };
     let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)).collect();
     paths.sort();
     let mut by: std::collections::BTreeMap<String, (PathBuf, Invoice)> = std::collections::BTreeMap::new();
+    let mut twice = Vec::new();
+    let own = |p: &Path, number: &str| p.file_name().is_some_and(|n| n.to_string_lossy() == file_name(number));
     for path in paths {
         let Some(invoice) = read_file(&path) else { continue };
-        let own = |p: &Path, number: &str| p.file_name().is_some_and(|n| n.to_string_lossy() == file_name(number));
-        match by.get(&invoice.number) {
-            Some((kept, _)) if own(kept, &invoice.number) || !own(&path, &invoice.number) => {
-                eprintln!("Sioul: {} holds invoice {} again, as {} does: left aside", path.display(), invoice.number, kept.display());
-            }
-            Some((kept, _)) => {
-                eprintln!("Sioul: {} holds invoice {} again, as {} does: left aside", kept.display(), invoice.number, path.display());
-                by.insert(invoice.number.clone(), (path, invoice));
-            }
-            None => {
-                by.insert(invoice.number.clone(), (path, invoice));
-            }
+        if !by.contains_key(&invoice.number) {
+            by.insert(invoice.number.clone(), (path, invoice));
+            continue;
         }
+        let Some((kept_path, kept)) = by.get_mut(&invoice.number) else { continue };
+        let unpaid = |i: &Invoice| Invoice { older: i.older.clone().map(|o| record::Older { paid: false, ..o }), ..i.clone() };
+        if unpaid(kept) == unpaid(&invoice) {
+            if let (Some(a), Some(b)) = (kept.older.as_mut(), invoice.older.as_ref()) {
+                a.paid |= b.paid;
+            }
+            continue;
+        }
+        let (kept_one, copy) = if own(kept_path, &invoice.number) || !own(&path, &invoice.number) { ((kept_path.clone(), kept.clone()), (path, invoice)) } else { ((path, invoice), (kept_path.clone(), kept.clone())) };
+        eprintln!("Sioul: {} holds invoice {} again, as {} does: two invoices under one number", copy.0.display(), copy.1.number, kept_one.0.display());
+        twice.push(Twice { number: copy.1.number.clone(), kept: kept_one.0.clone(), copy: copy.0.clone(), clients: (kept_one.1.client.first_line().to_string(), copy.1.client.first_line().to_string()) });
+        by.insert(kept_one.1.number.clone(), kept_one);
     }
-    by.into_values().map(|(_, invoice)| invoice).collect()
+    (by.into_values().map(|(_, invoice)| invoice).collect(), twice)
+}
+
+/// The issued records of `dir`, one per number, their life not read
+/// (`records_and_twice`). The series journal of before (`series.toml`) is
+/// no invoice.
+pub fn records_in(dir: &Path) -> Vec<Invoice> {
+    records_and_twice(dir).0
+}
+
+/// The numbers two different records of `dir` hold (`Twice`).
+pub fn twice_in(dir: &Path) -> Vec<Twice> {
+    records_and_twice(dir).1
 }
 
 /// Every invoice issued and kept in `dir`, with its life (`lives`), by
@@ -118,8 +148,25 @@ pub fn draft_id_ok(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// A draft's file name made its id: as it is when it is one; a sync app's
+/// conflicted copy of a draft ("<id> (conflicted copy …)", "<id>.sync-
+/// conflict-…") given one of its own, letters, digits and dashes, with the
+/// id it is a copy of.
+fn draft_file_id(stem: &str) -> Option<(String, String)> {
+    if draft_id_ok(stem) {
+        return Some((stem.to_string(), String::new()));
+    }
+    let made: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+    let made: String = made.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-").chars().take(64).collect();
+    let made = made.trim_end_matches('-').to_string();
+    let original: String = stem.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    draft_id_ok(&made).then(|| (made, if draft_id_ok(&original) { original } else { stem.to_string() }))
+}
+
 /// The drafts kept in `dir`, the newest first: each one's id is its file's
-/// name (never what the file says), and only a name a draft's id may be.
+/// name (never what the file says). A sync app's conflicted copy of a draft
+/// is listed too, never hidden, as a draft of its own that says what it is
+/// a copy of (`Invoice::copy_of`).
 pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
     let Ok(entries) = std::fs::read_dir(dir.join(DRAFTS)) else { return Vec::new() };
     let mut out: Vec<Invoice> = entries
@@ -127,17 +174,16 @@ pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml"))
         .filter_map(|p| {
-            let id = p.file_stem()?.to_string_lossy().into_owned();
-            if !draft_id_ok(&id) {
-                return None;
-            }
+            let (id, copy_of) = draft_file_id(&p.file_stem()?.to_string_lossy())?;
             let mut draft = std::fs::read_to_string(&p).ok().and_then(|t| record::read(&t))?;
             draft.draft = id;
+            draft.copy_of = copy_of;
             draft.number.clear();
             Some(draft)
         })
         .collect();
-    out.sort_by(|a, b| b.draft.cmp(&a.draft));
+    out.sort_by(|a, b| b.draft.cmp(&a.draft).then_with(|| a.copy_of.cmp(&b.copy_of)));
+    out.dedup_by(|a, b| a.draft == b.draft);
     out
 }
 
@@ -147,6 +193,15 @@ pub fn draft_in(dir: &Path, id: &str) -> Option<Invoice> {
         return None;
     }
     drafts_in(dir).into_iter().find(|d| d.draft == id)
+}
+
+/// The file holding the draft `id` of `dir`: its own, else the conflicted copy whose id it is.
+fn draft_file(dir: &Path, id: &str) -> Option<PathBuf> {
+    let own = dir.join(DRAFTS).join(format!("{id}.toml"));
+    if own.is_file() {
+        return Some(own);
+    }
+    std::fs::read_dir(dir.join(DRAFTS)).ok()?.filter_map(Result::ok).map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x == "toml") && p.file_stem().and_then(|s| draft_file_id(&s.to_string_lossy())).is_some_and(|(made, _)| made == id))
 }
 
 /// Numbers in their natural order: digits as numbers, the rest as text.
@@ -178,14 +233,14 @@ pub fn natural(a: &str, b: &str) -> std::cmp::Ordering {
     x.len().cmp(&y.len())
 }
 
-/// Writes a file whole, through a file beside it.
+/// Writes a file whole, through a hidden file beside it renamed over it,
+/// tried again on Windows while another program holds it open a moment
+/// (`filelock::replace`, Sioul's shared writer).
 pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
-    std::fs::rename(&temporary, path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
     crate::changes::said(crate::changes::Kind::Projects);
     Ok(())
 }
@@ -204,7 +259,12 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
     }
     draft.format = record::FORMAT;
     let text = toml::to_string(&draft).map_err(|e| e.to_string())?;
+    let copy = draft_file(dir, &draft.draft).filter(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() != draft.draft));
     write_whole(&dir.join(DRAFTS).join(format!("{}.toml", draft.draft)), &text)?;
+    // A conflicted copy kept under its own id from now on: its file of before goes.
+    if let Some(copy) = copy {
+        let _ = std::fs::remove_file(copy);
+    }
     Ok(draft)
 }
 
@@ -213,7 +273,7 @@ pub fn remove_draft(dir: &Path, id: &str) -> Result<bool, String> {
     if !draft_id_ok(id) {
         return Err(format!("“{id}” is no draft's id"));
     }
-    let path = dir.join(DRAFTS).join(format!("{id}.toml"));
+    let Some(path) = draft_file(dir, id) else { return Ok(false) };
     match std::fs::remove_file(&path) {
         Ok(()) => {
             crate::changes::said(crate::changes::Kind::Projects);
@@ -295,10 +355,32 @@ mod tests {
         std::fs::write(dir.join(series::OLD_JOURNAL), "format = 1\n").unwrap();
         write_new(&dir, &Invoice { number: "2026-1000".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
         write_new(&dir, &Invoice { number: "2026-999".into(), currency: "EUR".into(), ..Invoice::default() }).unwrap();
-        // A conflicted copy of 2026-999, as a sync app makes it: left aside, one invoice.
+        // A conflicted copy of 2026-999, as a sync app makes it: the same invoice, one.
         std::fs::copy(dir.join("2026-999.toml"), dir.join("2026-999 (conflict 2026-11-16 10.30).toml")).unwrap();
         let numbers: Vec<String> = all_in(&dir).into_iter().map(|i| i.number).collect();
         assert_eq!(numbers, ["2026-003", "2026-004", "2026-999", "2026-1000", "F:2026/001"]);
+        assert!(twice_in(&dir).is_empty());
+        // Two devices gave 2026-1000 at once, to two clients (G9): one record read, both said.
+        let other = Invoice { number: "2026-1000".into(), currency: "EUR".into(), client: Client { name: "Studio Exemple".into(), ..Client::default() }, format: record::FORMAT, ..Invoice::default() };
+        std::fs::write(dir.join("2026-1000 (conflicted copy 2026-11-20 103000).toml"), toml::to_string(&other).unwrap()).unwrap();
+        let twice = twice_in(&dir);
+        assert_eq!((twice.len(), twice[0].number.as_str(), twice[0].clients.1.as_str()), (1, "2026-1000", "Studio Exemple"));
+        assert!(twice[0].kept.ends_with("2026-1000.toml"));
+        assert_eq!(all_in(&dir).iter().filter(|i| i.number == "2026-1000").count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two older Sioul ticking Paid on one format-1 record make a conflicted
+    /// copy of it that is the same invoice: one, paid if either says so (G9).
+    #[test]
+    fn an_older_copy_of_the_same_record_is_one() {
+        let dir = dir("older-copy");
+        let older = "number = \"2026-002\"\ndate = \"2026-09-01\"\ndue = \"2026-10-01\"\nproject = \"lumen\"\nproject_title = \"Studio Lumen\"\nclient = \"Studio Lumen\"\nsessions = []\ntotal_cents = 6000\ncurrency = \"EUR\"\nlines = []\n\n[issuer]\nname = \"Camille Exemple EI\"\naddress = \"Lyon\"\nsiret = \"\"\nvat = \"\"\npayment = \"\"\n";
+        std::fs::write(dir.join("2026-002.toml"), older).unwrap();
+        std::fs::write(dir.join("2026-002 (conflicted copy).toml"), older.replace("currency = \"EUR\"\n", "currency = \"EUR\"\npaid = true\n")).unwrap();
+        assert!(twice_in(&dir).is_empty());
+        let all = all_in(&dir);
+        assert_eq!((all.len(), all[0].status(&all)), (1, Status::Paid));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
