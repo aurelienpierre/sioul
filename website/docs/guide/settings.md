@@ -102,7 +102,7 @@ Every device you share with, this one first, each on a card; in a wide window, t
 - **Rename…**: a name of your own for the device, which travels with your settings. Left empty, the name its system gives it comes back.
 - **What it is**, how it is **now**, when it was **last opened** and when it **last shared**, and its **Sioul**: as each device says them.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
-- **What comes forward, and when**, under the devices: for each device, what comes at work, in admin time, in leisure, at meals and during sleep. Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
+- **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
 - **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Your folder and sharing](#your-folder-and-sharing).
 - **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**, for another device.
 

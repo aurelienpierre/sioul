@@ -72,7 +72,7 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 
 A computer for work, a phone for your admin and your friends, a tablet on the sofa: in **Settings ▸ Devices**, three switches on each device's card say what it is **For**: **Work**, **Your admin**, **Leisure**, any of them together. You can say it of any device, from the one in your hand. Each device then brings forward only what it is for, at the hours for it. With nothing ticked, everything comes there, as before: nothing changes on any device until you say what one is for.
 
-Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each of the five times.
+Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each time your week has (no admin column while admin has no hours of its own, no meals column while Health sets none).
 
 | | Work | Admin | Leisure, meals | Sleep |
 |---|---|---|---|---|
@@ -92,13 +92,14 @@ Under the devices, a grid says **what comes forward, and when**: for each device
 - **Tasks**: **Now** keeps what comes forward here; the list, the board and the other views show every task, as always.
 - **The Porch**: mail to an address this device is not for waits; your safe senders' is shown, without a notification. **Show all mail now** shows everything.
 - **Budgets**: as Mail's filter.
-- **Another app's notifications**, on a phone, when you said what the app is **For**: held while the phone is not for it; your safe people's messages and your Always through people still come.
+- **Another app's notifications**, on a phone, when you said what the app is **For**: its automatic notifications wait while the phone is not for it; people's messages come as your hours say, since no other device can tell them for the phone.
+- **Reminders of your tasks**: on the computers for the task's own area: an admin task's date comes on the laptop for admin, not on the work computer.
 
 When the device is the reason, and not the hour, Sioul says so: in the status line ("This device is for work: leisure waits on your other devices."), and in the "?" of Mail's and Budgets' filters.
 
-Nothing is removed from a device: what is folded is still there, and still fetched. Opening it there changes nothing elsewhere. What you then do to it is done everywhere, as always: a message you read is read on every device, and **Done for now** closes the Porch on what it showed.
+Nothing is removed from a device: what is folded is still there, and still fetched. Opening it there settles nothing elsewhere: a message you open on a device that is not for its address is **read there only**, and stays new on the device it is for; the reader says so, and **Mark as read** marks it read everywhere. **Done for now** closes the Porch on what this device is for. What you do to something otherwise is done everywhere, as always.
 
-**Which device tells you.** A device tells only what comes forward on it. When several of your devices are for the same thing, the one you used last tells it, once. When none of them is running, it waits, and the first of them that can tells it: your phone at its next look, a computer when you open Sioul there ("The Porch opens").
+**Which device tells you.** The device you used last tells you, as before: what comes forward on it now. What does not waits, in view where it belongs, and is told ("The Porch opens") when you pick up a device it is for. A device waits for another only while that one says it is for the thing and has heard what the first one is for; otherwise it tells it itself, so that nothing is left for no device.
 
 **What always comes, whatever a device is for**:
 
@@ -106,13 +107,13 @@ Nothing is removed from a device: what is folded is still there, and still fetch
 - the codes you just asked for;
 - alarms, an event's own reminders and the time to leave for it;
 - mail and messages from your Always through people;
-- everything while you are Reachable;
+- everything while you are Reachable, sites, dates and other apps' notifications included;
 - your safe senders' mail to an address you never said anything of;
-- calls and texts, which keep their own table ([Calls](calls.md)).
+- calls and texts, which keep their own table ([Calls](calls.md)), and a call in a site.
 
 **A device lost, forgotten or silent for a week** stops counting: what only that device was for comes on the others again, as your hours say. The grid says it in one sentence: "No device is for leisure: until one is, that comes on every device, as the hours say." For the same reason, a device you use alone folds nothing.
 
-**A device on an older Sioul** does not follow this yet. Its line says "Its Sioul is older: everything still comes there." While it is the device you used last, it tells everything, as before, and the others stay silent. Until it is updated, what only that device would be for still comes on your other devices, as your hours say.
+**A device on an older Sioul** does not follow this yet. Its line says "Its Sioul is older: everything still comes there." While it is the device you used last, it tells everything, as before, and the others stay silent. Nothing ever waits for it: until it is updated, what only that device would be for still comes on your other devices, as your hours say.
 
 **Your plan does not change with the device**: a task's place in your week is the same wherever you look at it.
 
@@ -132,7 +133,7 @@ As of 17 November 2026, from Google's and Slack's own help pages. Other tools we
 2. Android: work apps live in a part of the phone that can be paused, by hand or on a schedule of hours and days: "When your Work Profile is paused, work apps won't run, generate notifications, or consume data and battery life." It is one phone in two parts, set up through an employer's management, and its schedule cannot pause work over consecutive days, such as a weekend (Google, Android Enterprise Help, "Pause or turn on your Work Profile").
 3. Slack: a notification schedule by hours and days, and separate preferences for its mobile app; for Slack's own notifications (Slack Help Center, "Configure your Slack notifications").
 4. One device with a work part, not a word on each of your devices.
-5. Sioul: among the devices a thing is for, the one you used last.
+5. Sioul: the device you used last, for what comes forward on it; what does not waits for the first device it is for that you pick up.
 6. Slack: "By default, you'll receive mobile notifications one minute after locking your desktop screen or 10 minutes after Slack stops detecting cursor activity."
 
 ## Quiet time
@@ -195,8 +196,8 @@ The Porch asks, in a card, for the hours not set yet, with **Set my hours**, whi
 - Unfinished tasks feed rumination and poor sleep (Syrek et al. 2017); planning where, when and how they will be done raised evening detachment (Smit 2016). So closing the day gives everything a place, and names the first step.
 - The hour before bed, kept free of what keeps the mind going, is part of the sleep programmes Health follows (Harvey et al. 2021).
 - People already give their devices a role: among 259 UK workers, those who keep work and home apart dedicated their devices more than those who mix them, with as many devices (Fleck, Cox & Robison 2015). That survey did not measure whether it helps, and no study found tests a device for work against one for everything. What goes with less distress is feeling in control of the line, whether one separates or mixes (Kossek et al. 2012, 591 managers); for people who prefer to mix, work on the phone in the evening even went with less conflict at home (Derks et al. 2016). So what a device is for is yours to say, nothing is narrowed until you say it, every cell can be changed and put back, and what is folded says why and opens in one gesture.
-- A dedicated device does not hold the line alone: 13 of 14 people who wanted "work is work, home is home" worked on the home computer too (Dearman & Pierce 2008), and mail read on a phone in the evening was forgotten at the office (Cecchinato, Cox & Bird 2015). So a fold opens, and opening it settles nothing.
-- Asked through the day, 16 people wanted a notification on the device near them and in use: the phone nearly all day, a computer only while used (Weber et al. 2016, read in its first author's thesis). So among the devices a thing is for, the one you used last tells it, and what cannot be told where it belongs waits in view and is told there later, never dropped.
+- A dedicated device does not hold the line alone: 13 of 14 people who wanted "work is work, home is home" worked on the home computer too (Dearman & Pierce 2008), and mail read on a phone in the evening was forgotten at the office (Cecchinato, Cox & Bird 2015). So a fold opens, and opening it settles nothing: a message opened on a device that is not for it stays new on the device that is.
+- Asked through the day, 16 people wanted a notification on the device near them and in use: the phone nearly all day, a computer only while used (Weber et al. 2016, read in its first author's thesis). So the device you used last tells what is for it, and what is not waits in view and is told on the device it is for once you pick it up; a device waits for another only while that one has said it is for the thing, so that nothing is left for no device.
 - No study separates personal admin from leisure: every one found knows two sides, work and the rest. Keeping admin off a device for leisure is Sioul's own inference, from admin being work nobody pays for.
 
 More in [what the research says](../dev/research.md), findings 21 to 23 and 83 to 85.
