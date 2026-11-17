@@ -21,8 +21,11 @@ A source or a task is for **work**, for **your own admin** (bills, letters, offi
 | A task | the task's panel, "For" (`X-SIOUL-AREA`) | by its tags and projects: work's (`[quiet] work`, a client's project, GitHub), leisure's (joy, family, friends…), both personal ones (health), else admin |
 | An agenda (a calendar or a task list) | Agenda ⚙ ▸ Your agendas, its line: "For" (`[agenda.calendars."<account>/<id>"] area`; [client.md](client.md#several-agendas)) | work when its account says work alone, else your admin and leisure: a work agenda follows the work hours, a personal one reaches you all day unless you say outside work hours |
 | An app's notifications, on a phone | Settings ▸ What reaches you ▸ Exceptions, under the app: "For" ([android.md](android.md#notifications-from-other-apps)) | any time: the matrix decides alone ([attention.md](attention.md)) |
+| A device | Settings ▸ Devices, on its card: "For", said from any of your devices (`[device."<id>"] area`; [database.md](database.md#devices)) | everything: a device you never classified is for work, admin and leisure |
 
 Mail addresses are the one place nothing is mixed for you: asking what each address is for is what separates a business address from a personal one.
+
+**A device's switches decide nothing yet** (17 November 2026). They are recorded in the shared settings and shown on every device (Settings ▸ Devices, `sioul devices`); nothing is folded, held or told by them, and every rule on this page reads the thing's area and the time alone, as before. `sioul_core::device_said::area_of` is where a rule would read what a device is for.
 
 ## Five times
 What now is for is one of five times (`sioul_core::areas::Time`, decided by `sioul_core::quiet::mode`):
