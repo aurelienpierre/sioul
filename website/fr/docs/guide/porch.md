@@ -53,7 +53,7 @@ Quand arrivent, à une adresse faite pour le moment présent, des courriels que 
 
 - **Ce qui attendait** (les courriels arrivés hors des heures de leur liste, pendant votre sommeil ou une pause, ou à une adresse faite pour un autre moment : le courriel d’un collègue sûr à votre adresse de travail, le soir, s’affiche sur le Porche, sans notification) est dit une fois, quand son heure vient : « Le Porche ouvre : trois courriels vous attendent. » Les courriels arrivés pendant que votre ordinateur était éteint, relevés à son démarrage, sont dits de même, jamais comme nouveaux.
 - **Jamais** pour les codes (ils ont la leur, plus haut), les courriels mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « Retenu par votre filtre à indésirables », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les infolettres sauf si vous les incluez, ni les courriels déjà lus ailleurs. Rien pendant le sommeil ni une pause.
-- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit, et l’autre ne redit pas ce qu’il a dit, une fois que votre partage l’a apporté : un courriel dit sur l’un juste avant que l’autre le relève peut encore venir sur les deux. Sur l’écran verrouillé d’Android, la notification dit combien de courriels sont arrivés, pas qui a écrit.
+- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit (une fois que vous avez dit [à quoi sert chaque appareil](hours.md#what-each-device-is-for), celui dont vous vous êtes servi en dernier parmi ceux qui sont faits pour l’adresse), et l’autre ne redit pas ce qu’il a dit, une fois que votre partage l’a apporté : un courriel dit sur l’un juste avant que l’autre le relève peut encore venir sur les deux. Sur l’écran verrouillé d’Android, la notification dit combien de courriels sont arrivés, pas qui a écrit.
 
 Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ Courriels : **Me dire les nouveaux courriels**, et **Avec les infolettres** ([Ce qui vous joint, et quand](notifications.md#by-person)).
 
@@ -418,7 +418,7 @@ Chaque ligne est un *avis*, nommé par sa source seule, la même sur chaque appa
 
 ### Les notifications {#notifications}
 
-Chaque appareil tient un registre de ce qu’il a dit, en empreintes (aucune adresse, aucun Message-ID), pendant 30 jours, pour que rien ne soit dit deux fois. Avec un téléphone et un ordinateur, seul l’appareil dont vous vous êtes servi en dernier le dit. Seul un lot qui contient quelqu’un qui passe toujours traverse « Ne pas déranger ».
+Chaque appareil tient un registre de ce qu’il a dit, en empreintes (aucune adresse, aucun Message-ID), pendant 30 jours, pour que rien ne soit dit deux fois. Avec un téléphone et un ordinateur, seul l’appareil dont vous vous êtes servi en dernier le dit, parmi ceux qui sont faits pour l’adresse une fois que vous avez dit [à quoi sert chaque appareil](hours.md#what-each-device-is-for). Seul un lot qui contient quelqu’un qui passe toujours traverse « Ne pas déranger ».
 
 ### La lecture par l’IA d’une adresse protégée {#the-ai-reading-of-a-protected-address}
 

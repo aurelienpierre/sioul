@@ -1,5 +1,5 @@
 ---
-description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep from Health; each address, site, budget and task tied to them; quiet time, Reachable, do not disturb and "Work until tonight".
+description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep from Health; each address, site, budget and task tied to them; what each of your devices is for, and what comes forward on it when; quiet time, Reachable, do not disturb and "Work until tonight".
 ---
 
 # Hours: work, your admin, leisure, meals, sleep
@@ -68,6 +68,73 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 - **Budgets**: by what each one is for.
 - **What a page shows**: Mail's [All addresses](mail.md#all-addresses), [Budgets](budgets.md#at-a-glance) and the [agenda's **Agendas**](agenda.md#several-agendas) show at first what now is for. Tick others and they show at once, until your hours change; **As the hours say** gives the hours' ticks back.
 
+## What each device is for {#what-each-device-is-for}
+
+A computer for work, a phone for your admin and your friends, a tablet on the sofa: in **Settings ▸ Devices**, three switches on each device's card say what it is **For**: **Work**, **Your admin**, **Leisure**, any of them together. You can say it of any device, from the one in your hand. Each device then brings forward only what it is for, at the hours for it. With nothing ticked, everything comes there, as before: nothing changes on any device until you say what one is for.
+
+Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each of the five times.
+
+| | Work | Admin | Leisure, meals | Sleep |
+|---|---|---|---|---|
+| A computer for work | Work | Nothing | Nothing | Nothing |
+| A phone for admin and leisure | Admin, while admin has no hours of its own | Admin | Leisure | Leisure, if you open Sioul |
+| A device with nothing ticked | as your hours say | as your hours say | as your hours say | as your hours say |
+
+- **Change a cell** to let something else through on one device at one time: press it, tick what should come. Friends on your phone during work: tick **Leisure** in the phone's Work cell. Nothing at all during meals: untick everything there. A cell you changed is framed, and **As its areas say** puts it back.
+- **Now**: one sentence says what this device brings at this moment: "Now, leisure until 22:00: leisure comes here."
+- On a phone, each device's card says its cells in words, one line per time.
+- `sioul devices` prints the same grid in a terminal; `sioul devices for <device> <areas>` and `sioul devices at <device> <time> <areas>` set what a device is for and one cell (`sioul devices at phone work work+leisure`; `none` for nothing, `usual` to put a cell back).
+
+**What it changes on a device.** What is not for a device at this moment folds there exactly as what is not for this hour folds, and the same gestures open it:
+
+- **Mail**: [All addresses](mail.md#all-addresses) ticks only the areas that come forward here; tick the others to see them.
+- **Sites**: the others fold under "Other hours".
+- **Tasks**: **Now** keeps what comes forward here; the list, the board and the other views show every task, as always.
+- **The Porch**: mail to an address this device is not for waits; your safe senders' is shown, without a notification. **Show all mail now** shows everything.
+- **Budgets**: as Mail's filter.
+- **Another app's notifications**, on a phone, when you said what the app is **For**: held while the phone is not for it; your safe people's messages and your Always through people still come.
+
+When the device is the reason, and not the hour, Sioul says so: in the status line ("This device is for work: leisure waits on your other devices."), and in the "?" of Mail's and Budgets' filters.
+
+Nothing is removed from a device: what is folded is still there, and still fetched. Opening it there changes nothing elsewhere. What you then do to it is done everywhere, as always: a message you read is read on every device, and **Done for now** closes the Porch on what it showed.
+
+**Which device tells you.** A device tells only what comes forward on it. When several of your devices are for the same thing, the one you used last tells it, once. When none of them is running, it waits, and the first of them that can tells it: your phone at its next look, a computer when you open Sioul there ("The Porch opens").
+
+**What always comes, whatever a device is for**:
+
+- doses and everything of Health;
+- the codes you just asked for;
+- alarms, an event's own reminders and the time to leave for it;
+- mail and messages from your Always through people;
+- everything while you are Reachable;
+- your safe senders' mail to an address you never said anything of;
+- calls and texts, which keep their own table ([Calls](calls.md)).
+
+**A device lost, forgotten or silent for a week** stops counting: what only that device was for comes on the others again, as your hours say. The grid says it in one sentence: "No device is for leisure: until one is, that comes on every device, as the hours say." For the same reason, a device you use alone folds nothing.
+
+**A device on an older Sioul** does not follow this yet. Its line says "Its Sioul is older: everything still comes there." While it is the device you used last, it tells everything, as before, and the others stay silent. Until it is updated, what only that device would be for still comes on your other devices, as your hours say.
+
+**Your plan does not change with the device**: a task's place in your week is the same wherever you look at it.
+
+### Compared with other ways to keep work apart {#devices-compared}
+
+As of 17 November 2026, from Google's and Slack's own help pages. Other tools were not looked at: their absence here says nothing about them. Apple's pages on Focus could not be read, so nothing is said of it.
+
+✓ documented; **partly**, with a note; ✗ not found on the page read. Sioul's column was checked against its code.
+
+| | Sioul | Android's work profile | Slack |
+|---|---|---|---|
+| Work kept apart from the rest, and silent outside set hours | ✓¹ | partly² | partly³ |
+| You say what each of your devices is for, and each brings only that | ✓ | ✗⁴ | ✗ |
+| A notice goes to the device you are using | ✓⁵ | ✗ | ✓⁶ |
+
+1. Sioul: three areas, work, your admin and leisure, for each address, site, task, agenda and budget, and for each device; by hours, and by a grid of device and time.
+2. Android: work apps live in a part of the phone that can be paused, by hand or on a schedule of hours and days: "When your Work Profile is paused, work apps won't run, generate notifications, or consume data and battery life." It is one phone in two parts, set up through an employer's management, and its schedule cannot pause work over consecutive days, such as a weekend (Google, Android Enterprise Help, "Pause or turn on your Work Profile").
+3. Slack: a notification schedule by hours and days, and separate preferences for its mobile app; for Slack's own notifications (Slack Help Center, "Configure your Slack notifications").
+4. One device with a work part, not a word on each of your devices.
+5. Sioul: among the devices a thing is for, the one you used last.
+6. Slack: "By default, you'll receive mobile notifications one minute after locking your desktop screen or 10 minutes after Slack stops detecting cursor activity."
+
 ## Quiet time
 
 Quiet time is whenever it is not work's time: leisure (the evening, days without working hours, time off, the rest of a day you closed with **Done for today**), admin hours, a meal, sleep. Work rests until it comes back:
@@ -127,5 +194,9 @@ The Porch asks, in a card, for the hours not set yet, with **Set my hours**, whi
 - Work messages in the evening cost the evening through their tone (Butts, Becker & Boswell 2015), and merely expecting to check them does harm, read or not (Becker et al. 2021).
 - Unfinished tasks feed rumination and poor sleep (Syrek et al. 2017); planning where, when and how they will be done raised evening detachment (Smit 2016). So closing the day gives everything a place, and names the first step.
 - The hour before bed, kept free of what keeps the mind going, is part of the sleep programmes Health follows (Harvey et al. 2021).
+- People already give their devices a role: among 259 UK workers, those who keep work and home apart dedicated their devices more than those who mix them, with as many devices (Fleck, Cox & Robison 2015). That survey did not measure whether it helps, and no study found tests a device for work against one for everything. What goes with less distress is feeling in control of the line, whether one separates or mixes (Kossek et al. 2012, 591 managers); for people who prefer to mix, work on the phone in the evening even went with less conflict at home (Derks et al. 2016). So what a device is for is yours to say, nothing is narrowed until you say it, every cell can be changed and put back, and what is folded says why and opens in one gesture.
+- A dedicated device does not hold the line alone: 13 of 14 people who wanted "work is work, home is home" worked on the home computer too (Dearman & Pierce 2008), and mail read on a phone in the evening was forgotten at the office (Cecchinato, Cox & Bird 2015). So a fold opens, and opening it settles nothing.
+- Asked through the day, 16 people wanted a notification on the device near them and in use: the phone nearly all day, a computer only while used (Weber et al. 2016, read in its first author's thesis). So among the devices a thing is for, the one you used last tells it, and what cannot be told where it belongs waits in view and is told there later, never dropped.
+- No study separates personal admin from leisure: every one found knows two sides, work and the rest. Keeping admin off a device for leisure is Sioul's own inference, from admin being work nobody pays for.
 
-More in [what the research says](../dev/research.md), findings 21 to 23.
+More in [what the research says](../dev/research.md), findings 21 to 23 and 83 to 85.

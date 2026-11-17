@@ -21,11 +21,11 @@ A source or a task is for **work**, for **your own admin** (bills, letters, offi
 | A task | the task's panel, "For" (`X-SIOUL-AREA`) | by its tags and projects: work's (`[quiet] work`, a client's project, GitHub), leisure's (joy, family, friends…), both personal ones (health), else admin |
 | An agenda (a calendar or a task list) | Agenda ⚙ ▸ Your agendas, its line: "For" (`[agenda.calendars."<account>/<id>"] area`; [client.md](client.md#several-agendas)) | work when its account says work alone, else your admin and leisure: a work agenda follows the work hours, a personal one reaches you all day unless you say outside work hours |
 | An app's notifications, on a phone | Settings ▸ What reaches you ▸ Exceptions, under the app: "For" ([android.md](android.md#notifications-from-other-apps)) | any time: the matrix decides alone ([attention.md](attention.md)) |
-| A device | Settings ▸ Devices, on its card: "For", said from any of your devices (`[device."<id>"] area`; [database.md](database.md#devices)) | everything: a device you never classified is for work, admin and leisure |
+| A device | Settings ▸ Devices, on its card: "For", said from any of your devices (`[device."<id>"] area`; [database.md](database.md#devices)), and its cells in the grid under the devices ([below](#what-each-device-is-for)) | everything: a device you never classified is for work, admin and leisure |
 
 Mail addresses are the one place nothing is mixed for you: asking what each address is for is what separates a business address from a personal one.
 
-**A device's switches decide nothing yet** (17 November 2026). They are recorded in the shared settings and shown on every device (Settings ▸ Devices, `sioul devices`); nothing is folded, held or told by them, and every rule on this page reads the thing's area and the time alone, as before. `sioul_core::device_said::area_of` is where a rule would read what a device is for.
+**What a device is for narrows what comes forward on it**: each rule on this page that says what a thing's area brings now is read against the device's own line once you said something of it, and stays as written here until then ([What each device is for](#what-each-device-is-for)).
 
 ## Five times
 What now is for is one of five times (`sioul_core::areas::Time`, decided by `sioul_core::quiet::mode`):
@@ -59,7 +59,7 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 | Sleep | leisure, if you open Sioul; no notification of any kind but doses | tasks, projects, time behind one sentence; every notification |
 | No hours set at all | everything, as before any were set | nothing |
 
-`sioul_core::areas::in_view` is the whole rule for areas, the attention model's `Attention::mail` for mail ([attention.md](attention.md)); the status line says what now is and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Sleep: nothing disturbs until 07:00.", and for the two pauses "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." and "Paused."
+`sioul_core::areas::brought` is this table, and `areas::in_view` the whole rule for areas by the hours: a thing's area meets what the time brings (on a device you said something of, its cell for that time: [below](#what-each-device-is-for)); the attention model's `Attention::mail` is the rule for mail ([attention.md](attention.md)); the status line says what now is and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Sleep: nothing disturbs until 07:00.", and for the two pauses "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." and "Paused."
 
 ### "Work now", gone {#work-now}
 "Work now" went with the three states (decision 10 of 18 October 2026, [do-not-disturb.md](do-not-disturb.md#the-three-states)): Reachable took its part for people and the Porch, and the status line's menu its part for work, "Work half an hour more" to "Work four hours more" and **Work until tonight** (`Overrides::work_until` at the night's start, as Health knows it; offered only when a night is known). Nothing ends any more when Sioul starts or closes. A `work_now` an older Sioul wrote is still read as work until its end (`quiet::end_of_next_workday`, `Overrides::work_now`, `Reason::WorkNow`), and "Back to the usual hours", in the status line's menu, clears it. Meals and sleep still come first.
@@ -86,13 +86,59 @@ The task pages keep what fits (`quiet::QuietTasks`): what is for leisure in leis
 
 ## A page's filter by area {#a-pages-filter-by-area}
 Mail's **All addresses** shows what the hours admit, as a filter you may change at once (4 November 2026; Budgets will use the same). Code: `sioul_core::areafilter` (the hours' ticks, yours, when yours end, the button's words), `sioul_core::mailbox::Filter` and `hours_say` (Mail's), `crates/sioul-app/src/mail.rs` (`mailbox_filter`, kept on this device), `qml/AreaFilter.qml` (the component).
-- **Three boxes**, Work, Admin and Leisure, behind one button that says what shows ("Admin · Leisure"; "Nothing ticked"), so that no state is hidden ([research.md](research.md), finding 5). Ticked as the hours say, since work cues in the evening undo recovery (finding 21) (`areafilter::hours_say`: each area alone that `in_view` brings now): work in working hours, and admin with it while admin has no hours of its own; admin in admin hours, and work while work has none; leisure in leisure and at meals; everything when no hours are set. Mail ticks nothing while you sleep or pause (`mailbox::hours_say`), as every address rested then.
+- **Three boxes**, Work, Admin and Leisure, behind one button that says what shows ("Admin · Leisure"; "Nothing ticked"), so that no state is hidden ([research.md](research.md), finding 5). Ticked as the hours say, since work cues in the evening undo recovery (finding 21) (`areafilter::hours_say`: each area alone that comes forward now on this device, `Mode::brings`): work in working hours, and admin with it while admin has no hours of its own; admin in admin hours, and work while work has none; leisure in leisure and at meals; everything when no hours are set. Mail ticks nothing while you sleep or pause (`mailbox::hours_say`), as every address rested then.
 - **Your ticks hold until the hours change**, everything adjustable (finding 10), nothing to set back by hand: until the time they were ticked in ends (`Mode::until`), or the hours say otherwise before it (a day closed early, a pause), and a day at most (`areafilter::LONGEST`), so that a weekend of leisure or a time with no end known never keeps them for good. Then the hours' ticks come back, and the window's minute forgets yours (`settle`), so that a later time saying the same never brings them back. **As the hours say** forgets them at once; ticking what the hours say is the same.
 - **The addresses** are switches beside it, every one on unless switched off. What shows is the mail of the addresses switched on whose area meets the ticks (`Filter::shows`); a message two addresses hold shows when one of them does, with both marks. An address whose area is unsaid counts as work, as everywhere (`mailbox::area_of`).
 - **Nothing else explains it**: no line per resting address; one "?" in the filter says it in short. When it shows no address, the list says nothing at all: the filter's own state says why.
 - **Kept on this device** with the mailbox's chip (`$XDG_STATE_HOME/sioul/mailbox-view.toml`: `off`, the addresses switched off; `[areas]`, your ticks while they hold, the hours' ticks they were made under and their end), never shared. An older Sioul reads the chip and leaves the rest; its "one address alone" (`account`) is read by none.
 - **On a phone**, the same in the folders' sheet, each address a box with its whole address, within 412 points.
 - **Agents** keep their own rules (`mcp.md`): the filter is the window's only.
+
+## What each device is for {#what-each-device-is-for}
+A third question joins the two above: **on which device**. A computer for work, a phone for your own admin and for leisure, a tablet on the sofa: Settings ▸ Devices says what each is for, from any of them, and each device then brings forward only what it is for, at the hours for it. Decided on 17 November 2026: the three areas are the device's too; calls and texts stay out of it; a device folds what is not for it and still holds the data.
+
+**The rule.** Each time brings a set of areas (`areas::brought`: the table of "What each time brings"; `areas::in_view` is "the thing's area meets that set"). A device has five **cells**, one per time: the areas that come forward on it then (`areas::Line::cell`). A cell is what the time brings, kept to what the device is for; a cell you changed is the whole answer for that device at that time. A thing comes forward on a device when its area meets that device's cell for now (`areas::Here::brings`, asked through `quiet::Mode::brings` and `attention::Now::brings`).
+
+| | Work | Admin | Leisure, meals | Sleep |
+|---|---|---|---|---|
+| A computer for work | work | nothing | nothing | nothing |
+| A phone for admin and leisure | admin, while admin has no hours of its own | admin | leisure | leisure, if opened |
+| A device nothing is said of | as the hours say | as the hours say | as the hours say | as the hours say |
+
+- **A cell you changed** may hold an area the time does not bring (friends reaching a phone during work: `work+leisure` there), or nothing at all (`none`). "As its areas say" puts it back. It is drawn apart in the grid.
+- **Work and admin hours at once**: both cells together. **No hours set at all**: no time is known to read a cell for, so the cell is what the device is for.
+- **With nothing said, nothing changes.** A device whose line says nothing (no area, no cell) narrows nothing: every answer is the hours' own, whatever the other devices' lines say. A thing with no area keeps the hours' answer on every device. Nothing is narrowed anywhere until you say what a device is for.
+- **An area no device is for is narrowed by none** (`Here::unheld`). When no device that counts is for an area at any time, each device brings it as the hours say: a phone lost, forgotten or silent for a week never makes what was for it vanish from the others. A device alone therefore narrows nothing. Settings ▸ Devices says it under the grid: "No device is for leisure: until one is, that comes on every device, as the hours say." A device counts as the doses count it (`sioul_core::health::counts`: not said off, still sharing, heard within a week); one whose Sioul is older is left out of this count: it tells by the rule before ([attention.md](attention.md#which-device-tells)), so what only it could be for is held by no device, and an older Sioul never leaves a thing for nobody.
+- **Kept in the shared settings**: `[device."<id>"] area = "work"`, and under it `[device."<id>".at] work = "work+leisure"`, one key per cell you changed (`work`, `admin`, `leisure`, `meals`, `sleep`; `none` for nothing). An older Sioul keeps the table as it is.
+
+**Shown.** What is not for this device now folds exactly as what is not for this time folds, and the same doors open it:
+
+| Where | What folds | Its door |
+|---|---|---|
+| Mail | the filter's ticks (`areafilter::hours_say`): an address whose area is not ticked | the filter's three boxes |
+| Sites | under "Other hours" | a click on that line |
+| Tasks | the Now view (`quiet::QuietTasks`) | the List, Board and Gantt views, which show every task whatever the hour or the device |
+| The Porch | mail to an address this device is not for: your safe senders' shown, not told; the others' off the Porch; sites' news, money, the agenda's conflicts | **Show all mail now**; each thing's own page |
+| Budgets | the filter's ticks | the filter's three boxes |
+| Another app's notifications with a "For", on a phone | held | Sioul's list of what it holds |
+
+Where the device is the reason and not the hour, the words say so: the status line ("Leisure until 22:00: what you enjoy. This device is for work: leisure waits on your other devices."; where you changed the cell, "On this device, at this time, leisure waits on your other devices: you set it so in Settings ▸ Devices."), the filter's "?", and an address's resting line (`areafilter::device_line`, `Mode::elsewhere`).
+
+**What is opened through a door is not settled by it.** A thing is settled by what you do to it, never by having been shown: a message is settled when it is read, dismissed or done (`\Seen`, the notices' words, shared), a site's news when the site is opened on that computer, a task when it is done, a Porch closed by **Done for now** on what it showed. So mail opened on a device that is not for it and left unread stays new on the device that is; read there, it is read everywhere, as before devices: the fold changes nothing in what counts as handled.
+
+**Told.** A device tells only what comes forward on it, and among the devices a thing comes forward on now, the one used last tells it ([attention.md](attention.md#which-device-tells)).
+
+**Never kept back by what a device is for**: doses and everything of Health (their own lease, untouched); the codes you just asked for; alarms and an event's own reminders, and the time to leave for it; your Always through people's mail and messages; everything while you are Reachable; **Show all mail now**; your safe senders' mail to an address nobody classified. Phone calls and texts keep their own matrix. A site's call follows the site's area, so it follows the device too.
+
+**The plan stays yours.** The plan gives a task room in the hours of its area on every device alike (`plan::Room::usable`), and "this row and this address never meet in your week" reads the week alone (`Attention::meets_at`): neither reads a device. Agents (`sioul mcp`) read the hours alone too.
+
+**The grid**, in Settings ▸ Devices: under the devices, a cell per device and time, in words ("Work", "Admin · Leisure", "Nothing"). A cell opens three boxes and "As its areas say". In a wide window the cells line up as one matrix, devices by times; on a phone each card says its cells one line per time. One sentence says now for this device: "Now, leisure until 22:00: leisure comes here." A device whose Sioul is older says "Its Sioul is older: everything still comes there." `sioul devices` prints the same, and `sioul devices for` and `sioul devices at` set a device's areas and a cell.
+
+**What it does not do.** A device that folds what is not for it still fetches and holds it: on a device shared with others, folding is not privacy. A work phone still rings for calls outside work. A device has no hours of its own. Each is left for later.
+
+Code: `sioul_core::areas` (`brought`, `Line`, `Here`, `Lines`), `sioul_core::device_said` (the settings' table, `Said::line`, `set_cell`), `quiet::Mode::on`, `sioul_sync::dispatch` (the devices that count, as this device knows them), `sioul_sync::lease` (`Dispatch`, `told_by`), `sioul_sync::device_grid` (the grid's cells and words), `qml/DeviceGrid.qml`. Tests: `areas::tests` (the rule against the function as it was, over every area, time and week; nothing said, nothing changes; `every_caller_of_the_rule_is_sorted`, which names each caller of the hours' rule and of the device's; `the_health_path_reads_no_device_cell`), `attention::tests::what_a_device_is_for_narrows_what_it_tells` and `with_nothing_said_of_this_device_the_pipeline_answers_as_before`, `lease::tests::an_older_device_a_work_computer_and_a_personal_phone_tell_each_thing_once`.
+
+Why: people already give their devices a role, those who keep work apart more than others, and what goes with less distress is control over the line, whichever way one draws it ([research.md](research.md), findings 83 to 85). So nothing is narrowed until you say so, every cell can be changed and put back, what is folded says why and opens in one gesture, and what must reach you reaches every device.
 
 ## What is not decided for you
 - **A bank account used for both.** It is for work and admin: it comes in work time and in admin time, not in leisure. Sioul does not split its movements between business and personal. Your accountant decides that, and in France a micro-entrepreneur needs a separate account once turnover passes €10,000 two years running. Keeping the business account apart keeps its alerts out of your evenings.

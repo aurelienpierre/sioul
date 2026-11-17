@@ -136,14 +136,14 @@ Your notes folder travels by its own sync, not by Sioul, unless you switch it on
 - **Now**: "In use now.", "Closed since 14:02.", or "Silent since Tue 3 Nov 09:15: it may have stopped without closing." It also says a device you said is off, one silent for a week, one on an older Sioul, and one whose clock runs ahead.
 - **Last opened** and **Last shared**: when Sioul was last opened there, and when it last read the other devices and wrote its own changes.
 - **Sioul**: the version it runs, such as "0.0.3 (eff8661abcde)", with a sentence when it is older than this device's, so that you can update it when you like.
-- **For**: three switches, **Work**, **Your admin** and **Leisure**, any of them together. With nothing ticked, the card says "Everything comes here". You can say it of any device from any device: it travels with your settings. For now it is recorded and shown on every device, and nothing is held back or folded by it yet.
+- **For**: three switches, **Work**, **Your admin** and **Leisure**, any of them together. With nothing ticked, the card says "Everything comes here". You can say it of any device from any device: it travels with your settings. Each device then brings forward only what it is for, at the hours for it, and under the devices a grid says what comes on each at each time; a cell of it can be changed ([What each device is for](hours.md#what-each-device-is-for)).
 - **Shares**: the parts it shares ([What travels from this device](#what-travels-from-this-device)). Another device's parts cannot be switched from here: a part is switched on or off on the device itself, where its data lands. A device on an older Sioul does not say what it shares.
 
 On the card of a device other than this one: **Count it again** for one you said is off; **Forget this device** for one silent for a week; on a computer, **Forget it now** for a phone silent for a day ([a new phone](#a-new-phone-in-place-of-an-old-one)); and **Forget it and remove its files…** ([Removing a device's files](#removing-a-devices-files)).
 
 While this device does not share, the tab lists it alone. Its name and what it is for can still be said.
 
-On a computer, `sioul devices` prints the same table in a terminal, and `sioul devices --json` gives it as data. While Sioul's window is closed, it says the other devices as the window last saw them, and when that was.
+On a computer, `sioul devices` prints the same table in a terminal, with what comes forward on each device at each time, and `sioul devices --json` gives it as data; `sioul devices for` and `sioul devices at` say what a device is for ([What each device is for](hours.md#what-each-device-is-for)). While Sioul's window is closed, it says the other devices as the window last saw them, and when that was.
 
 ## Devices on different versions of Sioul {#devices-on-different-versions}
 

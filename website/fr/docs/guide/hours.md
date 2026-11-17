@@ -1,5 +1,5 @@
 ---
-description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; le calme, « Joignable », « Ne pas déranger » et « Travailler jusqu’à ce soir ».
+description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; à quoi sert chacun de vos appareils, et ce qui y arrive quand ; le calme, « Joignable », « Ne pas déranger » et « Travailler jusqu’à ce soir ».
 ---
 
 # Les heures : travail, démarches, loisirs, repas, sommeil {#hours-work-your-admin-leisure-meals-sleep}
@@ -68,6 +68,73 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 - **Les budgets** : selon ce à quoi chacun sert.
 - **Ce qu’une page montre** : [Toutes les adresses](mail.md#all-addresses) dans les courriels, [les budgets](budgets.md#at-a-glance) et [**Agendas** dans l’agenda](agenda.md#several-agendas) montrent d’abord ce à quoi sert le moment présent. Cochez-en d’autres, et ils se montrent aussitôt, jusqu’à ce que vos heures changent ; **Selon vos heures** rend les coches de vos heures.
 
+## À quoi sert chaque appareil {#what-each-device-is-for}
+
+Un ordinateur pour le travail, un téléphone pour vos démarches et vos amis, une tablette sur le canapé : dans **Paramètres ▸ Appareils**, trois interrupteurs sur la fiche de chaque appareil disent **Pour** quoi il est fait : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez. Vous pouvez le dire de n’importe quel appareil, depuis celui que vous avez en main. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela. Sans rien de coché, tout y arrive, comme avant : rien ne change sur aucun appareil tant que vous n’avez pas dit à quoi l’un d’eux sert.
+
+Sous les appareils, une grille dit **ce qui arrive, et quand** : pour chaque appareil, ce qui arrive à chacun des cinq moments.
+
+| | Travail | Démarches | Loisirs, repas | Sommeil |
+|---|---|---|---|---|
+| Un ordinateur pour le travail | Travail | Rien | Rien | Rien |
+| Un téléphone pour les démarches et les loisirs | Démarches, tant que les démarches n’ont pas leurs propres heures | Démarches | Loisirs | Loisirs, si vous ouvrez Sioul |
+| Un appareil sans rien de coché | selon vos heures | selon vos heures | selon vos heures | selon vos heures |
+
+- **Changez une case** pour laisser passer autre chose sur un appareil à un moment : appuyez dessus, cochez ce qui doit arriver. Vos amis sur votre téléphone pendant le travail : cochez **Loisirs** dans la case Travail du téléphone. Rien du tout pendant les repas : décochez tout dans cette case. Une case que vous avez changée est encadrée, et **Selon ce à quoi il sert** la remet.
+- **En ce moment** : une phrase dit ce que cet appareil fait venir à l’instant : « En ce moment, les loisirs jusqu’à 22:00 : vos loisirs arrivent ici. »
+- Sur un téléphone, la fiche de chaque appareil dit ses cases en mots, une ligne par moment.
+- `sioul devices` écrit la même grille dans un terminal ; `sioul devices for <appareil> <usages>` et `sioul devices at <appareil> <moment> <usages>` règlent ce à quoi sert un appareil et une case (`sioul devices at phone work work+leisure` ; `none` pour rien, `usual` pour remettre une case).
+
+**Ce que cela change sur un appareil.** Ce qui n’est pas pour un appareil à ce moment s’y replie exactement comme ce qui n’est pas pour cette heure, et les mêmes gestes l’ouvrent :
+
+- **Les courriels** : [Toutes les adresses](mail.md#all-addresses) ne coche que ce qui arrive ici ; cochez le reste pour le voir.
+- **Les sites** : les autres se replient sous « Autres heures ».
+- **Les tâches** : **Maintenant** garde ce qui arrive ici ; la liste, le tableau et les autres vues montrent toutes les tâches, comme toujours.
+- **Le Porche** : les courriels arrivés à une adresse pour laquelle cet appareil n’est pas fait attendent ; ceux de vos expéditeurs sûrs s’affichent, sans notification. **Montrer tous les courriels maintenant** montre tout.
+- **Les budgets** : comme le filtre des courriels.
+- **Les notifications d’une autre application**, sur un téléphone, quand vous avez dit **Pour** quoi elle est faite : retenues tant que le téléphone n’est pas fait pour cela ; les messages de vos personnes sûres et de celles qui passent toujours arrivent quand même.
+
+Quand c’est l’appareil qui en est la raison, et non l’heure, Sioul le dit : dans la ligne d’état (« Cet appareil est pour le travail : vos loisirs attendent sur vos autres appareils. »), et dans le « ? » des filtres des courriels et des budgets.
+
+Rien n’est retiré d’un appareil : ce qui est replié est toujours là, et toujours relevé. L’ouvrir là ne change rien ailleurs. Ce que vous en faites ensuite est fait partout, comme toujours : un courriel que vous lisez est lu sur tous vos appareils, et **Terminé pour l’instant** ferme le Porche sur ce qu’il montrait.
+
+**Quel appareil vous le dit.** Un appareil ne dit que ce qui arrive sur lui. Quand plusieurs de vos appareils sont faits pour la même chose, celui dont vous vous êtes servi en dernier vous le dit, une fois. Quand aucun d’eux ne tourne, cela attend, et le premier d’entre eux qui le peut vous le dit : votre téléphone à son prochain passage, un ordinateur quand vous y ouvrez Sioul (« Le Porche ouvre »).
+
+**Ce qui arrive toujours, quel que soit ce à quoi sert un appareil** :
+
+- les prises et tout ce qui est de la Santé ;
+- les codes que vous venez de demander ;
+- les alarmes, les rappels propres à un événement et l’heure de partir ;
+- les courriels et les messages des personnes qui passent toujours ;
+- tout, pendant que vous êtes Joignable ;
+- les courriels de vos expéditeurs sûrs à une adresse dont vous n’avez rien dit ;
+- les appels et les SMS, qui gardent leur propre tableau ([Les appels](calls.md)).
+
+**Un appareil perdu, oublié ou silencieux depuis une semaine** ne compte plus : ce pour quoi lui seul était fait arrive de nouveau sur les autres, selon vos heures. La grille le dit en une phrase : « Aucun appareil n’est pour vos loisirs : en attendant, cela arrive sur tous vos appareils, selon vos heures. » Pour la même raison, un appareil que vous utilisez seul ne replie rien.
+
+**Un appareil dont le Sioul est plus ancien** ne suit pas encore cela. Sa ligne dit « Son Sioul est plus ancien : tout y arrive encore. » Tant qu’il est l’appareil dont vous vous êtes servi en dernier, il dit tout, comme avant, et les autres se taisent. Tant qu’il n’est pas mis à jour, ce pour quoi lui seul serait fait arrive encore sur vos autres appareils, selon vos heures.
+
+**Votre plan ne change pas avec l’appareil** : la place d’une tâche dans votre semaine est la même où que vous la regardiez.
+
+### Comparé à d’autres façons de tenir le travail à part {#devices-compared}
+
+Au 17 novembre 2026, d’après les pages d’aide de Google et de Slack. Les autres outils n’ont pas été regardés : leur absence ici ne dit rien d’eux. Les pages d’Apple sur Concentration n’ont pas pu être lues : rien n’en est dit.
+
+✓ documenté ; **en partie**, avec une note ; ✗ non trouvé sur la page lue. La colonne de Sioul a été vérifiée sur son code.
+
+| | Sioul | Le profil professionnel d’Android | Slack |
+|---|---|---|---|
+| Le travail tenu à part du reste, et silencieux hors des heures réglées | ✓¹ | en partie² | en partie³ |
+| Vous dites à quoi sert chacun de vos appareils, et chacun ne fait venir que cela | ✓ | ✗⁴ | ✗ |
+| Une notification va à l’appareil que vous utilisez | ✓⁵ | ✗ | ✓⁶ |
+
+1. Sioul : trois usages, le travail, vos démarches et les loisirs, pour chaque adresse, site, tâche, agenda et budget, et pour chaque appareil ; par heures, et par une grille des appareils et des moments.
+2. Android : les applications de travail vivent dans une partie du téléphone qui peut être mise en pause, à la main ou selon un horaire d’heures et de jours ; en pause, elles ne tournent plus et n’envoient plus de notifications. C’est un seul téléphone en deux parties, mis en place par la gestion d’un employeur, et son horaire ne peut pas mettre le travail en pause plusieurs jours de suite, un week-end par exemple (Google, aide d’Android Enterprise, « Pause or turn on your Work Profile »).
+3. Slack : un horaire de notifications par heures et par jours, et des préférences à part pour son application mobile ; pour les notifications de Slack lui-même (centre d’aide de Slack, « Configure your Slack notifications »).
+4. Un seul appareil avec une partie pour le travail, pas un mot sur chacun de vos appareils.
+5. Sioul : parmi les appareils faits pour une chose, celui dont vous vous êtes servi en dernier.
+6. Slack : par défaut, les notifications mobiles viennent une minute après le verrouillage de l’écran de l’ordinateur, ou dix minutes après que Slack n’y voit plus bouger le curseur.
+
 ## Le calme {#quiet-time}
 
 Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
@@ -127,5 +194,9 @@ Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régl
 - Les messages de travail du soir coûtent la soirée par leur ton (Butts, Becker & Boswell 2015), et le simple fait de s’attendre à les consulter fait du mal, qu’on les lise ou non (Becker et al. 2021).
 - Les tâches inachevées nourrissent la rumination et le mauvais sommeil (Syrek et al. 2017) ; prévoir où, quand et comment elles seront faites a augmenté le détachement le soir (Smit 2016). Aussi, clore la journée donne une place à chaque chose, et nomme la première étape.
 - L’heure avant le coucher, gardée libre de ce qui fait tourner la tête, fait partie des programmes pour le sommeil que suit la Santé (Harvey et al. 2021).
+- Les gens donnent déjà un rôle à leurs appareils : parmi 259 personnes en emploi au Royaume-Uni, celles qui tiennent le travail et la maison à part consacraient davantage leurs appareils à l’un ou à l’autre que celles qui les mêlent, avec autant d’appareils (Fleck, Cox & Robison 2015). Cette enquête n’a pas mesuré si cela aide, et aucune étude trouvée ne compare un appareil pour le travail à un appareil pour tout. Ce qui va de pair avec moins de détresse, c’est de se sentir maître de la limite, qu’on sépare ou qu’on mêle (Kossek et al. 2012, 591 cadres) ; pour les personnes qui préfèrent mêler, travailler sur le téléphone le soir allait même de pair avec moins de conflit à la maison (Derks et al. 2016). Aussi, c’est à vous de dire à quoi sert un appareil, rien n’est restreint tant que vous ne l’avez pas dit, chaque case se change et se remet, et ce qui est replié dit pourquoi et s’ouvre d’un geste.
+- Un appareil consacré ne tient pas la limite tout seul : 13 des 14 personnes qui voulaient « le travail au travail, la maison à la maison » travaillaient aussi sur l’ordinateur de la maison (Dearman & Pierce 2008), et des courriels lus sur le téléphone le soir étaient oubliés au bureau (Cecchinato, Cox & Bird 2015). Aussi, ce qui est replié s’ouvre, et l’ouvrir ne règle rien.
+- Interrogées au fil de la journée, 16 personnes voulaient une notification sur l’appareil près d’elles et en cours d’utilisation : le téléphone presque toute la journée, un ordinateur seulement pendant qu’elles s’en servaient (Weber et al. 2016, lu dans la thèse de son premier auteur). Aussi, parmi les appareils faits pour une chose, celui dont vous vous êtes servi en dernier vous le dit, et ce qui ne peut pas être dit là où il a sa place attend en vue et y est dit plus tard, jamais perdu.
+- Aucune étude ne sépare les démarches personnelles des loisirs : toutes celles trouvées connaissent deux côtés, le travail et le reste. Tenir les démarches hors d’un appareil pour les loisirs est une déduction de Sioul, les démarches étant un travail que personne ne paie.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 21 à 23.
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 21 à 23 et 83 à 85.
