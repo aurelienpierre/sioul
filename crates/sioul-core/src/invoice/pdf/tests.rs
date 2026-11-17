@@ -204,7 +204,7 @@ fn characters_the_font_lacks_wait() {
     assert_eq!(unprintable(&s.invoice), ['山', '田']);
     let refused = render(&s.invoice, &Options::default()).unwrap_err();
     assert!(refused.contains("山田"), "{refused}");
-    let checks = crate::invoice::life::checks(&s.invoice, &s.settings, "2026-11-16".parse().unwrap());
+    let checks = crate::invoice::life::checks(&s.invoice, &s.settings, "2026-11-16".parse().unwrap(), &[]);
     assert!(checks.iter().any(|c| c.required && c.text.contains("山田")), "{checks:?}");
     // What it lacks but has a near one: a non-breaking hyphen, printed as a hyphen.
     s.invoice.client.name = "Jean\u{2011}Paul Exemple".into();
@@ -220,7 +220,7 @@ fn right_to_left_writing_waits() {
     s.invoice.client.name = "סטודיו שלום".into();
     assert!(!right_to_left(&s.invoice).is_empty());
     assert!(render(&s.invoice, &Options::default()).is_err());
-    let checks = crate::invoice::life::checks(&s.invoice, &s.settings, "2026-11-16".parse().unwrap());
+    let checks = crate::invoice::life::checks(&s.invoice, &s.settings, "2026-11-16".parse().unwrap(), &[]);
     assert!(checks.iter().any(|c| c.required && c.text.contains('ס')), "{checks:?}");
 }
 

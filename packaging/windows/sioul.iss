@@ -53,6 +53,7 @@ Source: "sioul.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; The works of others inside the programs, with their licences (NOTICES.md).
 Source: "..\..\NOTICES.md"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\..\crates\sioul-core\data\fonts\LICENSE-Liberation"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\crates\sioul-core\data\LICENSE-iso-codes"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\..\crates\sioul-app\fonts\LICENSE-DejaVu"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\..\crates\sioul-app\icons\COPYING-ICONS"; DestDir: "{app}\licenses"; Flags: ignoreversion
 

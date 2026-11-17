@@ -99,22 +99,23 @@ On a computer, or a tablet without a SIM, the multimedia messages sent from it t
 
 Printed on the invoices you make from [Time](time.md#invoices) and [Projects](projects.md):
 
-- **Your name or business name**, **Your address** (on lines, as on an envelope). French law asks an entrepreneur individuel's name to carry « EI »: Sioul prints it right after the name for you (« Camille Exemple EI ») when your legal form is one (`legal_form = "ei"`, below, the French preset's first, so also when you set none), and a name that says it already keeps it once;
-- **SIRET**, or the business number where you are; empty until you are registered. In France, nine digits are read as your SIREN; a number that fails its check (a digit wrong) holds the invoice back until it is right;
-- **VAT line**: for a French micro-entrepreneur, « TVA non applicable, art. 293 B du CGI ». With no `preset` set (below), a line citing article 293 B makes your invoices those of a French entrepreneur individuel under the VAT franchise, with this line as the franchise's; any other line is printed as it is, under **Elsewhere** ([Your country's rules](time.md#your-countrys-rules));
+- **Your name or business name**, **Your address** (on lines, as on an envelope). French law asks an entrepreneur individuel's name to carry « EI »: Sioul prints it right after the name for you (« Camille Exemple EI ») when your **Legal form** says you are one, and a name that says it already keeps it once;
+- **Legal form**, under your name, when your country's rules name forms: in France, *Sole trader (entrepreneur individuel, micro-entrepreneur included)*, EURL, SASU, SARL, SAS or SA; in Germany, Belgium, the United Kingdom and Switzerland, a sole trader or a company. *Not said yet* comes first: invoice settings made before November 2026 say none, and your next invoice waits until you choose, so that a company under the VAT franchise never reads « EI »;
+- **SIRET**, or the business number where you are; empty until you are registered. In France, nine digits are read as your SIREN; a number that fails its check (a digit wrong) holds the invoice back until it is right. While your SIRET is being given, write « en cours d'attribution »: your invoices print « SIRET en cours d'attribution », the wording service-public.gouv.fr gives for it;
+- **VAT line**: for a French micro-entrepreneur, « TVA non applicable, art. 293 B du CGI ». With no `preset` set (below), a line citing article 293 B makes your invoices French, under the VAT franchise, with this line as the franchise's, your legal form asked once (above); any other line is printed as it is, under **Elsewhere** ([Your country's rules](time.md#your-countrys-rules));
 - **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…; left empty, the prefix is the year, so numbering starts again each year, while a prefix of your own goes on counting;
 - **Currency**: a three-letter code, such as EUR, USD, CHF: the currency of your invoices, unless a client's profile gives another;
-- **Payment details**: printed at the bottom: bank details, terms. In France, Sioul prints the late-payment lines itself for business clients (no discount for early payment, the penalties, the €40 fee): leave them out of these details, or they print twice;
+- **Payment details**: printed at the bottom: bank details, terms. In France, Sioul prints the late-payment lines itself for business clients (no discount for early payment, the penalties, the €40 fee): leave them out of these details. Details that speak of late fees hold an invoice to a business back until you keep yours or Sioul's, so that an invoice never states two rates: take them out of the details (and give your own rate as `penalty_rate`, below, when it differs), or turn Sioul's lines off (`penalties` and `indemnity`, below);
 - **Invoices go into**: the folder where a copy of each invoice's file goes when it is issued or printed again, `Documents/Invoices` in your home folder when empty; the file itself is kept beside the invoice, and travels with it;
 - **An hour costs**: the rate when a project does not set its own.
 
-Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, or a business client's address, now holds it back, with a sentence saying what to add.
+Since November 2026, an invoice is checked before it is issued against what your country's rules ask: a missing SIREN, a business client's address (a client without a profile is billed as a business), a client's country when their address leaves it unknown, or, for settings made before, your legal form, now holds it back, with a sentence saying what to add.
 
 **In the configuration file**, for now ([Where settings are kept](#where-settings-are-kept), under `[invoice]`), until Settings ▸ Invoices shows them by country. The settings above keep working as they did:
 
-- `preset`: your country's rules, `fr`, `de`, `be`, `uk`, `ch` or `elsewhere` (`es` and `it` are named, and not supported); `legal_form`: in France `ei` (a micro-entrepreneur included, and the default), `eurl`, `sasu`, `sarl`, `sas` or `sa`, elsewhere `sole` (the default) or `company`; `regime`, in France: `micro` or `reel`;
+- `preset`: your country's rules, `fr`, `de`, `be`, `uk`, `ch` or `elsewhere` (`es` and `it` are named, and not supported); `legal_form` (**Legal form**, above): in France `ei` (a micro-entrepreneur included), `eurl`, `sasu`, `sarl`, `sas` or `sa`, elsewhere `sole` or `company`; with a `preset` set, its first is the default; without one, as in settings made before November 2026, none until you say it; `regime`, in France: `micro` or `reel`;
 - `[[invoice.tax]]`: your VAT scheme from a day on, `from` (`2027-01-01`), `scheme` (`none`, `franchise` or `liable`) and, under the franchise, `mention` when you want another line than your country's; `options = ["debits"]` in France, when you pay VAT on debits;
-- `[[invoice.id]]`: your identifiers, each a `kind` your country names (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), its `value`, and `printed`;
+- `[[invoice.id]]`: your identifiers, each a `kind` your country names (`siren`, `siret`, `rcs`, `vat`, `steuernummer`, `utr`, `uid`, `other`…), its `value`, and `printed` (`true` unless you say `false`: an identifier not printed does not count for what your country's rules require);
 - `trade_name`, `postcode`, `city`, `country` (two letters, such as `FR`) and `email`; `capital`, a company's share capital as printed; `insurance`, your professional insurance as printed (insurer, contact, coverage);
 - `[[invoice.bank]]`: `holder`, `iban` and `bic`, printed on your invoices; on an invoice in euros, the first IBAN whose key holds goes into a QR code to pay by transfer, with the holder's name (yours when unsaid), unless `qr = false`;
 - `pattern` (`{YYYY}-{N:3}`: the year `{YYYY}` or `{YY}`, the month `{MM}`, and one counter, `{N}`, or `{N:4}` for four digits at least), `reset` (`yearly`, with the year in the pattern, or `never`), `credit_pattern` (a series of their own for credit notes; empty, they follow your invoices);
@@ -139,7 +140,7 @@ from = "2026-01-01"
 scheme = "franchise"
 ```
 
-A company sets its `legal_form`, even under the franchise: a VAT line citing article 293 B, with nothing else, makes your invoices an entrepreneur individuel's.
+A company says its legal form, even under the franchise: with `preset = "fr"` and no `legal_form`, your invoices are an entrepreneur individuel's; settings made before, with only a VAT line citing article 293 B, wait for your choice.
 
 ## Each page's own settings
 

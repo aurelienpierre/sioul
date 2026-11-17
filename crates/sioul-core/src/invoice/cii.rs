@@ -67,7 +67,7 @@ pub enum Without {
     /// Lines outside the scope of VAT beside others: EN 16931 has an
     /// invoice either outside it whole or not at all (BR-O-11 to 14).
     OutsideMixed,
-    /// The client's or the delivery's country, not one of ISO 3166-1 (`countries`).
+    /// The client's or the delivery's country, not one of ISO 3166-1 (`clients::country`).
     ClientCountry,
     /// A line's price below zero (BR-27) or its unit outside Sioul's (`units`).
     Lines,
@@ -109,8 +109,8 @@ struct Ids {
     vat: Option<String>,
     /// BT-32: a tax number that is no VAT number (Steuernummer, UTR, a tax number elsewhere).
     tax: Option<String>,
-    /// BT-33: what the register says (« RCS Lyon »).
-    register: Option<String>,
+    /// BT-33: what the trade register says (« RCS Lyon »).
+    trade_register: Option<String>,
 }
 
 /// Whether the invoice is not subject to VAT: then neither side's VAT number is written (BR-O-02).
@@ -124,26 +124,36 @@ fn seller_ids(invoice: &Invoice) -> Ids {
     let mut ids = Ids::default();
     let value = |kind: &str| issuer.ids.iter().find(|i| i.kind == kind && !i.value.trim().is_empty()).map(|i| i.value.trim().to_string());
     // A SIRET holds its SIREN: its first nine digits.
-    ids.legal = value("siren").or_else(|| value("siret")).map(|v| super::ids::compact(&v)).filter(|v| v.len() >= 9 && v[..9].bytes().all(|b| b.is_ascii_digit())).map(|v| v[..9].to_string());
+    ids.legal = value("siren").or_else(|| value("siret")).and_then(|v| siren(&v));
     let liable = issuer.scheme == "liable";
     ids.vat = value("vat").map(|v| super::ids::compact(&v)).or_else(|| if liable { value("uid").map(|v| super::ids::compact(&v)) } else { None });
     ids.tax = value("steuernummer").or_else(|| value("utr")).or_else(|| value("tax-id"));
-    ids.register = value("rcs").map(|city| format!("RCS {city}"));
+    ids.trade_register = value("rcs").map(|city| format!("RCS {city}"));
     if outside(invoice) {
         ids.vat = None;
     }
     // BR-CO-26: one identifier at least; a tax number, a UID or another as the seller's own.
     if ids.legal.is_none() && ids.vat.is_none() {
-        ids.id = ids.tax.clone().or_else(|| value("uid")).or_else(|| value("ku-idnr")).or_else(|| issuer.ids.iter().find(|i| !i.value.trim().is_empty() && !matches!(i.kind.as_str(), "rcs" | "vat" | "other")).map(|i| i.value.trim().to_string()));
+        // A SIRET being given (« en cours d'attribution ») identifies no one yet.
+        ids.id = ids.tax.clone().or_else(|| value("uid")).or_else(|| value("ku-idnr")).or_else(|| {
+            issuer.ids.iter().find(|i| !i.value.trim().is_empty() && !super::ids::pending(&i.value) && !matches!(i.kind.as_str(), "rcs" | "vat" | "other")).map(|i| i.value.trim().to_string())
+        });
     }
     ids
+}
+
+/// A SIREN, or a SIRET's first nine digits (BT-30, scheme 0002); None for
+/// any other text, a SIRET being given (« en cours d’attribution ») among them.
+fn siren(value: &str) -> Option<String> {
+    let compact = super::ids::compact(value);
+    compact.get(..9).filter(|first| first.bytes().all(|b| b.is_ascii_digit())).map(str::to_string)
 }
 
 /// The client's identifiers, as the XML carries them.
 fn buyer_ids(invoice: &Invoice) -> Ids {
     let client = &invoice.client;
     let mut ids = Ids::default();
-    ids.legal = client.id("siren").or_else(|| client.id("siret")).map(super::ids::compact).filter(|v| v.len() >= 9 && v[..9].bytes().all(|b| b.is_ascii_digit())).map(|v| v[..9].to_string());
+    ids.legal = client.id("siren").or_else(|| client.id("siret")).and_then(siren);
     ids.vat = if outside(invoice) { None } else { client.id("vat").map(super::ids::compact) };
     ids
 }
@@ -157,12 +167,12 @@ pub fn without(invoice: &Invoice) -> Option<Without> {
     let buyer = buyer_ids(invoice);
     let categories: Vec<&str> = invoice.totals.breakdown.iter().map(|b| b.category.as_str()).collect();
     let has = |c: &str| categories.contains(&c);
-    if super::countries::code(&invoice.issuer.address.country).is_none() {
+    if code(&invoice.issuer.address.country).is_none() {
         return Some(Without::SellerCountry);
     }
     let client = &invoice.client;
     let delivery = client.delivery.iter().map(|d| d.country.trim()).filter(|c| !c.is_empty());
-    if [client.address.country.trim()].into_iter().filter(|c| !c.is_empty()).chain(delivery).any(|c| super::countries::code(c).is_none()) {
+    if [client.address.country.trim()].into_iter().filter(|c| !c.is_empty()).chain(delivery).any(|c| code(c).is_none()) {
         return Some(Without::ClientCountry);
     }
     if invoice.lines.iter().any(|l| l.price < 0 || !super::units::known(&l.unit)) {
@@ -304,12 +314,19 @@ fn address(out: &mut Out, address: &Address, country: &str) -> Done {
     out.close()
 }
 
+/// A country as ISO 3166-1 writes it, from its code or its name
+/// (`clients::country`: "Belgique" is BE, "UK" GB, "EL" GR); None for a
+/// text that names none.
+fn code(text: &str) -> Option<&'static str> {
+    crate::clients::country(text).map(|c| c.code)
+}
+
 /// The country an address is in, as ISO 3166-1 writes it: its own (`without`
 /// refuses one that is not a country); an address that names none is at
-/// home, as the page prints it, the seller's.
+/// `home`.
 fn country_of(address: &Address, home: &str) -> String {
     let own = address.country.trim();
-    super::countries::code(if own.is_empty() { home } else { own }).unwrap_or_default().to_string()
+    code(if own.is_empty() { home } else { own }).unwrap_or_default().to_string()
 }
 
 /// France's business process (BT-23): goods, services or both (B1, S1, M1),
@@ -381,7 +398,7 @@ fn party(out: &mut Out, element: &'static str, ids: &Ids, name: &str, trade_name
     out.open(element)?;
     out.leaf("ram:ID", ids.id.as_deref().unwrap_or(""))?;
     out.leaf("ram:Name", name)?;
-    out.leaf("ram:Description", ids.register.as_deref().unwrap_or(""))?;
+    out.leaf("ram:Description", ids.trade_register.as_deref().unwrap_or(""))?;
     if ids.legal.is_some() || !trade_name.trim().is_empty() {
         out.open("ram:SpecifiedLegalOrganization")?;
         if let Some(siren) = &ids.legal {
@@ -465,7 +482,7 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
         line(&mut out, n + 1, l, &tr)?;
     }
 
-    let home = super::countries::code(&invoice.issuer.address.country).unwrap_or_default().to_string();
+    let home = code(&invoice.issuer.address.country).unwrap_or_default().to_string();
     out.open("ram:ApplicableHeaderTradeAgreement")?;
     let issuer = &invoice.issuer;
     party(&mut out, "ram:SellerTradeParty", &seller_ids(invoice), &issuer.name, &issuer.trade_name, "", &issuer.address, &home, &issuer.email)?;
@@ -473,7 +490,14 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
     let mut names = client.name.lines().map(str::trim).filter(|l| !l.is_empty());
     let first = names.next().unwrap_or("");
     let person = names.collect::<Vec<_>>().join(", ");
-    party(&mut out, "ram:BuyerTradeParty", &buyer_ids(invoice), first, "", &person, &client.address, &country_of(&client.address, &home), &client.email)?;
+    // The client's country as the VAT's place reads it (`life::client_country`:
+    // its address's, else its VAT number's); an address naming none is at
+    // home, as the page prints it, the seller's.
+    let theirs = match super::life::client_country(client) {
+        found if found.is_empty() => home.clone(),
+        found => code(&found).unwrap_or_default().to_string(),
+    };
+    party(&mut out, "ram:BuyerTradeParty", &buyer_ids(invoice), first, "", &person, &client.address, &theirs, &client.email)?;
     if !invoice.order.trim().is_empty() {
         out.open("ram:BuyerOrderReferencedDocument")?;
         out.leaf("ram:IssuerAssignedID", &invoice.order)?;
@@ -490,7 +514,7 @@ fn write(invoice: &Invoice) -> std::io::Result<String> {
     let delivery = client.delivery.as_ref().filter(|d| !d.is_empty() && **d != client.address);
     if let Some(place) = delivery.or(intra.then_some(&client.address)) {
         out.open("ram:ShipToTradeParty")?;
-        address(&mut out, place, &country_of(place, &country_of(&client.address, &home)))?;
+        address(&mut out, place, &country_of(place, &theirs))?;
         out.close()?;
     }
     // A deposit invoice bills what is not supplied yet: no such day (its

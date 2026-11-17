@@ -742,6 +742,16 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 ("payment", Kind::Long, invoice.payment.clone()),
             ] {
                 b.push(&format!("invoice.{field}"), &format!("invoice-{field}"), kind, SettingValue::Text(value));
+                // The legal form, a setting of its own since November 2026, under the name it marks:
+                // asked once of a table from before, which says none (`invoice::life::checks`).
+                let forms = &crate::invoice::life::preset_of(invoice).legal_form;
+                if field == "name" && !forms.is_empty() {
+                    let s = b.push("invoice.legal_form", "invoice-legal-form", Kind::Choice, SettingValue::Text(crate::invoice::life::legal_form_of(invoice)));
+                    let language = tr.language().to_string();
+                    s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-invoice-legal-form-unsaid", None) })
+                        .chain(forms.iter().map(|f| Choice { value: SettingValue::Text(f.id.clone()), label: f.name.get(&language).to_string() }))
+                        .collect();
+                }
             }
             b.push("invoice.folder", "invoice-folder", Kind::Folder, SettingValue::Text(invoice.folder.clone()));
             let s = b.push("invoice.rate", "invoice-rate", Kind::Float, SettingValue::Float(invoice.rate));
@@ -1610,12 +1620,14 @@ mod tests {
         // franchise for a VAT line citing 293 B; "elsewhere" otherwise).
         let older: Config = toml::from_str("[invoice]\nname = \"Camille Exemple EI\"\naddress = \"2 place de l’Exemple\\n69001 Lyon\"\nsiret = \"732 829 320 00017\"\nvat = \"TVA non applicable, art. 293 B du CGI\"\nprefix = \"\"\ncurrency = \"EUR\"\npayment = \"IBAN FR76\"\nrate = 60.0\n").unwrap();
         let shown: Vec<(String, SettingValue)> = for_view("parameters", &older, &tr, &[], None).into_iter().filter(|s| s.key.starts_with("invoice.")).map(|s| (s.key, s.value)).collect();
-        assert_eq!(shown.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"]);
+        // The legal form under the name: France's forms, none said yet for a table from before.
+        assert_eq!(shown.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["invoice.name", "invoice.legal_form", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"]);
+        assert!(shown.iter().any(|(k, v)| k == "invoice.legal_form" && *v == SettingValue::Text(String::new())));
         assert!(shown.iter().any(|(k, v)| k == "invoice.vat" && *v == SettingValue::Text("TVA non applicable, art. 293 B du CGI".into())));
         let today: jiff::civil::Date = "2026-11-16".parse().unwrap();
         assert_eq!(crate::invoice::life::preset_of(&older.invoice).id, "fr");
         assert_eq!(crate::invoice::life::scheme_on(&older.invoice, today), ("franchise".to_string(), "TVA non applicable, art. 293 B du CGI".to_string()));
-        assert_eq!(crate::invoice::life::issuer_on(&older.invoice, today).name, "Camille Exemple EI");
+        assert_eq!(crate::invoice::life::issuer_on(&older.invoice, today).name, "Camille Exemple EI", "as typed: the form not said yet");
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
         assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);

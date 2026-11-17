@@ -106,8 +106,9 @@ pub(crate) fn write(dir: &Path, invoice: &mut Invoice, options: &Options) -> Res
         return Err(format!("{}: kept already", kept.display()));
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // Whole or not at all, through Sioul's shared writer (`filelock::replace`).
     let waiting = pending(dir, &invoice.number);
-    std::fs::write(&waiting, &rendered.pdf).map_err(|e| format!("{}: {e}", waiting.display()))?;
+    crate::filelock::replace(&waiting, &rendered.pdf).map_err(|e| format!("{}: {e}", waiting.display()))?;
     invoice.file = name;
     invoice.file_sha256 = sha256(&rendered.pdf);
     Ok(rendered)
@@ -142,8 +143,8 @@ fn set_aside(dir: &Path, file: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
-/// Before a number is given, on the device that numbers (under the series
-/// journal's lock): what an issue stopped halfway left. A waiting file
+/// Before a number is given, on the device that numbers (under the
+/// numbering's lock): what an issue stopped halfway left. A waiting file
 /// whose record came with its SHA-256 (the stop fell after the record)
 /// takes its name; any other waiting file, and a kept file no record holds,
 /// is set aside in `leftovers/`. Returns what to say, once, in `tr`'s words.
@@ -217,9 +218,7 @@ pub fn issued(dir: &Path, invoice: &Invoice, tr: &Translator) -> Result<Vec<u8>,
             if changed {
                 set_aside(dir, &path, &file_name(&invoice.number)).map_err(NotGiven::Kept)?;
             }
-            let waiting = pending(dir, &invoice.number);
-            std::fs::write(&waiting, &bytes).map_err(|e| NotGiven::Kept(format!("{}: {e}", waiting.display())))?;
-            std::fs::rename(&waiting, &path).map_err(|e| NotGiven::Kept(format!("{}: {e}", path.display())))?;
+            crate::filelock::replace(&path, &bytes).map_err(|e| NotGiven::Kept(format!("{}: {e}", path.display())))?;
             Ok(bytes)
         }
     }
@@ -237,12 +236,7 @@ pub fn copy_to(dir: &Path, invoice: &Invoice, destination: &Path, tr: &Translato
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
-    let temporary = destination.with_extension("pdf.new");
-    std::fs::write(&temporary, &bytes).map_err(failed)?;
-    std::fs::rename(&temporary, destination).map_err(|e| {
-        let _ = std::fs::remove_file(&temporary);
-        failed(e)
-    })
+    crate::filelock::replace(destination, &bytes).map_err(failed)
 }
 
 #[cfg(test)]
@@ -273,7 +267,8 @@ mod tests {
     fn issue(root: &Path, dir: &Path) -> Result<Invoice, String> {
         let id = drafted(dir);
         let time = root.join("time");
-        life::issue(dir, &id, &samples::french("franchise", true), day(), &Numbering::default(), None, &Steps { time: Some(&time), ledger: None }, &Translator::new("en"))
+        let here = Numbering { device: "desk-1".into(), ..Numbering::default() };
+        life::issue(dir, &id, &samples::french("franchise", true), day(), &here, &Steps { time: Some(&time), ..Steps::default() }, &Translator::new("en"))
     }
 
     /// Issued, an invoice keeps its file beside its record, named with its
@@ -291,6 +286,7 @@ mod tests {
         let kept = find_in(&dir, "2026-001").unwrap();
         assert_eq!((kept.file.as_str(), kept.file_sha256.as_str()), ("2026-001.pdf", issued.file_sha256.as_str()), "the record names it");
         assert_eq!(state(&dir, &kept), State::Kept(dir.join("2026-001.pdf")));
+        assert_eq!(crate::invoice::cii::without(&kept), None);
         assert_eq!(crate::einvoice::from_pdf(&bytes).map(|e| e.number), Some("2026-001".into()), "its XML in it");
         let tr = Translator::new("en");
         let copy = root.join("Documents").join("Invoices").join("2026-001 Studio Lumen.pdf");
@@ -298,7 +294,7 @@ mod tests {
         assert_eq!(std::fs::read(&copy).unwrap(), bytes);
         copy_to(&dir, &kept, &copy, &tr).unwrap();
         // Its life written after: the file and its hash stay on the record.
-        life::add_payment(&dir, "2026-001", crate::invoice::Payment { date: "2026-11-20".into(), amount: 100, means: "transfer".into(), movement: String::new() }).unwrap();
+        life::add_payment(&dir, "desk-1", "2026-001", crate::invoice::Payment { date: "2026-11-20".into(), amount: 100, means: "transfer".into(), ..Default::default() }, &tr).unwrap();
         assert_eq!(find_in(&dir, "2026-001").unwrap().file_sha256, issued.file_sha256);
         // A record naming another file than its number's: nothing handed out.
         let elsewhere = Invoice { file: "series.toml".into(), ..kept.clone() };

@@ -7,10 +7,13 @@
 //! invoices (`sioul_sync::lease`), so that a number is never given twice,
 //! even after a record was deleted by hand (docs/projects.md, "Invoices").
 //!
-//! The journal, `invoices/series.toml`, keeps each sequence's last number
-//! and its day; it is written in the same step as the record, under its
-//! lock. A number of the journal's range with no record is said, never
-//! given again.
+//! The journal keeps each sequence's last number and its day, each device
+//! in its own file, `invoices/series/<device>.toml` (no other device writes
+//! it, so the sync never makes a conflicted copy, and an older Sioul, which
+//! lists only the folder's top files, never takes it for an invoice); it is
+//! written in the same step as the record, under the numbering's lock, and
+//! read as the largest of every device's. A number of the journal's range
+//! with no record is said, never given again.
 
 use super::record::Invoice;
 use jiff::civil::Date;
@@ -18,10 +21,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// The journal's file, in the invoices' folder.
-pub const JOURNAL: &str = "series.toml";
+/// The journal's folder, in the invoices' folder: a file per device.
+pub const FOLDER: &str = "series";
+/// The journal of phase 1's first builds, one file beside the records: read too.
+pub const OLD_JOURNAL: &str = "series.toml";
+/// The numbering's lock, in the invoices' folder: one number at a time on this device.
+pub const LOCK: &str = "numbering";
 /// The usual pattern: the year, a dash, three digits at least.
 pub const PATTERN: &str = "{YYYY}-{N:3}";
+/// The format of the journals this Sioul writes.
+pub const FORMAT: u32 = 1;
 
 /// How often numbers start again from 1.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -204,20 +213,56 @@ fn first_format() -> u32 {
 }
 
 impl Journal {
-    /// The journal of the invoices' folder `dir`; empty when there is none
-    /// yet, or when it does not read (the records and the claims still count).
+    /// Every device's journal of the invoices' folder `dir`, each sequence
+    /// at the largest last number any says; empty when there is none yet
+    /// (the records and the claims still count). A file that does not read
+    /// counts for nothing.
     pub fn load(dir: &Path) -> Journal {
-        std::fs::read_to_string(dir.join(JOURNAL)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        paths.sort();
+        paths.push(dir.join(OLD_JOURNAL));
+        let mut out = Journal::default();
+        // A newer Sioul's journal read where it can be: its last numbers count all the same.
+        for journal in paths.iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Journal>(&t).ok()) {
+            for (sequence, last) in journal.series {
+                if out.series.get(&sequence).is_none_or(|kept| kept.last < last.last) {
+                    out.series.insert(sequence, last);
+                }
+            }
+        }
+        out
     }
 
-    /// Written whole, through a file beside it.
-    pub fn save(&self, dir: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let path = dir.join(JOURNAL);
-        let temporary = path.with_extension("toml.new");
-        let text = toml::to_string(&Journal { format: 1, ..self.clone() }).map_err(|e| e.to_string())?;
-        std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
-        std::fs::rename(&temporary, &path).map_err(|e| format!("{}: {e}", path.display()))
+    /// This device's own journal file.
+    pub fn own_path(dir: &Path, device: &str) -> std::path::PathBuf {
+        let name: String = device.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+        let name = if name.trim_matches('-').is_empty() { "here".to_string() } else { name };
+        dir.join(FOLDER).join(format!("{name}.toml"))
+    }
+
+    /// This device's own journal: what it gave.
+    pub fn own(dir: &Path, device: &str) -> Option<Journal> {
+        std::fs::read_to_string(Journal::own_path(dir, device)).ok().and_then(|t| toml::from_str(&t).ok())
+    }
+
+    /// Written as this device's own journal, whole, through a file beside
+    /// it; never over one a newer Sioul wrote.
+    pub fn save(&self, dir: &Path, device: &str) -> Result<(), String> {
+        let path = Journal::own_path(dir, device);
+        if std::fs::read_to_string(&path).is_ok_and(|t| super::lives::format_of(&t) > FORMAT) {
+            return Err(format!("{}: written by a newer Sioul; update Sioul on this device to issue invoices here.", path.display()));
+        }
+        let text = toml::to_string(&Journal { format: FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
+        super::write_whole(&path, &text)
+    }
+
+    /// The journals of `dir` a newer Sioul wrote: read where they can be, never written here.
+    pub fn newer(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        paths.push(dir.join(OLD_JOURNAL));
+        paths.retain(|p| std::fs::read_to_string(p).is_ok_and(|t| super::lives::format_of(&t) > FORMAT));
+        paths.sort();
+        paths
     }
 
     /// Each sequence's last number, as a device's claim carries them.
@@ -238,16 +283,27 @@ pub fn next(pattern: &Pattern, day: Date, journal: &Journal, records: &[Invoice]
     (pattern.number(day, n), n)
 }
 
+/// A number of a sequence the journal gave, with no record here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Missing {
+    pub sequence: String,
+    pub counter: u64,
+    /// The number itself, when the sequence says it whole (its year written
+    /// in, no month): else only its counter is known.
+    pub number: Option<String>,
+}
+
 /// The numbers of each sequence of the journal, up to its last, with no
 /// record in `records`: each said, never given again.
-pub fn missing(journal: &Journal, records: &[Invoice]) -> Vec<String> {
+pub fn missing(journal: &Journal, records: &[Invoice]) -> Vec<Missing> {
     let mut out = Vec::new();
     for (sequence, last) in &journal.series {
         let Ok(day) = last.day.parse::<Date>() else { continue };
-        // The sequence as a pattern of its own: its year written in.
+        // The sequence as a pattern of its own: its year written in when it restarts each year.
         let Ok(pattern) = Pattern::parse(sequence, Reset::Never) else { continue };
+        let whole = !pattern.parts.iter().any(|p| matches!(p, Part::Year4 | Part::Year2 | Part::Month));
         let have: std::collections::BTreeSet<u64> = records.iter().filter_map(|r| pattern.counter(day, &r.number)).collect();
-        out.extend((1..=last.last).filter(|n| !have.contains(n)).map(|n| pattern.number(day, n)));
+        out.extend((1..=last.last).filter(|n| !have.contains(n)).map(|n| Missing { sequence: sequence.clone(), counter: n, number: whole.then(|| pattern.number(day, n)) }));
     }
     out
 }
@@ -305,12 +361,21 @@ mod tests {
         assert_eq!(next(&usual, today, &journal, &records, &BTreeMap::new()).0, "2026-006", "2026-005's record deleted: still given");
         let claimed = BTreeMap::from([("2026-{N:3}".to_string(), 8u64)]);
         assert_eq!(next(&usual, today, &journal, &records, &claimed).0, "2026-009");
-        assert_eq!(missing(&journal, &records), ["2026-004"]);
+        assert_eq!(missing(&journal, &records).into_iter().map(|m| m.number).collect::<Vec<_>>(), [Some("2026-004".to_string())]);
+        // A month in the pattern: the missing counter is said, its month not guessed.
+        let mut monthly = Journal::default();
+        monthly.series.insert("F2026{MM}-{N:3}".into(), Last { last: 2, number: "F202611-002".into(), day: "2026-11-10".into() });
+        let gone = missing(&monthly, &numbered(&["F202603-001"]));
+        assert_eq!((gone.len(), gone[0].counter, gone[0].number.clone()), (1, 2, None));
+        // Each device its own file, read as the largest of all.
         let dir = std::env::temp_dir().join(format!("sioul-series-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        journal.save(&dir).unwrap();
-        assert_eq!(Journal::load(&dir), Journal { format: 1, ..journal.clone() });
+        journal.save(&dir, "desk").unwrap();
+        let mut laptop = Journal::default();
+        laptop.series.insert("2026-{N:3}".into(), Last { last: 3, number: "2026-003".into(), day: "2026-11-01".into() });
+        laptop.save(&dir, "laptop").unwrap();
         assert_eq!(Journal::load(&dir).lasts(), BTreeMap::from([("2026-{N:3}".to_string(), 5u64)]));
+        assert_eq!(Journal::own(&dir, "laptop").map(|j| j.lasts()), Some(BTreeMap::from([("2026-{N:3}".to_string(), 3u64)])));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

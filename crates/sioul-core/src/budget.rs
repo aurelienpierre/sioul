@@ -1334,6 +1334,51 @@ pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amou
     })
 }
 
+/// A credit note issued (`invoice::life::issue`): the planned line `link`
+/// names (the credited invoice's) lowered by `by`, taken out when nothing is
+/// left of it, so that its money is no longer expected and a bank line never
+/// joins it; a line already real (paid) is left as it is. Returns the line
+/// as it was and whether it went, for an Undo (`restore_lowered`); None when
+/// no planned line names it.
+pub fn lower_planned(path: &Path, link: &str, by: Money) -> Result<Option<(Line, bool)>, String> {
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(fail(e.to_string())),
+        };
+        let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
+        let Some(at) = ledger.lines.iter().position(|l| l.planned && l.links.iter().any(|x| x == link)) else { return Ok(None) };
+        let was = ledger.lines[at].clone();
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
+        let left = was.amount.cents().saturating_sub(by.cents());
+        let gone = left <= 0;
+        if gone {
+            lines.remove(at);
+        } else if let Some(line) = lines.get_mut(at) {
+            line["amount"] = value(left as f64 / 100.0);
+            line["changed"] = dates::moment_item(jiff::Timestamp::now());
+        }
+        write_ledger(path, &doc)?;
+        Ok(Some((was, gone)))
+    })
+}
+
+/// `lower_planned` undone: the line written again as it was (its id kept),
+/// or its amount put back.
+pub fn restore_lowered(path: &Path, was: &Line, gone: bool, origin: &str) -> Result<(), String> {
+    if gone {
+        return record_line(path, was, origin);
+    }
+    let Some(link) = was.links.iter().find(|l| l.starts_with("sioul:invoice/")) else { return Ok(()) };
+    change_linked(path, link, |line| {
+        line["amount"] = value(was.amount.cents() as f64 / 100.0);
+    })
+    .map(|_| ())
+}
+
 /// One line of the file, named by its key as the money movements name it
 /// (`movements::line_keys`: `line:<id>`, else a digest of what it holds),
 /// changed in place by `change`, its other fields, its comment and the rest

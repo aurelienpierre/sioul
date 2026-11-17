@@ -98,15 +98,23 @@ pub(crate) fn line(description: &str, quantity: i64, unit: &str, price: i64, nat
     Line { quantity, unit: unit.into(), price, base: 1, nature, category: category.into(), rate, ..Line::of_time(description, 0, 0, category, rate) }
 }
 
-/// A draft made as `life::issue` makes it on `date`, numbered `number`, nothing written.
+/// A draft made as `life::issue` makes it on `date` (made again as a
+/// draft, its service day the issue's when none is said), numbered
+/// `number`, nothing written.
 pub(crate) fn issued(s: &InvoiceSettings, client: Client, language: &str, currency: &str, lines: Vec<Line>, number: &str, date: &str) -> Invoice {
     let date = day(date);
     let terms = life::terms_of(s, None, None);
     let mut draft = life::blank(s, client, "", language, currency, terms, date);
     draft.lines = lines;
     draft.date = date.to_string();
-    draft.number = number.into();
     life::refresh(&mut draft, s, date);
+    numbered(draft, number)
+}
+
+/// `draft` numbered as `life::issue` numbers it: its service day its own from then on.
+fn numbered(mut draft: Invoice, number: &str) -> Invoice {
+    draft.number = number.into();
+    draft.period_default = false;
     draft
 }
 
@@ -129,11 +137,10 @@ pub(crate) fn valid() -> Vec<Sample> {
     add("fr-franchise", s.clone(), inv.clone());
 
     // Its credit note: one line cancelled.
-    let mut credit = life::credit(&inv, Some(&[1]), &s, day("2026-11-20"));
-    credit.number = "2026-002".into();
+    let mut credit = life::credit(&inv, Some(&[1]), &[], &s, day("2026-11-20"));
     credit.date = "2026-11-20".into();
     life::refresh(&mut credit, &s, day("2026-11-20"));
-    add("fr-credit-note", s.clone(), credit);
+    add("fr-credit-note", s.clone(), numbered(credit, "2026-002"));
 
     // Services to a business in another member state: the reverse charge, both VAT numbers.
     let belgian = client("Atelier Exemple SRL", "Rue de l’Exemple 1", "1000", "Bruxelles", "BE", &[("vat", "BE0123456749")]);
@@ -144,13 +151,14 @@ pub(crate) fn valid() -> Vec<Sample> {
     let mut workshop = line("Atelier photo", 2000, "DAY", 50000, Nature::Service, "S", 2000);
     workshop.discount = 10000;
     workshop.details = "Deux journées, matériel compris".into();
-    let book = line("Livre « Lumière »", 3000, "C62", 2500, Nature::Goods, "S", 550);
+    // A rate of its own, typed on the line: Sioul never places it again.
+    let book = Line { own_tax: true, ..line("Livre « Lumière »", 3000, "C62", 2500, Nature::Goods, "S", 550) };
     add("fr-liable", s.clone(), issued(&s, french_client(), "fr", "EUR", vec![workshop, book.clone()], "2026-004", "2026-11-16"));
     let blank = issued(&s, french_client(), "fr", "EUR", Vec::new(), "", "2026-11-16");
     let mut deposit = life::deposit(&s, blank, "Acompte, mission de conseil", 30000, day("2026-11-16"));
-    deposit.number = "2026-005".into();
     deposit.date = "2026-11-16".into();
     life::refresh(&mut deposit, &s, day("2026-11-16"));
+    let deposit = numbered(deposit, "2026-005");
     add("fr-deposit", s.clone(), deposit.clone());
     let mut last = issued(&s, french_client(), "fr", "EUR", vec![line("Mission de conseil", 5000, "DAY", 40000, Nature::Service, "S", 2000)], "2026-006", "2026-12-15");
     life::cite_deposits(&mut last, &[deposit], &s, day("2026-12-15"));
@@ -270,7 +278,8 @@ pub(crate) fn valid() -> Vec<Sample> {
     add("elsewhere-franchise", s.clone(), issued(&s, american_client.clone(), "en", "USD", time(&[("Consulting", 120)], 15000), "2026-019", "2026-11-16"));
     // Liable where the rates are the person's: a Norwegian seller at 25 %, in crowns.
     let s = InvoiceSettings { address: "Eksempelgata 2".into(), postcode: "0150".into(), city: "Oslo".into(), country: "NO".into(), currency: "NOK".into(), ..elsewhere("liable", "", vec![id("vat", "NO123456785MVA")]) };
-    add("elsewhere-liable", s.clone(), issued(&s, american_client, "en", "NOK", vec![line("Consulting", 2000, "HUR", 150000, Nature::Service, "S", 2500)], "2026-020", "2026-11-16"));
+    let consulting = Line { own_tax: true, ..line("Consulting", 2000, "HUR", 150000, Nature::Service, "S", 2500) };
+    add("elsewhere-liable", s.clone(), issued(&s, american_client, "en", "NOK", vec![consulting], "2026-020", "2026-11-16"));
 
     // An account whose IBAN's key fails (a digit mistyped), its holder named:
     // the XML in the schema's order all the same, and no QR code.

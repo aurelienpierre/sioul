@@ -163,7 +163,7 @@ fn content(invoice: &Invoice, tr: &Translator) -> Content {
         c.seller.push((issuer.trade_name.clone(), BODY));
     }
     let client_country = if invoice.client.address.country.trim().is_empty() { home.clone() } else { invoice.client.address.country.clone() };
-    c.seller.push((issuer.address.text(&client_country), BODY));
+    c.seller.push((issuer.address.text(&client_country, &language), BODY));
     c.seller.extend(issuer.ids.iter().filter(|i| i.printed && !i.value.trim().is_empty()).map(|i| (id_line(&i.kind, &i.value), BODY)));
     if !issuer.email.is_empty() {
         c.seller.push((issuer.email.clone(), BODY));
@@ -171,11 +171,11 @@ fn content(invoice: &Invoice, tr: &Translator) -> Content {
     let client = &invoice.client;
     c.buyer.push((tr.text(if invoice.kind == Kind::CreditNote { "invoice-credit-to" } else { "invoice-to" }, None), QUIET));
     c.buyer.push((client.name.clone(), STRONG));
-    c.buyer.push((client.address.text(&home), BODY));
+    c.buyer.push((client.address.text(&home, &language), BODY));
     c.buyer.extend(client.ids.iter().filter(|i| i.printed && !i.value.trim().is_empty()).map(|i| (id_line(&i.kind, &i.value), BODY)));
     if let Some(delivery) = client.delivery.as_ref().filter(|d| !d.is_empty() && **d != client.address) {
         c.buyer.push((tr.text("invoice-delivery", None), QUIET));
-        c.buyer.push((delivery.text(&home), BODY));
+        c.buyer.push((delivery.text(&home, &language), BODY));
     }
     c.seller.retain(|(t, _)| !t.trim().is_empty());
     c.buyer.retain(|(t, _)| !t.trim().is_empty());
@@ -216,7 +216,10 @@ fn content(invoice: &Invoice, tr: &Translator) -> Content {
     if !invoice.order.is_empty() {
         c.facts.push(say(tr, "invoice-order", &[("order", invoice.order.clone())]));
     }
-    let liable = issuer.scheme == "liable";
+    // VAT columns and per-rate lines whenever the totals carry VAT (a credit
+    // note of an invoice issued under VAT, after the franchise came back),
+    // or the issuer is liable, as the page says them.
+    let liable = issuer.scheme == "liable" || invoice.totals.tax != 0 || invoice.totals.breakdown.iter().any(|b| b.category == "S");
     let quantity = |line: &Line| -> String {
         match line.minutes() {
             Some(minutes) => duration(minutes),

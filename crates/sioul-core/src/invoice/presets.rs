@@ -145,6 +145,13 @@ pub struct Require {
     /// For which legal forms; "company" for any company form; empty: all.
     #[serde(default)]
     pub form: Vec<String>,
+    /// When a line of the invoice has one of these VAT categories ("AE",
+    /// "K"); empty: whatever the lines.
+    #[serde(default)]
+    pub category: Vec<String>,
+    /// For an issuer with one of these activities ("goods-bic"); empty: any.
+    #[serde(default)]
+    pub activity: Vec<String>,
     #[serde(default)]
     pub level: Level,
     #[serde(default)]
@@ -179,10 +186,12 @@ pub struct Tax {
     /// Liable for VAT: the rates, dated.
     #[serde(default)]
     pub rates: Vec<Dated<RateList>>,
-    /// Services to a business in another member state: its client owes the
-    /// VAT (reverse charge), whatever the scheme.
+    /// Where a line's VAT is due, by the scheme, the client's zone and kind,
+    /// and what the line sells (`life::placed`): the reverse charge, an
+    /// intra-EU delivery, an export, outside the scope; the first that
+    /// applies places the line.
     #[serde(default)]
-    pub reverse: Option<Reverse>,
+    pub place: Vec<Place>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -205,12 +214,29 @@ pub struct Mention {
     pub text: String,
 }
 
+/// Where a line's VAT is due: under these schemes, for clients of these
+/// kinds in these zones, for lines of this nature; the category the line
+/// takes, EN 16931's reason code, and the words printed for it. Without
+/// words (the research gave none), the line prints no mention and a
+/// required check says `why` until the line says its own.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-pub struct Reverse {
+pub struct Place {
+    pub id: String,
+    #[serde(default)]
+    pub scheme: Vec<String>,
+    #[serde(default)]
+    pub zone: Vec<String>,
+    #[serde(default)]
+    pub client: Vec<String>,
+    #[serde(default)]
+    pub nature: Vec<String>,
     pub category: String,
     #[serde(default)]
     pub reason_code: String,
+    #[serde(default)]
     pub mention: Words,
+    #[serde(default)]
+    pub why: Words,
 }
 
 /// A line printed on invoices, with its EN 16931 subject code (UNTDID 4451).
@@ -370,10 +396,22 @@ pub fn get(id: &str) -> &'static Preset {
 /// client: another member state's business is billed by the EU's rules.
 pub const EU: [&str; 27] = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"];
 
+/// The VAT territory a country belongs to, as far as Sioul's sources say:
+/// Monaco's is France's (Directive 2006/112/EC, art. 7: transactions with
+/// Monaco are treated as transactions with France), while its addresses
+/// say Monaco. Other territories wait for research of their own.
+pub fn vat_territory(country: &str) -> String {
+    match country.trim().to_uppercase().as_str() {
+        "MC" => "FR".into(),
+        other => other.to_string(),
+    }
+}
+
 /// Where a client in `client` is from an issuer in `issuer`: "domestic",
-/// "eu" (another member state, the issuer's in the EU too), "abroad".
+/// "eu" (another member state, the issuer's in the EU too), "abroad"; by
+/// their VAT territories (`vat_territory`).
 pub fn zone(issuer: &str, client: &str) -> &'static str {
-    let (issuer, client) = (issuer.trim().to_uppercase(), client.trim().to_uppercase());
+    let (issuer, client) = (vat_territory(issuer), vat_territory(client));
     // Greece writes "EL" in VAT numbers, "GR" in addresses.
     let eu = |c: &str| EU.contains(&c) || c == "EL";
     if client.is_empty() || client == issuer {
@@ -472,6 +510,13 @@ mod tests {
             for form in preset.require.iter().flat_map(|r| &r.form).chain(preset.line.iter().flat_map(|l| &l.form)) {
                 assert!(form == "company" || preset.form(form).is_some(), "{id}: names the form {form}, which it has not");
             }
+            for place in &preset.tax.place {
+                assert!(place.scheme.iter().all(|s| preset.tax.schemes.contains(s)), "{id}: {} names a scheme it does not offer", place.id);
+                assert!(matches!(place.category.as_str(), "S" | "Z" | "E" | "AE" | "K" | "G" | "O"), "{id}: {}", place.id);
+                assert!(place.zone.iter().all(|z| matches!(z.as_str(), "domestic" | "eu" | "abroad")), "{id}: {}", place.id);
+                // Without the research's words, the rule says why the line must say its own.
+                assert!(!place.mention.is_empty() || (!place.why.get("en").is_empty() && !place.why.get("fr").is_empty()), "{id}: {} has neither words nor a why", place.id);
+            }
             if preset.tax.schemes.iter().any(|s| s == "franchise") {
                 assert!(preset.tax.franchise.is_some(), "{id}: a franchise without its category");
             }
@@ -512,5 +557,6 @@ mod tests {
         assert_eq!(zone("FR", "be"), "eu");
         assert_eq!(zone("FR", "CH"), "abroad");
         assert_eq!(zone("GB", "FR"), "abroad");
+        assert_eq!((zone("FR", "MC"), zone("MC", "FR"), zone("FR", "MA"), zone("FR", "BE"), zone("FR", "")), ("domestic", "domestic", "abroad", "eu", "domestic"));
     }
 }

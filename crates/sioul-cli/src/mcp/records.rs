@@ -343,7 +343,10 @@ pub fn invoices(s: &Session, _args: &Args) -> Result<Answer, String> {
             invoice::Status::PartlyPaid => format!("partly paid, {} left", s.tr.money_in(sioul_core::money::Money(left), &i.currency)),
             invoice::Status::Paid => "paid".to_string(),
             invoice::Status::Credited => "credited".to_string(),
+            invoice::Status::CreditNote => format!("credits {}", i.corrects.as_ref().map(|c| c.number.as_str()).unwrap_or("an invoice")),
+            invoice::Status::ToPayBack => format!("credits {}, {} to pay back", i.corrects.as_ref().map(|c| c.number.as_str()).unwrap_or("an invoice"), s.tr.money_in(sioul_core::money::Money(left), &i.currency)),
         };
+        let words = if i.copy_of.is_empty() { words } else { format!("{words} (a copy the sync made of draft {})", i.copy_of) };
         lines.push(format!("{name}{kind} · {} · {client} · {amount} · {words}{due}", if i.date.is_empty() { "—" } else { i.date.as_str() }));
         out.push(json!({
             "number": i.number,
@@ -355,6 +358,7 @@ pub fn invoices(s: &Session, _args: &Args) -> Result<Answer, String> {
             "project": i.project,
             "project_title": i.project_title,
             "client": client,
+            "client_kind": i.client.kind,
             "amount": amount,
             "left": s.tr.money_in(sioul_core::money::Money(left), &i.currency),
             "currency": i.currency,

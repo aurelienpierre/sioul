@@ -78,6 +78,28 @@ rates = [
 [tax.exempt]
 category = "E"
 
+# Liable, a service to a business abroad, or goods exported: not taxed at
+# home; the research gives no words for it, so the line says its own, and a
+# check asks them (the review of phase 1, F4).
+[[tax.place]]
+id = "abroad-service"
+scheme = ["liable"]
+zone = ["eu", "abroad"]
+client = ["business", "public"]
+nature = ["service"]
+category = "O"
+why.en = "A service to a business abroad is not taxed in Switzerland; Sioul’s sources do not give its words: write them on the line."
+why.fr = "Une prestation à une entreprise étrangère n’est pas taxée en Suisse ; les sources de Sioul n’en donnent pas les mots : écrivez-les sur la ligne."
+
+[[tax.place]]
+id = "abroad-goods"
+scheme = ["liable"]
+zone = ["eu", "abroad"]
+nature = ["goods"]
+category = "G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give for Switzerland: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas pour la Suisse : écrivez-les sur la ligne."
+
 [[threshold]]
 id = "registration"
 kind = "registration"

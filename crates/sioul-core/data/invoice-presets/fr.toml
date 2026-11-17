@@ -104,7 +104,7 @@ before.fr = "RCS"
 kind = "vat"
 name.en = "EU VAT number"
 name.fr = "N° de TVA intracommunautaire"
-check = "vat-fr"
+check = "vat"
 
 [[identifier]]
 kind = "other"
@@ -123,23 +123,34 @@ why.fr = "L’adresse de votre entreprise (code de commerce, L441-9)."
 
 [[require]]
 any = ["siren", "siret"]
-why.en = "Your SIREN or SIRET (Code de commerce R123-237). While it is being given, write « SIRET en cours d’attribution » as an Other identifier."
-why.fr = "Votre SIREN ou SIRET (code de commerce, R123-237). En attendant qu’il soit attribué, écrivez « SIRET en cours d’attribution » comme autre identifiant."
+why.en = "Your SIREN or SIRET (Code de commerce R123-237). While it is being given, write « en cours d’attribution » as your SIRET: « SIRET en cours d’attribution » is printed (SP F31808)."
+why.fr = "Votre SIREN ou SIRET (code de commerce, R123-237). En attendant qu’il soit attribué, écrivez « en cours d’attribution » comme SIRET : « SIRET en cours d’attribution » est imprimé (SP F31808)."
 
+# Both VAT numbers on a reverse-charge invoice and on an intra-EU delivery
+# (ann. II art. 242 nonies A I-4°, I-13°), even under the franchise, whose
+# relief from showing one's VAT number does not reach these operations
+# (art. 242 nonies A II c; BOI-TVA-DECLA-30-20-20-20 §50–60).
 [[require]]
 any = ["vat"]
-scheme = ["franchise"]
-client = ["business", "public"]
-zone = ["eu"]
-nature = ["service"]
+category = ["AE", "K"]
 why.en = "Your EU VAT number: services to a business in another EU country carry it, even under the franchise; your tax office gives it."
-why.fr = "Votre numéro de TVA intracommunautaire : les prestations à une entreprise d’un autre pays de l’UE le portent, même en franchise ; votre service des impôts le donne."
+why.fr = "Votre numéro de TVA intracommunautaire : les prestations à une entreprise d’un autre pays de l’UE le portent, même en franchise ; votre service des impôts le donne."
 
 [[require]]
 any = ["vat"]
 scheme = ["liable"]
 why.en = "Your VAT number (ann. II CGI, art. 242 nonies A I-2°)."
 why.fr = "Votre numéro de TVA (annexe II du CGI, art. 242 nonies A I-2°)."
+
+# An EI trader registered at the RCS prints it too (R123-237 2°); an artisan
+# or a liberal profession is not registered there.
+[[require]]
+any = ["rcs"]
+form = ["ei"]
+activity = ["goods-bic", "services-bic"]
+level = "recommended"
+why.en = "The city of your trade register (RCS), if you are registered there as a trader."
+why.fr = "La ville de votre greffe (RCS), si vous y êtes immatriculé comme commerçant."
 
 [[require]]
 any = ["rcs"]
@@ -160,7 +171,7 @@ why.fr = "Le capital social de votre société."
 field = "currency-when-taxed"
 scheme = ["liable"]
 why.en = "An invoice with VAT in another currency also says its VAT in euros: Sioul cannot convert yet, so issue it in euros."
-why.fr = "Une facture avec TVA dans une autre devise donne aussi sa TVA en euros : Sioul ne sait pas encore convertir, émettez-la en euros."
+why.fr = "Une facture avec TVA dans une autre devise donne aussi sa TVA en euros : Sioul ne sait pas encore convertir, émettez-la en euros."
 
 # A business liable for VAT: its VAT number (ann. II art. 242 nonies A I-4°),
 # which may be left out at €150 or less except across borders.
@@ -206,7 +217,7 @@ zone = ["domestic"]
 level = "recommended"
 until = "2027-09-01"
 why.en = "The client’s SIREN: asked on invoices to French businesses from September 2027."
-why.fr = "Le SIREN du client : demandé sur les factures aux entreprises françaises à partir de septembre 2027."
+why.fr = "Le SIREN du client : demandé sur les factures aux entreprises françaises à partir de septembre 2027."
 
 [[require]]
 who = "client"
@@ -221,8 +232,7 @@ why.fr = "Le SIREN du client, que les factures aux entreprises françaises porte
 [[require]]
 who = "client"
 any = ["vat"]
-client = ["business", "public"]
-zone = ["eu"]
+category = ["AE", "K"]
 why.en = "The client’s EU VAT number."
 why.fr = "Le numéro de TVA intracommunautaire du client."
 
@@ -259,15 +269,64 @@ rates = [
 [tax.exempt]
 category = "E"
 
-# Services to a business in another member state, whatever the scheme:
-# taxed there, its client owes the VAT; "Autoliquidation" (ann. II art. 242
-# nonies A I-13°), both VAT numbers; never the franchise's mention (the
-# operation is not located in France).
-[tax.reverse]
+# Where a line's VAT is due, the first rule that applies. A business
+# client's services in another member state, whatever the scheme: taxed
+# there, its client owes the VAT; "Autoliquidation" (ann. II art. 242 nonies
+# A I-13°; citing the article is not required, BOI-TVA-DECLA-30-20-20-10
+# §520–540), both VAT numbers; never the franchise's mention, the operation
+# not being located in France (research-fr §10.1).
+[[tax.place]]
+id = "eu-service"
+scheme = ["franchise", "liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["service"]
 category = "AE"
 reason_code = "VATEX-EU-AE"
 mention.en = "Reverse charge"
 mention.fr = "Autoliquidation"
+
+# Liable, goods to a business in another member state: an exempt intra-EU
+# delivery, "Exonération, art. 262 ter I du CGI", both VAT numbers
+# (research-fr §10.4, §13 (b)). Under the franchise, the franchise applies
+# to these deliveries too (art. 262 ter I-1°; BOI-TVA-DECLA-40-50): no rule.
+[[tax.place]]
+id = "eu-goods"
+scheme = ["liable"]
+zone = ["eu"]
+client = ["business", "public"]
+nature = ["goods"]
+category = "K"
+reason_code = "VATEX-EU-IC"
+mention.en = "Exonération, art. 262 ter I du CGI"
+mention.fr = "Exonération, art. 262 ter I du CGI"
+
+# A service to a business outside the EU: located outside France (art.
+# 259-1° CGI), outside the scope of French VAT, whatever the scheme. The
+# words are the practice the research found (research-fr §10.3, secondary):
+# "TVA non applicable – article 259-1 du CGI".
+[[tax.place]]
+id = "abroad-service"
+scheme = ["franchise", "liable"]
+zone = ["abroad"]
+client = ["business", "public"]
+nature = ["service"]
+category = "O"
+reason_code = "VATEX-EU-O"
+mention.en = "TVA non applicable – article 259-1 du CGI"
+mention.fr = "TVA non applicable – article 259-1 du CGI"
+
+# Liable, goods exported outside the EU: exempt (category G); the research
+# gives no words for it, so the line says its own, and a check asks them.
+[[tax.place]]
+id = "abroad-goods"
+scheme = ["liable"]
+zone = ["abroad"]
+nature = ["goods"]
+category = "G"
+reason_code = "VATEX-EU-G"
+why.en = "An export of goods carries the words of its exemption, which Sioul’s sources do not give: write them on the line."
+why.fr = "Une exportation de biens porte les mots de son exonération, que les sources de Sioul ne donnent pas : écrivez-les sur la ligne."
 
 [[line]]
 id = "capital"
@@ -287,25 +346,27 @@ text.fr = "Option pour le paiement de la taxe d’après les débits."
 
 # Business clients only (C. com. L441-9, L441-10; SP F31808): the conditions
 # of escompte ("néant" is the usual wording), the penalty rate, the €40
-# indemnity (D441-5). Never printed for a consumer.
+# indemnity (D441-5). Never printed for a consumer; nor for a public body,
+# whose late payments follow the Code de la commande publique, which the
+# research did not read (the review of phase 1, F29): your own lines there.
 [[line]]
 id = "escompte"
 subject = "AAB"
-client = ["business", "public"]
+client = ["business"]
 text.en = "Discount for early payment: none."
 text.fr = "Escompte pour paiement anticipé : néant."
 
 [[line]]
 id = "penalties"
 subject = "PMD"
-client = ["business", "public"]
+client = ["business"]
 text.en = "Late payment: penalties due from the day after the due date, without reminder, at { $rate } (Code de commerce, art. L441-10)."
 text.fr = "En cas de retard de paiement, pénalités exigibles dès le lendemain de la date d’échéance, sans rappel, au taux de { $rate } (art. L441-10 du code de commerce)."
 
 [[line]]
 id = "indemnity"
 subject = "PMT"
-client = ["business", "public"]
+client = ["business"]
 text.en = "Fixed indemnity for recovery costs: €40 (Code de commerce, art. L441-10 and D441-5)."
 text.fr = "Indemnité forfaitaire pour frais de recouvrement : 40 € (art. L441-10 et D441-5 du code de commerce)."
 

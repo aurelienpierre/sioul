@@ -843,6 +843,8 @@ pub const TOOLS: &[Tool] = &[
                     "project": { "type": "string", "description": "The project, by its id or its address sioul:project/<id>." },
                     "from_time": { "type": "boolean", "description": "Bill the project's time not billed yet (true by default with a project)." },
                     "client": { "type": "string", "description": "Who it bills, when not the project's client: a name, or sioul:contact/<UID>." },
+                    "service_from": { "type": "string", "description": "The day the service was done, or began (2026-10-05); the day of issue when unsaid." },
+                    "service_to": { "type": "string", "description": "The day it ended, for a period." },
                     "lines": { "type": "array", "items": { "type": "object", "properties": {
                         "description": { "type": "string" },
                         "quantity": { "type": "number", "description": "1 by default." },

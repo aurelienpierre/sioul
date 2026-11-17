@@ -349,34 +349,29 @@ sioul-core/src/health.rs	set_aside	1	std::fs::rename(path, &aside)
 # sioul-core/src/holders.rs: what this device asked of the children's events (state): no item.
 sioul-core/src/holders.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 
-# sioul-core/src/invoice/life.rs: the series journal of before put back when an issue fails halfway: no item.
-sioul-core/src/invoice/life.rs	issue	1	std::fs::remove_file(&journal_path)
+# sioul-core/src/invoice/lives.rs: this device's own file of the invoices' life (payments, Undo): no item.
+sioul-core/src/invoice/lives.rs	change_own	1	super::write_whole(&path, &text)
 
-# sioul-core/src/invoice/mod.rs: invoices and their drafts (a folder of their own): no item.
-sioul-core/src/invoice/mod.rs	write_whole	1	std::fs::write(&temporary, text)
-sioul-core/src/invoice/mod.rs	write_whole	1	std::fs::rename(&temporary, path)
+# sioul-core/src/invoice/mod.rs: invoices and their drafts (a folder of their own), a draft's conflicted copy kept under its own id: no item.
+sioul-core/src/invoice/mod.rs	write_whole	1	crate::filelock::replace(path, text.as_bytes())
 sioul-core/src/invoice/mod.rs	save_draft	1	write_whole(&dir.join(DRAFTS).join(format!("{}.toml", draft.draft)), &text)
+sioul-core/src/invoice/mod.rs	save_draft	1	std::fs::remove_file(copy)
 sioul-core/src/invoice/mod.rs	remove_draft	1	std::fs::remove_file(&path)
 sioul-core/src/invoice/mod.rs	write_new	1	write_whole(&path, &text)
-sioul-core/src/invoice/mod.rs	change_life	1	write_whole(&path, &changed)
 sioul-core/src/invoice/mod.rs	remove_issued	1	std::fs::remove_file(&path)
 
-# sioul-core/src/invoice/kept.rs: an issued invoice's file, beside its record (waiting, named, made again, set aside among its leftovers), and its copy where invoices go: no item.
-sioul-core/src/invoice/kept.rs	write	1	std::fs::write(&waiting, &rendered.pdf)
+# sioul-core/src/invoice/kept.rs: an issued invoice's file, beside its record (written whole, waiting until its record is written, then named; made again; copied where invoices go; taken away with a failed issue; set aside among its leftovers): no item.
+sioul-core/src/invoice/kept.rs	write	1	crate::filelock::replace(&waiting, &rendered.pdf)
 sioul-core/src/invoice/kept.rs	commit	1	std::fs::rename(pending(dir, &invoice.number), &kept)
+sioul-core/src/invoice/kept.rs	issued	1	crate::filelock::replace(&path, &bytes)
+sioul-core/src/invoice/kept.rs	copy_to	1	crate::filelock::replace(destination, &bytes)
 sioul-core/src/invoice/kept.rs	remove	1	std::fs::remove_file(pending(dir, &invoice.number))
 sioul-core/src/invoice/kept.rs	remove	1	std::fs::remove_file(path(dir, invoice))
 sioul-core/src/invoice/kept.rs	set_aside	1	std::fs::rename(file, &target)
 sioul-core/src/invoice/kept.rs	tidy	1	std::fs::rename(&file, dir.join(&kept_name))
-sioul-core/src/invoice/kept.rs	issued	1	std::fs::write(&waiting, &bytes)
-sioul-core/src/invoice/kept.rs	issued	1	std::fs::rename(&waiting, &path)
-sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::write(&temporary, &bytes)
-sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::rename(&temporary, destination)
-sioul-core/src/invoice/kept.rs	copy_to	1	std::fs::remove_file(&temporary)
 
-# sioul-core/src/invoice/series.rs: the invoices' series journal, beside them: no item.
-sioul-core/src/invoice/series.rs	save	1	std::fs::write(&temporary, text)
-sioul-core/src/invoice/series.rs	save	1	std::fs::rename(&temporary, &path)
+# sioul-core/src/invoice/series.rs: this device's own series journal, beside the invoices: no item.
+sioul-core/src/invoice/series.rs	save	1	super::write_whole(&path, &text)
 
 # sioul-core/src/languages.rs: the languages found in your mail offered on this device (state): no item.
 sioul-core/src/languages.rs	mark_offered	1	crate::filelock::replace(path, text.as_bytes())
