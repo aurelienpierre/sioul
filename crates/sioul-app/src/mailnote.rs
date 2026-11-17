@@ -16,12 +16,16 @@
 //! once the lease moves, the device that tells then does not tell again what
 //! the other told.
 //!
-//! Where the person said what each device is for (docs/areas.md, "What each
-//! device is for"), a message is told only where the address it came to
-//! comes forward (`Attention::letter`, step 8), and among those devices the
-//! one used last tells it (`dispatch::Tellers`, the same lease read per
-//! area). On a device that is not for it, it waits in the ledger, never
-//! told there, and leaves it once read or told elsewhere.
+//! Where the person said what each device is for (docs/areas.md, "Which
+//! device tells"), the device used last still tells alone, what comes
+//! forward on it now (step 8 of `attention`). Every device judges each
+//! letter as that device does, from the cells it says of itself
+//! (`dispatch::as_keeper`): what it tells now, the others claim without a
+//! word, as before; what it leaves waiting for a device the letter comes
+//! forward on, the others keep waiting too, and the one it waited for tells
+//! it, "The Porch opens", once it is the device used (the keeper changing
+//! begins a moment: `Seen::moment`). With nothing said of any device, every
+//! device judges as before.
 //!
 //! Mail that reached its server before this process watched the moment it is
 //! in (a time that began since, a computer off all night, a phone that
@@ -130,7 +134,7 @@ pub(crate) fn look() {
         return;
     }
     let now = sioul_core::zone::now();
-    let seen = Seen::now(config, &now);
+    let seen = Seen::now(config, &now, &teller().computer);
     watched(&seen.moment(), now.timestamp().as_second());
 }
 
@@ -149,15 +153,21 @@ struct Seen {
     always: People,
     /// Nothing is told with the setting off, nor while the Porch rests after a pause.
     may: bool,
+    /// The device whose cells it judges by: the keeper of the notices.
+    keeper: String,
 }
 
 impl Seen {
-    fn now(config: Config, now: &Zoned) -> Seen {
-        let mode = crate::hours::mode_at(now);
+    /// As the keeper of the notices judges now (`keeper`, its id: this
+    /// device's own, another's, "" with sharing off): this device's cells
+    /// when it keeps them, else the cells the keeper says of itself
+    /// (`dispatch::as_keeper`).
+    fn now(config: Config, now: &Zoned, keeper: &str) -> Seen {
+        let mode = crate::hours::hours_mode_at(now).on(&crate::dispatch::as_keeper(keeper));
         let moment = crate::hours::attention_at(&mode, now);
         // Reachable lifts the Porch's rest after a pause: new mail told (part 3).
         let may = config.reminders.mail && (!moment.holds.porch_rests || moment.reachable);
-        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may }
+        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may, keeper: keeper.to_string() }
     }
 
     fn senders(&self) -> &porch::Senders {
@@ -169,20 +179,8 @@ impl Seen {
     /// it came to is for (unsaid: work's hours, but never closed for your
     /// safe senders: `Event::for_address`).
     fn decided(&self, t: &Triaged) -> Output {
-        self.attention.mail(t, self.senders(), &self.always, self.said_area(t), &self.now)
-    }
-
-    /// What the address a message came to is for, as its card says; none unsaid.
-    fn said_area(&self, t: &Triaged) -> Option<sioul_core::areas::Area> {
-        t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(sioul_core::mailbox::said_area)
-    }
-
-    /// The area that chooses the device that tells this message, when one
-    /// does (`Output::dispatched`): what its address is for, work's for one
-    /// nobody classified (`Event::for_address`). None: the device used last
-    /// of all tells it, as before.
-    fn told_by_area(&self, t: &Triaged) -> Option<sioul_core::areas::Area> {
-        self.decided(t).dispatched.then(|| self.said_area(t).unwrap_or(sioul_core::areas::Area::WORK))
+        let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(sioul_core::mailbox::said_area);
+        self.attention.mail(t, self.senders(), &self.always, area, &self.now)
     }
 
     /// Told now, through the system's do-not-disturb, later, or never.
@@ -202,8 +200,13 @@ impl Seen {
         self.may && self.decided(t).told
     }
 
+    /// The moment (`mailnote::moment`); where a device narrows what comes,
+    /// with the keeper of the notices: the lease moving begins a moment, so
+    /// that what waited for the device now used is told there, and claimed
+    /// where the new keeper tells it.
     fn moment(&self) -> String {
-        mailnote::moment(&self.now, self.may)
+        let moment = mailnote::moment(&self.now, self.may);
+        if self.now.here.narrows() { format!("{moment}:{}", self.keeper) } else { moment }
     }
 
     /// Messages judged as the Porch judges them: with the projects and their
@@ -274,7 +277,7 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
-    let seen = Seen::now(config, &now);
+    let seen = Seen::now(config, &now, &teller().computer);
     let since = watched(&seen.moment(), stamp);
     let judged = seen.judge(files, stamp);
     // What your mail filters would move out of the inbox or mark read waits for them: told after, if they could not.
@@ -299,7 +302,6 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
         }
         sorted.now
     });
-    let letters = mailnote::with_areas(letters, &arrivals, |t| seen.told_by_area(t));
     // Some reached their server before this process watched the moment (the
     // night's mail, fetched by a computer that was off): the batch is
     // announced as mail that waited.
@@ -361,11 +363,11 @@ fn close_batch() {
 fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
-    if !Seen::now(load_config(), &now).may {
+    if !Seen::now(load_config(), &now, &teller().computer).may {
         return;
     }
-    let mine = ours(claim(letters, &[], stamp), window.as_ref());
-    if mine.is_empty() {
+    let mine = claim(letters, &[], stamp);
+    if mine.is_empty() || !ours(window.as_ref()) {
         return;
     }
     let (title, body) = if opens { mailnote::opens(tr(), &mine) } else { mailnote::batch(tr(), &mine) };
@@ -397,7 +399,7 @@ fn tick_from(window: Option<Window>) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
-    let seen = Seen::now(config, &now);
+    let seen = Seen::now(config, &now, &teller().computer);
     let moment = seen.moment();
     watched(&moment, stamp);
     let changed = MOMENT.lock().is_ok_and(|mut last| last.replace(moment.clone()).as_ref() != Some(&moment));
@@ -410,7 +412,7 @@ fn tick_from(window: Option<Window>) {
         return;
     }
     let items = seen.porch(stamp);
-    let letters = mailnote::with_areas(mailnote::waited(&items, &ledger, newsletters, |t| seen.tells(t)), &items, |t| seen.told_by_area(t));
+    let letters = mailnote::waited(&items, &ledger, newsletters, |t| seen.tells(t));
     // Read meanwhile, blocked, set aside: waiting no more.
     let gone = mailnote::gone_by(&items, &ledger, newsletters);
     // With the window, gathered with what its fetches bring meanwhile (Sioul
@@ -422,8 +424,8 @@ fn tick_from(window: Option<Window>) {
         }
         return;
     }
-    let mine = ours(claim(letters, &gone, stamp), window.as_ref());
-    if mine.is_empty() {
+    let mine = claim(letters, &gone, stamp);
+    if mine.is_empty() || !ours(window.as_ref()) {
         return;
     }
     let (title, body) = mailnote::opens(tr(), &mine);
@@ -479,18 +481,20 @@ fn claim_in(path: &std::path::Path, elsewhere: &std::collections::BTreeSet<Strin
     })
 }
 
-/// Of the letters claimed here, those this device tells: for each, the
-/// device you used last among those its address comes forward on now (the
-/// "notices" lease read per area, `dispatch::Tellers`: renewed by the
-/// window; only read without it), the device used last of all for one no
-/// device narrows (`Letter::area` none). The others are another device's to
-/// tell: marked told here without a word, as before. Sharing off: all.
-fn ours(letters: Vec<Letter>, window: Option<&Window>) -> Vec<Letter> {
-    if letters.is_empty() {
-        return letters;
+/// Whether this device tells: the one you used last (the "notices" lease,
+/// renewed by the window; only read without it). Sharing off: this one.
+fn ours(window: Option<&Window>) -> bool {
+    match window {
+        Some(w) => crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, w.active, false).0.mine,
+        None => teller().mine,
     }
-    let tellers = crate::dispatch::Tellers::now(window.map(|w| w.active));
-    letters.into_iter().filter(|letter| tellers.tells(letter.area)).collect()
+}
+
+/// The keeper of the notices as the claims read now, never renewed here
+/// (`ours` renews the window's): whose cells each letter is judged by
+/// (`Seen::now`). Sharing off: this device.
+fn teller() -> sioul_sync::lease::Keeper {
+    crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou)
 }
 
 /// The notification: on a computer, a notice to know (`tell`,
@@ -551,7 +555,7 @@ mod tests {
     use super::*;
 
     fn letter(key: &str, message: &str) -> Letter {
-        Letter { key: key.into(), sender: "Ana".into(), subject: "Dinner".into(), through: false, address: format!("mid:{message}@example.org"), notice: String::new(), file: String::new(), arrived: 0, message: message.into(), area: None }
+        Letter { key: key.into(), sender: "Ana".into(), subject: "Dinner".into(), through: false, address: format!("mid:{message}@example.org"), notice: String::new(), file: String::new(), arrived: 0, message: message.into() }
     }
 
     /// The claim (review of phase 2, M3 to M5, L8): each waiting message told

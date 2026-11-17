@@ -287,14 +287,18 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
         Ok(mut last) if *last != due => *last = due,
         _ => return,
     }
-    // Where you are: one computer gathers each site (`sioul_sync::lease`), among those the
-    // site comes forward on now, by what it is for (`dispatch::Tellers`).
+    // Where you are: one computer gathers (`sioul_sync::lease`), the sites that come forward on it
+    // now (docs/areas.md, "Which device tells"); a site for another device's time waits under
+    // "Other hours", its news gathered once that device is the one used.
     let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
-    let tellers = crate::dispatch::Tellers::now(Some(active));
+    let (keeper, _) = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false);
+    if !keeper.mine {
+        return;
+    }
     let path = Notices::default_path();
     let notices = Notices::load(&path);
     let mode = crate::backend::mode_now();
-    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && mode.brings(s.area) && tellers.tells(Some(s.area))).map(|s| (s.id.clone(), s.name.clone())).collect();
+    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && mode.brings(s.area)).map(|s| (s.id.clone(), s.name.clone())).collect();
     // What is new since the last time it rang: each notification named once (the Porch keeps them all).
     let lines: Vec<String> = named
         .iter()
@@ -386,7 +390,7 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str,
     let call = sites::is_call(title, text) && !site.muted;
     let chat = site.kind == "chat";
     let named = if chat { sioul_core::porch::Senders::load(&config).judge_name(title.trim()).map(|j| j.who) } else { None };
-    let mut now = crate::hours::attention_now();
+    let mut now = crate::hours::attention_here();
     now.realtime = everywhere;
     now.holds.chats = chat && crate::health::chats_covered();
     let out = crate::hours::attention().decide(&Event::of(Source::Site { call, live: site.realtime, named }).for_area(Some(site.area)), &now);

@@ -414,9 +414,10 @@ pub mod qobject {
         #[qinvokable]
         fn set_account_colour(self: Pin<&mut Sioul>, id: &QString, colour: i32) -> QString;
 
-        /// A message was opened: it is marked read.
+        /// A message was opened: it is marked read; on a device that is not
+        /// for its address, read here only (`mail::opened`): true then.
         #[qinvokable]
-        fn opened(self: Pin<&mut Sioul>, key: &QString);
+        fn opened(self: Pin<&mut Sioul>, key: &QString) -> bool;
 
         /// Does something to a message: "read", "unread", "flag", "unflag" at once;
         /// "archive", "trash", "junk", "not-junk", "not-spam" (mail set aside as
@@ -3738,8 +3739,13 @@ fn compute(shared: &Shared) -> Views {
     if mode.quiet {
         porch.status = serde_json::from_str::<serde_json::Value>(&mode_json()).ok().and_then(|v| v["line"].as_str().map(str::to_string)).unwrap_or_default();
     }
-    // Closed, the Porch shows only codes: "Done for now" has nothing to close.
-    let shown = if porch.open { PorchState::newest_shown(&items) } else { BTreeMap::new() };
+    // Closed, the Porch shows only codes: "Done for now" has nothing to close. It closes what this
+    // device is for: an address that is another device's, shown here through a door ("Show all
+    // mail now"), stays open on the device it is for (docs/areas.md, "Opened elsewhere"; review of
+    // phase 2, M5). Nothing said of this device: every address, as before.
+    let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(sioul_core::mailbox::said_area).is_some_and(|area| mode.for_another(area));
+    let ours: Vec<Triaged> = items.iter().filter(|t| !another(t)).cloned().collect();
+    let shown = if porch.open { PorchState::newest_shown(&ours) } else { BTreeMap::new() };
     let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
         // The money read once (`movements::books`, made again only when a file changed).
         let words = sioul_core::words::Words::of(&world.config);
@@ -5395,8 +5401,8 @@ impl qobject::Sioul {
         QString::from(&said)
     }
 
-    fn opened(self: Pin<&mut Self>, key: &QString) {
-        mail::opened(&self.qt_thread(), &self.shared(), &key.to_string());
+    fn opened(self: Pin<&mut Self>, key: &QString) -> bool {
+        mail::opened(&self.qt_thread(), &self.shared(), &key.to_string())
     }
 
     fn act(self: Pin<&mut Self>, key: &QString, action: &QString, target: &QString) {

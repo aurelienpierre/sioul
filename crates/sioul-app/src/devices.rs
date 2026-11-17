@@ -122,6 +122,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
     let notifications = crate::appnotes::access_here();
     // A phone's word on each computer's opening it read (none on a computer: `health::acknowledged_openings`).
     let acked = crate::health::acknowledged_openings();
+    // Its own cells and the cells it acts on of each other device, read before the entry's lock.
+    let cells = crate::dispatch::said_in_entry();
     // The parts it shares, for the others to show (Settings ▸ Devices); none while it does not share.
     let parts = if vault.is_some() { crate::share::parts_shared() } else { Vec::new() };
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
@@ -152,9 +154,11 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.clients = sioul_sync::share::CLIENTS_SHARED;
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
-        // It follows what you said each device is for (docs/areas.md, "What each device is for"):
-        // the others then choose with it which device tells a thing. No word of the doses'.
+        // It follows what you said each device is for, and says its own cells and the cells it
+        // acts on of each other device (docs/areas.md, "Which device tells"): the keeper of the
+        // notices reads them, never the settings this device may not share. No word of the doses'.
         entry.areas = sioul_sync::devices::AREAS;
+        (entry.cells, entry.known) = cells.clone();
         // It keeps its own table whatever comes, and says whether it learns now
         // (`spam::learns_level`): the tables travel while any device does not.
         entry.learns = crate::spam::learns_level();
@@ -201,6 +205,20 @@ pub(crate) fn form_changed() {
 /// says it now, for the others to show it (`Entry::parts`), when it differs
 /// from what the entry last said; nothing written otherwise. Every exchange
 /// says it too (`write`), whatever path changed it.
+/// What this device says of its cells, or of the cells it acts on of the
+/// others, may have changed (a line said in Settings ▸ Devices, the settings
+/// brought by the sharing, the hours, another device's entry learned): its
+/// entry says it now when it differs from what it last said; nothing
+/// written otherwise. Every exchange says it too (`write`).
+pub(crate) fn cells_now() {
+    let Some((_, Some(_))) = crate::share::vault() else { return };
+    let said = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir()));
+    if (said.cells, said.known) != crate::dispatch::said_in_entry() {
+        let _ = write(|_| {});
+    }
+}
+
+/// What this device's entry says of its parts (`parts_now`'s comment below).
 pub(crate) fn parts_now() {
     let Some((_, Some(_))) = crate::share::vault() else { return };
     let said = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir())).parts;

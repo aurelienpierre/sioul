@@ -891,7 +891,7 @@ pub(crate) fn let_talk_then(key: &str) -> String {
     // The newest of it still held (review of part 6, F5).
     let stamp = jiff::Timestamp::now().as_second();
     let Some(held) = ledger.held.values().filter(|h| h.conversation == key && h.until > stamp).max_by_key(|h| h.since) else { return String::new() };
-    let (id, columns) = talk_then(held, &crate::hours::attention_now());
+    let (id, columns) = talk_then(held, &crate::hours::attention_here());
     let words: Vec<String> = columns.iter().map(|c| c.id().to_string()).collect();
     if let Err(e) = sioul_core::attention::apply_change(&crate::backend::config_path(), &format!("attention.{id}"), None, &sioul_core::config::SettingValue::Texts(words)) {
         return e;

@@ -1,29 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! What each device is for, on this device (docs/areas.md, "What each device
-//! is for"): the lines of the devices that count, as every process of this
-//! device reads them (`lines`, `known`: the window, a phone's background step
-//! and its listener of other apps), and which device tells a thing among
-//! them (`Tellers`: the "notices" lease read per area,
-//! `sioul_sync::lease::told_by`).
+//! What each device is for, on this device (docs/areas.md, "Which device
+//! tells"): the devices that count as every process of this device reads
+//! them (`known`: the window, a phone's background step and its listener of
+//! other apps), this device among them (`lines`), and the keeper of the
+//! notices read as it reads itself (`as_keeper`).
 //!
 //! What now is for on this device is `hours::mode_at`, which gives every
 //! time these lines (`quiet::Mode::on`): the pages and the notifications
 //! then read this device's cell through `Mode::brings` and `Now::brings`,
-//! and stay as they were while nothing is said of this device. The plan and
-//! agents read the hours alone. The doses and Health read nothing here.
+//! and stay as they were while nothing is said of this device. One device
+//! tells, the keeper of the notices (`share::keeper`, as before devices): it
+//! tells what comes forward on it now; the others read each thing as it
+//! would (`as_keeper`), claim what it tells, and keep what it leaves waiting
+//! (`mailnote`). The plan and agents read the hours alone; the doses, Health,
+//! calls and texts too (`hours::hours_mode_at`), and nothing here.
 
 use crate::backend::load_config;
-use sioul_core::areas::{Area, Lines};
+use sioul_core::areas::Lines;
 use sioul_sync::dispatch::Known;
-use sioul_sync::lease::{Claim, Dispatch, Keeper, Rule};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::SystemTime;
-
-/// The part of the work the notices' claims are on (`share::keeper`).
-const NOTICES: &str = "notices";
 
 fn changed(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
@@ -54,52 +53,32 @@ pub(crate) fn known() -> Known {
     known
 }
 
-/// What the person said each device that counts is for, this device's line
-/// first: what a time is given to become this device's (`quiet::Mode::on`).
+/// This device among the devices that count: what a time is given to
+/// become this device's (`quiet::Mode::on`).
 pub(crate) fn lines() -> Lines {
     known().lines()
 }
 
-/// Which device tells, read once for several things: this device's id, the
-/// claims on the notices as they read now, and what each device is for at
-/// this moment.
-pub(crate) struct Tellers {
-    me: String,
-    claims: Vec<Claim>,
-    dispatch: Dispatch,
-    now: i64,
+/// The same for the date reminders, which a phone never tells
+/// (`reminders::Holds::on`, `hours::with_layers`).
+pub(crate) fn lines_for_dates() -> Lines {
+    known().lines_for_dates()
 }
 
-impl Tellers {
-    /// Read now. From the window (`active`: when the person was last at this
-    /// device), its claim is renewed first, as before (`share::keeper`);
-    /// from a process without the window, the claims are only read.
-    pub(crate) fn now(active: Option<i64>) -> Tellers {
-        // Its claim could not be written: the others may not know of it, and it tells as a device alone, as before.
-        let unwritten = active.is_some_and(|active| crate::share::keeper(NOTICES, Rule::FollowsYou, active, false).1);
-        let known = known();
-        let mode = crate::hours::mode_now();
-        // The claims as the folder holds them now; none with sharing off, or its key not held: this device alone.
-        let claims = match crate::share::vault() {
-            Some((_, Some((folder, key)))) if !unwritten => sioul_sync::lease::claims(&folder, &key, NOTICES),
-            _ => Vec::new(),
-        };
-        Tellers { me: known.me.clone(), claims, dispatch: known.dispatch(mode.time, mode.week), now: jiff::Timestamp::now().as_second() }
-    }
+/// The keeper of the notices (`keeper`: its id; this device's own, or ""
+/// with sharing off) read as it reads itself (`Known::as_keeper`): what it
+/// tells now, this device claims without a word.
+pub(crate) fn as_keeper(keeper: &str) -> Lines {
+    known().as_keeper(keeper)
+}
 
-    /// Whether this device tells a thing for `area` (none: a thing no device
-    /// narrows, told by the device used last of all, as before): among the
-    /// devices it comes forward on now, the one used last
-    /// (`sioul_sync::lease::tells`). Sharing off: this device.
-    pub(crate) fn tells(&self, area: Option<Area>) -> bool {
-        sioul_sync::lease::tells(&self.claims, &self.me, &self.dispatch, area, self.now)
-    }
-
-    /// The keeper of the notices for a thing for `area`, with whether this
-    /// device has been the one long enough to act (`lease::keeper_for`).
-    pub(crate) fn keeper(&self, area: Option<Area>) -> Keeper {
-        sioul_sync::lease::keeper_for(&self.claims, NOTICES, &self.me, &self.dispatch, area, self.now)
-    }
+/// What this device says in its entry: its own cells, in its week now, and
+/// the cells it acts on of each other device (`devices::Entry::cells`,
+/// `known`), so that the keeper reads them (docs/areas.md, "Which device tells").
+pub(crate) fn said_in_entry() -> (std::collections::BTreeMap<String, String>, std::collections::BTreeMap<String, String>) {
+    let known = known();
+    let week = crate::hours::hours_mode_at(&sioul_core::zone::now()).week;
+    (sioul_core::areas::Cells::Line(known.mine).words(week), known.acts_on())
 }
 
 #[cfg(test)]
@@ -107,16 +86,14 @@ mod tests {
     use super::*;
 
     /// With nothing said and no sharing (a test's own folders): this device
-    /// alone, its line saying nothing, and it tells whatever a thing is for.
+    /// alone, its line saying nothing, read as itself when it keeps the
+    /// notices, and its entry says no cells.
     #[test]
-    fn alone_with_nothing_said_this_device_tells_everything() {
+    fn alone_with_nothing_said_this_device_narrows_nothing() {
         let known = known();
-        assert!(known.lines().say_nothing() && known.older.is_empty());
-        let tellers = Tellers::now(None);
-        for area in [None, Some(Area::WORK), Some(Area::PERSONAL), Some(Area::ALL)] {
-            assert!(tellers.tells(area), "{area:?}");
-            let keeper = tellers.keeper(area);
-            assert!(keeper.mine && keeper.settled, "{area:?}: {keeper:?}");
-        }
+        assert!(known.lines().say_nothing() && known.older.is_empty() && known.others.is_empty());
+        assert_eq!((as_keeper(&known.me), as_keeper("")), (lines(), lines()));
+        assert!(as_keeper("another").say_nothing(), "a keeper this device knows nothing of: the hours");
+        assert_eq!(said_in_entry(), (Default::default(), Default::default()));
     }
 }

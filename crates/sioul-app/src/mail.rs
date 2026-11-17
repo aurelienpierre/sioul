@@ -766,6 +766,8 @@ fn names(entries: &[String]) -> String {
 
 pub(crate) fn views(shared: &Shared) -> MailViews {
     let config = load_config();
+    // The messages read here only, as this device's list says them now.
+    load_read_here();
     let (files, drafts) = hidden(shared);
     let waiting = waiting_words(shared);
     let accounts: Vec<(Account, Vec<Folder>)> = config.accounts.iter().filter(|a| a.syncs()).map(|a| (a.clone(), mailbox::folders(&a.id))).collect();
@@ -1566,16 +1568,63 @@ fn act_now_many(qt: &QtThread, shared: &Arc<Shared>, found: Vec<(Account, PathBu
     }
 }
 
-/// Opening a message marks it read, except while the window takes its own pictures.
-pub(crate) fn opened(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
+/// Opening a message marks it read, except while the window takes its own
+/// pictures; and except on a device that is not for its address, where it
+/// was opened through a door (the filter's boxes, "Show all mail now"): it
+/// is read here only (`read_here`), never on its server, so that it stays
+/// new on the device it is for, as the research found mail read on the phone
+/// forgotten at the office (docs/areas.md, "Opened elsewhere"; review of
+/// phase 2, M5). "Mark as read" in the reader marks it read everywhere.
+/// Whether it was read here only.
+pub(crate) fn opened(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> bool {
     if std::env::var_os("SIOUL_GRAB").is_some() {
-        return;
+        return false;
     }
-    if let Some((account, file)) = locate(key)
-        && !maildir::flags_of(&file).contains('S')
+    let Some((account, file)) = locate(key) else { return false };
+    if maildir::flags_of(&file).contains('S') {
+        return false;
+    }
+    // What the address is for, said; an address nobody classified is never another device's.
+    if let Some(area) = sioul_core::mailbox::said_area(&account)
+        && crate::hours::mode_now().for_another(area)
     {
-        act_now(qt, shared, account, file, Action::Read(true));
+        mark_read_here(&file);
+        show_mail(qt, shared);
+        return true;
     }
+    act_now(qt, shared, account, file, Action::Read(true));
+    false
+}
+
+/// This device's own list of the messages read here only, never shared.
+fn read_here_path() -> PathBuf {
+    sioul_core::config::state_dir().join("read-here.txt")
+}
+
+/// How long a message read here only is remembered so: past it, it shows new here again if still unread.
+const READ_HERE_KEPT: i64 = 60 * 86_400;
+
+/// A message read here only, written into this device's list (its file's unique name and when).
+fn mark_read_here(file: &Path) {
+    let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let unique = maildir::unique_part(&name).to_string();
+    let now = jiff::Timestamp::now().as_second();
+    let path = read_here_path();
+    let _ = sioul_core::filelock::with_lock(&path, || {
+        let kept: Vec<String> = std::fs::read_to_string(&path).unwrap_or_default().lines().filter(|line| line.rsplit_once('\t').is_some_and(|(one, at)| one != unique && at.parse::<i64>().is_ok_and(|at| now - at < READ_HERE_KEPT))).map(str::to_string).collect();
+        let text = kept.into_iter().chain([format!("{unique}\t{now}")]).collect::<Vec<_>>().join("\n") + "\n";
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        std::fs::write(&path, text).map_err(|e| e.to_string())
+    });
+    load_read_here();
+}
+
+/// This device's list of the messages read here only, given to the mail's rows (`view::set_read_here`).
+fn load_read_here() {
+    let text = std::fs::read_to_string(read_here_path()).unwrap_or_default();
+    sioul_core::view::set_read_here(text.lines().filter_map(|line| line.split_once('\t').map(|(one, _)| one.to_string())).collect());
 }
 
 fn schedule(qt: &QtThread, shared: &Arc<Shared>, work: Work, line: String) {
@@ -2419,7 +2468,7 @@ mod tests {
     fn a_batch_of_two_opens_each_message() {
         use sioul_core::mailnote::{Letter, openers};
         use sioul_core::notice::{Act, address};
-        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}"), area: None };
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") };
         let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
         let notice = crate::mailnote::mail_notice("Two e-mails", "Ana, Lunch · Noa, The lease", &openers(&sioul_core::i18n::Translator::new("en"), &two), "Open");
         assert_eq!((notice.about.as_str(), notice.hint.as_str()), ("mid:letter-1@example.org", "/mail/home/cur/1.sioul"), "a click opens the first");

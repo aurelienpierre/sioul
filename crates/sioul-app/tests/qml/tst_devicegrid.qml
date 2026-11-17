@@ -10,7 +10,8 @@
 // on a changed cell, and it asks for the cell back; a device whose Sioul is
 // older says one sentence in its cells' place; at a phone's 412 points each
 // device says its cells one line per time, and nothing passes the window's
-// edge in the longest words of both languages. The cells themselves are
+// edge in the longest words of both languages; a device that follows its
+// own settings says so under its cells. The cells themselves are
 // made and tested in sioul-sync (device_table.rs). Run by tools/qml-test.sh.
 
 import QtQuick
@@ -59,7 +60,7 @@ Item {
 
     readonly property var rows: [
         { id: "desk", here: true, name: "Bureau de travail", follows: true, cells: root.cells("Bureau de travail", ["work", "", "", "", ""]) },
-        { id: "phone", here: false, name: "Le téléphone (Moss)", follows: true, cells: root.cells("Le téléphone (Moss)", ["work+leisure", "admin", "leisure", "", "leisure"], ["work", "meals"]) },
+        { id: "phone", here: false, name: "Le téléphone (Moss)", follows: true, cells: root.cells("Le téléphone (Moss)", ["work+leisure", "admin", "leisure", "", "leisure"], ["work", "meals"]), cells_apart: "Ses propres réglages disent autre chose pour l’instant : il suit ceux-là jusqu’à ce que les vôtres lui parviennent." },
         { id: "tablet", here: false, name: "La tablette (Fern)", follows: false, cells: [], cells_older: "Son Sioul est plus ancien : tout y arrive encore." }
     ]
 
@@ -140,6 +141,11 @@ Item {
             const older = all(grid, i => i.objectName === "cellsOlder" && i.visible)
             compare(older.length, 1)
             compare(older[0].text, "Son Sioul est plus ancien : tout y arrive encore.")
+            // A device that follows its own settings: one sentence under its cells, and only there.
+            const apart = all(grid, i => i.objectName === "cellsApart" && i.visible)
+            compare(apart.length, 1)
+            verify(apart[0].text.indexOf("Ses propres réglages") === 0)
+            verify(apart[0].mapToItem(grid, 0, 0).y > cellOf(grid, "phone", "work").mapToItem(grid, 0, 0).y, "under its cells")
         }
 
         // A cell opens three boxes; a box says the device, the time and the

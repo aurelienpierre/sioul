@@ -149,10 +149,11 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
     LOOKED.store(now, Ordering::Relaxed);
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        // The books are the business's: among the computers work comes forward on now, the one
-        // used last looks; while it comes forward on none (the evening), the one used last of all.
-        let keeper = crate::dispatch::Tellers::now(Some(active)).keeper(Some(sioul_core::areas::Area::WORK));
-        if !keeper.mine || !keeper.settled {
+        // The computer used last looks, as before; the books are the business's: while the hours
+        // bring work and this computer is not for it, they wait for the one used that is
+        // (docs/areas.md, "Which device tells").
+        let keeper = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
+        if !keeper.mine || !keeper.settled || crate::hours::mode_now().keeps_back(sioul_core::areas::Area::WORK) {
             return;
         }
         let today = sioul_core::zone::now().date();

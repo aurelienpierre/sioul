@@ -11,8 +11,10 @@
 // devices by times, under the times' names; in a narrow one (a phone's 412
 // points) each device says its cells in words, one line per time. A device
 // whose Sioul is older says in their place that everything still comes
-// there. Rust decides and words every cell (sioul-sync's device_table); this
-// lays them out and says what was ticked.
+// there; one whose own settings say other cells (it does not share yours, or
+// not yet) says under its cells that it follows those. Only the times your
+// week has get a cell. Rust decides and words every cell (sioul-sync's
+// device_table, device_grid); this lays them out and says what was ticked.
 
 pragma ComponentBehavior: Bound
 
@@ -29,10 +31,11 @@ ColumnLayout {
     required property var theme
     // The devices' rows (`share::devices`): each with its name, its id,
     // `follows` (its Sioul follows what devices are for), `cells_older` (said
-    // in the cells' place when it does not) and `cells`, five, one per time:
+    // in the cells' place when it does not), `cells_apart` (said under them
+    // when it follows its own) and `cells`, one per time of the week:
     // {time, title, work, admin, leisure, label, own, name}.
     property var rows: []
-    // The five times' names, in the cells' order.
+    // The names of the times the week has, in the cells' order.
     property var times: []
     // One matrix, devices by times; else each device's cells in words, a line per time.
     property bool wide: false
@@ -235,6 +238,18 @@ ColumnLayout {
                 visible: !grid.wide && !device.follows
                 Layout.fillWidth: true
                 text: device.row.cells_older || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: grid.theme.muted
+            }
+            // Its own settings say other cells (it does not share yours, or not yet): it follows those.
+            Label {
+                objectName: "cellsApart"
+                visible: device.follows && (device.row.cells_apart || "") !== ""
+                Layout.fillWidth: true
+                Layout.leftMargin: grid.wide ? grid.nameWidth + grid.spacing : 0
+                text: device.row.cells_apart || ""
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pixelSize: 13

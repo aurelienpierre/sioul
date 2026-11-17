@@ -688,6 +688,10 @@ pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
         (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
         _ => Err(format!("{field}?")),
     };
+    // This device's own line said here: its entry says its cells now, for the keeper of the notices.
+    if written.is_ok() && field != "name" && id == here().id {
+        std::thread::spawn(crate::devices::cells_now);
+    }
     written.err().unwrap_or_default()
 }
 
@@ -3613,8 +3617,9 @@ mod tests {
     }
 
     /// Settings ▸ Devices says what comes forward on each device at each
-    /// time: this device's row has its five cells, in words, as the hours
-    /// say while nothing is said of it; a cell said in the window
+    /// time: this device's row has a cell for each time its week has (work
+    /// and admin hours set, Health's meals and sleep not), in words, as the
+    /// hours say while nothing is said of it; a cell said in the window
     /// ("at.<time>") is written into the settings and shows at once, marked
     /// as changed; "none" is your word for nothing; "" puts it back; a time
     /// that is none of the five, or words that name no area, are refused in
@@ -3627,34 +3632,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let config = dir.join("config.toml");
-        std::fs::write(&config, "theme = \"dark\"\n").unwrap();
+        std::fs::write(&config, "theme = \"dark\"\n\n[[window]]\nday = \"mon\"\nstart = \"09:00\"\nend = \"17:00\"\n\n[[window]]\nday = \"tue\"\nkind = \"admin\"\nstart = \"18:00\"\nend = \"19:00\"\n").unwrap();
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
         let view = || serde_json::from_str::<serde_json::Value>(&devices()).unwrap();
         let shown = view();
         let id = shown["rows"][0]["id"].as_str().unwrap().to_string();
-        assert_eq!(shown["grid"]["times"].as_array().map(Vec::len), Some(5));
+        assert_eq!(shown["grid"]["times"].as_array().map(Vec::len), Some(3), "{shown}");
         let cells = |view: &serde_json::Value| view["rows"][0]["cells"].as_array().cloned().unwrap_or_default();
-        assert_eq!(cells(&shown).len(), 5, "a cell per time");
+        assert_eq!(cells(&shown).len(), 3, "a cell per time the week has");
         assert!(shown["rows"][0]["follows"] == true && cells(&shown).iter().all(|cell| cell["own"] == false), "{shown}");
-        assert_eq!(cells(&shown).iter().map(|cell| cell["time"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["work", "admin", "leisure", "meals", "sleep"]);
+        assert_eq!(cells(&shown).iter().map(|cell| cell["time"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["work", "admin", "leisure"]);
         assert_eq!(shown["grid"]["unheld"], "", "nothing said of any device: nothing to say");
         assert!(shown["grid"]["never"].as_str().is_some_and(|never| !never.is_empty()));
         // A cell said: written, shown at once, marked.
         assert_eq!(say_of_device(&id, "at.work", "work+leisure"), "");
-        assert_eq!(say_of_device(&id, "at.meals", "none"), "");
+        assert_eq!(say_of_device(&id, "at.leisure", "none"), "");
         let text = std::fs::read_to_string(&config).unwrap();
-        assert!(text.contains("work = \"work+leisure\"") && text.contains("meals = \"none\"") && text.contains("theme = \"dark\""), "{text}");
+        assert!(text.contains("work = \"work+leisure\"") && text.contains("leisure = \"none\"") && text.contains("theme = \"dark\""), "{text}");
         let shown = view();
         let cell = |time: usize| cells(&shown)[time].clone();
         assert_eq!((cell(0)["areas"].as_str(), cell(0)["own"].as_bool(), cell(0)["leisure"].as_bool()), (Some("work+leisure"), Some(true), Some(true)));
-        assert_eq!((cell(3)["areas"].as_str(), cell(3)["own"].as_bool(), cell(3)["label"].as_str()), (Some(""), Some(true), Some(tr().text("devices-cell-nothing", None).as_str())));
+        assert_eq!((cell(2)["areas"].as_str(), cell(2)["own"].as_bool(), cell(2)["label"].as_str()), (Some(""), Some(true), Some(tr().text("devices-cell-nothing", None).as_str())));
         assert_eq!(cell(1)["own"], false);
         // Refused in words, nothing written.
         assert!(!say_of_device(&id, "at.weekend", "work").is_empty() && !say_of_device(&id, "at.work", "often").is_empty() && !say_of_device(&id, "at.work+admin", "work").is_empty());
         assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
         // As its areas say again: the cells go, and their table with them.
         assert_eq!(say_of_device(&id, "at.work", ""), "");
-        assert_eq!(say_of_device(&id, "at.meals", ""), "");
+        assert_eq!(say_of_device(&id, "at.leisure", ""), "");
         assert!(!std::fs::read_to_string(&config).unwrap().contains("device"));
         // This device alone, said to be for work: the rest is for no device, and that is said.
         assert_eq!(say_of_device(&id, "area", "work"), "");

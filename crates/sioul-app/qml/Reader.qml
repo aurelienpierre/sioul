@@ -89,6 +89,10 @@ Panel {
         })
     // Read and flagged, as last done here: the server follows.
     property bool unread: false
+    // Opened on a device that is not for its address: read here only, new on
+    // the device it is for (docs/areas.md, "Opened elsewhere"); "Mark as
+    // read" marks it read everywhere.
+    property bool readHereOnly: false
     // Flagged, as last done here: the server follows.
     property bool flagged: false
     // Why it is in its lane on the Porch, unfolded.
@@ -205,8 +209,10 @@ Panel {
             reader.sioul.act(reader.key, action, target || "")
         if (["read", "unread", "flag", "unflag"].indexOf(action) < 0)
             reader.closeRequested()
-        else if (action === "read" || action === "unread")
+        else if (action === "read" || action === "unread") {
             reader.unread = action === "unread"
+            reader.readHereOnly = false
+        }
         else
             reader.flagged = action === "flag"
     }
@@ -224,6 +230,7 @@ Panel {
         reader.invite = null
         reader.senderContact = ""
         reader.unread = false
+        reader.readHereOnly = false
         reader.flagged = false
         reader.missing = false
         reader.opening = reader.key !== ""
@@ -248,8 +255,10 @@ Panel {
                 return
             reader.senderContact = reader.reading && reader.reading.from_address ? reader.sioul.contactFor(reader.reading.from_address) : ""
             reader.flagged = reader.reading ? reader.reading.flagged : false
-            if (reader.reading)
-                reader.sioul.opened(reader.key)
+            if (reader.reading) {
+                reader.readHereOnly = reader.sioul.opened(reader.key) === true
+                reader.unread = reader.readHereOnly
+            }
         }
     }
 
@@ -615,6 +624,16 @@ Panel {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: reader.theme.text
+                }
+                // Read here only: this device is not for its address.
+                Label {
+                    objectName: "readerReadHereOnly"
+                    visible: reader.readHereOnly && !reader.missing
+                    Layout.fillWidth: true
+                    text: reader.sioul.text("reader-read-here-only")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.muted
                 }
                 // A message that does not read here: said calmly in its place.
                 Label {

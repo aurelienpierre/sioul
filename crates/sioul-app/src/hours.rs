@@ -65,15 +65,24 @@ pub(crate) fn blocks(now: &Zoned) -> Blocks {
     blocks
 }
 
+/// What now is for, and until when, by the hours alone: the person's week,
+/// the same on every device, nothing said of any device read. The doses,
+/// Health, calls and texts read this (`attention_now`, `level`, `waking`),
+/// never what a device is for (docs/areas.md, "What a device's areas never
+/// keep back"; review of phase 2, L1).
+pub(crate) fn hours_mode_at(now: &Zoned) -> Mode {
+    let config = load_config();
+    let overrides = Overrides::load(&Overrides::default_path());
+    quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks(now), now)
+}
+
 /// What now is for, and until when, on this device: the time as the hours
 /// say, with what the person said each device is for (`dispatch::lines`), so
 /// that everything the window shows or tells now reads this device's cell
 /// (docs/areas.md, "What each device is for"). The plan reads the hours
 /// alone (`sioul_core::plan`).
 pub(crate) fn mode_at(now: &Zoned) -> Mode {
-    let config = load_config();
-    let overrides = Overrides::load(&Overrides::default_path());
-    quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks(now), now).on(&crate::dispatch::lines())
+    hours_mode_at(now).on(&crate::dispatch::lines())
 }
 
 pub(crate) fn mode_now() -> Mode {
@@ -132,8 +141,16 @@ pub(crate) fn attention_at(mode: &Mode, now: &Zoned) -> Now {
     moment
 }
 
-/// The moment now.
+/// The moment now, by the hours alone (`hours_mode_at`): what the doses,
+/// Health, calls and texts read; nothing a device is for in it.
 pub(crate) fn attention_now() -> Now {
+    let now = sioul_core::zone::now();
+    attention_at(&hours_mode_at(&now), &now)
+}
+
+/// The moment now on this device (`mode_at`): what a site's or another
+/// app's notification reads, which a device may keep back.
+pub(crate) fn attention_here() -> Now {
     let now = sioul_core::zone::now();
     attention_at(&mode_at(&now), &now)
 }
@@ -150,11 +167,12 @@ pub(crate) fn comes(kind: Kind) -> bool {
 
 /// Reminders' holds (`reminders::gather`) with this process's layers, the
 /// do-not-disturb it keeps a few seconds rather than reading its files again,
-/// on this device (`Holds::on`): a work date waits where work does not come.
+/// on this device (`Holds::on`): a task's reminder comes on the computers
+/// for its task's area (a phone tells no date reminder, so it holds none).
 pub(crate) fn with_layers(mut holds: Holds) -> Holds {
     holds.now.slot = quiet_slot();
     holds.now.dnd = crate::everywhere::holds_others();
-    holds.on(&crate::dispatch::lines())
+    holds.on(&crate::dispatch::lines_for_dates())
 }
 
 /// Whether a dose's reminder waits now: the matrix's doses row, whose only
@@ -167,7 +185,7 @@ pub(crate) fn doses_silent() -> bool {
 /// When this sleep ends (Unix seconds), while asleep: waking, or a nap's end;
 /// while paused, in five minutes: the pause ends when you come back.
 pub(crate) fn waking() -> Option<i64> {
-    let mode = mode_now();
+    let mode = hours_mode_at(&sioul_core::zone::now());
     if mode.paused() {
         return Some(sioul_core::zone::now().timestamp().as_second() + 5 * 60);
     }
