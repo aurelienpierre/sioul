@@ -39,7 +39,7 @@ Item {
         { id: "l2", from: 1, description: "Printing", details: "", quantity: 2, unit: "C62", unit_words: "Units", price: 30, discount: 0, nature: "goods", activity: "", own_tax: false, category: "E", rate: 0, exemption: "", time: false, time_words: "", amount: "€60", tax_words: "Exempt from VAT" }
     ]
     function draftView(required) {
-        return { id: "20261117-090000-abcdef", revision: mock.revision, read_only: mock.readOnly, read_only_words: mock.readOnly ? "invoice-draft-newer" : "", kind: "invoice", title: "Draft invoice", copy_of: "", project: "The new site", client: { ref: "sioul:contact/lumen", name: "Studio Lumen", first: "Studio Lumen", kind: "business", kind_words: "A business", country: "FR", country_name: "France", email: "billing@example.org", address: "", profile: "p1", contact: "lumen" }, issue_day: "17 November 2026", period_from: "2026-11-17", period_to: "2026-11-17", period_default: true, terms_days: 30, end_of_month: false, due: "17 December 2026", order: "", language: "en", currency: "EUR", lines: root.lines, notes: [], legal: ["VAT not applicable, art. 293 B of the French tax code"], corrects: "", deposits: [], totals: [{ label: "Total", amount: "€142.50" }, { label: "Amount due", amount: "€142.50", last: true }], required: required, said: ["This invoice’s PDF will carry no Factur-X data yet."], preview: "<p>Draft invoice</p>", choices: { units: [{ code: "HUR", label: "Hours" }, { code: "C62", label: "Units" }], categories: [{ code: "S", label: "VAT at a rate" }, { code: "E", label: "Exempt from VAT" }], rates: [], activities: [], languages: [{ id: "en", label: "English" }, { id: "fr", label: "French" }], kinds: [{ id: "business", label: "A business" }, { id: "consumer", label: "A person" }, { id: "public", label: "A public body" }] } }
+        return { id: "20261117-090000-abcdef", revision: mock.revision, read_only: mock.readOnly, read_only_words: mock.readOnly ? "invoice-draft-newer" : "", kind: "invoice", title: "Draft invoice", copy_of: "", project: "The new site", client: { ref: "sioul:contact/lumen", name: "Studio Lumen", first: "Studio Lumen", kind: "business", kind_words: "A business", country: "FR", country_name: "France", email: "billing@example.org", address: "", profile: "p1", contact: "lumen" }, issue_day: "17 November 2026", period_from: "2026-11-17", period_to: "2026-11-17", period_default: true, terms_days: 30, end_of_month: false, due: "17 December 2026", order: "", language: "en", currency: "EUR", lines: mock.otherLines || root.lines, set_aside: "", notes: [], legal: ["VAT not applicable, art. 293 B of the French tax code"], corrects: "", deposits: [], totals: [{ label: "Total", amount: "€142.50" }, { label: "Amount due", amount: "€142.50", last: true }], required: required, said: ["This invoice’s PDF will carry no Factur-X data yet."], preview: "<p>Draft invoice</p>", choices: { units: [{ code: "HUR", label: "Hours" }, { code: "C62", label: "Units" }], categories: [{ code: "S", label: "VAT at a rate" }, { code: "E", label: "Exempt from VAT" }], rates: [], activities: [], languages: [{ id: "en", label: "English" }, { id: "fr", label: "French" }], kinds: [{ id: "business", label: "A business" }, { id: "consumer", label: "A person" }, { id: "public", label: "A public body" }] } }
     }
     readonly property var shownInvoice: ({ number: "2026-013", kind: "invoice", title: "Invoice No. 2026-013", client: "Silkworks Studio", project: "", date: "12 October 2026", due: "11 November 2026", total: "€600", currency: "EUR", status: "partly-paid", status_words: "partly paid", left: 200.5, left_text: "200.50", left_words: "€200.50 left to pay", sent: "", corrects: "", credit_notes: [], deducted_by: [], payments: [{ id: "hand:2026-013/x", words: "€399.50 received on 20 October 2026, by transfer", bank: false }], lines: [{ description: "Illustrations", amount: "€500", time: "" }, { description: "Printing", amount: "€100", time: "" }], outside: ["This invoice’s file was changed outside Sioul since it was issued."], older: false, acts: { paid: true, paid_back: false, credit: true, final: false, mail: true } })
 
@@ -55,6 +55,11 @@ Item {
         property bool readOnly: false
         property string issueError: ""
         property var left: []
+        // A save refused (its reason; `changeGone`: the draft is gone); the revisions Issue was asked with; the draft's lines when they are not the usual ones.
+        property string changeError: ""
+        property bool changeGone: false
+        property var issuedWith: []
+        property var otherLines: null
 
         property string status: ""
         property var asked: []
@@ -88,7 +93,19 @@ Item {
         }
         function changeInvoiceDraft(id, change) {
             mock.changes = mock.changes.concat([JSON.parse(change)])
+            if (mock.changeError !== "")
+                return JSON.stringify({ error: mock.changeError, gone: mock.changeGone })
             return JSON.stringify(root.draftView(mock.required))
+        }
+        function putBackInvoiceTime(id) {
+            return JSON.stringify(root.draftView(mock.required))
+        }
+        // A quantity or a rate, read as the English window reads a number, said without a currency.
+        function readNumber(text) {
+            const read = JSON.parse(mock.readAmount(text, ""))
+            if (String(text).trim() === "")
+                return JSON.stringify({ ok: false, value: 0, words: "invoices-number-missing" })
+            return JSON.stringify(read.ok ? { ok: true, value: read.value, words: "= " + read.value } : read)
         }
         function setInvoiceClientTraits(id, kind, country) {
             return JSON.stringify(root.draftView(mock.required))
@@ -112,7 +129,11 @@ Item {
             const value = Number(plain.replace(/,/g, ""))
             return JSON.stringify({ ok: true, value: value, words: "= €" + value.toFixed(2) })
         }
-        function issueInvoiceDraft(id) {
+        function issueInvoiceDraft(id, revision) {
+            mock.issuedWith = mock.issuedWith.concat([revision])
+            // Asked with another revision than the draft's: it moved, nothing is issued.
+            if (revision !== mock.revision)
+                return JSON.stringify({ error: "invoice-draft-moved", moved: true })
             if (mock.issueError !== "")
                 return JSON.stringify({ error: mock.issueError })
             mock.issuedIds = mock.issuedIds.concat([id])
@@ -238,6 +259,10 @@ Item {
             mock.readOnly = false
             mock.issueError = ""
             mock.left = []
+            mock.changeError = ""
+            mock.changeGone = false
+            mock.issuedWith = []
+            mock.otherLines = null
         }
 
         function editorOf(tab) {
@@ -338,6 +363,110 @@ Item {
             verify(named(editor, "invoiceLinePriceRead").some(l => l.visible && l.text === "invoices-amount-unread"), "no amount: said, not sent")
             editor.flush()
             compare(mock.changes.length, 2, "nothing sent for it")
+        }
+
+        // Every number says what it reads as, a quantity too; one that does
+        // not read is said, kept as typed, and holds Issue back with its
+        // reason under it (the second review of phase 3, R1).
+        function test_a_number_that_does_not_read_holds_issue() {
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            tryVerify(() => named(editor, "invoiceLine").length === 2, 3000)
+            const quantity = named(editor, "invoiceLineQuantity").find(f => f.visible && f.text === "2")
+            quantity.text = "2.5"
+            quantity.textEdited()
+            verify(named(editor, "invoiceLineQuantityRead").some(l => l.visible && l.text === "= 2.5"), "what a quantity reads as, without a currency")
+            quantity.text = "2,5"
+            quantity.textEdited()
+            verify(named(editor, "invoiceLineQuantityRead").some(l => l.visible && l.text === "invoices-amount-unread"), "said beside it")
+            verify(!named(editor, "invoiceIssue")[0].enabled, "Issue waits")
+            verify(shown(editor, "invoiceIssueHeld").length === 1, "and says why")
+            // Another field's save lands: the unread text stays as typed.
+            const field = named(editor, "invoiceLineDescription").find(f => f.text === "Printing")
+            field.text = "Printing, two posters"
+            field.textEdited()
+            editor.flush()
+            compare(quantity.text, "2,5", "never swapped for the draft's own without a word")
+            verify(mock.changes.every(c => c.lines.every(l => l.quantity === undefined || l.quantity === 2.5)), "what does not read is never sent")
+            quantity.text = ""
+            quantity.textEdited()
+            verify(named(editor, "invoiceLineQuantityRead").some(l => l.visible && l.text === "invoices-number-missing"), "emptied: asked for")
+            quantity.text = "3"
+            quantity.textEdited()
+            verify(shown(editor, "invoiceIssueHeld").length === 0 && named(editor, "invoiceIssue")[0].enabled, "read again: Issue is offered")
+        }
+
+        // A save that fails keeps what was typed waiting and says why in the
+        // status line; Back then stays once, and leaves at the second; a
+        // draft gone or issued elsewhere is left at once, said (R5).
+        function test_a_failed_save_keeps_what_was_typed() {
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            mock.changeError = "The folder cannot be written."
+            const order = named(editor, "invoiceOrder")[0]
+            order.text = "PO-77"
+            order.textEdited()
+            verify(!editor.flush(), "not kept")
+            compare(mock.status, "The folder cannot be written.")
+            compare(editor.pendingFields.order, "PO-77", "waiting again")
+            tab.back()
+            compare(tab.draftId, "20261117-090000-abcdef", "the editor stays once")
+            verify(mock.status.indexOf("invoices-not-saved-stay") === 0, mock.status)
+            mock.changeError = ""
+            verify(editor.flush(), "tried again: kept")
+            compare(mock.changes[mock.changes.length - 1].order, "PO-77")
+            // Gone meanwhile: left at once, and said.
+            order.text = "PO-78"
+            order.textEdited()
+            mock.changeError = "invoice-draft-issued"
+            mock.changeGone = true
+            tab.back()
+            compare(tab.draftId, "")
+            compare(mock.status, "invoices-not-saved:invoice-draft-issued")
+            compare(mock.left.length, 0, "nothing to take out: it is gone")
+        }
+
+        // A draft changed elsewhere while the tab was out of sight is read
+        // again when it shows; Issue is asked with the revision read, and a
+        // draft that moved is read again instead of issued (R6).
+        function test_issue_issues_what_was_read() {
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            tryVerify(() => named(editor, "invoiceLine").length === 2, 3000)
+            tab.visible = false
+            mock.revision = "r2"
+            mock.otherLines = [root.lines[1]]
+            tab.visible = true
+            tryVerify(() => named(editor, "invoiceLine").length === 1, 3000, "read again as it shows")
+            compare(editor.revision, "r2")
+            compare(mock.status, "invoices-read-again")
+            // It moves again, unseen (no signal reached this window): Issue is refused, the draft read again.
+            mock.revision = "r3"
+            mock.otherLines = null
+            named(editor, "invoiceIssue")[0].clicked()
+            compare(JSON.stringify(mock.issuedWith), JSON.stringify(["r2"]))
+            compare(mock.issuedIds.length, 0, "nothing issued")
+            compare(editor.revision, "r3")
+            tryVerify(() => named(editor, "invoiceLine").length === 2, 3000)
+            compare(shown(editor, "invoiceIssueProblem")[0].text, "invoice-draft-moved")
+            named(editor, "invoiceIssue")[0].clicked()
+            compare(mock.issuedIds.length, 1, "issued as read")
+        }
+
+        // A newer Sioul's draft is read only in the list too: its row's menu offers no Discard (R13).
+        function test_a_newer_draft_is_not_discarded_from_the_list() {
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tryVerify(() => named(tab, "invoiceRow").length === 3, 5000)
+            tab.menuOf(Object.assign({}, root.rows[0], { read_only: true }))
+            tryVerify(() => overlay(tab, "invoiceMenuDiscard").length === 1, 3000)
+            verify(!overlay(tab, "invoiceMenuDiscard")[0].visible, "no Discard for it")
+            tab.closeForms()
+            tab.menuOf(root.rows[0])
+            tryVerify(() => overlay(tab, "invoiceMenuDiscard")[0].visible, 3000, "a draft of this Sioul keeps its Discard")
+            tab.closeForms()
         }
 
         // A draft a newer Sioul wrote opens to be read only, saying why (F13).

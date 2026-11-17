@@ -113,6 +113,11 @@ Item {
             if (page.visible)
                 page.reload()
         }
+        // An invoice issued, paid or changed, here or elsewhere: the time billed and to bill.
+        function onInvoicesChanged() {
+            if (page.visible)
+                page.reload()
+        }
         // Time noted on another device, come through the sharing.
         function onSharedIn(stores) {
             if (page.visible && stores.indexOf("data/time/") >= 0)

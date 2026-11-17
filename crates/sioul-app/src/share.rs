@@ -2225,6 +2225,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             Ok(outcome) => {
                 // What it read and wrote, said in this device's entry (docs/database.md, "Devices"); the doses handed.
                 exchanged(&outcome, now.as_millisecond());
+                // A draft changed here and replaced whole by another device's later version is said.
+                crate::invoices::after_exchange(&qt, outcome.written.contains("data/invoices/"));
                 (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
                 no_blob = outcome.waits.contains_key("no-blob");
                 // The notes and papers held after going many at once, for the Porch and Settings (`withheld`).

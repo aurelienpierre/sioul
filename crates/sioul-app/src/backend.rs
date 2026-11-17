@@ -2597,9 +2597,19 @@ pub mod qobject {
         #[qinvokable]
         fn discard_invoice_draft(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// A draft issued: {"number", "pdf", "said"} or {"error", "elsewhere"}.
+        /// A draft issued as the editor read it (its `revision`): {"number",
+        /// "pdf", "said"}, or {"error"} with "elsewhere" (numbered on another
+        /// computer) or "moved" (its file changed since: read it again).
         #[qinvokable]
-        fn issue_invoice_draft(self: Pin<&mut Sioul>, id: &QString) -> QString;
+        fn issue_invoice_draft(self: Pin<&mut Sioul>, id: &QString, revision: &QString) -> QString;
+
+        /// The time set aside in a draft put back in it: the draft as shown, or {"error"}.
+        #[qinvokable]
+        fn put_back_invoice_time(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A number typed that is no money (a quantity, a rate), read in the window's language (JSON {ok, value, words}).
+        #[qinvokable]
+        fn read_number(self: &Sioul, text: &QString) -> QString;
 
         /// An issued invoice's pane, by its number; {"error"} when it is gone.
         #[qinvokable]
@@ -7915,8 +7925,16 @@ impl qobject::Sioul {
         QString::from(&crate::invoices::discard(&self.qt_thread(), &self.shared(), &id.to_string()))
     }
 
-    fn issue_invoice_draft(self: Pin<&mut Self>, id: &QString) -> QString {
-        QString::from(&crate::invoices::issue(&self.qt_thread(), &self.shared(), &id.to_string()))
+    fn issue_invoice_draft(self: Pin<&mut Self>, id: &QString, revision: &QString) -> QString {
+        QString::from(&crate::invoices::issue(&self.qt_thread(), &self.shared(), &id.to_string(), &revision.to_string()))
+    }
+
+    fn put_back_invoice_time(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::invoices::put_back(&self.shared(), &id.to_string()))
+    }
+
+    fn read_number(&self, text: &QString) -> QString {
+        QString::from(&crate::invoices::read_number(&text.to_string()))
     }
 
     fn invoice_shown(&self, number: &QString) -> QString {

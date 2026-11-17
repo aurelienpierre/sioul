@@ -53,11 +53,13 @@ pub(crate) fn heard(kind: Kind) -> Heard {
         Kind::Links | Kind::Projects => (true, false, true),
         // Drafts, invoices and client profiles: their views read them again, nothing else does (the review of phase 3, F7).
         Kind::Invoices => (true, false, false),
+        // An issued record, a life or a journal: the same views, and the tie index, which reads the issued invoices (the second review of phase 3, R15).
+        Kind::Issued => (true, false, false),
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
     // The tie index reads the persons, papers, letters, money, agendas and sites beside `loaded`.
-    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites);
+    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites | Kind::Issued);
     Heard { signal, agenda, loaded, ties }
 }
 
@@ -108,7 +110,7 @@ fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kin
         Kind::Sites => sioul.as_mut().sites_changed(),
         Kind::Projects => sioul.as_mut().projects_changed(),
         Kind::Topics => sioul.as_mut().topics_changed(),
-        Kind::Invoices => sioul.as_mut().invoices_changed(),
+        Kind::Invoices | Kind::Issued => sioul.as_mut().invoices_changed(),
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => {}
     }
 }
@@ -124,7 +126,9 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
         "data/links.toml" => vec![Kind::Links],
         "notes/sioul-cases.toml" | "notes/sioul-projects.toml" => vec![Kind::Projects],
         // Drafts, invoices, their lives and journals; the client profiles.
-        "data/invoices/" | "notes/sioul-clients.toml" => vec![Kind::Invoices],
+        // The invoices' folder holds drafts and records alike: both are said when it arrives.
+        "data/invoices/" => vec![Kind::Invoices, Kind::Issued],
+        "notes/sioul-clients.toml" => vec![Kind::Invoices],
         "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" | "notes/sioul-contracts.toml" | sioul_sync::share::MOVEMENTS => vec![Kind::Money],
         "notes/sioul-papers.toml" | "files/papers/" => vec![Kind::Papers],
         // The notes folder, paper letters and notes' own links in it.
@@ -154,7 +158,7 @@ pub(crate) fn remade(kinds: &BTreeSet<Kind>) -> Remade {
     Remade {
         pim: any(&[Kind::Calendars, Kind::Contacts, Kind::Agendas]),
         // The Porch says the declarations and the invoices not paid yet.
-        views: any(&[Kind::Money, Kind::Accounts, Kind::Projects, Kind::Papers, Kind::Letters, Kind::Sites, Kind::Invoices]),
+        views: any(&[Kind::Money, Kind::Accounts, Kind::Projects, Kind::Papers, Kind::Letters, Kind::Sites, Kind::Invoices, Kind::Issued]),
         work: any(&[Kind::Calendars, Kind::Notes, Kind::Links, Kind::Projects]),
     }
 }
@@ -242,7 +246,7 @@ mod tests {
         assert_eq!(kinds_of("state/today.toml"), []);
         assert!(kinds_of("data/calendars/local/").contains(&Kind::Calendars));
         assert!(kinds_of("files/notes/").contains(&Kind::Letters), "letters live in the notes folder");
-        assert_eq!((kinds_of("data/invoices/"), kinds_of("notes/sioul-clients.toml")), (vec![Kind::Invoices], vec![Kind::Invoices]));
+        assert_eq!((kinds_of("data/invoices/"), kinds_of("notes/sioul-clients.toml")), (vec![Kind::Invoices, Kind::Issued], vec![Kind::Invoices]));
     }
 
     /// Each kind reaches its views: a signal for the views that read it
@@ -267,6 +271,8 @@ mod tests {
         assert_eq!(remade(&calendars), Remade { pim: true, views: false, work: true });
         // A draft saved as it is typed tells its views only: nothing read again, the day never planned again (the review of phase 3, F7).
         assert_eq!(heard(Kind::Invoices), Heard { signal: true, agenda: false, loaded: false, ties: false });
+        // An issued record, a life or a journal empties the tie index too, which reads them; still no store read again (R15).
+        assert_eq!(heard(Kind::Issued), Heard { signal: true, agenda: false, loaded: false, ties: true });
         let invoices: BTreeSet<Kind> = [Kind::Invoices].into_iter().collect();
         assert!(!remade(&invoices).work);
     }

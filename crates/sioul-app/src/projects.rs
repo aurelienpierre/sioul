@@ -386,7 +386,8 @@ pub(crate) fn printed(found: &Invoice) -> Result<serde_json::Value, invoice::kep
 /// since added to it as lines of their own. Returns {"draft"} or {"error"}.
 pub(crate) fn make_invoice(shared: &Arc<Shared>, id: &str) -> String {
     match time_draft(shared, id) {
-        Ok((draft, added)) => {
+        Ok(TimeDraft { id: draft, added, .. }) => {
+            crate::invoices::changed_here(&draft);
             let said = match added {
                 Some((lines, minutes)) => crate::backend::say("invoices-time-added", &[("n", lines.to_string()), ("time", sioul_core::timereport::duration(minutes).replace(' ', "\u{a0}"))]),
                 None => String::new(),
@@ -397,21 +398,6 @@ pub(crate) fn make_invoice(shared: &Arc<Shared>, id: &str) -> String {
     }
 }
 
-/// The time no draft holds and none of the project's drafts set aside (the
-/// review of phase 3, F9): what "Make the invoice" may add.
-fn untaken(entries: Vec<Entry>, drafts: &[Invoice], project: &str) -> Vec<Entry> {
-    let held: std::collections::BTreeSet<String> = drafts.iter().flat_map(Invoice::sessions).collect();
-    let aside: std::collections::BTreeSet<&String> = drafts.iter().filter(|d| d.project == project).flat_map(|d| d.set_aside.iter()).collect();
-    entries.into_iter().filter(|e| !held.contains(&e.key) && !aside.contains(&e.key)).collect()
-}
-
-/// The project's draft of its time: the one that holds some (the newest
-/// first), else its newest, among the drafts `usable` takes.
-fn draft_of_project<'a>(drafts: &'a [Invoice], project: &str, usable: &dyn Fn(&Invoice) -> bool) -> Option<&'a Invoice> {
-    let mine: Vec<&Invoice> = drafts.iter().filter(|d| d.project == project && d.kind == invoice::Kind::Invoice && d.copy_of.is_empty() && !d.newer && usable(d)).collect();
-    mine.iter().find(|d| !d.sessions().is_empty()).or_else(|| mine.first()).copied()
-}
-
 /// The draft of a project's time (the review of phase 3, F9): the
 /// project's draft that holds its time (else its newest), the time noted
 /// since added; else a new draft of the time not billed yet. Time any
@@ -419,14 +405,46 @@ fn draft_of_project<'a>(drafts: &'a [Invoice], project: &str, usable: &dyn Fn(&I
 /// (`Invoice::set_aside`), is never added: the same hours are never in two
 /// drafts, nor back where you took them out. Returns the draft's id and
 /// what was added to a draft that was there (its lines, its minutes).
-pub(crate) fn time_draft(shared: &Arc<Shared>, id: &str) -> Result<(String, Option<(usize, u32)>), String> {
+pub(crate) fn time_draft(shared: &Arc<Shared>, id: &str) -> Result<TimeDraft, String> {
     time_draft_for(shared, id, &|_| true)
+}
+
+/// A project's draft of its time: its id, whether this call made it, and
+/// what it added to a draft that was there (its lines, its minutes).
+pub(crate) struct TimeDraft {
+    pub id: String,
+    pub made: bool,
+    pub added: Option<(usize, u32)>,
+}
+
+/// The time `more` holds, added to the draft `id` (`life::add_time`: each
+/// line into the draft's line of the same words and price), its service
+/// days widened to it. Returns the lines and minutes added.
+pub(crate) fn add_to_draft(folder: &std::path::Path, id: &str, more: &Invoice, settings: &sioul_core::config::InvoiceSettings, today: Date) -> Result<(usize, u32), String> {
+    let mut added = (0, 0);
+    life::change_draft(folder, id, settings, today, |d| {
+        added = life::add_time(d, more.lines.clone());
+        // The service's days: the time's, when the draft said the issue's day; else widened to it.
+        if d.period_default {
+            d.period_from = more.period_from.clone();
+            d.period_to = more.period_to.clone();
+        } else {
+            if !more.period_from.is_empty() && more.period_from < d.period_from {
+                d.period_from = more.period_from.clone();
+            }
+            if more.period_to > d.period_to {
+                d.period_to = more.period_to.clone();
+            }
+        }
+        d.period_default = d.period_from.is_empty();
+    })?;
+    Ok(added)
 }
 
 /// `time_draft` among the drafts `usable` takes (a final invoice's: its
 /// deposit's client and currency): nothing is added to another draft, and
 /// a new one is made only when it would be usable (else an error, nothing written).
-pub(crate) fn time_draft_for(shared: &Arc<Shared>, id: &str, usable: &dyn Fn(&Invoice) -> bool) -> Result<(String, Option<(usize, u32)>), String> {
+pub(crate) fn time_draft_for(shared: &Arc<Shared>, id: &str, usable: &dyn Fn(&Invoice) -> bool) -> Result<TimeDraft, String> {
     let config = load_config();
     let settings = &config.invoice;
     let store = store()?;
@@ -435,29 +453,13 @@ pub(crate) fn time_draft_for(shared: &Arc<Shared>, id: &str, usable: &dyn Fn(&In
     let folder = invoice::folder();
     let records = invoice::all_in(&folder);
     let drafts = invoice::drafts_in(&folder);
-    let fresh = untaken(entries(shared), &drafts, &project.id);
-    if let Some(draft) = draft_of_project(&drafts, &project.id, usable) {
+    let fresh = life::untaken(entries(shared), &drafts, &project.id);
+    if let Some(draft) = life::draft_of_project(&drafts, &project.id, usable) {
         let mut added = None;
         if let Some(more) = life::from_time(&fresh, &project, Invoice { lines: Vec::new(), ..draft.clone() }, &records, settings, today) {
-            added = Some((more.lines.len(), more.lines.iter().filter_map(invoice::Line::minutes).sum()));
-            life::change_draft(&folder, &draft.draft, settings, today, |d| {
-                d.lines.extend(more.lines.clone());
-                // The service's days: the time's, when the draft said the issue's day; else widened to it.
-                if d.period_default {
-                    d.period_from = more.period_from.clone();
-                    d.period_to = more.period_to.clone();
-                } else {
-                    if !more.period_from.is_empty() && more.period_from < d.period_from {
-                        d.period_from = more.period_from.clone();
-                    }
-                    if more.period_to > d.period_to {
-                        d.period_to = more.period_to.clone();
-                    }
-                }
-                d.period_default = d.period_from.is_empty();
-            })?;
+            added = Some(add_to_draft(&folder, &draft.draft, &more, settings, today)?);
         }
-        return Ok((draft.draft.clone(), added));
+        return Ok(TimeDraft { id: draft.draft.clone(), made: false, added });
     }
     let clients = sioul_core::clients::Clients::load(&store.root).unwrap_or_default();
     let contacts = work::loaded_known(shared).unwrap_or_else(|| loaded(shared));
@@ -466,7 +468,7 @@ pub(crate) fn time_draft_for(shared: &Arc<Shared>, id: &str, usable: &dyn Fn(&In
     if !usable(&draft) {
         return Err(tr().text("invoice-nothing", None));
     }
-    Ok((invoice::save_draft(&folder, &draft)?.draft, None))
+    Ok(TimeDraft { id: invoice::save_draft(&folder, &draft)?.draft, made: true, added: None })
 }
 
 /// An invoice made before, again: its kept file, as `printed` gives it.
@@ -612,23 +614,6 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// "Make the invoice" adds only time no draft holds and none of the
-    /// project's drafts set aside, to the draft that holds its time (the
-    /// review of phase 3, F9).
-    #[test]
-    fn make_the_invoice_never_puts_back_what_was_taken_out() {
-        let entry = |key: &str| Entry { key: key.into(), start: 1_791_000_000, day: "2026-11-02".parse().unwrap(), minutes: 30, project: "fernhill".into(), task: String::new(), title: "Site".into(), note: String::new(), billable: true, invoice: String::new() };
-        let timed = |key: &str| invoice::Line { sessions: vec![key.into()], ..invoice::Line::of_time("Site", 30, 5500, "E", 0) };
-        let holding = Invoice { draft: "older".into(), project: "fernhill".into(), kind: invoice::Kind::Invoice, lines: vec![timed("s1")], set_aside: vec!["s2".into()], ..Invoice::default() };
-        let empty = Invoice { draft: "newer".into(), project: "fernhill".into(), kind: invoice::Kind::Invoice, ..Invoice::default() };
-        let elsewhere = Invoice { draft: "other".into(), project: "other".into(), kind: invoice::Kind::Invoice, lines: vec![timed("s4")], ..Invoice::default() };
-        let drafts = vec![empty, holding, elsewhere];
-        let left: Vec<String> = untaken(vec![entry("s1"), entry("s2"), entry("s3"), entry("s4")], &drafts, "fernhill").into_iter().map(|e| e.key).collect();
-        assert_eq!(left, ["s3"], "held by a draft, or taken out of one: never added again");
-        assert_eq!(draft_of_project(&drafts, "fernhill", &|_| true).map(|d| d.draft.as_str()), Some("older"), "the draft that holds the time, not the newest");
-        assert_eq!(draft_of_project(&drafts, "fernhill", &|d| d.draft != "older").map(|d| d.draft.as_str()), Some("newer"));
-    }
 
     /// Paid, then its Undo (review of 36002ea, must-fix 3): an invoice
     /// another device marked paid stays paid; one Paid made paid is unpaid

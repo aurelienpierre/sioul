@@ -1878,18 +1878,18 @@ fn send_now(id: &str, shared: &Shared) -> String {
     match sent {
         Ok(()) => {
             // An invoice's mail ("Write the mail") left: the invoice is marked sent, when it carried it to its client.
-            crate::invoices::sent_with(&draft, &[]);
+            crate::invoices::sent_with(shared, &draft, &[]);
             draft.discard();
             nudge(shared, &account.id);
             tr().text("mail-sent", None)
         }
         Err(e @ SyncError::NotFiled(_)) => {
-            crate::invoices::sent_with(&draft, &[]);
+            crate::invoices::sent_with(shared, &draft, &[]);
             draft.discard();
             e.sentence(tr(), &account.id)
         }
         Err(e @ SyncError::PartlySent { .. }) => {
-            crate::invoices::sent_with(&draft, missed_of(&e));
+            crate::invoices::sent_with(shared, &draft, missed_of(&e));
             keep_for_those_missed(draft, &e);
             e.sentence(tr(), &account.id)
         }
@@ -1920,7 +1920,7 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
     // An invoice's mail ("Write the mail") left: the invoice is marked sent, then the draft goes.
     let discard = || {
         if let Some(draft) = Draft::by_id(id) {
-            crate::invoices::sent_with(&draft, &[]);
+            crate::invoices::sent_with(shared, &draft, &[]);
             draft.discard();
         }
     };
@@ -1936,7 +1936,7 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
         }
         Err(e @ SyncError::PartlySent { .. }) => {
             if let Some(draft) = Draft::by_id(id) {
-                crate::invoices::sent_with(&draft, missed_of(&e));
+                crate::invoices::sent_with(shared, &draft, missed_of(&e));
                 keep_for_those_missed(draft, &e);
             }
             e.sentence(tr(), &account.id)

@@ -43,7 +43,8 @@ SafeDialog {
         dialog.profile = found
         dialog.problem = ""
         dialog.ids = (found.ids || []).map(i => ({ kind: i.kind, value: i.value, printed: i.printed !== false }))
-        kind.currentIndex = Math.max(0, dialog.kinds.indexOf(found.kind))
+        // A kind the form does not offer shows as itself, after its own, and is kept unless another is chosen (R15).
+        kind.currentIndex = dialog.kinds.indexOf(found.kind) >= 0 ? dialog.kinds.indexOf(found.kind) : dialog.kinds.length
         name.text = found.name || ""
         lines.text = found.lines || ""
         postcode.text = found.postcode || ""
@@ -71,7 +72,7 @@ SafeDialog {
     // The form as it is now, as `clients::ProfileChange` names its fields.
     function formNow() {
         return {
-            kind: dialog.kinds[kind.currentIndex],
+            kind: kind.currentIndex < dialog.kinds.length ? dialog.kinds[kind.currentIndex] : (dialog.profile ? dialog.profile.kind : "business"),
             name: name.text,
             lines: dialog.linesOf(lines.text),
             postcode: postcode.text,
@@ -141,7 +142,7 @@ SafeDialog {
 
                 objectName: "clientProfileKind"
                 Layout.fillWidth: true
-                model: dialog.kinds.map(k => dialog.sioul.text("invoices-client-kind-" + k))
+                model: dialog.kinds.map(k => dialog.sioul.text("invoices-client-kind-" + k)).concat(dialog.profile && dialog.profile.kind && dialog.kinds.indexOf(dialog.profile.kind) < 0 ? [dialog.theme.plain(dialog.profile.kind)] : [])
             }
             TextField {
                 id: name

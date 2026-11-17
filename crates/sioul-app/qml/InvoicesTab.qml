@@ -90,8 +90,9 @@ Item {
     // Back to the list: what was typed in the draft written first, a draft
     // made and never written in taken out (the editor's `leave`).
     function back() {
-        if (tab.draftId !== "" && tab.editor !== null)
-            (tab.editor as InvoiceEditor).leave()
+        // A save that failed keeps the editor open once (its `leave`, R5).
+        if (tab.draftId !== "" && tab.editor !== null && !(tab.editor as InvoiceEditor).leave())
+            return
         tab.draftId = ""
         tab.invoice = null
         tab.read()
@@ -123,6 +124,9 @@ Item {
         }
         tab.read()
         tab.openDraft(made.draft)
+        // What it found to say: the time Final invoice… added to the draft.
+        if (made.said)
+            tab.sioul.status = made.said
     }
 
     // An issued invoice's file: the one kept, copied where invoices go; an
@@ -197,7 +201,15 @@ Item {
     }
 
     Component.onCompleted: tab.read()
-    onVisibleChanged: if (tab.visible) tab.reload()
+    // Back in view: the list read again, and the draft open in the editor
+    // when it changed elsewhere meanwhile (the second review of phase 3, R6).
+    onVisibleChanged: {
+        if (!tab.visible)
+            return
+        tab.reload()
+        if (tab.draftId !== "" && tab.editor !== null)
+            (tab.editor as InvoiceEditor).changedElsewhere()
+    }
 
     Connections {
         target: tab.sioul
@@ -662,7 +674,8 @@ Item {
                 }
                 MenuItem {
                     objectName: "invoiceMenuDiscard"
-                    visible: menu.draft
+                    // Never a draft a newer Sioul wrote: read only here (R13).
+                    visible: menu.draft && menu.row.read_only !== true
                     height: visible ? implicitHeight : 0
                     text: tab.sioul.text("invoices-discard")
                     onTriggered: {

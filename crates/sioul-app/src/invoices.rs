@@ -130,6 +130,8 @@ fn row(i: &Invoice, all: &[Invoice], outside: bool) -> Value {
         "sent": if i.sent.is_empty() || i.number.is_empty() { String::new() } else { say("invoices-sent-on", &[("day", short(&i.sent))]) },
         "outside": outside,
         "copy_of": i.copy_of,
+        // A draft a newer Sioul wrote: read only, in the list too (the second review of phase 3, R13).
+        "read_only": i.newer && i.number.is_empty(),
     })
 }
 
@@ -295,6 +297,8 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
     // A draft a newer Sioul wrote is shown as it is, never made again here (F13).
     if !d.newer {
         life::refresh_client(&mut d, &clients, &world.contacts);
+        // Its deposits as they are now, as Issue would deduct them (R8).
+        life::recite(&mut d, &records);
         life::refresh(&mut d, s, today);
     }
     let checks = life::checks(&d, s, today, &records);
@@ -304,7 +308,15 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
     let contact = d.client_ref.strip_prefix("sioul:contact/").map(sioul_core::notes::decode).or_else(|| profile.as_ref().and_then(|p| p.contact.strip_prefix("sioul:contact/").map(sioul_core::notes::decode))).unwrap_or_default();
     let cited: Vec<&str> = d.deposits.iter().map(|c| c.number.as_str()).collect();
     // The deposits of this client and currency not deducted yet, for what is left of each after its credit notes (F4).
-    let mut deposits: Vec<Value> = life::deposits_open(&d, &records).into_iter().map(|r| json!({ "number": r.number, "date": short(&r.date), "amount": money_in(life::deposit_left(r, &records), &r.currency), "cited": cited.contains(&r.number.as_str()) })).collect();
+    let mut deposits: Vec<Value> = life::deposits_open(&d, &records)
+        .into_iter()
+        .map(|r| {
+            let left = life::deposit_left(r, &records);
+            // Less than it billed: its credit notes gave the rest back, said on its row (R8).
+            let why = if left < r.totals.with_tax { say("invoices-deposit-less", &[("whole", money_in(r.totals.with_tax, &r.currency))]) } else { String::new() };
+            json!({ "number": r.number, "date": short(&r.date), "amount": money_in(left, &r.currency), "why": why, "cited": cited.contains(&r.number.as_str()) })
+        })
+        .collect();
     // Those it cites already, whatever happened to them since (a check says what is wrong with them).
     let gone: Vec<Value> = d.deposits.iter().filter(|c| !deposits.iter().any(|v| v["number"] == c.number.as_str())).map(|c| json!({ "number": c.number, "date": short(&c.date), "amount": money_in(c.amount, &d.currency), "cited": true })).collect();
     deposits.extend(gone);
@@ -317,6 +329,8 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
         "revision": invoice::draft_revision(&folder, &d.draft),
         "read_only": d.newer,
         "read_only_words": if d.newer { tr().text("invoice-draft-newer", None) } else { String::new() },
+        // The time taken out of it, which Put back gives it again (R15).
+        "set_aside": if d.set_aside.is_empty() { String::new() } else { say("invoices-set-aside", &[("time", duration(life::set_aside_minutes(&d)))]) },
         "kind": d.kind.id(),
         "title": title_of(&d),
         "copy_of": d.copy_of,
@@ -359,17 +373,61 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
 
 /// A draft for the editor, by its id; {"error"} when it is gone.
 pub(crate) fn draft(shared: &Shared, id: &str) -> String {
-    let folder = invoice::folder();
-    match invoice::draft_in(&folder, id) {
-        // A draft of before its lines had ids: given them once, kept, so that the editor's changes find their lines (F2).
-        Some(d) if !d.newer && d.lines.iter().any(|l| l.id.is_empty()) => {
-            let s = load_config().invoice;
-            let kept = life::change_draft(&folder, id, &s, today(), |_| {}).unwrap_or(d);
-            draft_view(kept, shared).to_string()
-        }
+    // Reading never writes: a draft from before its lines had ids gets them in memory, alike on every device (`invoice::draft_in`; R3).
+    match invoice::draft_in(&invoice::folder(), id) {
         Some(d) => draft_view(d, shared).to_string(),
         None => refused(tr().text("invoice-draft-gone", None)),
     }
+}
+
+/// The drafts this window changed since the last exchange with your other
+/// devices, each with its revision as it was last written here: a draft
+/// travels whole, the later file replacing the other, so one of these that
+/// the exchange replaced lost what was changed here, and that is said
+/// (`after_exchange`; the second review of phase 3, R2).
+static CHANGED: std::sync::Mutex<std::collections::BTreeMap<String, String>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The draft `id` was just written here.
+pub(crate) fn changed_here(id: &str) {
+    if let Ok(mut changed) = CHANGED.lock() {
+        changed.insert(id.to_string(), invoice::draft_revision(&invoice::folder(), id));
+    }
+}
+
+/// An exchange with your other devices ended (`wrote`: it wrote invoices'
+/// files here). The drafts changed here before it either went out as they
+/// were, or were replaced by another device's later version: those are
+/// named in the status line, their version of here kept by the sharing
+/// among the earlier versions. Changes made here after an exchange and
+/// replaced later are a later version's, not a loss: nothing is said.
+pub(crate) fn after_exchange(qt: &QtThread, wrote: bool) {
+    let tracked = match CHANGED.lock() {
+        Ok(mut changed) => std::mem::take(&mut *changed),
+        Err(_) => return,
+    };
+    if !wrote || tracked.is_empty() {
+        return;
+    }
+    let folder = invoice::folder();
+    let replaced = replaced_among(&folder, &tracked, &CHANGED.lock().map(|c| c.clone()).unwrap_or_default());
+    if !replaced.is_empty() {
+        crate::backend::set_status(qt, say("invoices-draft-replaced", &[("n", replaced.len().to_string()), ("drafts", replaced.join(", "))]));
+    }
+}
+
+/// Of the drafts `tracked` (id, revision written here), those whose file is
+/// another now, and not by a newer write of here (`since`): each by its
+/// client's name, else its title.
+fn replaced_among(folder: &std::path::Path, tracked: &std::collections::BTreeMap<String, String>, since: &std::collections::BTreeMap<String, String>) -> Vec<String> {
+    tracked
+        .iter()
+        .filter(|(id, written)| {
+            let now = invoice::draft_revision(folder, id);
+            !now.is_empty() && now != **written && since.get(*id) != Some(&now)
+        })
+        .filter_map(|(id, _)| invoice::draft_in(folder, id))
+        .map(|d| if d.client.first_line().trim().is_empty() { title_of(&d) } else { d.client.first_line().to_string() })
+        .collect()
 }
 
 /// The drafts New and "Bill this client" made in this window, each with
@@ -474,6 +532,7 @@ pub(crate) fn change(shared: &Arc<Shared>, id: &str, change: &str) -> String {
     let cx = edit::Context { settings: s, records: &records, clients: &clients, contacts: &world.contacts, fallback: tr().language(), today: today() };
     match edit::save(&folder, id, &change, &cx) {
         Ok(saved) => {
+            changed_here(id);
             let mut said: Vec<String> = Vec::new();
             if saved.elsewhere {
                 said.push(tr().text("invoices-changed-elsewhere", None));
@@ -490,7 +549,47 @@ pub(crate) fn change(shared: &Arc<Shared>, id: &str, change: &str) -> String {
             view.to_string()
         }
         Err(e) if invoice::draft_in(&folder, id).is_some() => refused(e),
-        Err(_) => refused(tr().text("invoice-draft-gone", None)),
+        // Gone (discarded, or issued elsewhere): nothing to try again (R5).
+        Err(_) => json!({ "error": gone_words(&folder, id), "gone": true }).to_string(),
+    }
+}
+
+/// Why the draft `id` is not there: issued meanwhile, under its number, or gone.
+fn gone_words(folder: &std::path::Path, id: &str) -> String {
+    match invoice::all_in(folder).iter().find(|r| !r.number.is_empty() && r.draft == id) {
+        Some(done) => say("invoice-draft-issued", &[("number", done.number.clone())]),
+        None => tr().text("invoice-draft-gone", None),
+    }
+}
+
+/// The time set aside in the draft `id` put back in it (the second review
+/// of phase 3, R15): its lines made again from the time noted, joined to
+/// the draft's lines of the same words; the draft as the editor shows it.
+pub(crate) fn put_back(shared: &Arc<Shared>, id: &str) -> String {
+    let result = (|| -> Result<(), String> {
+        let config = load_config();
+        let s = &config.invoice;
+        let folder = invoice::folder();
+        let draft = invoice::draft_in(&folder, id).ok_or_else(|| tr().text("invoice-draft-gone", None))?;
+        let store = projects::store()?;
+        let project = store.get(&draft.project).ok_or_else(|| tr().text("project-gone", None))?.clone();
+        let aside: Vec<_> = projects::entries(shared).into_iter().filter(|e| draft.set_aside.contains(&e.key)).collect();
+        let records = invoice::all_in(&folder);
+        match life::from_time(&aside, &project, Invoice { lines: Vec::new(), ..draft.clone() }, &records, s, today()) {
+            Some(more) => {
+                projects::add_to_draft(&folder, id, &more, s, today())?;
+            }
+            // Billed or deleted since: nothing to put back.
+            None => {}
+        }
+        life::change_draft(&folder, id, s, today(), |d| d.set_aside.clear()).map(|_| ())
+    })();
+    match result {
+        Ok(()) => {
+            changed_here(id);
+            draft(shared, id)
+        }
+        Err(e) => refused(e),
     }
 }
 
@@ -498,15 +597,17 @@ pub(crate) fn change(shared: &Arc<Shared>, id: &str, change: &str) -> String {
 pub(crate) fn discard(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     let folder = invoice::folder();
     let Some(before) = invoice::draft_in(&folder, id) else { return tr().text("invoice-draft-gone", None) };
+    // A newer Sioul's draft is never taken out here: the removal would travel, and nothing here could write it back as it was (R13).
+    if before.newer {
+        return tr().text("invoice-draft-newer", None);
+    }
+    // Its file's own bytes, which Undo writes back as they were.
+    let Some(bytes) = invoice::draft_bytes(&folder, id) else { return tr().text("invoice-draft-gone", None) };
     if let Err(e) = invoice::remove_draft(&folder, id) {
         return e;
     }
-    work::refresh(qt, shared);
-    crate::mail::offer_back(qt, shared, say("invoices-discarded", &[("title", title_of(&before))]), move |qt, shared| {
-        let back = invoice::save_draft(&invoice::folder(), &before).err().unwrap_or_default();
-        work::refresh(qt, shared);
-        back
-    });
+    let id = id.to_string();
+    crate::mail::offer_back(qt, shared, say("invoices-discarded", &[("title", title_of(&before))]), move |_, _| invoice::restore_draft(&invoice::folder(), &id, &bytes).err().unwrap_or_default());
     String::new()
 }
 
@@ -516,7 +617,7 @@ pub(crate) fn discard(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
 /// (`projects::printed`). Returns {"number", "pdf", "said"}: the status
 /// line's words (a file set aside, the checks' notes, a copy not written);
 /// or {"error"}, with "elsewhere" when another computer numbers invoices.
-pub(crate) fn issue(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
+pub(crate) fn issue(qt: &QtThread, shared: &Arc<Shared>, id: &str, revision: &str) -> String {
     // One computer numbers invoices (`sioul_sync::lease`): two at once could give one number twice.
     if let Some(elsewhere) = projects::invoices_held_elsewhere(shared) {
         return elsewhere;
@@ -536,7 +637,12 @@ pub(crate) fn issue(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
         let budget_id = store.as_ref().and_then(|st| st.get(&draft.project)).and_then(|p| p.budget.clone()).unwrap_or_default();
         let numbering = life::Numbering { device: projects::device(), sharing: crate::share::configured(), drafts_shared: crate::share::shares("drafts"), claimed: crate::share::claimed_series(projects::INVOICES) };
         let steps = life::Steps { time: None, ledger: ledger.as_deref().map(|l| (l, budget_id.as_str())), clients: Some((&clients, &world.contacts)) };
-        let made = life::issue(&folder, id, s, today, &numbering, &steps, tr())?;
+        // What is numbered is what the editor read: a draft that moved since is read again first (R6).
+        let made = match life::issue_as_read(&folder, id, revision, s, today, &numbering, &steps, tr()) {
+            Ok(made) => made,
+            Err(life::NotIssued::Moved(words)) => return Ok(json!({ "error": words, "moved": true })),
+            Err(life::NotIssued::Refused(words)) => return Err(words),
+        };
         // The claim says the new number at once, not at the next minute's renewal.
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let _ = crate::share::keeper(projects::INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
@@ -726,6 +832,12 @@ pub(crate) fn credit(shared: &Arc<Shared>, number: &str, lines: &str) -> String 
         if found.kind == Kind::CreditNote {
             return Err(tr().text("invoices-credit-of-credit", None));
         }
+        // A deposit a live final invoice deducts is credited through that invoice (the second review of phase 3, R7): refused here, with the way out, as the draft's check would say at issue.
+        if found.kind == Kind::Deposit
+            && let Some(by) = life::deducted_by(&found, &invoice::all_in(&folder)).first()
+        {
+            return Err(say("invoice-check-credit-deposit-deducted", &[("deposit", found.number.clone()), ("number", by.number.clone())]));
+        }
         let config = load_config();
         let draft = life::credit(&found, chosen.as_deref(), &projects::entries(shared), &config.invoice, today());
         Ok(invoice::save_draft(&folder, &draft)?.draft)
@@ -736,16 +848,18 @@ pub(crate) fn credit(shared: &Arc<Shared>, number: &str, lines: &str) -> String 
     }
 }
 
-/// "Final invoice…" on a deposit invoice (the review of phase 3, F10): the
-/// draft that holds the work, never a second one beside it: the draft the
-/// deposit was made from, while it is there; else the project's draft that
-/// holds its time (the time noted since added, as "Make the invoice"
-/// does); else a draft made of the project's time not billed yet; else one
-/// for its client. Every deposit of the same client and currency not
-/// deducted yet is ticked in it, for what is left of each. Returns
-/// {"draft"} or {"error"}.
+/// "Final invoice…" on a deposit invoice (the review of phase 3, F10; the
+/// second, R9): the draft that holds the work, never a second one beside
+/// it: the draft the deposit was made from, while it is there; else the
+/// project's draft that holds its time (the time noted since added, and
+/// said, as "Make the invoice" says it); else a draft made of the
+/// project's time not billed yet; else one for its client. The deposit it
+/// was pressed on is ticked, the draft's other ticks left as they are; a
+/// draft this press just made also ticks the project's other open deposits
+/// and those made from the same draft; the client's others are named by
+/// the draft's recommended check. Returns {"draft", "said"} or {"error"}.
 pub(crate) fn final_of(shared: &Arc<Shared>, number: &str) -> String {
-    let result = (|| -> Result<String, String> {
+    let result = (|| -> Result<(String, String), String> {
         let folder = invoice::folder();
         let records = invoice::all_in(&folder);
         let deposit = records.iter().find(|r| r.number == number && r.kind == Kind::Deposit).ok_or_else(|| tr().text("invoice-gone", None))?;
@@ -755,9 +869,17 @@ pub(crate) fn final_of(shared: &Arc<Shared>, number: &str) -> String {
         let usable = |d: &Invoice| d.kind == Kind::Invoice && !d.newer && d.copy_of.is_empty() && life::same_client(d, deposit) && d.currency.eq_ignore_ascii_case(&deposit.currency);
         let drafts = invoice::drafts_in(&folder);
         let mut id = drafts.iter().find(|d| !deposit.deposit_of.is_empty() && d.draft == deposit.deposit_of && usable(d)).map(|d| d.draft.clone());
+        let (mut made, mut said) = (false, String::new());
         // Never a draft of another client or currency touched, nor one made for nothing.
-        if id.is_none() && !deposit.project.is_empty() {
-            id = projects::time_draft_for(shared, &deposit.project, &usable).ok().map(|(id, _)| id);
+        if id.is_none()
+            && !deposit.project.is_empty()
+            && let Ok(timed) = projects::time_draft_for(shared, &deposit.project, &usable)
+        {
+            made = timed.made;
+            if let Some((lines, minutes)) = timed.added {
+                said = say("invoices-time-added", &[("n", lines.to_string()), ("time", duration(minutes))]);
+            }
+            id = Some(timed.id);
         }
         let id = match id {
             Some(id) => id,
@@ -769,19 +891,36 @@ pub(crate) fn final_of(shared: &Arc<Shared>, number: &str) -> String {
                 draft.project_title = deposit.project_title.clone();
                 draft.currency = deposit.currency.clone();
                 draft.language = deposit.language.clone();
+                made = true;
                 invoice::save_draft(&folder, &draft)?.draft
             }
         };
         life::change_draft(&folder, &id, s, today, |d| {
             let open: Vec<&Invoice> = life::deposits_open(d, &records);
-            life::cite_deposits(d, &open, &records, s, today);
+            let ticked: Vec<&Invoice> = open.iter().copied().filter(|o| final_ticks(o, deposit, d, made)).collect();
+            life::cite_deposits(d, &ticked, &records, s, today);
         })?;
-        Ok(id)
+        changed_here(&id);
+        Ok((id, said))
     })();
     match result {
-        Ok(id) => json!({ "draft": id }).to_string(),
+        Ok((id, said)) => json!({ "draft": id, "said": said }).to_string(),
         Err(e) => refused(e),
     }
+}
+
+/// Whether "Final invoice…", pressed on `pressed`, ticks the open deposit
+/// `open` in `draft` (R9): the one pressed, always; those the draft ticks
+/// already, kept; and, only in a draft this press just made, the project's
+/// others and those made from the same draft. Never a deposit of another
+/// project by itself, nor one the person unticked in a draft that was there.
+fn final_ticks(open: &Invoice, pressed: &Invoice, draft: &Invoice, made: bool) -> bool {
+    if open.number == pressed.number || draft.deposits.iter().any(|c| c.number == open.number) {
+        return true;
+    }
+    let same_project = !pressed.project.is_empty() && open.project == pressed.project;
+    let same_draft = !pressed.deposit_of.is_empty() && open.deposit_of == pressed.deposit_of;
+    made && (same_project || same_draft)
 }
 
 /// "Write the mail": a draft to the client's invoice address (its
@@ -836,6 +975,8 @@ pub(crate) fn write_mail(shared: &Shared, number: &str) -> String {
     draft.add_signature(config.account(&account).and_then(|a| a.signature.as_deref()));
     draft.attachments = vec![attached];
     draft.links = vec![sioul_core::links::invoice_uri(&found.number)];
+    // The invoice's own mail: sent with its file to someone else than you, the invoice is sent (R11).
+    draft.invoice = found.number.clone();
     match draft.save() {
         Ok(_) => json!({ "draft": draft.id, "to": to }).to_string(),
         Err(e) => refused(e),
@@ -850,7 +991,7 @@ pub(crate) fn write_mail(shared: &Shared, number: &str) -> String {
 /// invoice address among the recipients it reached. A mail merely tied to
 /// an invoice (a reminder, an agent's draft) marks nothing (the review of
 /// phase 3, F5). Called by the send path, before the draft goes.
-pub(crate) fn sent_with(draft: &sioul_core::compose::Draft, missed: &[String]) {
+pub(crate) fn sent_with(shared: &Shared, draft: &sioul_core::compose::Draft, missed: &[String]) {
     let numbers: Vec<String> = draft.links.iter().filter_map(|l| l.strip_prefix("sioul:invoice/")).map(sioul_core::notes::decode).collect();
     if numbers.is_empty() {
         return;
@@ -858,9 +999,13 @@ pub(crate) fn sent_with(draft: &sioul_core::compose::Draft, missed: &[String]) {
     let folder = invoice::folder();
     let attached: Vec<String> = draft.attachments.iter().filter_map(|p| invoice::kept::sha256_of(p)).collect();
     let clients = clients_now();
+    // The client's addresses as "Write the mail" resolves them: the record's, its profile's, its contact's card's; your own, which reach no client.
+    let world = world(shared);
+    let contacts = &world.contacts;
+    let own: Vec<String> = load_config().accounts.iter().filter_map(|a| a.address.as_deref()).map(address_of).collect();
     for number in numbers {
         let Some(found) = invoice::find_in(&folder, &number) else { continue };
-        if !delivered(&found, draft, &attached, missed, &clients) {
+        if !delivered(&found, draft, &attached, missed, &clients, contacts, &own) {
             continue;
         }
         if let Err(e) = life::mark_sent(&folder, &projects::device(), &number, today()) {
@@ -869,13 +1014,19 @@ pub(crate) fn sent_with(draft: &sioul_core::compose::Draft, missed: &[String]) {
     }
 }
 
-/// Whether a mail that left carried the invoice to its client: its file
-/// among `attached` (the attachments' hashes), and the client's invoice
-/// address among the recipients its server took (not `missed`).
-fn delivered(found: &Invoice, draft: &sioul_core::compose::Draft, attached: &[String], missed: &[String], clients: &Clients) -> bool {
+/// Whether a mail that left carried the invoice to its client (the review
+/// of phase 3, F5; the second, R11): its file among `attached` (the
+/// attachments' hashes), and, among the recipients its server took (not
+/// `missed`), either a known address of the client (the record's, its
+/// profile's, its contact's card's), or, for the mail "Write the mail"
+/// drafted for this invoice (`Draft::invoice`), anyone who is not you
+/// (`own`): an address typed in that mail counts, your own copy alone does not.
+fn delivered(found: &Invoice, draft: &sioul_core::compose::Draft, attached: &[String], missed: &[String], clients: &Clients, contacts: &[sioul_core::contacts::Contact], own: &[String]) -> bool {
     let missed: Vec<String> = missed.iter().map(|m| address_of(m)).collect();
     let reached: Vec<String> = draft.to.iter().chain(&draft.cc).chain(&draft.bcc).map(|r| address_of(r)).filter(|a| !a.is_empty() && !missed.contains(a)).collect();
-    carried(found, draft, attached) && invoice_addresses(found, clients).iter().any(|a| reached.contains(a))
+    let known = invoice_addresses(found, clients, contacts).iter().any(|a| reached.contains(a));
+    let its_mail = draft.invoice == found.number && reached.iter().any(|a| !own.contains(a));
+    carried(found, draft, attached) && (known || its_mail)
 }
 
 /// A recipient's address, in small letters: "Anna <anna@example.org>" is "anna@example.org".
@@ -894,10 +1045,12 @@ fn carried(found: &Invoice, draft: &sioul_core::compose::Draft, attached: &[Stri
     attached.contains(&found.file_sha256)
 }
 
-/// Where the invoice goes by mail: the record's client address, its profile's.
-fn invoice_addresses(found: &Invoice, clients: &Clients) -> Vec<String> {
-    let profile = clients::resolve(&found.client_ref, clients, &[]).1.map(|p| p.email.clone()).unwrap_or_default();
-    [found.client.email.as_str(), profile.as_str()].iter().map(|e| address_of(e)).filter(|e| !e.is_empty()).collect()
+/// Where the invoice goes by mail, as "Write the mail" resolves it: the
+/// record's client address, its profile's, its contact's card's.
+fn invoice_addresses(found: &Invoice, clients: &Clients, contacts: &[sioul_core::contacts::Contact]) -> Vec<String> {
+    let (client, profile) = clients::resolve(&found.client_ref, clients, contacts);
+    let profile = profile.map(|p| p.email.clone()).unwrap_or_default();
+    [found.client.email.as_str(), client.email.as_str(), profile.as_str()].iter().map(|e| address_of(e)).filter(|e| !e.is_empty()).collect()
 }
 
 // ---------------------------------------------------------------- clients
@@ -1066,6 +1219,7 @@ pub(crate) fn save_client_profile(form: &str) -> String {
     }
     match clients::change(&clients::file_in(&root), form.id.trim(), &change) {
         Ok(id) => json!({ "id": id }).to_string(),
+        Err(e) if e == clients::GONE => refused(tr().text("invoices-client-changed-elsewhere", None)),
         Err(e) => refused(e),
     }
 }
@@ -1097,7 +1251,7 @@ pub(crate) fn set_client_traits(shared: &Arc<Shared>, id: &str, kind: &str, coun
         Err(e) => return refused(e),
     };
     if let Err(e) = clients::change(&clients::file_in(&root), profile.map_or("", |p| p.id.as_str()), &change) {
-        return refused(e);
+        return refused(if e == clients::GONE { tr().text("invoices-client-changed-elsewhere", None) } else { e });
     }
     draft(shared, id)
 }
@@ -1397,7 +1551,37 @@ pub(crate) fn read_amount_in(text: &str, language: &str) -> Option<f64> {
     if language != "fr" && text.contains(',') && text.split('.').next().unwrap_or("").split(',').skip(1).any(|g| g.len() != 3) {
         return None;
     }
+    if language == "fr" {
+        // "1.500", "12.500": a dot before exactly three digits, no comma
+        // after, is thousands to many hands and decimals to Sioul: refused,
+        // never read as the smaller number (the second review of phase 3,
+        // R14); "12.50" and "1.5" stay decimals.
+        if !text.contains(',') && text.rsplit_once('.').is_some_and(|(_, after)| after.len() == 3 && after.bytes().all(|b| b.is_ascii_digit())) {
+            return None;
+        }
+        // A space groups three digits: "12 5" and "1 50" are no amounts.
+        let whole = text.split([',', '.']).next().unwrap_or("");
+        if whole.split([' ', '\u{a0}', '\u{202f}']).skip(1).any(|g| g.len() != 3) {
+            return None;
+        }
+    }
     cleaned.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+/// A number typed that is no money (a quantity, a rate), read as an amount
+/// is (`read_amount_in`) and said back as the window's language writes it:
+/// {"ok", "value", "words"}, "= 2.5"; an empty text asks for one (the
+/// second review of phase 3, R1).
+pub(crate) fn read_number(text: &str) -> String {
+    let language = tr().language();
+    match read_amount_in(text, language) {
+        Some(value) => {
+            let plain = format!("{value}");
+            json!({ "ok": true, "value": value, "words": format!("= {}", if language == "fr" { plain.replace('.', ",") } else { plain }) }).to_string()
+        }
+        None if text.trim().is_empty() => json!({ "ok": false, "value": 0, "words": tr().text("invoices-number-missing", None) }).to_string(),
+        None => json!({ "ok": false, "value": 0, "words": tr().text("invoices-amount-unread", None) }).to_string(),
+    }
 }
 
 /// An amount typed, read: {"ok", "value", "words"}: "words" says what it
@@ -1484,6 +1668,9 @@ mod tests {
         assert_eq!((en("1,50"), en("1.500.00"), en("12abc"), en("")), (None, None, None, None));
         assert_eq!((fr("1 500,50"), fr("1\u{202f}500"), fr("1\u{a0}500,5"), fr("751,66"), fr("12.5")), (Some(1500.5), Some(1500.0), Some(1500.5), Some(751.66), Some(12.5)));
         assert_eq!((fr("1,5,0"), fr("douze")), (None, None));
+        // In French a dot before exactly three digits is refused, and a space groups three digits only (the second review, R14).
+        assert_eq!((fr("1.500"), fr("12.500"), fr("12 5"), fr("1 50"), fr("1 500 00")), (None, None, None, None, None));
+        assert_eq!((fr("12.50"), fr("1.5"), fr("1.500,50"), fr("1 500"), fr("12 500,5")), (Some(12.5), Some(1.5), None, Some(1500.0), Some(12500.5)));
     }
 
     /// A VAT scheme's day as people type it is written as a day; one that
@@ -1506,10 +1693,26 @@ mod tests {
         mail.to = vec!["Anna Exemple <Anna@Example.org>".into()];
         mail.cc = vec!["me@example.org".into()];
         let none = Clients::default();
-        assert!(!delivered(&found, &mail, &[], &[], &none), "no file: a reminder");
-        assert!(delivered(&found, &mail, &["ab12".into()], &[], &none));
-        assert!(!delivered(&found, &mail, &["ab12".into()], &["anna@example.org".into()], &none), "the client's address refused, the copy taken");
-        assert!(!delivered(&found, &mail, &["ff00".into()], &[], &none), "another file");
+        let own = vec!["me@example.org".to_string()];
+        let sent = |found: &Invoice, mail: &sioul_core::compose::Draft, attached: &[&str], missed: &[&str], contacts: &[sioul_core::contacts::Contact]| {
+            delivered(found, mail, &attached.iter().map(|a| a.to_string()).collect::<Vec<_>>(), &missed.iter().map(|m| m.to_string()).collect::<Vec<_>>(), &none, contacts, &own)
+        };
+        assert!(!sent(&found, &mail, &[], &[], &[]), "no file: a reminder");
+        assert!(sent(&found, &mail, &["ab12"], &[], &[]));
+        assert!(!sent(&found, &mail, &["ab12"], &["anna@example.org"], &[]), "the client's address refused, the copy taken");
+        assert!(!sent(&found, &mail, &["ff00"], &[], &[]), "another file");
+        // A client with no address known (the second review of phase 3, R11): the mail "Write the mail" drafted for it, sent to an address typed, marks it; a mail merely tied to it does not; nor your own copy alone.
+        let unknown = Invoice { client: invoice::Client::default(), ..found.clone() };
+        mail.to = vec!["billing@example.org".into()];
+        assert!(!sent(&unknown, &mail, &["ab12"], &[], &[]), "tied, not its own mail");
+        mail.invoice = "2026-005".into();
+        assert!(sent(&unknown, &mail, &["ab12"], &[], &[]), "its own mail, to an address typed");
+        assert!(!sent(&unknown, &mail, &["ab12"], &["billing@example.org"], &[]), "only your own copy left");
+        // The contact's card got its address after the invoice was issued: known, as Write the mail resolves it.
+        mail.invoice.clear();
+        let card = sioul_core::contacts::Contact { uid: "lumen-1".into(), name: "Studio Lumen".into(), emails: vec![sioul_core::contacts::Labeled { label: String::new(), value: "billing@example.org".into() }], ..Default::default() };
+        let of_card = Invoice { client_ref: "sioul:contact/lumen-1".into(), ..unknown.clone() };
+        assert!(sent(&of_card, &mail, &["ab12"], &[], std::slice::from_ref(&card)));
     }
 
     /// A draft saved as it is typed reads no store again and keeps what
@@ -1567,6 +1770,42 @@ mod tests {
         std::fs::write(&ledger, std::fs::read_to_string(&ledger).unwrap().replace("2026-11-10", "2026-11-12")).unwrap();
         assert!(put_line_back(Some(&ledger), link, line, paid_on).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A draft changed here that an exchange replaced is named, so that it
+    /// is said; one that went out as it was, or that this window wrote again
+    /// since, is not (the second review of phase 3, R2).
+    #[test]
+    fn a_draft_replaced_by_the_exchange_is_named() {
+        sioul_core::config::stand_ins_only();
+        let folder = invoice::folder();
+        let draft = |name: &str| invoice::save_draft(&folder, &Invoice { kind: Kind::Invoice, currency: "EUR".into(), client: invoice::Client { name: name.into(), ..invoice::Client::default() }, ..Invoice::default() }).unwrap().draft;
+        let (lost, sent, again) = (draft("Studio Lumen"), draft("Atelier Nord"), draft("Fernhill"));
+        let tracked: std::collections::BTreeMap<String, String> = [&lost, &sent, &again].iter().map(|id| (id.to_string(), invoice::draft_revision(&folder, id))).collect();
+        // The exchange brings another version of the first; the third is written again here meanwhile.
+        let config = load_config();
+        life::change_draft(&folder, &lost, &config.invoice, today(), |d| d.order = "from the phone".into()).unwrap();
+        life::change_draft(&folder, &again, &config.invoice, today(), |d| d.order = "typed since".into()).unwrap();
+        let since: std::collections::BTreeMap<String, String> = [(again.clone(), invoice::draft_revision(&folder, &again))].into();
+        assert_eq!(replaced_among(&folder, &tracked, &since), ["Studio Lumen"]);
+        for id in [&lost, &sent, &again] {
+            let _ = invoice::remove_draft(&folder, id);
+        }
+    }
+
+    /// Final invoice… ticks the deposit it was pressed on and leaves the
+    /// draft's other ticks as they are; only a draft it just made also takes
+    /// the project's other deposits, never another project's (R9).
+    #[test]
+    fn final_invoice_ticks_what_it_was_pressed_on() {
+        let deposit = |number: &str, project: &str, of: &str| Invoice { number: number.into(), kind: Kind::Deposit, project: project.into(), deposit_of: of.into(), ..Invoice::default() };
+        let (pressed, same_project, other_project, same_draft) = (deposit("2026-010", "site", "d1"), deposit("2026-011", "site", ""), deposit("2026-012", "shop", ""), deposit("2026-013", "", "d1"));
+        let there = Invoice { deposits: vec![invoice::Cited { number: "2026-012".into(), date: String::new(), amount: 1 }], ..Invoice::default() };
+        let blank = Invoice::default();
+        // A draft that was there: the one pressed, and what it ticks already; nothing else.
+        assert_eq!([&pressed, &same_project, &other_project, &same_draft].map(|o| final_ticks(o, &pressed, &there, false)), [true, false, true, false]);
+        // A draft this press just made: the project's others and those of the same draft too, never another project's.
+        assert_eq!([&pressed, &same_project, &other_project, &same_draft].map(|o| final_ticks(o, &pressed, &blank, true)), [true, true, false, true]);
     }
 
     /// A list's row of Settings ▸ Invoices made a table: empty texts left
