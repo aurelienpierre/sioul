@@ -11001,6 +11001,86 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// What you say of each device (`[device."<id>"]`,
+    /// `sioul_core::device_said`) travels with the settings, one entry per
+    /// field: a name given on one device and an area set on another, for the
+    /// same id, both stay; lines for two ids set on two devices both stay; a
+    /// field taken out goes everywhere, the others staying; said twice, the
+    /// later holds, as any setting. What this device is (`device_kind`) stays
+    /// on it. A cell this Sioul does not know, written by a newer one in a
+    /// device's table, travels and is kept by every writing: the sharing
+    /// names no table, and writes each field where it finds it.
+    #[test]
+    fn what_you_say_of_a_device_travels_field_by_field() {
+        use sioul_core::areas::Area;
+        use sioul_core::device_said::{name_of, said_area, set_area, set_name};
+        let base = scratch("devices-said");
+        let folder = base.join("Nextcloud").join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let tablet = uuid::Uuid::new_v4().to_string();
+        let (desk_config, phone_config) = (desk.path("config/config.toml"), phone.path("config/config.toml"));
+        let read = |computer: &Computer| Config::load(&computer.path("config/config.toml")).unwrap();
+        desk.write("config/config.toml", "language = \"en\"\ndevice_kind = \"computer\"\n");
+        phone.write("config/config.toml", "language = \"en\"\n");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+
+        // Said apart, before either hears the other: on the desk, its own name and what
+        // the phone is for; on the phone, what the desk is for, its own name, and a tablet's line.
+        set_name(&desk_config, &desk.id, "Work laptop").unwrap();
+        set_area(&desk_config, &phone.id, "admin+leisure").unwrap();
+        set_area(&phone_config, &desk.id, "work").unwrap();
+        set_name(&phone_config, &phone.id, "Pocket").unwrap();
+        set_area(&phone_config, &tablet, "leisure").unwrap();
+        assert!(desk.exchange(&folder, &key, NOW + 3 * MINUTE).sent > 0);
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+        for computer in [&desk, &phone] {
+            let config = read(computer);
+            let text = computer.read("config/config.toml");
+            assert_eq!((name_of(&config, &desk.id), said_area(&config, &desk.id)), (Some("Work laptop"), Some(Area::WORK)), "a name here, an area there, the same device: {text}");
+            assert_eq!((name_of(&config, &phone.id), said_area(&config, &phone.id)), (Some("Pocket"), Some(Area::PERSONAL)), "{text}");
+            assert_eq!((name_of(&config, &tablet), said_area(&config, &tablet)), (None, Some(Area::LEISURE)), "a line set on one device alone: {text}");
+        }
+        assert!(desk.read("config/config.toml").contains("device_kind = \"computer\"") && !phone.read("config/config.toml").contains("device_kind"), "what a device is stays on it");
+        assert_eq!(desk.exchange(&folder, &key, NOW + 6 * MINUTE).sent, 0, "nothing changed: nothing goes out");
+        assert_eq!(phone.exchange(&folder, &key, NOW + 7 * MINUTE).sent, 0);
+
+        // A field taken out on one device goes on the other, the other field staying;
+        // the same field said on both: the later holds.
+        set_name(&phone_config, &desk.id, "").unwrap();
+        set_area(&desk_config, &tablet, "work").unwrap();
+        desk.exchange(&folder, &key, NOW + 8 * MINUTE);
+        set_area(&phone_config, &tablet, "admin").unwrap();
+        phone.exchange(&folder, &key, NOW + 9 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 10 * MINUTE);
+        for computer in [&desk, &phone] {
+            let config = read(computer);
+            assert_eq!((name_of(&config, &desk.id), said_area(&config, &desk.id)), (None, Some(Area::WORK)), "{}", computer.read("config/config.toml"));
+            assert_eq!(said_area(&config, &tablet), Some(Area::ADMIN), "said later on the phone");
+        }
+
+        // A newer Sioul's cells in a device's table, written by hand on the desk: they
+        // travel, and stay through this Sioul's own writing on the other device.
+        let newer = format!("{}\n[device.\"{}\".at]\nwork = \"work+leisure\"\n", desk.read("config/config.toml"), phone.id);
+        desk.write("config/config.toml", &newer.replacen("area = \"admin+leisure\"", "area = \"admin+leisure\"\nfollows = 2", 1));
+        desk.exchange(&folder, &key, NOW + 11 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 12 * MINUTE);
+        let text = phone.read("config/config.toml");
+        assert!(text.contains("follows = 2") && text.contains("work = \"work+leisure\""), "cells this Sioul does not read travel as they are: {text}");
+        set_name(&phone_config, &phone.id, "Pocket phone").unwrap();
+        phone.exchange(&folder, &key, NOW + 13 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 14 * MINUTE);
+        for computer in [&desk, &phone] {
+            let text = computer.read("config/config.toml");
+            assert!(text.contains("follows = 2") && text.contains("work = \"work+leisure\""), "{text}");
+            assert_eq!((name_of(&read(computer), &phone.id), said_area(&read(computer), &phone.id)), (Some("Pocket phone"), Some(Area::PERSONAL)), "{text}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn two_computers_agree() {
         let base = scratch("agree");

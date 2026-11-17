@@ -202,6 +202,16 @@ pub struct Entry {
     /// It stopped sharing: it counts no more.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// The parts it shares (`share::PARTS`: "settings", "health"…), as
+    /// chosen on it and never anywhere else (`share::Here::parts`), so that
+    /// the others can show them (Settings ▸ Devices, `device_table`): shown
+    /// only, no device reads them to decide anything. None from a device
+    /// that shares no part, and from an older Sioul, which says nothing of
+    /// them. Written again when it changes, as anything else the entry says
+    /// (`steady`). Sealed with the rest; an older Sioul reads the entry as
+    /// before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<String>,
     /// A phone's word on each computer it counts now: the opening (`started`)
     /// of that computer's entry it read, by the computer's id. A computer
     /// reminds a dose plainly as its first only once every phone's entry says
@@ -985,6 +995,81 @@ mod tests {
         let (entries, _) = all(&folder, &KEY);
         assert_eq!(entries[0].active, None);
         assert!(others_in_use(&entries, "phone", 1_100, false) && others_in_use(&entries, "phone", 1_100, true));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A device says the parts it shares, sealed in its entry: written into
+    /// the folder at once when they change, even put away, and not again
+    /// while they stay; an older Sioul reads the entry as before, the field
+    /// unknown to it passed over, and what the doses read of it is the same;
+    /// an older Sioul's entry, and a device that shares no part, say none.
+    #[test]
+    fn a_device_says_the_parts_it_shares_and_an_older_one_passes_over_them() {
+        /// The entry as Sioul 0.0.11 reads it, for what the doses and the list need.
+        #[derive(Deserialize)]
+        struct Older {
+            id: String,
+            #[serde(default)]
+            kind: String,
+            #[serde(default)]
+            form: String,
+            #[serde(default)]
+            started: i64,
+            #[serde(default)]
+            closed: i64,
+            working: bool,
+            #[serde(default)]
+            exported: i64,
+            #[serde(default)]
+            doses: bool,
+            #[serde(default)]
+            left: bool,
+        }
+        let dir = scratch("parts");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let own = own_path(&state);
+        let vault = Some((folder.as_path(), &KEY));
+        let file = file_of(&folder, &id);
+        let t = 1_800_000_000;
+        change_at(&own, vault, t, |e| {
+            e.id = id.clone();
+            e.kind = PHONE.into();
+            e.form = TABLET.into();
+            e.doses = true;
+            e.parts = vec!["settings".into(), "health".into()];
+            e.start(t);
+        })
+        .unwrap();
+        change_at(&own, vault, t + 5, |e| e.close(t + 5)).unwrap();
+        let read = all(&folder, &KEY).0.remove(0);
+        assert_eq!(read.parts, ["settings", "health"]);
+        let sealed = std::fs::read_to_string(&file).unwrap();
+        assert!(!sealed.contains("settings") && !sealed.contains("health"), "sealed: the server never learns what a device shares");
+        let said = read.said();
+        // An older Sioul reads it, the field passed over.
+        let plain = crate::share::open(&KEY, &bound(&id), sealed.trim()).unwrap();
+        assert!(String::from_utf8_lossy(&plain).contains("\"parts\":[\"settings\",\"health\"]"));
+        let older: Older = serde_json::from_slice(&plain).expect("an older Sioul reads it");
+        assert_eq!((older.id.as_str(), older.kind.as_str(), older.form.as_str(), older.started, older.closed, older.working, older.exported, older.doses, older.left), (id.as_str(), PHONE, TABLET, t, t + 5, false, 0, true, false));
+        // Put away, the same parts said again: nothing written; a part switched off: written at once.
+        let before = std::fs::read(&file).unwrap();
+        change_at(&own, vault, t + 60, |e| e.parts = vec!["settings".into(), "health".into()]).unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), before, "said already: its entry stays as it is");
+        change_at(&own, vault, t + 120, |e| e.parts = vec!["settings".into()]).unwrap();
+        assert_ne!(std::fs::read(&file).unwrap(), before, "changed: written though the device is put away");
+        let read = all(&folder, &KEY).0.remove(0);
+        assert_eq!(read.parts, ["settings"]);
+        assert_eq!(read.said(), said, "the doses read the same of it, whatever it shares");
+        // Kept here too, as TOML, and read back.
+        assert_eq!(super::own(&own).parts, ["settings"]);
+        // No part shared: the field left out, as from an older Sioul, whose entry says none.
+        change_at(&own, vault, t + 180, |e| e.parts.clear()).unwrap();
+        let plain = crate::share::open(&KEY, &bound(&id), std::fs::read_to_string(&file).unwrap().trim()).unwrap();
+        assert!(!String::from_utf8_lossy(&plain).contains("parts"));
+        let older = serde_json::json!({ "id": id, "kind": "phone", "started": t, "working": true });
+        std::fs::write(&file, crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
+        assert!(all(&folder, &KEY).0[0].parts.is_empty(), "an older Sioul's: none said");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
