@@ -193,8 +193,8 @@ pub fn draft_id_ok(id: &str) -> bool {
 }
 
 /// A draft's file name made its id: as it is when it is one; a sync app's
-/// conflicted copy of a draft ("<id> (conflicted copy …)", "<id>.sync-
-/// conflict-…") given one of its own, letters, digits and dashes, with the
+/// conflicted copy of a draft (`<id> (conflicted copy …)`,
+/// `<id>.sync-conflict-…`) given one of its own, letters, digits and dashes, with the
 /// id it is a copy of.
 fn draft_file_id(stem: &str) -> Option<(String, String)> {
     if draft_id_ok(stem) {
@@ -217,26 +217,65 @@ pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-        .filter_map(|p| {
-            let (id, copy_of) = draft_file_id(&p.file_stem()?.to_string_lossy())?;
-            let mut draft = std::fs::read_to_string(&p).ok().and_then(|t| record::read(&t))?;
-            draft.draft = id;
-            draft.copy_of = copy_of;
-            draft.number.clear();
-            Some(draft)
-        })
+        .filter_map(|p| read_draft(&p))
         .collect();
     out.sort_by(|a, b| b.draft.cmp(&a.draft).then_with(|| a.copy_of.cmp(&b.copy_of)));
     out.dedup_by(|a, b| a.draft == b.draft);
     out
 }
 
-/// One draft of `dir`, by its id.
+/// One draft of `dir`, by its id: its one file read (its own, else the
+/// conflicted copy whose id it is), never the folder (the second review of
+/// phase 3, R4).
 pub fn draft_in(dir: &Path, id: &str) -> Option<Invoice> {
     if !draft_id_ok(id) {
         return None;
     }
-    drafts_in(dir).into_iter().find(|d| d.draft == id)
+    read_draft(&draft_file(dir, id)?)
+}
+
+/// A draft read from its file: its id is its file's name; lines without an
+/// id (a draft from before lines had one) are named in memory, alike on
+/// every device, from the draft's id and the line's place: reading never
+/// writes, and the names are kept with the first real change (R3).
+fn read_draft(path: &Path) -> Option<Invoice> {
+    let (id, copy_of) = draft_file_id(&path.file_stem()?.to_string_lossy())?;
+    let mut draft = std::fs::read_to_string(path).ok().and_then(|t| record::read(&t))?;
+    draft.draft = id;
+    draft.copy_of = copy_of;
+    draft.number.clear();
+    for place in 0..draft.lines.len() {
+        if draft.lines[place].id.is_empty() {
+            draft.lines[place].id = kept::sha256(format!("{}/{place}", draft.draft).as_bytes()).chars().take(10).collect();
+        }
+    }
+    Some(draft)
+}
+
+/// The draft `id`'s file as it is, byte for byte (Discard's Undo writes it back so: R13).
+pub fn draft_bytes(dir: &Path, id: &str) -> Option<Vec<u8>> {
+    std::fs::read(draft_file(dir, id)?).ok()
+}
+
+/// A draft's file written back byte for byte (Discard's Undo), whatever
+/// Sioul wrote it: nothing of it is read nor made again.
+pub fn restore_draft(dir: &Path, id: &str, bytes: &[u8]) -> Result<(), String> {
+    if !draft_id_ok(id) {
+        return Err(format!("“{id}” is no draft's id"));
+    }
+    let path = dir.join(DRAFTS).join(format!("{id}.toml"));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    crate::filelock::replace(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::changes::said(crate::changes::Kind::Invoices);
+    Ok(())
+}
+
+/// `f` with the lock on the draft `id`'s file held, the one the sharing
+/// takes to write it: a draft's read, change and write are one step (R4).
+pub fn with_draft_lock<T>(dir: &Path, id: &str, f: impl FnOnce() -> T) -> T {
+    crate::filelock::with_lock(&dir.join(DRAFTS).join(format!("{id}.toml")), f)
 }
 
 /// The file holding the draft `id` of `dir`: its own, else the conflicted copy whose id it is.
@@ -284,9 +323,7 @@ pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
-    crate::changes::said(crate::changes::Kind::Invoices);
-    Ok(())
+    crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// A draft's revision: the SHA-256 of its file's bytes as they are now, cut
@@ -333,6 +370,7 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
     let text = toml::to_string(&draft).map_err(|e| e.to_string())?;
     let copy = draft_file(dir, &draft.draft).filter(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() != draft.draft));
     write_whole(&dir.join(DRAFTS).join(format!("{}.toml", draft.draft)), &text)?;
+    crate::changes::said(crate::changes::Kind::Invoices);
     // A conflicted copy kept under its own id from now on: its file of before goes.
     if let Some(copy) = copy {
         let _ = std::fs::remove_file(copy);
@@ -385,13 +423,16 @@ pub(crate) fn write_new(dir: &Path, invoice: &Invoice) -> Result<PathBuf, String
     invoice.format = record::FORMAT;
     let text = toml::to_string(&invoice).map_err(|e| e.to_string())?;
     write_whole(&path, &text)?;
+    crate::changes::said(crate::changes::Kind::Issued);
     Ok(path)
 }
 
 /// An issued record taken out: only to undo an issue that failed halfway.
 pub(crate) fn remove_issued(dir: &Path, number: &str) -> Result<(), String> {
     let path = dir.join(file_name(number));
-    std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::changes::said(crate::changes::Kind::Issued);
+    Ok(())
 }
 
 #[cfg(test)]

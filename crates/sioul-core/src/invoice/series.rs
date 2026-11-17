@@ -294,7 +294,9 @@ impl Journal {
             return Err(format!("{}: written by a newer Sioul; update Sioul on this device to issue invoices here.", path.display()));
         }
         let text = toml::to_string(&Journal { format: FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
-        super::write_whole(&path, &text)
+        super::write_whole(&path, &text)?;
+        crate::changes::said(crate::changes::Kind::Issued);
+        Ok(())
     }
 
     /// The journals of `dir` a newer Sioul wrote: read where they can be, never written here.
@@ -315,12 +317,24 @@ impl Journal {
 /// The next number of `pattern` on `day`, and its counter: one more than
 /// the largest of the journal, of `records` (unreadable ones too) and of
 /// `claimed` (every device's claim, `sioul_sync::lease::Claim::series`).
+/// A counter that never starts again, in a number with its year, goes on
+/// from the last number issued (the latest record's, and this year's own
+/// largest, journal and claims with it, so that no number is given twice),
+/// never from the largest of every year: "never from 1 again" chosen after
+/// 2025-041 and 2026-016 gives 2026-017, not 2026-042 (the second review of
+/// phase 3, R12).
 pub fn next(pattern: &Pattern, day: Date, journal: &Journal, records: &[Invoice], claimed: &BTreeMap<String, u64>) -> (String, u64) {
-    let sequence = pattern.sequence(day);
-    let in_records = records.iter().filter_map(|r| pattern.counter(day, &r.number)).max().unwrap_or(0);
-    let in_journal = journal.series.get(&sequence).map_or(0, |l| l.last);
-    let in_claims = claimed.get(&sequence).copied().unwrap_or(0);
-    let n = in_records.max(in_journal).max(in_claims).saturating_add(1);
+    let known = |sequence: &str| journal.series.get(sequence).map_or(0, |l| l.last).max(claimed.get(sequence).copied().unwrap_or(0));
+    let with_year = pattern.parts.iter().any(|p| matches!(p, Part::Year4 | Part::Year2));
+    let in_records = match pattern.with_reset(Reset::Yearly) {
+        Ok(yearly) if pattern.reset == Reset::Never && with_year => {
+            let last = records.iter().filter_map(|r| pattern.counter(day, &r.number).map(|n| (r.date.as_str(), n))).max().map_or(0, |(_, n)| n);
+            let this_year = records.iter().filter_map(|r| yearly.counter(day, &r.number)).max().unwrap_or(0);
+            last.max(this_year).max(known(&yearly.sequence(day)))
+        }
+        _ => records.iter().filter_map(|r| pattern.counter(day, &r.number)).max().unwrap_or(0),
+    };
+    let n = in_records.max(known(&pattern.sequence(day))).saturating_add(1);
     (pattern.number(day, n), n)
 }
 
@@ -359,6 +373,30 @@ mod tests {
 
     fn numbered(numbers: &[&str]) -> Vec<Invoice> {
         numbers.iter().map(|n| Invoice { number: n.to_string(), ..Invoice::default() }).collect()
+    }
+
+    /// "Never from 1 again" on a numbering with its year goes on from the
+    /// last number issued, never from the largest of every year (the second
+    /// review of phase 3, R12); no number of the year is given twice.
+    #[test]
+    fn never_from_1_again_goes_on_from_the_last_number() {
+        let never = Pattern::parse(PATTERN, Reset::Never).unwrap();
+        let dated = |pairs: &[(&str, &str)]| -> Vec<Invoice> { pairs.iter().map(|(n, d)| Invoice { number: n.to_string(), date: d.to_string(), ..Invoice::default() }).collect() };
+        let (none, claims) = (Journal::default(), BTreeMap::new());
+        let records = dated(&[("2025-041", "2025-12-18"), ("2026-015", "2026-11-02"), ("2026-016", "2026-11-10")]);
+        assert_eq!(next(&never, day("2026-11-17"), &none, &records, &claims).0, "2026-017");
+        // The year after: on from 2026's last, never from 1, never from 2025's 41.
+        assert_eq!(next(&never, day("2027-01-05"), &none, &records, &claims).0, "2027-017");
+        // A number of this year above the last by date is never given twice.
+        let odd = dated(&[("2026-030", "2026-03-01"), ("2026-016", "2026-11-10")]);
+        assert_eq!(next(&never, day("2026-11-17"), &none, &odd, &claims).0, "2026-031");
+        // What this year's journal gave under the yearly sequence, its record not here, counts too.
+        let mut journal = Journal::default();
+        journal.series.insert("2026-{N:3}".into(), Last { last: 20, ..Last::default() });
+        assert_eq!(next(&never, day("2026-11-17"), &journal, &records, &claims).0, "2026-021");
+        // Without the year in the number, as before: one more than the largest.
+        let plain = Pattern::parse("F-{N:3}", Reset::Never).unwrap();
+        assert_eq!(next(&plain, day("2027-01-02"), &none, &numbered(&["F-041", "F-007"]), &claims).0, "F-042");
     }
 
     #[test]

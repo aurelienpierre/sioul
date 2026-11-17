@@ -55,10 +55,15 @@ pub enum Kind {
     /// profiles (`sioul-clients.toml`). Told to the views that show them
     /// alone: a draft saved as it is typed never makes the day again.
     Invoices,
+    /// An issued invoice's record, a life (payments, sent, declared) or a
+    /// numbering journal: what the ties, the Time page and the books read. A
+    /// draft says `Invoices` alone, so that saving one as it is typed reads
+    /// nothing again (the second review of phase 3, R15).
+    Issued,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 14] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices];
+    pub const ALL: [Kind; 15] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices, Kind::Issued];
 
     /// Its place among the kinds, for a set of them as bits.
     pub fn bit(self) -> u32 {
@@ -82,6 +87,7 @@ impl Kind {
             Kind::Accounts => "accounts",
             Kind::Topics => "topics",
             Kind::Invoices => "invoices",
+            Kind::Issued => "issued",
         }
     }
 }

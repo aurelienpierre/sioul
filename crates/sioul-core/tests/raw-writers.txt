@@ -359,6 +359,7 @@ sioul-core/src/invoice/mod.rs	write_whole	1	crate::filelock::replace(path, text.
 sioul-core/src/invoice/mod.rs	save_draft	1	write_whole(&dir.join(DRAFTS).join(format!("{}.toml", draft.draft)), &text)
 sioul-core/src/invoice/mod.rs	save_draft	1	std::fs::remove_file(copy)
 sioul-core/src/invoice/mod.rs	remove_draft	1	std::fs::remove_file(&path)
+sioul-core/src/invoice/mod.rs	restore_draft	1	crate::filelock::replace(&path, bytes)
 sioul-core/src/invoice/mod.rs	write_new	1	write_whole(&path, &text)
 sioul-core/src/invoice/mod.rs	remove_issued	1	std::fs::remove_file(&path)
 

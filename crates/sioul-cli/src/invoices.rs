@@ -127,6 +127,10 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
         InvoicesCommand::Issue { draft } => issue(s, &draft),
         InvoicesCommand::Credit { number, line } => credit(s, &number, &line),
         InvoicesCommand::Discard { draft } => {
+            // A newer Sioul's draft is never taken out here: the removal would travel, and nothing here could write it back (the second review of phase 3, R13).
+            if invoice::draft_in(&invoice::folder(), &draft).is_some_and(|d| d.newer) {
+                return Err(s.tr.text("invoice-draft-newer", None));
+            }
             if invoice::remove_draft(&invoice::folder(), &draft)? {
                 println!("{}", s.say("invoice-cli-discarded", &[("id", draft)]));
                 Ok(())
@@ -321,6 +325,8 @@ fn draft(s: &Session, id: &str) -> Result<(), String> {
     let clients = sioul_core::clients::Clients::load(&root).unwrap_or_default();
     let blank = life::for_client(&s.config.invoice, project.client.as_deref().unwrap_or(""), &clients, &loaded.contacts, s.tr.language(), today());
     let records = invoice::all_in(&invoice::folder());
+    // Never time a draft holds already, nor time taken out of one of the project's drafts (the second review of phase 3, R15).
+    let entries = life::untaken(entries, &invoice::drafts_in(&invoice::folder()), &project.id);
     let made = life::from_time(&entries, &project, blank, &records, &s.config.invoice, today()).ok_or_else(|| s.tr.text("invoice-nothing", None))?;
     let saved = invoice::save_draft(&invoice::folder(), &made)?;
     println!("{}", s.say("invoice-cli-drafted", &[("id", saved.draft.clone())]));
@@ -390,7 +396,11 @@ fn issue(s: &Session, id: &str) -> Result<(), String> {
     let budget = project.and_then(|p| p.budget.clone()).unwrap_or_default();
     let clients = root.as_ref().and_then(|r| sioul_core::clients::Clients::load(r).ok()).unwrap_or_default();
     let steps = life::Steps { time: None, ledger: ledger.as_deref().map(|l| (l, budget.as_str())), clients: Some((&clients, &loaded.contacts)) };
-    let issued = life::issue(&folder, id, &s.config.invoice, today(), &numbering, &steps, &s.tr)?;
+    // Read and issued in one step: the revision is the one just read (R6).
+    let revision = invoice::draft_revision(&folder, id);
+    let issued = life::issue_as_read(&folder, id, &revision, &s.config.invoice, today(), &numbering, &steps, &s.tr).map_err(|e| match e {
+        life::NotIssued::Moved(why) | life::NotIssued::Refused(why) => why,
+    })?;
     claim_numbers(sharing, &numbering.device);
     println!("{}", s.say("invoice-cli-issued", &[("number", issued.number.clone()), ("amount", s.tr.money_in(issued.total(), &issued.currency))]));
     // What the issue found to say (a file set aside), and the checks' notes (no Factur-X data, an IBAN whose key fails…).

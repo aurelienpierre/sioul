@@ -314,6 +314,48 @@ pub fn time_lines(entries: &[Entry], project: &Project) -> Vec<(String, u32, Vec
     grouped.into_iter().map(|(_, label, minutes, keys)| (label, minutes, keys)).collect()
 }
 
+/// The time no draft holds and none of the project's drafts set aside:
+/// what a draft of the project's time may still take, so that the same
+/// hours are never in two drafts, nor back where they were taken out (the
+/// review of phase 3, F9; the window, the command line and the agents'
+/// tool alike: the second review, R15).
+pub fn untaken(entries: Vec<Entry>, drafts: &[Invoice], project: &str) -> Vec<Entry> {
+    let held: std::collections::BTreeSet<String> = drafts.iter().flat_map(Invoice::sessions).collect();
+    let aside: std::collections::BTreeSet<&String> = drafts.iter().filter(|d| d.project == project).flat_map(|d| d.set_aside.iter()).collect();
+    entries.into_iter().filter(|e| !held.contains(&e.key) && !aside.contains(&e.key)).collect()
+}
+
+/// The project's draft of its time: the one that holds some (the newest
+/// first), else its newest, among the drafts `usable` takes.
+pub fn draft_of_project<'a>(drafts: &'a [Invoice], project: &str, usable: &dyn Fn(&Invoice) -> bool) -> Option<&'a Invoice> {
+    let mine: Vec<&Invoice> = drafts.iter().filter(|d| d.project == project && d.kind == Kind::Invoice && d.copy_of.is_empty() && !d.newer && usable(d)).collect();
+    mine.iter().find(|d| !d.sessions().is_empty()).or_else(|| mine.first()).copied()
+}
+
+/// Lines of time added to a draft: each joins the draft's line of time of
+/// the same words and hourly price (its minutes and its sessions), else it
+/// is a line of its own; so that a project's "to bill", which rounds each
+/// label's time once, and its draft agree to the cent (R15). Returns the
+/// lines and the minutes added.
+pub fn add_time(draft: &mut Invoice, more: Vec<Line>) -> (usize, u32) {
+    let (count, minutes) = (more.len(), more.iter().filter_map(Line::minutes).sum());
+    for line in more {
+        match draft.lines.iter_mut().find(|l| super::edit::timed(l) && l.description == line.description && l.price == line.price && l.base == line.base && l.unit == line.unit && l.discount == 0) {
+            Some(there) => {
+                there.quantity += line.quantity;
+                there.sessions.extend(line.sessions);
+            }
+            None => draft.lines.push(line),
+        }
+    }
+    (count, minutes)
+}
+
+/// The minutes of the time set aside in a draft, as its sessions' keys say them.
+pub fn set_aside_minutes(draft: &Invoice) -> u32 {
+    draft.set_aside.iter().filter_map(|key| key.rsplit(':').next()?.parse::<u32>().ok()).sum()
+}
+
 /// What a project's time not billed yet comes to at `price` (cents an
 /// hour), each of its lines rounded to the cent as its invoice rounds them
 /// (`Line::net`): the project's "to bill" and the invoice made of it are
@@ -466,9 +508,13 @@ pub fn deposits_open<'a>(draft: &Invoice, all: &'a [Invoice]) -> Vec<&'a Invoice
         .collect()
 }
 
-/// A draft's deposits made again from the records: what is left of each
-/// after its credit notes; the day it was issued.
+/// An invoice draft's deposits made again from the records: what is left of
+/// each after its credit notes; the day it was issued. A credit note keeps
+/// the amounts of the invoice it cancels (the second review of phase 3, R7).
 pub fn recite(draft: &mut Invoice, all: &[Invoice]) {
+    if draft.kind != Kind::Invoice {
+        return;
+    }
     for cited in &mut draft.deposits {
         if let Some(deposit) = all.iter().find(|r| r.number == cited.number && r.kind == Kind::Deposit && !r.unreadable) {
             cited.amount = deposit_left(deposit, all);
@@ -601,16 +647,32 @@ fn legal_notes(draft: &Invoice, s: &InvoiceSettings, preset: &Preset) -> Vec<Not
 /// its notes), then made again as it would be issued on `day` (`refresh`)
 /// and kept; an issued invoice is never changed: a credit note answers it.
 pub fn change_draft(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, change: impl FnOnce(&mut Invoice)) -> Result<Invoice, String> {
-    let mut draft = super::draft_in(dir, id).ok_or_else(|| format!("{id}: no such draft here"))?;
-    // Written by a newer Sioul: never written over with what this one does not know.
-    if draft.newer {
-        return Err(format!("{id}: written by a newer Sioul; update Sioul on this device to change it."));
-    }
-    change(&mut draft);
-    draft.number.clear();
-    draft.draft = id.to_string();
-    refresh(&mut draft, s, day);
-    super::save_draft(dir, &draft)
+    change_draft_read(dir, id, s, day, |draft, _| change(draft))
+}
+
+/// `change_draft`, its change given the draft's revision as it is read
+/// under the lock: the draft's one file is read, changed and written in
+/// one step, under the lock the sharing takes to write it, so that no
+/// other writer's change is lost between the read and the write (the
+/// second review of phase 3, R4). Its deposits are cited again as they are
+/// now, as at issue: the editor, the preview and the issue agree (R8).
+pub fn change_draft_read(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, change: impl FnOnce(&mut Invoice, &str)) -> Result<Invoice, String> {
+    super::with_draft_lock(dir, id, || {
+        let mut draft = super::draft_in(dir, id).ok_or_else(|| format!("{id}: no such draft here"))?;
+        // Written by a newer Sioul: never written over with what this one does not know.
+        if draft.newer {
+            return Err(format!("{id}: written by a newer Sioul; update Sioul on this device to change it."));
+        }
+        let revision = super::draft_revision(dir, id);
+        change(&mut draft, &revision);
+        draft.number.clear();
+        draft.draft = id.to_string();
+        if !draft.deposits.is_empty() {
+            recite(&mut draft, &super::all_in(dir));
+        }
+        refresh(&mut draft, s, day);
+        super::save_draft(dir, &draft)
+    })
 }
 
 /// What a check found: required (issue waits) or recommended (said only).
@@ -689,6 +751,20 @@ pub fn checks(draft: &Invoice, s: &InvoiceSettings, day: Date, records: &[Invoic
             args.set("notes", if notes.is_empty() { "—".to_string() } else { notes.join(", ") });
             say(true, tr.text("invoice-check-credit-too-much", Some(&args)));
         }
+    }
+    // A deposit a live final invoice deducts is credited through that
+    // invoice: credited on its own, the final invoice would go on deducting
+    // an amount the deposit no longer bills, and could no longer be
+    // cancelled whole (the second review of phase 3, R7).
+    if draft.kind == Kind::CreditNote
+        && let Some(cited) = draft.corrects.as_ref().filter(|c| !c.number.is_empty())
+        && let Some(deposit) = records.iter().find(|r| r.number == cited.number && r.kind == Kind::Deposit && !r.unreadable)
+        && let Some(by) = deducted_by(deposit, records).first()
+    {
+        let mut args = crate::i18n::args();
+        args.set("deposit", deposit.number.clone());
+        args.set("number", by.number.clone());
+        say(true, tr.text("invoice-check-credit-deposit-deducted", Some(&args)));
     }
     if draft.currency.trim().len() != 3 {
         say(true, words("invoice-check-currency"));
@@ -1022,6 +1098,30 @@ pub fn reconcile_marks(records: &[Invoice], time_folder: &Path) -> Result<usize,
 /// time freed); its budget line planned (a credit note lowers the credited
 /// invoice's instead); the draft taken out. All or nothing: a step that
 /// fails undoes the ones before it.
+/// Why an issue asked for a draft as it was read did not happen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotIssued {
+    /// The draft's file moved since it was read (another device, the
+    /// command line, an agent): it is to be read again first; in words.
+    Moved(String),
+    /// Refused as `issue` refuses, in words.
+    Refused(String),
+}
+
+/// `issue` for the draft as it was read (`revision`, its
+/// `invoice::draft_revision` then): refused when its file moved since, so
+/// that what is numbered is what was shown (the second review of phase 3,
+/// R6). The file's lock is held from the look to the issue.
+pub fn issue_as_read(dir: &Path, id: &str, revision: &str, s: &InvoiceSettings, day: Date, numbering: &Numbering, steps: &Steps, tr: &Translator) -> Result<Invoice, NotIssued> {
+    super::with_draft_lock(dir, id, || {
+        let now = super::draft_revision(dir, id);
+        if !now.is_empty() && now != revision {
+            return Err(NotIssued::Moved(tr.text("invoice-draft-moved", None)));
+        }
+        issue(dir, id, s, day, numbering, steps, tr).map_err(NotIssued::Refused)
+    })
+}
+
 pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &Numbering, steps: &Steps, tr: &Translator) -> Result<Invoice, String> {
     // Sharing on, the `drafts` part off: the records do not travel, so the
     // other devices' numbers may not be known here.

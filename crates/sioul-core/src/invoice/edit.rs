@@ -331,10 +331,13 @@ pub struct Saved {
 
 /// `change` merged into the draft `id` of `dir` as it is now, and kept.
 pub fn save(dir: &Path, id: &str, change: &Change, cx: &Context) -> Result<Saved, String> {
-    let now = super::draft_revision(dir, id);
-    let elsewhere = change.revision.as_deref().is_some_and(|read| !read.is_empty() && read != now);
     let mut said = Vec::new();
-    let draft = life::change_draft(dir, id, cx.settings, cx.today, |d| said = apply(d, change, cx))?;
+    let mut elsewhere = false;
+    // The revision compared under the lock the draft is read and written with (the second review of phase 3, R4).
+    let draft = life::change_draft_read(dir, id, cx.settings, cx.today, |d, now| {
+        elsewhere = change.revision.as_deref().is_some_and(|read| !read.is_empty() && read != now);
+        said = apply(d, change, cx);
+    })?;
     Ok(Saved { draft, elsewhere, said })
 }
 

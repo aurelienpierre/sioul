@@ -320,9 +320,17 @@ pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, S
     })?;
     match found {
         Some(id) => Ok(id),
-        None => save(file, &change.profile()),
+        // A new profile is made of what the form says; one that is no longer
+        // there (taken out elsewhere while its form was open, or written by
+        // hand without an id) is never made again of the changed keys alone
+        // (the second review of phase 3, R15).
+        None if id.is_empty() => save(file, &change.profile()),
+        None => Err(GONE.to_string()),
     }
 }
+
+/// What `change` answers for a profile that is no longer there (said in words by the window).
+pub const GONE: &str = "this profile is no longer there";
 
 /// `item` written at `key` of `table`: a key there keeps its place, the
 /// comments before it and the spaces around its value.
@@ -575,6 +583,9 @@ mod tests {
         let lumen = clients.get("lumen").unwrap();
         assert_eq!((lumen.delivery.is_none(), lumen.terms_days, lumen.ids[0].printed), (true, None, false));
         assert!(std::fs::read_to_string(&file).unwrap().contains("mood = "));
+        // One that is no longer there is refused, never made again of the changed keys alone (R15).
+        assert_eq!(change(&file, "gone", &ProfileChange { email: Some("accounts@example.org".into()), ..ProfileChange::default() }), Err(GONE.to_string()));
+        assert_eq!(Clients::load(&root).unwrap().list.len(), 1);
         // A profile not there yet is made of what the form says.
         let made = change(&file, "", &ProfileChange { name: Some("Robin Example".into()), kind: Some("consumer".into()), ..ProfileChange::default() }).unwrap();
         assert_eq!(Clients::load(&root).unwrap().get(&made).map(|p| p.kind.as_str()), Some("consumer"));

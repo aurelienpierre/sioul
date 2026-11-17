@@ -2877,6 +2877,8 @@ invoice-to-pay-back = { $amount } à rembourser
 invoice-paid-back = Remboursé
 invoice-nothing-to-pay-back = Rien à rembourser sur cet avoir : il porte sur la facture { $number }, et ce qui a été payé sur elle reste dans ce qu’elle demande encore.
 invoice-check-deposit-taken = La facture d’acompte { $deposit } est déjà déduite par la facture { $number } : un acompte se déduit une fois, sauf si un avoir annule cette facture en entier.
+invoice-check-credit-deposit-deducted = La facture d’acompte { $deposit } est déduite par la facture { $number } : faites plutôt un avoir sur la facture { $number }, ou annulez-la d’abord.
+invoice-draft-moved = Ce brouillon a changé ailleurs depuis sa lecture : il est relu ici ; regardez-le, puis émettez.
 invoice-check-deposit-other = La facture d’acompte { $deposit } concerne un autre client ou une autre devise : elle ne se déduit que sur une facture de ce client, dans sa devise.
 invoice-check-deposit-credited = Il ne reste rien à déduire de la facture d’acompte { $deposit } : ses avoirs l’ont rendue.
 invoice-check-deposit-undeducted = { $n ->
@@ -8840,6 +8842,19 @@ invoices-every-quarter = Chaque trimestre
 invoices-every-month = Chaque mois
 invoices-pattern-wrong = La numérotation « { $pattern } » ne se lit pas : { $why }
 invoices-declared-said = Notée comme déclarée.
+invoices-number-missing = Saisissez un nombre.
+invoices-unread-holds = Un nombre ci-dessus ne se lit pas, donc n’a pas été enregistré : corrigez-le, puis émettez.
+invoices-not-saved-stay = Pas enregistré : { $why } Appuyez encore sur Retour pour quitter sans ces changements.
+invoices-not-saved = Pas enregistré : { $why }
+invoices-deposit-less = sur { $whole }, ses avoirs ont rendu le reste
+invoices-set-aside = { $time } de temps retiré de ce brouillon, non facturé ici.
+invoices-put-back = Remettre
+invoices-draft-replaced = { $n ->
+    [one] Le brouillon pour { $drafts } a été changé sur un autre appareil avant que vos changements d’ici soient partis : sa version a remplacé la vôtre, gardée parmi les versions précédentes.
+   *[other] Les brouillons pour { $drafts } ont été changés sur un autre appareil avant que vos changements d’ici soient partis : ses versions ont remplacé les vôtres, gardées parmi les versions précédentes.
+}
+invoices-client-changed-elsewhere = Cette fiche a changé ailleurs : rouvrez-la.
+invoices-read-again = Ce brouillon a changé ailleurs : il est montré tel qu’il est maintenant.
 invoices-not-declared-said = Notée comme non déclarée.
 invoices-changed-elsewhere = Ce brouillon a changé ailleurs entre-temps : ces changements sont repris, les vôtres avec.
 invoices-deposits-left = { $n ->

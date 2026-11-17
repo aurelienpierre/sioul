@@ -450,6 +450,12 @@ fn days_apart(a: &str, b: &str) -> i64 {
     }
 }
 
+/// When the latest word on the declaration `key` was said, among every
+/// device's life files as they are here (0 for none).
+pub fn latest_declared(dir: &Path, key: &str) -> i64 {
+    read_books(dir).0.iter().flat_map(|b| &b.declared).filter(|d| d.key == key).map(|d| d.at).max().unwrap_or(0)
+}
+
 /// This device's own file changed by `change`, under its lock: read,
 /// changed, written whole (`write_whole`). No other device writes it; one
 /// a newer Sioul wrote is never written over.
@@ -466,6 +472,7 @@ pub fn change_own<R>(dir: &Path, device: &str, change: impl FnOnce(&mut Book) ->
         book.format = FORMAT;
         let text = toml::to_string(&book).map_err(|e| e.to_string())?;
         super::write_whole(&path, &text)?;
+        crate::changes::said(crate::changes::Kind::Issued);
         Ok(out)
     })
 }
@@ -568,6 +575,27 @@ mod tests {
         assert_eq!(Lives::of(std::slice::from_ref(&older)).declared.len(), 1);
         let taken = Book { removed: vec![Removed { id: "declared:declaration:2026-Q3".into() }], ..older };
         assert!(Lives::of(&[taken]).declared.is_empty());
+    }
+
+    /// A word said after reading another is newer than it, whatever the
+    /// clocks say (the second review of phase 3, R10): the desk's clock an
+    /// hour ahead says Not declared at "11:00"; the phone says Declared at
+    /// 10:30, after it: declared.
+    #[test]
+    fn a_clock_that_runs_ahead_never_wins_over_a_later_word() {
+        let dir = dir("clock");
+        let hour = 3_600_000;
+        let ten: i64 = 1_800_000_000_000;
+        let q3 = "declaration:2026-Q3";
+        let day: jiff::civil::Date = "2026-10-20".parse().unwrap();
+        crate::books::mark_declared(&dir, "desk-1", q3, day, false, ten + hour).unwrap();
+        crate::books::mark_declared(&dir, "phone-2", q3, day, true, ten + hour / 2).unwrap();
+        assert_eq!(Lives::load(&dir).declared.get(q3).map(String::as_str), Some("2026-10-20"));
+        assert_eq!(latest_declared(&dir, q3), ten + hour + 1, "one more than the latest read");
+        // Its Undo on the same phone, a moment later by its own clock, is newer again.
+        crate::books::mark_declared(&dir, "phone-2", q3, day, false, ten + hour / 2 + 5).unwrap();
+        assert!(Lives::load(&dir).declared.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Two devices write their own files; a newer format is read, never written over (G13).

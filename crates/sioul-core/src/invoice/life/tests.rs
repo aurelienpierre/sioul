@@ -336,6 +336,117 @@ fn the_reset_written_is_the_one_followed() {
     assert!(checks(&draft, &yearly, day("2026-11-17"), &[]).iter().any(|c| c.required && c.text.contains("start again from 1 each year")));
 }
 
+/// Reading a draft never writes it (the second review of phase 3, R3): lines
+/// without an id are named in memory, alike at every read and on every
+/// device (the draft's id and the line's place), and kept with the first
+/// real change.
+#[test]
+fn reading_a_draft_never_writes_it() {
+    let place = Place::new("read-only");
+    let s = french("franchise");
+    let mut d = fresh("en");
+    d.lines = vec![sold("Advice", 10_000, Nature::Service), sold("Travel", 2_000, Nature::Service)];
+    let saved = save_draft(&place.invoices(), &d).unwrap();
+    let path = place.invoices().join(crate::invoice::DRAFTS).join(format!("{}.toml", saved.draft));
+    // As a draft from before line ids: no id in the file.
+    let text: String = std::fs::read_to_string(&path).unwrap().lines().filter(|l| !l.starts_with("id = ")).collect::<Vec<_>>().join("\n");
+    std::fs::write(&path, &text).unwrap();
+    let first = draft_in(&place.invoices(), &saved.draft).unwrap();
+    let again = draft_in(&place.invoices(), &saved.draft).unwrap();
+    let ids = |d: &Invoice| d.lines.iter().map(|l| l.id.clone()).collect::<Vec<_>>();
+    assert!(ids(&first).iter().all(|i| i.len() == 10) && ids(&first)[0] != ids(&first)[1], "{:?}", ids(&first));
+    assert_eq!(ids(&first), ids(&again), "the same names at every read");
+    assert_eq!(drafts_in(&place.invoices())[0].lines[1].id, first.lines[1].id);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), text, "reading wrote nothing");
+    let kept = change_draft(&place.invoices(), &saved.draft, &s, day("2026-11-17"), |d| d.order = "PO-1".into()).unwrap();
+    assert_eq!(ids(&kept), ids(&first), "kept with the first change");
+    assert!(std::fs::read_to_string(&path).unwrap().contains(&format!("id = \"{}\"", first.lines[0].id)));
+}
+
+/// Issue numbers what was read (the second review of phase 3, R6): asked
+/// with the revision the editor read, it is refused when the draft's file
+/// moved since, and nothing is numbered.
+#[test]
+fn issue_refuses_a_draft_that_moved_since_it_was_read() {
+    let place = Place::new("moved");
+    let s = french("franchise");
+    let (time, ledger) = steps(&place);
+    let mut d = fresh("en");
+    d.lines = vec![sold("The site", 100_000, Nature::Service)];
+    refresh(&mut d, &s, day("2026-11-17"));
+    let saved = save_draft(&place.invoices(), &d).unwrap();
+    let read = crate::invoice::draft_revision(&place.invoices(), &saved.draft);
+    // Changed elsewhere meanwhile: a price lowered.
+    change_draft(&place.invoices(), &saved.draft, &s, day("2026-11-17"), |d| d.lines[0].price = 80_000).unwrap();
+    let steps = Steps { time: Some(&time), ledger: Some((&ledger, "work")), clients: None };
+    let moved = issue_as_read(&place.invoices(), &saved.draft, &read, &s, day("2026-11-17"), &here(), &steps, &en());
+    assert!(matches!(moved, Err(NotIssued::Moved(_))), "{moved:?}");
+    assert!(all_in(&place.invoices()).is_empty(), "nothing numbered");
+    let now = crate::invoice::draft_revision(&place.invoices(), &saved.draft);
+    let issued = issue_as_read(&place.invoices(), &saved.draft, &now, &s, day("2026-11-17"), &here(), &steps, &en()).unwrap();
+    assert_eq!(issued.totals.due, 80_000);
+}
+
+/// A deposit a live final invoice deducts is credited through that invoice
+/// (the second review of phase 3, R7): a credit note on the deposit is
+/// refused with the way out, and the final invoice's own credit note keeps
+/// the amounts it deducted. A draft's deposits are cited again at each
+/// change as they are now, as at issue (R8).
+#[test]
+fn a_deducted_deposit_is_credited_through_its_final_invoice() {
+    let place = Place::new("deducted");
+    let s = french("franchise");
+    let first = issued(&place, &deposit(&s, fresh("en"), "Deposit, 30 % of the site", 90_000, day("2026-09-01")), &s, "2026-09-01");
+    // A final draft ticks it at €900; a credit note of €300 on the deposit is issued meanwhile.
+    let mut last = fresh("en");
+    last.lines = vec![sold("The site", 300_000, Nature::Service)];
+    cite_deposits(&mut last, &[&first], &[], &s, day("2026-09-10"));
+    let draft = save_draft(&place.invoices(), &last).unwrap();
+    assert_eq!(draft.totals.deposits, 90_000);
+    let part = credit(&first, None, &[], &s, day("2026-09-15"));
+    let mut part = Invoice { lines: vec![Line { price: 30_000, ..part.lines[0].clone() }], ..part };
+    refresh(&mut part, &s, day("2026-09-15"));
+    assert!(checks(&part, &s, day("2026-09-15"), &all_in(&place.invoices())).iter().all(|c| !c.required), "no final invoice deducts it yet");
+    issued(&place, &part, &s, "2026-09-15");
+    let again = change_draft(&place.invoices(), &draft.draft, &s, day("2026-09-20"), |d| d.order = "PO-9".into()).unwrap();
+    assert_eq!((again.deposits[0].amount, again.totals.deposits, again.totals.due), (60_000, 60_000, 240_000), "cited again as it is now");
+    let final_invoice = issued(&place, &again, &s, "2026-10-01");
+    // Now deducted by a live final invoice: a credit note on the deposit says the way out.
+    let records = all_in(&place.invoices());
+    let more = credit(&first, None, &[], &s, day("2026-10-05"));
+    let said = checks(&more, &s, day("2026-10-05"), &records);
+    assert!(said.iter().any(|c| c.required && c.text.contains(&final_invoice.number) && c.text.contains("cancel it first")), "{said:?}");
+    // The final invoice cancelled whole keeps the €600 it deducted, whatever recite would say.
+    let mut cancel = credit(&final_invoice, None, &[], &s, day("2026-10-06"));
+    recite(&mut cancel, &records);
+    assert_eq!((cancel.deposits[0].amount, cancel.totals.due), (60_000, final_invoice.totals.due));
+}
+
+/// The time a draft may take, and where it goes (the review of phase 3, F9;
+/// the second, R15): never time a draft holds nor time set aside in one of
+/// the project's drafts; into the draft that holds the project's time; and
+/// into its line of the same words and price, so that the project's "to
+/// bill" and the draft agree to the cent.
+#[test]
+fn time_joins_the_draft_that_holds_it() {
+    let entry = |key: &str, minutes: u32| Entry { key: key.into(), start: 1_791_000_000, day: day("2026-11-02"), minutes, project: "lumen".into(), task: String::new(), title: "Site".into(), note: String::new(), billable: true, invoice: String::new() };
+    let timed = |key: &str, minutes: u32| Line { sessions: vec![key.into()], ..Line::of_time("Site", minutes, 5500, "E", 0) };
+    let holding = Invoice { draft: "older".into(), project: "lumen".into(), kind: Kind::Invoice, lines: vec![timed("s1", 410)], set_aside: vec!["1791000000:lumen:45".into()], ..Invoice::default() };
+    let empty = Invoice { draft: "newer".into(), project: "lumen".into(), kind: Kind::Invoice, ..Invoice::default() };
+    let elsewhere = Invoice { draft: "other".into(), project: "other".into(), kind: Kind::Invoice, lines: vec![timed("s4", 30)], ..Invoice::default() };
+    let drafts = vec![empty, holding.clone(), elsewhere];
+    let left: Vec<String> = untaken(vec![entry("s1", 410), entry("1791000000:lumen:45", 45), entry("s3", 20), entry("s4", 30)], &drafts, "lumen").into_iter().map(|e| e.key).collect();
+    assert_eq!(left, ["s3"], "held by a draft, or taken out of one: never added again");
+    assert_eq!(draft_of_project(&drafts, "lumen", &|_| true).map(|d| d.draft.as_str()), Some("older"), "the draft that holds the time, not the newest");
+    assert_eq!(set_aside_minutes(&holding), 45);
+    // 410 min then 20 min at €55: one line of 430 min, €394.17, as the project's "to bill" says; two lines would say €394.16.
+    let mut draft = holding;
+    assert_eq!(add_time(&mut draft, vec![timed("s3", 20)]), (1, 20));
+    assert_eq!((draft.lines.len(), draft.lines[0].minutes(), draft.lines[0].net(), draft.lines[0].sessions.len()), (1, Some(430), 39_417, 2));
+    let project = Project { rate: Some(55.0), ..project() };
+    assert_eq!(time_amount(&[entry("s1", 410), entry("s3", 20)], &project, 5500), 39_417);
+}
+
 /// A project's "to bill" is the total of the invoice made of it: each line
 /// of time rounded to the cent as the invoice rounds it, never the whole
 /// time at once (the review of phase 3, F18: €751.66, not €751.67).

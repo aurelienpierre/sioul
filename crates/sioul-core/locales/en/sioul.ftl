@@ -2841,6 +2841,8 @@ invoice-to-pay-back = { $amount } to pay back
 invoice-paid-back = Paid back
 invoice-nothing-to-pay-back = Nothing to pay back on this credit note: it credits invoice { $number }, and what was paid on it stays within what it still asks.
 invoice-check-deposit-taken = Deposit invoice { $deposit } is deducted by invoice { $number } already: a deposit is deducted once, unless a credit note cancels that invoice whole.
+invoice-check-credit-deposit-deducted = Deposit invoice { $deposit } is deducted by invoice { $number }: credit invoice { $number } instead, or cancel it first.
+invoice-draft-moved = This draft changed elsewhere since it was read: it is read again here; look at it, then issue.
 invoice-check-deposit-other = Deposit invoice { $deposit } bills another client or another currency: it is deducted only on that client's invoice, in its own currency.
 invoice-check-deposit-credited = Nothing is left of deposit invoice { $deposit } to deduct: its credit notes gave it back.
 invoice-check-deposit-undeducted = { $n ->
@@ -8466,6 +8468,19 @@ invoices-every-quarter = Each quarter
 invoices-every-month = Each month
 invoices-pattern-wrong = The numbering “{ $pattern }” does not read: { $why }
 invoices-declared-said = Marked as declared.
+invoices-number-missing = Type a number.
+invoices-unread-holds = A number above does not read, so it was not saved: correct it, then issue.
+invoices-not-saved-stay = Not saved: { $why } Press Back once more to leave without these changes.
+invoices-not-saved = Not saved: { $why }
+invoices-deposit-less = of { $whole }, its credit notes gave the rest back
+invoices-set-aside = { $time } of time taken out of this draft, not billed here.
+invoices-put-back = Put back
+invoices-draft-replaced = { $n ->
+    [one] The draft for { $drafts } was changed on another device before your changes here went out: its version replaced yours, kept among the earlier versions.
+   *[other] The drafts for { $drafts } were changed on another device before your changes here went out: its versions replaced yours, kept among the earlier versions.
+}
+invoices-client-changed-elsewhere = This profile changed elsewhere: open it again.
+invoices-read-again = This draft changed elsewhere: it is shown as it is now.
 invoices-not-declared-said = Marked as not declared.
 invoices-changed-elsewhere = This draft changed elsewhere meanwhile: those changes are taken in, yours with them.
 invoices-deposits-left = { $n ->

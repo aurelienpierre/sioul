@@ -667,6 +667,33 @@ fn a_refund_is_split_across_the_payments_it_gives_back() {
     assert_eq!(q4.corrections, [q3_correction(90_000)]);
 }
 
+/// A refund of a format-1 invoice's own "paid" is placed by the day of the
+/// bank line that paid it, as its receipt is, never by its due day (the
+/// second review of phase 3, R15): paid on 5 October by the bank (due on
+/// 28 September), refunded on 20 October, the third quarter said Declared:
+/// both are the fourth quarter's, nothing corrects the third.
+#[test]
+fn a_format_1_refund_follows_its_bank_line_s_day() {
+    let settings = Settings::of(&french("franchise"), None);
+    let mut older = issued("2026-001", "2026-09-28", client("Old Client", "FR"), vec![line("Photos", 45_000, Nature::Service, "E", 0)], "franchise", &[]);
+    older.payments = vec![Payment { id: "older:2026-001".into(), date: "2026-09-28".into(), amount: 45_000, ..Payment::default() }];
+    let back = Invoice {
+        kind: Kind::CreditNote,
+        corrects: Some(Cited { number: "2026-001".into(), date: "2026-09-28".into(), amount: 45_000 }),
+        ..issued("2026-002", "2026-10-15", client("Old Client", "FR"), vec![line("Photos", 45_000, Nature::Service, "E", 0)], "franchise", &[("2026-10-20", 45_000, "transfer")])
+    };
+    let invoices = vec![older, back];
+    let money = money_with("[[line]]\nid = 'o'\nbudget = 'work'\ndate = 2026-09-28\namount = 450\nlabel = 'Old client'\nplanned = true\nlinks = ['sioul:invoice/2026-001']\n", &[("2026-10-05", 45_000, "VIR OLD CLIENT FACTURE 2026-001", "B2")]);
+    let none = BTreeMap::new();
+    let tr = en();
+    let said = BTreeMap::from([("declaration:2026-Q3".to_string(), day("2026-10-10"))]);
+    let i = Input { declared: &said, ..input(&settings, &invoices, &none, Some(&money)) };
+    let rows = crate::books::rows(&i, day("2026-07-01"), day("2026-12-31"), &tr);
+    assert_eq!(rows.iter().find(|r| r.invoice == "2026-001").map(|r| r.day), Some(day("2026-10-05")), "{rows:#?}");
+    let q4 = declarations::holding(&i, day("2026-10-20"), &tr).unwrap();
+    assert_eq!((q4.turnover, q4.corrections.len()), (0, 0), "received and given back in the fourth quarter");
+}
+
 /// The franchise's thresholds (BOI-TVA-DECLA-40-10-10 §180): operations
 /// located in France, services on payment, goods on their invoice's day;
 /// services to an EU business left out. 80 % said once, then the base

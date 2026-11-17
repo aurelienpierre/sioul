@@ -458,6 +458,8 @@ pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
         if from_time {
             let entries = sioul_core::timereport::entries(&sioul_core::timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
             let records = invoice::all_in(&invoice::folder());
+            // Never time a draft holds already, nor time taken out of one of the project's drafts (R15).
+            let entries = life::untaken(entries, &invoice::drafts_in(&invoice::folder()), &project.id);
             if let Some(timed) = life::from_time(&entries, project, draft.clone(), &records, settings, today) {
                 draft = timed;
             }

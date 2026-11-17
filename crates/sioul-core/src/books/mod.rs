@@ -166,7 +166,7 @@ fn unread_of(s: &InvoiceSettings) -> Vec<(String, String)> {
     out
 }
 
-/// What the books say of their settings that do not read: "In [invoice],
+/// What the books say of their settings that do not read: "In `[invoice]`,
 /// started = “2026-6-12” does not read, and is left aside: a day is
 /// written 2026-06-12, …" (the review of phase 4, P4-17).
 pub fn unread_sentences(tr: &Translator, settings: &Settings) -> Vec<String> {
@@ -786,6 +786,44 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
             }
         }
     }
+    // Each payment's day, found once, the bank's lines taken as they stand
+    // for payments: the rows below and the refunds' parts read the same day.
+    let mut days: BTreeMap<(&str, &str), Date> = BTreeMap::new();
+    for (invoice, received) in &records {
+        let foreign = foreign_of(invoice);
+        for p in received {
+            // A format-1 record's own "paid" had no day (it reads on the due
+            // day): the bank line found for it gives its day.
+            let mut day = if p.id.starts_with("older:") { found_day.get(&p.id).copied().unwrap_or(p.day) } else { p.day };
+            // Said by hand, no bank line found for it, and the bank's line for
+            // this invoice tied to it by the matching: that line is this payment.
+            if p.line.is_empty()
+                && p.amount > 0
+                && !foreign
+                && let Some(m) = moved.iter_mut().find(|m| m.left > 0 && m.left == m.whole() && m.receipt.invoice == invoice.number && (p.id.starts_with("older:") || m.left == p.amount || m.receipt.net.cents() == p.amount))
+            {
+                let whole = m.left;
+                m.take(whole, &invoice.number);
+                if p.id.starts_with("older:") {
+                    day = m.receipt.day;
+                }
+            }
+            let sign = p.amount.signum();
+            let amount = if foreign { input.booked.get(&p.id).map(|b| sign * b.abs()) } else { Some(p.amount) };
+            // A payment in another currency, said in euros: the bank's line of
+            // those euros around its day is that payment (this invoice's tie
+            // first), never counted again.
+            if let Some(euros) = amount.filter(|a| foreign && *a > 0) {
+                let near = |m: &Moved| m.left > 0 && m.left == m.whole() && (m.left == euros || m.receipt.net.cents() == euros) && days_between(p.day, m.receipt.day).abs() <= BOOKED_DAYS;
+                let found = moved.iter().position(|m| near(m) && m.receipt.invoice == invoice.number).or_else(|| moved.iter().position(near));
+                if let Some(i) = found {
+                    let whole = moved[i].left;
+                    moved[i].take(whole, &invoice.number);
+                }
+            }
+            days.insert((invoice.number.as_str(), p.id.as_str()), day);
+        }
+    }
     // A refund gives back the money the credited invoice received, the
     // latest first, after what its earlier refunds gave back: each part is
     // counted where that money came in, while its declaration is not made,
@@ -793,7 +831,8 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
     // review of phase 3, F12). What no payment on or before it stands for
     // is counted on its own day.
     let paid = |number: &str| -> Vec<(Date, i64)> {
-        let mut paid: Vec<(Date, i64)> = records.iter().filter(|(i, _)| i.number == number && i.kind != Kind::CreditNote).flat_map(|(_, r)| r.iter().filter(|p| p.amount > 0).map(|p| (p.day, p.amount))).collect();
+        // Each payment on the day its row is written on: a format-1 "paid" on its bank line's day, as its receipt (the second review of phase 3, R15).
+        let mut paid: Vec<(Date, i64)> = records.iter().filter(|(i, _)| i.number == number && i.kind != Kind::CreditNote).flat_map(|(i, r)| r.iter().filter(|p| p.amount > 0).map(|p| (days.get(&(i.number.as_str(), p.id.as_str())).copied().unwrap_or(p.day), p.amount))).collect();
         paid.sort_by(|a, b| b.0.cmp(&a.0));
         paid
     };
@@ -832,35 +871,9 @@ pub fn rows(input: &Input, from: Date, to: Date, tr: &Translator) -> Vec<Row> {
         let client = if invoice.client.first_line().trim().is_empty() { invoice.who() } else { invoice.client.first_line().to_string() };
         let foreign = foreign_of(invoice);
         for p in received {
-            // A format-1 record's own "paid" had no day (it reads on the due
-            // day): the bank line found for it gives its day.
-            let mut day = if p.id.starts_with("older:") { found_day.get(&p.id).copied().unwrap_or(p.day) } else { p.day };
-            // Said by hand, no bank line found for it, and the bank's line for
-            // this invoice tied to it by the matching: that line is this payment.
-            if p.line.is_empty()
-                && p.amount > 0
-                && !foreign
-                && let Some(m) = moved.iter_mut().find(|m| m.left > 0 && m.left == m.whole() && m.receipt.invoice == invoice.number && (p.id.starts_with("older:") || m.left == p.amount || m.receipt.net.cents() == p.amount))
-            {
-                let whole = m.left;
-                m.take(whole, &invoice.number);
-                if p.id.starts_with("older:") {
-                    day = m.receipt.day;
-                }
-            }
+            let day = days.get(&(invoice.number.as_str(), p.id.as_str())).copied().unwrap_or(p.day);
             let sign = p.amount.signum();
             let amount = if foreign { input.booked.get(&p.id).map(|b| sign * b.abs()) } else { Some(p.amount) };
-            // A payment in another currency, said in euros: the bank's line of
-            // those euros around its day is that payment (this invoice's tie
-            // first), never counted again.
-            if let Some(euros) = amount.filter(|a| foreign && *a > 0) {
-                let near = |m: &Moved| m.left > 0 && m.left == m.whole() && (m.left == euros || m.receipt.net.cents() == euros) && days_between(p.day, m.receipt.day).abs() <= BOOKED_DAYS;
-                let found = moved.iter().position(|m| near(m) && m.receipt.invoice == invoice.number).or_else(|| moved.iter().position(near));
-                if let Some(i) = found {
-                    let whole = moved[i].left;
-                    moved[i].take(whole, &invoice.number);
-                }
-            }
             if !within(day) {
                 continue;
             }
@@ -1260,8 +1273,16 @@ pub fn mark_told(dir: &Path, device: &str, keys: &[String], day: Date) -> Result
 /// the latest word wins on every device (`lives::Declared`), an Undo being
 /// one more word, the one before said again.
 pub fn mark_declared(dir: &Path, device: &str, key: &str, day: Date, on: bool, at_ms: i64) -> Result<(), String> {
-    let id = lives::declared_id(key, device, at_ms);
-    lives::change_own(dir, device, |book| book.declared.push(lives::Declared { id, key: key.to_string(), date: day.to_string(), on, at: at_ms }))
+    lives::change_own(dir, device, |book| {
+        // A word said after reading another is newer than it, whatever this
+        // device's clock says: one more than the latest of every device's
+        // for this key, read under the life's lock (the second review of
+        // phase 3, R10). A device whose clock runs ahead no longer wins over
+        // the words said after its own.
+        let here = book.declared.iter().filter(|d| d.key == key).map(|d| d.at).max().unwrap_or(0);
+        let at = at_ms.max(lives::latest_declared(dir, key).max(here).saturating_add(1));
+        book.declared.push(lives::Declared { id: lives::declared_id(key, device, at), key: key.to_string(), date: day.to_string(), on, at });
+    })
 }
 
 /// A turnover declaration's key in the life files' `[[declared]]`.
