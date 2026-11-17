@@ -2571,6 +2571,18 @@ pub mod qobject {
         #[qinvokable]
         fn new_invoice_draft(self: Pin<&mut Sioul>, making: &QString) -> QString;
 
+        /// The editor left a draft: one made and never written in is taken out.
+        #[qinvokable]
+        fn leave_invoice_draft(self: Pin<&mut Sioul>, id: &QString);
+
+        /// A draft's revision (its file as kept), to know whether it changed elsewhere.
+        #[qinvokable]
+        fn invoice_draft_revision(self: &Sioul, id: &QString) -> QString;
+
+        /// An amount typed, read in the window's language (JSON {ok, value, words}).
+        #[qinvokable]
+        fn read_amount(self: &Sioul, text: &QString, currency: &QString) -> QString;
+
         /// A draft changed as the editor says (JSON `invoice::edit::Change`),
         /// saved: the draft as the editor shows it, or {"error"}.
         #[qinvokable]
@@ -2826,6 +2838,11 @@ pub mod qobject {
         /// The projects changed: the Projects and Time pages read them again.
         #[qsignal]
         fn projects_changed(self: Pin<&mut Sioul>);
+
+        /// Drafts, invoices or client profiles changed (`changes`): Money ▸
+        /// Invoices, its editor and the Projects page read them again.
+        #[qsignal]
+        fn invoices_changed(self: Pin<&mut Sioul>);
 
         /// A task just done, whichever way (a list, its panel, the focus window):
         /// the status line offers "How was it?", quietly.
@@ -7859,7 +7876,7 @@ impl qobject::Sioul {
     }
 
     fn make_invoice(self: Pin<&mut Self>, id: &QString) -> QString {
-        QString::from(&crate::projects::make_invoice(&self.qt_thread(), &self.shared(), &id.to_string()))
+        QString::from(&crate::projects::make_invoice(&self.shared(), &id.to_string()))
     }
 
     fn invoices(&self, asked: &QString) -> QString {
@@ -7871,15 +7888,27 @@ impl qobject::Sioul {
     }
 
     fn new_invoice_draft(self: Pin<&mut Self>, making: &QString) -> QString {
-        QString::from(&crate::invoices::new_draft(&self.qt_thread(), &self.shared(), &making.to_string()))
+        QString::from(&crate::invoices::new_draft(&self.shared(), &making.to_string()))
+    }
+
+    fn leave_invoice_draft(self: Pin<&mut Self>, id: &QString) {
+        crate::invoices::leave_draft(&id.to_string());
+    }
+
+    fn invoice_draft_revision(&self, id: &QString) -> QString {
+        QString::from(&sioul_core::invoice::draft_revision(&sioul_core::invoice::folder(), &id.to_string()))
+    }
+
+    fn read_amount(&self, text: &QString, currency: &QString) -> QString {
+        QString::from(&crate::invoices::read_amount(&text.to_string(), &currency.to_string()))
     }
 
     fn change_invoice_draft(self: Pin<&mut Self>, id: &QString, change: &QString) -> QString {
-        QString::from(&crate::invoices::change(&self.qt_thread(), &self.shared(), &id.to_string(), &change.to_string()))
+        QString::from(&crate::invoices::change(&self.shared(), &id.to_string(), &change.to_string()))
     }
 
     fn set_invoice_client_traits(self: Pin<&mut Self>, id: &QString, kind: &QString, country: &QString) -> QString {
-        QString::from(&crate::invoices::set_client_traits(&self.qt_thread(), &self.shared(), &id.to_string(), &kind.to_string(), &country.to_string()))
+        QString::from(&crate::invoices::set_client_traits(&self.shared(), &id.to_string(), &kind.to_string(), &country.to_string()))
     }
 
     fn discard_invoice_draft(self: Pin<&mut Self>, id: &QString) -> QString {
@@ -7899,11 +7928,11 @@ impl qobject::Sioul {
     }
 
     fn credit_invoice(self: Pin<&mut Self>, number: &QString, lines: &QString) -> QString {
-        QString::from(&crate::invoices::credit(&self.qt_thread(), &self.shared(), &number.to_string(), &lines.to_string()))
+        QString::from(&crate::invoices::credit(&self.shared(), &number.to_string(), &lines.to_string()))
     }
 
     fn final_invoice(self: Pin<&mut Self>, number: &QString) -> QString {
-        QString::from(&crate::invoices::final_of(&self.qt_thread(), &self.shared(), &number.to_string()))
+        QString::from(&crate::invoices::final_of(&self.shared(), &number.to_string()))
     }
 
     fn write_invoice_mail(&self, number: &QString) -> QString {
@@ -7919,7 +7948,7 @@ impl qobject::Sioul {
     }
 
     fn save_client_profile(self: Pin<&mut Self>, form: &QString) -> QString {
-        QString::from(&crate::invoices::save_client_profile(&self.qt_thread(), &self.shared(), &form.to_string()))
+        QString::from(&crate::invoices::save_client_profile(&form.to_string()))
     }
 
     fn invoice_settings(&self) -> QString {

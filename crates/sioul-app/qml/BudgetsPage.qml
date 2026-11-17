@@ -42,6 +42,27 @@ Item {
     property bool invoicesMade: false
     // The tab the declaration view was opened from (Invoices), which its Back gives again; -1 none.
     property int declarationFrom: -1
+    // On a phone, Back closes what the page opened, back to its list (the
+    // review of phase 3, F15): a budget's ledger, the declaration view, an
+    // invoice's pane, a draft's editor (what was typed written first).
+    readonly property bool canGoBack: page.openId !== ""
+        || (page.tab === 4 && page.invoices !== null && ((page.invoices as InvoicesTab).draftId !== "" || (page.invoices as InvoicesTab).invoice !== null))
+        || (page.tab === 2 && page.movements !== null && (page.movements as MovementsTab).declaration !== null)
+
+    function back() {
+        if (page.openId !== "")
+            page.openId = ""
+        else if (page.tab === 4 && page.invoices !== null)
+            (page.invoices as InvoicesTab).back()
+        else if (page.tab === 2 && page.movements !== null)
+            (page.movements as MovementsTab).closeDeclaration()
+    }
+
+    // What was typed in an invoice's editor, written now (Quit, Sioul put away).
+    function flushInvoices() {
+        if (page.invoices !== null)
+            (page.invoices as InvoicesTab).flush()
+    }
 
     function takeShown() {
         if (page.visible)

@@ -87,7 +87,9 @@ Item {
         return page.sioul.textWith("money-positive", "value", digits)
     }
 
-    // The draft of the hours not billed yet (the project's draft, the time since added), in the editor.
+    // The draft of the hours not billed yet (the project's draft, the time
+    // since added, never time a draft holds or you took out), in the editor;
+    // what was added said in the status line.
     function makeInvoice() {
         const made = JSON.parse(page.sioul.makeInvoice(page.openId) || "{}")
         if (made.error) {
@@ -95,6 +97,8 @@ Item {
             return
         }
         page.window.openInvoiceDraft(made.draft)
+        if (made.said)
+            page.sioul.status = made.said
     }
 
     // An issued invoice's file comes as it was kept, copied by the core: never
@@ -142,6 +146,12 @@ Item {
 
         // A project made, changed or gone, here or elsewhere.
         function onProjectsChanged() {
+            if (page.visible)
+                page.reload()
+        }
+
+        // Its drafts and invoices, here or elsewhere.
+        function onInvoicesChanged() {
             if (page.visible)
                 page.reload()
         }

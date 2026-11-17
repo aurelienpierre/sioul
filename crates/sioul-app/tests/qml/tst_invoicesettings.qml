@@ -31,7 +31,7 @@ Item {
             limits: "", why_not: "", asks: ["Your SIREN or SIRET."], form: formAsked ? "" : "ei", form_asked: formAsked,
             forms: [{ id: "ei", name: "Entrepreneur individuel", company: false }, { id: "sasu", name: "SASU", company: true }], company: false,
             regime: "micro", regimes: [{ id: "micro", name: "Micro" }, { id: "reel", name: "Réel" }],
-            schemes: [{ id: "franchise", name: "Small-business exemption (franchise)" }, { id: "liable", name: "Liable for VAT" }], tax: [], scheme_now: "franchise", mention_default: "TVA non applicable, art. 293 B du CGI",
+            schemes: [{ id: "franchise", name: "Small-business exemption (franchise)" }, { id: "liable", name: "Liable for VAT" }], tax: mock.taxRows, scheme_now: "franchise", mention_default: "TVA non applicable, art. 293 B du CGI",
             ids: [{ kind: "siret", value: "732 829 320 00017", printed: true }], id_kinds: [{ kind: "siren", name: "SIREN" }, { kind: "siret", name: "SIRET" }, { kind: "vat", name: "VAT number" }], older_siret: "",
             name: "Camille Exemple", trade_name: "", address: "2 place de l’Exemple", postcode: "69001", city: "Lyon", country: "", country_default: "FR", email: "",
             banks: [{ holder: "Camille Exemple", iban: "FR76 3000 6000 0112 3456 7890 189", bic: "", valid: true }], qr: true, payment: "",
@@ -48,6 +48,7 @@ Item {
 
         property bool asked: true
         property var saved: []
+        property var taxRows: []
 
         function text(key) {
             return key
@@ -103,6 +104,25 @@ Item {
         function cleanup() {
             mock.asked = true
             mock.saved = []
+            mock.taxRows = []
+        }
+
+        // A VAT scheme's first day is a day, picked or typed in a date field;
+        // the first row without one holds always (the review of phase 3, F19).
+        function test_a_scheme_s_day_is_a_day() {
+            mock.taxRows = [{ from: "", scheme: "franchise", mention: "" }, { from: "2027-01-01", scheme: "liable", mention: "" }]
+            mock.asked = false
+            const block = createTemporaryObject(blockComponent, root, { width: 700 })
+            tryVerify(() => named(block, "invoiceSchemeDay").length === 2, 3000)
+            named(block, "invoiceSettingsMore")[0].clicked()
+            const days = named(block, "invoiceSchemeDay").filter(d => d.visible)
+            compare(days.length, 1, "always: no day")
+            compare(days[0].date, "2027-01-01")
+            days[0].date = "2027-02-01"
+            days[0].edited()
+            const last = mock.saved[mock.saved.length - 1]
+            compare(last.key, "tax")
+            compare(last.value[1].from, "2027-02-01")
         }
 
         // The preset first; an older table's legal form asked once, first, and saved by a tap.

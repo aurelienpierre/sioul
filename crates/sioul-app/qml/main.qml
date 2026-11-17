@@ -501,6 +501,9 @@ SioulWindow {
 
         function onStateChanged() {
             if (Qt.application.state === Qt.ApplicationSuspended || Qt.application.state === Qt.ApplicationHidden) {
+                // What was typed in an invoice's editor, written before Android may end Sioul.
+                if (window.budgetsPage)
+                    window.budgetsPage.flushInvoices()
                 // No text field keeps the focus in the back (the keyboard goes
                 // with it): Qt's text handles would keep asking Android for the
                 // clipboard, refused.
@@ -1164,6 +1167,9 @@ SioulWindow {
             window.focusWindow.quitting = true
             window.focusWindow.close()
         }
+        // What was typed in an invoice's editor, written before Sioul quits (the review of phase 3, F11).
+        if (window.budgetsPage)
+            window.budgetsPage.flushInvoices()
         sioul.flush()
         if (Qt.platform.os !== "android")
             Qt.quit()

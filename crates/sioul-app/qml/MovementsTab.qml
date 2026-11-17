@@ -115,6 +115,12 @@ Item {
         actions.show(row)
     }
 
+    // The declaration view closed: its Back, a phone's Back (BudgetsPage's `back`).
+    function closeDeclaration() {
+        tab.declaration = null
+        tab.declarationClosed()
+    }
+
     // "For the declaration": a declaring budget's period holding `anchor` ("" for today's).
     function showDeclaration(budget, anchor) {
         const answer = JSON.parse(tab.sioul.declaration(budget || "", anchor || "") || "{}")
@@ -564,10 +570,7 @@ Item {
                     text: tab.sioul.text("ui-back")
                     icon.name: "go-previous"
                     icon.color: tab.theme.text
-                    onClicked: {
-                        tab.declaration = null
-                        tab.declarationClosed()
-                    }
+                    onClicked: tab.closeDeclaration()
                 }
                 Item {
                     Layout.fillWidth: true

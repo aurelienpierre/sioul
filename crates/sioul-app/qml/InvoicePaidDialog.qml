@@ -3,8 +3,10 @@
 
 // "Paid…" on an invoice, "Paid back…" on a credit note (docs/projects.md,
 // "Invoices in the window"): the day (today), the means (a transfer), the
-// amount (what is left); a part of it is a partial payment, the payments
-// adding up. Said in the status line with Undo.
+// amount (what is left, as the window's language writes it); a part of it
+// is a partial payment, the payments adding up. The amount is read by the
+// window's language, what it reads as said beside it as it is typed (the
+// review of phase 3, F8). Said in the status line with Undo.
 
 pragma ComponentBehavior: Bound
 
@@ -32,11 +34,11 @@ SafeDialog {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
 
-    // "1 234,5" or "1,234.5" as typed: a number; NaN for none.
-    function number(text) {
-        const plain = String(text).replace(/[\s  €$£]/g, "")
-        const decimal = plain.lastIndexOf(",") > plain.lastIndexOf(".") ? plain.replace(/\./g, "").replace(",", ".") : plain.replace(/,/g, "")
-        return decimal === "" ? NaN : Number(decimal)
+    // What the amount typed reads as: {ok, value, words}.
+    property var reading: ({ ok: false, value: 0, words: "" })
+
+    function read() {
+        dialog.reading = JSON.parse(dialog.sioul.readAmount(amount.text, dialog.invoice ? dialog.invoice.currency : "") || "{}")
     }
 
     function ask(invoice) {
@@ -44,13 +46,15 @@ SafeDialog {
         dialog.problem = ""
         day.date = dialog.today()
         meansChoice.currentIndex = 0
-        amount.text = String(invoice.left)
+        amount.text = invoice.left_text || ""
+        dialog.read()
         dialog.open()
         amount.forceActiveFocus()
     }
 
     function save() {
-        const value = dialog.number(amount.text)
+        dialog.read()
+        const value = dialog.reading.ok ? dialog.reading.value : NaN
         if (isNaN(value) || value <= 0) {
             dialog.problem = dialog.sioul.text("invoices-pay-no-amount")
             return
@@ -107,7 +111,18 @@ SafeDialog {
             objectName: "invoicePaidAmount"
             Layout.fillWidth: true
             inputMethodHints: Qt.ImhFormattedNumbersOnly
+            onTextEdited: dialog.read()
             onAccepted: dialog.save()
+        }
+        Label {
+            objectName: "invoicePaidReading"
+            visible: dialog.reading.words !== ""
+            Layout.fillWidth: true
+            text: dialog.reading.words
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: dialog.reading.ok ? dialog.theme.muted : dialog.theme.warm
         }
         Label {
             Layout.fillWidth: true

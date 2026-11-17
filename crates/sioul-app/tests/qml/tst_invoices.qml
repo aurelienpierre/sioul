@@ -35,19 +35,26 @@ Item {
         { key: "2026-013", draft: "", number: "2026-013", kind: "invoice", title: "Invoice No. 2026-013", client: "Silkworks Studio", project: "", day: "2026-10-12", date: "Mon 12 Oct", year: "2026", total: "€600", status: "partly-paid", status_words: "partly paid", left: "€200 left to pay", sent: "", outside: true, copy_of: "" }
     ]
     readonly property var lines: [
-        { from: 0, description: "Site map", details: "", quantity: 90, unit: "MIN", price: 55, discount: 0, nature: "service", activity: "", own_tax: false, category: "E", rate: 0, exemption: "", time: true, time_words: "1 h 30", amount: "€82.50", tax_words: "Exempt from VAT" },
-        { from: 1, description: "Printing", details: "", quantity: 2, unit: "C62", price: 30, discount: 0, nature: "goods", activity: "", own_tax: false, category: "E", rate: 0, exemption: "", time: false, time_words: "", amount: "€60", tax_words: "Exempt from VAT" }
+        { id: "l1", from: 0, description: "Site map", details: "", quantity: 90, unit: "MIN", unit_words: "Minutes", price: 55, discount: 0, nature: "service", activity: "", own_tax: false, category: "E", rate: 0, exemption: "", time: true, time_words: "1 h 30", amount: "€82.50", tax_words: "Exempt from VAT" },
+        { id: "l2", from: 1, description: "Printing", details: "", quantity: 2, unit: "C62", unit_words: "Units", price: 30, discount: 0, nature: "goods", activity: "", own_tax: false, category: "E", rate: 0, exemption: "", time: false, time_words: "", amount: "€60", tax_words: "Exempt from VAT" }
     ]
     function draftView(required) {
-        return { id: "20261117-090000-abcdef", kind: "invoice", title: "Draft invoice", copy_of: "", project: "The new site", client: { ref: "sioul:contact/lumen", name: "Studio Lumen", first: "Studio Lumen", kind: "business", kind_words: "A business", country: "FR", country_name: "France", email: "billing@example.org", address: "", profile: "p1", contact: "lumen" }, issue_day: "17 November 2026", period_from: "2026-11-17", period_to: "2026-11-17", period_default: true, terms_days: 30, end_of_month: false, due: "17 December 2026", order: "", language: "en", currency: "EUR", lines: root.lines, notes: [], legal: ["VAT not applicable, art. 293 B of the French tax code"], corrects: "", deposits: [], totals: [{ label: "Total", amount: "€142.50" }, { label: "Amount due", amount: "€142.50", last: true }], required: required, said: ["This invoice’s PDF will carry no Factur-X data yet."], preview: "<p>Draft invoice</p>", choices: { units: [{ code: "HUR", label: "Hours" }, { code: "C62", label: "Units" }], categories: [{ code: "S", label: "VAT at a rate" }, { code: "E", label: "Exempt from VAT" }], rates: [], activities: [], languages: [{ id: "en", label: "English" }, { id: "fr", label: "French" }], kinds: [{ id: "business", label: "A business" }, { id: "consumer", label: "A person" }, { id: "public", label: "A public body" }] } }
+        return { id: "20261117-090000-abcdef", revision: mock.revision, read_only: mock.readOnly, read_only_words: mock.readOnly ? "invoice-draft-newer" : "", kind: "invoice", title: "Draft invoice", copy_of: "", project: "The new site", client: { ref: "sioul:contact/lumen", name: "Studio Lumen", first: "Studio Lumen", kind: "business", kind_words: "A business", country: "FR", country_name: "France", email: "billing@example.org", address: "", profile: "p1", contact: "lumen" }, issue_day: "17 November 2026", period_from: "2026-11-17", period_to: "2026-11-17", period_default: true, terms_days: 30, end_of_month: false, due: "17 December 2026", order: "", language: "en", currency: "EUR", lines: root.lines, notes: [], legal: ["VAT not applicable, art. 293 B of the French tax code"], corrects: "", deposits: [], totals: [{ label: "Total", amount: "€142.50" }, { label: "Amount due", amount: "€142.50", last: true }], required: required, said: ["This invoice’s PDF will carry no Factur-X data yet."], preview: "<p>Draft invoice</p>", choices: { units: [{ code: "HUR", label: "Hours" }, { code: "C62", label: "Units" }], categories: [{ code: "S", label: "VAT at a rate" }, { code: "E", label: "Exempt from VAT" }], rates: [], activities: [], languages: [{ id: "en", label: "English" }, { id: "fr", label: "French" }], kinds: [{ id: "business", label: "A business" }, { id: "consumer", label: "A person" }, { id: "public", label: "A public body" }] } }
     }
-    readonly property var shownInvoice: ({ number: "2026-013", kind: "invoice", title: "Invoice No. 2026-013", client: "Silkworks Studio", project: "", date: "12 October 2026", due: "11 November 2026", total: "€600", currency: "EUR", status: "partly-paid", status_words: "partly paid", left: 200.5, left_words: "€200.50 left to pay", sent: "", corrects: "", credit_notes: [], deducted_by: [], payments: [{ id: "hand:2026-013/x", words: "€399.50 received on 20 October 2026, by transfer", bank: false }], lines: [{ description: "Illustrations", amount: "€500", time: "" }, { description: "Printing", amount: "€100", time: "" }], outside: ["This invoice’s file was changed outside Sioul since it was issued."], older: false, acts: { paid: true, paid_back: false, credit: true, final: false, mail: true } })
+    readonly property var shownInvoice: ({ number: "2026-013", kind: "invoice", title: "Invoice No. 2026-013", client: "Silkworks Studio", project: "", date: "12 October 2026", due: "11 November 2026", total: "€600", currency: "EUR", status: "partly-paid", status_words: "partly paid", left: 200.5, left_text: "200.50", left_words: "€200.50 left to pay", sent: "", corrects: "", credit_notes: [], deducted_by: [], payments: [{ id: "hand:2026-013/x", words: "€399.50 received on 20 October 2026, by transfer", bank: false }], lines: [{ description: "Illustrations", amount: "€500", time: "" }, { description: "Printing", amount: "€100", time: "" }], outside: ["This invoice’s file was changed outside Sioul since it was issued."], older: false, acts: { paid: true, paid_back: false, credit: true, final: false, mail: true } })
 
     QtObject {
         id: mock
 
         signal projectsChanged
         signal moneyChanged
+        signal invoicesChanged
+
+        // The draft's revision as the core gives it; a newer Sioul's draft, read only; Issue refused.
+        property string revision: "r1"
+        property bool readOnly: false
+        property string issueError: ""
+        property var left: []
 
         property string status: ""
         property var asked: []
@@ -89,7 +96,25 @@ Item {
         function discardInvoiceDraft(id) {
             return ""
         }
+        function leaveInvoiceDraft(id) {
+            mock.left = mock.left.concat([id])
+        }
+        function invoiceDraftRevision(id) {
+            return mock.revision
+        }
+        // As the window's English reads an amount (`invoices::read_amount_in`): a comma groups thousands.
+        function readAmount(text, currency) {
+            const plain = String(text).trim()
+            if (plain === "")
+                return JSON.stringify({ ok: false, value: 0, words: "" })
+            if (!/^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/.test(plain))
+                return JSON.stringify({ ok: false, value: 0, words: "invoices-amount-unread" })
+            const value = Number(plain.replace(/,/g, ""))
+            return JSON.stringify({ ok: true, value: value, words: "= €" + value.toFixed(2) })
+        }
         function issueInvoiceDraft(id) {
+            if (mock.issueError !== "")
+                return JSON.stringify({ error: mock.issueError })
             mock.issuedIds = mock.issuedIds.concat([id])
             return JSON.stringify({ number: "2026-015", pdf: "/stand-in/Invoices/2026-015 Studio Lumen.pdf", said: "The client’s SIREN: asked from September 2027." })
         }
@@ -123,7 +148,7 @@ Item {
             return ""
         }
         function clientProfile(reference) {
-            return JSON.stringify({ exists: true, id: "p1", contact: reference, kind: "public", kind_words: "A public body", name: "Fernhill Library", lines: "2 Rue de l’Exemple", postcode: "69006", city: "Lyon", country: "FR", country_name: "France", delivery: "", ids: [{ kind: "siret", value: "732 829 320 00017" }], language: "fr", currency: "", terms_days: 45, end_of_month: false, email: "billing@example.org", order: "", summary: "A public body · France", id_kinds: [{ kind: "siren", label: "SIREN" }, { kind: "siret", label: "SIRET" }, { kind: "vat", label: "VAT number" }, { kind: "other", label: "Another identifier" }] })
+            return JSON.stringify({ exists: true, id: "p1", contact: reference, kind: "public", kind_words: "A public body", name: "Fernhill Library", lines: "2 Rue de l’Exemple", postcode: "69006", city: "Lyon", country: "FR", country_name: "France", delivery_lines: "Entrepôt", delivery_postcode: "69007", delivery_city: "Lyon", delivery_country: "", ids: [{ kind: "siret", value: "732 829 320 00017", printed: false }, { kind: "ridet", value: "1234567", printed: true }], language: "fr", currency: "", terms_days: 45, end_of_month: false, email: "billing@example.org", order: "", summary: "A public body · France", id_kinds: [{ kind: "siren", label: "SIREN" }, { kind: "siret", label: "SIRET" }, { kind: "vat", label: "VAT number" }, { kind: "other", label: "Another identifier" }] })
         }
         function saveClientProfile(form) {
             mock.profiles = mock.profiles.concat([JSON.parse(form)])
@@ -209,6 +234,10 @@ Item {
             mock.profiles = []
             mock.required = []
             mock.status = ""
+            mock.revision = "r1"
+            mock.readOnly = false
+            mock.issueError = ""
+            mock.left = []
         }
 
         function editorOf(tab) {
@@ -248,10 +277,12 @@ Item {
             named(editor, "invoiceEditorBack")[0].clicked()
             compare(tab.draftId, "")
             verify(named(tab, "invoicesList")[0].visible)
+            compare(mock.left, ["20261117-090000-abcdef"], "left: one never written in is taken out by the core")
         }
 
-        // The editor: the lines from time folded; a line's words sent once the
-        // typing stops, every line with its place; a new line with none.
+        // The editor (the review of phase 3, F2): the lines from time folded; a
+        // line's words sent once the typing stops, that line alone, by its id,
+        // with the revision read; a new line with no id; a line taken out by its id.
         function test_the_editor_sends_what_is_typed() {
             const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
             tab.openDraft("20261117-090000-abcdef")
@@ -264,15 +295,60 @@ Item {
             field.text = "Printing, two posters"
             field.textEdited()
             tryVerify(() => mock.changes.length === 1, 3000, "sent once the typing stops")
-            const sent = mock.changes[0].lines
-            compare(sent.length, 2)
-            compare(sent[1].description, "Printing, two posters")
-            compare(sent[0].from, 0, "the line of time keeps its place, so its time")
+            const sent = mock.changes[0]
+            compare(sent.revision, "r1", "against the draft as read")
+            compare(sent.lines.length, 1, "only the line changed")
+            compare(JSON.stringify(sent.lines[0]), JSON.stringify({ id: "l2", description: "Printing, two posters" }))
+            verify(sent.notes === undefined && sent.order === undefined, "nothing else written over")
+            compare(field.text, "Printing, two posters", "what was typed stays as typed")
             editor.addLine()
             const added = mock.changes[mock.changes.length - 1].lines
-            compare(added.length, 3)
-            compare(added[2].from, null, "a new line has no place of its own")
+            compare(added.length, 1)
+            verify(added[0].id === undefined, "a new line has no id yet")
+            editor.removeLine(1)
+            compare(JSON.stringify(mock.changes[mock.changes.length - 1].removed), JSON.stringify(["l2"]))
             verify(texts(editor).indexOf("•  This invoice’s PDF will carry no Factur-X data yet.") >= 0, "the notes said before the issue")
+        }
+
+        // Every field saves as it is typed, and what waits is written before
+        // the draft is left (F11); an amount is read by the window's language,
+        // what it reads as said beside it (F8).
+        function test_every_field_is_written_before_leaving() {
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            const order = named(editor, "invoiceOrder")[0]
+            order.text = "PO-77"
+            order.textEdited()
+            compare(mock.changes.length, 0, "the typing goes on")
+            tab.back()
+            compare(mock.changes.length, 1, "written as the list comes back")
+            compare(mock.changes[0].order, "PO-77")
+            compare(mock.left, ["20261117-090000-abcdef"])
+            tab.openDraft("20261117-090000-abcdef")
+            tryVerify(() => named(editor, "invoiceLine").length === 2, 3000)
+            const price = named(editor, "invoiceLinePrice").find(f => f.visible && f.text === "30")
+            price.text = "1,500"
+            price.textEdited()
+            tryVerify(() => mock.changes.length === 2, 3000)
+            compare(mock.changes[1].lines[0].price, 1500, "a comma groups thousands in English")
+            verify(named(editor, "invoiceLinePriceRead").some(l => l.visible && l.text === "= €1500.00"), "what it reads as, beside it")
+            price.text = "1,50"
+            price.textEdited()
+            verify(named(editor, "invoiceLinePriceRead").some(l => l.visible && l.text === "invoices-amount-unread"), "no amount: said, not sent")
+            editor.flush()
+            compare(mock.changes.length, 2, "nothing sent for it")
+        }
+
+        // A draft a newer Sioul wrote opens to be read only, saying why (F13).
+        function test_a_newer_draft_is_read_only() {
+            mock.readOnly = true
+            const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            compare(shown(editor, "invoiceReadOnly")[0].text, "invoice-draft-newer")
+            verify(!named(editor, "invoiceIssue")[0].enabled && !named(editor, "invoiceDiscard")[0].enabled)
+            verify(named(editor, "invoiceLine").every(l => !l.enabled), "its lines kept as written")
         }
 
         // Issue waits while something required is missing; issued, its file
@@ -294,6 +370,23 @@ Item {
             tryVerify(() => tab.invoice !== null && tab.draftId === "", 2000, "its pane opens")
         }
 
+        // Issue refused: the reason beside Issue, in sight where it was
+        // pressed, and in the status line (F14), on a phone too.
+        function test_a_refused_issue_is_said_beside_it() {
+            fakeWindow.compact = true
+            mock.issueError = "Invoices are numbered on another device."
+            const tab = createTemporaryObject(tabComponent, root, { width: 360 - 16, height: 640 })
+            tab.openDraft("20261117-090000-abcdef")
+            const editor = editorOf(tab)
+            const issue = named(editor, "invoiceIssue")[0]
+            issue.clicked()
+            compare(mock.status, "Invoices are numbered on another device.")
+            const problem = shown(editor, "invoiceIssueProblem")[0]
+            compare(problem.text, "Invoices are numbered on another device.")
+            const below = () => problem.mapToItem(editor, 0, 0).y - issue.mapToItem(editor, 0, 0).y
+            tryVerify(() => below() > 0 && below() < 160, 2000, "right under Issue")
+        }
+
         // Paid…: today, by transfer, what is left; a part of it a partial payment.
         function test_paid_asks_the_day_and_the_means() {
             const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
@@ -304,13 +397,15 @@ Item {
             named(tab, "invoicePaid")[0].clicked()
             tryVerify(() => overlay(tab, "invoicePaidAmount").length === 1 && overlay(tab, "invoicePaidAmount")[0].visible, 3000)
             const amount = overlay(tab, "invoicePaidAmount")[0]
-            compare(amount.text, "200.5", "what is left")
-            amount.text = "100"
+            compare(amount.text, "200.50", "what is left, as the window's language writes it")
+            amount.text = "1,500"
+            amount.textEdited()
+            compare(overlay(tab, "invoicePaidReading")[0].text, "= €1500.00", "what it reads as, beside it (F8)")
             overlay(tab, "invoicePaidSave")[0].clicked()
             compare(mock.paid.length, 1)
             const paying = mock.paid[0].paying
             compare(paying.means, "transfer")
-            compare(paying.amount, 100)
+            compare(paying.amount, 1500, "a comma groups thousands in English")
             const now = new Date()
             const pad = n => n < 10 ? "0" + n : String(n)
             compare(paying.day, now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()))
@@ -348,7 +443,9 @@ Item {
             compare(fakeWindow.drafts, ["mail-1"])
         }
 
-        // A client's profile read into its form, saved whole.
+        // A client's profile read into its form; saved, only what the form
+        // changed is sent (F6): an identifier left unprinted, one of a kind
+        // the form does not offer and the delivery address kept as written.
         function test_a_client_profile_is_read_and_saved() {
             const form = createTemporaryObject(profileComponent, root)
             form.edit("sioul:contact/fernhill")
@@ -356,15 +453,15 @@ Item {
             compare(overlay(form, "clientProfileName")[0].text, "Fernhill Library")
             compare(overlay(form, "clientProfileCountry")[0].text, "France")
             compare(overlay(form, "clientProfileKind")[0].currentIndex, 2, "a public body")
+            compare(overlay(form, "clientProfileDelivery")[0].text, "Entrepôt")
+            verify(!overlay(form, "clientProfileIdPrinted")[0].checked, "unprinted, as written")
             overlay(form, "clientProfileEmail")[0].text = "accounts@example.org"
             form.save()
             compare(mock.profiles.length, 1)
             const saved = mock.profiles[0]
-            compare(saved.kind, "public")
+            compare(JSON.stringify(Object.keys(saved).sort()), JSON.stringify(["email", "id"]))
+            compare(saved.id, "p1")
             compare(saved.email, "accounts@example.org")
-            compare(saved.terms_days, 45)
-            compare(saved.ids.length, 1)
-            compare(saved.contact, "sioul:contact/fernhill")
         }
 
         // At a phone's 360 points: the rows and the editor's fields within the screen.

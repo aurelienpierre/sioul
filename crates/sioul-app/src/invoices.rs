@@ -34,6 +34,18 @@ fn today() -> Date {
     sioul_core::zone::now().date()
 }
 
+/// What the pages read (contacts among them), as last read: an editor's
+/// save never reads the stores again on the window's thread (the review of
+/// phase 3, F7); read once when nothing was read yet.
+fn world(shared: &Shared) -> Arc<sioul_core::links::Loaded> {
+    work::loaded_known(shared).unwrap_or_else(|| loaded(shared))
+}
+
+/// A duration that never breaks inside: "2 h 30".
+fn duration(minutes: u32) -> String {
+    sioul_core::timereport::duration(minutes).replace(' ', "\u{a0}")
+}
+
 /// The client profiles of the notes folder, as they are now.
 fn clients_now() -> Clients {
     load_config().notes_root_path().and_then(|root| Clients::load(&root).ok()).unwrap_or_default()
@@ -153,7 +165,7 @@ pub(crate) fn list(asked: &str) -> String {
     let shown: Vec<Value> = rows.into_iter().filter(|r| (asked.client.is_empty() || r["client"] == asked.client.as_str()) && (asked.year.is_empty() || r["year"] == asked.year.as_str()) && (asked.status.is_empty() || r["status"] == asked.status.as_str())).collect();
     let mut said = missing_words(invoice::series::missing(&journal, &all));
     said.extend(invoice::twice_in(&folder).into_iter().map(|t| say("invoice-cli-twice", &[("number", t.number), ("first", t.clients.0), ("second", t.clients.1), ("file", t.copy.display().to_string())])));
-    said.extend(invoice::lives::Lives::load(&folder).newer.iter().chain(invoice::series::Journal::newer(&folder).iter()).map(|p| say("invoice-cli-newer", &[("file", p.display().to_string())])));
+    said.extend(invoice::lives::Lives::load(&folder).newer.iter().chain(invoice::series::Journal::newer(&folder).iter()).chain(invoice::newer_in(&folder).iter()).map(|p| say("invoice-cli-newer", &[("file", p.display().to_string())])));
     json!({ "rows": shown, "clients": clients, "years": years, "statuses": statuses, "said": said, "declares": !all.is_empty() }).to_string()
 }
 
@@ -199,13 +211,16 @@ fn tax_words(line: &invoice::Line) -> String {
 
 /// A line as the editor shows it: what `edit::LineEdit` sends back, and its words.
 fn line_view(i: usize, l: &invoice::Line, currency: &str) -> Value {
-    let time = !l.sessions.is_empty() || (l.unit == "MIN" && l.base == 60);
+    let time = edit::timed(l);
     json!({
+        "id": l.id,
         "from": i,
         "description": l.description,
         "details": l.details,
         "quantity": l.quantity as f64 / 1000.0,
         "unit": l.unit,
+        // Its unit by its name, whatever it is: one the list does not offer is shown as itself (F17).
+        "unit_words": if units::CODES.contains(&l.unit.as_str()) { tr().text(&format!("invoices-unit-{}", l.unit), None) } else { l.unit.clone() },
         "price": l.price as f64 / 100.0,
         "discount": l.discount as f64 / 100.0,
         "nature": if l.nature == invoice::Nature::Goods { "goods" } else { "service" },
@@ -215,7 +230,7 @@ fn line_view(i: usize, l: &invoice::Line, currency: &str) -> Value {
         "rate": l.rate as f64 / 100.0,
         "exemption": l.exemption,
         "time": time,
-        "time_words": l.minutes().filter(|_| time).map(sioul_core::timereport::duration).unwrap_or_default(),
+        "time_words": l.minutes().filter(|_| time).map(duration).unwrap_or_default(),
         "amount": money_in(l.amount, currency),
         "tax_words": tax_words(l),
     })
@@ -247,6 +262,7 @@ fn totals_view(d: &Invoice) -> Vec<Value> {
 fn choices(s: &InvoiceSettings, issuer: &invoice::Issuer) -> Value {
     let preset = presets::get(&issuer.preset);
     let language = tr().language().to_string();
+    // Minutes are time's own unit, priced by the hour: a line in minutes shows them by their name (`line_view`'s `unit_words`), never offered for another.
     let units: Vec<Value> = units::CODES.iter().filter(|c| **c != "MIN").map(|c| json!({ "code": c, "label": tr().text(&format!("invoices-unit-{c}"), None) })).collect();
     let categories: Vec<Value> = ["S", "Z", "E", "AE", "K", "G", "O"].iter().map(|c| json!({ "code": c, "label": tr().text(&format!("invoices-category-{}", c.to_lowercase()), None) })).collect();
     let rates: Vec<Value> = preset.rates_on(today()).iter().map(|r| json!({ "rate": r.rate as f64 / 100.0, "label": format!("{} · {}", tr().percent_bp(r.rate), r.name.get(&language)) })).collect();
@@ -275,17 +291,21 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
     let folder = invoice::folder();
     let records = invoice::all_in(&folder);
     let clients = clients_now();
-    let world = loaded(shared);
-    life::refresh_client(&mut d, &clients, &world.contacts);
-    life::refresh(&mut d, s, today);
+    let world = world(shared);
+    // A draft a newer Sioul wrote is shown as it is, never made again here (F13).
+    if !d.newer {
+        life::refresh_client(&mut d, &clients, &world.contacts);
+        life::refresh(&mut d, s, today);
+    }
     let checks = life::checks(&d, s, today, &records);
     let profile = clients::resolve(&d.client_ref, &clients, &world.contacts).1.cloned();
     let country = life::client_country(&d.client);
     let country_name = clients::country(&country).map_or_else(|| country.clone(), |c| c.name(tr().language()).to_string());
     let contact = d.client_ref.strip_prefix("sioul:contact/").map(sioul_core::notes::decode).or_else(|| profile.as_ref().and_then(|p| p.contact.strip_prefix("sioul:contact/").map(sioul_core::notes::decode))).unwrap_or_default();
     let cited: Vec<&str> = d.deposits.iter().map(|c| c.number.as_str()).collect();
-    let mut deposits: Vec<Value> = edit::deposits_for(&d, &records).into_iter().map(|r| json!({ "number": r.number, "date": short(&r.date), "amount": money_in(r.totals.with_tax, &r.currency), "cited": cited.contains(&r.number.as_str()) })).collect();
-    // Those it cites already, whatever happened to them since.
+    // The deposits of this client and currency not deducted yet, for what is left of each after its credit notes (F4).
+    let mut deposits: Vec<Value> = life::deposits_open(&d, &records).into_iter().map(|r| json!({ "number": r.number, "date": short(&r.date), "amount": money_in(life::deposit_left(r, &records), &r.currency), "cited": cited.contains(&r.number.as_str()) })).collect();
+    // Those it cites already, whatever happened to them since (a check says what is wrong with them).
     let gone: Vec<Value> = d.deposits.iter().filter(|c| !deposits.iter().any(|v| v["number"] == c.number.as_str())).map(|c| json!({ "number": c.number, "date": short(&c.date), "amount": money_in(c.amount, &d.currency), "cited": true })).collect();
     deposits.extend(gone);
     let required: Vec<String> = checks.iter().filter(|c| c.required).map(|c| c.text.clone()).collect();
@@ -293,6 +313,10 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
     let language = if d.language.is_empty() { tr().language().to_string() } else { d.language.clone() };
     json!({
         "id": d.draft,
+        // The draft as read, so that a change made elsewhere meanwhile is taken in and said (F2).
+        "revision": invoice::draft_revision(&folder, &d.draft),
+        "read_only": d.newer,
+        "read_only_words": if d.newer { tr().text("invoice-draft-newer", None) } else { String::new() },
         "kind": d.kind.id(),
         "title": title_of(&d),
         "copy_of": d.copy_of,
@@ -335,9 +359,32 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
 
 /// A draft for the editor, by its id; {"error"} when it is gone.
 pub(crate) fn draft(shared: &Shared, id: &str) -> String {
-    match invoice::draft_in(&invoice::folder(), id) {
+    let folder = invoice::folder();
+    match invoice::draft_in(&folder, id) {
+        // A draft of before its lines had ids: given them once, kept, so that the editor's changes find their lines (F2).
+        Some(d) if !d.newer && d.lines.iter().any(|l| l.id.is_empty()) => {
+            let s = load_config().invoice;
+            let kept = life::change_draft(&folder, id, &s, today(), |_| {}).unwrap_or(d);
+            draft_view(kept, shared).to_string()
+        }
         Some(d) => draft_view(d, shared).to_string(),
         None => refused(tr().text("invoice-draft-gone", None)),
+    }
+}
+
+/// The drafts New and "Bill this client" made in this window, each with
+/// its revision as made: one left as it was made was never written in.
+static FRESH: std::sync::Mutex<std::collections::BTreeMap<String, String>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The editor left a draft (Back, another draft, Quit): one New or "Bill
+/// this client" made in this window and nothing was written in since (its
+/// file is as it was made) is taken out, without a word (the review of
+/// phase 3, F17). A draft changed in any way, or made before, stays.
+pub(crate) fn leave_draft(id: &str) {
+    let Some(made) = FRESH.lock().ok().and_then(|mut fresh| fresh.remove(id)) else { return };
+    let folder = invoice::folder();
+    if !made.is_empty() && invoice::draft_revision(&folder, id) == made {
+        let _ = invoice::remove_draft(&folder, id);
     }
 }
 
@@ -361,7 +408,7 @@ struct Making {
 /// currency and terms), blank; a deposit invoice of an amount, or of a
 /// share of the draft `of` (its total excluding tax), for that draft's
 /// client and project. Returns {"draft"} or {"error"}.
-pub(crate) fn new_draft(qt: &QtThread, shared: &Arc<Shared>, making: &str) -> String {
+pub(crate) fn new_draft(shared: &Arc<Shared>, making: &str) -> String {
     let making: Making = serde_json::from_str(making).unwrap_or_default();
     let result = (|| -> Result<String, String> {
         let config = load_config();
@@ -369,7 +416,7 @@ pub(crate) fn new_draft(qt: &QtThread, shared: &Arc<Shared>, making: &str) -> St
         let today = today();
         let folder = invoice::folder();
         let clients = clients_now();
-        let world = loaded(shared);
+        let world = world(shared);
         let from = (!making.of.is_empty()).then(|| invoice::draft_in(&folder, &making.of)).flatten();
         let reference = from.as_ref().map_or(making.client.clone(), |d| d.client_ref.clone());
         let mut draft = life::for_client(s, &reference, &clients, &world.contacts, tr().language(), today);
@@ -387,19 +434,33 @@ pub(crate) fn new_draft(qt: &QtThread, shared: &Arc<Shared>, making: &str) -> St
             }
             let words = if making.description.trim().is_empty() { from.as_ref().and_then(|d| d.lines.first()).map(|l| say("invoices-deposit-on", &[("what", l.description.clone())])).unwrap_or_else(|| tr().text("invoices-deposit-line", None)) } else { making.description.trim().to_string() };
             draft = life::deposit(s, draft, &words, amount, today);
+            // The draft it was made from: "Final invoice…" opens it again, the deposit ticked (F10).
+            draft.deposit_of = from.as_ref().map(|d| d.draft.clone()).unwrap_or_default();
         }
-        Ok(invoice::save_draft(&folder, &draft)?.draft)
+        let id = invoice::save_draft(&folder, &draft)?.draft;
+        // A blank draft is remembered as made: left as it is, it is taken out (`leave_draft`).
+        if making.kind != "deposit"
+            && let Ok(mut fresh) = FRESH.lock()
+        {
+            fresh.insert(id.clone(), invoice::draft_revision(&folder, &id));
+        }
+        Ok(id)
     })();
-    work::refresh(qt, shared);
     match result {
         Ok(id) => json!({ "draft": id }).to_string(),
         Err(e) => refused(e),
     }
 }
 
-/// A draft changed as the editor says (`edit::Change`, JSON), saved, then
-/// shown as the editor shows it; {"error"} when it is gone.
-pub(crate) fn change(qt: &QtThread, shared: &Arc<Shared>, id: &str, change: &str) -> String {
+/// A draft changed as the editor says (`edit::Change`, JSON: only what it
+/// changed, lines by their ids, the revision it read), merged into the
+/// draft as it is now and saved (`edit::save`), then shown as the editor
+/// shows it, with "said": a change made elsewhere meanwhile taken in,
+/// deposits no longer deducted, a line taken out elsewhere. Only the
+/// invoices' views hear of it: nothing else is read again, the day is never
+/// planned again (the review of phase 3, F2, F7). {"error"} when it is gone,
+/// or a newer Sioul wrote it.
+pub(crate) fn change(shared: &Arc<Shared>, id: &str, change: &str) -> String {
     let change: edit::Change = match serde_json::from_str(change) {
         Ok(c) => c,
         Err(e) => return refused(e.to_string()),
@@ -409,12 +470,26 @@ pub(crate) fn change(qt: &QtThread, shared: &Arc<Shared>, id: &str, change: &str
     let folder = invoice::folder();
     let records = invoice::all_in(&folder);
     let clients = clients_now();
-    let world = loaded(shared);
+    let world = world(shared);
     let cx = edit::Context { settings: s, records: &records, clients: &clients, contacts: &world.contacts, fallback: tr().language(), today: today() };
-    let made = life::change_draft(&folder, id, s, today(), |d| edit::apply(d, &change, &cx));
-    work::refresh(qt, shared);
-    match made {
-        Ok(d) => draft_view(d, shared).to_string(),
+    match edit::save(&folder, id, &change, &cx) {
+        Ok(saved) => {
+            let mut said: Vec<String> = Vec::new();
+            if saved.elsewhere {
+                said.push(tr().text("invoices-changed-elsewhere", None));
+            }
+            for word in &saved.said {
+                said.push(match word {
+                    edit::Said::DepositsLeft(numbers) => say("invoices-deposits-left", &[("numbers", numbers.join(", ")), ("n", numbers.len().to_string())]),
+                    edit::Said::LineGone => tr().text("invoices-line-gone", None),
+                });
+            }
+            let mut view = draft_view(saved.draft, shared);
+            view["elsewhere"] = json!(saved.elsewhere);
+            view["said_now"] = json!(said.join(" "));
+            view.to_string()
+        }
+        Err(e) if invoice::draft_in(&folder, id).is_some() => refused(e),
         Err(_) => refused(tr().text("invoice-draft-gone", None)),
     }
 }
@@ -454,7 +529,7 @@ pub(crate) fn issue(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
         let records = invoice::all_in(&folder);
         let draft = invoice::draft_in(&folder, id).ok_or_else(|| tr().text("invoice-draft-gone", None))?;
         let clients = clients_now();
-        let world = loaded(shared);
+        let world = world(shared);
         let store = projects::store().ok();
         let ledger = store.as_ref().map(|st| st.root.join(budget::LEDGER));
         // Expected in its project's budget, as the project's invoices always were.
@@ -519,13 +594,15 @@ pub(crate) fn show(number: &str) -> String {
     let status = status_of(i, &all);
     let credit_notes: Vec<String> = all.iter().filter(|c| c.kind == Kind::CreditNote && c.corrects.as_ref().is_some_and(|x| x.number == i.number)).map(|c| c.number.clone()).collect();
     let deducted_by: Vec<String> = all.iter().filter(|f| f.deposits.iter().any(|d| d.number == i.number)).map(|f| f.number.clone()).collect();
+    // A final invoice credited whole gives its deposits back (F17).
+    let deducted_now = i.kind == Kind::Deposit && !life::deducted_by(i, &all).is_empty();
     let payments: Vec<Value> = i
         .payments
         .iter()
         .map(|p| json!({ "id": p.id, "words": say(if i.kind == Kind::CreditNote { "invoices-paid-back-line" } else { "invoices-paid-line" }, &[("amount", money_in(p.amount, &i.currency)), ("day", long(&p.date)), ("means", means_words(&p.means))]), "bank": !p.line.is_empty() }))
         .collect();
     let left = i.left(&all);
-    let lines: Vec<Value> = i.lines.iter().map(|l| json!({ "description": l.description, "amount": money_in(l.amount, &i.currency), "time": l.minutes().filter(|_| !l.sessions.is_empty() || i.older.is_some()).map(sioul_core::timereport::duration).unwrap_or_default() })).collect();
+    let lines: Vec<Value> = i.lines.iter().map(|l| json!({ "description": l.description, "amount": money_in(l.amount, &i.currency), "time": l.minutes().filter(|_| !l.sessions.is_empty() || i.older.is_some()).map(duration).unwrap_or_default() })).collect();
     let business = i.kind != Kind::CreditNote;
     json!({
         "number": i.number,
@@ -540,6 +617,8 @@ pub(crate) fn show(number: &str) -> String {
         "status": status,
         "status_words": tr().text(&format!("invoices-status-{status}"), None),
         "left": left as f64 / 100.0,
+        // What is left as the window's language writes an amount ("751,66"), to fill Paid… with (F17).
+        "left_text": amount_text(left),
         // What is left, once a part is paid (or on a credit note, to pay back).
         "left_words": if left > 0 && matches!(status, "partly-paid" | "to-pay-back") { say(if i.kind == Kind::CreditNote { "invoices-left-to-pay-back" } else { "invoices-left-to-pay" }, &[("amount", money_in(left, &i.currency))]) } else { String::new() },
         "sent": if i.sent.is_empty() { String::new() } else { say("invoices-sent-on", &[("day", long(&i.sent))]) },
@@ -555,7 +634,7 @@ pub(crate) fn show(number: &str) -> String {
             "paid": i.kind != Kind::CreditNote && left > 0,
             "paid_back": i.kind == Kind::CreditNote && left > 0,
             "credit": i.kind != Kind::CreditNote && i.left_to_credit(&all) > 0,
-            "final": i.kind == Kind::Deposit && deducted_by.is_empty(),
+            "final": i.kind == Kind::Deposit && !deducted_now && life::deposit_left(i, &all) > 0,
             "mail": !i.file.is_empty() || i.older.is_some(),
         },
     })
@@ -609,16 +688,10 @@ pub(crate) fn pay(qt: &QtThread, shared: &Arc<Shared>, number: &str, paying: &st
     let found = all.iter().find(|i| i.number == number);
     let words = say(if found.is_some_and(|i| i.kind == Kind::CreditNote) { "invoices-paid-back-said" } else { "invoices-paid-said" }, &[("number", number.to_string()), ("amount", money_in(cents, found.map_or("EUR", |i| i.currency.as_str())))]);
     crate::mail::offer_back(qt, shared, words, move |qt, shared| {
-        let mut problem = String::new();
-        if let (Some(ledger), Some(line)) = (&ledger, line.clone())
-            && line.planned
-            && let Ok(false) = budget::unsettle_paid(ledger, &link, line, today())
-        {
-            problem = tr().text("undo-too-late", None);
+        if let Err(said) = put_line_back(ledger.as_deref(), &link, line, day) {
+            return said;
         }
-        if let Err(e) = life::take_back(&invoice::folder(), &projects::device(), std::slice::from_ref(&payment.id)) {
-            problem = e;
-        }
+        let problem = life::take_back(&invoice::folder(), &projects::device(), std::slice::from_ref(&payment.id)).err().unwrap_or_default();
         work::refresh(qt, shared);
         crate::backend::show(qt, shared);
         problem
@@ -626,10 +699,26 @@ pub(crate) fn pay(qt: &QtThread, shared: &Arc<Shared>, number: &str, paying: &st
     String::new()
 }
 
+/// Paid…'s Undo on the budget line Paid… made real (the review of phase 3,
+/// F1): planned again as it was, while it holds what Paid… wrote, real on
+/// the payment's `day` (whatever day that is); else what to say, and then
+/// nothing is undone.
+fn put_line_back(ledger: Option<&std::path::Path>, link: &str, line: Option<budget::Settled>, day: Date) -> Result<(), String> {
+    let (Some(ledger), Some(line)) = (ledger, line) else { return Ok(()) };
+    if !line.planned {
+        return Ok(());
+    }
+    match budget::unsettle_paid(ledger, link, line, day) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(tr().text("undo-too-late", None)),
+        Err(e) => Err(e),
+    }
+}
+
 /// "Credit note…": a draft credit note citing invoice `number`, all its
 /// lines (to cancel it) or those at `lines` (JSON list of their places, to
 /// correct some), opened in the editor. Returns {"draft"} or {"error"}.
-pub(crate) fn credit(qt: &QtThread, shared: &Arc<Shared>, number: &str, lines: &str) -> String {
+pub(crate) fn credit(shared: &Arc<Shared>, number: &str, lines: &str) -> String {
     let chosen: Option<Vec<usize>> = serde_json::from_str::<Vec<usize>>(lines).ok().filter(|l| !l.is_empty());
     let result = (|| -> Result<String, String> {
         let folder = invoice::folder();
@@ -641,34 +730,54 @@ pub(crate) fn credit(qt: &QtThread, shared: &Arc<Shared>, number: &str, lines: &
         let draft = life::credit(&found, chosen.as_deref(), &projects::entries(shared), &config.invoice, today());
         Ok(invoice::save_draft(&folder, &draft)?.draft)
     })();
-    work::refresh(qt, shared);
     match result {
         Ok(id) => json!({ "draft": id }).to_string(),
         Err(e) => refused(e),
     }
 }
 
-/// A deposit invoice's final invoice: a draft for its client and project,
-/// deducting it (and any other deposit of that client not deducted yet,
-/// left for you to tick). Returns {"draft"} or {"error"}.
-pub(crate) fn final_of(qt: &QtThread, shared: &Arc<Shared>, number: &str) -> String {
+/// "Final invoice…" on a deposit invoice (the review of phase 3, F10): the
+/// draft that holds the work, never a second one beside it: the draft the
+/// deposit was made from, while it is there; else the project's draft that
+/// holds its time (the time noted since added, as "Make the invoice"
+/// does); else a draft made of the project's time not billed yet; else one
+/// for its client. Every deposit of the same client and currency not
+/// deducted yet is ticked in it, for what is left of each. Returns
+/// {"draft"} or {"error"}.
+pub(crate) fn final_of(shared: &Arc<Shared>, number: &str) -> String {
     let result = (|| -> Result<String, String> {
         let folder = invoice::folder();
         let records = invoice::all_in(&folder);
         let deposit = records.iter().find(|r| r.number == number && r.kind == Kind::Deposit).ok_or_else(|| tr().text("invoice-gone", None))?;
         let config = load_config();
         let s = &config.invoice;
-        let clients = clients_now();
-        let world = loaded(shared);
-        let mut draft = life::for_client(s, &deposit.client_ref, &clients, &world.contacts, tr().language(), today());
-        draft.project = deposit.project.clone();
-        draft.project_title = deposit.project_title.clone();
-        draft.currency = deposit.currency.clone();
-        draft.language = deposit.language.clone();
-        life::cite_deposits(&mut draft, std::slice::from_ref(deposit), s, today());
-        Ok(invoice::save_draft(&folder, &draft)?.draft)
+        let today = today();
+        let usable = |d: &Invoice| d.kind == Kind::Invoice && !d.newer && d.copy_of.is_empty() && life::same_client(d, deposit) && d.currency.eq_ignore_ascii_case(&deposit.currency);
+        let drafts = invoice::drafts_in(&folder);
+        let mut id = drafts.iter().find(|d| !deposit.deposit_of.is_empty() && d.draft == deposit.deposit_of && usable(d)).map(|d| d.draft.clone());
+        // Never a draft of another client or currency touched, nor one made for nothing.
+        if id.is_none() && !deposit.project.is_empty() {
+            id = projects::time_draft_for(shared, &deposit.project, &usable).ok().map(|(id, _)| id);
+        }
+        let id = match id {
+            Some(id) => id,
+            None => {
+                let clients = clients_now();
+                let world = world(shared);
+                let mut draft = life::for_client(s, &deposit.client_ref, &clients, &world.contacts, tr().language(), today);
+                draft.project = deposit.project.clone();
+                draft.project_title = deposit.project_title.clone();
+                draft.currency = deposit.currency.clone();
+                draft.language = deposit.language.clone();
+                invoice::save_draft(&folder, &draft)?.draft
+            }
+        };
+        life::change_draft(&folder, &id, s, today, |d| {
+            let open: Vec<&Invoice> = life::deposits_open(d, &records);
+            life::cite_deposits(d, &open, &records, s, today);
+        })?;
+        Ok(id)
     })();
-    work::refresh(qt, shared);
     match result {
         Ok(id) => json!({ "draft": id }).to_string(),
         Err(e) => refused(e),
@@ -723,6 +832,8 @@ pub(crate) fn write_mail(shared: &Shared, number: &str) -> String {
     let due = day_of(&found.due).map(|d| sioul_core::books::long_day(&language, d)).unwrap_or_default();
     let body = if found.kind == Kind::CreditNote { "invoices-mail-body-credit" } else if due.is_empty() { "invoices-mail-body-no-due" } else { "invoices-mail-body" };
     draft.body = words(body, &[("title", title), ("amount", language.money_in(found.total(), &found.currency)), ("due", due), ("name", found.issuer.name.clone())]);
+    // The account's signature, as every draft written for you has it (F17).
+    draft.add_signature(config.account(&account).and_then(|a| a.signature.as_deref()));
     draft.attachments = vec![attached];
     draft.links = vec![sioul_core::links::invoice_uri(&found.number)];
     match draft.save() {
@@ -731,20 +842,62 @@ pub(crate) fn write_mail(shared: &Shared, number: &str) -> String {
     }
 }
 
-/// A mail that left Sioul: each invoice it was written for ("Write the
-/// mail", the draft's links) marked sent on this device, today
-/// (`life::mark_sent`). Called by the send path, before the draft goes.
-pub(crate) fn sent_with(draft: &sioul_core::compose::Draft) {
+/// A mail that left Sioul (`missed`: the recipients its server refused):
+/// each invoice it is tied to marked sent on this device, today
+/// (`life::mark_sent`), only when it carried that invoice to its client:
+/// the invoice's kept PDF among its attachments, by its SHA-256 (an
+/// invoice from before November 2026, its printed copy), and the client's
+/// invoice address among the recipients it reached. A mail merely tied to
+/// an invoice (a reminder, an agent's draft) marks nothing (the review of
+/// phase 3, F5). Called by the send path, before the draft goes.
+pub(crate) fn sent_with(draft: &sioul_core::compose::Draft, missed: &[String]) {
     let numbers: Vec<String> = draft.links.iter().filter_map(|l| l.strip_prefix("sioul:invoice/")).map(sioul_core::notes::decode).collect();
     if numbers.is_empty() {
         return;
     }
     let folder = invoice::folder();
+    let attached: Vec<String> = draft.attachments.iter().filter_map(|p| invoice::kept::sha256_of(p)).collect();
+    let clients = clients_now();
     for number in numbers {
+        let Some(found) = invoice::find_in(&folder, &number) else { continue };
+        if !delivered(&found, draft, &attached, missed, &clients) {
+            continue;
+        }
         if let Err(e) = life::mark_sent(&folder, &projects::device(), &number, today()) {
             eprintln!("Sioul: invoice {number} sent, not marked so: {e}");
         }
     }
+}
+
+/// Whether a mail that left carried the invoice to its client: its file
+/// among `attached` (the attachments' hashes), and the client's invoice
+/// address among the recipients its server took (not `missed`).
+fn delivered(found: &Invoice, draft: &sioul_core::compose::Draft, attached: &[String], missed: &[String], clients: &Clients) -> bool {
+    let missed: Vec<String> = missed.iter().map(|m| address_of(m)).collect();
+    let reached: Vec<String> = draft.to.iter().chain(&draft.cc).chain(&draft.bcc).map(|r| address_of(r)).filter(|a| !a.is_empty() && !missed.contains(a)).collect();
+    carried(found, draft, attached) && invoice_addresses(found, clients).iter().any(|a| reached.contains(a))
+}
+
+/// A recipient's address, in small letters: "Anna <anna@example.org>" is "anna@example.org".
+fn address_of(recipient: &str) -> String {
+    let r = recipient.trim();
+    r.rsplit_once('<').and_then(|(_, a)| a.split_once('>')).map_or(r, |(a, _)| a).trim().to_lowercase()
+}
+
+/// Whether a mail's attachments carry the invoice: its kept PDF by its
+/// hash; one from before November 2026 kept none, its printed copy by its path.
+fn carried(found: &Invoice, draft: &sioul_core::compose::Draft, attached: &[String]) -> bool {
+    if found.file.is_empty() || found.file_sha256.is_empty() {
+        let copy = projects::pdf_path(found);
+        return draft.attachments.iter().any(|p| *p == copy);
+    }
+    attached.contains(&found.file_sha256)
+}
+
+/// Where the invoice goes by mail: the record's client address, its profile's.
+fn invoice_addresses(found: &Invoice, clients: &Clients) -> Vec<String> {
+    let profile = clients::resolve(&found.client_ref, clients, &[]).1.map(|p| p.email.clone()).unwrap_or_default();
+    [found.client.email.as_str(), profile.as_str()].iter().map(|e| address_of(e)).filter(|e| !e.is_empty()).collect()
 }
 
 // ---------------------------------------------------------------- clients
@@ -807,8 +960,11 @@ pub(crate) fn client_profile(shared: &Shared, reference: &str) -> String {
         "city": made.address.city,
         "country": country,
         "country_name": clients::country(&country).map(|c| c.name(&language).to_string()).unwrap_or_default(),
-        "delivery": made.delivery.as_ref().map(|d| d.text("", &language)).unwrap_or_default(),
-        "ids": made.ids.iter().map(|i| json!({ "kind": i.kind, "value": i.value })).collect::<Vec<_>>(),
+        "delivery_lines": made.delivery.as_ref().map(|d| d.lines.join("\n")).unwrap_or_default(),
+        "delivery_postcode": made.delivery.as_ref().map(|d| d.postcode.clone()).unwrap_or_default(),
+        "delivery_city": made.delivery.as_ref().map(|d| d.city.clone()).unwrap_or_default(),
+        "delivery_country": made.delivery.as_ref().map(|d| d.country.clone()).unwrap_or_default(),
+        "ids": made.ids.iter().map(|i| json!({ "kind": i.kind, "value": i.value, "printed": i.printed })).collect::<Vec<_>>(),
         "language": made.language,
         "currency": made.currency,
         "terms_days": made.terms_days,
@@ -816,9 +972,21 @@ pub(crate) fn client_profile(shared: &Shared, reference: &str) -> String {
         "email": made.email,
         "order": made.order,
         "summary": profile_summary(&made, &language),
-        "id_kinds": [{ "kind": "siren", "label": "SIREN" }, { "kind": "siret", "label": "SIRET" }, { "kind": "vat", "label": tr().text("invoices-id-vat", None) }, { "kind": "other", "label": tr().text("invoices-id-other", None) }],
+        "id_kinds": id_kinds(&made),
     })
     .to_string()
+}
+
+/// The kinds of identifier a profile's form offers, and any its profile
+/// holds besides, by its own name: never shown as another (F17).
+fn id_kinds(p: &Profile) -> Vec<Value> {
+    let mut kinds = vec![json!({ "kind": "siren", "label": "SIREN" }), json!({ "kind": "siret", "label": "SIRET" }), json!({ "kind": "vat", "label": tr().text("invoices-id-vat", None) }), json!({ "kind": "other", "label": tr().text("invoices-id-other", None) })];
+    for i in &p.ids {
+        if !kinds.iter().any(|k| k["kind"] == i.kind.as_str()) {
+            kinds.push(json!({ "kind": i.kind, "label": i.kind }));
+        }
+    }
+    kinds
 }
 
 /// A profile in one line: "A business · Belgium · BE0123456789 · invoices in French".
@@ -840,72 +1008,63 @@ fn profile_summary(p: &Profile, language: &str) -> String {
     parts.join("  ·  ")
 }
 
-/// A client profile as its form gives it.
+/// A client profile's form: its id ("" for a new one) and only what it
+/// changed (`clients::ProfileChange`).
 #[derive(Deserialize, Default)]
 #[serde(default)]
-struct ProfileEdit {
+struct ProfileForm {
     id: String,
-    contact: String,
-    kind: String,
-    name: String,
-    lines: String,
-    postcode: String,
-    city: String,
-    country: String,
-    delivery: String,
-    ids: Vec<IdEdit>,
-    language: String,
-    currency: String,
-    terms_days: Option<u32>,
-    end_of_month: bool,
-    email: String,
-    order: String,
+    #[serde(flatten)]
+    change: clients::ProfileChange,
 }
 
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct IdEdit {
-    kind: String,
-    value: String,
+/// What a profile's form changed, made right to be written: a country
+/// written as a name kept as its two letters (one Sioul does not know
+/// refused), a kind it does not offer left as it was, an identifier
+/// without a kind "other".
+fn checked(mut change: clients::ProfileChange) -> Result<clients::ProfileChange, String> {
+    for country in [&mut change.country, &mut change.delivery_country].into_iter().flatten() {
+        let written = country.trim().to_string();
+        if written.is_empty() {
+            continue;
+        }
+        match clients::country(&written) {
+            Some(found) => *country = found.code.to_string(),
+            None => return Err(say("invoice-check-client-country-unknown", &[("country", written)])),
+        }
+    }
+    if change.kind.as_deref().is_some_and(|k| !["business", "consumer", "public"].contains(&k)) {
+        change.kind = None;
+    }
+    for id in change.ids.iter_mut().flatten() {
+        if id.kind.trim().is_empty() {
+            id.kind = "other".into();
+        }
+    }
+    Ok(change)
 }
 
 /// A client profile saved from its form (`sioul-clients.toml`, the
-/// projects' part of the sharing): made when new, every other profile kept.
-/// A country written as a name is kept as its two letters. Returns {"id"}
-/// or {"error"}.
-pub(crate) fn save_client_profile(qt: &QtThread, shared: &Arc<Shared>, form: &str) -> String {
-    let form: ProfileEdit = match serde_json::from_str(form) {
+/// projects' part of the sharing): only what the form changed, key by key,
+/// the rest of the profile, its comments, the keys Sioul does not know, an
+/// identifier left unprinted and the delivery address kept as written
+/// (`clients::change`, the review of phase 3, F6); made when new. Returns
+/// {"id"} or {"error"}.
+pub(crate) fn save_client_profile(form: &str) -> String {
+    let form: ProfileForm = match serde_json::from_str(form) {
         Ok(f) => f,
         Err(e) => return refused(e.to_string()),
     };
     let Some(root) = load_config().notes_root_path() else { return refused(tr().text("error-no-store", None)) };
-    let code = |written: &str| clients::country(written).map_or_else(|| written.trim().to_uppercase(), |c| c.code.to_string());
-    let country = form.country.trim();
-    if !country.is_empty() && clients::country(country).is_none() {
-        return refused(say("invoice-check-client-country-unknown", &[("country", country.to_string())]));
-    }
-    let delivery = invoice::Address::from_text(&form.delivery);
-    let profile = Profile {
-        id: form.id.trim().to_string(),
-        contact: form.contact.trim().to_string(),
-        kind: if ["business", "consumer", "public"].contains(&form.kind.as_str()) { form.kind } else { "business".into() },
-        name: form.name.trim().to_string(),
-        address: invoice::Address { lines: form.lines.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(), postcode: form.postcode.trim().to_string(), city: form.city.trim().to_string(), country: if country.is_empty() { String::new() } else { code(country) } },
-        delivery: (!delivery.is_empty()).then_some(delivery),
-        ids: form.ids.into_iter().filter(|i| !i.value.trim().is_empty()).map(|i| invoice::Identifier { kind: if i.kind.trim().is_empty() { "other".into() } else { i.kind.trim().to_string() }, value: i.value.trim().to_string(), printed: true }).collect(),
-        language: form.language.trim().to_string(),
-        currency: form.currency.trim().to_uppercase(),
-        terms_days: form.terms_days,
-        end_of_month: form.end_of_month.then_some(true),
-        email: form.email.trim().to_string(),
-        order: form.order.trim().to_string(),
+    let change = match checked(form.change) {
+        Ok(c) => c,
+        Err(e) => return refused(e),
     };
-    if profile.name.is_empty() && profile.contact.is_empty() {
+    let named = |o: &Option<String>| o.as_deref().is_some_and(|t| !t.trim().is_empty());
+    if form.id.trim().is_empty() && !named(&change.name) && !named(&change.contact) {
         return refused(tr().text("invoices-client-no-name", None));
     }
-    let result = clients::save(&clients::file_in(&root), &profile);
-    work::refresh(qt, shared);
-    match result {
+    match clients::change(&clients::file_in(&root), form.id.trim(), &change) {
         Ok(id) => json!({ "id": id }).to_string(),
         Err(e) => refused(e),
     }
@@ -915,32 +1074,31 @@ pub(crate) fn save_client_profile(qt: &QtThread, shared: &Arc<Shared>, form: &st
 /// written in its profile (made for its contact, or its name, when it has
 /// none), since a draft's client is made again from its profile until it
 /// is issued. Returns the draft as the editor shows it, or {"error"}.
-pub(crate) fn set_client_traits(qt: &QtThread, shared: &Arc<Shared>, id: &str, kind: &str, country: &str) -> String {
+pub(crate) fn set_client_traits(shared: &Arc<Shared>, id: &str, kind: &str, country: &str) -> String {
     let folder = invoice::folder();
     let Some(d) = invoice::draft_in(&folder, id) else { return refused(tr().text("invoice-draft-gone", None)) };
     let Some(root) = load_config().notes_root_path() else { return refused(tr().text("error-no-store", None)) };
-    let country = country.trim();
-    if !country.is_empty() && clients::country(country).is_none() {
-        return refused(say("invoice-check-client-country-unknown", &[("country", country.to_string())]));
-    }
     let clients = clients_now();
-    let world = loaded(shared);
+    let world = world(shared);
     let (client, profile) = clients::resolve(&d.client_ref, &clients, &world.contacts);
-    let mut made = profile.cloned().unwrap_or_else(|| Profile {
-        contact: if d.client_ref.starts_with("sioul:contact/") { d.client_ref.clone() } else { String::new() },
-        name: client.name.clone(),
-        address: client.address.clone(),
-        email: client.email.clone(),
-        ..Profile::default()
-    });
-    if ["business", "consumer", "public"].contains(&kind) {
-        made.kind = kind.to_string();
+    // Its kind and country only, the rest of its profile as written (F6);
+    // without a profile, one made of what the draft knows of its client.
+    let mut change = clients::ProfileChange { kind: Some(kind.to_string()), country: Some(country.trim().to_string()), ..clients::ProfileChange::default() };
+    if profile.is_none() {
+        change.contact = d.client_ref.starts_with("sioul:contact/").then(|| d.client_ref.clone());
+        change.name = Some(client.name.clone());
+        change.lines = Some(client.address.lines.clone());
+        change.postcode = Some(client.address.postcode.clone());
+        change.city = Some(client.address.city.clone());
+        change.email = Some(client.email.clone());
     }
-    made.address.country = clients::country(country).map(|c| c.code.to_string()).unwrap_or_default();
-    if let Err(e) = clients::save(&clients::file_in(&root), &made) {
+    let change = match checked(change) {
+        Ok(c) => c,
+        Err(e) => return refused(e),
+    };
+    if let Err(e) = clients::change(&clients::file_in(&root), profile.map_or("", |p| p.id.as_str()), &change) {
         return refused(e);
     }
-    work::refresh(qt, shared);
     draft(shared, id)
 }
 
@@ -1026,7 +1184,8 @@ pub(crate) fn settings_view() -> String {
         "regime": life::regime_of(s),
         "regimes": regimes,
         "schemes": schemes,
-        "tax": s.tax.iter().map(|t| json!({ "from": t.from, "scheme": t.scheme, "mention": t.mention })).collect::<Vec<_>>(),
+        // Each day as a day (2027-01-01), however it was typed; one that does not read as written, said by the books and refused at issue.
+        "tax": s.tax.iter().map(|t| json!({ "from": sioul_core::config::read_day(&t.from).map_or_else(|| t.from.clone(), |d| d.to_string()), "scheme": t.scheme, "mention": t.mention })).collect::<Vec<_>>(),
         "scheme_now": life::scheme_on(s, today).0,
         "mention_default": preset.mention_on(today),
     });
@@ -1058,7 +1217,9 @@ pub(crate) fn settings_view() -> String {
         "pattern": s.pattern,
         "pattern_default": invoice::series::PATTERN,
         "pattern_problem": pattern.err().unwrap_or_default(),
-        "reset": if s.reset.trim().is_empty() { "yearly".to_string() } else { s.reset.trim().to_string() },
+        // The reset the numbering follows (F20): the one written, else the usual pattern's own.
+        "reset": life::pattern_of(s, Kind::Invoice).map_or_else(|_| invoice::series::Reset::named(s.reset.trim()).id(), |p| p.reset().id()),
+        "reset_written": s.reset.trim(),
         "credit_pattern": s.credit_pattern,
         "next": next,
         "lines": lines,
@@ -1123,9 +1284,23 @@ pub(crate) fn set_setting(qt: &QtThread, shared: &Arc<Shared>, key: &str, value:
     let text = value.as_str().map(str::trim).unwrap_or("").to_string();
     let config_key = format!("invoice.{key}");
     let result = match key {
-        "id" | "tax" | "bank" | "line" | "contribution" => {
+        // A VAT scheme's day as people type it (01/01/2027) written as a day (2027-01-01); one that does not read refused (F19).
+        "tax" => match tax_rows(&value) {
+            Ok(rows) => sioul_core::config::set_invoice_list(&path, key, &rows),
+            Err(e) => Err(e),
+        },
+        "id" | "bank" | "line" | "contribution" => {
             let rows: Vec<toml::Table> = value.as_array().into_iter().flatten().map(table_of).filter(|t| !t.is_empty()).collect();
             sioul_core::config::set_invoice_list(&path, key, &rows)
+        }
+        // A reset the numbering can follow: from 1 each year asks the year in the numbers (F20).
+        "reset" => {
+            let mut s = load_config().invoice;
+            s.reset = text.clone();
+            match life::pattern_of(&s, Kind::Invoice) {
+                Err(e) if e.contains("start again each year") => Err(tr().text("invoice-check-reset-year", None)),
+                _ => sioul_core::config::set_value(&path, &config_key, &SettingValue::Text(text.clone())),
+            }
         }
         "pattern" | "credit_pattern" if !text.is_empty() => {
             let reset = invoice::series::Reset::named(load_config().invoice.reset.trim());
@@ -1162,6 +1337,80 @@ pub(crate) fn set_setting(qt: &QtThread, shared: &Arc<Shared>, key: &str, value:
     result.err().unwrap_or_default()
 }
 
+/// The dated VAT schemes as Settings ▸ Invoices gives them, each day read
+/// as people type it and written as 2027-01-01; a day that does not read
+/// refused, never written to be ignored (the review of phase 3, F19).
+fn tax_rows(value: &Value) -> Result<Vec<toml::Table>, String> {
+    let mut rows = Vec::new();
+    for row in value.as_array().into_iter().flatten() {
+        let mut table = table_of(row);
+        if let Some(from) = table.get("from").and_then(toml::Value::as_str).map(str::to_string) {
+            match sioul_core::config::read_day(&from) {
+                Some(day) => {
+                    table.insert("from".into(), toml::Value::String(day.to_string()));
+                }
+                None => return Err(say("invoices-scheme-day-wrong", &[("day", from)])),
+            }
+        }
+        if !table.is_empty() {
+            rows.push(table);
+        }
+    }
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------- amounts
+
+/// An amount in cents as the window's language writes it for typing: "751.66", "751,66".
+fn amount_text(cents: i64) -> String {
+    let text = format!("{}.{:02}", cents / 100, (cents % 100).abs());
+    if tr().language() == "fr" { text.replace('.', ",") } else { text }
+}
+
+/// An amount typed in the window (the review of phase 3, F8), read by its
+/// language: in English a comma groups thousands and a dot marks decimals
+/// ("1,500.50"); in French a space, a no-break or a narrow space groups and
+/// a comma marks decimals ("1 500,50"), a dot alone read as decimals.
+/// None when it does not read as an amount ("1,5,0", "12abc").
+pub(crate) fn read_amount_in(text: &str, language: &str) -> Option<f64> {
+    let text: String = text.trim().chars().filter(|c| !matches!(c, '€' | '$' | '£')).collect();
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let (group, decimal): (&[char], char) = if language == "fr" { (&[' ', '\u{a0}', '\u{202f}'], ',') } else { (&[','], '.') };
+    let mut cleaned = String::new();
+    for c in text.chars() {
+        match c {
+            c if group.contains(&c) => {}
+            c if c == decimal => cleaned.push('.'),
+            '.' if language == "fr" => cleaned.push('.'),
+            '-' if cleaned.is_empty() => cleaned.push('-'),
+            c if c.is_ascii_digit() => cleaned.push(c),
+            _ => return None,
+        }
+    }
+    if cleaned.matches('.').count() > 1 {
+        return None;
+    }
+    // A group of thousands is three digits: "1,50" is no amount in English.
+    if language != "fr" && text.contains(',') && text.split('.').next().unwrap_or("").split(',').skip(1).any(|g| g.len() != 3) {
+        return None;
+    }
+    cleaned.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+/// An amount typed, read: {"ok", "value", "words"}: "words" says what it
+/// reads as ("= €1,500.00"), beside the field, as it is typed.
+pub(crate) fn read_amount(text: &str, currency: &str) -> String {
+    let currency = if currency.trim().is_empty() { "EUR" } else { currency.trim() };
+    match read_amount_in(text, tr().language()) {
+        Some(value) => json!({ "ok": true, "value": value, "words": format!("= {}", money_in(edit::cents(value), currency)) }).to_string(),
+        None if text.trim().is_empty() => json!({ "ok": false, "value": 0, "words": "" }).to_string(),
+        None => json!({ "ok": false, "value": 0, "words": tr().text("invoices-amount-unread", None) }).to_string(),
+    }
+}
+
 // ---------------------------------------------------------------- the books
 
 /// A declaration said made ("Declared") or not (`on`), by its key
@@ -1172,20 +1421,22 @@ pub(crate) fn set_setting(qt: &QtThread, shared: &Arc<Shared>, key: &str, value:
 pub(crate) fn declared(qt: &QtThread, shared: &Arc<Shared>, key: &str, on: bool) -> String {
     let folder = invoice::folder();
     let device = projects::device();
-    let result = if on { sioul_core::books::mark_declared(&folder, &device, key, today()).map(|id| vec![id]) } else { sioul_core::books::unmark_declared(&folder, &device, key).map(|_| Vec::new()) };
+    // What it was: its Undo says it again, as a newer word (the review of phase 3, F16).
+    let before = sioul_core::books::declared_days(&invoice::lives::Lives::load(&folder)).get(key).copied();
+    let now_ms = || jiff::Timestamp::now().as_millisecond();
+    let result = sioul_core::books::mark_declared(&folder, &device, key, today(), on, now_ms());
     crate::backend::show(qt, shared);
-    match result {
-        Ok(ids) if on => {
-            crate::mail::offer_back(qt, shared, tr().text("invoices-declared-said", None), move |qt, shared| {
-                let back = life::take_back(&invoice::folder(), &projects::device(), &ids).err().unwrap_or_default();
-                crate::backend::show(qt, shared);
-                back
-            });
-            String::new()
-        }
-        Ok(_) => String::new(),
-        Err(e) => e,
+    if let Err(e) = result {
+        return e;
     }
+    let key = key.to_string();
+    let words = tr().text(if on { "invoices-declared-said" } else { "invoices-not-declared-said" }, None);
+    crate::mail::offer_back(qt, shared, words, move |qt, shared| {
+        let back = sioul_core::books::mark_declared(&invoice::folder(), &projects::device(), &key, before.unwrap_or_else(today), before.is_some(), now_ms()).err().unwrap_or_default();
+        crate::backend::show(qt, shared);
+        back
+    });
+    String::new()
 }
 
 #[cfg(test)]
@@ -1219,6 +1470,103 @@ mod tests {
         assert_eq!(said.len(), 2, "{said:?}");
         assert!(said[0].contains("2026-001") && said[0].contains("2026-003") && !said[0].contains("2026-002"), "{said:?}");
         assert!(said[1].contains("2026-007"), "{said:?}");
+    }
+
+    /// An amount is read by the window's language (the review of phase 3,
+    /// F8): a comma groups thousands in English, a space in French, where
+    /// a comma marks decimals; what does not read is never taken for
+    /// another amount.
+    #[test]
+    fn an_amount_is_read_by_the_window_s_language() {
+        let en = |t: &str| read_amount_in(t, "en");
+        let fr = |t: &str| read_amount_in(t, "fr");
+        assert_eq!((en("1,500"), en("1,500.50"), en("€1,500"), en("1500"), en("12.5")), (Some(1500.0), Some(1500.5), Some(1500.0), Some(1500.0), Some(12.5)));
+        assert_eq!((en("1,50"), en("1.500.00"), en("12abc"), en("")), (None, None, None, None));
+        assert_eq!((fr("1 500,50"), fr("1\u{202f}500"), fr("1\u{a0}500,5"), fr("751,66"), fr("12.5")), (Some(1500.5), Some(1500.0), Some(1500.5), Some(751.66), Some(12.5)));
+        assert_eq!((fr("1,5,0"), fr("douze")), (None, None));
+    }
+
+    /// A VAT scheme's day as people type it is written as a day; one that
+    /// does not read is refused, never written to be ignored (F19).
+    #[test]
+    fn a_scheme_s_day_is_written_as_a_day() {
+        let rows = tax_rows(&json!([{ "scheme": "franchise" }, { "from": "01/01/2027", "scheme": "liable" }])).unwrap();
+        assert_eq!(rows[1].get("from").and_then(toml::Value::as_str), Some("2027-01-01"));
+        assert!(!rows[0].contains_key("from"));
+        assert!(tax_rows(&json!([{ "from": "1er janvier 2027", "scheme": "liable" }])).is_err());
+    }
+
+    /// An invoice is sent only by a mail that carried its kept PDF to its
+    /// client (the review of phase 3, F5): a reminder tied to it marks
+    /// nothing, nor a send whose server refused the client's address.
+    #[test]
+    fn an_invoice_is_sent_by_the_mail_that_carried_it() {
+        let found = Invoice { number: "2026-005".into(), file: "2026-005.pdf".into(), file_sha256: "ab12".into(), client: invoice::Client { email: "anna@example.org".into(), ..invoice::Client::default() }, ..Invoice::default() };
+        let mut mail = sioul_core::compose::Draft::new("work");
+        mail.to = vec!["Anna Exemple <Anna@Example.org>".into()];
+        mail.cc = vec!["me@example.org".into()];
+        let none = Clients::default();
+        assert!(!delivered(&found, &mail, &[], &[], &none), "no file: a reminder");
+        assert!(delivered(&found, &mail, &["ab12".into()], &[], &none));
+        assert!(!delivered(&found, &mail, &["ab12".into()], &["anna@example.org".into()], &none), "the client's address refused, the copy taken");
+        assert!(!delivered(&found, &mail, &["ff00".into()], &[], &none), "another file");
+    }
+
+    /// A draft saved as it is typed reads no store again and keeps what
+    /// the pages read: the day is never planned again for it (F7).
+    #[test]
+    fn a_draft_saved_reads_no_store() {
+        sioul_core::config::stand_ins_only();
+        let shared = Arc::new(Shared::default());
+        let _ = loaded(&shared);
+        let folder = invoice::folder();
+        let made = invoice::save_draft(&folder, &Invoice { kind: Kind::Invoice, currency: "EUR".into(), ..Invoice::default() }).unwrap();
+        crate::work::LOADS.with(|n| n.set(0));
+        let answer: Value = serde_json::from_str(&change(&shared, &made.draft, &json!({ "notes": ["Thank you."] }).to_string())).unwrap();
+        assert!(answer["error"].is_null(), "{answer}");
+        assert_eq!(answer["notes"][0].as_str(), Some("Thank you."));
+        assert_eq!(crate::work::LOADS.with(std::cell::Cell::get), 0, "nothing read again");
+        assert!(shared.loaded.lock().unwrap().is_some(), "what the pages read is kept");
+        // New's draft left as it was made is taken out; written in, it stays; a draft made before is never touched.
+        let new = || serde_json::from_str::<Value>(&new_draft(&shared, "{}")).unwrap()["draft"].as_str().unwrap_or("").to_string();
+        let blank = new();
+        assert!(invoice::draft_in(&folder, &blank).is_some());
+        leave_draft(&blank);
+        assert!(invoice::draft_in(&folder, &blank).is_none(), "made and never written in: taken out");
+        let typed = new();
+        change(&shared, &typed, &json!({ "order": "PO-1" }).to_string());
+        leave_draft(&typed);
+        assert!(invoice::draft_in(&folder, &typed).is_some(), "written in: kept");
+        let older = invoice::save_draft(&folder, &Invoice { kind: Kind::Invoice, currency: "EUR".into(), ..Invoice::default() }).unwrap();
+        leave_draft(&older.draft);
+        assert!(invoice::draft_in(&folder, &older.draft).is_some(), "an empty draft made before stays");
+        for id in [&made.draft, &typed, &older.draft] {
+            let _ = invoice::remove_draft(&folder, id);
+        }
+    }
+
+    /// Paid…'s Undo puts the budget line back as it was when Paid… was said
+    /// for another day than today; once the line changed since, it is too
+    /// late, said, and nothing is undone (the review of phase 3, F1).
+    #[test]
+    fn paid_s_undo_puts_the_line_back() {
+        let dir = std::env::temp_dir().join(format!("sioul-paid-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ledger = dir.join("ledger.toml");
+        let link = "sioul:invoice/2026-005";
+        std::fs::write(&ledger, "[[line]]\nbudget = \"work\"\ndate = 2026-12-01\namount = 990\nlabel = \"Invoice 2026-005\"\nplanned = true\nlinks = [\"sioul:invoice/2026-005\"]\n").unwrap();
+        let paid_on: Date = "2026-11-10".parse().unwrap();
+        let line = budget::settle_line(&ledger, link, paid_on).unwrap();
+        assert!(line.is_some_and(|l| l.planned));
+        assert_eq!(put_line_back(Some(&ledger), link, line, paid_on), Ok(()));
+        let text = std::fs::read_to_string(&ledger).unwrap();
+        assert!(text.contains("planned = true") && text.contains("2026-12-01"), "{text}");
+        // Changed since (its day moved by hand): too late, said.
+        let line = budget::settle_line(&ledger, link, paid_on).unwrap();
+        std::fs::write(&ledger, std::fs::read_to_string(&ledger).unwrap().replace("2026-11-10", "2026-11-12")).unwrap();
+        assert!(put_line_back(Some(&ledger), link, line, paid_on).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A list's row of Settings ▸ Invoices made a table: empty texts left

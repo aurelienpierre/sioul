@@ -2,7 +2,12 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A draft in its editor (docs/projects.md, "The editor"; the invoicing
-// design §9), saved as it is typed (`invoice::edit`): its client, chosen
+// design §9), saved as it is typed (`invoice::edit`): each save sends only
+// what was changed, lines by their ids, against the draft's revision, so
+// that what changed elsewhere meanwhile is taken in and said, never written
+// over; what was typed and not sent yet is written before the draft is left
+// or Sioul quits (the review of phase 3, F2, F11). A draft a newer Sioul
+// wrote opens to be read only, saying why (F13). Its client, chosen
 // among the client profiles and the contacts, with the kind and the country
 // shown and changeable (written in the client's profile, which the draft
 // follows until it is issued); its days, the issue's (today, when you press
@@ -30,8 +35,15 @@ Item {
     property string draftId: ""
     // The draft as the core shows it (`invoices::draft_view`); null before it reads.
     property var view: null
-    // The lines as typed, sent whole at each change; `from` their place in the draft as kept.
+    // The draft as read, sent with each change: one made elsewhere meanwhile is taken in and said.
+    property string revision: ""
+    // The lines as typed (each by its id), and the draft's other fields typed: notes, order, terms, currency.
     property var lines: []
+    property var fields: ({})
+    // What was typed and not sent yet: each line's fields by its id, the draft's fields.
+    property var pendingLines: ({})
+    property var pendingFields: ({})
+    readonly property bool readOnly: editor.view !== null && editor.view.read_only === true
     // How many lines the page shows: made again when lines come or go, never while one is typed.
     property int shownLines: 0
     // The lines from time unfolded.
@@ -56,7 +68,12 @@ Item {
     signal depositAsked(string id)
 
     function load(id) {
+        // The draft left: what was typed in it written, one made and never written in taken out.
+        if (editor.draftId !== "" && editor.draftId !== id)
+            editor.leave()
         editor.draftId = id
+        editor.pendingLines = ({})
+        editor.pendingFields = ({})
         editor.elsewhere = false
         editor.problem = ""
         editor.tracing = false
@@ -67,7 +84,8 @@ Item {
             editor.rebuild()
     }
 
-    // The core's answer taken: the draft, or what went wrong.
+    // The core's answer taken: the draft, or what went wrong; what it found
+    // to say besides (a change made elsewhere taken in) in the status line.
     function take(answer) {
         const made = JSON.parse(answer || "{}")
         if (made.error) {
@@ -75,39 +93,113 @@ Item {
             return false
         }
         editor.view = made
+        editor.revision = made.revision || ""
         editor.problem = ""
+        if (made.said_now)
+            editor.sioul.status = made.said_now
         return true
+    }
+
+    // The draft's own fields as it holds them, as typed in the window.
+    function viewFields() {
+        const v = editor.view
+        return v ? { notes: v.notes.join("\n"), order: v.order, terms_days: String(v.terms_days), currency: v.currency } : ({})
     }
 
     // The lines as the draft holds them, the page made again with them.
     function rebuild() {
         editor.lines = (editor.view ? editor.view.lines : []).map(l => Object.assign({}, l))
+        editor.fields = editor.viewFields()
         editor.shownLines = 0
         editor.shownLines = editor.lines.length
     }
 
-    // A change sent; the draft read back (its totals, its checks, its preview).
-    function send(change) {
-        return editor.take(editor.sioul.changeInvoiceDraft(editor.draftId, JSON.stringify(change)))
-    }
-
-    // "1 234,5" or "1,234.5" as typed: a number; NaN for none.
-    function number(text) {
-        const plain = String(text).replace(/[\s  €$£]/g, "").replace("−", "-")
-        const decimal = plain.lastIndexOf(",") > plain.lastIndexOf(".") ? plain.replace(/\./g, "").replace(",", ".") : plain.replace(/,/g, "")
-        return decimal === "" ? NaN : Number(decimal)
-    }
-
-    // Every line sent; `again`: the page made again (a line came or went).
-    function sendLines(again) {
-        typing.stop()
-        const sent = editor.lines.map(l => ({ from: l.from === null || l.from === undefined ? null : l.from, description: l.description, details: l.details, quantity: editor.number(l.quantity) || 0, unit: l.unit, price: editor.number(l.price) || 0, discount: editor.number(l.discount) || 0, nature: l.nature, activity: l.activity, own_tax: l.own_tax === true, category: l.category, rate: editor.number(l.rate) || 0, exemption: l.exemption }))
-        if (!editor.send({ lines: sent }))
-            return
-        // Each line is now at its place in the draft.
-        editor.lines = editor.lines.map((l, i) => Object.assign({}, l, { from: i }))
-        if (again)
+    // The draft read back after a change: what was just typed stays as
+    // typed, the rest as the draft says now (a change made elsewhere taken
+    // in); the page made again only when the lines themselves came or went.
+    function merge(sentLines, sentFields) {
+        const ids = editor.view.lines.map(l => l.id)
+        const same = ids.length === editor.lines.length && ids.every((id, i) => editor.lines[i].id === id)
+        if (!same) {
             editor.rebuild()
+            return
+        }
+        editor.lines = editor.view.lines.map((server, i) => {
+            const kept = {}
+            for (const field in (sentLines[server.id] || {}))
+                kept[field] = editor.lines[i][field]
+            return Object.assign({}, server, kept)
+        })
+        const fresh = editor.viewFields()
+        for (const field in sentFields)
+            fresh[field] = editor.fields[field]
+        editor.fields = fresh
+    }
+
+    // What was typed and not sent yet, sent with `change` (a choice, a line
+    // added or taken out, the client): only what changed, lines by their
+    // ids, the draft's revision as read. Returns whether it was kept.
+    function send(change) {
+        typing.stop()
+        if (editor.readOnly || editor.draftId === "")
+            return false
+        const sentLines = editor.pendingLines
+        const sentFields = editor.pendingFields
+        editor.pendingLines = ({})
+        editor.pendingFields = ({})
+        const lines = Object.keys(sentLines).map(id => Object.assign({ id: id }, sentLines[id])).concat(change.lines || [])
+        const full = Object.assign({ revision: editor.revision }, sentFields, change, { lines: lines })
+        if (!editor.take(editor.sioul.changeInvoiceDraft(editor.draftId, JSON.stringify(full))))
+            return false
+        editor.merge(sentLines, sentFields)
+        return true
+    }
+
+    // What was typed and not sent yet, written now (Issue, Back, another
+    // draft, Quit). Returns whether the draft holds it.
+    function flush() {
+        typing.stop()
+        if (Object.keys(editor.pendingLines).length === 0 && Object.keys(editor.pendingFields).length === 0)
+            return true
+        return editor.send({})
+    }
+
+    // The invoices changed: the draft open, when it changed elsewhere
+    // (another device, the command line), read again at once while nothing
+    // typed waits; else taken in by the next save, which sends its revision.
+    // Its own saves change nothing here: the revision is the one it read.
+    function changedElsewhere() {
+        if (editor.draftId === "" || typing.running || Object.keys(editor.pendingLines).length > 0 || Object.keys(editor.pendingFields).length > 0)
+            return
+        if (editor.sioul.invoiceDraftRevision(editor.draftId) === editor.revision)
+            return
+        if (editor.take(editor.sioul.invoiceDraft(editor.draftId)))
+            editor.merge({}, {})
+    }
+
+    // The draft left (Back, another draft, Quit): what was typed written; one
+    // New made and never written in taken out, without a word (F17).
+    function leave() {
+        editor.flush()
+        if (editor.draftId !== "")
+            editor.sioul.leaveInvoiceDraft(editor.draftId)
+    }
+
+    // An amount typed, read by the window's language (F8): {ok, value, words},
+    // its words ("= €1,500.00") said beside the field as it is typed.
+    function reading(text) {
+        return JSON.parse(editor.sioul.readAmount(String(text), editor.view ? editor.view.currency : "") || "{}")
+    }
+
+    // A number of the draft as typed in the window's language: "1500", "12,5".
+    function typed(value) {
+        if (value === undefined || value === null || value === "")
+            return ""
+        if (typeof value === "string")
+            return value
+        const n = Number(value)
+        const places = Number.isInteger(n) ? 0 : (Number.isInteger(Math.round(n * 1000) / 10) ? 2 : 3)
+        return n.toLocaleString(editor.window.sioulLocale || Qt.locale(), "f", places)
     }
 
     // A line's fields changed in a copy of the list, the list given again (a
@@ -116,36 +208,78 @@ Item {
         editor.lines = editor.lines.map((l, i) => i === index ? Object.assign({}, l, change) : l)
     }
 
-    // One field of a line typed: sent a moment after the typing stops.
+    // A line's change waiting to be sent, by its id.
+    function pend(index, change) {
+        const id = editor.lines[index].id
+        const pending = Object.assign({}, editor.pendingLines)
+        pending[id] = Object.assign({}, pending[id] || {}, change)
+        editor.pendingLines = pending
+    }
+
+    // One field of a line typed: kept as typed, sent a moment after the
+    // typing stops; a number only once it reads as one.
     function setLine(index, field, value) {
         const change = {}
         change[field] = value
         editor.changeLine(index, change)
+        if (["quantity", "price", "discount", "rate"].indexOf(field) >= 0) {
+            const read = String(value).trim() === "" ? { ok: field === "discount", value: 0 } : editor.reading(value)
+            if (!read.ok)
+                return
+            change[field] = read.value
+        }
+        editor.pend(index, change)
         typing.restart()
     }
 
-    // One field of a line chosen: sent at once.
+    // One field of a line chosen: sent at once, with what was typed.
     function chooseLine(index, change) {
         editor.changeLine(index, change)
-        editor.sendLines(false)
+        editor.pend(index, change)
+        editor.send({})
+    }
+
+    // One of the draft's own fields typed (notes, order, terms, currency):
+    // kept as typed, sent a moment after the typing stops (F11).
+    function setField(field, value) {
+        const typedNow = {}
+        typedNow[field] = value
+        editor.fields = Object.assign({}, editor.fields, typedNow)
+        let sent = value
+        if (field === "terms_days") {
+            sent = parseInt(value, 10)
+            if (isNaN(sent))
+                return
+        } else if (field === "notes") {
+            sent = value.split("\n")
+        } else if (field === "currency") {
+            sent = value.trim()
+            if (sent.length !== 3)
+                return
+        }
+        const pending = Object.assign({}, editor.pendingFields)
+        pending[field] = sent
+        editor.pendingFields = pending
+        typing.restart()
     }
 
     function addLine() {
-        editor.lines = editor.lines.concat([{ from: null, description: "", details: "", quantity: 1, unit: "C62", price: 0, discount: 0, nature: "service", activity: "", own_tax: false, category: "S", rate: 0, exemption: "", time: false }])
-        editor.sendLines(true)
+        editor.send({ lines: [{}] })
     }
 
     function removeLine(index) {
-        editor.lines = editor.lines.filter((_, i) => i !== index)
-        editor.sendLines(true)
+        const id = editor.lines[index].id
+        const pending = Object.assign({}, editor.pendingLines)
+        delete pending[id]
+        editor.pendingLines = pending
+        editor.send({ removed: [id] })
     }
 
     // The client chosen: its profile, its contact, or a name as typed.
     function chooseClient(reference) {
         editor.found = []
         clientField.text = ""
-        if (editor.send({ client: reference }))
-            editor.rebuild()
+        editor.send({ client: reference })
     }
 
     // Its kind and its country, written in its profile.
@@ -154,17 +288,20 @@ Item {
             editor.tracing = false
     }
 
-    // Issue: numbered, kept, its file copied where invoices go.
+    // Issue: numbered, kept, its file copied where invoices go. Refused, the
+    // reason is said beside Issue and in the status line (F14).
     function issueNow() {
-        // What was typed a moment ago, sent first.
-        if (typing.running || editor.lines.some(l => l.from === null))
-            editor.sendLines(false)
+        // What was typed a moment ago, written first.
+        if (!editor.flush())
+            return
         const made = JSON.parse(editor.sioul.issueInvoiceDraft(editor.draftId) || "{}")
         editor.elsewhere = made.elsewhere === true
         if (made.error) {
             editor.problem = made.error
+            editor.sioul.status = made.error
             return
         }
+        editor.draftId = ""
         editor.issued(made)
     }
 
@@ -179,11 +316,16 @@ Item {
     }
 
     function discard() {
+        typing.stop()
+        editor.pendingLines = ({})
+        editor.pendingFields = ({})
         const said = editor.sioul.discardInvoiceDraft(editor.draftId)
         if (said !== "") {
             editor.problem = said
+            editor.sioul.status = said
             return
         }
+        editor.draftId = ""
         editor.closed()
     }
 
@@ -191,7 +333,7 @@ Item {
         id: typing
 
         interval: 600
-        onTriggered: editor.sendLines(false)
+        onTriggered: editor.flush()
     }
 
     Timer {
@@ -223,11 +365,8 @@ Item {
                     icon.name: "go-previous"
                     icon.color: editor.theme.text
                     Accessible.name: editor.sioul.text("invoices-keep-draft")
-                    onClicked: {
-                        if (typing.running)
-                            editor.sendLines(false)
-                        editor.closed()
-                    }
+                    // What was typed is written as the list comes back (`leave`).
+                    onClicked: editor.closed()
                 }
                 Label {
                     Layout.fillWidth: true
@@ -246,21 +385,24 @@ Item {
                 wrapMode: Text.Wrap
                 color: editor.theme.muted
             }
+            // A draft that could not be read; once read, what went wrong is said beside Issue.
             Label {
-                visible: editor.problem !== ""
+                visible: editor.problem !== "" && editor.view === null
                 Layout.fillWidth: true
                 text: editor.problem
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: editor.theme.warm
             }
-            Button {
-                visible: editor.elsewhere
-                text: editor.sioul.text("invoice-take")
-                onClicked: {
-                    editor.problem = editor.sioul.takeInvoices()
-                    editor.elsewhere = false
-                }
+            // A newer Sioul's draft: read only, and why.
+            Label {
+                objectName: "invoiceReadOnly"
+                visible: editor.readOnly
+                Layout.fillWidth: true
+                text: editor.view ? editor.view.read_only_words : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: editor.theme.warm
             }
 
             // The client.
@@ -290,6 +432,7 @@ Item {
             }
             Flow {
                 Layout.fillWidth: true
+                enabled: !editor.readOnly
                 spacing: 6
 
                 TextField {
@@ -375,6 +518,7 @@ Item {
             }
             Flow {
                 visible: editor.view !== null && editor.view.kind !== "deposit"
+                enabled: !editor.readOnly
                 Layout.fillWidth: true
                 spacing: 6
 
@@ -445,8 +589,19 @@ Item {
                     readonly property var line: editor.lines[lineItem.index] || ({})
                     readonly property var shown: editor.view && editor.view.lines[lineItem.index] ? editor.view.lines[lineItem.index] : ({})
                     property bool more: false
+                    // What the price and the discount typed read as, beside them (F8): {ok, words}.
+                    property var priceRead: ({ ok: true, words: "" })
+                    property var discountRead: ({ ok: true, words: "" })
+                    // The unit, the category and the rate as their lists have them; one not there shown as itself (F17).
+                    readonly property var units: editor.view ? editor.view.choices.units : []
+                    readonly property int unitAt: lineItem.units.findIndex(u => u.code === lineItem.line.unit)
+                    readonly property var categories: editor.view ? editor.view.choices.categories : []
+                    readonly property int categoryAt: lineItem.categories.findIndex(c => c.code === lineItem.line.category)
+                    readonly property var rates: editor.view ? editor.view.choices.rates : []
+                    readonly property int rateAt: lineItem.rates.findIndex(r => r.rate === Number(lineItem.shown.rate))
 
                     objectName: "invoiceLine"
+                    enabled: !editor.readOnly
                     visible: !lineItem.line.time || editor.timeOpen
                     Layout.fillWidth: true
                     Layout.leftMargin: lineItem.line.time ? 12 : 0
@@ -489,30 +644,49 @@ Item {
                             color: editor.theme.muted
                         }
                         TextField {
+                            objectName: "invoiceLineQuantity"
                             visible: lineItem.line.time !== true
                             width: 70
-                            text: String(lineItem.line.quantity === undefined ? "" : lineItem.line.quantity)
+                            text: editor.typed(lineItem.line.quantity)
                             horizontalAlignment: Text.AlignRight
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                             Accessible.name: editor.sioul.text("invoices-line-quantity")
                             onTextEdited: editor.setLine(lineItem.index, "quantity", text)
                         }
                         PlainComboBox {
+                            objectName: "invoiceLineUnit"
                             visible: lineItem.line.time !== true
-                            model: editor.view ? editor.view.choices.units.map(u => editor.theme.plain(u.label)) : []
-                            currentIndex: editor.view ? Math.max(0, editor.view.choices.units.findIndex(u => u.code === lineItem.line.unit)) : 0
-                            onActivated: index => editor.chooseLine(lineItem.index, { unit: editor.view.choices.units[index].code })
+                            model: lineItem.units.map(u => editor.theme.plain(u.label)).concat(lineItem.unitAt < 0 && lineItem.line.unit ? [editor.theme.plain(lineItem.shown.unit_words || lineItem.line.unit)] : [])
+                            currentIndex: lineItem.unitAt >= 0 ? lineItem.unitAt : lineItem.units.length
+                            onActivated: index => {
+                                if (index < lineItem.units.length)
+                                    editor.chooseLine(lineItem.index, { unit: lineItem.units[index].code })
+                            }
                         }
                         TextField {
                             id: price
 
+                            objectName: "invoiceLinePrice"
                             width: 100
-                            text: String(lineItem.line.price === undefined ? "" : lineItem.line.price)
+                            text: editor.typed(lineItem.line.price)
                             horizontalAlignment: Text.AlignRight
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                             placeholderText: editor.sioul.text(lineItem.line.time === true ? "invoices-line-hourly" : "invoices-line-price")
                             Accessible.name: placeholderText
-                            onTextEdited: editor.setLine(lineItem.index, "price", text)
+                            onTextEdited: {
+                                lineItem.priceRead = editor.reading(text)
+                                editor.setLine(lineItem.index, "price", text)
+                            }
+                        }
+                        Label {
+                            objectName: "invoiceLinePriceRead"
+                            visible: lineItem.priceRead.words !== ""
+                            height: price.height
+                            verticalAlignment: Text.AlignVCenter
+                            text: lineItem.priceRead.words
+                            textFormat: Text.PlainText
+                            font.pixelSize: 12
+                            color: lineItem.priceRead.ok ? editor.theme.muted : editor.theme.warm
                         }
                         Button {
                             flat: true
@@ -537,13 +711,27 @@ Item {
                             spacing: 6
 
                             TextField {
+                                id: discount
+
                                 width: 110
-                                text: lineItem.line.discount ? String(lineItem.line.discount) : ""
+                                text: lineItem.line.discount ? editor.typed(lineItem.line.discount) : ""
                                 horizontalAlignment: Text.AlignRight
                                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                                 placeholderText: editor.sioul.text("invoices-line-discount")
                                 Accessible.name: placeholderText
-                                onTextEdited: editor.setLine(lineItem.index, "discount", text)
+                                onTextEdited: {
+                                    lineItem.discountRead = text.trim() === "" ? { ok: true, words: "" } : editor.reading(text)
+                                    editor.setLine(lineItem.index, "discount", text)
+                                }
+                            }
+                            Label {
+                                visible: lineItem.discountRead.words !== ""
+                                height: discount.height
+                                verticalAlignment: Text.AlignVCenter
+                                text: lineItem.discountRead.words
+                                textFormat: Text.PlainText
+                                font.pixelSize: 12
+                                color: lineItem.discountRead.ok ? editor.theme.muted : editor.theme.warm
                             }
                             PlainComboBox {
                                 model: [editor.sioul.text("invoices-nature-service"), editor.sioul.text("invoices-nature-goods")]
@@ -576,15 +764,36 @@ Item {
                             spacing: 6
 
                             PlainComboBox {
-                                model: editor.view ? editor.view.choices.categories.map(c => editor.theme.plain(c.label)) : []
-                                currentIndex: editor.view ? Math.max(0, editor.view.choices.categories.findIndex(c => c.code === lineItem.line.category)) : 0
-                                onActivated: index => editor.chooseLine(lineItem.index, { category: editor.view.choices.categories[index].code })
+                                objectName: "invoiceLineCategory"
+                                model: lineItem.categories.map(c => editor.theme.plain(c.label)).concat(lineItem.categoryAt < 0 && lineItem.line.category ? [editor.theme.plain(lineItem.line.category)] : [])
+                                currentIndex: lineItem.categoryAt >= 0 ? lineItem.categoryAt : lineItem.categories.length
+                                onActivated: index => {
+                                    if (index < lineItem.categories.length)
+                                        editor.chooseLine(lineItem.index, { category: lineItem.categories[index].code })
+                                }
                             }
+                            // VAT at a rate: the preset's rates, the one the line has shown as it is (F3).
                             PlainComboBox {
-                                visible: lineItem.line.category === "S" && editor.view !== null && editor.view.choices.rates.length > 0
-                                model: editor.view ? editor.view.choices.rates.map(r => editor.theme.plain(r.label)) : []
-                                currentIndex: editor.view ? Math.max(0, editor.view.choices.rates.findIndex(r => r.rate === Number(lineItem.line.rate))) : 0
-                                onActivated: index => editor.chooseLine(lineItem.index, { rate: editor.view.choices.rates[index].rate })
+                                objectName: "invoiceLineRate"
+                                visible: lineItem.line.category === "S" && lineItem.rates.length > 0
+                                model: lineItem.rates.map(r => editor.theme.plain(r.label)).concat(lineItem.rateAt < 0 ? [editor.theme.plain(lineItem.shown.tax_words || "")] : [])
+                                currentIndex: lineItem.rateAt >= 0 ? lineItem.rateAt : lineItem.rates.length
+                                onActivated: index => {
+                                    if (index < lineItem.rates.length)
+                                        editor.chooseLine(lineItem.index, { rate: lineItem.rates[index].rate })
+                                }
+                            }
+                            // Elsewhere has no rates of its own: the rate typed, in percent.
+                            TextField {
+                                objectName: "invoiceLineRateTyped"
+                                visible: lineItem.line.category === "S" && lineItem.rates.length === 0
+                                width: 80
+                                text: editor.typed(lineItem.line.rate)
+                                horizontalAlignment: Text.AlignRight
+                                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                placeholderText: editor.sioul.text("invoices-line-rate")
+                                Accessible.name: placeholderText
+                                onTextEdited: editor.setLine(lineItem.index, "rate", text)
                             }
                         }
                         TextField {
@@ -600,6 +809,7 @@ Item {
             Button {
                 objectName: "invoiceAddLine"
                 visible: editor.view !== null && editor.view.kind !== "credit-note"
+                enabled: !editor.readOnly
                 flat: true
                 text: "+  " + editor.sioul.text("invoices-line-add")
                 onClicked: editor.addLine()
@@ -622,6 +832,7 @@ Item {
                     required property var modelData
 
                     objectName: "invoiceDeposit"
+                    enabled: !editor.readOnly
                     text: editor.theme.plain([deposit.modelData.number, deposit.modelData.date, deposit.modelData.amount].join("  ·  "))
                     checked: deposit.modelData.cited
                     onToggled: {
@@ -640,6 +851,7 @@ Item {
             }
             ColumnLayout {
                 visible: editor.moreOpen
+                enabled: !editor.readOnly
                 Layout.fillWidth: true
                 spacing: 6
 
@@ -653,18 +865,15 @@ Item {
                         text: editor.sioul.text("invoices-terms-days")
                         color: editor.theme.text
                     }
+                    // Saved as it is typed, as every field of the draft (F11).
                     TextField {
                         id: termsField
 
                         width: 70
-                        text: editor.view ? String(editor.view.terms_days) : ""
+                        text: editor.fields.terms_days || ""
                         inputMethodHints: Qt.ImhDigitsOnly
                         horizontalAlignment: Text.AlignRight
-                        onEditingFinished: {
-                            const days = parseInt(termsField.text, 10)
-                            if (!isNaN(days) && editor.view && days !== editor.view.terms_days)
-                                editor.send({ terms_days: days })
-                        }
+                        onTextEdited: editor.setField("terms_days", text)
                     }
                     CheckBox {
                         text: editor.sioul.text("invoices-end-of-month")
@@ -681,13 +890,11 @@ Item {
                     color: editor.theme.muted
                 }
                 TextField {
+                    objectName: "invoiceOrder"
                     Layout.fillWidth: true
-                    text: editor.view ? editor.view.order : ""
+                    text: editor.fields.order || ""
                     placeholderText: editor.sioul.text("invoices-order")
-                    onEditingFinished: {
-                        if (editor.view && text !== editor.view.order)
-                            editor.send({ order: text })
-                    }
+                    onTextEdited: editor.setField("order", text)
                 }
                 Flow {
                     Layout.fillWidth: true
@@ -701,22 +908,22 @@ Item {
                     TextField {
                         width: 80
                         visible: editor.view !== null && editor.view.kind !== "credit-note"
-                        text: editor.view ? editor.view.currency : ""
+                        text: editor.fields.currency || ""
                         placeholderText: "EUR"
                         Accessible.name: editor.sioul.text("invoices-currency")
-                        onEditingFinished: {
-                            if (editor.view && text.trim() !== "" && text.trim().toUpperCase() !== editor.view.currency)
-                                editor.send({ currency: text.trim() })
-                        }
+                        onTextEdited: editor.setField("currency", text)
                     }
                 }
                 TextArea {
                     objectName: "invoiceNotes"
                     Layout.fillWidth: true
-                    text: editor.view ? editor.view.notes.join("\n") : ""
+                    text: editor.fields.notes || ""
                     placeholderText: editor.sioul.text("invoices-notes")
                     wrapMode: TextEdit.Wrap
-                    onEditingFinished: editor.send({ notes: text.split("\n") })
+                    onTextChanged: {
+                        if (activeFocus && text !== (editor.fields.notes || ""))
+                            editor.setField("notes", text)
+                    }
                 }
                 Repeater {
                     model: editor.view ? editor.view.legal : []
@@ -808,20 +1015,43 @@ Item {
                     icon.name: "document-send"
                     icon.color: editor.theme.accentText
                     highlighted: true
-                    enabled: editor.view !== null && editor.view.required.length === 0 && editor.lines.length > 0
+                    enabled: !editor.readOnly && editor.view !== null && editor.view.required.length === 0 && editor.lines.length > 0
                     onClicked: editor.issueNow()
                 }
                 Button {
                     objectName: "invoiceDepositOf"
                     visible: editor.view !== null && editor.view.kind === "invoice"
+                    enabled: !editor.readOnly
                     text: editor.sioul.text("invoices-deposit-of")
-                    onClicked: editor.depositAsked(editor.draftId)
+                    onClicked: {
+                        editor.flush()
+                        editor.depositAsked(editor.draftId)
+                    }
                 }
                 Button {
                     objectName: "invoiceDiscard"
+                    enabled: !editor.readOnly
                     flat: true
                     text: editor.sioul.text("invoices-discard")
                     onClicked: editor.discard()
+                }
+            }
+            // What stopped Issue or Discard, beside them, and the way out when invoices are numbered elsewhere (F14).
+            Label {
+                objectName: "invoiceIssueProblem"
+                visible: editor.problem !== "" && editor.view !== null
+                Layout.fillWidth: true
+                text: editor.problem
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: editor.theme.warm
+            }
+            Button {
+                visible: editor.elsewhere
+                text: editor.sioul.text("invoice-take")
+                onClicked: {
+                    editor.problem = editor.sioul.takeInvoices()
+                    editor.elsewhere = false
                 }
             }
 

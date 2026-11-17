@@ -26,10 +26,21 @@ SafeDialog {
     // The deposit's draft made: its id, for the editor.
     signal made(string id)
 
+    // What the amount (or the share) typed reads as, by the window's
+    // language (the review of phase 3, F8): {ok, value, words}.
+    property var reading: ({ ok: false, value: 0, words: "" })
+
+    function read() {
+        const text = dialog.byShare ? share.text.replace("%", "") : amount.text
+        dialog.reading = JSON.parse(dialog.sioul.readAmount(text, "") || "{}")
+        // A share is no amount of money: what it reads as is not said.
+        if (dialog.byShare && dialog.reading.ok)
+            dialog.reading = Object.assign({}, dialog.reading, { words: "" })
+    }
+
     function number(text) {
-        const plain = String(text).replace(/[\s  €$£%]/g, "")
-        const decimal = plain.lastIndexOf(",") > plain.lastIndexOf(".") ? plain.replace(/\./g, "").replace(",", ".") : plain.replace(/,/g, "")
-        return decimal === "" ? NaN : Number(decimal)
+        dialog.read()
+        return dialog.reading.ok ? dialog.reading.value : NaN
     }
 
     function ask(of) {
@@ -38,6 +49,7 @@ SafeDialog {
         dialog.problem = ""
         share.text = "30"
         amount.text = ""
+        dialog.reading = { ok: false, value: 0, words: "" }
         description.text = ""
         dialog.open()
     }
@@ -83,6 +95,7 @@ SafeDialog {
             Layout.fillWidth: true
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             placeholderText: "30 %"
+            onTextEdited: dialog.read()
         }
         RadioButton {
             visible: dialog.of !== ""
@@ -98,6 +111,17 @@ SafeDialog {
             Layout.fillWidth: true
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             placeholderText: dialog.sioul.text("invoices-deposit-amount-hint")
+            onTextEdited: dialog.read()
+        }
+        Label {
+            objectName: "invoiceDepositReading"
+            visible: dialog.reading.words !== ""
+            Layout.fillWidth: true
+            text: dialog.reading.words
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: dialog.reading.ok ? dialog.theme.muted : dialog.theme.warm
         }
         TextField {
             id: description

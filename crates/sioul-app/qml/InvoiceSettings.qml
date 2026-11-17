@@ -329,13 +329,28 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
 
-                    TextField {
-                        width: 130
-                        text: block.tax[taxRow.index].from
-                        placeholderText: block.sioul.text("invoices-settings-from-always")
-                        onEditingFinished: {
-                            if (block.tax[taxRow.index].from !== text.trim()) {
-                                block.tax[taxRow.index].from = text.trim()
+                    // Its first day, picked or typed as a day (the review of phase 3,
+                    // F19); the first row without one holds always.
+                    Label {
+                        visible: taxRow.index === 0 && block.tax[taxRow.index].from === ""
+                        height: 40
+                        verticalAlignment: Text.AlignVCenter
+                        text: block.sioul.text("invoices-settings-from-always")
+                        color: block.theme.text
+                    }
+                    DateField {
+                        id: taxDay
+
+                        objectName: "invoiceSchemeDay"
+                        visible: taxRow.index > 0 || block.tax[taxRow.index].from !== ""
+                        width: 170
+                        height: 40
+                        theme: block.theme
+                        sioul: block.sioul
+                        date: block.tax[taxRow.index].from
+                        onEdited: {
+                            if (/^\d{4}-\d{2}-\d{2}$/.test(taxDay.date) && block.tax[taxRow.index].from !== taxDay.date) {
+                                block.tax[taxRow.index].from = taxDay.date
                                 block.save("tax", block.tax)
                             }
                         }
@@ -371,7 +386,7 @@ ColumnLayout {
         Button {
             flat: true
             text: "+  " + block.sioul.text("invoices-settings-scheme-add")
-            onClicked: block.tax = block.tax.concat([{ from: "", scheme: block.view && block.view.schemes.length > 0 ? block.view.schemes[0].id : "none", mention: "" }])
+            onClicked: block.tax = block.tax.concat([{ from: block.tax.length === 0 ? "" : Qt.formatDate(new Date(), "yyyy-MM-dd"), scheme: block.view && block.view.schemes.length > 0 ? block.view.schemes[0].id : "none", mention: "" }])
         }
         // Who you are, where.
         Repeater {

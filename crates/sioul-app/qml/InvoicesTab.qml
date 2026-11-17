@@ -87,11 +87,20 @@ Item {
         tab.invoice = answer
     }
 
-    // Back to the list.
+    // Back to the list: what was typed in the draft written first, a draft
+    // made and never written in taken out (the editor's `leave`).
     function back() {
+        if (tab.draftId !== "" && tab.editor !== null)
+            (tab.editor as InvoiceEditor).leave()
         tab.draftId = ""
         tab.invoice = null
         tab.read()
+    }
+
+    // What was typed in the editor, written now (Quit, Sioul put away).
+    function flush() {
+        if (tab.draftId !== "" && tab.editor !== null)
+            (tab.editor as InvoiceEditor).flush()
     }
 
     // New: a blank draft, its client chosen in the editor.
@@ -193,10 +202,16 @@ Item {
     Connections {
         target: tab.sioul
 
-        // An invoice or a draft written here or on another device.
-        function onProjectsChanged() {
-            if (tab.visible && tab.draftId === "")
+        // An invoice, a draft or a client profile written here or on another
+        // device: the list read again; the draft in the editor read again
+        // while nothing typed waits, else at its next save (its revision).
+        function onInvoicesChanged() {
+            if (!tab.visible)
+                return
+            if (tab.draftId === "")
                 tab.reload()
+            else if (tab.editor !== null)
+                (tab.editor as InvoiceEditor).changedElsewhere()
         }
 
         function onMoneyChanged() {
@@ -238,6 +253,7 @@ Item {
             }
             PlainComboBox {
                 objectName: "invoicesClientFilter"
+                implicitContentWidthPolicy: ComboBox.WidestText
                 visible: tab.shown.clients.length > 1
                 model: [tab.sioul.text("invoices-any-client")].concat(tab.shown.clients.map(c => tab.theme.plain(c)))
                 currentIndex: tab.asked.client === "" ? 0 : tab.shown.clients.indexOf(tab.asked.client) + 1
@@ -245,6 +261,7 @@ Item {
             }
             PlainComboBox {
                 objectName: "invoicesYearFilter"
+                implicitContentWidthPolicy: ComboBox.WidestText
                 visible: tab.shown.years.length > 1
                 model: [tab.sioul.text("invoices-any-year")].concat(tab.shown.years.map(y => tab.theme.plain(y)))
                 currentIndex: tab.asked.year === "" ? 0 : tab.shown.years.indexOf(tab.asked.year) + 1
@@ -252,6 +269,8 @@ Item {
             }
             PlainComboBox {
                 objectName: "invoicesStatusFilter"
+                // "Tous les états" whole (F17).
+                implicitContentWidthPolicy: ComboBox.WidestText
                 visible: tab.shown.statuses.length > 1 || tab.asked.status !== ""
                 model: [tab.sioul.text("invoices-any-status")].concat(tab.shown.statuses.map(s => tab.theme.plain(s.label)))
                 currentIndex: tab.asked.status === "" ? 0 : tab.shown.statuses.findIndex(s => s.id === tab.asked.status) + 1
