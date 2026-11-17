@@ -25,7 +25,7 @@ A source or a task is for **work**, for **your own admin** (bills, letters, offi
 
 Mail addresses are the one place nothing is mixed for you: asking what each address is for is what separates a business address from a personal one.
 
-**A device's switches decide nothing yet** (17 November 2026). They are recorded in the shared settings and shown on every device (Settings ▸ Devices, `sioul devices`); nothing is folded, held or told by them, and every rule on this page reads the thing's area and the time alone, as before. `sioul_core::device_said::area_of` is where a rule would read what a device is for.
+**A device's switches decide nothing yet** (17 November 2026). They are recorded in the shared settings and shown on each device the part "settings" reaches (Settings ▸ Devices, `sioul devices`); nothing is folded, held or told by them, and every rule on this page reads the thing's area and the time alone, as before. `sioul_core::device_said::area_of` is where a rule would read what a device is for.
 
 ## Five times
 What now is for is one of five times (`sioul_core::areas::Time`, decided by `sioul_core::quiet::mode`):
