@@ -3623,6 +3623,10 @@ fn compute(shared: &Shared) -> Views {
         let store = sioul_core::movements::Store::load(&root).unwrap_or_default();
         let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own, books: Some(&books), imports: &store.imports };
         let mut page = view::budgets_page(&page, tr(), now.date());
+        // A budget that declares: its line from the books, as the declaration view says it.
+        if let Some(line) = crate::books::overview_line(&world.config, &books, now.date()) {
+            page.say_declared(&line);
+        }
         page.filter = Some(filter);
         json(&page)
     });
@@ -7384,6 +7388,8 @@ impl qobject::Sioul {
         crate::mailnote::tick_in_window(crate::mailnote::Window { active: self.shared().active.load(Ordering::Relaxed) });
         // The end of the work day, said once (docs/reviews.md).
         crate::reviews::tick(&self.shared());
+        // The books' thresholds, each step said once on one device (docs/projects.md, "The books").
+        crate::books::tick(&self.shared());
         // Paper letters scanned: read, to wait for the Porch.
         crate::letters::tick(&self.qt_thread(), &self.shared());
         // The weather follows the hours; fetched again when half an hour old.

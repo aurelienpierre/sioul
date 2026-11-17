@@ -8,7 +8,7 @@
 // ×'d; a row opened in its pane with Back; its menu by what it is made from
 // (Change…, Tie to…, Leave out at once, Delete asked once); the form
 // changing a bank line shows neither its amount nor its day and sends only
-// what changed; the declaration's sentences and register; the page's four
+// what changed; the declaration's sentences and the receipts book; the page's four
 // tabs, Overview first; at a phone's 412 points nothing passes the edge, nor
 // past 360 a movement's pane.
 // Run by tools/qml-test.sh.
@@ -80,7 +80,7 @@ Item {
             return JSON.stringify({ said: "" })
         }
         function declaration(budget, anchor) {
-            return JSON.stringify({ budget: "work", title: "Work", anchor: "2026-11-05", previous: "2026-09-30", next: "", sentences: ["Turnover received from 1 October 2026 to 31 December 2026: €6,940, paid by clients.", "To declare by 31 January 2027."], rows: [{ day: "Fri 2 Oct", client: "Client A", invoice: "2026-014", means: "PayPal", gross: "€520", known: true, address: "sioul:movement/line%3Aw1" }], declares: [{ id: "work", title: "Work" }] })
+            return JSON.stringify({ budget: "work", title: "Fourth quarter 2026", anchor: "2026-11-05", previous: "2026-09-30", next: "", sentences: ["From 1 October 2026 to 31 December 2026: €6,940 received excluding VAT, to declare by 1 February 2027.", "Fourth quarter 2026: €7,140 received with VAT, €6,940 excluding it."], rows: [{ day: "Fri 2 Oct", client: "Client A", invoice: "2026-014", nature: "Services", means: "PayPal", gross: "€520", without: "€433.33 excluding VAT", known: true, address: "sioul:movement/line%3Aw1" }, { day: "Mon 5 Oct", client: "Workshop seats", invoice: "", nature: "", means: "written by hand", gross: "€120", without: "", known: true, address: "sioul:movement/line%3Aw2" }], declares: [{ id: "work", title: "The books" }] })
         }
         function linkTarget(source, href) {
             return "null"
@@ -240,15 +240,20 @@ Item {
             compare(mock.changes[0].edit.gross, -47, "what was paid goes the way the amount goes")
         }
 
-        // For the declaration: its sentences, its register, Save.
+        // For the declaration: its sentences, the receipts book, Save; a row's
+        // second line its invoice, the nature sold, the means and, under VAT,
+        // what is without it; a receipt no invoice describes, its means alone.
         function test_the_declaration_and_its_register() {
             const tab = createTemporaryObject(tabComponent, root, { width: 900, height: 700 })
             tryVerify(() => named(tab, "movementRow").length === 2, 5000)
             named(tab, "movementsDeclaration")[0].clicked()
             tryVerify(() => named(tab, "declarationView")[0].visible, 2000)
             compare(named(tab, "declarationSentence").length, 2)
-            compare(named(tab, "receiptRow").length, 1)
+            compare(named(tab, "receiptRow").length, 2)
             verify(named(tab, "receiptsSave")[0].visible)
+            const said = texts(named(tab, "declarationView")[0])
+            verify(said.indexOf("2026-014  ·  Services  ·  PayPal  ·  €433.33 excluding VAT") >= 0, said)
+            verify(said.indexOf("written by hand") >= 0, said)
         }
 
         // The page: four tabs, Overview first, and Overview again when it comes back.

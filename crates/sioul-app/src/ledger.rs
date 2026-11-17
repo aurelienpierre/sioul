@@ -133,7 +133,8 @@ fn choices(ledger: &sioul_core::budget::Ledger) -> Value {
     j!({
         "accounts": ledger.bank_accounts.iter().map(|a| j!({ "id": a.id, "title": a.title })).collect::<Vec<_>>(),
         "budgets": ledger.budgets.iter().map(|b| j!({ "id": b.id, "title": b.title })).collect::<Vec<_>>(),
-        "declares": ledger.budgets.iter().filter(|b| receipts::declares(b)).map(|b| j!({ "id": b.id, "title": b.title })).collect::<Vec<_>>(),
+        // The books: one, for every budget that declares and every invoice issued.
+        "declares": if ledger.budgets.iter().any(receipts::declares) || !sioul_core::invoice::all_in(&sioul_core::invoice::folder()).is_empty() { vec![j!({ "id": ledger.budgets.iter().find(|b| receipts::declares(b)).map(|b| b.id.clone()).unwrap_or_default(), "title": tr().text("books-for-the-books", None) })] } else { Vec::new() },
     })
 }
 
@@ -579,80 +580,127 @@ pub(crate) fn mail_not_same(qt: &QtThread, shared: &Arc<Shared>, named: &str) ->
 
 // ---------------------------------------------------------------- the declaration
 
-/// A declaring budget's turnover over the declaration period that holds
-/// `anchor` (its quarter or month; today's when not a day), and its
-/// receipts register (design §6, "The declaration"), as JSON: {budget,
-/// title, from, to, previous, next, sentences, rows, declares}.
+/// Whether there are books to show: an invoice issued, or a budget that declares.
+fn books_exist(loaded: &sioul_core::books::Loaded) -> bool {
+    !loaded.invoices.is_empty() || loaded.money.as_ref().is_some_and(|m| m.ledger.budgets.iter().any(receipts::declares))
+}
+
+/// The days the books show for `anchor`: the declaration's that holds it
+/// (the first one may gather several periods), else its period.
+fn books_days(loaded: &sioul_core::books::Loaded, anchor: jiff::civil::Date) -> (jiff::civil::Date, jiff::civil::Date, Option<sioul_core::books::declarations::Declaration>) {
+    let declared = sioul_core::books::declarations::holding(&loaded.input(), anchor, tr());
+    let (from, to) = declared.as_ref().map_or_else(|| sioul_core::books::period_of(loaded.settings.every, anchor), |d| (d.from, d.to));
+    (from, to, declared)
+}
+
+/// The books over the declaration period that holds `anchor` (its quarter
+/// or month; today's when not a day), as `sioul_core::books` makes them:
+/// the declaration first (what to declare, by when, the contributions
+/// estimated), the VAT summary of its days, the DES, the receipts book's
+/// totals, the thresholds this year; then the book's rows (design §6). As
+/// JSON: {budget, title, anchor, previous, next, sentences, rows, declares}.
+/// The book holds every budget that declares and every invoice: `budget`
+/// is said back as it was asked.
 pub(crate) fn declaration(budget: &str, anchor: &str) -> String {
-    let (config, root) = match folder() {
-        Ok(found) => found,
-        Err(e) => return problem(e),
-    };
+    use sioul_core::books::{self, declarations, des, thresholds, vat};
     let today = sioul_core::zone::now().date();
-    let books = movements::books(&root, &sioul_core::words::Words::of(&config), today);
-    let declaring: Vec<&sioul_core::budget::Budget> = books.ledger.budgets.iter().filter(|b| receipts::declares(b)).collect();
-    let Some(found) = declaring.iter().find(|b| b.id == budget).or_else(|| declaring.first()) else { return problem(tr().text("receipts-none", None)) };
+    let loaded = crate::books::loaded(today);
+    if !books_exist(&loaded) {
+        return problem(tr().text("books-none", None));
+    }
     let anchor = day_of(anchor).unwrap_or(today);
-    let r = receipts::of_period(&books, found, anchor);
+    let (from, to, declared) = books_days(&loaded, anchor);
+    let input = loaded.input();
+    let currency = loaded.settings.currency.clone();
+    let book = books::book(&input, from, to, tr());
+    let mut sentences = Vec::new();
+    if let Some(d) = &declared {
+        sentences.extend(declarations::sentences(tr(), d, &currency));
+    }
+    let summaries = vat::between(&input, from, to);
+    for s in &summaries {
+        sentences.extend(vat::sentences(tr(), s, &currency));
+    }
+    if !summaries.is_empty() {
+        sentences.push(tr().text("books-vat-files-nothing", None));
+    }
+    for d in des::between(&input, from, to) {
+        sentences.extend(des::sentences(tr(), &d, &currency));
+    }
+    sentences.extend(books::sentences(tr(), &book));
+    if anchor.year() == today.year() {
+        sentences.extend(thresholds::watch(&input, today, tr()).iter().map(|w| thresholds::sentence(tr(), w, &currency)));
+    }
     let shift = |d: jiff::civil::Date, days: i64| d.checked_add(jiff::Span::new().days(days)).unwrap_or(d);
     let unknown = tr().text("receipts-gross-unknown", None);
-    let rows: Vec<Value> = r
-        .receipts
+    let rows: Vec<Value> = book
+        .rows
         .iter()
         .map(|x| {
+            let gross = match (x.amount, &x.foreign) {
+                (Some(a), _) => tr().money_in(Money(a), &currency),
+                (None, Some((m, code))) => tr().money_in(Money(*m), code),
+                (None, None) => unknown.clone(),
+            };
             j!({
                 "day": moneyview::short_day(tr(), x.day),
                 "client": x.client,
                 "invoice": x.invoice,
-                "means": x.means.words(tr()),
-                "gross": x.gross.map_or_else(|| unknown.clone(), |g| tr().money(g)),
-                "known": x.gross.is_some(),
+                "nature": books::nature_words(tr(), &x.nature),
+                "means": if x.cash { format!("{} ({})", x.means, tr().text("books-cash", None)) } else { x.means.clone() },
+                "gross": gross,
+                "without": x.without_tax.filter(|w| Some(*w) != x.amount).map(|w| say("books-row-without", &[("amount", tr().money_in(Money(w), &currency))])).unwrap_or_default(),
+                "known": x.amount.is_some(),
                 "address": x.address,
             })
         })
         .collect();
+    let title = match &declared {
+        Some(d) => declarations::period_name(tr(), d),
+        None => book.totals.first().map(|t| books::total_name(tr(), t)).unwrap_or_default(),
+    };
     j!({
-        "budget": found.id,
-        "title": found.title,
+        "budget": budget,
+        "title": title,
         "anchor": anchor.to_string(),
-        "previous": shift(r.from, -1).to_string(),
-        "next": if r.to < today { shift(r.to, 1).to_string() } else { String::new() },
-        "sentences": receipts::sentences(tr(), &r),
+        "previous": shift(from, -1).to_string(),
+        "next": if to < today { shift(to, 1).to_string() } else { String::new() },
+        "sentences": sentences,
         "rows": rows,
-        "declares": declaring.iter().map(|b| j!({ "id": b.id, "title": b.title })).collect::<Vec<_>>(),
+        "declares": [j!({ "id": budget, "title": tr().text("books-for-the-books", None) })],
     })
     .to_string()
 }
 
-/// "Save the receipts register…": the register of `budget`'s period that
-/// holds `anchor` written as CSV into `folder`, a folder you chose; its
-/// page to print, and where its PDF goes beside it (the window prints it
-/// as it prints invoices). Returns {csv, pdf, html, folder} or {error}.
-pub(crate) fn save_receipts(budget: &str, anchor: &str, folder_chosen: &str) -> String {
+/// "Save the receipts register…": the receipts book of the days the
+/// declaration view shows for `anchor`, written as CSV into `folder`, a
+/// folder you chose; its page to print, and where its PDF goes beside it
+/// (the window prints it as it prints invoices). Returns {csv, pdf, html,
+/// folder} or {error}.
+pub(crate) fn save_receipts(_budget: &str, anchor: &str, folder_chosen: &str) -> String {
     let refused = |e: String| j!({ "error": e }).to_string();
-    let (config, root) = match folder() {
-        Ok(found) => found,
-        Err(e) => return refused(e),
-    };
     let today = sioul_core::zone::now().date();
-    let books = movements::books(&root, &sioul_core::words::Words::of(&config), today);
-    let Some(found) = books.ledger.budgets.iter().find(|b| b.id == budget && receipts::declares(b)) else { return refused(tr().text("receipts-none", None)) };
-    let r = receipts::of_period(&books, found, day_of(anchor).unwrap_or(today));
+    let loaded = crate::books::loaded(today);
+    if !books_exist(&loaded) {
+        return refused(tr().text("books-none", None));
+    }
+    let (from, to, _) = books_days(&loaded, day_of(anchor).unwrap_or(today));
+    let book = sioul_core::books::book(&loaded.input(), from, to, tr());
     let dir = PathBuf::from(folder_chosen);
     if !dir.is_dir() {
         return refused(say("invoice-not-written", &[("path", folder_chosen.to_string())]));
     }
-    // "Receipts register, Work, 2026-10-01 to 2026-12-31": nothing a system refuses in a name.
-    let title: String = found.title.chars().map(|c| if c.is_alphanumeric() || matches!(c, ' ' | '-' | '_') { c } else { '-' }).collect();
-    let name = say("receipts-file-name", &[("budget", title.trim().to_string()), ("from", r.from.to_string()), ("to", r.to.to_string())]);
+    let name = say("books-file-name", &[("from", from.to_string()), ("to", to.to_string())]);
     let csv_path = dir.join(format!("{name}.csv"));
-    if let Err(e) = save_csv(&csv_path, &receipts::csv(tr(), &r)) {
+    if let Err(e) = save_csv(&csv_path, &sioul_core::books::csv(tr(), &book)) {
         return refused(say("invoice-not-written", &[("path", format!("{} ({e})", csv_path.display()))]));
     }
+    let who = loaded.settings.invoice.name.trim().to_string();
+    let who = if who.is_empty() { tr().text("books-name", None) } else { who };
     j!({
         "csv": csv_path.display().to_string(),
         "pdf": dir.join(format!("{name}.pdf")).display().to_string(),
-        "html": receipts::html(tr(), &r, &found.title),
+        "html": sioul_core::books::html(tr(), &book, &who),
         "folder": dir.display().to_string(),
     })
     .to_string()

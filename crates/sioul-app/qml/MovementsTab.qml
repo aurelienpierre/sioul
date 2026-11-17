@@ -11,8 +11,9 @@
 // A row opens on a tap, in a pane of its own with Back: every field, where
 // each fee was read, what told of it (each opens), what it is tied to. Its
 // menu (a long press, a right click, "⋯") runs the acts, each with Undo.
-// New movement sits at the top; For the declaration shows a declaring work
-// budget's turnover and its receipts register, saved as CSV and PDF.
+// New movement sits at the top; For the declaration shows the books of a
+// declaration's period (sioul_core::books): what to declare and by when, the
+// VAT summary, the thresholds, and the receipts book, saved as CSV and PDF.
 
 pragma ComponentBehavior: Bound
 
@@ -614,7 +615,8 @@ Item {
                 icon.color: tab.theme.text
                 onClicked: receiptsFolder.open()
             }
-            // The receipts register: day, client, invoice, means of payment, what was paid.
+            // The receipts book: day, client, what was paid; its invoice, the nature of what
+            // was sold, the means of payment (cash said), and under VAT what is without it.
             Repeater {
                 model: tab.declaration ? tab.declaration.rows : []
 
@@ -660,7 +662,7 @@ Item {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: [receipt.modelData.invoice, receipt.modelData.means].filter(t => t !== "").join("  ·  ")
+                            text: [receipt.modelData.invoice, receipt.modelData.nature, receipt.modelData.means, receipt.modelData.without].filter(t => !!t).join("  ·  ")
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
                             font.pixelSize: 12

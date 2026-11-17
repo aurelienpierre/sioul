@@ -314,20 +314,31 @@ const MONEY_DAYS: u32 = 14;
 /// signed amount; opening it opens Budgets. Work money is said only in
 /// work's hours, as each row's area says (docs/areas.md); nothing while you
 /// sleep (the page). An account's shortfall comes first, once the budgets
-/// say one (`shortfall`). With every movement's notice, whatever the hour
+/// say one (`shortfall`). Then the books' dated items: each declaration of
+/// turnover and each DES to make (`books::porch_items`), work's, quiet, until
+/// said done or dismissed. With every movement's notice, whatever the hour
 /// shows: what their words are kept for (`forget`).
 fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
     let mode = crate::backend::mode_now();
     let tr = tr();
     let mut rows = shortfall();
     let coming = sioul_core::due::coming(now.date(), MONEY_DAYS);
-    let every: Vec<String> = coming.iter().map(|c| rules::money_id(&c.address)).chain(rows.iter().flat_map(|(_, ids)| ids.iter().cloned())).collect();
+    let items = crate::books::porch_items(&crate::books::loaded(now.date()), now.date());
+    let every: Vec<String> = coming.iter().map(|c| rules::money_id(&c.address)).chain(rows.iter().flat_map(|(_, ids)| ids.iter().cloned())).chain(items.iter().map(|i| i.id.clone())).collect();
     for coming in coming.into_iter().filter(|c| sioul_core::areas::in_view(c.area, mode.time, mode.week)) {
         let (who, what, amount) = coming_words(&coming, tr);
         let id = rules::money_id(&coming.address);
         let at = coming.day.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
         let notice = Notice { address: coming.address.clone(), at, when: tr.day_short(coming.day), who, what, ..Notice::new(Kind::Money, id.clone(), "money").with_area(Some(coming.area)) };
         rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": amount, "state": coming.state.id() })), vec![id]));
+    }
+    // The books' items are the business's: work's hours.
+    if sioul_core::areas::in_view(sioul_core::areas::Area::WORK, mode.time, mode.week) {
+        for item in items {
+            let at = item.opens.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
+            let notice = Notice { address: "sioul:budget/".into(), at, when: tr.day_short(item.due), who: item.who, what: item.what, ..Notice::new(Kind::Money, item.id.clone(), "money").with_area(Some(sioul_core::areas::Area::WORK)) };
+            rows.push((row(notice, vec![item.id.clone()], Vec::new(), json!({ "amount": item.amount, "note": item.note })), vec![item.id]));
+        }
     }
     (rows, every)
 }

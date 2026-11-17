@@ -136,6 +136,7 @@ mod backend;
 mod bank;
 mod batch;
 mod blocks;
+mod books;
 mod calendarfile;
 mod calls;
 mod capacity;
