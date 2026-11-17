@@ -77,8 +77,8 @@ pub(crate) fn add_google_mail(qt: &QtThread, shared: &Arc<Shared>, address: Stri
                 return Err(e.sentence(tr(), &id));
             }
             if existing.is_none() {
+                // Its sending server, Google's, written with it.
                 config::add_imap_account(&config_path(), &account)?;
-                config::set_smtp(&config_path(), &id, GOOGLE_SMTP, 465, Security::Tls)?;
             }
             Ok(account)
         })();

@@ -122,8 +122,8 @@ async fn connect(server: &Server) -> Result<Client<TlsStream<TcpStream>>, SyncEr
 
 /// Upgrades a plain connection before anything else is said (RFC 9051 §6.2.1):
 /// the greeting, STARTTLS, its OK. Read a byte at a time, so nothing meant for
-/// TLS is swallowed.
-async fn starttls(mut tcp: TcpStream) -> Result<TcpStream, SyncError> {
+/// TLS is swallowed. Discovery's certificate check takes it too.
+pub(crate) async fn starttls(mut tcp: TcpStream) -> Result<TcpStream, SyncError> {
     let greeting = within(CONNECT, read_line(&mut tcp)).await??;
     if !greeting.starts_with("* OK") {
         return Err(SyncError::Server(greeting));
@@ -274,8 +274,9 @@ mod tests {
             let client = runtime.block_on(connect(&server));
             assert!(client.is_ok(), "{host}:{port}: {:?}", client.err());
         }
+        // A certificate for another name: its own sentence, the name asked and the names it is for.
         let wrong_name = Server { host: "wrong.host.badssl.com".into(), port: 443, security: Security::Tls, login: String::new(), oauth: None };
-        assert!(matches!(runtime.block_on(connect(&wrong_name)), Err(SyncError::Tls(_))));
+        assert!(matches!(runtime.block_on(connect(&wrong_name)), Err(SyncError::TlsName { asked, .. }) if asked == "wrong.host.badssl.com"));
     }
 }
 

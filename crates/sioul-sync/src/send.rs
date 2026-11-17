@@ -32,57 +32,107 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SMTP: Duration = Duration::from_secs(60);
 
 /// Sends a draft from its account: the sending server is found first when the
-/// account has none, and kept in the configuration at `config_path`. A
-/// `NotFiled` error means it was sent all the same. A draft your security key
-/// signs is not sent from here: it is built at Send, in the writing window.
-pub fn send_draft(config_path: &Path, account: &Account, password: &str, draft: &Draft, tr: &Translator) -> Result<(), SyncError> {
-    let account = with_smtp(config_path, account)?;
+/// account has none (`with_smtp`), and kept in the configuration at
+/// `config_path` once it took the message. A `NotFiled` error means it was
+/// sent all the same. A draft your security key signs is not sent from
+/// here: it is built at Send, in the writing window. A sending server moved
+/// on the way (`send_kept`) is told in `moved`, for the status line.
+pub fn send_draft(config_path: &Path, account: &Account, password: &str, draft: &Draft, tr: &Translator, moved: &mut Option<Moved>) -> Result<(), SyncError> {
+    let (account, found) = with_smtp(account)?;
     let outgoing = build_draft(&account, draft, tr, None).map_err(|e| e.into_sync(tr))?;
-    send_kept(config_path, &account, password, &outgoing)
+    send_and_keep(config_path, &account, found, password, &outgoing, moved)
 }
 
-/// Sends a message built at Send (signed with your security key), its ten
-/// seconds gone: the sending server is found first when the account has none.
-pub fn send_built(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
-    let account = with_smtp(config_path, account)?;
-    send_kept(config_path, &account, password, outgoing)
+/// Sends a message built already (signed at Send with your security key, an
+/// answer to an invitation, a request to leave a list), as `send_draft` does.
+pub fn send_built(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing, moved: &mut Option<Moved>) -> Result<(), SyncError> {
+    let (account, found) = with_smtp(account)?;
+    send_and_keep(config_path, &account, found, password, outgoing, moved)
 }
 
-/// `send`, through the sending server the account keeps. One that shows a
-/// certificate for another name is an alias of a host's server
-/// (`smtp.<domain>`, kept before a guess had to show its own certificate):
-/// it can never work, and nothing was sent. The sending server is then
-/// found again, once, and the one found now is kept in its place
-/// (`another_sending_server`); when no other is found, the refusal is said.
-fn send_kept(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
+/// A sending server moved by `send_kept`: the alias kept before, and the
+/// account's receiving server, which took its place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Moved {
+    pub from: String,
+    pub to: String,
+}
+
+impl Moved {
+    /// What the status line says of it, once: both servers named.
+    pub fn sentence(&self, tr: &Translator, account: &str) -> String {
+        let mut args = sioul_core::i18n::args();
+        args.set("account", account.to_string());
+        args.set("from", self.from.clone());
+        args.set("to", self.to.clone());
+        tr.text("send-server-moved", Some(&args))
+    }
+}
+
+/// `send_kept`; a sending server found for this message (`found`) is kept
+/// in the configuration once it took the message, never before: one that
+/// refused it is looked for again at the next message.
+fn send_and_keep(config_path: &Path, account: &Account, found: bool, password: &str, outgoing: &Outgoing, moved: &mut Option<Moved>) -> Result<(), SyncError> {
+    let sent = send_kept(config_path, account, password, outgoing, moved);
+    let took_it = matches!(sent, Ok(()) | Err(SyncError::NotFiled(_) | SyncError::PartlySent { .. }));
+    if found && took_it && moved.is_none() {
+        // Sent: a configuration that cannot be written now only means it is looked for again.
+        let _ = config::set_smtp(config_path, &account.id, account.smtp_host.as_deref().unwrap_or_default(), account.smtp_port_or_default(), account.smtp_security);
+    }
+    sent
+}
+
+/// `send`, through the sending server the account keeps. One refused for a
+/// certificate for another name, when it is `smtp.<the address's domain>`
+/// (an alias of a host's server, kept before a guess had to show its own
+/// certificate), is replaced by the account's receiving server, once its
+/// sign-in passes there (`moved_to_receiving`); the message then goes
+/// through it, and the move is told in `moved`. Otherwise the refusal is
+/// said, and nothing changes.
+fn send_kept(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing, moved: &mut Option<Moved>) -> Result<(), SyncError> {
     match send(account, password, outgoing) {
-        Err(refused @ SyncError::TlsName { .. }) => {
-            let found = another_sending_server(account, refused, || crate::discover_smtp(account.address.as_deref().unwrap_or(""), account.host.as_deref()))?;
-            config::set_smtp(config_path, &found.id, found.smtp_host.as_deref().unwrap_or_default(), found.smtp_port_or_default(), found.smtp_security).map_err(SyncError::Disk)?;
-            send(&found, password, outgoing)
-        }
+        Err(refused @ SyncError::TlsName { .. }) => match moved_to_receiving(config_path, account, &refused, |candidate| test(candidate, password))? {
+            Some(receiving) => {
+                *moved = Some(Moved { from: account.smtp_host.clone().unwrap_or_default(), to: receiving.smtp_host.clone().unwrap_or_default() });
+                send(&receiving, password, outgoing)
+            }
+            None => Err(refused),
+        },
         other => other,
     }
 }
 
-/// The account with the sending server `find` gives now, when the one it
-/// keeps was `refused` for its certificate's name and `find` gives another;
-/// else the refusal. An account signed in on its provider's page keeps the
-/// servers its provider names: it is never sent to another.
-fn another_sending_server(account: &Account, refused: SyncError, find: impl FnOnce() -> Result<crate::Smtp, SyncError>) -> Result<Account, SyncError> {
-    if OAuth::of(account).is_some() {
-        return Err(refused);
+/// The narrow rule for a sending server kept as an alias (review of 17
+/// November 2026, finding 1): only when the account signs in with a
+/// password, keeps `smtp.<the address's domain>` as its sending server, and
+/// that very name was `refused` for a certificate naming another. The
+/// account's own receiving server, which its password goes to already, is
+/// then tried for sending, on 465 (TLS from the first byte), then 587
+/// (STARTTLS), by a sign-in (`sign_in`: `test`, nothing sent); the first
+/// that passes is written in the configuration, never one before it
+/// passed. Google's and Microsoft's servers are never tried so; no MX, no
+/// record and no list is asked. None: nothing changed.
+fn moved_to_receiving(config_path: &Path, account: &Account, refused: &SyncError, sign_in: impl Fn(&Account) -> Result<(), SyncError>) -> Result<Option<Account>, SyncError> {
+    let name = |host: &str| host.trim().trim_end_matches('.').to_ascii_lowercase();
+    let (Some(kept), Some(receiving), Some(address)) = (account.smtp_host.as_deref().map(name), account.host.as_deref().map(name), account.address.as_deref()) else { return Ok(None) };
+    let typed = address.trim().rsplit_once('@').map(|(_, domain)| format!("smtp.{}", name(domain)));
+    let alias = crate::discover::domain_of(address).map(|domain| format!("smtp.{domain}"));
+    let refused_there = matches!(refused, SyncError::TlsName { asked, .. } if name(asked) == kept);
+    let theirs = receiving == crate::discover::GOOGLE_IMAP || receiving == crate::discover::GOOGLE_SMTP || crate::microsoft::is_imap_host(&receiving) || crate::microsoft::is_smtp_host(&receiving);
+    if OAuth::of(account).is_some() || !refused_there || theirs || receiving == kept || (alias.as_deref() != Some(kept.as_str()) && typed.as_deref() != Some(kept.as_str())) {
+        return Ok(None);
     }
-    match find() {
-        Ok(smtp) if !account.smtp_host.as_deref().is_some_and(|kept| kept.eq_ignore_ascii_case(&smtp.host)) => {
-            let mut account = account.clone();
-            account.smtp_host = Some(smtp.host);
-            account.smtp_port = Some(smtp.port);
-            account.smtp_security = smtp.security;
-            Ok(account)
+    for (port, security) in [(465, Security::Tls), (587, Security::Starttls)] {
+        let mut candidate = account.clone();
+        candidate.smtp_host = Some(receiving.clone());
+        candidate.smtp_port = Some(port);
+        candidate.smtp_security = security;
+        if sign_in(&candidate).is_ok() {
+            config::set_smtp(config_path, &account.id, &receiving, port, security).map_err(SyncError::Disk)?;
+            return Ok(Some(candidate));
         }
-        _ => Err(refused),
     }
+    Ok(None)
 }
 
 /// Why a draft could not be built.
@@ -262,17 +312,22 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
     })
 }
 
-fn with_smtp(config_path: &Path, account: &Account) -> Result<Account, SyncError> {
+/// The account with its sending server: its own, or, when it names none,
+/// one found now (`discover_smtp`), and whether it was found, so that it is
+/// kept once it took the message (`send_and_keep`).
+fn with_smtp(account: &Account) -> Result<(Account, bool), SyncError> {
     if account.smtp_host.is_some() {
-        return Ok(account.clone());
+        return Ok((account.clone(), false));
     }
-    let smtp = crate::discover_smtp(account.address.as_deref().unwrap_or(""), account.host.as_deref())?;
-    config::set_smtp(config_path, &account.id, &smtp.host, smtp.port, smtp.security).map_err(SyncError::Disk)?;
+    let smtp = crate::discover_smtp(account.address.as_deref().unwrap_or(""), account.host.as_deref()).map_err(|e| match e {
+        SyncError::NotFound(domain) => SyncError::Said(crate::said::NO_SENDING_SERVER, domain),
+        other => other,
+    })?;
     let mut account = account.clone();
     account.smtp_host = Some(smtp.host);
     account.smtp_port = Some(smtp.port);
     account.smtp_security = smtp.security;
-    Ok(account)
+    Ok((account, true))
 }
 
 /// The sending server's client, logged in with `credentials` when given
@@ -290,10 +345,12 @@ fn smtp_builder<'a>(account: &Account, host: &'a str, credentials: Option<(&'a s
         Some(credentials) => builder.credentials(credentials),
         None => builder,
     };
-    // Android: mail-send checks certificates with rustls-platform-verifier,
-    // which there needs Java code Sioul does not ship; the same check as
-    // for IMAP instead (Android's certificates, else Mozilla's).
-    #[cfg(target_os = "android")]
+    // The same certificate check as for IMAP and as discovery's
+    // (`imap::tls_config`: the system's certificates, else Mozilla's), on
+    // every system: a sending server that passed discovery's check passes
+    // here too, and the reverse. mail-send's own, rustls-platform-verifier,
+    // asks the system's verifier on Windows and macOS, with policies of its
+    // own, and on Android needs Java code Sioul does not ship.
     let builder = {
         let mut builder = builder;
         builder.tls_connector = tokio_rustls::TlsConnector::from(crate::imap::tls_config());
@@ -588,26 +645,73 @@ mod tests {
         assert!(matches!(password_error(mail_send::Error::UnsupportedAuthMechanism, "smtp.mail.yahoo.com"), SyncError::Login(_)));
     }
 
-    /// A sending server kept that shows a certificate for another name (an
-    /// alias kept before guesses were checked): the one found now takes its
-    /// place; the refusal stays when the same is found, when none is, and
-    /// for an account signed in on its provider's page.
+    /// A sending server kept as `smtp.<domain>` and refused for a
+    /// certificate naming another host: the account's receiving server is
+    /// tried, on 465 then 587, by a sign-in; the configuration is written
+    /// only once one passed, with it. Nothing else is tried, and nothing
+    /// changes for another kept server, another refusal, an account signed
+    /// in on its provider's page, or a receiving server at Google or
+    /// Microsoft.
     #[test]
-    fn a_sending_server_kept_as_an_alias_is_found_again() {
-        let refused = || SyncError::TlsName { asked: "smtp.example.org".into(), presented: "ssl0.host.example".into() };
+    fn a_sending_server_kept_as_an_alias_moves_to_the_receiving_server_once_it_signs_in() {
+        let dir = std::env::temp_dir().join(format!("sioul-send-moved-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let written = "[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"ssl0.host.example\"\nsmtp_host = \"smtp.example.org\"\nsmtp_port = 465\nsmtp_security = \"tls\"\n";
+        let refused = SyncError::TlsName { asked: "smtp.example.org".into(), presented: "ssl0.host.example".into() };
         let mut account = Account::imap("home", "jane@example.org", "ssl0.host.example", 993, Security::Tls, None);
         account.smtp_host = Some("smtp.example.org".into());
         account.smtp_port = Some(465);
-        let found = another_sending_server(&account, refused(), || Ok(crate::Smtp { host: "ssl0.host.example".into(), port: 587, security: Security::Starttls })).unwrap();
-        assert_eq!((found.smtp_host.as_deref(), found.smtp_port, found.smtp_security, found.id.as_str()), (Some("ssl0.host.example"), Some(587), Security::Starttls, "home"));
-        let same = another_sending_server(&account, refused(), || Ok(crate::Smtp { host: "SMTP.example.org".into(), port: 465, security: Security::Tls }));
-        assert_eq!(same.err(), Some(refused()), "the same server found: its refusal");
-        let none = another_sending_server(&account, refused(), || Err(SyncError::NotFound("example.org".into())));
-        assert_eq!(none.err(), Some(refused()), "none found: the refusal, not the search's");
+        let tried = std::cell::RefCell::new(Vec::new());
+        let only = |passes: Option<u16>| {
+            let tried = &tried;
+            move |candidate: &Account| {
+                let port = candidate.smtp_port_or_default();
+                tried.borrow_mut().push((candidate.smtp_host.clone().unwrap_or_default(), port, candidate.smtp_security));
+                if Some(port) == passes { Ok(()) } else { Err(SyncError::Login("Authentication failed".into())) }
+            }
+        };
+        // 465 refuses the sign-in, 587 takes it: 587 is kept, once it passed.
+        std::fs::write(&path, written).unwrap();
+        let moved = moved_to_receiving(&path, &account, &refused, only(Some(587))).unwrap().unwrap();
+        assert_eq!((moved.smtp_host.as_deref(), moved.smtp_port, moved.smtp_security), (Some("ssl0.host.example"), Some(587), Security::Starttls));
+        assert_eq!(tried.take(), [("ssl0.host.example".to_string(), 465, Security::Tls), ("ssl0.host.example".to_string(), 587, Security::Starttls)]);
+        let kept: sioul_core::config::Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let kept = kept.account("home").unwrap();
+        assert_eq!((kept.smtp_host.as_deref(), kept.smtp_port, kept.smtp_security), (Some("ssl0.host.example"), Some(587), Security::Starttls));
+        // Neither passes: nothing written, nothing moved.
+        std::fs::write(&path, written).unwrap();
+        assert!(moved_to_receiving(&path, &account, &refused, only(None)).unwrap().is_none());
+        assert_eq!(tried.take().len(), 2);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), written, "the configuration untouched");
+        // Nothing tried at all: another kept server, another refusal, a refusal of another name.
+        let never = |_: &Account| -> Result<(), SyncError> { panic!("nothing is tried") };
+        let mut typed = account.clone();
+        typed.smtp_host = Some("out.host.example".into());
+        let refused_typed = SyncError::TlsName { asked: "out.host.example".into(), presented: "other.host.example".into() };
+        assert!(moved_to_receiving(&path, &typed, &refused_typed, never).unwrap().is_none(), "a sending server typed or found elsewhere");
+        assert!(moved_to_receiving(&path, &account, &SyncError::Tls("UnknownIssuer".into()), never).unwrap().is_none(), "another certificate problem");
+        assert!(moved_to_receiving(&path, &account, &SyncError::TlsName { asked: "mail.example.org".into(), presented: String::new() }, never).unwrap().is_none(), "a refusal of another name");
+        // Never toward Google's or Microsoft's servers, never for an account signed in at its provider.
+        for host in ["imap.gmail.com", "outlook.office365.com"] {
+            let mut theirs = account.clone();
+            theirs.host = Some(host.into());
+            assert!(moved_to_receiving(&path, &theirs, &refused, never).unwrap().is_none(), "{host}");
+        }
         let mut signed_in = account.clone();
         signed_in.auth = Some("microsoft".into());
-        let never = another_sending_server(&signed_in, refused(), || panic!("an account signed in at its provider is never looked for elsewhere"));
-        assert_eq!(never.err(), Some(refused()));
+        assert!(moved_to_receiving(&path, &signed_in, &refused, never).unwrap().is_none());
+        // Its case and a final dot change nothing.
+        let mut cased = account.clone();
+        cased.smtp_host = Some("SMTP.Example.org.".into());
+        std::fs::write(&path, written).unwrap();
+        assert!(moved_to_receiving(&path, &cased, &SyncError::TlsName { asked: "smtp.example.org".into(), presented: String::new() }, only(Some(465))).unwrap().is_some());
+        // What the status line says, once, naming both servers.
+        let said = Moved { from: "smtp.example.org".into(), to: "ssl0.host.example".into() }.sentence(&Translator::new("en"), "home");
+        assert!(said.starts_with("home") && said.contains("smtp.example.org") && said.contains("ssl0.host.example") && !said.contains("send-server"), "{said}");
+        let said = Moved { from: "smtp.example.org".into(), to: "ssl0.host.example".into() }.sentence(&Translator::new("fr"), "maison");
+        assert!(said.starts_with("maison") && said.contains("smtp.example.org") && said.contains("ssl0.host.example"), "{said}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Part 8, 10: Microsoft's servers file their own copy in Sent, as Gmail's do: no APPEND.

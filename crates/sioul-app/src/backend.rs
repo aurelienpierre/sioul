@@ -2250,6 +2250,13 @@ pub mod qobject {
         #[qinvokable]
         fn google_built_in(self: &Sioul) -> bool;
 
+        /// What the dialog that asks an account's password again shows for
+        /// its server `host`, as JSON: `guide` and `field` in your language,
+        /// `url` where its app password is made; `{}` when the server takes
+        /// the account's own password (`sioul_sync::AppPasswords::words`).
+        #[qinvokable]
+        fn app_password_for(self: &Sioul, host: &QString) -> QString;
+
         /// The camera, microphone and speaker of calls in sites, by their names: {"camera", "microphone", "speaker"}.
         #[qinvokable]
         fn call_devices(self: &Sioul) -> QString;
@@ -3954,11 +3961,8 @@ fn add_mail(qt: &QtThread, shared: &Arc<Shared>, address: String, host: String, 
                         // The sending server typed: signed in to, nothing sent, before anything is kept.
                         .and_then(|_| if sending.is_some() { sioul_sync::send::test(&account, &password).map_err(|e| say("account-sending-refused", &[("problem", e.sentence(tr(), &id))])) } else { Ok(()) })
                         .and_then(|()| secret::save(&account, &password).map_err(|e| e.sentence(tr(), &id)))
+                        // The account and its sending server, in one step.
                         .and_then(|()| config::add_imap_account(&config_path(), &account))
-                        .and_then(|()| match &account.smtp_host {
-                            Some(smtp_host) => config::set_smtp(&config_path(), &id, smtp_host, account.smtp_port_or_default(), account.smtp_security),
-                            None => Ok(()),
-                        })
                         .map(|()| account)
                 })
             }
@@ -4641,6 +4645,9 @@ struct FoundView {
     google: bool,
     /// A Google key of your own is kept on this device for this address.
     google_key: bool,
+    /// Google keeps this address's mail and it is not Gmail's own: a
+    /// Google Workspace address, which Google may offer no app password.
+    workspace: bool,
     /// Nothing was found: the form opens empty, for the server's name to be typed.
     unfound: bool,
     /// Microsoft keeps this address's mail (Outlook.com, Microsoft 365):
@@ -5141,6 +5148,7 @@ impl qobject::Sioul {
                     hint: tr().text(hint, None),
                     help_url,
                     unfound: unfound.is_some(),
+                    workspace: google && !sioul_sync::is_gmail(&address),
                     google,
                     google_key: google && gmail::has_own_key(&address),
                     microsoft: microsoft_kind.is_some(),
@@ -7390,6 +7398,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn app_password_for(&self, host: &QString) -> QString {
+        let words = sioul_sync::AppPasswords::only_at(host.to_string().trim().trim_end_matches('.')).and_then(sioul_sync::AppPasswords::words);
+        QString::from(&match words {
+            Some((guide, field, url)) => serde_json::json!({ "guide": tr().text(guide, None), "field": tr().text(field, None), "url": url }).to_string(),
+            None => "{}".to_string(),
+        })
+    }
+
     fn google_built_in(&self) -> bool {
         sioul_sync::google::built_in().is_some()
     }
@@ -8756,6 +8772,26 @@ impl qobject::Sioul {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Finding an address's servers, looking at what a server offers,
+    /// adding an account (its sign-ins) and answering an invitation (its
+    /// sending) wait on the network, up to `discover::WHOLE` for a search:
+    /// each runs on a thread of its own, never the window's.
+    #[test]
+    fn discovery_and_sign_ins_stay_off_the_window_s_thread() {
+        let backend = std::fs::read_to_string(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/backend.rs")).unwrap();
+        for (function, waits) in [
+            ("fn find_servers(mut self: Pin<&mut Self>", "sioul_sync::discover(&address)"),
+            ("fn scout_account(mut self: Pin<&mut Self>", "sioul_sync::scout::scout("),
+            ("fn add_mail(qt: &QtThread", "sioul_sync::send::test(&account"),
+            ("fn answer_invitation(mut self: Pin<&mut Self>", "pim::answer("),
+        ] {
+            let start = backend.find(function).unwrap_or_else(|| panic!("{function}"));
+            let spawned = backend[start..].find("std::thread::spawn").unwrap_or_else(|| panic!("{function}: a thread of its own"));
+            let waited = backend[start..].find(waits).unwrap_or_else(|| panic!("{function}: {waits}"));
+            assert!(spawned < waited, "{function}: {waits} runs off the window's thread");
+        }
+    }
 
     /// A mail report with nothing new leaves the views as they are while the
     /// address's Maildir stays as its last report left it: a message come,

@@ -92,7 +92,7 @@ Then, on the address's card in **Your accounts**, unfold **Settings for this add
 
 ### Your own domain at a host {#your-own-domain-at-a-host}
 
-An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then reads your domain's own records, and says which it used. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself.
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself.
 
 Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
 
@@ -103,9 +103,9 @@ When Sioul finds nothing, the form opens with **Server** empty:
 3. If your host gives another server for sending, unfold **Sending server, when it cannot be found** and type its name, port and encryption. Left empty, Sioul finds the sending server at the first message you send. One you type is tried with your password before anything is kept.
 4. Type your password, then choose **Connect and add**.
 
-If Sioul says that a certificate is for another name, the name asked is such an alias. Replace it with the name from your host's help. Do not take it from the message: on a network you do not trust, another server could have answered.
+If Sioul says that a certificate is for another name while you add an address, the name asked is most likely such an alias: replace it with the name from your host's help. Do not take it from the message, since on a network you do not trust another server could have answered. If an address that worked before says so, try again later or on another network.
 
-An account added before this, whose messages do not leave because its sending server was kept as `smtp.` followed by your domain: at the next message, Sioul looks for the sending server again and keeps the one that works. Not yet tried with a real mailbox at a host.
+Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
 
 ### Gmail and Google Workspace
 
@@ -114,9 +114,9 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Use an app password**: make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification; **Make an app password** opens the page in your browser), paste it under **App password (from Google)**, then **Connect and add**.
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
-When Google's page says that app passwords are not available for your account, one of four things is so: 2-Step Verification is off; it is set up for security keys only; the account belongs to a work, a school or another organisation; or it has Advanced Protection. **Sign in with Google** is then the way. Changing your Google password revokes every app password: make a new one for Sioul afterwards.
+App passwords need 2-Step Verification. Google's help says the setting might not be available when 2-Step Verification is set up for security keys only, for a work, school or other organisation's account, or with Advanced Protection; **Sign in with Google** is then the way. Changing your Google password revokes every app password: make a new one for Sioul afterwards.
 
-A Google Workspace address (your own domain at Google) takes **Sign in with Google** only: Google offers such accounts no app password, and since 1 May 2025 lets no other program sign in to them with a password.
+For a Google Workspace address (your own domain at Google), **Sign in with Google** is the dependable way: Google may not offer it an app password, and since 1 May 2025 Workspace accounts no longer let other apps sign in with a user name and a password, office devices apart, Google says.
 
 Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On Android, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
 

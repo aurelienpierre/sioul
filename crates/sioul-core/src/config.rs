@@ -1630,6 +1630,12 @@ pub fn add_imap_account(path: &Path, account: &Account) -> Result<(), String> {
     if let Some(auth) = &account.auth {
         table["auth"] = value(auth.as_str());
     }
+    // A sending server given when it was added: written with it, in the same step.
+    if let Some(host) = &account.smtp_host {
+        table["smtp_host"] = value(host.as_str());
+        table["smtp_port"] = value(i64::from(account.smtp_port_or_default()));
+        table["smtp_security"] = value(account.smtp_security.as_str());
+    }
     table["trusted_authserv_ids"] = value(account.trusted_authserv_ids.iter().map(String::as_str).collect::<Array>());
     append_account(path, table)
 }
@@ -3113,6 +3119,15 @@ mod tests {
         // An account with a password says nothing of it.
         add_imap_account(&path, &Account::imap("other", "you@example.org", "imap.example.org", 993, Security::Tls, None)).unwrap();
         assert_eq!(Config::load(&path).unwrap().account("other").and_then(|a| a.auth.clone()), None);
+        assert_eq!(Config::load(&path).unwrap().account("other").and_then(|a| a.smtp_host.clone()), None, "no sending server given: none written");
+        // A sending server given with the account: written with it, in the same step.
+        let mut typed = Account::imap("typed", "jane@example.org", "ssl0.host.example", 993, Security::Tls, None);
+        typed.smtp_host = Some("ssl0.host.example".into());
+        typed.smtp_port = Some(587);
+        typed.smtp_security = Security::Starttls;
+        add_imap_account(&path, &typed).unwrap();
+        let kept = Config::load(&path).unwrap().account("typed").cloned().unwrap();
+        assert_eq!((kept.smtp_host.as_deref(), kept.smtp_port, kept.smtp_security), (Some("ssl0.host.example"), Some(587), Security::Starttls));
         // Given an app password instead: a password's account again.
         set_auth(&path, "gmail", None).unwrap();
         assert_eq!(Config::load(&path).unwrap().account("gmail").and_then(|a| a.auth.clone()), None);

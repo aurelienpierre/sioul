@@ -1874,8 +1874,9 @@ fn send_now(id: &str, shared: &Shared) -> String {
     let Some(account) = config.account(&draft.account).filter(|a| a.syncs()).cloned() else {
         return say("account-unknown", &[("id", draft.account.clone())]);
     };
-    let sent = secret::password(&account).and_then(|p| sioul_sync::send::send_draft(&config_path(), &account, &p, &draft, tr()));
-    match sent {
+    let mut moved = None;
+    let sent = secret::password(&account).and_then(|p| sioul_sync::send::send_draft(&config_path(), &account, &p, &draft, tr(), &mut moved));
+    with_move(&moved, &account.id, match sent {
         Ok(()) => {
             // An invoice's mail ("Write the mail") left: the invoice is marked sent, when it carried it to its client.
             crate::invoices::sent_with(shared, &draft, &[]);
@@ -1894,6 +1895,15 @@ fn send_now(id: &str, shared: &Shared) -> String {
             e.sentence(tr(), &account.id)
         }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
+    })
+}
+
+/// What the status line says of a message sent, and then, once, of the
+/// sending server it moved to on the way (`sioul_sync::send::Moved`).
+pub(crate) fn with_move(moved: &Option<sioul_sync::send::Moved>, account: &str, said: String) -> String {
+    match moved {
+        Some(moved) => format!("{said} {}", moved.sentence(tr(), account)),
+        None => said,
     }
 }
 
@@ -1916,7 +1926,8 @@ fn keep_for_those_missed(mut draft: Draft, sent: &SyncError) {
 
 /// Sends what was built and signed at Send, as built; then the draft goes.
 fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, shared: &Shared) -> String {
-    let sent = secret::password(account).and_then(|p| sioul_sync::send::send_built(&config_path(), account, &p, outgoing));
+    let mut moved = None;
+    let sent = secret::password(account).and_then(|p| sioul_sync::send::send_built(&config_path(), account, &p, outgoing, &mut moved));
     // An invoice's mail ("Write the mail") left: the invoice is marked sent, then the draft goes.
     let discard = || {
         if let Some(draft) = Draft::by_id(id) {
@@ -1924,7 +1935,7 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
             draft.discard();
         }
     };
-    match sent {
+    with_move(&moved, &account.id, match sent {
         Ok(()) => {
             discard();
             nudge(shared, &account.id);
@@ -1942,7 +1953,7 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
             e.sentence(tr(), &account.id)
         }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
-    }
+    })
 }
 
 /// What a message offers to leave its list (docs/client.md, "Unsubscribing"),
@@ -2037,22 +2048,23 @@ fn unsubscribe_now(list: &unsubscribe::List, sender: &str, account: &str, way: &
             };
             let me = account.address.clone().unwrap_or_default();
             let name = account.name.clone().unwrap_or_default();
+            let mut moved = None;
             let sent = unsubscribe::request((&name, &me), to, subject, body, sioul_core::zone::now().timestamp().as_second()).and_then(|outgoing| {
                 let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
-                let account = crate::pim::with_smtp(&account)?;
-                match sioul_sync::send::send(&account, &password, &outgoing) {
+                match sioul_sync::send::send_built(&config_path(), &account, &password, &outgoing, &mut moved) {
                     // Sent; a copy not filed in Sent changes nothing for the list.
                     Ok(()) | Err(SyncError::NotFiled(_)) => Ok(()),
                     Err(e) => Err(e.sentence(tr(), &account.id)),
                 }
             });
-            match sent {
+            let said = match sent {
                 Ok(()) => {
                     nudge(shared, &account.id);
                     done("mail").unwrap_or_else(|| say("unsubscribe-done-mail", &[("list", list.name.clone()), ("to", to.clone())]))
                 }
                 Err(why) => failed(why),
-            }
+            };
+            with_move(&moved, &account.id, said)
         }
         unsubscribe::Way::Page { .. } => String::new(),
     }

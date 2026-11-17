@@ -212,13 +212,17 @@ pub fn is_gmail(address: &str) -> bool {
 }
 
 /// The password as the server wants it. Google shows app passwords as four
-/// groups of four letters ("abcd efgh ijkl mnop"); the spaces are not part of it.
+/// groups of four letters ("abcd efgh ijkl mnop"); the spaces are not part
+/// of it. Yahoo's servers take app passwords only, which hold no space
+/// either: the same is done for them. How Yahoo shows its app passwords is
+/// not verified here (no Yahoo account was used): sixteen letters, in one
+/// group or four, are taken as Google's are.
 pub fn tidy_password(host: &str, typed: &str) -> String {
     let groups: Vec<&str> = typed.split_whitespace().collect();
     let lengths: Vec<usize> = groups.iter().map(|g| g.len()).collect();
     let shaped = lengths == [16] || lengths == [4, 4, 4, 4];
     let letters = groups.iter().all(|g| g.chars().all(|c| c.is_ascii_alphabetic()));
-    if host.eq_ignore_ascii_case("imap.gmail.com") && shaped && letters { groups.concat() } else { typed.to_string() }
+    if AppPasswords::only_at(host).is_some() && shaped && letters { groups.concat() } else { typed.to_string() }
 }
 
 /// What learning the provider's authserv-id gave.
@@ -278,6 +282,8 @@ pub mod said {
     pub const RENUMBERED: &str = "sync-said-renumbered";
     /// The message is gone from the server.
     pub const GONE: &str = "sync-said-gone";
+    /// No sending server found for an account's first message (its domain follows).
+    pub const NO_SENDING_SERVER: &str = "sync-said-no-sending-server";
     /// A message seen on the server only, to be brought here before this act.
     pub const OPEN_FIRST: &str = "sync-said-open-first";
 }
@@ -352,6 +358,17 @@ pub enum AppPasswords {
 }
 
 impl AppPasswords {
+    /// What the dialog that asks a password again shows for this provider:
+    /// its guide, its field's name (message ids), and the page where its app
+    /// password is made; none for a server Sioul knows no page of.
+    pub fn words(self) -> Option<(&'static str, &'static str, &'static str)> {
+        match self {
+            AppPasswords::Google => Some(("ui-gmail-app-password-guide", "ui-gmail-app-password-field", GMAIL_APP_PASSWORDS)),
+            AppPasswords::Yahoo => Some(("ui-yahoo-app-password-guide", "ui-yahoo-app-password-field", YAHOO_APP_PASSWORDS)),
+            AppPasswords::Elsewhere => None,
+        }
+    }
+
     /// The provider whose server `host` is, receiving or sending, when it
     /// takes app passwords only: Google's and Yahoo's, by their names.
     pub fn only_at(host: &str) -> Option<Self> {
@@ -527,6 +544,12 @@ mod tests {
         // Anything else is kept as typed, spaces included.
         assert_eq!(tidy_password("imap.gmail.com", "my long pass phrase"), "my long pass phrase");
         assert_eq!(tidy_password("mail.example.org", "abcd efgh ijkl mnop"), "abcd efgh ijkl mnop");
+        // Yahoo's servers, receiving and sending, take app passwords only: the same.
+        assert_eq!(tidy_password("imap.mail.yahoo.com", "abcd efgh ijkl mnop"), "abcdefghijklmnop");
+        assert_eq!(tidy_password("SMTP.mail.yahoo.com", "abcd efgh ijkl mnop"), "abcdefghijklmnop");
+        assert_eq!(tidy_password("imap.mail.yahoo.com", "my long pass phrase"), "my long pass phrase");
+        assert_eq!(AppPasswords::Yahoo.words().map(|(_, _, page)| page), Some(YAHOO_APP_PASSWORDS));
+        assert_eq!(AppPasswords::Elsewhere.words(), None);
         assert!(is_gmail("Someone@GMail.com") && !is_gmail("someone@example.org"));
     }
 
@@ -597,13 +620,19 @@ mod tests {
         let unnamed = certificate_refused(&rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName), "smtp.example.org");
         assert_eq!(unnamed, SyncError::TlsName { asked: "smtp.example.org".into(), presented: String::new() });
         assert_eq!(unnamed.code(), "sync-error-tls-name");
-        for (language, account, alias, instead) in [("en", "home", "is probably an alias of your mail provider's server", "your provider's help"), ("fr", "maison", "sans doute un alias du serveur de votre fournisseur de courriel", "l’aide de votre fournisseur")] {
+        // Both say where to take the right name, that another server may have
+        // answered, that a name being added is probably an alias, and what to
+        // do for an address that worked before.
+        for (language, account, words) in [
+            ("en", "home", ["is probably an alias of your provider's server", "your mail provider's help", "another server may have answered", "If this address worked before", "try again later"]),
+            ("fr", "maison", ["est sans doute un alias du serveur de votre fournisseur", "l’aide de votre fournisseur de courriel", "un autre serveur a pu répondre", "Si cette adresse marchait avant", "réessayez plus tard"]),
+        ] {
             let tr = Translator::new(language);
             let said = refused.sentence(&tr, account);
             assert!(said.starts_with(account) && said.contains("imap.example.org") && said.contains("(ssl0.host.example, *.host.example, www.ssl0.host.example)"), "{said}");
-            assert!(said.contains(alias) && said.contains(instead) && !said.contains("sync-error") && !said.contains("press here"), "{said}");
+            assert!(words.iter().all(|w| said.contains(w)) && !said.contains("sync-error") && !said.contains("press here"), "{said}");
             let said = unnamed.sentence(&tr, account);
-            assert!(said.starts_with(account) && said.contains("smtp.example.org") && said.contains(alias) && said.contains(instead) && !said.contains("()") && !said.contains("sync-error"), "{said}");
+            assert!(said.starts_with(account) && said.contains("smtp.example.org") && words.iter().all(|w| said.contains(w)) && !said.contains("()") && !said.contains("sync-error"), "{said}");
             // Where the settings came from, said before a password is typed.
             for by in [FoundBy::IspdbMx, FoundBy::Records] {
                 let said = tr.text(by.message_id(), None);

@@ -183,7 +183,11 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
         // Given by hand: port 0 means "the usual one for the encryption", chosen below.
         Some(host) => Found { host: host.clone(), port: 0, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Provider, smtp: None },
         None => {
-            let found = sioul_sync::discover(&address).map_err(|e| e.sentence(&s.tr, &id))?;
+            let found = sioul_sync::discover(&address).map_err(|e| match e {
+                // Nothing found: what to give, here.
+                SyncError::NotFound(_) => format!("{} {}", e.sentence(&s.tr, &id), s.tr.text("account-not-found-cli", None)),
+                other => other.sentence(&s.tr, &id),
+            })?;
             println!("{}", s.say("account-found", &[("server", server_line(s, &found.host, found.port, found.security)), ("by", s.tr.text(found.by.message_id(), None))]));
             found
         }
@@ -195,6 +199,10 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
         _ => None,
     };
     if let Some(kind) = microsoft {
+        // Its token reaches Microsoft's servers alone: a sending server given is refused, said, before anything is done.
+        if wanted.sending.is_some() {
+            return Err(s.tr.text("account-smtp-microsoft", None));
+        }
         let mut account = Account::imap(&id, &address, microsoft::IMAP_HOST, 993, Security::Tls, None);
         account.sync_days = wanted.days;
         let account = sign_in_with_microsoft(s, account, kind, wanted.client_id.as_deref().unwrap_or(""), wanted.tenant.as_deref().unwrap_or(""))?;
@@ -238,10 +246,8 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
         sioul_sync::send::test(&account, &password).map_err(|e| s.say("account-sending-refused", &[("problem", e.sentence(&s.tr, &id))]))?;
     }
     secret::save(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;
+    // The account and its sending server, in one step.
     config::add_imap_account(&s.config_path, &account)?;
-    if let Some(smtp_host) = &account.smtp_host {
-        config::set_smtp(&s.config_path, &id, smtp_host, account.smtp_port_or_default(), account.smtp_security)?;
-    }
     println!("{}", s.say("account-added", &[("id", id.clone()), ("path", account.maildir_path().display().to_string())]));
     println!("{}", s.tr.text("ui-syncing", None));
     let report = sioul_sync::sync(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;

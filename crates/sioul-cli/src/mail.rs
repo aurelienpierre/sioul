@@ -215,7 +215,13 @@ fn leave_spam_lines(s: &Session, found: &unsubscribe::SpamLists, go: Option<&std
 /// Sends a draft, and forgets it once sent; kept when sending failed.
 pub(crate) fn send_draft(s: &Session, account: &Account, draft: &Draft) -> Result<(), String> {
     let password = secret::password(account).map_err(|e| e.sentence(&s.tr, &account.id))?;
-    match sioul_sync::send::send_draft(&s.config_path, account, &password, draft, &s.tr) {
+    let mut moved = None;
+    let sent = sioul_sync::send::send_draft(&s.config_path, account, &password, draft, &s.tr, &mut moved);
+    // A sending server moved on the way: said once, whatever became of the message.
+    if let Some(moved) = &moved {
+        println!("{}", crate::plain_lines(&moved.sentence(&s.tr, &account.id)));
+    }
+    match sent {
         Ok(()) => {
             draft.discard();
             println!("{}", s.tr.text("mail-sent", None));
