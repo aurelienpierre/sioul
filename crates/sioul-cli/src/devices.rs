@@ -124,7 +124,8 @@ fn say_for(s: &Session, device: &str, areas: &str) -> Result<(), String> {
     let (_, rows, _) = rows(s);
     let row = named(s, &rows, device)?;
     let everything = matches!(areas.trim().to_lowercase().as_str(), "" | "everything" | "all" | "tout");
-    let area = if everything { None } else { Some(Area::parse(areas).ok_or_else(|| s.say("devices-cell-refused", &[("said", crate::plain_lines(areas.trim()))]))?) };
+    // What a device is for takes no "none" (nothing ticked is everything): its own refusal says so (review of phase 2, L4).
+    let area = if everything { None } else { Some(Area::parse(areas).ok_or_else(|| s.say("devices-for-refused", &[("said", crate::plain_lines(areas.trim()))]))?) };
     device_said::set_area(&s.config_path, &row.id, &area.map(Area::id).unwrap_or_default())?;
     println!("{}", s.say("devices-said-for", &[("device", crate::plain_lines(&row.name)), ("areas", areas_in_words(&s.tr, "device-areas", area.unwrap_or(Area::ALL)))]));
     Ok(())
@@ -136,7 +137,9 @@ fn say_for(s: &Session, device: &str, areas: &str) -> Result<(), String> {
 fn say_at(s: &Session, device: &str, time: &str, areas: &str) -> Result<(), String> {
     let (_, rows, _) = rows(s);
     let row = named(s, &rows, device)?;
-    let at = device_said::cell_time(time).ok_or_else(|| s.say("devices-time-refused", &[("said", crate::plain_lines(time.trim()))]))?;
+    // The five times by their own words only, as the refusal names them (review of phase 2, L4):
+    // the settings still read an older word for a time (`device_said::cell_time`).
+    let at = sioul_core::areas::Time::STATES.into_iter().find(|t| t.id() == time.trim().to_lowercase()).ok_or_else(|| s.say("devices-time-refused", &[("said", crate::plain_lines(time.trim()))]))?;
     let cell = device_said::said_cell(areas).ok_or_else(|| s.say("devices-cell-refused", &[("said", crate::plain_lines(areas.trim()))]))?;
     device_said::set_cell(&s.config_path, &row.id, at, cell)?;
     // What comes forward there then, as the settings now say it.
