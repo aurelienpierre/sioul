@@ -460,6 +460,15 @@ Item {
         return { kind: "mail", ids: [item.notice.id], targets: [item.key], notice: item.notice }
     }
 
+    // A money row opened: a declaration's or a DES's, the declaration view at
+    // its period (where it is said "Declared"); any other, Budgets.
+    function openMoney(row) {
+        if (row.declaration)
+            page.window.openDeclaration(row.declaration)
+        else
+            page.window.page = 9
+    }
+
     // A letter opened: on its scan, as a letter opens until the Letters page opens it.
     // A letter opened on the Letters page (main.qml's `openLetter`); its scan alone by "See the scan".
     function openLetter(letter) {
@@ -1390,10 +1399,11 @@ Item {
                             amount: moneyRow.modelData.amount || ""
                             // A shortfall's sentence whole: the payment, what is missing, what covers it.
                             note: moneyRow.modelData.note || ""
-                            mainText: page.sioul.text("porch-open-budgets")
+                            // A declaration's or a DES's row opens the declaration view, its "Declared" there.
+                            mainText: page.sioul.text(moneyRow.modelData.declaration ? "porch-open-declaration" : "porch-open-budgets")
                             mainIcon: "view-financial-budget"
-                            onOpened: page.window.page = 9
-                            onMainPressed: page.window.page = 9
+                            onOpened: page.openMoney(moneyRow.modelData)
+                            onMainPressed: page.openMoney(moneyRow.modelData)
                             onDismissPressed: page.say("dismiss", moneyRow.modelData)
                         }
                     }

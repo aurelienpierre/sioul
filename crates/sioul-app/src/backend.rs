@@ -2552,9 +2552,88 @@ pub mod qobject {
         #[qinvokable]
         fn task_choices(self: &Sioul, keep: &QString) -> QString;
 
-        /// The invoice of a project's unbilled hours: {"number", "html", "pdf"} or {"error"}.
+        /// "Make the invoice": the draft of a project's unbilled hours (its
+        /// draft already there, the time since added), to open in the editor:
+        /// {"draft"} or {"error"}.
         #[qinvokable]
         fn make_invoice(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Money ▸ Invoices: every invoice and draft, by date, filtered (JSON
+        /// {client, year, status}): {rows, clients, years, statuses, said, declares}.
+        #[qinvokable]
+        fn invoices(self: &Sioul, asked: &QString) -> QString;
+
+        /// A draft as the editor shows it, by its id; {"error"} when it is gone.
+        #[qinvokable]
+        fn invoice_draft(self: &Sioul, id: &QString) -> QString;
+
+        /// A new draft (JSON {client, kind, description, amount, share, of}): {"draft"} or {"error"}.
+        #[qinvokable]
+        fn new_invoice_draft(self: Pin<&mut Sioul>, making: &QString) -> QString;
+
+        /// A draft changed as the editor says (JSON `invoice::edit::Change`),
+        /// saved: the draft as the editor shows it, or {"error"}.
+        #[qinvokable]
+        fn change_invoice_draft(self: Pin<&mut Sioul>, id: &QString, change: &QString) -> QString;
+
+        /// The kind ("business", "consumer", "public") and the country of a
+        /// draft's client, written in its profile: the draft as shown, or {"error"}.
+        #[qinvokable]
+        fn set_invoice_client_traits(self: Pin<&mut Sioul>, id: &QString, kind: &QString, country: &QString) -> QString;
+
+        /// A draft discarded, with Undo; returns what went wrong.
+        #[qinvokable]
+        fn discard_invoice_draft(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A draft issued: {"number", "pdf", "said"} or {"error", "elsewhere"}.
+        #[qinvokable]
+        fn issue_invoice_draft(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// An issued invoice's pane, by its number; {"error"} when it is gone.
+        #[qinvokable]
+        fn invoice_shown(self: &Sioul, number: &QString) -> QString;
+
+        /// "Paid…" (on a credit note, "Paid back…"): JSON {day, means,
+        /// amount}, with Undo; returns what went wrong.
+        #[qinvokable]
+        fn pay_invoice(self: Pin<&mut Sioul>, number: &QString, paying: &QString) -> QString;
+
+        /// "Credit note…": all its lines (JSON []) or some (their places): {"draft"} or {"error"}.
+        #[qinvokable]
+        fn credit_invoice(self: Pin<&mut Sioul>, number: &QString, lines: &QString) -> QString;
+
+        /// A deposit invoice's final invoice, deducting it: {"draft"} or {"error"}.
+        #[qinvokable]
+        fn final_invoice(self: Pin<&mut Sioul>, number: &QString) -> QString;
+
+        /// "Write the mail": a draft to the client with the issued file: {"draft"} or {"error"}.
+        #[qinvokable]
+        fn write_invoice_mail(self: &Sioul, number: &QString) -> QString;
+
+        /// Who an invoice may bill, matching `query`: [{ref, name, detail}].
+        #[qinvokable]
+        fn invoice_clients(self: &Sioul, query: &QString) -> QString;
+
+        /// A client's profile, by a contact's address or a name (one to make when there is none).
+        #[qinvokable]
+        fn client_profile(self: &Sioul, reference: &QString) -> QString;
+
+        /// A client profile saved from its form: {"id"} or {"error"}.
+        #[qinvokable]
+        fn save_client_profile(self: Pin<&mut Sioul>, form: &QString) -> QString;
+
+        /// Settings ▸ Invoices, as JSON (`invoices::settings_view`).
+        #[qinvokable]
+        fn invoice_settings(self: &Sioul) -> QString;
+
+        /// One of Settings ▸ Invoices' values (its key without `invoice.`,
+        /// its value as JSON); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_invoice_setting(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
+
+        /// A declaration said made ("Declared") or not, by its key, with Undo; returns what went wrong.
+        #[qinvokable]
+        fn set_declared(self: Pin<&mut Sioul>, key: &QString, on: bool) -> QString;
 
         /// Invoices made on this computer from now on; returns what to say.
         #[qinvokable]
@@ -7783,6 +7862,78 @@ impl qobject::Sioul {
         QString::from(&crate::projects::make_invoice(&self.qt_thread(), &self.shared(), &id.to_string()))
     }
 
+    fn invoices(&self, asked: &QString) -> QString {
+        QString::from(&crate::invoices::list(&asked.to_string()))
+    }
+
+    fn invoice_draft(&self, id: &QString) -> QString {
+        QString::from(&crate::invoices::draft(&self.shared(), &id.to_string()))
+    }
+
+    fn new_invoice_draft(self: Pin<&mut Self>, making: &QString) -> QString {
+        QString::from(&crate::invoices::new_draft(&self.qt_thread(), &self.shared(), &making.to_string()))
+    }
+
+    fn change_invoice_draft(self: Pin<&mut Self>, id: &QString, change: &QString) -> QString {
+        QString::from(&crate::invoices::change(&self.qt_thread(), &self.shared(), &id.to_string(), &change.to_string()))
+    }
+
+    fn set_invoice_client_traits(self: Pin<&mut Self>, id: &QString, kind: &QString, country: &QString) -> QString {
+        QString::from(&crate::invoices::set_client_traits(&self.qt_thread(), &self.shared(), &id.to_string(), &kind.to_string(), &country.to_string()))
+    }
+
+    fn discard_invoice_draft(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::invoices::discard(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn issue_invoice_draft(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::invoices::issue(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn invoice_shown(&self, number: &QString) -> QString {
+        QString::from(&crate::invoices::show(&number.to_string()))
+    }
+
+    fn pay_invoice(self: Pin<&mut Self>, number: &QString, paying: &QString) -> QString {
+        QString::from(&crate::invoices::pay(&self.qt_thread(), &self.shared(), &number.to_string(), &paying.to_string()))
+    }
+
+    fn credit_invoice(self: Pin<&mut Self>, number: &QString, lines: &QString) -> QString {
+        QString::from(&crate::invoices::credit(&self.qt_thread(), &self.shared(), &number.to_string(), &lines.to_string()))
+    }
+
+    fn final_invoice(self: Pin<&mut Self>, number: &QString) -> QString {
+        QString::from(&crate::invoices::final_of(&self.qt_thread(), &self.shared(), &number.to_string()))
+    }
+
+    fn write_invoice_mail(&self, number: &QString) -> QString {
+        QString::from(&crate::invoices::write_mail(&self.shared(), &number.to_string()))
+    }
+
+    fn invoice_clients(&self, query: &QString) -> QString {
+        QString::from(&crate::invoices::client_choices(&self.shared(), &query.to_string()))
+    }
+
+    fn client_profile(&self, reference: &QString) -> QString {
+        QString::from(&crate::invoices::client_profile(&self.shared(), &reference.to_string()))
+    }
+
+    fn save_client_profile(self: Pin<&mut Self>, form: &QString) -> QString {
+        QString::from(&crate::invoices::save_client_profile(&self.qt_thread(), &self.shared(), &form.to_string()))
+    }
+
+    fn invoice_settings(&self) -> QString {
+        QString::from(&crate::invoices::settings_view())
+    }
+
+    fn set_invoice_setting(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
+        QString::from(&crate::invoices::set_setting(&self.qt_thread(), &self.shared(), &key.to_string(), &value.to_string()))
+    }
+
+    fn set_declared(self: Pin<&mut Self>, key: &QString, on: bool) -> QString {
+        QString::from(&crate::invoices::declared(&self.qt_thread(), &self.shared(), &key.to_string(), on))
+    }
+
     fn invoice_again(&self, number: &QString) -> QString {
         QString::from(&crate::projects::invoice_again(&number.to_string()))
     }
@@ -8158,8 +8309,10 @@ impl qobject::Sioul {
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
         // address and Directions (a picture alone), "rest" the window left alone, shown, hidden, then with
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
-        // (tools/measure-idle.py), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared"].contains(&steps.as_str()) && offline()) {
+        // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
+        // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
+        // Invoices (the guide's pictures; docs/projects.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

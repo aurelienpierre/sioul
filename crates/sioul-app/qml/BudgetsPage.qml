@@ -2,11 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The budgets page (docs/accounting.md, "The budgets page"; the money
-// ledger's design §6), in four tabs: Overview, the one it always opens on
+// ledger's design §6), in five tabs: Overview, the one it always opens on
 // and the only one the hours filter (each account until its next income,
 // the one chart, each budget in words, what is coming); Budgets, every
 // budget under its area, the reserves, the bank accounts, the contracts;
-// Movements, the full ledger; From mail, every mail about money kept here.
+// Movements, the full ledger; From mail, every mail about money kept here;
+// Invoices, every invoice and draft (InvoicesTab.qml). On a phone the tabs'
+// row scrolls sideways when it is wider than the screen.
 // A notice or a link opens the tab and the row it names. Overview is made
 // with the page; Budgets without holding the window, just after it on a
 // computer, the first time it shows on a phone, where each object counts
@@ -31,12 +33,15 @@ Item {
     // again when it comes back; results landing meanwhile cost nothing.
     property string budgetsText: ""
     readonly property var view: page.budgetsText ? JSON.parse(page.budgetsText) : null
-    // The tab shown: 0 Overview, 1 Budgets, 2 Movements, 3 From mail.
+    // The tab shown: 0 Overview, 1 Budgets, 2 Movements, 3 From mail, 4 Invoices.
     property int tab: 0
     // The tabs not made with the page, each kept once made.
     property bool budgetsMade: false
     property bool movementsMade: false
     property bool mailMade: false
+    property bool invoicesMade: false
+    // The tab the declaration view was opened from (Invoices), which its Back gives again; -1 none.
+    property int declarationFrom: -1
 
     function takeShown() {
         if (page.visible)
@@ -63,6 +68,8 @@ Item {
             page.movementsMade = true
         if (page.tab === 3)
             page.mailMade = true
+        if (page.tab === 4)
+            page.invoicesMade = true
     }
     Component.onCompleted: {
         if (!page.window.compact)
@@ -134,6 +141,47 @@ Item {
     readonly property var bank: budgetsTab.item ? (budgetsTab.item as MoneyBudgets).bank : null
     readonly property var movements: movementsTab.item
     readonly property var moneyMail: mailTab.item
+    readonly property var invoices: invoicesTab.item
+
+    // Money ▸ Invoices, made now when it was not.
+    function invoicesNow() {
+        page.showTab(4)
+        page.invoicesMade = true
+        return invoicesTab.item
+    }
+
+    // A draft in the editor (a project's Make the invoice, a contact's Bill this client).
+    function openInvoiceDraft(id) {
+        const made = page.invoicesNow()
+        if (made)
+            (made as InvoicesTab).openDraft(id)
+        else
+            page.draftAsked = id
+    }
+
+    // An issued invoice in its pane (a link, a project's row).
+    function openInvoice(number) {
+        const made = page.invoicesNow()
+        if (made)
+            (made as InvoicesTab).openInvoice(number)
+        else
+            page.invoiceAsked = number
+    }
+
+    // What was asked of Money ▸ Invoices before it was made: done once it is.
+    property string draftAsked: ""
+    property string invoiceAsked: ""
+
+    // The declaration view at `anchor` ("" today's): from the Porch's rows, from
+    // Invoices (`from`, the tab its Back gives again; -1 none).
+    function openDeclaration(anchor, from) {
+        page.showTab(2)
+        page.declarationFrom = from === undefined ? -1 : from
+        Qt.callLater(() => {
+            if (movementsTab.item)
+                (movementsTab.item as MovementsTab).showDeclaration("", anchor || "")
+        })
+    }
 
     // The bank accounts in view: for the window's images.
     function showBank() {
@@ -209,38 +257,56 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // The four tabs, as Sioul's other tabs: the one shown pressed, the others flat; in one row on a phone too.
-        RowLayout {
-            id: tabs
+        // The five tabs, as Sioul's other tabs: the one shown pressed, the others flat; in one
+        // row on a phone too, which scrolls sideways when the names are wider than the screen.
+        Flickable {
+            id: tabStrip
 
-            objectName: "moneyTabs"
             Layout.fillWidth: true
-            spacing: 6
+            Layout.preferredHeight: tabs.implicitHeight
+            contentWidth: Math.max(tabStrip.width, tabs.implicitWidth)
+            contentHeight: tabs.implicitHeight
+            interactive: tabs.implicitWidth > tabStrip.width
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
 
-            Repeater {
-                model: ["money-tab-overview", "money-tab-budgets", "money-tab-movements", "money-tab-mail"]
+            RowLayout {
+                id: tabs
 
-                delegate: Button {
-                    id: tabButton
+                objectName: "moneyTabs"
+                width: tabStrip.contentWidth
+                spacing: 6
 
-                    required property string modelData
-                    required property int index
+                Repeater {
+                    model: ["money-tab-overview", "money-tab-budgets", "money-tab-movements", "money-tab-mail", "money-tab-invoices"]
 
-                    objectName: "moneyTab" + index
-                    // As wide as their names; on a phone the row's room shared out, their paddings narrower.
-                    Layout.fillWidth: page.window.compact
-                    Layout.preferredWidth: implicitWidth
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    leftPadding: page.window.compact ? 6 : 12
-                    rightPadding: page.window.compact ? 6 : 12
-                    text: page.sioul.text(modelData)
-                    checkable: true
-                    checked: page.tab === index
-                    flat: page.tab !== index
-                    onClicked: {
-                        page.tab = index
-                        // A click on the tab shown would untick it: it stays the one shown.
-                        tabButton.checked = Qt.binding(() => page.tab === tabButton.index)
+                    delegate: Button {
+                        id: tabButton
+
+                        required property string modelData
+                        required property int index
+
+                        objectName: "moneyTab" + index
+                        // As wide as their names; on a phone the row's room shared out while it holds them, their paddings narrower.
+                        Layout.fillWidth: page.window.compact && !tabStrip.interactive
+                        Layout.preferredWidth: implicitWidth
+                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                        leftPadding: page.window.compact ? 6 : 12
+                        rightPadding: page.window.compact ? 6 : 12
+                        text: page.sioul.text(modelData)
+                        checkable: true
+                        checked: page.tab === index
+                        flat: page.tab !== index
+                        onClicked: {
+                            page.tab = index
+                            // A click on the tab shown would untick it: it stays the one shown.
+                            tabButton.checked = Qt.binding(() => page.tab === tabButton.index)
+                        }
+                        // The tab shown kept in sight when the row scrolls.
+                        onCheckedChanged: {
+                            if (tabButton.checked && tabStrip.interactive)
+                                tabStrip.contentX = Math.max(0, Math.min(tabButton.x - 12, tabStrip.contentWidth - tabStrip.width))
+                        }
                     }
                 }
             }
@@ -285,6 +351,12 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
+                    // The declaration's Back: the tab it was opened from (Invoices), else the movements.
+                    onDeclarationClosed: {
+                        if (page.declarationFrom >= 0)
+                            page.tab = page.declarationFrom
+                        page.declarationFrom = -1
+                    }
                 }
             }
             Loader {
@@ -295,6 +367,26 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
+                }
+            }
+            Loader {
+                id: invoicesTab
+
+                active: page.invoicesMade
+                sourceComponent: InvoicesTab {
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    onDeclarationAsked: anchor => page.openDeclaration(anchor, 4)
+                }
+                onLoaded: {
+                    const made = invoicesTab.item as InvoicesTab
+                    if (page.draftAsked !== "")
+                        made.openDraft(page.draftAsked)
+                    else if (page.invoiceAsked !== "")
+                        made.openInvoice(page.invoiceAsked)
+                    page.draftAsked = ""
+                    page.invoiceAsked = ""
                 }
             }
         }

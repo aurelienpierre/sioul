@@ -2095,6 +2095,20 @@ files = {toml_list([W.choir_note])}
 from_domains = ["{W.choir}"]
 """)
 
+    # The library's client profile (docs/projects.md, "Client profiles"): tied to
+    # its head librarian's card, a business billed with its made-up SIREN.
+    p.write(n / "sioul-clients.toml", f"""# Client profiles (docs/notes-folder.md, docs/projects.md).
+
+[[client]]
+id = "fernhill"
+contact = "sioul:contact/demo-contact-iris"
+kind = "business"
+name = {toml_string(W.library_name)}
+address = {{ lines = [{toml_string(street("2 Rue de l'Exemple"))}], postcode = "69006", city = "Lyon", country = "FR" }}
+ids = [{{ kind = "siren", value = "904 123 452", printed = true }}]
+email = "{t("accounts", "compta")}@{W.library}"
+""")
+
     write_budgets(p, by_key)
     write_bank(p)
     write_contracts(p)
@@ -2909,15 +2923,35 @@ waits = true
 gather = true
 gathered = ["09:00", "13:00", "18:00"]
 
+# Invoices as Settings ▸ Invoices writes them since November 2026 (docs/projects.md):
+# France's preset, a sole trader under the micro regime and the VAT franchise,
+# a made-up SIRET that passes its check, the documented example IBAN.
 [invoice]
+preset = "fr"
+legal_form = "ei"
+regime = "micro"
 name = "Noa Ferrand"
-address = {toml_string(street("8 Rue de l'Exemple") + chr(10) + "69004 Lyon")}
-siret = "000 000 000 00000"
-vat = {toml_string(t("VAT not applicable, art. 293 B of the French tax code", "TVA non applicable, art. 293 B du CGI"))}
+address = {toml_string(street("8 Rue de l'Exemple"))}
+postcode = "69004"
+city = "Lyon"
 prefix = "2026-"
 rate = 50.0
 currency = "EUR"
-payment = {toml_string(t("IBAN FR76 0000 0000 0000 0000 0000 000, within 30 days.", "IBAN FR76 0000 0000 0000 0000 0000 000, à 30 jours."))}
+activity = ["bnc"]
+declare = "quarter"
+payment = {toml_string(t("By transfer, within 30 days.", "Par virement, à 30 jours."))}
+
+[[invoice.id]]
+kind = "siret"
+value = "123 456 782 00002"
+
+[[invoice.tax]]
+scheme = "franchise"
+
+[[invoice.bank]]
+holder = "Noa Ferrand"
+iban = "FR76 3000 6000 0112 3456 7890 189"
+bic = "EXMPFRPP"
 
 # Other apps by time, set on the phone and shared with the settings (docs/attention.md,
 # §1.3): the chat app let through during work, held otherwise.

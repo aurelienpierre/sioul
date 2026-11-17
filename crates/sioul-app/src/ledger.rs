@@ -598,7 +598,9 @@ fn books_days(loaded: &sioul_core::books::Loaded, anchor: jiff::civil::Date) -> 
 /// the declaration first (what to declare, by when, the contributions
 /// estimated), the VAT summary of its days, the DES, the receipts book's
 /// totals, the thresholds this year; then the book's rows (design §6). As
-/// JSON: {budget, title, anchor, previous, next, sentences, rows, declares}.
+/// JSON: {budget, title, anchor, previous, next, sentences, marks, rows,
+/// declares}: `marks`, the declaration and each DES of these days whose
+/// period is over, with the day it was said "Declared" (`invoices::declared`).
 /// The book holds every budget that declares and every invoice: `budget`
 /// is said back as it was asked.
 pub(crate) fn declaration(budget: &str, anchor: &str) -> String {
@@ -625,8 +627,19 @@ pub(crate) fn declaration(budget: &str, anchor: &str) -> String {
     if !summaries.is_empty() {
         sentences.push(tr().text("books-vat-files-nothing", None));
     }
+    // "Declared": the declaration and each DES whose period is over, each with the day it was said.
+    let mut marks: Vec<Value> = Vec::new();
+    let said_on = |key: &str| loaded.declared.get(key).map(|d| books::long_day(tr(), *d)).unwrap_or_default();
+    if let Some(d) = declared.as_ref().filter(|d| d.opens <= today) {
+        let key = books::declaration_key(d);
+        marks.push(j!({ "key": key, "what": say("books-mark-declaration", &[("period", declarations::period_name(tr(), d))]), "on": said_on(&key), "due": books::long_day(tr(), d.due) }));
+    }
     for d in des::between(&input, from, to) {
         sentences.extend(des::sentences(tr(), &d, &currency));
+        if d.opens <= today {
+            let key = books::des_key(&d);
+            marks.push(j!({ "key": key, "what": say("books-mark-des", &[("month", tr().month_year(d.month))]), "on": said_on(&key), "due": books::long_day(tr(), d.due) }));
+        }
     }
     sentences.extend(books::sentences(tr(), &book));
     if anchor.year() == today.year() {
@@ -667,6 +680,7 @@ pub(crate) fn declaration(budget: &str, anchor: &str) -> String {
         "previous": shift(from, -1).to_string(),
         "next": if to < today { shift(to, 1).to_string() } else { String::new() },
         "sentences": sentences,
+        "marks": marks,
         "rows": rows,
         "declares": [j!({ "id": budget, "title": tr().text("books-for-the-books", None) })],
     })

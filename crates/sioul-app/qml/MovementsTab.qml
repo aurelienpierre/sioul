@@ -13,7 +13,9 @@
 // menu (a long press, a right click, "⋯") runs the acts, each with Undo.
 // New movement sits at the top; For the declaration shows the books of a
 // declaration's period (sioul_core::books): what to declare and by when, the
-// VAT summary, the thresholds, and the receipts book, saved as CSV and PDF.
+// VAT summary, the thresholds, and the receipts book, saved as CSV and PDF;
+// each declaration and each DES whose period is over has its "Declared"
+// (kept in the invoices' life on every device, with Undo).
 
 pragma ComponentBehavior: Bound
 
@@ -39,6 +41,9 @@ Item {
     property var declaration: null
     property string problem: ""
     readonly property bool compact: tab.window.compact === true
+
+    // The declaration view closed by its Back: the page gives back the tab it came from.
+    signal declarationClosed
 
     // The list read again from its first page, as the filters ask.
     function reload() {
@@ -554,11 +559,15 @@ Item {
                 spacing: 8
 
                 Button {
+                    objectName: "declarationBack"
                     flat: true
                     text: tab.sioul.text("ui-back")
                     icon.name: "go-previous"
                     icon.color: tab.theme.text
-                    onClicked: tab.declaration = null
+                    onClicked: {
+                        tab.declaration = null
+                        tab.declarationClosed()
+                    }
                 }
                 Item {
                     Layout.fillWidth: true
@@ -606,6 +615,41 @@ Item {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: tab.theme.text
+                }
+            }
+            // "Declared": each declaration and DES of these days whose period is over.
+            Repeater {
+                model: tab.declaration ? (tab.declaration.marks || []) : []
+
+                delegate: Flow {
+                    id: mark
+
+                    required property var modelData
+
+                    objectName: "declarationMark"
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Label {
+                        height: declaredButton.height
+                        verticalAlignment: Text.AlignVCenter
+                        text: mark.modelData.on !== "" ? tab.sioul.textWith("books-declared-on", "what", mark.modelData.what) + " " + mark.modelData.on : mark.modelData.what
+                        textFormat: Text.PlainText
+                        color: mark.modelData.on !== "" ? tab.theme.muted : tab.theme.text
+                    }
+                    Button {
+                        id: declaredButton
+
+                        objectName: "declaredButton"
+                        text: tab.sioul.text(mark.modelData.on !== "" ? "books-not-declared" : "books-declared")
+                        flat: mark.modelData.on !== ""
+                        icon.name: mark.modelData.on !== "" ? "" : "dialog-ok-apply"
+                        icon.color: tab.theme.text
+                        onClicked: {
+                            tab.problem = tab.sioul.setDeclared(mark.modelData.key, mark.modelData.on === "")
+                            tab.showDeclaration(tab.declaration.budget, tab.declaration.anchor)
+                        }
+                    }
                 }
             }
             Button {

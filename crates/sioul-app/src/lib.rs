@@ -68,7 +68,8 @@
 //! - [`work`]: tasks, notes, links and focus.
 //! - [`blocks`]: time blocks: a task pinned to a time, as an event in a calendar.
 //! - [`capacity`]: what a day holds, as the window uses it.
-//! - [`projects`]: projects, time and invoices.
+//! - [`projects`]: projects, time, and a project's invoices.
+//! - [`invoices`]: Money ▸ Invoices: the list, the editor, issuing, Paid…, credit notes and deposits, Write the mail, Settings ▸ Invoices, client profiles, Declared.
 //! - [`github`]: GitHub's issues and pull requests, in the local "GitHub" list.
 //! - [`reviews`]: the two rituals: closing the work day, and closing the day before sleep.
 //! - [`remind`]: reminders before dates, each a quiet notification.
@@ -163,6 +164,7 @@ mod github;
 mod gmail;
 mod health;
 mod homecard;
+mod invoices;
 mod hours;
 // A device joining the others through your Nextcloud's sign-in (docs/database.md).
 mod join;

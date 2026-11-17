@@ -7,7 +7,8 @@
 // shows it, found by its address (this version's card) or its file (an
 // older card's), else through the window's opener by its address; a code's
 // row opens its message through the opener by its address, its file a
-// hint. Run by tools/qml-test.sh.
+// hint; a declaration's or a DES's money row opens the declaration view at
+// its period, any other Budgets. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -111,12 +112,16 @@ Item {
         property var moment: ({ sleep: false })
         property var mailAsked: []
         property var opened: []
+        property var declarations: []
 
         function openMail(ref) {
             fakeWindow.mailAsked = fakeWindow.mailAsked.concat([ref])
         }
         function openThing(item) {
             fakeWindow.opened = fakeWindow.opened.concat([item])
+        }
+        function openDeclaration(anchor) {
+            fakeWindow.declarations = fakeWindow.declarations.concat([anchor])
         }
         function copy(text) {
         }
@@ -220,6 +225,16 @@ Item {
             compare(rows.length, 1, "one code's row")
             rows[0].opened()
             compare(JSON.stringify(fakeWindow.mailAsked), JSON.stringify([{ address: "mid:code-1@example.org", file: root.codeKey }]))
+        }
+
+        // A declaration's or a DES's money row: the declaration view at its period; any other money row, Budgets.
+        function test_a_declaration_s_row_opens_the_declaration_view() {
+            fakeWindow.declarations = []
+            fakeWindow.page = 0
+            porch.openMoney({ declaration: "2026-10-01" })
+            compare(fakeWindow.declarations, ["2026-10-01"])
+            porch.openMoney({ amount: "€40" })
+            compare(fakeWindow.page, 9)
         }
     }
 }

@@ -4,7 +4,9 @@
 // Projects, the umbrella over everything else. On the left, each
 // with its open tasks and the time left to bill; on the right, the one open:
 // what is coming, then what happened, on one line of time; its tasks one
-// click away as a board, a list or a calendar; its time and its invoices.
+// click away as a board, a list or a calendar; its time and its invoices;
+// its client's profile (ClientProfileDialog.qml). "Make the invoice" opens
+// the draft of its unbilled time in Money ▸ Invoices' editor.
 
 pragma ComponentBehavior: Bound
 
@@ -38,13 +40,14 @@ Item {
     }
     property var shown: null
     property string problem: ""
-    // Invoices are numbered on another computer: offered here, on purpose.
-    property bool invoicesElsewhere: false
+    // The client's profile of the project open, for work for a client: {exists, summary, …}; null for none.
+    property var profile: null
 
     function reload() {
         page.rows = JSON.parse(page.sioul.projectRows() || "[]")
         page.shown = page.openId !== "" ? JSON.parse(page.sioul.projectPage(page.openId) || "null") : null
         page.routes = page.openId !== "" ? JSON.parse(page.sioul.settings("project:" + page.openId) || "[]") : []
+        page.profile = page.shown !== null && page.shown.for_client && page.shown.client !== "" ? JSON.parse(page.sioul.clientProfile(page.shown.client) || "null") : null
     }
 
     // A setting of the project's own (its routes, whether AI agents may read it), saved at once.
@@ -84,15 +87,14 @@ Item {
         return page.sioul.textWith("money-positive", "value", digits)
     }
 
-    // The invoice of the hours not billed yet, its issued file copied where invoices go, then shown.
+    // The draft of the hours not billed yet (the project's draft, the time since added), in the editor.
     function makeInvoice() {
-        const made = JSON.parse(page.sioul.makeInvoice(page.openId))
-        page.invoicesElsewhere = made.elsewhere === true
+        const made = JSON.parse(page.sioul.makeInvoice(page.openId) || "{}")
         if (made.error) {
             page.problem = made.error
             return
         }
-        page.printInvoice(made)
+        page.window.openInvoiceDraft(made.draft)
     }
 
     // An issued invoice's file comes as it was kept, copied by the core: never
@@ -394,12 +396,25 @@ Item {
                     wrapMode: Text.Wrap
                     color: page.theme.warm
                 }
-                Button {
-                    visible: page.invoicesElsewhere
-                    text: page.sioul.text("invoice-take")
-                    onClicked: {
-                        page.problem = page.sioul.takeInvoices()
-                        page.invoicesElsewhere = false
+                // Its client's profile: what its invoices print, made or changed here.
+                RowLayout {
+                    visible: page.profile !== null
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        objectName: "projectClientProfile"
+                        Layout.fillWidth: true
+                        text: page.profile ? (page.profile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.profile.summary) : page.sioul.text("clients-profile-none")) : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: page.theme.muted
+                    }
+                    Button {
+                        flat: true
+                        text: page.sioul.text(page.profile && page.profile.exists ? "clients-profile-change" : "clients-profile-make")
+                        onClicked: profileForm.now().edit(page.shown.client)
                     }
                 }
 
@@ -451,13 +466,19 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        Label {
+                        // Opened in Money ▸ Invoices: its payments, Paid…, Credit note…, Write the mail.
+                        ItemDelegate {
                             Layout.fillWidth: true
-                            // A credit note says what it credits, and what it has to pay back.
-                            text: [bill.modelData.number, bill.modelData.date, bill.modelData.total, bill.modelData.note || ""].filter(t => t !== "").join("  ·  ")
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: page.theme.text
+                            padding: 2
+                            onClicked: page.window.openInvoice(bill.modelData.number)
+
+                            contentItem: Label {
+                                // A credit note says what it credits, and what it has to pay back.
+                                text: [bill.modelData.number, bill.modelData.date, bill.modelData.total, bill.modelData.note || ""].filter(t => t !== "").join("  ·  ")
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: page.theme.text
+                            }
                         }
                         CheckBox {
                             // A credit note's box says "Paid back", while it has money to pay back.
@@ -570,6 +591,18 @@ Item {
                     page.openId = ""
                     page.reload()
                 }
+            }
+        }
+    }
+
+    Later {
+        id: profileForm
+
+        sourceComponent: Component {
+            ClientProfileDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.reload()
             }
         }
     }

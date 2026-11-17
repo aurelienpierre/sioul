@@ -2,10 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Projects, time and invoices, for the window: a project's page, the Time
-//! page, time noted by hand, an invoice made from a project's unbilled hours
-//! in one click (a draft issued at once through `invoice::life`: its record
-//! kept, its hours marked, its payment expected in the project's budget),
-//! and paid.
+//! page, time noted by hand, "Make the invoice" (a draft of the project's
+//! unbilled hours, opened in Money ▸ Invoices' editor: `invoices`), its
+//! invoices printed again and paid.
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use crate::work::{self, loaded};
@@ -22,13 +21,13 @@ use sioul_core::projectview;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-fn store() -> Result<ProjectStore, String> {
+pub(crate) fn store() -> Result<ProjectStore, String> {
     let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
     ProjectStore::load(&root)
 }
 
 /// Every session with its project and title.
-fn entries(shared: &Shared) -> Vec<Entry> {
+pub(crate) fn entries(shared: &Shared) -> Vec<Entry> {
     let loaded = loaded(shared);
     timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current())
 }
@@ -310,13 +309,13 @@ pub(crate) fn remove_time(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> Str
 }
 
 /// Where an invoice's PDF goes: the folder set, else ~/Documents/Invoices (Factures in French).
-fn pdf_path(invoice: &Invoice) -> PathBuf {
+pub(crate) fn pdf_path(invoice: &Invoice) -> PathBuf {
     invoice::pdf_path(invoice, &load_config().invoice.folder, &tr().text("invoice-folder-name", None))
 }
 
 /// Why invoices cannot be numbered here now, as the window's answer
 /// ({"error", "elsewhere"}: "elsewhere" offers to make them here); None when they can.
-fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
+pub(crate) fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
     let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
     // This computer's claim renewed first, then read as every computer's
     // claims say, as the command line reads it (`lease::may_number`).
@@ -369,7 +368,7 @@ pub(crate) fn keep_invoices(shared: &Shared) {
 /// this Sioul makes the same bytes, copied byte for byte where invoices go,
 /// {"pdf"}; or why not. A record from before November 2026 kept no file:
 /// {"html", "pdf"}, its page for the window to print, as it always was.
-fn printed(found: &Invoice) -> Result<serde_json::Value, invoice::kept::NotGiven> {
+pub(crate) fn printed(found: &Invoice) -> Result<serde_json::Value, invoice::kept::NotGiven> {
     let destination = pdf_path(found);
     let pdf = destination.display().to_string();
     if found.file.is_empty() {
@@ -379,73 +378,49 @@ fn printed(found: &Invoice) -> Result<serde_json::Value, invoice::kept::NotGiven
     Ok(serde_json::json!({ "pdf": pdf }))
 }
 
-/// Makes the invoice of a project's unbilled hours, in one click: a draft
-/// of its time for its client (its profile's language, currency and terms,
-/// else the settings'), issued at once (`invoice::life::issue`: checked,
-/// numbered, its file and its record kept, its hours marked, its payment
-/// expected in the project's budget, all or nothing). Returns {"number",
-/// "pdf", "said"}: its file copied where invoices go (`printed`), and for
-/// the status line what the issue found to say (a file of an issue stopped
-/// halfway, set aside) and the checks' notes (no Factur-X data under the
-/// franchise without a VAT number, an IBAN whose key fails…), which the
-/// editor of phase 3 shows before the issue; a copy that cannot be written
-/// is said there too, the invoice issued all the same. Or {"error"}: what is
-/// missing is said, and no draft stays behind.
+/// "Make the invoice" (design §4.1): the draft of a project's unbilled
+/// hours for its client (its profile's language, currency and terms, else
+/// the settings'), one line per task at the project's rate, kept and opened
+/// in Money ▸ Invoices' editor, where it is checked, changed and issued.
+/// A draft of the project already there is opened instead, the time noted
+/// since added to it as lines of their own. Returns {"draft"} or {"error"}.
 pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    // One computer numbers invoices (`sioul_sync::lease`): two at once could give one number twice.
-    if let Some(elsewhere) = invoices_held_elsewhere(shared) {
-        return elsewhere;
-    }
-    let result = (|| -> Result<serde_json::Value, String> {
+    let result = (|| -> Result<String, String> {
         let config = load_config();
         let settings = &config.invoice;
         let store = store()?;
         let project = store.get(id).ok_or_else(|| tr().text("project-gone", None))?.clone();
         let today = sioul_core::zone::now().date();
-        let clients = sioul_core::clients::Clients::load(&store.root).unwrap_or_default();
-        let blank = life::for_client(settings, project.client.as_deref().unwrap_or(""), &clients, &loaded(shared).contacts, tr().language(), today);
         let folder = invoice::folder();
         let records = invoice::all_in(&folder);
-        let draft = life::from_time(&entries(shared), &project, blank, &records, settings, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
-        let draft = invoice::save_draft(&folder, &draft)?;
-        let numbering = life::Numbering { device: crate::notices::here_id(), sharing: crate::share::configured(), drafts_shared: crate::share::shares("drafts"), claimed: crate::share::claimed_series(INVOICES) };
-        let ledger = store.root.join(budget::LEDGER);
-        let budget_id = project.budget.clone().unwrap_or_default();
-        let contacts = &loaded(shared).contacts;
-        let steps = life::Steps { time: None, ledger: (!budget_id.is_empty()).then_some((ledger.as_path(), budget_id.as_str())), clients: Some((&clients, contacts)) };
-        let made = match life::issue(&folder, &draft.draft, settings, today, &numbering, &steps, tr()) {
-            Ok(made) => made,
-            Err(e) => {
-                let _ = invoice::remove_draft(&folder, &draft.draft);
-                return Err(e);
+        // The project's draft, its time noted since added: never two drafts of the same hours.
+        if let Some(draft) = invoice::drafts_in(&folder).into_iter().find(|d| d.project == project.id && d.kind == invoice::Kind::Invoice && d.copy_of.is_empty()) {
+            let billed: std::collections::BTreeSet<String> = draft.sessions().into_iter().collect();
+            let fresh: Vec<Entry> = entries(shared).into_iter().filter(|e| !billed.contains(&e.key)).collect();
+            if let Some(more) = life::from_time(&fresh, &project, Invoice { lines: Vec::new(), ..draft.clone() }, &records, settings, today) {
+                let mut lines = draft.lines.clone();
+                lines.extend(more.lines);
+                life::change_draft(&folder, &draft.draft, settings, today, |d| {
+                    d.lines = lines;
+                    if !more.period_from.is_empty() && (d.period_default || more.period_from < d.period_from) {
+                        d.period_from = more.period_from.clone();
+                    }
+                    if more.period_to > d.period_to {
+                        d.period_to = more.period_to.clone();
+                    }
+                    d.period_default = d.period_from.is_empty();
+                })?;
             }
-        };
-        // The claim says the new number at once, not at the next minute's renewal.
-        let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
-        let _ = crate::share::keeper(INVOICES, sioul_sync::lease::Rule::StaysPut, active, false);
-        let mut said = made.said.clone();
-        said.extend(life::checks(&made, settings, today, &records).into_iter().filter(|c| !c.required).map(|c| c.text));
-        let mut answer = match printed(&made) {
-            Ok(answer) => answer,
-            // Issued all the same: only its copy is missing, said apart.
-            Err(invoice::kept::NotGiven::Copy(path, _)) => {
-                said.insert(0, say("invoice-issued-not-copied", &[("number", made.number.clone()), ("path", path.display().to_string())]));
-                serde_json::json!({})
-            }
-            Err(invoice::kept::NotGiven::Kept(why)) => {
-                said.insert(0, why);
-                serde_json::json!({})
-            }
-        };
-        answer["number"] = serde_json::json!(made.number);
-        if !said.is_empty() {
-            answer["said"] = serde_json::json!(said.join(" "));
+            return Ok(draft.draft);
         }
-        Ok(answer)
+        let clients = sioul_core::clients::Clients::load(&store.root).unwrap_or_default();
+        let blank = life::for_client(settings, project.client.as_deref().unwrap_or(""), &clients, &loaded(shared).contacts, tr().language(), today);
+        let draft = life::from_time(&entries(shared), &project, blank, &records, settings, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
+        Ok(invoice::save_draft(&folder, &draft)?.draft)
     })();
     work::refresh(qt, shared);
     match result {
-        Ok(answer) => answer.to_string(),
+        Ok(draft) => serde_json::json!({ "draft": draft }).to_string(),
         Err(error) => serde_json::json!({ "error": error }).to_string(),
     }
 }
@@ -546,7 +521,7 @@ struct PaidBefore {
 }
 
 /// This device's name, for its own life of the invoices (`invoice::lives`).
-fn device() -> String {
+pub(crate) fn device() -> String {
     crate::notices::here_id()
 }
 

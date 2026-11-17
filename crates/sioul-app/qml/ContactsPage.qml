@@ -8,7 +8,8 @@
 // in place; deleting waits ten seconds with "Undo". "Duplicates" opens in the
 // place of a card. Right click on a name for what is not in view. At the
 // head, the household (« Proches », docs/persons.md): a person's page opens
-// in the place of a card too.
+// in the place of a card too. A contact you bill shows its client profile
+// (what its invoices print, ClientProfileDialog.qml) and "Bill this client".
 
 pragma ComponentBehavior: Bound
 
@@ -51,6 +52,9 @@ Item {
     Component.onCompleted: page.takeShown()
     property string openKey: ""
     property var person: null
+    // The open contact as a client: its profile ({exists, summary, …}), read with it.
+    property var clientProfile: null
+    readonly property string clientRef: page.person && page.person.uid ? "sioul:contact/" + encodeURIComponent(page.person.uid) : ""
     // The contact open, as what new things are tied to.
     readonly property var source: page.person && page.person.uid ? { uri: "sioul:contact/" + encodeURIComponent(page.person.uid), kind: "contact", key: page.person.key || "", title: page.person.name, name: page.person.name, address: page.person.emails.length > 0 ? page.person.emails[0].value : "" } : null
     property bool editing: false
@@ -132,6 +136,7 @@ Item {
         page.moreShown = false
         page.problem = ""
         page.person = key ? JSON.parse(page.sioul.contact(key) || "null") : null
+        page.clientProfile = page.clientRef !== "" ? JSON.parse(page.sioul.clientProfile(page.clientRef) || "null") : null
         page.readMail()
         page.cardPerson = page.person && page.person.uid ? JSON.parse(page.sioul.personOfCard(page.person.uid) || "null") : null
     }
@@ -914,6 +919,42 @@ Item {
                                 }
                             }
                         }
+                        // As a client: its profile, what its invoices print; a draft invoice for it.
+                        Label {
+                            objectName: "contactClientProfile"
+                            visible: page.clientProfile !== null && page.clientProfile.exists
+                            Layout.fillWidth: true
+                            text: page.clientProfile && page.clientProfile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.clientProfile.summary) : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                        Flow {
+                            visible: page.clientRef !== ""
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Button {
+                                objectName: "contactBill"
+                                text: page.sioul.text("clients-bill")
+                                icon.name: "document-new"
+                                icon.color: page.theme.text
+                                onClicked: {
+                                    const made = JSON.parse(page.sioul.newInvoiceDraft(JSON.stringify({ client: page.clientRef })) || "{}")
+                                    if (made.error)
+                                        page.problem = made.error
+                                    else
+                                        page.window.openInvoiceDraft(made.draft)
+                                }
+                            }
+                            Button {
+                                objectName: "contactProfile"
+                                flat: true
+                                text: page.sioul.text(page.clientProfile && page.clientProfile.exists ? "clients-profile-change" : "clients-profile-make")
+                                onClicked: profileForm.now().edit(page.clientRef)
+                            }
+                        }
                         // What they are part of: tasks, notes, events.
                         ThingActions {
                             visible: page.source !== null
@@ -1085,6 +1126,19 @@ Item {
                     }
                     onEndAsked: person => endForm.now().ask(person)
                 }
+            }
+        }
+    }
+
+    // A contact's client profile, made or changed.
+    Later {
+        id: profileForm
+
+        sourceComponent: Component {
+            ClientProfileDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.clientProfile = page.clientRef !== "" ? JSON.parse(page.sioul.clientProfile(page.clientRef) || "null") : null
             }
         }
     }
