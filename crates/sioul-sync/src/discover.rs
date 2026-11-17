@@ -25,6 +25,14 @@
 //! Microsoft 365's (`*.mail.protection.outlook.com` and its older and newer
 //! forms: a work or school account), and settings that name Microsoft's
 //! IMAP server. The ID token settles the kind at sign-in.
+//!
+//! Yahoo's mail is found through Thunderbird's list, whose entry `yahoo.com`
+//! covers yahoo.fr and Yahoo's other domains, ymail.com, myyahoo.com and
+//! rocketmail.com. Its servers are known here by their names
+//! (`is_yahoo_host`), because they take an app password only, made in the
+//! Yahoo account, from a program that does not use Yahoo's own sign-in page:
+//! the form says so before a password is typed, and a refusal says where to
+//! make one (docs/client.md, "Signing in to the servers").
 
 use crate::SyncError;
 pub use crate::microsoft::Kind as MicrosoftKind;
@@ -35,6 +43,22 @@ use std::time::Duration;
 /// Google's mail servers, for Gmail and Google Workspace alike.
 pub const GOOGLE_IMAP: &str = "imap.gmail.com";
 pub const GOOGLE_SMTP: &str = "smtp.gmail.com";
+
+/// Yahoo's mail servers, as Thunderbird's list of providers names them: the
+/// receiving one, its twin for exports, and the sending one. Each takes an
+/// app password only (Yahoo's help, "Generate and manage 3rd-party app
+/// passwords", <https://help.yahoo.com/kb/SLN15241.html>, and "IMAP server
+/// settings for Yahoo Mail", <https://help.yahoo.com/kb/SLN4075.html>, read
+/// 17 November 2026).
+pub const YAHOO_IMAP: &str = "imap.mail.yahoo.com";
+pub const YAHOO_IMAP_EXPORT: &str = "export.imap.mail.yahoo.com";
+pub const YAHOO_SMTP: &str = "smtp.mail.yahoo.com";
+
+/// Whether a server, receiving or sending, is Yahoo's: by its whole name,
+/// whatever its case.
+pub fn is_yahoo_host(host: &str) -> bool {
+    [YAHOO_IMAP, YAHOO_IMAP_EXPORT, YAHOO_SMTP].iter().any(|known| host.eq_ignore_ascii_case(known))
+}
 
 /// IMAP settings found for an address, with the SMTP server when the settings name one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -484,6 +508,86 @@ mod tests {
         assert_eq!((found.host.as_str(), found.port, found.security, found.by), ("outlook.office365.com", 993, Security::Tls, FoundBy::Microsoft(MicrosoftKind::Work)));
         assert_eq!(found.smtp, Some(Smtp { host: "smtp.office365.com".into(), port: 587, security: Security::Starttls }));
         assert_eq!(microsoft_found("you@hotmail.fr", MicrosoftKind::Personal).smtp.unwrap().host, "smtp-mail.outlook.com");
+    }
+
+    /// Thunderbird's entry for Yahoo (`yahoo.com`, which covers yahoo.fr and
+    /// Yahoo's other domains), as its list gave it on 17 November 2026
+    /// (<https://autoconfig.thunderbird.net/v1.1/yahoo.com>), trimmed: five
+    /// of its twenty-one domains, no documentation links, no webmail block.
+    /// Two IMAP blocks, a POP one, an SMTP one; OAuth2 named before the
+    /// password, with Yahoo's own sign-in, which Sioul does not use.
+    const YAHOO: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="yahoo.com">
+    <domain>yahoo.com</domain>
+    <domain>yahoo.fr</domain>
+    <domain>ymail.com</domain>
+    <domain>myyahoo.com</domain>
+    <domain>rocketmail.com</domain>
+    <displayName>Yahoo! Mail</displayName>
+    <displayShortName>Yahoo</displayShortName>
+    <incomingServer type="imap">
+      <hostname>imap.mail.yahoo.com</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <username>%EMAILADDRESS%</username>
+      <authentication>OAuth2</authentication>
+      <authentication>password-cleartext</authentication>
+    </incomingServer>
+    <incomingServer type="imap">
+      <hostname>export.imap.mail.yahoo.com</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <username>%EMAILADDRESS%</username>
+      <authentication>OAuth2</authentication>
+      <authentication>password-cleartext</authentication>
+    </incomingServer>
+    <incomingServer type="pop3">
+      <hostname>pop.mail.yahoo.com</hostname>
+      <port>995</port>
+      <socketType>SSL</socketType>
+      <username>%EMAILADDRESS%</username>
+      <authentication>OAuth2</authentication>
+      <authentication>password-cleartext</authentication>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>smtp.mail.yahoo.com</hostname>
+      <port>465</port>
+      <socketType>SSL</socketType>
+      <username>%EMAILADDRESS%</username>
+      <authentication>OAuth2</authentication>
+      <authentication>password-cleartext</authentication>
+    </outgoingServer>
+  </emailProvider>
+  <oAuth2>
+    <issuer>login.yahoo.com</issuer>
+    <scope>mail-w</scope>
+    <authURL>https://api.login.yahoo.com/oauth2/request_auth</authURL>
+    <tokenURL>https://api.login.yahoo.com/oauth2/get_token</tokenURL>
+  </oAuth2>
+</clientConfig>"#;
+
+    /// What Thunderbird's list answers for a Yahoo address (the address here
+    /// is made up, and only fills the entry's placeholders): Yahoo's first
+    /// IMAP server (never the export twin, never POP) and its sending
+    /// server, both encrypted from the first byte, the whole address as
+    /// login; and servers known as Yahoo's, which take app passwords only.
+    #[test]
+    fn finds_yahoo_s_servers_in_thunderbird_s_list() {
+        let found = parse_config(YAHOO, "jane@example.org", FoundBy::Ispdb).unwrap();
+        assert_eq!((found.host.as_str(), found.port, found.security), ("imap.mail.yahoo.com", 993, Security::Tls));
+        assert_eq!((found.username.as_str(), found.by), ("jane@example.org", FoundBy::Ispdb));
+        assert_eq!(found.smtp, Some(Smtp { host: "smtp.mail.yahoo.com".into(), port: 465, security: Security::Tls }));
+        assert!(is_yahoo_host(&found.host) && found.smtp.as_ref().is_some_and(|smtp| is_yahoo_host(&smtp.host)));
+        // Settings that name Yahoo's server stay what the list gave: they are not Microsoft's.
+        assert_eq!(microsoft_if_named(found.clone(), "jane@example.org"), found);
+        for host in ["imap.mail.yahoo.com", "IMAP.Mail.Yahoo.COM", "export.imap.mail.yahoo.com", "smtp.mail.yahoo.com"] {
+            assert!(is_yahoo_host(host), "{host}");
+        }
+        // Names that only look like Yahoo's, and other servers.
+        for host in ["imap.mail.yahoo.com.evil.example", "notimap.mail.yahoo.com", "mail.yahoo.com", "yahoo.com", "imap.gmail.com", "mail.example.org", ""] {
+            assert!(!is_yahoo_host(host), "{host}");
+        }
     }
 
     #[test]

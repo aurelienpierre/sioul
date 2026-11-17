@@ -4601,7 +4601,7 @@ struct FoundView {
     login: String,
     /// "Found: …, from your provider's own settings."
     by: String,
-    /// Gmail's app password, or the general advice.
+    /// Gmail's app password or Yahoo's, or the general advice.
     hint: String,
     /// Where to make an app password, when the provider is known for wanting one.
     help_url: Option<&'static str>,
@@ -5085,6 +5085,9 @@ impl qobject::Sioul {
                 );
                 // Gmail, or a domain whose mail Google keeps (its MX), or settings naming Google's server.
                 let google = found.by == sioul_sync::FoundBy::Google || found.host.eq_ignore_ascii_case(sioul_sync::discover::GOOGLE_IMAP);
+                // Said before the password is typed: Google's servers and Yahoo's take an
+                // app password only, made on a page of theirs; else the general advice.
+                let (hint, help_url) = sioul_sync::password_hint(&found.host);
                 // Outlook.com, Microsoft 365: by their domains, their MX, or settings naming their server.
                 let microsoft_kind = match found.by {
                     sioul_sync::FoundBy::Microsoft(kind) => Some(kind),
@@ -5093,8 +5096,8 @@ impl qobject::Sioul {
                 };
                 json(&FoundView {
                     by: say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
-                    hint: tr().text(if google { "account-gmail-hint" } else { "account-app-password-hint" }, None),
-                    help_url: google.then_some(sioul_sync::GMAIL_APP_PASSWORDS),
+                    hint: tr().text(hint, None),
+                    help_url,
                     google,
                     google_key: google && gmail::has_own_key(&address),
                     microsoft: microsoft_kind.is_some(),

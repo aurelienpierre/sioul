@@ -26,6 +26,10 @@ SafeDialog {
     property string vault: "missing"
     // Google's mail (Gmail, Google Workspace): an app password, never the account's own.
     readonly property bool google: dialog.account !== null && (dialog.account.host || "").toLowerCase() === "imap.gmail.com"
+    // Yahoo's mail: an app password too, made on the Yahoo account's security page.
+    readonly property bool yahoo: dialog.account !== null && ["imap.mail.yahoo.com", "export.imap.mail.yahoo.com"].indexOf((dialog.account.host || "").toLowerCase()) !== -1
+    // Either: the dialog asks for an app password, and opens the page where it is made.
+    readonly property bool appPassword: dialog.google || dialog.yahoo
 
     function ask(account) {
         dialog.account = account
@@ -82,7 +86,7 @@ SafeDialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(460, (parent ? dialog.roomWidth : 460) - 2 * dialog.theme.gap)
-    title: dialog.theme.plain(dialog.account !== null ? (dialog.google ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : "")
+    title: dialog.theme.plain(dialog.account !== null ? (dialog.appPassword ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : "")
     onClosed: password.text = ""
 
     Connections {
@@ -103,24 +107,24 @@ SafeDialog {
 
         Label {
             Layout.fillWidth: true
-            text: dialog.google ? dialog.sioul.text("ui-gmail-app-password-guide") : dialog.sioul.text("account-password-help")
+            text: dialog.google ? dialog.sioul.text("ui-gmail-app-password-guide") : dialog.yahoo ? dialog.sioul.text("ui-yahoo-app-password-guide") : dialog.sioul.text("account-password-help")
             wrapMode: Text.Wrap
             color: dialog.theme.text
         }
-        // Google's page for app passwords, in the system's browser.
+        // Google's page for app passwords, or the Yahoo account's security page, in the system's browser.
         Button {
-            visible: dialog.google
+            visible: dialog.appPassword
             text: dialog.sioul.text("ui-app-passwords")
             icon.name: "internet-web-browser"
             icon.color: dialog.theme.text
-            onClicked: Qt.openUrlExternally("https://myaccount.google.com/apppasswords")
+            onClicked: Qt.openUrlExternally(dialog.yahoo ? "https://login.yahoo.com/account/security" : "https://myaccount.google.com/apppasswords")
         }
         PasswordField {
             id: password
 
             sioul: dialog.sioul
             Layout.fillWidth: true
-            placeholderText: dialog.google ? dialog.sioul.text("ui-gmail-app-password-field") : dialog.sioul.text("ui-password")
+            placeholderText: dialog.google ? dialog.sioul.text("ui-gmail-app-password-field") : dialog.yahoo ? dialog.sioul.text("ui-yahoo-app-password-field") : dialog.sioul.text("ui-password")
             onAccepted: dialog.keep()
         }
         Button {

@@ -197,21 +197,14 @@ fn tls_error(e: std::io::Error) -> SyncError {
 
 /// A refused login; "application-specific password required" (Gmail) gets its own
 /// sentence, since the usual password will never work there. So does any
-/// password Google's server refuses: it takes app passwords only. Microsoft's
-/// takes no password at all, app passwords included: its own sign-in instead.
+/// password Google's server or Yahoo's refuses: they take app passwords only,
+/// and the sentence names where each makes one (`crate::password_refused`,
+/// which the sending side shares). Microsoft's takes no password at all, app
+/// passwords included: its own sign-in instead.
 fn login_error(e: async_imap::error::Error, host: &str) -> SyncError {
     match e {
-        async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m) => {
-            let detail = m.trim().to_string();
-            let lower = detail.to_ascii_lowercase();
-            if crate::microsoft::is_imap_host(host) {
-                SyncError::Login(crate::microsoft::PASSWORD.into())
-            } else if lower.contains("application-specific password") || lower.contains("app password") || host.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP) {
-                SyncError::AppPassword(detail)
-            } else {
-                SyncError::Login(detail)
-            }
-        }
+        async_imap::error::Error::No(_) | async_imap::error::Error::Bad(_) if crate::microsoft::is_imap_host(host) => SyncError::Login(crate::microsoft::PASSWORD.into()),
+        async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m) => crate::password_refused(host, &m),
         other => SyncError::Network(other.to_string()),
     }
 }
@@ -230,13 +223,28 @@ mod tests {
 
     #[test]
     fn tells_app_passwords_apart() {
-        let gmail = async_imap::error::Error::No("[ALERT] Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)".into());
-        assert!(matches!(login_error(gmail, "mail.example.org"), SyncError::AppPassword(_)));
+        use crate::AppPasswords;
+        // A server asking for one in its own words: said, with no provider's page.
+        let asked = async_imap::error::Error::No("[ALERT] Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)".into());
+        assert!(matches!(login_error(asked, "mail.example.org"), SyncError::AppPassword(AppPasswords::Elsewhere, _)));
         let wrong = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Authentication failed.".into());
-        assert!(matches!(login_error(wrong, "mail.example.org"), SyncError::Login(_)));
+        assert_eq!(login_error(wrong, "mail.example.org"), SyncError::Login("[AUTHENTICATIONFAILED] Authentication failed.".into()));
         // Google refusing a password: an app password, made at Google, is the way.
         let google = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Invalid credentials (Failure)".into());
-        assert!(matches!(login_error(google, "imap.gmail.com"), SyncError::AppPassword(_)));
+        assert!(matches!(login_error(google, "imap.gmail.com"), SyncError::AppPassword(AppPasswords::Google, _)));
+        // Yahoo refusing a password, whatever its words: an app password, made
+        // at Yahoo, is the only one its servers take (both receiving names,
+        // whatever their case).
+        for host in ["imap.mail.yahoo.com", "IMAP.MAIL.YAHOO.COM", "export.imap.mail.yahoo.com"] {
+            let yahoo = async_imap::error::Error::No(" [AUTHENTICATIONFAILED] Authentication failed. ".into());
+            assert_eq!(login_error(yahoo, host), SyncError::AppPassword(AppPasswords::Yahoo, "[AUTHENTICATIONFAILED] Authentication failed.".into()), "{host}");
+        }
+        // A name that only looks like Yahoo's is any other server.
+        let lookalike = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Authentication failed.".into());
+        assert!(matches!(login_error(lookalike, "imap.mail.yahoo.com.evil.example"), SyncError::Login(_)));
+        // A connection lost during the sign-in is no refusal, at Yahoo's either.
+        let lost = async_imap::error::Error::ConnectionLost;
+        assert!(matches!(login_error(lost, "imap.mail.yahoo.com"), SyncError::Network(_)));
         assert_eq!(server_words("code: None, info: Some(\"User is authenticated but not connected.\")"), "User is authenticated but not connected.");
         assert_eq!(server_words(" AUTHENTICATE failed. "), "AUTHENTICATE failed.");
         // Microsoft refusing a password: its own sign-in is the only way.

@@ -270,14 +270,15 @@ fn smtp_builder<'a>(account: &Account, host: &'a str, credentials: Option<(&'a s
 /// Sends the message, then files a copy in Sent. An account signed in with
 /// OAuth logs in with an access token (`password` unused): the one kept,
 /// then, refused, a fresh one, once; a refusal no token changes (Microsoft's
-/// Authenticated SMTP switched off) is said at once.
+/// Authenticated SMTP switched off) is said at once. A password refused is
+/// told apart as the receiving side tells it (`password_error`).
 pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
     let host = account.smtp_host.clone().ok_or(SyncError::NoServer)?;
     let login = account.login().ok_or(SyncError::NoServer)?.to_string();
     let oauth = OAuth::of(account);
     let sent = block_on(async {
         let mut client = match oauth {
-            None => smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(smtp_error)?,
+            None => smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(|e| password_error(e, &host))?,
             Some(oauth) => {
                 // Microsoft's token to Microsoft's sending server alone, before any is asked.
                 oauth.may_reach(&host, true)?;
@@ -392,6 +393,17 @@ fn file_in_sent(account: &Account, password: &str, raw: &[u8]) -> Result<(), Syn
     })
 }
 
+/// What went wrong while signing in with a password at the sending server
+/// `host`. A password refused is told apart as the receiving side tells it
+/// (`crate::password_refused`): Google's and Yahoo's sending servers take
+/// app passwords only, and the sentence names where each makes one.
+fn password_error(e: mail_send::Error, host: &str) -> SyncError {
+    match e {
+        mail_send::Error::AuthenticationFailed(r) => crate::password_refused(host, r.message()),
+        other => smtp_error(other),
+    }
+}
+
 fn smtp_error(e: mail_send::Error) -> SyncError {
     match e {
         mail_send::Error::AuthenticationFailed(r) => SyncError::Login(r.message().to_string()),
@@ -461,6 +473,59 @@ mod tests {
                 }
             }
         });
+    }
+
+    /// A sending server that refuses a password, standing in on this computer
+    /// for Yahoo's, Google's and any other (no TLS; nothing leaves the
+    /// computer): it offers the sign-ins Yahoo's offers and refuses each one
+    /// tried. Yahoo's and Google's names give the app password's sentence of
+    /// each, whatever the server's words; another server's refusal stays the
+    /// server's own, unless it asks for an app password itself. A password
+    /// refused (535) is tried once, never again another way.
+    #[test]
+    fn a_password_refused_at_the_sending_server_tells_app_passwords_apart() {
+        use crate::AppPasswords;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let refused = "535 5.7.0 Authentication failed";
+        let asks = "534 5.7.9 Application-specific password required";
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            for (named, answer, tries, expected) in [
+                ("smtp.mail.yahoo.com", refused, 1, SyncError::AppPassword(AppPasswords::Yahoo, "Authentication failed".into())),
+                ("SMTP.Mail.Yahoo.com", refused, 1, SyncError::AppPassword(AppPasswords::Yahoo, "Authentication failed".into())),
+                ("smtp.gmail.com", refused, 1, SyncError::AppPassword(AppPasswords::Google, "Authentication failed".into())),
+                ("smtp.example.org", refused, 1, SyncError::Login("Authentication failed".into())),
+                ("smtp.mail.yahoo.com.evil.example", refused, 1, SyncError::Login("Authentication failed".into())),
+                ("smtp.example.org", asks, 2, SyncError::AppPassword(AppPasswords::Elsewhere, "Application-specific password required".into())),
+            ] {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = tokio::spawn(async move {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    write.write_all(b"220 stand-in ESMTP\r\n").await.unwrap();
+                    let _ehlo = lines.next_line().await.unwrap().unwrap();
+                    write.write_all(b"250-stand-in\r\n250-AUTH PLAIN LOGIN XOAUTH2 OAUTHBEARER\r\n250 8BITMIME\r\n").await.unwrap();
+                    // Each sign-in tried, refused, until the client leaves.
+                    let mut heard = Vec::new();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        heard.push(line);
+                        if write.write_all(format!("{answer}\r\n").as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                    heard
+                });
+                let outcome = mail_send::SmtpClientBuilder::new("127.0.0.1", port).unwrap().helo_host("[127.0.0.1]").credentials(("jane@example.org", "not-an-app-password")).connect_plain().await.map(drop).map_err(|e| password_error(e, named));
+                let heard = server.await.unwrap();
+                assert!(heard.len() == tries && heard[0].starts_with("AUTH PLAIN "), "{named}: {heard:?}");
+                assert_eq!(outcome.err(), Some(expected), "{named}: {answer}");
+            }
+        });
+        // What is no refused password stays what it was, at Yahoo's too.
+        assert!(matches!(password_error(mail_send::Error::Timeout, "smtp.mail.yahoo.com"), SyncError::Network(_)));
+        assert!(matches!(password_error(mail_send::Error::UnsupportedAuthMechanism, "smtp.mail.yahoo.com"), SyncError::Login(_)));
     }
 
     /// Part 8, 10: Microsoft's servers file their own copy in Sent, as Gmail's do: no APPEND.
