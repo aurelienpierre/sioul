@@ -110,7 +110,7 @@ async fn connect(server: &Server) -> Result<Client<TlsStream<TcpStream>>, SyncEr
         Security::Starttls => starttls(tcp).await?,
     };
     let name = ServerName::try_from(server.host.clone()).map_err(|e| SyncError::Network(e.to_string()))?;
-    let tls = within(CONNECT, TlsConnector::from(tls_config()).connect(name, tcp)).await?.map_err(tls_error)?;
+    let tls = within(CONNECT, TlsConnector::from(tls_config()).connect(name, tcp)).await?.map_err(|e| tls_error(e, &server.host))?;
     let mut client = Client::new(tls);
     if server.security == Security::Tls {
         // The server speaks first (RFC 9051 §7.1); after STARTTLS it already has.
@@ -187,10 +187,12 @@ fn network(e: std::io::Error) -> SyncError {
     SyncError::Network(e.to_string())
 }
 
-/// A certificate problem is told apart from a network one: it may be an attack.
-fn tls_error(e: std::io::Error) -> SyncError {
+/// A certificate problem is told apart from a network one: it may be an
+/// attack. A certificate for another name than `host` has its own sentence
+/// (`crate::certificate_refused`): `host` is most often an alias.
+fn tls_error(e: std::io::Error, host: &str) -> SyncError {
     match e.get_ref().and_then(|inner| inner.downcast_ref::<rustls::Error>()) {
-        Some(tls) => SyncError::Tls(tls.to_string()),
+        Some(tls) => crate::certificate_refused(tls, host),
         None => network(e),
     }
 }

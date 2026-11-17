@@ -407,7 +407,7 @@ impl Intent {
     pub(crate) fn after<T>(&self, result: Result<T, SyncError>) -> Result<T, SyncError> {
         if let Err(e) = &result
             && self.noted
-            && !matches!(e, SyncError::Network(_) | SyncError::Tls(_))
+            && !matches!(e, SyncError::Network(_) | SyncError::Tls(_) | SyncError::TlsName { .. })
         {
             let _ = mailmoved::forget(&self.addresses);
         }

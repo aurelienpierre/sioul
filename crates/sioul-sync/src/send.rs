@@ -38,14 +38,51 @@ const SMTP: Duration = Duration::from_secs(60);
 pub fn send_draft(config_path: &Path, account: &Account, password: &str, draft: &Draft, tr: &Translator) -> Result<(), SyncError> {
     let account = with_smtp(config_path, account)?;
     let outgoing = build_draft(&account, draft, tr, None).map_err(|e| e.into_sync(tr))?;
-    send(&account, password, &outgoing)
+    send_kept(config_path, &account, password, &outgoing)
 }
 
 /// Sends a message built at Send (signed with your security key), its ten
 /// seconds gone: the sending server is found first when the account has none.
 pub fn send_built(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
     let account = with_smtp(config_path, account)?;
-    send(&account, password, outgoing)
+    send_kept(config_path, &account, password, outgoing)
+}
+
+/// `send`, through the sending server the account keeps. One that shows a
+/// certificate for another name is an alias of a host's server
+/// (`smtp.<domain>`, kept before a guess had to show its own certificate):
+/// it can never work, and nothing was sent. The sending server is then
+/// found again, once, and the one found now is kept in its place
+/// (`another_sending_server`); when no other is found, the refusal is said.
+fn send_kept(config_path: &Path, account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
+    match send(account, password, outgoing) {
+        Err(refused @ SyncError::TlsName { .. }) => {
+            let found = another_sending_server(account, refused, || crate::discover_smtp(account.address.as_deref().unwrap_or(""), account.host.as_deref()))?;
+            config::set_smtp(config_path, &found.id, found.smtp_host.as_deref().unwrap_or_default(), found.smtp_port_or_default(), found.smtp_security).map_err(SyncError::Disk)?;
+            send(&found, password, outgoing)
+        }
+        other => other,
+    }
+}
+
+/// The account with the sending server `find` gives now, when the one it
+/// keeps was `refused` for its certificate's name and `find` gives another;
+/// else the refusal. An account signed in on its provider's page keeps the
+/// servers its provider names: it is never sent to another.
+fn another_sending_server(account: &Account, refused: SyncError, find: impl FnOnce() -> Result<crate::Smtp, SyncError>) -> Result<Account, SyncError> {
+    if OAuth::of(account).is_some() {
+        return Err(refused);
+    }
+    match find() {
+        Ok(smtp) if !account.smtp_host.as_deref().is_some_and(|kept| kept.eq_ignore_ascii_case(&smtp.host)) => {
+            let mut account = account.clone();
+            account.smtp_host = Some(smtp.host);
+            account.smtp_port = Some(smtp.port);
+            account.smtp_security = smtp.security;
+            Ok(account)
+        }
+        _ => Err(refused),
+    }
 }
 
 /// Why a draft could not be built.
@@ -282,7 +319,7 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
             Some(oauth) => {
                 // Microsoft's token to Microsoft's sending server alone, before any is asked.
                 oauth.may_reach(&host, true)?;
-                let connect = || async { smtp_builder(account, &host, None)?.connect().await.map_err(smtp_error) };
+                let connect = || async { smtp_builder(account, &host, None)?.connect().await.map_err(|e| connect_error(e, &host)) };
                 smtp_sign_in_with_tokens(&login, connect, |fresh| oauth.token_async(&login, fresh), oauth).await?
             }
         };
@@ -400,8 +437,31 @@ fn file_in_sent(account: &Account, password: &str, raw: &[u8]) -> Result<(), Syn
 fn password_error(e: mail_send::Error, host: &str) -> SyncError {
     match e {
         mail_send::Error::AuthenticationFailed(r) => crate::password_refused(host, r.message()),
+        other => connect_error(other, host),
+    }
+}
+
+/// What went wrong while reaching the sending server `host`: a certificate
+/// for another name has its own sentence, as on the receiving side
+/// (`crate::certificate_refused`): `host` is most often an alias.
+fn connect_error(e: mail_send::Error, host: &str) -> SyncError {
+    match e {
+        mail_send::Error::Tls(refused) => crate::certificate_refused(&refused, host),
         other => smtp_error(other),
     }
+}
+
+/// Signs in to the account's sending server with its password, and leaves:
+/// for a sending server typed by hand, before the account is kept. Nothing
+/// is sent.
+pub fn test(account: &Account, password: &str) -> Result<(), SyncError> {
+    let host = account.smtp_host.clone().ok_or(SyncError::NoServer)?;
+    let login = account.login().ok_or(SyncError::NoServer)?.to_string();
+    block_on(async {
+        let client = smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(|e| password_error(e, &host))?;
+        let _ = client.quit().await;
+        Ok(())
+    })
 }
 
 fn smtp_error(e: mail_send::Error) -> SyncError {
@@ -526,6 +586,28 @@ mod tests {
         // What is no refused password stays what it was, at Yahoo's too.
         assert!(matches!(password_error(mail_send::Error::Timeout, "smtp.mail.yahoo.com"), SyncError::Network(_)));
         assert!(matches!(password_error(mail_send::Error::UnsupportedAuthMechanism, "smtp.mail.yahoo.com"), SyncError::Login(_)));
+    }
+
+    /// A sending server kept that shows a certificate for another name (an
+    /// alias kept before guesses were checked): the one found now takes its
+    /// place; the refusal stays when the same is found, when none is, and
+    /// for an account signed in on its provider's page.
+    #[test]
+    fn a_sending_server_kept_as_an_alias_is_found_again() {
+        let refused = || SyncError::TlsName { asked: "smtp.example.org".into(), presented: "ssl0.host.example".into() };
+        let mut account = Account::imap("home", "jane@example.org", "ssl0.host.example", 993, Security::Tls, None);
+        account.smtp_host = Some("smtp.example.org".into());
+        account.smtp_port = Some(465);
+        let found = another_sending_server(&account, refused(), || Ok(crate::Smtp { host: "ssl0.host.example".into(), port: 587, security: Security::Starttls })).unwrap();
+        assert_eq!((found.smtp_host.as_deref(), found.smtp_port, found.smtp_security, found.id.as_str()), (Some("ssl0.host.example"), Some(587), Security::Starttls, "home"));
+        let same = another_sending_server(&account, refused(), || Ok(crate::Smtp { host: "SMTP.example.org".into(), port: 465, security: Security::Tls }));
+        assert_eq!(same.err(), Some(refused()), "the same server found: its refusal");
+        let none = another_sending_server(&account, refused(), || Err(SyncError::NotFound("example.org".into())));
+        assert_eq!(none.err(), Some(refused()), "none found: the refusal, not the search's");
+        let mut signed_in = account.clone();
+        signed_in.auth = Some("microsoft".into());
+        let never = another_sending_server(&signed_in, refused(), || panic!("an account signed in at its provider is never looked for elsewhere"));
+        assert_eq!(never.err(), Some(refused()));
     }
 
     /// Part 8, 10: Microsoft's servers file their own copy in Sent, as Gmail's do: no APPEND.

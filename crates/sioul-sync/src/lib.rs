@@ -299,6 +299,14 @@ pub enum SyncError {
     Network(String),
     /// The server's certificate could not be checked: nothing was sent.
     Tls(String),
+    /// The server's certificate is for another name than the one asked:
+    /// nothing was sent. The name asked is most often an alias of a host's
+    /// server (`imap.<your domain>`), and the host's own name must be given
+    /// instead. `asked`: the name asked; `presented`: the names the
+    /// certificate is for, where they could be read, as plain words
+    /// (`certificate_refused`). They come from a certificate nobody vouched
+    /// for: they are shown, never offered to use.
+    TlsName { asked: String, presented: String },
     /// The server refused the login.
     Login(String),
     /// The server wants an app password, not the account's usual one (Gmail,
@@ -368,6 +376,33 @@ pub fn password_hint(host: &str) -> (&'static str, Option<&'static str>) {
     }
 }
 
+/// The most names of a refused certificate that are said.
+const NAMES_SAID: usize = 3;
+
+/// A certificate the TLS handshake with `host` refused, receiving or
+/// sending. One that is valid but for another name gets its own sentence
+/// (`SyncError::TlsName`): `host` is most often an alias of a host's server.
+/// The names it is for are said when rustls gives them (the DNS names of
+/// the certificate, a few of them, letters, digits, hyphens, dots and the
+/// wildcard's star alone: they are words from outside). Any other refusal
+/// is said with rustls's words.
+pub(crate) fn certificate_refused(error: &rustls::Error, host: &str) -> SyncError {
+    let asked = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    match error {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForNameContext { presented, .. }) => {
+            let names: Vec<&str> = presented
+                .iter()
+                .filter_map(|name| name.strip_prefix("DnsName(\"")?.strip_suffix("\")"))
+                .filter(|name| !name.is_empty() && name.len() <= 253 && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'*')))
+                .take(NAMES_SAID)
+                .collect();
+            SyncError::TlsName { asked, presented: names.join(", ") }
+        }
+        rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName) => SyncError::TlsName { asked, presented: String::new() },
+        other => SyncError::Tls(other.to_string()),
+    }
+}
+
 /// A password the server `host` refused, receiving or sending, in the words
 /// it `said`. Google's and Yahoo's servers take app passwords only: any
 /// refusal there says where to make one. So does a server that asks for one
@@ -400,6 +435,8 @@ impl SyncError {
             SyncError::Keyring(_) => "sync-error-keyring",
             SyncError::Network(_) => "sync-error-network",
             SyncError::Tls(_) => "sync-error-tls",
+            SyncError::TlsName { presented, .. } if presented.is_empty() => "sync-error-tls-name",
+            SyncError::TlsName { .. } => "sync-error-tls-names",
             SyncError::Login(d) if d == google::SIGN_IN_AGAIN => "sync-error-google-again",
             SyncError::Login(d) if d == google::IN_TESTING => "sync-error-google-testing",
             SyncError::Login(d) if d == github::TOKEN_REFUSED => "sync-error-github-token",
@@ -429,6 +466,7 @@ impl SyncError {
             | SyncError::Keyring(d)
             | SyncError::Network(d)
             | SyncError::Tls(d)
+            | SyncError::TlsName { presented: d, .. }
             | SyncError::Login(d)
             | SyncError::AppPassword(_, d)
             | SyncError::Server(d)
@@ -447,7 +485,7 @@ impl SyncError {
     pub fn is_lasting(&self) -> bool {
         matches!(
             self,
-            SyncError::Login(_) | SyncError::AppPassword(..) | SyncError::Tls(_) | SyncError::NoServer | SyncError::NoPassword | SyncError::BadAddress
+            SyncError::Login(_) | SyncError::AppPassword(..) | SyncError::Tls(_) | SyncError::TlsName { .. } | SyncError::NoServer | SyncError::NoPassword | SyncError::BadAddress
         )
     }
 
@@ -462,6 +500,10 @@ impl SyncError {
         let mut args = i18n::args();
         args.set("account", account.to_string());
         args.set("detail", self.detail().to_string());
+        if let SyncError::TlsName { asked, presented } = self {
+            args.set("host", asked.clone());
+            args.set("names", presented.clone());
+        }
         tr.text(self.message_id(), Some(&args))
     }
 }
@@ -532,6 +574,45 @@ mod tests {
         }
         assert_eq!(password_hint("mail.example.org"), ("account-app-password-hint", None));
         assert_eq!((AppPasswords::only_at("smtp.gmail.com"), AppPasswords::only_at("smtp.mail.yahoo.com"), AppPasswords::only_at("smtp.example.org")), (Some(AppPasswords::Google), Some(AppPasswords::Yahoo), None));
+    }
+
+    /// A certificate that is valid, but for another name than the one asked:
+    /// the name asked is most often an alias of a host's server. Its own
+    /// sentence, in English and French, with the name asked and the names
+    /// the certificate is for, as plain words (a few DNS names, nothing
+    /// else a certificate could carry). It says to take the server's name
+    /// from the provider, never from the certificate. Any other refusal of a
+    /// certificate keeps the general sentence.
+    #[test]
+    fn a_certificate_for_another_name_says_the_name_is_an_alias() {
+        let presented = ["DnsName(\"ssl0.host.example\")", "IpAddress(192.0.2.1)", "DnsName(\"<b>press here</b>\")", "DnsName(\"*.host.example\")", "DirectoryName", "DnsName(\"www.ssl0.host.example\")", "DnsName(\"fourth.host.example\")"];
+        let other_name = rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForNameContext {
+            expected: rustls::pki_types::ServerName::try_from("imap.example.org").unwrap(),
+            presented: presented.iter().map(|name| name.to_string()).collect(),
+        });
+        let refused = certificate_refused(&other_name, " IMAP.Example.org. ");
+        assert_eq!(refused, SyncError::TlsName { asked: "imap.example.org".into(), presented: "ssl0.host.example, *.host.example, www.ssl0.host.example".into() });
+        assert!(refused.is_lasting() && !refused.wants_password(), "trying again cannot help, nor another password");
+        assert_eq!(refused.code(), "sync-error-tls-names");
+        let unnamed = certificate_refused(&rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName), "smtp.example.org");
+        assert_eq!(unnamed, SyncError::TlsName { asked: "smtp.example.org".into(), presented: String::new() });
+        assert_eq!(unnamed.code(), "sync-error-tls-name");
+        for (language, account, alias, instead) in [("en", "home", "is probably an alias of your mail provider's server", "your provider's help"), ("fr", "maison", "sans doute un alias du serveur de votre fournisseur de courriel", "l’aide de votre fournisseur")] {
+            let tr = Translator::new(language);
+            let said = refused.sentence(&tr, account);
+            assert!(said.starts_with(account) && said.contains("imap.example.org") && said.contains("(ssl0.host.example, *.host.example, www.ssl0.host.example)"), "{said}");
+            assert!(said.contains(alias) && said.contains(instead) && !said.contains("sync-error") && !said.contains("press here"), "{said}");
+            let said = unnamed.sentence(&tr, account);
+            assert!(said.starts_with(account) && said.contains("smtp.example.org") && said.contains(alias) && said.contains(instead) && !said.contains("()") && !said.contains("sync-error"), "{said}");
+            // Where the settings came from, said before a password is typed.
+            for by in [FoundBy::IspdbMx, FoundBy::Records] {
+                let said = tr.text(by.message_id(), None);
+                assert!(!said.is_empty() && !said.contains("account-by"), "{by:?}: {said}");
+            }
+        }
+        // Another refusal of a certificate: the general sentence, with rustls's words.
+        let unknown = certificate_refused(&rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer), "imap.example.org");
+        assert!(matches!(&unknown, SyncError::Tls(words) if !words.is_empty()) && unknown.code() == "sync-error-tls");
     }
 
     /// What Sioul found itself is said in your language, never as English

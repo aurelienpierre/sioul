@@ -1089,7 +1089,7 @@ fn sha1_of(checksums: &str) -> Option<String> {
 fn code(error: &SyncError, host: &str) -> String {
     let kind = match error {
         SyncError::Login(_) | SyncError::AppPassword(..) => "login",
-        SyncError::Tls(_) => "tls",
+        SyncError::Tls(_) | SyncError::TlsName { .. } => "tls",
         SyncError::Network(_) => "network",
         SyncError::NoPassword => "no-password",
         SyncError::Disk(_) => "disk",
@@ -3533,7 +3533,7 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
 fn kind_of_error(e: &SyncError) -> &'static str {
     match e {
         SyncError::Login(_) | SyncError::AppPassword(..) => "login",
-        SyncError::Tls(_) => "tls",
+        SyncError::Tls(_) | SyncError::TlsName { .. } => "tls",
         SyncError::Server(d) if d == "quota" => "quota",
         SyncError::Server(_) => "server",
         SyncError::Disk(_) => "disk",

@@ -38,6 +38,15 @@ pub(crate) enum AccountCommand {
         /// The login, when it is not the address.
         #[arg(long)]
         username: Option<String>,
+        /// The sending (SMTP) server, when it is not the one Sioul would find
+        /// at the first message sent: signed in to before the account is kept.
+        #[arg(long)]
+        smtp_host: Option<String>,
+        /// Its port (default: 465, or 587 with STARTTLS).
+        #[arg(long, requires = "smtp_host")]
+        smtp_port: Option<u16>,
+        #[arg(long, value_enum, requires = "smtp_host")]
+        smtp_security: Option<SecurityArg>,
         /// Days of mail the first sync brings (default 14).
         #[arg(long)]
         days: Option<u32>,
@@ -120,8 +129,9 @@ impl From<SecurityArg> for Security {
 
 pub(crate) fn run(s: &Session, command: AccountCommand) -> Result<(), String> {
     match command {
-        AccountCommand::Add { address, id, host, port, security, username, days, auth, client_id, tenant } => {
-            let wanted = Wanted { host, port, security: security.map(Security::from), username, days, microsoft: auth == Some(AuthArg::Microsoft), client_id, tenant };
+        AccountCommand::Add { address, id, host, port, security, username, smtp_host, smtp_port, smtp_security, days, auth, client_id, tenant } => {
+            let sending = smtp_host.map(|host| (host.trim().to_string(), smtp_port, smtp_security.map_or(Security::Tls, Security::from))).filter(|(host, ..)| !host.is_empty());
+            let wanted = Wanted { host, port, security: security.map(Security::from), username, sending, days, microsoft: auth == Some(AuthArg::Microsoft), client_id, tenant };
             add(s, &address, id, wanted)
         }
         AccountCommand::SignIn { id, client_id, tenant } => sign_in_again(s, &id, client_id.as_deref().unwrap_or(""), tenant.as_deref().unwrap_or("")),
@@ -147,6 +157,9 @@ struct Wanted {
     port: Option<u16>,
     security: Option<Security>,
     username: Option<String>,
+    /// The sending server given by hand: its name, its port (None: the
+    /// usual one for its encryption), its encryption.
+    sending: Option<(String, Option<u16>, Security)>,
     days: Option<u32>,
     /// Microsoft's sign-in, whatever discovery finds (`--auth microsoft`).
     microsoft: bool,
@@ -209,13 +222,26 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
     // the account's own, and where each makes it; else the general advice.
     let (hint, _) = sioul_sync::password_hint(&found.host);
     println!("{}", s.tr.text(hint, None));
+    // The sending server given by hand: said, then signed in to before anything is kept.
+    if let Some((smtp_host, smtp_port, smtp_security)) = &wanted.sending {
+        account.smtp_host = Some(smtp_host.clone());
+        account.smtp_port = *smtp_port;
+        account.smtp_security = *smtp_security;
+        println!("{}", s.say("account-sending", &[("server", server_line(s, smtp_host, account.smtp_port_or_default(), *smtp_security))]));
+    }
     let password = sioul_sync::tidy_password(&found.host, &prompt_password(s, &address)?);
     let messages = sioul_sync::test(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;
     let mut connected = s.tr.counted(messages as usize);
     connected.set("account", id.clone());
     println!("{}", s.tr.text("account-connected", Some(&connected)));
+    if account.smtp_host.is_some() {
+        sioul_sync::send::test(&account, &password).map_err(|e| s.say("account-sending-refused", &[("problem", e.sentence(&s.tr, &id))]))?;
+    }
     secret::save(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;
     config::add_imap_account(&s.config_path, &account)?;
+    if let Some(smtp_host) = &account.smtp_host {
+        config::set_smtp(&s.config_path, &id, smtp_host, account.smtp_port_or_default(), account.smtp_security)?;
+    }
     println!("{}", s.say("account-added", &[("id", id.clone()), ("path", account.maildir_path().display().to_string())]));
     println!("{}", s.tr.text("ui-syncing", None));
     let report = sioul_sync::sync(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;
@@ -669,6 +695,30 @@ mod tests {
         let s = Session { config, config_path: PathBuf::new(), tr: Translator::new("en") };
         let refused = password(&s, "me").unwrap_err();
         assert!(refused.contains("sioul account sign-in me"), "{refused}");
+    }
+
+    /// `sioul account add` takes the sending server by its name, alone or
+    /// with its port and its encryption; a port or an encryption without a
+    /// name is refused; none given, the sending server is found by itself.
+    #[test]
+    fn the_sending_server_is_given_by_its_name() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Line {
+            #[command(subcommand)]
+            command: AccountCommand,
+        }
+        let read = |options: &[&str]| Line::try_parse_from([&["sioul", "add", "jane@example.org"], options].concat()).map(|line| line.command);
+        match read(&["--host", "ssl0.host.example", "--smtp-host", "smtp.host.example", "--smtp-port", "587", "--smtp-security", "starttls"]) {
+            Ok(AccountCommand::Add { host, smtp_host, smtp_port, smtp_security, .. }) => {
+                assert_eq!((host.as_deref(), smtp_host.as_deref(), smtp_port), (Some("ssl0.host.example"), Some("smtp.host.example"), Some(587)));
+                assert!(matches!(smtp_security, Some(SecurityArg::Starttls)));
+            }
+            _ => panic!("the sending server's options are read"),
+        }
+        assert!(matches!(read(&["--smtp-host", "smtp.host.example"]), Ok(AccountCommand::Add { smtp_host: Some(_), smtp_port: None, smtp_security: None, .. })));
+        assert!(matches!(read(&[]), Ok(AccountCommand::Add { smtp_host: None, .. })));
+        assert!(read(&["--smtp-port", "587"]).is_err() && read(&["--smtp-security", "tls"]).is_err(), "a port or an encryption without a server");
     }
 
     /// The review of 15 October 2026, L3: the mailbox of another login than
