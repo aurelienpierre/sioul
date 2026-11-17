@@ -58,10 +58,13 @@ pub struct Said {
 /// other value, and an `at` that is no table, read as nothing said, never as
 /// an error that would stop the configuration from reading.
 fn cells<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, String>, D::Error> {
-    Ok(match toml::Value::deserialize(deserializer) {
-        Ok(toml::Value::Table(table)) => table.into_iter().filter_map(|(time, cell)| cell.as_str().map(|cell| (time, cell.to_string()))).collect(),
-        _ => BTreeMap::new(),
-    })
+    Ok(toml::Value::deserialize(deserializer).map(|value| cells_of(&value)).unwrap_or_default())
+}
+
+/// The same from a value already read: the keys of a table whose values are texts.
+fn cells_of(value: &toml::Value) -> BTreeMap<String, String> {
+    let Some(at) = value.as_table() else { return BTreeMap::new() };
+    at.iter().filter_map(|(time, cell)| cell.as_str().map(|cell| (time.clone(), cell.to_string()))).collect()
 }
 
 impl Said {
@@ -102,6 +105,27 @@ pub fn said_cell(value: &str) -> Option<Option<Area>> {
 /// for any other word (working and admin hours at once have no cell of their own).
 pub fn cell_time(word: &str) -> Option<Time> {
     Time::parse(word).filter(|time| Time::STATES.contains(time))
+}
+
+/// `[device]` as the configuration reads it (`Config::devices`), leniently:
+/// a value of the wrong type (a number for `name`, a list for `area`, a
+/// device's line that is not a table, `[device]` itself not a table),
+/// brought by a hand edit or by another device through the sharing, is
+/// passed over, its device's other fields and the rest of the file still
+/// read. A strict reading would make the whole configuration unreadable on
+/// every device the sharing carries it to.
+pub fn lenient<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, Said>, D::Error> {
+    // Whatever TOML holds reads as a value; one that does not, as nothing said.
+    Ok(toml::Value::deserialize(deserializer).map(|value| read(&value)).unwrap_or_default())
+}
+
+/// Each device's line that is a table, its fields that are words, and the
+/// cells of its `at` that are words (`cells_of`).
+fn read(value: &toml::Value) -> BTreeMap<String, Said> {
+    let Some(devices) = value.as_table() else { return BTreeMap::new() };
+    let word = |line: &toml::Table, field: &str| line.get(field).and_then(toml::Value::as_str).map(str::to_string);
+    let cells = |line: &toml::Table| line.get("at").map(cells_of).unwrap_or_default();
+    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line) }))).collect()
 }
 
 /// The longest name a device is given, in characters: a line of a card.
@@ -164,19 +188,20 @@ pub fn set_cell(path: &Path, id: &str, time: Time, areas: Option<Area>) -> Resul
         if value.is_none() && !there {
             return Ok(());
         }
-        if !doc.contains_key("device") {
+        // A line that is not a table (nothing reads it: `lenient`) gives way to one, as in `set`.
+        if doc.get("device").is_none_or(|item| !item.is_table_like()) {
             let mut devices = toml_edit::Table::new();
             devices.set_implicit(true);
             doc.insert("device", toml_edit::Item::Table(devices));
         }
         let devices = doc.get_mut("device").and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{}: device is not a table", path.display()))?;
-        if !devices.contains_key(id) {
+        if devices.get(id).is_none_or(|line| !line.is_table_like()) {
             let mut table = toml_edit::Table::new();
             table.set_implicit(true);
             devices.insert(id, toml_edit::Item::Table(table));
         }
         let device = devices.get_mut(id).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: not a table"))?;
-        if !device.contains_key("at") {
+        if device.get("at").is_none_or(|at| !at.is_table_like()) {
             device.insert("at", toml_edit::Item::Table(toml_edit::Table::new()));
         }
         let at = device.get_mut("at").and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: at is not a table"))?;
@@ -209,6 +234,7 @@ pub fn set_cell(path: &Path, id: &str, time: Time, areas: Option<Area>) -> Resul
 /// One field of `[device."<id>"]` written, or taken out with `None`; the
 /// table goes with its last field, `[device]` with its last table. Read,
 /// changed and written under the file's lock, which the sharing takes too.
+/// A line that is not a table (nothing reads it: `lenient`) gives way to one.
 fn set(path: &Path, id: &str, field: &str, value: Option<String>) -> Result<(), String> {
     let id = id.trim();
     if id.is_empty() || id.chars().any(char::is_control) {
@@ -216,10 +242,10 @@ fn set(path: &Path, id: &str, field: &str, value: Option<String>) -> Result<(), 
     }
     crate::filelock::with_lock(path, || {
         let mut doc = crate::config::read_document(path)?;
-        if value.is_none() && !doc.contains_key("device") {
-            return Ok(());
-        }
-        if !doc.contains_key("device") {
+        if doc.get("device").is_none_or(|item| !item.is_table_like()) {
+            if value.is_none() {
+                return Ok(());
+            }
             let mut devices = toml_edit::Table::new();
             devices.set_implicit(true);
             doc.insert("device", toml_edit::Item::Table(devices));
@@ -227,7 +253,7 @@ fn set(path: &Path, id: &str, field: &str, value: Option<String>) -> Result<(), 
         let devices = doc.get_mut("device").and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{}: device is not a table", path.display()))?;
         match value {
             Some(text) => {
-                if !devices.contains_key(id) {
+                if devices.get(id).is_none_or(|line| !line.is_table_like()) {
                     let mut table = toml_edit::Table::new();
                     table.set_implicit(false);
                     devices.insert(id, toml_edit::Item::Table(table));
@@ -367,6 +393,61 @@ mod tests {
         set_cell(&path, PHONE, Time::Sleep, None).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("device") && text.contains("# mine") && text.contains("between = 10"), "{text}");
+        // Where a line is no table (nothing reads it: `lenient`), a cell written puts one there.
+        std::fs::write(&path, format!("language = \"fr\"\n\n[device.\"{PHONE}\"]\nname = \"Pocket\"\nat = \"work\"\n")).unwrap();
+        set_cell(&path, PHONE, Time::Work, Some(Area::LEISURE)).unwrap();
+        let read = Config::load(&path).unwrap();
+        assert_eq!((read.devices[PHONE].cell(Time::Work), name_of(&read, PHONE)), (Some(Area::LEISURE), Some("Pocket")));
+        std::fs::write(&path, format!("language = \"fr\"\n\n[device]\n\"{DESK}\" = \"work\"\n")).unwrap();
+        set_cell(&path, DESK, Time::Meals, Some(Area::default())).unwrap();
+        assert_eq!(Config::load(&path).unwrap().devices[DESK].cell(Time::Meals), Some(Area::default()));
+        std::fs::write(&path, "language = \"fr\"\ndevice = 5\n").unwrap();
+        set_cell(&path, DESK, Time::Sleep, None).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "language = \"fr\"\ndevice = 5\n", "nothing to take out: nothing written");
+        set_cell(&path, DESK, Time::Work, Some(Area::WORK)).unwrap();
+        let read = Config::load(&path).unwrap();
+        assert_eq!((read.language.as_deref(), read.devices[DESK].cell(Time::Work)), (Some("fr"), Some(Area::WORK)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A value of the wrong type under `[device]`, as a hand edit or another
+    /// device may bring it, is passed over: that field alone, the device's
+    /// other fields and the rest of the file still read; writing a field
+    /// over such a value, or where a device's line is not a table, puts a
+    /// table there.
+    #[test]
+    fn a_field_of_the_wrong_type_is_passed_over_never_the_whole_file() {
+        let text = format!("language = \"fr\"\n\n[device.\"{DESK}\"]\nname = 5\narea = \"work\"\n\n[device.\"{PHONE}\"]\nname = \"Pocket\"\narea = [\"admin\", \"leisure\"]\n\n[device.\"other\"]\nname = {{ first = \"x\" }}\n\n[agenda]\nbetween = 10\n");
+        let config: Config = toml::from_str(&text).expect("the whole file reads");
+        assert_eq!((config.language.as_deref(), config.agenda.between), (Some("fr"), Some(10)), "the rest of the file");
+        assert_eq!((name_of(&config, DESK), said_area(&config, DESK)), (None, Some(Area::WORK)), "a number for a name: passed over, its area read");
+        assert_eq!((name_of(&config, PHONE), said_area(&config, PHONE)), (Some("Pocket"), None), "a list for an area: passed over, its name read");
+        assert_eq!((name_of(&config, "other"), area_of(&config, "other")), (None, Area::ALL));
+        // A device's line that is not a table, `[device]` that is not one: nothing said, the file read.
+        for odd in [format!("language = \"fr\"\ndevice = 5\n"), format!("language = \"fr\"\n\n[device]\n\"{DESK}\" = \"work\"\n\"{PHONE}\" = {{ area = \"leisure\" }}\n")] {
+            let config: Config = toml::from_str(&odd).unwrap_or_else(|e| panic!("{odd}: {e}"));
+            assert_eq!(config.language.as_deref(), Some("fr"));
+            assert_eq!(said_area(&config, DESK), None, "{odd}");
+        }
+        let inline: Config = toml::from_str(&format!("[device]\n\"{PHONE}\" = {{ area = \"leisure\" }}\n")).unwrap();
+        assert_eq!(said_area(&inline, PHONE), Some(Area::LEISURE), "an inline table is a table");
+        // Through `Config::load`, as the window and the command line read it.
+        let dir = scratch("lenient");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, &text).unwrap();
+        assert_eq!(said_area(&Config::load(&path).unwrap(), DESK), Some(Area::WORK));
+        // Written over: the field takes the word, a line that is not a table becomes one.
+        set_name(&path, DESK, "Desk").unwrap();
+        assert_eq!(name_of(&Config::load(&path).unwrap(), DESK), Some("Desk"));
+        std::fs::write(&path, format!("language = \"fr\"\n\n[device]\n\"{DESK}\" = \"work\"\n")).unwrap();
+        set_area(&path, DESK, "leisure").unwrap();
+        assert_eq!(said_area(&Config::load(&path).unwrap(), DESK), Some(Area::LEISURE));
+        std::fs::write(&path, "language = \"fr\"\ndevice = 5\n").unwrap();
+        set_area(&path, DESK, "").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "language = \"fr\"\ndevice = 5\n", "nothing to take out: nothing written");
+        set_area(&path, DESK, "admin").unwrap();
+        let read = Config::load(&path).unwrap();
+        assert_eq!((read.language.as_deref(), said_area(&read, DESK)), (Some("fr"), Some(Area::ADMIN)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
