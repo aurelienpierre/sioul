@@ -113,6 +113,16 @@ impl Mode {
         self.here.keeps_back(area, self.time, self.week)
     }
 
+    /// Whether something for `area` is another device's: this device keeps
+    /// it back now, or is for it at no time of the week (`Here::is_for`).
+    /// Opened here all the same, through a door, it is read here only, and
+    /// "Done for now" does not close it for that device (docs/areas.md,
+    /// "Opened elsewhere"; review of phase 2, M5). Never with nothing said
+    /// of this device.
+    pub fn for_another(&self, area: Area) -> bool {
+        self.keeps_back(area) || !self.here.is_for(area, self.week)
+    }
+
     /// The areas that the hours bring now and this device does not, since it
     /// is not for them: they wait on the other devices. None with nothing
     /// said of this device.
@@ -902,7 +912,7 @@ mod tests {
         let areas = TaskAreas { work_categories: vec!["travail".into()], ..TaskAreas::usual() };
         let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
-        let at = |time: Time, mine: Line, other: Line| QuietTasks { time, week, areas: areas.clone(), no_movement: false, here: Lines { mine, others: vec![other] }.here(week) };
+        let at = |time: Time, mine: Line, other: Line| QuietTasks { time, week, areas: areas.clone(), no_movement: false, here: Lines::of(mine, &[other]).here(week) };
         let unsaid = |time: Time| QuietTasks { time, week, areas: areas.clone(), no_movement: false, here: Here::default() };
         // Work's task in working hours: on the computer, not on the phone.
         let (on_computer, on_phone) = (at(Time::Work, computer, phone), at(Time::Work, phone, computer));
@@ -920,7 +930,7 @@ mod tests {
         assert!(!asleep.keeps(&task(&["joy"])));
         // The time on a device: Friday evening on the work computer, leisure waits elsewhere; at noon, admin does
         // (it comes in working hours while it has none of its own); with nothing said, nothing does.
-        let lines = Lines { mine: computer, others: vec![phone] };
+        let lines = Lines::of(computer, &[phone]);
         let evening = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"));
         assert_eq!((evening.elsewhere(), evening.clone().on(&lines).elsewhere()), (Area::default(), Area::LEISURE));
         let noon = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T12:00[Europe/Paris]")).on(&lines);

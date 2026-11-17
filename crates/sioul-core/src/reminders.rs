@@ -238,6 +238,12 @@ pub struct Holds {
     pub now: attention::Now,
     /// When the time now ends, when known: what it holds is asked about again then.
     pub until: Option<i64>,
+    /// What each task's reminder is for, by its target (`sioul:task/<UID>`):
+    /// its task's own area (`TaskAreas::of`), which chooses the devices it
+    /// comes on, apart from its `work` flag, which holds it in time (review
+    /// of phase 2, M6: an admin task's reminder never goes to the work
+    /// computer for being out of view when work starts).
+    pub areas: std::collections::BTreeMap<String, crate::areas::Area>,
 }
 
 impl Holds {
@@ -253,7 +259,7 @@ impl Holds {
         };
         let mut now = attention::Now::time(column);
         now.span = span;
-        Holds { wait, attention: Attention::usual(), now, until }
+        Holds { wait, attention: Attention::usual(), now, until, areas: std::collections::BTreeMap::new() }
     }
 
     /// As the configuration says, at the time `mode` (Health's `blocks` for
@@ -269,7 +275,7 @@ impl Holds {
         };
         let mut now = attention::Now::of(mode).layers(attention::Slots::load(&attention::Slots::default_path()).holds(stamp), attention::dnd_from_files(config, stamp));
         now.span = span;
-        Holds { wait, attention: Attention::of(config), now, until }
+        Holds { wait, attention: Attention::of(config), now, until, areas: std::collections::BTreeMap::new() }
     }
 
     /// What the matrix says now of a reminder of this kind.
@@ -278,9 +284,10 @@ impl Holds {
     }
 
     /// The same on this device, by what the person said each device is for
-    /// (`quiet::Mode::on`): a work date waits on a device that is not for
-    /// work, for the device that is (docs/areas.md, "What each device is
-    /// for"). An event's own alarm and the time to leave never do.
+    /// (`quiet::Mode::on`): a task's reminder waits on a device for its
+    /// task's area at no time of the week, for a device that is (`areas`;
+    /// docs/areas.md, "What each device is for"). An event's own alarm and
+    /// the time to leave never do.
     pub fn on(mut self, lines: &crate::areas::Lines) -> Holds {
         self.now.here = lines.here(self.now.week);
         self
@@ -337,7 +344,7 @@ impl Reminder {
     /// (what a thing is for: work's reminders wait while work rests).
     pub fn ready_in(&self, now: i64, holds: &Holds) -> bool {
         let own = matches!(self.kind, Kind::Alarm | Kind::Before);
-        let event = attention::Event::own(row_of(self.kind)).starting(self.starts.filter(|_| own)).for_area(self.work.then_some(crate::areas::Area::WORK));
+        let event = attention::Event::own(row_of(self.kind)).starting(self.starts.filter(|_| own)).for_area(self.work.then_some(crate::areas::Area::WORK)).for_device(holds.areas.get(&self.target).copied());
         self.at <= now && now < self.until && holds.attention.decide(&event, &holds.now).told
     }
 }
@@ -880,7 +887,11 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
     let money = books.as_ref().map(|b| Money { movements: &b.movements, aheads: &aheads });
     let reminders = all(config, tr, now, &events, &tasks, ledger.as_ref(), &papers, &contracts, money.as_ref(), |t| situation.quiet_tasks.keeps(t));
-    (reminders, Holds::of(config, &situation.mode, &blocks, stamp))
+    let mut holds = Holds::of(config, &situation.mode, &blocks, stamp);
+    // Each task's reminder for its task's own area, on the devices for it (review of phase 2, M6).
+    // An asked date names its task as written, a wait by its address (`links::task_uri`): both read.
+    holds.areas = tasks.iter().flat_map(|t| [(crate::links::task_uri(&t.uid), situation.quiet_tasks.areas.of(t)), (format!("sioul:task/{}", t.uid), situation.quiet_tasks.areas.of(t))]).collect();
+    (reminders, holds)
 }
 
 /// The events' reminders alone (their alarms, Sioul's before them, the
@@ -1617,5 +1628,42 @@ mod tests {
         let work = Reminder { key: "asked:report".into(), work: true, ..personal.clone() };
         assert!(!personal.ready_in(now, &evening) && !work.ready_in(now, &evening));
         assert!(personal.ready(now, Wait::Work) && !work.ready(now, Wait::Work), "as usual, work's waits for work");
+    }
+
+    /// A task's reminder comes on the devices for its task's own area
+    /// (review of phase 2, M6): an admin task's date, out of view when work
+    /// starts (its `work` flag), comes then on the laptop for admin and
+    /// leisure, never on the computer for work, which tells work's; with
+    /// nothing said, on both, as before. A device for that area at no time
+    /// waits only while another device is: alone, it tells it. A task's
+    /// time is the hours' as before: an admin date waits in the evening.
+    #[test]
+    fn a_task_s_reminder_comes_on_the_devices_for_its_area() {
+        use crate::areas::{Area, Line, Lines};
+        let now = at("2026-10-07T09:00").timestamp().as_second();
+        let asked = |uid: &str| Reminder { key: format!("asked:{uid}"), kind: Kind::Asked, at: now - 60, until: now + 86_400, title: String::new(), body: String::new(), target: format!("sioul:task/{uid}"), work: true, starts: None, names: None, event: None };
+        let (passport, report) = (asked("passport"), asked("report"));
+        let (desk, laptop) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let holds = |wait: Wait, lines: &Lines| {
+            let mut holds = Holds::usual(wait);
+            holds.areas = [("sioul:task/passport".to_string(), Area::ADMIN), ("sioul:task/report".to_string(), Area::WORK)].into();
+            holds.on(lines)
+        };
+        let (on_desk, on_laptop) = (holds(Wait::Nothing, &Lines::of(desk, &[laptop])), holds(Wait::Nothing, &Lines::of(laptop, &[desk])));
+        assert!(!passport.ready_in(now, &on_desk) && passport.ready_in(now, &on_laptop), "admin's: on the laptop");
+        assert!(report.ready_in(now, &on_desk) && !report.ready_in(now, &on_laptop), "work's: on the desk");
+        // Nothing said: on both, as before.
+        let plain = holds(Wait::Nothing, &Lines::default());
+        assert!(passport.ready_in(now, &plain) && report.ready_in(now, &plain));
+        // The desk alone: admin is for no device that counts, so it tells it.
+        assert!(passport.ready_in(now, &holds(Wait::Nothing, &Lines::of(desk, &[]))));
+        // In the evening, work's flag holds both in time, on every device.
+        for lines in [Lines::of(desk, &[laptop]), Lines::of(laptop, &[desk]), Lines::default()] {
+            assert!(!passport.ready_in(now, &holds(Wait::Work, &lines)) && !report.ready_in(now, &holds(Wait::Work, &lines)));
+        }
+        // Reachable: nothing is held by a device.
+        let mut reachable = holds(Wait::Nothing, &Lines::of(desk, &[laptop]));
+        reachable.now.reachable = true;
+        assert!(passport.ready_in(now, &reachable));
     }
 }

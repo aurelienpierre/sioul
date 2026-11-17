@@ -30,7 +30,6 @@
 //! newsletters unless asked, and mail read elsewhere before it came here. Each message once, by its account and
 //! Message-ID, told or waiting (`Ledger`), on this device.
 
-use crate::areas::Area;
 use crate::i18n::Translator;
 use crate::porch::{Lane, Reason, Triaged};
 use serde::{Deserialize, Serialize};
@@ -68,12 +67,6 @@ pub struct Letter {
     /// The message itself, whichever of your addresses it came to
     /// (`message_key`): told once across your addresses and your devices.
     pub message: String,
-    /// What the address it came to is for, when that chooses the device
-    /// that tells it (`attention::Output::dispatched`, `with_areas`): among
-    /// the devices it comes forward on now, the one used last. None: the
-    /// device used last of all, as before (Always through, Reachable, an
-    /// address nobody classified for your safe senders).
-    pub area: Option<Area>,
 }
 
 impl Letter {
@@ -88,18 +81,8 @@ impl Letter {
             file: t.card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
             arrived: t.card.path.as_deref().map_or(0, arrived_at),
             message: message_key(t),
-            area: None,
         }
     }
-}
-
-/// `letters`, each with the area that chooses the device that tells it
-/// (`Letter::area`), as `area` says of its message among `items`.
-pub fn with_areas(mut letters: Vec<Letter>, items: &[Triaged], area: impl Fn(&Triaged) -> Option<Area>) -> Vec<Letter> {
-    for letter in &mut letters {
-        letter.area = items.iter().find(|t| key(t) == letter.key).and_then(&area);
-    }
-    letters
 }
 
 /// A message's own key, whichever of your addresses it came to (review of
@@ -356,10 +339,11 @@ pub fn never(t: &Triaged, newsletters: bool) -> bool {
 pub fn moment(now: &crate::attention::Now, may: bool) -> String {
     let columns: Vec<&str> = now.times.iter().map(|c| c.id()).collect();
     let moment = format!("{}:{}:{}:{}:{}:{may}", now.time.id(), columns.join("+"), now.slot, now.dnd, now.nothing);
-    // On a device the person said something of, what comes forward on it now is part of the
-    // moment: a cell changed, or a line said, begins a time as the hours do. With nothing
-    // said, the moment's words are as they were.
-    if now.here.narrows() { format!("{moment}:{}", crate::areas::Line::cell_id(now.here.cell(now.time, now.week))) } else { moment }
+    // Where a device narrows what comes (docs/areas.md, "Which device tells"), what comes forward
+    // on the device read now, and what no device holds, are part of the moment: a cell changed,
+    // a line said, a device that counts again or no more, begins a time as the hours do, and
+    // what waited is judged again. With nothing said, the moment's words are as they were.
+    if now.here.narrows() { format!("{moment}:{}:{}", crate::areas::Line::cell_id(now.here.cell(now.time, now.week)), crate::areas::Line::cell_id(now.here.unheld)) } else { moment }
 }
 
 /// What becomes of a new message now, as the matrix says of its sender.
@@ -614,7 +598,7 @@ mod tests {
         assert_eq!(batch(&fr, &sorted.now[..1]).0, "Un courriel");
         assert_eq!(batch(&en, &sorted.now[..1]).0, "One e-mail");
         // Past twelve, digits; three named at most; a message without a subject says so.
-        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}"), area: None }).collect();
+        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") }).collect();
         assert_eq!(batch(&en, &many), ("13 e-mails".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
 
         // Marked once, by account and Message-ID: fetched again, nothing; the same message in another
@@ -680,7 +664,7 @@ mod tests {
     #[test]
     fn each_letter_named_opens_itself() {
         let en = Translator::new("en");
-        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}"), area: None };
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0, message: format!("id:{i}") };
         let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
         let open = openers(&en, &two);
         assert_eq!(open.iter().map(|o| (o.label.as_str(), o.address.as_str(), o.hint.as_str())).collect::<Vec<_>>(), [("Ana, Lunch", "mid:letter-1@example.org", "/mail/home/cur/1.sioul"), ("Noa, The lease", "mid:letter-2@example.org", "/mail/home/cur/2.sioul")]);
@@ -708,7 +692,7 @@ mod tests {
         assert_eq!(watch.look("work", 30_660), 30_600, "the same moment, a minute on");
         assert_eq!(watch.look("work", 30_660 + 30 * 60), 30_600, "half an hour on: a phone's step late");
         // The night's mail, fetched after a computer was off: it waited.
-        let at = |arrived: i64| Letter { key: arrived.to_string(), sender: "Ana".into(), subject: "Lunch".into(), through: false, address: String::new(), notice: String::new(), file: String::new(), arrived, message: format!("id:{arrived}"), area: None };
+        let at = |arrived: i64| Letter { key: arrived.to_string(), sender: "Ana".into(), subject: "Lunch".into(), through: false, address: String::new(), notice: String::new(), file: String::new(), arrived, message: format!("id:{arrived}") };
         assert!(any_waited(&[at(30_700), at(7_200)], 30_600));
         assert!(!any_waited(&[at(30_700), at(0)], 30_600), "arrived since, or when unknown: new");
         assert!(!any_waited(&[at(30_600 - LATE + 1)], 30_600), "a minute before the watch began: new still");
@@ -808,19 +792,23 @@ mod tests {
     }
 
     /// Where the person said what each device is for: a friend's mail to
-    /// the personal address in the evening is told on the phone, with the
-    /// area that chooses its device; on the work computer it waits in the
-    /// ledger, never told there. The moment's words are as they were on a
-    /// device nothing is said of, and carry the device's cell on one that narrows.
+    /// the personal address in the evening comes forward on the phone; on
+    /// the work computer it waits in the ledger, shown on its Porch, never
+    /// told there while the computer is for work alone. Read as the phone
+    /// (the keeper of the notices: `Lines::mine` its cells), the computer
+    /// finds it told now and claims it without a word (docs/areas.md, "Which
+    /// device tells"). The moment's words are as they were on a device
+    /// nothing is said of, and carry the cell read and what no device holds
+    /// on one that narrows.
     #[test]
     fn mail_waits_on_a_device_that_is_not_for_its_address() {
-        use crate::areas::{Line, Lines};
+        use crate::areas::{Area, Cells, Line, Lines, Other};
         use crate::attention::{Attention, Event, Lane as MailLane, Level, Now, Source};
         let senders = Senders { safe: crate::porch::SenderList::parse("ana@example.org"), ..Senders::default() };
         let ana = message("home", "Ana <ana@example.org>", "", "Dinner on Friday", "21@example.org", &senders, crate::config::Priority::default());
         let attention = Attention::usual();
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
-        let evening = |mine: Line, other: Line| mode(Time::Leisure, Why::Evening).on(&Lines { mine, others: vec![other] });
+        let evening = |lines: Lines| mode(Time::Leisure, Why::Evening).on(&lines);
         let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::PERSONAL)), &Now::of(m));
         let fate = |m: Mode| {
             let decided = &decided;
@@ -830,24 +818,28 @@ mod tests {
                 _ => Fate::Later,
             }
         };
-        let on_phone = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(phone, computer)));
-        let told = with_areas(on_phone.now, &[ana.clone()], |t| decided(t, &evening(phone, computer)).dispatched.then_some(Area::PERSONAL));
-        assert_eq!(told.iter().map(|l| (l.sender.as_str(), l.area)).collect::<Vec<_>>(), [("Ana", Some(Area::PERSONAL))]);
-        let on_computer = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(computer, phone)));
+        let on_phone = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(Lines::of(phone, &[computer]))));
+        assert_eq!(on_phone.now.iter().map(|l| l.sender.as_str()).collect::<Vec<_>>(), ["Ana"]);
+        let on_computer = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(Lines::of(computer, &[phone]))));
         assert_eq!((on_computer.now.len(), on_computer.later.clone(), on_computer.never.len()), (0, vec![key(&ana)], 0), "it waits there, shown on the Porch");
-        // It never comes there while the computer is for work alone: no time of its week tells it.
+        // The computer read as the phone, which keeps the notices: told there now, so claimed here.
+        let week = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
+        let as_phone = Lines { mine: Cells::of(phone, week), key: None, others: vec![Other { cells: Cells::Line(computer), acts_on: None }] };
+        assert_eq!(sort(&[ana.clone()], &Ledger::default(), false, fate(evening(as_phone))).now.len(), 1);
+        // It never comes on the computer while it is for work alone: no time of its week tells it.
         let mut ledger = Ledger::default();
         ledger.wait(&key(&ana), 100);
         for (time, why) in [(Time::Work, Why::Working), (Time::Leisure, Why::Evening), (Time::Meals, Why::Meal)] {
-            let there = mode(time, why).on(&Lines { mine: computer, others: vec![phone] });
+            let there = mode(time, why).on(&Lines::of(computer, &[phone]));
             assert!(waited(&[ana.clone()], &ledger, false, |t| decided(t, &there).told).is_empty(), "{time:?}");
         }
-        // The moment: as it was with nothing said; with the cell on a device that narrows, so that a line said or a cell changed begins a time.
+        // The moment: as it was with nothing said; with the cell read and what no device holds on a device that narrows.
         let plain = mode(Time::Leisure, Why::Evening);
         assert_eq!(moment(&Now::of(&plain), true), "leisure:leisure:false:false:false:true");
-        assert_eq!(moment(&Now::of(&plain.clone().on(&Lines { mine: Line::default(), others: vec![computer] })), true), "leisure:leisure:false:false:false:true");
-        assert_eq!(moment(&Now::of(&evening(computer, phone)), true), "leisure:leisure:false:false:false:true:none");
-        assert_eq!(moment(&Now::of(&evening(phone, computer)), true), "leisure:leisure:false:false:false:true:leisure");
+        assert_eq!(moment(&Now::of(&plain.clone().on(&Lines::of(Line::default(), &[computer]))), true), "leisure:leisure:false:false:false:true");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(computer, &[phone]))), true), "leisure:leisure:false:false:false:true:none:none");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(phone, &[computer]))), true), "leisure:leisure:false:false:false:true:leisure:none");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(computer, &[]))), true), "leisure:leisure:false:false:false:true:leisure:admin+leisure", "the phone no longer counts: leisure comes here");
     }
 
     #[test]

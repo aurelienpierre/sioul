@@ -213,6 +213,12 @@ impl Week {
             Time::Several(open) => (open.work && self.work_hours) || (open.admin && self.admin_hours),
         }
     }
+
+    /// Whether working or admin hours are set at all: without either, the
+    /// day is `Time::Any`, and no work or admin cell is ever in force.
+    pub fn has_hours(self) -> bool {
+        self.work_hours || self.admin_hours
+    }
 }
 
 /// What `time` brings (docs/areas.md, "What each time brings"): the areas
@@ -322,11 +328,15 @@ impl Line {
         }
     }
 
-    /// Every area the device is for at some time: its five cells together,
-    /// and, while the week sets no hours at all, what it is for.
+    /// Every area that comes forward on the device at some time of `week`:
+    /// the cells of the times the week has (a time it lacks never comes, so
+    /// its cell is in force nowhere: review of phase 2, M2), each with what
+    /// the time lends (admin in work's cells while admin has no hours of its
+    /// own, work in admin's while work has none: `brought`), and, while the
+    /// week sets no hours at all, what it is for (the day is `Time::Any`).
     pub fn holds(self, week: Week) -> Area {
-        let cells = Time::STATES.into_iter().fold(Area::default(), |all, time| all.with(self.cell(time, week)));
-        if week.work_hours || week.admin_hours { cells } else { cells.with(self.is_for()) }
+        let cells = Time::STATES.into_iter().filter(|time| week.has(*time)).fold(Area::default(), |all, time| all.with(self.cell(time, week)));
+        if week.has_hours() { cells } else { cells.with(self.is_for()) }
     }
 
     /// A cell as the settings write it: "work", "admin+leisure", `NOTHING`.
@@ -350,81 +360,227 @@ fn slot(time: Time) -> Option<usize> {
     Time::STATES.iter().position(|t| *t == time)
 }
 
+/// What comes forward on one device at each time: its line, read in the
+/// week of whoever reads it, or the cells it says of itself in its sealed
+/// entry (docs/areas.md, "Which device tells"; sioul-sync's
+/// `devices::Entry::cells`). `Cells::default()` is a line nothing is said
+/// in: what the hours bring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Cells {
+    /// A line (`Line::cell`): this device's own, as its settings say.
+    Line(Line),
+    /// What a device says of itself: each of the five times
+    /// (`Time::STATES`) its own week has, the areas then (none for a time
+    /// its week lacks); and what it is for (`any`), which is what comes
+    /// while no hours are set at all.
+    Said { at: [Option<Area>; 5], any: Area },
+}
+
+impl Default for Cells {
+    fn default() -> Cells {
+        Cells::Line(Line::default())
+    }
+}
+
+impl From<Line> for Cells {
+    fn from(line: Line) -> Cells {
+        Cells::Line(line)
+    }
+}
+
+impl Cells {
+    /// What a device says of itself, its line read in its own week: the
+    /// times its week has, and what it is for.
+    pub fn of(line: Line, week: Week) -> Cells {
+        Cells::Said { at: Time::STATES.map(|time| week.has(time).then(|| line.cell(time, week))), any: line.is_for() }
+    }
+
+    /// Whether it narrows anything: a line something is said in, or a
+    /// device that says its cells.
+    pub fn narrows(self) -> bool {
+        match self {
+            Cells::Line(line) => !line.says_nothing(),
+            Cells::Said { .. } => true,
+        }
+    }
+
+    /// The areas that come forward on the device in `time`. Said cells: a
+    /// time its own week lacks brings nothing there; no hours known, what it
+    /// is for; working and admin hours at once, both cells.
+    pub fn cell(self, time: Time, week: Week) -> Area {
+        match self {
+            Cells::Line(line) => line.cell(time, week),
+            Cells::Said { at, any } => match time {
+                Time::Any => any,
+                Time::Several(open) => {
+                    let at = |on: bool, time: Time| if on { slot(time).and_then(|s| at[s]).unwrap_or_default() } else { Area::default() };
+                    at(open.work, Time::Work).with(at(open.admin, Time::Admin))
+                }
+                one => slot(one).and_then(|s| at[s]).unwrap_or_default(),
+            },
+        }
+    }
+
+    /// Every area that comes forward on the device at some time of its
+    /// week (`Line::holds`): said cells, those its week has, and what it is
+    /// for when that week sets no hours.
+    pub fn holds(self, week: Week) -> Area {
+        match self {
+            Cells::Line(line) => line.holds(week),
+            Cells::Said { at, any } => {
+                let cells = at.iter().flatten().fold(Area::default(), |all, cell| all.with(*cell));
+                if at[0].is_some() || at[1].is_some() { cells } else { cells.with(any) }
+            }
+        }
+    }
+
+    /// As a device's entry says them (`devices::Entry::cells`): by time,
+    /// `Line::cell_id` ("work+leisure", "none"); `any`, what it is for. Empty
+    /// for a line nothing is said in: the entry then says nothing of its cells.
+    pub fn words(self, week: Week) -> std::collections::BTreeMap<String, String> {
+        if !self.narrows() {
+            return std::collections::BTreeMap::new();
+        }
+        let Cells::Said { at, any } = (match self {
+            Cells::Line(line) => Cells::of(line, week),
+            said => said,
+        }) else {
+            return std::collections::BTreeMap::new();
+        };
+        let mut words: std::collections::BTreeMap<String, String> = Time::STATES.into_iter().zip(at).filter_map(|(time, cell)| cell.map(|cell| (time.id().to_string(), Line::cell_id(cell)))).collect();
+        words.insert(ANY.to_string(), Line::cell_id(any));
+        words
+    }
+
+    /// Read from an entry's words (`words`): none said, a line nothing is
+    /// said in; a time or words this Sioul does not know, passed over (that
+    /// time brings nothing there); `any` missing, everything.
+    pub fn read(words: &std::collections::BTreeMap<String, String>) -> Cells {
+        if words.is_empty() {
+            return Cells::default();
+        }
+        let at = Time::STATES.map(|time| words.get(time.id()).and_then(|cell| Line::read_cell(cell)));
+        Cells::Said { at, any: words.get(ANY).and_then(|cell| Line::read_cell(cell)).unwrap_or(Area::ALL) }
+    }
+
+    /// The words as one line, the same for the same cells on every device:
+    /// what a device says it acts on of another (`devices::Entry::known`);
+    /// "" for a line nothing is said in.
+    pub fn key(words: &std::collections::BTreeMap<String, String>) -> String {
+        words.iter().map(|(time, cell)| format!("{time}={cell}")).collect::<Vec<_>>().join(";")
+    }
+}
+
+/// The key of what comes while no hours are set, in a device's said cells.
+pub const ANY: &str = "any";
+
 /// This device among the person's devices (docs/areas.md, "What each device
-/// is for"): its line, and what the lines of every device that counts say
+/// is for"): its cells, and what the cells of every device that counts say
 /// together. `Here::default()` is a device nobody said anything of, alone:
 /// it narrows nothing, and every answer is the hours' own (`in_view`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Here {
-    /// What the person said of this device.
+    /// This device's own line, as its settings say it (the task pages read
+    /// whether a cell was changed: `quiet::QuietTasks`); a line that says
+    /// nothing when the device is read as another one, the keeper of the
+    /// notices (`Lines::mine`).
     pub line: Line,
+    /// What comes forward on the device read: its line, or the cells
+    /// another device says of itself.
+    pub mine: Cells,
     /// For each of the five times (`Time::STATES`), the areas that come
     /// forward then on some device that counts, this one included.
     pub somewhere: [Area; 5],
-    /// The areas no device that counts is for, at any time: no device
-    /// narrows them, so that a phone lost or forgotten never makes what was
-    /// for it vanish from every device.
+    /// The areas no device that counts brings at any time of the week: no
+    /// device narrows them, so that a phone lost or forgotten never makes
+    /// what was for it vanish from every device.
     pub unheld: Area,
 }
 
-/// The lines of the devices that count, as this device knows them: its own,
-/// and the others' whose Sioul follows what devices are for (an older one
-/// is left out: `Here::among`). `Lines::default()`: nothing said of any device.
+/// What a device knows of the devices that count, to read one of them
+/// (docs/areas.md, "Which device tells"): the device read (`mine`: this
+/// one's own line, or the cells the keeper of the notices says of itself),
+/// and the others that count with it. A device whose Sioul is older is left
+/// out by whoever lists them: it never holds a thing for later.
+/// `Lines::default()`: nothing said of any device.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Lines {
-    pub mine: Line,
-    pub others: Vec<Line>,
+    pub mine: Cells,
+    /// The device read's cells as the others name them (`Cells::key` of
+    /// what its entry says); none: its line's own, in the week read.
+    pub key: Option<String>,
+    pub others: Vec<Other>,
+}
+
+/// Another device that counts, as the device reading knows it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Other {
+    /// What comes forward on it, as its entry says.
+    pub cells: Cells,
+    /// What it says it acts on of the device read (`Cells::key`); none:
+    /// not asked. It holds a thing for later only once it acts on the
+    /// device read's own cells: until then it might claim on a word the
+    /// device read no longer says, and the device read tells for it
+    /// (review of phase 2, H1 and M3).
+    pub acts_on: Option<String>,
 }
 
 impl Lines {
-    /// This device among them, in a week.
-    pub fn here(&self, week: Week) -> Here {
-        Here::among(self.mine, &self.others, week)
+    /// A device's own line among others' lines (tests, and a device alone).
+    pub fn of(mine: Line, others: &[Line]) -> Lines {
+        Lines { mine: Cells::Line(mine), key: None, others: others.iter().map(|line| Other { cells: Cells::Line(*line), acts_on: None }).collect() }
     }
 
-    /// Nothing said of this device: it narrows nothing.
+    /// The device read among them, in a week: with the others that act on its own cells.
+    pub fn here(&self, week: Week) -> Here {
+        let key = self.key.clone().unwrap_or_else(|| Cells::key(&self.mine.words(week)));
+        let counted: Vec<Cells> = self.others.iter().filter(|other| other.acts_on.as_ref().is_none_or(|on| *on == key)).map(|other| other.cells).collect();
+        Here::among(self.mine, &counted, week)
+    }
+
+    /// Nothing said of the device read: it narrows nothing.
     pub fn say_nothing(&self) -> bool {
-        self.mine.says_nothing()
+        !self.mine.narrows()
     }
 }
 
 impl Here {
-    /// This device (`mine`) among the `others` that count, in a week. A
+    /// A device (`mine`) among the `others` that count, in a week. A
     /// device whose Sioul does not follow what devices are for yet is left
-    /// out: it tells by the rule before, so nothing it could be for is
-    /// counted as held, and an older Sioul never leaves a thing for nobody.
-    pub fn among(mine: Line, others: &[Line], week: Week) -> Here {
+    /// out by whoever lists them: it never keeps a thing back for later, so
+    /// nothing it could be for is counted as held by it.
+    pub fn among(mine: Cells, others: &[Cells], week: Week) -> Here {
         let all = || std::iter::once(mine).chain(others.iter().copied());
-        let somewhere = Time::STATES.map(|time| all().fold(Area::default(), |held, line| held.with(line.cell(time, week))));
-        let held = all().fold(Area::default(), |held, line| held.with(line.holds(week)));
-        Here { line: mine, somewhere, unheld: Area::ALL.but(held) }
+        let somewhere = Time::STATES.map(|time| if week.has(time) { all().fold(Area::default(), |held, cells| held.with(cells.cell(time, week))) } else { Area::default() });
+        let held = all().fold(Area::default(), |held, cells| held.with(cells.holds(week)));
+        let line = match mine {
+            Cells::Line(line) => line,
+            Cells::Said { .. } => Line::default(),
+        };
+        Here { line, mine, somewhere, unheld: Area::ALL.but(held) }
     }
 
     /// This device alone: no other counts.
     pub fn alone(mine: Line, week: Week) -> Here {
-        Here::among(mine, &[], week)
+        Here::among(Cells::Line(mine), &[], week)
     }
 
-    /// The same devices, read as another of them (`line`): what comes
-    /// forward there.
-    pub fn as_device(self, line: Line) -> Here {
-        Here { line, ..self }
-    }
-
-    /// Whether this device narrows anything: the person said something of it.
+    /// Whether this device narrows anything: the person said something of
+    /// it, or it is read as a device that says its cells.
     pub fn narrows(&self) -> bool {
-        !self.line.says_nothing()
+        self.mine.narrows()
     }
 
     /// The areas that come forward on this device in `time`: its cell
-    /// (`Line::cell`), and what the time brings of the areas no device is
+    /// (`Cells::cell`), and what the time brings of the areas no device is
     /// for (`unheld`).
     pub fn cell(&self, time: Time, week: Week) -> Area {
-        self.line.cell(time, week).with(self.unheld.both(brought(time, week)))
+        self.mine.cell(time, week).with(self.unheld.both(brought(time, week)))
     }
 
     /// The areas that come forward in `time` on some device that counts
-    /// (one of the five times; working and admin hours at once, both).
+    /// (one of the five times; working and admin hours at once, both; no
+    /// hours set, what some device is for).
     pub fn anywhere(&self, time: Time, week: Week) -> Area {
         let held = match time {
             Time::Any => Area::ALL.but(self.unheld),
@@ -446,6 +602,13 @@ impl Here {
             return in_view(area, time, week);
         }
         area.meets(self.cell(time, week))
+    }
+
+    /// Whether this device is for something for `area` at some time of the
+    /// week: its cells hold it, or no device that counts does. A device
+    /// nobody said anything of, and a thing whose area is unsaid: yes.
+    pub fn is_for(&self, area: Area, week: Week) -> bool {
+        !self.narrows() || area.is_empty() || area.meets(self.mine.holds(week).with(self.unheld))
     }
 
     /// Whether this device, and not the hour, keeps something for `area`
@@ -641,6 +804,11 @@ mod tests {
         assert_eq!(brought(Time::Several(Area::LEISURE), set), Area::default(), "leisure has no hours to open");
     }
 
+    /// A device's line among others' lines, in a week.
+    fn among(mine: Line, others: &[Line], week: Week) -> Here {
+        Lines::of(mine, others).here(week)
+    }
+
     /// With nothing said of this device, nothing changes: whatever the other
     /// devices' lines say, every answer is the hours' own. A thing with no
     /// area keeps the hours' answer on every device, whatever its line says.
@@ -656,11 +824,11 @@ mod tests {
                     assert_eq!(Here::default().brings(*area, *time, *week), hours);
                     assert!(!Here::default().keeps_back(*area, *time, *week));
                     for others in &others {
-                        assert_eq!(Here::among(Line::default(), others, *week).brings(*area, *time, *week), hours, "{area:?} {time:?} {week:?} {others:?}");
+                        assert_eq!(among(Line::default(), others, *week).brings(*area, *time, *week), hours, "{area:?} {time:?} {week:?} {others:?}");
                     }
                 }
                 for line in &lines {
-                    let here = Here::among(*line, &[Line::for_area(Area::LEISURE)], *week);
+                    let here = among(*line, &[Line::for_area(Area::LEISURE)], *week);
                     assert_eq!(here.brings(Area::default(), *time, *week), in_view(Area::default(), *time, *week), "a thing with no area: {line:?} {time:?}");
                 }
             }
@@ -684,7 +852,7 @@ mod tests {
         assert_eq!((phone.cell(Time::Several(Area::MIXED), own), computer.cell(Time::Several(Area::MIXED), own)), (Area::ADMIN, Area::WORK));
         assert_eq!((phone.cell(Time::Any, Week::default()), unsaid.cell(Time::Any, Week::default())), (Area::PERSONAL, Area::ALL));
         // On each device, a thing comes forward when its area meets the cell.
-        let at = |mine: Line, others: &[Line]| Here::among(mine, others, own);
+        let at = |mine: Line, others: &[Line]| among(mine, others, own);
         let (on_computer, on_phone) = (at(computer, &[phone]), at(phone, &[computer]));
         assert!(on_computer.brings(Area::WORK, Time::Work, own) && !on_phone.brings(Area::WORK, Time::Work, own));
         assert!(!on_computer.brings(Area::LEISURE, Time::Leisure, own) && on_phone.brings(Area::LEISURE, Time::Leisure, own));
@@ -723,7 +891,7 @@ mod tests {
         for week in &weeks {
             let alone = Here::alone(computer, *week);
             assert_eq!(alone.unheld, Area::PERSONAL);
-            let with_phone = Here::among(computer, &[phone], *week);
+            let with_phone = among(computer, &[phone], *week);
             assert_eq!(with_phone.unheld, Area::default());
             for time in &times {
                 for area in &areas {
@@ -735,7 +903,7 @@ mod tests {
         let own = Week { work_hours: true, admin_hours: true, meals: false, sleep: true };
         // A phone for leisure alone beside it: admin is for no device, and comes as the hours say on both.
         let leisure_phone = Line::for_area(Area::LEISURE);
-        let (on_computer, on_phone) = (Here::among(computer, &[leisure_phone], own), Here::among(leisure_phone, &[computer], own));
+        let (on_computer, on_phone) = (among(computer, &[leisure_phone], own), among(leisure_phone, &[computer], own));
         assert_eq!((on_computer.unheld, on_phone.unheld), (Area::ADMIN, Area::ADMIN));
         assert!(on_computer.brings(Area::ADMIN, Time::Admin, own) && on_phone.brings(Area::ADMIN, Time::Admin, own) && !on_computer.brings(Area::ADMIN, Time::Leisure, own));
         assert!(!on_computer.brings(Area::LEISURE, Time::Leisure, own) && on_phone.brings(Area::LEISURE, Time::Leisure, own));
@@ -748,9 +916,96 @@ mod tests {
         assert_eq!(here.unheld, Area::ADMIN);
         assert!(here.brings(Area::LEISURE, Time::Work, own) && !here.brings(Area::LEISURE, Time::Leisure, own));
         // A device nothing is said of beside it: everything comes there, so nothing is unheld.
-        assert_eq!(Here::among(computer, &[Line::default()], own).unheld, Area::default());
+        assert_eq!(among(computer, &[Line::default()], own).unheld, Area::default());
         // No hours at all: what each device is for counts.
-        assert_eq!(Here::among(computer.with_cell(Time::Work, Some(Area::default())), &[], Week::default()).unheld, Area::PERSONAL);
+        assert_eq!(among(computer.with_cell(Time::Work, Some(Area::default())), &[], Week::default()).unheld, Area::PERSONAL);
+    }
+
+    /// A cell in force only at a time the week lacks holds nothing (review
+    /// of phase 2, M2): admin without hours of its own, a phone whose work
+    /// cell was changed to leisure is for admin at no time the week has, so
+    /// admin is for no device and comes as the hours say on each; the times
+    /// lent count (admin in work's cell while it has no hours, and work in
+    /// admin's while work has none); meals unset, a leisure kept to meals is
+    /// held nowhere.
+    #[test]
+    fn only_the_times_the_week_has_hold_an_area() {
+        let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let lent = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
+        let friends = phone.with_cell(Time::Work, Some(Area::LEISURE));
+        assert_eq!(friends.holds(lent), Area::LEISURE, "its admin cell is in force at no time of this week");
+        let (on_computer, on_phone) = (among(computer, &[friends], lent), among(friends, &[computer], lent));
+        assert_eq!((on_computer.unheld, on_phone.unheld), (Area::ADMIN, Area::ADMIN));
+        assert!(on_computer.brings(Area::ADMIN, Time::Work, lent) && on_phone.brings(Area::ADMIN, Time::Work, lent), "comes as the hours say on both");
+        // Lent: admin in work's cell; and work in admin's while work has no hours.
+        assert_eq!(phone.holds(lent), Area::PERSONAL);
+        assert_eq!(computer.holds(Week { work_hours: false, admin_hours: true, ..lent }), Area::WORK);
+        // Meals unset: a leisure that comes only at meals comes at no time.
+        let at_meals = Line::for_area(Area::LEISURE).with_cell(Time::Leisure, Some(Area::default())).with_cell(Time::Sleep, Some(Area::default()));
+        let no_meals = Week { meals: false, ..lent };
+        assert_eq!((at_meals.holds(lent), at_meals.holds(no_meals)), (Area::LEISURE, Area::default()));
+        assert_eq!(among(computer, &[at_meals], no_meals).unheld, Area::PERSONAL);
+    }
+
+    /// What a device says of itself in its entry (`Cells::words`): the
+    /// cells of the times its week has, and what it is for; nothing for a
+    /// line nothing is said in. Read back, the same answers as its line,
+    /// whatever week reads them; a time its week lacks brings nothing there;
+    /// unknown words passed over.
+    #[test]
+    fn a_device_says_its_cells_and_is_read_by_them() {
+        let own = Week { work_hours: true, admin_hours: true, meals: false, sleep: true };
+        let phone = Line::for_area(Area::PERSONAL).with_cell(Time::Work, Some(Area::LEISURE));
+        let words = Cells::Line(phone).words(own);
+        assert_eq!(words.iter().map(|(t, c)| format!("{t}={c}")).collect::<Vec<_>>(), ["admin=admin", "any=admin+leisure", "leisure=leisure", "sleep=leisure", "work=leisure"]);
+        assert_eq!(Cells::key(&words), "admin=admin;any=admin+leisure;leisure=leisure;sleep=leisure;work=leisure");
+        let said = Cells::read(&words);
+        assert_eq!(said, Cells::of(phone, own));
+        for time in [Time::Work, Time::Admin, Time::Leisure, Time::Sleep, Time::Any, Time::Several(Area::MIXED)] {
+            assert_eq!(said.cell(time, own), phone.cell(time, own), "{time:?}");
+        }
+        assert_eq!((said.cell(Time::Meals, own), said.holds(own)), (Area::default(), phone.holds(own)));
+        // Nothing said: nothing in the entry, read as the hours.
+        assert!(Cells::Line(Line::default()).words(own).is_empty() && Cells::key(&std::collections::BTreeMap::new()).is_empty());
+        assert_eq!(Cells::read(&std::collections::BTreeMap::new()), Cells::default());
+        assert!(!Cells::default().narrows() && said.narrows());
+        // Words this Sioul does not know: passed over.
+        let odd: std::collections::BTreeMap<String, String> = [("work", "often"), ("later", "work"), ("leisure", "leisure")].into_iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        assert_eq!(Cells::read(&odd), Cells::Said { at: [None, None, Some(Area::LEISURE), None, None], any: Area::ALL });
+        // Read as the device it is, among others: the same as its own line there.
+        let computer = Line::for_area(Area::WORK);
+        for time in [Time::Work, Time::Admin, Time::Leisure] {
+            for area in [Area::WORK, Area::ADMIN, Area::LEISURE] {
+                let (from_line, from_said) = (among(phone, &[computer], own), Lines { mine: said, key: None, others: vec![Other { cells: Cells::Line(computer), acts_on: None }] }.here(own));
+                assert_eq!(from_line.brings(area, time, own), from_said.brings(area, time, own), "{area:?} {time:?}");
+            }
+        }
+    }
+
+    /// Another device holds a thing for later only once it says it acts on
+    /// the cells of the device read (review of phase 2, H1, M3): a phone
+    /// that still acts on the computer's line before it changed, or on no
+    /// word of it, is left out, and what only it holds comes on the computer
+    /// as the hours say; once it acts on the computer's own cells, it holds
+    /// leisure. Read as the keeper (`key` said), the key is the one its
+    /// entry says, even with words this Sioul does not know.
+    #[test]
+    fn another_device_holds_a_thing_only_once_it_acts_on_these_cells() {
+        let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let key = Cells::key(&Cells::Line(computer).words(week));
+        let with = |acts_on: Option<&str>| Lines { mine: Cells::Line(computer), key: None, others: vec![Other { cells: Cells::Line(phone), acts_on: acts_on.map(str::to_string) }] }.here(week);
+        assert_eq!(with(Some(&key)).unheld, Area::default());
+        for stale in [Some(""), Some("any=all"), Some("work=work;any=work")] {
+            let here = with(stale);
+            assert_eq!(here.unheld, Area::PERSONAL, "{stale:?}");
+            assert!(here.brings(Area::LEISURE, Time::Leisure, week), "{stale:?}: told on the computer");
+        }
+        assert_eq!(with(None).unheld, Area::default(), "not asked: it counts as it is");
+        // Read as the keeper: its entry's own key.
+        let said: std::collections::BTreeMap<String, String> = [("work", "work"), ("any", "work"), ("later", "x")].into_iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        let as_keeper = |acts_on: &str| Lines { mine: Cells::read(&said), key: Some(Cells::key(&said)), others: vec![Other { cells: Cells::Line(phone), acts_on: Some(acts_on.to_string()) }] }.here(week);
+        assert_eq!((as_keeper(&Cells::key(&said)).unheld, as_keeper("any=work;work=work").unheld), (Area::default(), Area::PERSONAL));
     }
 
     /// A source file's code: what comes before its tests, its comment lines left out.
@@ -784,53 +1039,90 @@ mod tests {
 
     /// Every caller of the rule, sorted (docs/areas.md, "What each device is
     /// for"): a caller about what this device shows or tells now asks the
-    /// device (`Here::brings`, `keeps_back`, through `Mode` or `Now`); one
-    /// about the person's own week asks the hours (`in_view`). Each file
-    /// that calls either is named here with how many calls of each it holds
-    /// and why; a new call fails until it is sorted, and the failure gives
-    /// the line to add or change. With nothing said of a device, the two
-    /// answer alike (`a_device_nothing_is_said_of_narrows_nothing`), so that
-    /// nothing a caller shows or tells changes until the person says what a
-    /// device is for.
+    /// device (`Here::brings`, `keeps_back`, `anywhere`, `is_for`,
+    /// `elsewhere`, `for_another`, a cell read, through `Mode` or `Now`); one about the
+    /// person's own week asks the hours (`in_view`); and each time made
+    /// (`quiet::mode`, `Situation::now`, `reach::Clock::load`) is given this
+    /// device's lines (`.on(..)`) or is named here as one read by the hours
+    /// alone (review of phase 2, L3). Each file that does either is named
+    /// with its counts and why; a new call fails until it is sorted, and the
+    /// failure gives the line to add or change. With nothing said of a
+    /// device, the two rules answer alike
+    /// (`a_device_nothing_is_said_of_narrows_nothing`), so that nothing a
+    /// caller shows or tells changes until the person says what a device is for.
     #[test]
     fn every_caller_of_the_rule_is_sorted() {
-        // (file, calls of the hours' rule, calls of the device's rule, why)
-        let sorted: [(&str, usize, usize, &str); 17] = [
-            ("sioul-core/src/areas.rs", 2, 1, "the rule itself: `Here::brings` falls back on the hours with nothing said of the device, or for a thing with no area; `keeps_back` asks both to say which is the reason"),
-            ("sioul-core/src/plan.rs", 3, 0, "the plan gives a task room in the hours of its area: the person's week, the same on every device"),
-            ("sioul-core/src/attention.rs", 3, 9, "hours: this row and this address never meet in your week (`meets_at`); what you set or asked for is held by the hour alone (`own`); the hour's answer beside the device's, to say which holds a message (`letter`). Device: `Now::brings` and `keeps_back`, and step 8 of the pipeline for dates, mail, other apps' messages and sites"),
-            ("sioul-core/src/quiet.rs", 0, 4, "`Mode::brings`, `keeps_back` and `elsewhere`; what the task pages keep now (`QuietTasks`)"),
-            ("sioul-core/src/areafilter.rs", 0, 1, "the filter's ticks, for Mail and Budgets"),
-            ("sioul-core/src/mailbox.rs", 0, 2, "an address rests, and says whether the hour or this device is the reason"),
-            ("sioul-core/src/view.rs", 0, 1, "the Mail page's accounts: an address rests"),
-            ("sioul-core/src/appnotes.rs", 0, 2, "an app's notifications with a For, on a phone, and why one waits"),
-            ("sioul-core/src/overlaps.rs", 0, 0, "the agenda's conflicts to say now: asked through its caller's `brings`"),
-            ("sioul-sync/src/lease.rs", 0, 5, "which device tells: each device's cell, read with the claims (`Dispatch::brings`)"),
-            ("sioul-sync/src/fetch.rs", 0, 1, "not the rule: another `brings`, which mail a fetch brings (`fetch::Control`)"),
-            ("sioul-app/src/sites.rs", 0, 3, "the sites listed, their news on the Porch, the gathered notification"),
-            ("sioul-app/src/notices.rs", 0, 5, "the Porch: sites, money, the books' items, the agenda's conflicts, invoices numbered twice"),
-            ("sioul-app/src/pim.rs", 0, 1, "the agenda's conflicts said now"),
-            ("sioul-app/src/backend.rs", 0, 0, "the status line: asked through `areafilter::device_line`"),
-            ("sioul-app/src/dispatch.rs", 0, 0, "the lines of the devices that count: no rule asked"),
-            ("sioul-app/src/steps.rs", 0, 0, "a phone's mail round: asked through the pipeline (`could_tell`)"),
+        // (file, calls of the hours' rule, calls of the device's, times made, of which given the lines, why)
+        let sorted: [(&str, usize, usize, usize, usize, &str); 37] = [
+            ("sioul-core/src/areas.rs", 2, 9, 0, 0, "the rule itself: `Here::brings` falls back on the hours with nothing said of the device, or for a thing with no area; `keeps_back` asks both to say which is the reason; `cell`, `anywhere`, `is_for` read the cells"),
+            ("sioul-core/src/plan.rs", 3, 0, 0, 0, "the plan gives a task room in the hours of its area: the person's week, the same on every device"),
+            ("sioul-core/src/attention.rs", 4, 12, 0, 0, "hours: this row and this address never meet in your week (`meets_at`); what you set or asked for, and what Reachable lets through, held by the hour alone (`own`, `site`); the hour's answer beside the device's, to say which holds a message (`letter`). Device: `Now::brings`, `keeps_back`, step 8 for dates, mail, other apps' messages and sites; `meets_somewhere` and a task reminder's devices (`is_for`)"),
+            ("sioul-core/src/quiet.rs", 0, 8, 0, 0, "`Mode::brings`, `keeps_back`, `elsewhere` and `for_another`; what the task pages keep now (`QuietTasks`, the office's cell)"),
+            ("sioul-core/src/areafilter.rs", 0, 2, 0, 0, "the filter's ticks, for Mail and Budgets; the status line's sentence (`elsewhere`)"),
+            ("sioul-core/src/mailbox.rs", 0, 2, 0, 0, "an address rests, and says whether the hour or this device is the reason"),
+            ("sioul-core/src/view.rs", 0, 1, 0, 0, "the Mail page's accounts: an address rests"),
+            ("sioul-core/src/appnotes.rs", 0, 2, 0, 0, "an app's notifications with a For, on a phone, and why one waits"),
+            ("sioul-core/src/mailnote.rs", 0, 1, 0, 0, "the moment's words carry the cell read now, so that a cell changed begins a time"),
+            ("sioul-core/src/invoice/samples.rs", 0, 1, 0, 0, "not the rule: an invoice's own `elsewhere`"),
+            ("sioul-core/src/agendas.rs", 0, 0, 1, 0, "the agenda's filter by the hours of its agendas (`agendas::Hours`): the person's week"),
+            ("sioul-core/src/notice.rs", 0, 0, 1, 0, "the moment a notice is decided in, read from the files by a process that tells nothing of an area (`moment_from_files`)"),
+            ("sioul-core/src/reach.rs", 0, 0, 2, 1, "a clock's times for other apps on this device (`Clock::on`); the calls' and texts' moments by the hours alone (calls and texts keep their own matrix)"),
+            ("sioul-core/src/reminders.rs", 0, 0, 2, 0, "which tasks get a reminder at all, and when (the hours' `work` flag); their devices are chosen by `Holds::on` and each task's area"),
+            ("sioul-sync/src/device_grid.rs", 0, 2, 0, 0, "the grid: each cell of a line, and what comes here now"),
+            ("sioul-sync/src/fetch.rs", 0, 1, 0, 0, "not the rule: another `brings`, which mail a fetch brings (`fetch::Control`)"),
+            ("sioul-cli/src/devices.rs", 0, 1, 2, 1, "`sioul devices`: the grid on this device; `devices at` says a cell in the week's hours"),
+            ("sioul-cli/src/tasks.rs", 0, 0, 1, 1, "`sioul tasks`: the lists on this device"),
+            ("sioul-cli/src/accounts.rs", 0, 0, 1, 0, "the codes' watch of the command line: no area"),
+            ("sioul-cli/src/mcp/read.rs", 0, 0, 1, 0, "agents read the hours alone"),
+            ("sioul-cli/src/mcp/records.rs", 0, 0, 1, 0, "agents read the hours alone"),
+            ("sioul-app/src/hours.rs", 0, 0, 1, 0, "`hours_mode_at`, by the hours alone: the doses, Health, calls and texts; `mode_at` gives it this device's lines"),
+            ("sioul-app/src/work.rs", 0, 0, 1, 1, "the task pages' situation on this device"),
+            ("sioul-app/src/homecard.rs", 0, 0, 2, 2, "the home card's next step and its frames on this device"),
+            ("sioul-app/src/appnotes.rs", 0, 0, 1, 1, "another app's notifications on a phone, on this device (`Clock::on`)"),
+            ("sioul-app/src/agenda.rs", 0, 0, 1, 0, "the agenda's filter by time: the hours of your agendas, the person's week, on every device alike"),
+            ("sioul-app/src/calls.rs", 0, 0, 1, 0, "calls keep their own matrix: never a device's"),
+            ("sioul-app/src/phonemsgs.rs", 0, 0, 1, 0, "the phone's texts keep their own matrix: never a device's"),
+            ("sioul-app/src/everywhere.rs", 0, 0, 1, 0, "do-not-disturb's look at the hours: no area"),
+            ("sioul-app/src/persons.rs", 0, 0, 1, 0, "whether offices are open now, to call one: the person's week"),
+            ("sioul-app/src/sites.rs", 0, 3, 0, 0, "the sites listed, their news on the Porch, the gathered notification"),
+            ("sioul-app/src/notices.rs", 0, 5, 0, 0, "the Porch: sites, money, the books' items, the agenda's conflicts, invoices numbered twice"),
+            ("sioul-app/src/pim.rs", 0, 1, 0, 0, "the agenda's conflicts said now"),
+            ("sioul-app/src/books.rs", 0, 1, 0, 0, "the books' thresholds wait while the hours bring work and this computer is not for it"),
+            ("sioul-app/src/dispatch.rs", 0, 0, 0, 0, "the devices that count: no rule asked"),
+            ("sioul-app/src/backend.rs", 0, 1, 0, 0, "\"Done for now\" closes what this device is for (`Mode::for_another`)"),
+            ("sioul-app/src/mail.rs", 0, 1, 0, 0, "a message opened through a door on a device not for its address, read here only (`Mode::for_another`)"),
         ];
         // A call by its name: not the end of a longer name (`pin_view(`).
         let calls = |code: &str, name: &str| code.match_indices(name).filter(|(at, _)| !code[..*at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_')).count();
-        let mut found: Vec<(String, usize, usize)> = Vec::new();
+        let device_calls = [".brings(", ".keeps_back(", ".anywhere(", ".is_for(", ".elsewhere(", ".for_another(", "here.cell(", "line.cell(", "mine.cell(", "cells.cell(", "said.cell("];
+        // A time made, and whether its statement gives it lines: up to its `;` or the closing brace of its block.
+        let statement = |code: &str, at: usize| -> String {
+            let rest = &code[at..];
+            let semicolon = rest.find(';').unwrap_or(rest.len());
+            let close = rest.match_indices('\n').map(|(i, _)| i).find(|i| rest[i + 1..].trim_start_matches(' ').starts_with('}')).unwrap_or(rest.len());
+            rest[..semicolon.min(close)].to_string()
+        };
+        let mut found: Vec<(String, usize, usize, usize, usize)> = Vec::new();
         for (file, code) in sources() {
             // The rule's own definition is no call of it.
             let hours = calls(&code, "in_view(") - code.matches("fn in_view(").count();
-            let device = code.matches(".brings(").count() + code.matches(".keeps_back(").count();
-            if hours + device > 0 {
-                found.push((file, hours, device));
+            let device = device_calls.iter().map(|name| code.matches(name).count()).sum::<usize>();
+            let made: Vec<String> = ["quiet::mode(", "Situation::now(", "Clock::load("].iter().flat_map(|name| code.match_indices(name).map(|(at, _)| statement(&code, at)).collect::<Vec<_>>()).collect();
+            let on = made.iter().filter(|s| s.contains(".on(")).count();
+            if hours + device + made.len() > 0 {
+                found.push((file, hours, device, made.len(), on));
             }
         }
-        for (file, hours, device) in &found {
-            let named = sorted.iter().find(|(name, _, _, _)| name == file);
-            assert_eq!(named.map(|(_, h, d, _)| (*h, *d)), Some((*hours, *device)), "{file} calls the hours' rule {hours} times and the device's {device} times: sort each call (the device's for what this device shows or tells now, the hours' for the person's own week) and name it in this test as (\"{file}\", {hours}, {device}, why)");
+        for (file, hours, device, made, on) in &found {
+            let named = sorted.iter().find(|(name, ..)| name == file);
+            assert_eq!(
+                named.map(|(_, h, d, m, o, _)| (*h, *d, *m, *o)),
+                Some((*hours, *device, *made, *on)),
+                "{file} calls the hours' rule {hours} times and the device's {device} times, and makes {made} times of which {on} are given this device's lines: sort each (the device's for what this device shows or tells now, the hours' for the person's own week; a time with `.on(lines)` when it shows or tells, without when it is the person's week) and name it in this test as (\"{file}\", {hours}, {device}, {made}, {on}, why)"
+            );
         }
-        for (file, hours, device, _) in sorted.iter().filter(|(_, hours, device, _)| hours + device > 0) {
-            assert!(found.iter().any(|(name, _, _)| name == file), "{file} is named with {hours} and {device} calls and holds none");
+        for (file, hours, device, made, ..) in sorted.iter().filter(|(_, hours, device, made, ..)| hours + device + made > 0) {
+            assert!(found.iter().any(|(name, ..)| name == file), "{file} is named with {hours}, {device} and {made} calls and holds none");
         }
     }
 
@@ -841,7 +1133,7 @@ mod tests {
     #[test]
     fn the_health_path_reads_no_device_cell() {
         let health = ["sioul-core/src/health.rs", "sioul-core/src/doses.rs", "sioul-core/src/dose_backs.rs", "sioul-core/src/dose_reminders.rs", "sioul-core/src/needs.rs", "sioul-app/src/health.rs", "sioul-app/src/alarms.rs", "sioul-app/src/wake.rs"];
-        let never = [".brings(", ".keeps_back(", "in_view(", "areas::Line", "areas::Here", "areas::Lines", "Lines {", "dispatch::", "Dispatch", "keeper_for(", "told_by(", ".areas", ".elsewhere(", ".on(&"];
+        let never = [".brings(", ".keeps_back(", "in_view(", "areas::Line", "areas::Here", "areas::Lines", "Lines {", "dispatch::", "Dispatch", "keeper_for(", "told_by(", ".areas", ".elsewhere(", "areas::Cells", ".anywhere(", ".is_for(", "as_keeper(", "acts_on(", ".on(&"];
         let sources = sources();
         for file in health {
             let code = &sources.iter().find(|(name, _)| name == file).unwrap_or_else(|| panic!("{file} is not among the sources")).1;
@@ -850,6 +1142,40 @@ mod tests {
                 assert!(!code.contains(word), "{file} holds {word}: the doses and Health never read what a device is for");
             }
         }
+        // The hours' helpers the dose path calls in the window (`crate::hours::…`), and every helper
+        // of that file they call in turn, read the hours alone (`hours_mode_at`): never this
+        // device's lines (review of phase 2, L1).
+        let hours = &sources.iter().find(|(name, _)| name == "sioul-app/src/hours.rs").expect("the window's hours").1;
+        let body = |name: &str| -> String {
+            let start = hours.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("hours::{name} is gone"));
+            let rest = &hours[start..];
+            rest[..rest.find("\n}\n").map_or(rest.len(), |end| end + 2)].to_string()
+        };
+        let defined: Vec<String> = hours.match_indices("fn ").filter_map(|(at, _)| hours[at + 3..].split('(').next().filter(|n| n.chars().all(|c| c.is_alphanumeric() || c == '_')).map(str::to_string)).collect();
+        let mut reached: Vec<String> = Vec::new();
+        let mut to_read: Vec<String> = health
+            .iter()
+            .flat_map(|file| sources.iter().find(|(name, _)| name == file).map(|(_, code)| code.clone()))
+            .flat_map(|code| code.match_indices("crate::hours::").map(|(at, _)| code[at + 14..].split(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or_default().to_string()).collect::<Vec<_>>())
+            .collect();
+        assert!(to_read.contains(&"doses_silent".to_string()) && to_read.contains(&"waking".to_string()), "the dose path's helpers were not found: {to_read:?}");
+        while let Some(name) = to_read.pop() {
+            if reached.contains(&name) || !defined.contains(&name) {
+                continue;
+            }
+            let code = body(&name);
+            for word in ["dispatch::", ".on(", "attention_here(", "with_layers("] {
+                assert!(!code.contains(word), "hours::{name}, on the dose path, holds {word}: the doses never read what a device is for");
+            }
+            for device_aware in ["mode_at(", "mode_now("] {
+                assert!(code.match_indices(device_aware).all(|(at, _)| code[..at].ends_with("hours_")), "hours::{name}, on the dose path, calls {device_aware}");
+            }
+            // A call by its whole name: `mode_at(` is not called by `hours_mode_at(`.
+            let calls = |other: &str| code.match_indices(&format!("{other}(")).any(|(at, _)| !code[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_'));
+            to_read.extend(defined.iter().filter(|other| **other != name && calls(other)).cloned());
+            reached.push(name);
+        }
+        assert!(reached.contains(&"hours_mode_at".to_string()), "{reached:?}");
         // What the doses read of an entry (`Entry::said`) names no area.
         let devices = &sources.iter().find(|(name, _)| name == "sioul-sync/src/devices.rs").expect("the entries").1;
         let said = devices.split("pub fn said(").nth(1).and_then(|rest| rest.split("\n    }\n").next()).expect("Entry::said");

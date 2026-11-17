@@ -235,7 +235,7 @@ impl Kind {
     /// the end of work and the time running: those keep the hours' answer
     /// on every device.
     pub fn follows_devices(self) -> bool {
-        matches!(self, Kind::DayBefore | Kind::Dates | Kind::Sites | Kind::SitesLive | Kind::SiteCalls | Kind::AppAutomatons | Kind::AppAtOnce)
+        matches!(self, Kind::DayBefore | Kind::Dates | Kind::Sites | Kind::SitesLive | Kind::AppAutomatons | Kind::AppAtOnce)
     }
 
     /// Its class of notice (docs/notifications.md, "Two classes"): what you
@@ -1180,18 +1180,21 @@ impl Attention {
     /// some time of the week when some device that counts brings `area`
     /// (`Here::anywhere`): when none, no device keeps their message back,
     /// so that it never waits for good between a row's times and the
-    /// devices' cells. The same answer on every device.
+    /// devices' cells.
     fn meets_somewhere(&self, channel: Channel, person: Person, area: Area, now: &Now, levels: &[Level]) -> bool {
-        Time::STATES.into_iter().filter(|t| now.week.has(*t)).any(|t| {
-            let column = match t {
-                Time::Work => Column::Work,
-                Time::Admin => Column::Admin,
-                Time::Leisure => Column::Leisure,
-                Time::Meals => Column::Meals,
-                _ => Column::Sleep,
-            };
-            levels.contains(&self.lent(Row::People(channel, person), column, now.week)) && area.meets(now.here.anywhere(t, now.week))
-        })
+        let column = |t: Time| match t {
+            Time::Work => Column::Work,
+            Time::Admin => Column::Admin,
+            Time::Leisure => Column::Leisure,
+            Time::Meals => Column::Meals,
+            _ => Column::Sleep,
+        };
+        let row = |column: Column| levels.contains(&self.lent(Row::People(channel, person), column, now.week));
+        // No working or admin hours at all: the day is `Time::Any`, read in work's and admin's
+        // columns as `Now::of` reads it (review of phase 2, L2), so that a device not for an
+        // address folds its mail on the Porch as its Mail filter does.
+        let day = !now.week.has_hours() && (row(Column::Work) || row(Column::Admin)) && area.meets(now.here.anywhere(Time::Any, now.week));
+        day || Time::STATES.into_iter().filter(|t| now.week.has(*t)).any(|t| row(column(t)) && area.meets(now.here.anywhere(t, now.week)))
     }
 }
 
@@ -1224,15 +1227,20 @@ pub struct Event {
     /// The sources' own rows it reads, the most precise first (`source_rows`:
     /// another app's notification, its conversation's and its app's).
     pub sources: Vec<String>,
+    /// What chooses the devices it comes on, when that is not what holds it
+    /// in time (`area`): a task's reminder waits for work's hours as work
+    /// does, and comes on the devices for its task's own area (review of
+    /// phase 2, M6; `Here::is_for`). None: `area` does both.
+    pub device: Option<Area>,
 }
 
 impl Event {
     pub fn own(kind: Kind) -> Event {
-        Event { source: Source::Own(kind), area: None, unsaid: false, starts: None, sources: Vec::new() }
+        Event { source: Source::Own(kind), area: None, unsaid: false, starts: None, sources: Vec::new(), device: None }
     }
 
     pub fn of(source: Source) -> Event {
-        Event { source, area: None, unsaid: false, starts: None, sources: Vec::new() }
+        Event { source, area: None, unsaid: false, starts: None, sources: Vec::new(), device: None }
     }
 
     /// Read with these sources' own rows over its own (`source_rows`).
@@ -1244,6 +1252,12 @@ impl Event {
     /// For an area's times only.
     pub fn for_area(mut self, area: Option<Area>) -> Event {
         self.area = area;
+        self
+    }
+
+    /// What chooses the devices it comes on, apart from what holds it in time (`device`).
+    pub fn for_device(mut self, area: Option<Area>) -> Event {
+        self.device = area;
         self
     }
 
@@ -1342,18 +1356,11 @@ pub struct Output {
     /// Always through).
     pub pierce: bool,
     pub step: Step,
-    /// What its source is for chooses the device that tells it: among the
-    /// devices it comes forward on now, the one used last
-    /// (`sioul_sync::lease::tells`). False for what no device narrows (no
-    /// area, a code, a dose, an alarm, Always through, Reachable, a
-    /// source's own row): the device used last of all tells it, as before.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub dispatched: bool,
 }
 
 impl Output {
     fn at(level: Level, step: Step) -> Output {
-        Output { level, shown: level != Level::Later, told: level == Level::Now, pierce: false, step, dispatched: false }
+        Output { level, shown: level != Level::Later, told: level == Level::Now, pierce: false, step }
     }
 }
 
@@ -1380,7 +1387,7 @@ impl Attention {
     /// Empty when the matrix lets it come now, or when it only waits for a
     /// gathered time.
     pub fn holding(&self, event: &Event, now: &Now) -> Vec<Column> {
-        let event = Event { area: None, ..event.clone() };
+        let event = Event { area: None, device: None, ..event.clone() };
         let holds = |moment: &Now| self.decide(&event, moment).level >= Level::Later;
         let mut columns = Vec::new();
         if holds(&Now { slot: false, dnd: false, ..now.clone() }) {
@@ -1449,23 +1456,34 @@ impl Attention {
         // (`Kind::follows_devices`: never what you set or asked for, nor Health's): where the
         // hours bring it and this device does not, it waits on the devices that are for it,
         // asleep, paused or in Free time too, which the hours' rule leaves to the cells.
-        let follows = !chosen && kind.follows_devices();
+        // Reachable lets everything through, whatever this device is for (review of phase 2, M8).
+        let follows = !chosen && kind.follows_devices() && !now.reachable;
+        // Its devices chosen apart (`Event::device`): its area holds it in time alone.
+        let here = follows && event.device.is_none();
         if !chosen
             && matches!(level, Level::Now | Level::Gathered)
             && let Some(area) = event.area
         {
-            if follows && now.keeps_back(area) {
+            if here && now.keeps_back(area) {
                 (level, step) = (Level::Later, Step::Device);
-            } else if hours && !(if follows { now.brings(area) } else { in_view(area, now.time, now.week) }) {
+            } else if hours && !(if here { now.brings(area) } else { in_view(area, now.time, now.week) }) {
                 (level, step) = (Level::Later, Step::Area);
             }
+        }
+        // A device for that area at no time of the week waits for one that is (`Here::is_for`).
+        if follows
+            && matches!(level, Level::Now | Level::Gathered)
+            && let Some(device) = event.device
+            && !now.here.is_for(device, now.week)
+        {
+            (level, step) = (Level::Later, Step::Device);
         }
         // In a meeting: no meal's notice, no "Work hours are over".
         if now.holds.meeting && matches!(kind, Kind::Needs | Kind::WorkOver) && level == Level::Now {
             (level, step) = (Level::Never, Step::Hold);
         }
         let told = level == Level::Now || (level == Level::Gathered && now.gathering);
-        Output { level, shown: true, told, pierce: told && kind.pierces(), step, dispatched: follows && event.area.is_some() }
+        Output { level, shown: true, told, pierce: told && kind.pierces(), step }
     }
 
     fn letter(&self, who: Who, always: bool, lane: Lane, event: &Event, now: &Now) -> Output {
@@ -1473,14 +1491,14 @@ impl Attention {
         match lane {
             Lane::Code => {
                 let told = self.level(Row::Own(Kind::Codes), now) == Level::Now;
-                return Output { level: if told { Level::Now } else { Level::Quiet }, shown: true, told, pierce: told, step: Step::Content, dispatched: false };
+                return Output { level: if told { Level::Now } else { Level::Quiet }, shown: true, told, pierce: told, step: Step::Content };
             }
-            Lane::Own => return Output { level: Level::Quiet, shown: true, told: false, pierce: false, step: Step::Content, dispatched: false },
+            Lane::Own => return Output { level: Level::Quiet, shown: true, told: false, pierce: false, step: Step::Content },
             _ => {}
         }
         let person = Person::of(who);
         if person == Person::Blocked {
-            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked, dispatched: false };
+            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
         let mut level = self.person(Channel::Mail, person, always, now);
         let mut step = Step::Matrix;
@@ -1500,23 +1518,22 @@ impl Attention {
         // an address nobody classified, and but when its row and the devices'
         // cells never meet in your week. A cell the person changed may bring
         // here what the hour does not: then nothing holds it.
-        let mut dispatched = false;
         if let Some(area) = event.area
             && !now.reachable
             && !always
             && matches!(level, Level::Now | Level::Quiet)
         {
             // An address nobody classified has no closed hours for your safe senders, on any device.
-            dispatched = !(person == Person::Safe && event.unsaid);
+            let narrowed = !(person == Person::Safe && event.unsaid);
             let (hours, here) = (in_view(area, now.time, now.week), now.brings(area));
-            if !hours && !(dispatched && here) {
+            if !hours && !(narrowed && here) {
                 match (person, level) {
                     (Person::Safe, Level::Now) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Area),
                     (Person::Safe, _) => {}
                     _ if self.meets(Channel::Mail, person, area, now.week) => (level, step) = (Level::Later, Step::Area),
                     _ => {}
                 }
-            } else if hours && !here && dispatched {
+            } else if hours && !here && narrowed {
                 match (person, level) {
                     (Person::Safe, Level::Now) if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Device),
                     (Person::Safe, _) => {}
@@ -1526,7 +1543,6 @@ impl Attention {
             }
         }
         let mut out = Output::at(level, step);
-        out.dispatched = dispatched;
         out.told = level == Level::Now && lane == Lane::Usual;
         // Reachable lifts the Porch's rest after a pause too.
         if out.told && now.holds.porch_rests && !now.reachable {
@@ -1537,13 +1553,13 @@ impl Attention {
     }
 
     fn call(&self, who: Option<Who>, always: bool, emergency: bool, repeat: bool, event: &Event, now: &Now) -> Output {
-        let rings = |step: Step| Output { level: Level::Now, shown: true, told: true, pierce: true, step, dispatched: false };
+        let rings = |step: Step| Output { level: Level::Now, shown: true, told: true, pierce: true, step };
         if emergency {
             return rings(Step::Emergency);
         }
         let person = who.map_or(Person::Hidden, Person::of);
         if person == Person::Blocked {
-            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked, dispatched: false };
+            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
         // Expecting a call opens only to numbers nobody knows (the call screening's, `calls::decide`); a second call, to anyone known by number.
         if (now.through && matches!(person, Person::Stranger | Person::Hidden)) || (repeat && who.is_some()) {
@@ -1568,7 +1584,7 @@ impl Attention {
     fn message(&self, via: Channel, who: Who, group: bool, always: bool, event: &Event, now: &Now) -> Output {
         let person = if who == Who::Blocked { Person::Blocked } else if group && via == Channel::Messages { Person::Groups } else { Person::of(who) };
         if person == Person::Blocked {
-            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked, dispatched: false };
+            return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
         // Read with its conversation's, the person's own and its app's rows over the person's
         // list, when set, in that order (the proposal's 3.7); someone Always through stays so
@@ -1641,19 +1657,22 @@ impl Attention {
             }
         }
         // What it is for, by the hour and by this device: a site for an area that does not come
-        // forward here now waits, its call too.
+        // forward here now waits. A call, like a phone's, rings where it rings whatever the device
+        // is for (review of phase 2, M7), and while you are Reachable nothing is held by a device
+        // (M8): the hours alone, then.
+        let device = !call && !now.reachable;
         if matches!(level, Level::Now | Level::Gathered)
             && let Some(area) = event.area
-            && !now.brings(area)
+            && !(if device { now.brings(area) } else { in_view(area, now.time, now.week) })
         {
-            (level, step) = (Level::Later, if now.keeps_back(area) { Step::Device } else { Step::Area });
+            (level, step) = (Level::Later, if device && now.keeps_back(area) { Step::Device } else { Step::Area });
         }
         if matches!(level, Level::Now | Level::Gathered) && now.holds.chats {
             (level, step) = (Level::Later, Step::Hold);
         }
         let told = level == Level::Now || (level == Level::Gathered && now.gathering);
         // A call, told, passes the system's do-not-disturb as what you set or asked for does (`Kind::pierces`).
-        Output { level, shown: level != Level::Never, told, pierce: told && kind.pierces(), step, dispatched: event.area.is_some() }
+        Output { level, shown: level != Level::Never, told, pierce: told && kind.pierces(), step }
     }
 }
 
@@ -3092,14 +3111,14 @@ mod tests {
         use crate::areas::{Line, Lines};
         let a = Attention::usual();
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
-        let on = |mine: Line, other: Line, time: Time, reason: Reason| Now::of(&mode(time, reason).on(&Lines { mine, others: vec![other] }));
+        let on = |mine: Line, other: Line, time: Time, reason: Reason| Now::of(&mode(time, reason).on(&Lines::of(mine, &[other])));
         let mail = |area: Area, who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, always, lane: Lane::Usual }).for_area(Some(area)), now);
         // A friend's mail to the personal address in the evening: told on the phone; on the work computer, shown on the Porch, not told.
         let (evening_computer, evening_phone) = (on(computer, phone, Time::Leisure, Reason::Evening), on(phone, computer, Time::Leisure, Reason::Evening));
         let there = mail(Area::PERSONAL, Who::Safe, false, &evening_phone);
-        assert!(there.told && there.dispatched && there.step == Step::Matrix);
+        assert!(there.told && there.step == Step::Matrix);
         let here = mail(Area::PERSONAL, Who::Safe, false, &evening_computer);
-        assert_eq!((here.level, here.step, here.shown, here.told, here.dispatched), (Level::Quiet, Step::Device, true, false, true));
+        assert_eq!((here.level, here.step, here.shown, here.told), (Level::Quiet, Step::Device, true, false));
         // An office's mail to the personal address in admin hours: off the Porch on the computer, told on the phone.
         let (admin_computer, admin_phone) = (on(computer, phone, Time::Admin, Reason::AdminTime), on(phone, computer, Time::Admin, Reason::AdminTime));
         let office = mail(Area::PERSONAL, Who::Neutral, false, &admin_computer);
@@ -3112,17 +3131,17 @@ mod tests {
         assert_eq!((mail(Area::WORK, Who::Safe, false, &evening_computer).step, mail(Area::WORK, Who::Safe, false, &evening_phone).step), (Step::Area, Step::Area));
         // Never narrowed: Always through, Reachable, your safe senders to an address nobody classified, a code.
         let listed = mail(Area::PERSONAL, Who::Neutral, true, &evening_computer);
-        assert!(listed.told && listed.pierce && !listed.dispatched);
+        assert!(listed.told && listed.pierce);
         let mut reachable = evening_computer.clone();
         reachable.reachable = true;
         let open = mail(Area::PERSONAL, Who::Stranger, false, &reachable);
-        assert!(open.told && !open.dispatched);
+        assert!(open.told);
         let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, always: false, lane: Lane::Usual }).for_address(None), now);
-        assert!(unsaid(Who::Safe, &work_phone).told && !unsaid(Who::Safe, &work_phone).dispatched, "no device keeps it back");
+        assert!(unsaid(Who::Safe, &work_phone).told, "no device keeps it back");
         assert!(unsaid(Who::Safe, &evening_computer).told);
         assert_eq!(unsaid(Who::Neutral, &work_phone).step, Step::Device, "the others': work's, as unsaid says");
         let code = a.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Code }).for_area(Some(Area::WORK)), &evening_phone);
-        assert!(code.told && !code.dispatched);
+        assert!(code.told);
         // A cell the person changed: friends reach the phone during work, which the hour does not bring; on
         // the computer the hour still holds it, shown.
         let friends = phone.with_cell(Time::Work, Some(Area::LEISURE));
@@ -3132,30 +3151,43 @@ mod tests {
         // Nothing waits for good between a row's times and the devices' cells: nothing comes on the phone
         // during work, admin has no hours of its own, and an office's mail to the personal address is let
         // through in work's hours alone. No device is for it then: none keeps it back.
-        let lent = |mine: Line, other: Line| Now::of(&Mode { week: Week { work_hours: true, admin_hours: false, meals: true, sleep: true }, ..mode(Time::Work, Reason::Working) }.on(&Lines { mine, others: vec![other] }));
+        let lent = |mine: Line, other: Line| Now::of(&Mode { week: Week { work_hours: true, admin_hours: false, meals: true, sleep: true }, ..mode(Time::Work, Reason::Working) }.on(&Lines::of(mine, &[other])));
         let silent = phone.with_cell(Time::Work, Some(Area::default()));
         for now in [lent(computer, silent), lent(silent, computer)] {
             let out = mail(Area::PERSONAL, Who::Neutral, false, &now);
-            assert!(out.told && out.dispatched && out.step == Step::Matrix, "{out:?}");
+            assert!(out.told && out.step == Step::Matrix, "{out:?}");
         }
         assert_eq!(mail(Area::PERSONAL, Who::Neutral, false, &lent(computer, phone)).step, Step::Device, "the phone's own cell holds admin then");
         assert!(mail(Area::PERSONAL, Who::Neutral, false, &lent(phone, computer)).told);
         // Sioul's own: a work date on the phone in working hours waits for the computer; an event's own alarm never does.
         let date = |area: Option<Area>, now: &Now| a.decide(&Event::own(Kind::Dates).for_area(area), now);
         assert_eq!((date(Some(Area::WORK), &work_phone).step, date(Some(Area::WORK), &work_computer).told), (Step::Device, true));
-        assert!(date(Some(Area::WORK), &work_computer).dispatched && date(None, &work_phone).told && !date(None, &work_phone).dispatched);
+        assert!(date(None, &work_phone).told);
         let alarm = a.decide(&Event::own(Kind::Alarms).for_area(Some(Area::WORK)), &work_phone);
-        assert!(alarm.told && !alarm.dispatched, "what you set is never narrowed");
+        assert!(alarm.told, "what you set is never narrowed");
         assert_eq!(a.decide(&Event::own(Kind::Alarms).for_area(Some(Area::WORK)), &evening_phone).step, Step::Area, "the hour holds it as before");
         for kind in Kind::ALL {
             let narrowed = a.decide(&Event::own(kind).for_area(Some(Area::LEISURE)), &evening_computer).step == Step::Device;
             assert!(!narrowed || kind.follows_devices(), "{kind:?}");
         }
         assert!(!Kind::Doses.follows_devices() && !Kind::Codes.follows_devices() && !Kind::Wake.follows_devices() && !Kind::Needs.follows_devices() && !Kind::Move.follows_devices() && !Kind::Before.follows_devices());
-        // A site: a chat for leisure on the work computer in the evening waits, its call too; on a computer for leisure, they come.
+        // A site: a chat for leisure on the work computer in the evening waits; on a computer for
+        // leisure, it comes. A call in it rings on both, as a phone's does (review of phase 2, M7);
+        // the hours still hold it as before.
         let site = |call: bool, now: &Now| a.decide(&Event::of(Source::Site { call, live: true, named: None }).for_area(Some(Area::LEISURE)), now);
-        assert_eq!((site(false, &evening_computer).step, site(true, &evening_computer).step), (Step::Device, Step::Device));
-        assert!(site(false, &evening_phone).told && site(true, &evening_phone).told);
+        assert_eq!(site(false, &evening_computer).step, Step::Device);
+        assert!(site(false, &evening_phone).told && site(true, &evening_phone).told && site(true, &evening_computer).told);
+        assert_eq!(site(true, &work_computer).step, Step::Area, "leisure's call during work: the hours, as before");
+        // Reachable: nothing is held by a device, sites, dates and other apps' automatons included (M8).
+        let mut reachable_computer = evening_computer.clone();
+        reachable_computer.reachable = true;
+        assert!(site(false, &reachable_computer).told, "a site");
+        let mut reachable_phone = work_phone.clone();
+        reachable_phone.reachable = true;
+        assert!(date(Some(Area::WORK), &reachable_phone).told, "a date");
+        for kind in [Kind::AppAutomatons, Kind::AppAtOnce, Kind::Sites] {
+            assert_ne!(a.decide(&Event::own(kind).for_area(Some(Area::LEISURE)), &reachable_computer).step, Step::Device, "{kind:?}");
+        }
         // Another app's notification on the phone: an app for work waits there in working hours; a safe
         // person's chat in it still comes, and Always through's.
         let app = |who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, group: false, always }).for_area(Some(Area::WORK)), now);
@@ -3168,14 +3200,14 @@ mod tests {
 
     /// With nothing said of this device, every answer of the pipeline is the
     /// one before devices: each source, each area, each time, whatever the
-    /// other devices' lines say (its own telling apart: `dispatched`).
+    /// other devices' lines say.
     #[test]
     fn with_nothing_said_of_this_device_the_pipeline_answers_as_before() {
         use crate::areas::{Line, Lines};
         let attentions = [Attention::usual(), Preset::Quieter.matrix(), Preset::Reachable.matrix()];
         let areas = [None, Some(Area::WORK), Some(Area::ADMIN), Some(Area::LEISURE), Some(Area::PERSONAL), Some(Area::MIXED), Some(Area::ALL)];
         let whos = [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger, Who::Blocked];
-        let others = [Lines::default(), Lines { mine: Line::default(), others: vec![Line::for_area(Area::WORK), Line::for_area(Area::LEISURE).with_cell(Time::Work, Some(Area::ALL))] }];
+        let others = [Lines::default(), Lines::of(Line::default(), &[Line::for_area(Area::WORK), Line::for_area(Area::LEISURE).with_cell(Time::Work, Some(Area::ALL))])];
         let mut walked = 0;
         for a in &attentions {
             for plain in modes() {
@@ -3789,7 +3821,7 @@ mod tests {
             a.set_source(&app, column, if column == Column::Work { Level::Now } else { Level::Later }).unwrap();
         }
         let stranger = message(Who::Stranger, false).from_sources(both.clone());
-        assert_eq!(a.decide(&stranger, &at(Column::Work)), Output { level: Level::Now, shown: true, told: true, pierce: false, step: Step::Chosen, dispatched: false });
+        assert_eq!(a.decide(&stranger, &at(Column::Work)), Output { level: Level::Now, shown: true, told: true, pierce: false, step: Step::Chosen });
         for column in [Column::Admin, Column::Leisure, Column::Meals, Column::Sleep, Column::Pause, Column::Free] {
             assert_eq!(a.decide(&stranger, &at(column)).level, Level::Later, "{column:?}");
         }

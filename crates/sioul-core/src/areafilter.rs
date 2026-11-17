@@ -206,16 +206,16 @@ mod tests {
         use crate::areas::{Line, Lines};
         let both = Week { work_hours: true, admin_hours: true, ..Week::default() };
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
-        let on = |mine: Line, other: Line, time: Time| mode(time, both).on(&Lines { mine, others: vec![other] });
+        let on = |mine: Line, other: Line, time: Time| mode(time, both).on(&Lines::of(mine, &[other]));
         assert_eq!(Time::STATES.map(|t| hours_say(&on(computer, phone, t)).id()), ["work", "", "", "", ""]);
         assert_eq!(Time::STATES.map(|t| hours_say(&on(phone, computer, t)).id()), ["", "admin", "leisure", "leisure", "leisure"]);
         assert_eq!(on(computer, phone, Time::Leisure).elsewhere(), Area::LEISURE, "what the filter's ? says waits elsewhere");
         let friends = phone.with_cell(Time::Work, Some(Area::WORK.with(Area::LEISURE)));
         assert_eq!(hours_say(&on(friends, computer, Time::Work)), Area::WORK.with(Area::LEISURE));
         // The phone gone: leisure and admin are for no device, and tick on the computer as the hours say.
-        let alone = |time: Time| mode(time, both).on(&Lines { mine: computer, others: Vec::new() });
+        let alone = |time: Time| mode(time, both).on(&Lines::of(computer, &[]));
         assert_eq!(Time::STATES.map(|t| hours_say(&alone(t))), Time::STATES.map(|t| hours_say(&mode(t, both))));
-        assert_eq!(hours_say(&mode(Time::Any, Week::default()).on(&Lines { mine: computer, others: vec![phone] })), Area::WORK, "no hours set: what the device is for");
+        assert_eq!(hours_say(&mode(Time::Any, Week::default()).on(&Lines::of(computer, &[phone]))), Area::WORK, "no hours set: what the device is for");
     }
 
     /// The person's ticks hold at once, until the time they were ticked in
@@ -275,7 +275,7 @@ mod tests {
         let (en, fr) = (Translator::new("en"), Translator::new("fr"));
         let both = Week { work_hours: true, admin_hours: true, ..Week::default() };
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
-        let on = |mine: Line, other: Line, time: Time, week: Week| mode(time, week).on(&Lines { mine, others: vec![other] });
+        let on = |mine: Line, other: Line, time: Time, week: Week| mode(time, week).on(&Lines::of(mine, &[other]));
         let evening = on(computer, phone, Time::Leisure, both);
         assert_eq!(device_line(&en, &evening).as_deref(), Some("This device is for work: leisure waits on your other devices."));
         assert_eq!(device_line(&fr, &evening).as_deref(), Some("Cet appareil est pour le travail\u{202f}: vos loisirs attendent sur vos autres appareils."));
@@ -292,7 +292,7 @@ mod tests {
         // The hour is the reason, nothing is said of this device, the area is for no device, or asleep: no sentence.
         assert_eq!(device_line(&en, &on(computer, phone, Time::Work, both)), None);
         assert_eq!(device_line(&en, &on(Line::default(), computer, Time::Leisure, both)), None);
-        assert_eq!(device_line(&en, &mode(Time::Leisure, both).on(&Lines { mine: computer, others: Vec::new() })), None);
+        assert_eq!(device_line(&en, &mode(Time::Leisure, both).on(&Lines::of(computer, &[]))), None);
         assert_eq!(device_line(&en, &on(computer, phone, Time::Sleep, both)), None);
         // In a filter's "?": said with what it shows.
         let shown = shown(&AreaFilter::default(), hours_say(&evening), 0, &en).on(&en, &evening);
