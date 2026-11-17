@@ -107,6 +107,16 @@ pub struct Row {
     /// On a computer, a phone silent for a day or more, still counted:
     /// "Forget it now", said with what it changes.
     pub forget_now: bool,
+    /// Its Sioul follows what devices are for (`devices::Entry::areas`):
+    /// its cells are in force. This device always does (`device_grid::grid`).
+    pub follows: bool,
+    /// Its five cells, one per time: what comes forward on it then, in
+    /// words (`device_grid::grid` sets them; none before, and none for a
+    /// device whose Sioul is older).
+    pub cells: Vec<crate::device_grid::Cell>,
+    /// Said in the cells' place for a device whose Sioul is older: "Its
+    /// Sioul is older: everything still comes there."; "" otherwise.
+    pub cells_older: String,
 }
 
 /// What the table is made from: read by its caller, at `now`.
@@ -256,6 +266,7 @@ fn of_entry(row: &mut Row, entry: &Entry, clock: &Clock) {
     };
     row.parts = entry.parts.clone();
     row.parts_words = parts_words(&entry.parts, words).unwrap_or_else(|| words.text("devices-parts-unsaid", None));
+    row.follows = entry.areas >= crate::devices::AREAS;
 }
 
 /// The parts' names, in the order the sharing lists them; none when the list is empty.
@@ -454,6 +465,9 @@ pub fn plain(rows: &[Row], words: &Translator) -> Vec<String> {
         // Its Sioul: the build alone, or the sentence that says it is older.
         out.extend(if row.older { Some(format!("  {}", row.build)) } else { line("devices-col-sioul", &row.version) });
         out.extend(line("devices-col-for", &row.area_words));
+        // What comes forward on it at each time (`device_grid::grid`), a line per time; an older Sioul, one sentence.
+        out.extend(row.cells.iter().map(|cell| format!("    {}", cell.line)));
+        out.extend((!row.cells_older.is_empty()).then(|| format!("    {}", row.cells_older)));
         out.extend(line("devices-col-parts", &row.parts_words));
         out.extend(line("devices-col-id", &row.id));
     }
@@ -696,9 +710,9 @@ mod tests {
         let own = own();
         let parts = vec!["time".to_string(), "settings".to_string()];
         let said: BTreeMap<String, Said> = [
-            ("here".to_string(), Said { name: Some("Work desk".into()), area: Some("work".into()) }),
-            ("b-laptop".to_string(), Said { name: Some("Attic laptop".into()), area: Some("admin+leisure".into()) }),
-            ("gone".to_string(), Said { name: Some("Old".into()), area: None }),
+            ("here".to_string(), Said { name: Some("Work desk".into()), area: Some("work".into()), ..Said::default() }),
+            ("b-laptop".to_string(), Said { name: Some("Attic laptop".into()), area: Some("admin+leisure".into()), ..Said::default() }),
+            ("gone".to_string(), Said { name: Some("Old".into()), area: None, ..Said::default() }),
         ]
         .into_iter()
         .collect();

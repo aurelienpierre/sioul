@@ -148,6 +148,17 @@ pub struct Entry {
     /// unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub topics: u32,
+    /// Whether its Sioul follows what you said each device is for
+    /// (docs/areas.md, "What each device is for"): `AREAS` (1) from a build
+    /// that reads its line of the settings' table (`[device."<id>"]`: its
+    /// area, the cells you changed) and tells only what comes forward on it;
+    /// 0 from an older one, which tells by the rule before: while it is the
+    /// device used last of all, everything (`lease::told_by`). No word of the
+    /// doses': `said` does not carry it, and the health lease never reads
+    /// it. An older Sioul reads the entry as before, the field unknown to it
+    /// passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub areas: u32,
     /// What it says of the spam filter's and the topics' tables
     /// (docs/spam-filter.md, "Every device trains its own"): 0 from an older
     /// Sioul, which only reads a table another device made and deletes its
@@ -270,6 +281,9 @@ impl Replaced {
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
+
+/// What a device's entry says once its Sioul follows what devices are for (`Entry::areas`).
+pub const AREAS: u32 = 1;
 
 pub const PHONE: &str = "phone";
 pub const COMPUTER: &str = "computer";
@@ -1070,6 +1084,60 @@ mod tests {
         let older = serde_json::json!({ "id": id, "kind": "phone", "started": t, "working": true });
         std::fs::write(&file, crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
         assert!(all(&folder, &KEY).0[0].parts.is_empty(), "an older Sioul's: none said");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A device says that its Sioul follows what devices are for (`areas`),
+    /// sealed in its entry: an older Sioul reads the entry as before, the
+    /// field unknown to it passed over; an older Sioul's entry says 0; what
+    /// the doses read of an entry is the same with it or without; said once,
+    /// its entry is not written again while it stays.
+    #[test]
+    fn a_device_says_that_it_follows_what_devices_are_for() {
+        /// The entry as Sioul 0.0.11 reads it, for what the doses and the list need.
+        #[derive(Deserialize)]
+        struct Older {
+            id: String,
+            #[serde(default)]
+            kind: String,
+            #[serde(default)]
+            started: i64,
+            working: bool,
+            #[serde(default)]
+            doses: bool,
+        }
+        let dir = scratch("areas");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let own = own_path(&state);
+        let vault = Some((folder.as_path(), &KEY));
+        let file = file_of(&folder, &id);
+        let t = 1_800_000_000;
+        change_at(&own, vault, t, |e| {
+            e.id = id.clone();
+            e.kind = COMPUTER.into();
+            e.doses = true;
+            e.start(t);
+        })
+        .unwrap();
+        let before = all(&folder, &KEY).0.remove(0);
+        assert_eq!(before.areas, 0, "not said yet: as an older Sioul's");
+        change_at(&own, vault, t + 5, |e| e.areas = AREAS).unwrap();
+        let read = all(&folder, &KEY).0.remove(0);
+        assert_eq!((read.areas, AREAS), (1, 1));
+        assert_eq!(read.said(), before.said(), "the doses read the same of it");
+        let plain = crate::share::open(&KEY, &bound(&id), std::fs::read_to_string(&file).unwrap().trim()).unwrap();
+        assert!(String::from_utf8_lossy(&plain).contains("\"areas\":1"));
+        let older: Older = serde_json::from_slice(&plain).expect("an older Sioul reads it");
+        assert_eq!((older.id.as_str(), older.kind.as_str(), older.started, older.working, older.doses), (id.as_str(), COMPUTER, t, true, true));
+        // Kept here as TOML, and read back; said again, nothing changes in what it says but its exchanges' times.
+        assert_eq!(super::own(&own).areas, AREAS);
+        assert_eq!(steady(&read), steady(&Entry { exported: t + 900, ..read.clone() }));
+        assert_ne!(steady(&read), steady(&before), "said for the first time: written into the folder");
+        // An older Sioul's entry: none said.
+        let older = serde_json::json!({ "id": id, "kind": "computer", "started": t, "working": true });
+        std::fs::write(&file, crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].areas, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

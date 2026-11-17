@@ -115,8 +115,10 @@ pub mod calendars;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod colord;
 pub mod dav;
+pub mod device_grid;
 pub mod device_table;
 pub mod devices;
+pub mod dispatch;
 pub mod discover;
 pub mod favicon;
 pub mod disk;

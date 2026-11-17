@@ -11081,6 +11081,70 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// The cells you changed of a device's line (`[device."<id>".at]`,
+    /// `device_said::set_cell`) travel with the settings, one entry per
+    /// cell: two cells of one device changed on two devices both stay, with
+    /// its name and what it is for; a cell put back as its areas say goes
+    /// back everywhere, the others staying; the same cell changed on both:
+    /// the later holds; nothing is your word for nothing, and travels as such;
+    /// the last cell taken out leaves a line that says what the device is
+    /// for alone, on both.
+    #[test]
+    fn the_cells_of_a_device_s_line_travel_cell_by_cell() {
+        use sioul_core::areas::{Area, Line, Time};
+        use sioul_core::device_said::{set_area, set_cell};
+        let base = scratch("devices-cells");
+        let folder = base.join("Nextcloud").join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_config, phone_config) = (desk.path("config/config.toml"), phone.path("config/config.toml"));
+        let line = |computer: &Computer, id: &str| Config::load(&computer.path("config/config.toml")).unwrap().devices.get(id).map(|said| said.line()).unwrap_or_default();
+        desk.write("config/config.toml", "language = \"en\"\n");
+        phone.write("config/config.toml", "language = \"en\"\n");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+
+        // Said apart, before either hears the other: on the desk, what the phone is for and
+        // its cell for work; on the phone, its own cell for meals, nothing.
+        set_area(&desk_config, &phone.id, "admin+leisure").unwrap();
+        set_cell(&desk_config, &phone.id, Time::Work, Some(Area::WORK.with(Area::LEISURE))).unwrap();
+        set_cell(&phone_config, &phone.id, Time::Meals, Some(Area::default())).unwrap();
+        assert!(desk.exchange(&folder, &key, NOW + 3 * MINUTE).sent > 0);
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+        let both = Line::for_area(Area::PERSONAL).with_cell(Time::Work, Some(Area::WORK.with(Area::LEISURE))).with_cell(Time::Meals, Some(Area::default()));
+        for computer in [&desk, &phone] {
+            assert_eq!(line(computer, &phone.id), both, "{}", computer.read("config/config.toml"));
+        }
+        assert_eq!(desk.exchange(&folder, &key, NOW + 6 * MINUTE).sent, 0, "nothing changed: nothing goes out");
+
+        // A cell put back on one device goes back on the other, the other cell staying;
+        // the same cell changed on both: the later holds.
+        set_cell(&phone_config, &phone.id, Time::Work, None).unwrap();
+        set_cell(&desk_config, &phone.id, Time::Meals, Some(Area::LEISURE)).unwrap();
+        desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+        set_cell(&phone_config, &phone.id, Time::Meals, Some(Area::ADMIN)).unwrap();
+        phone.exchange(&folder, &key, NOW + 8 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 9 * MINUTE);
+        for computer in [&desk, &phone] {
+            assert_eq!(line(computer, &phone.id), Line::for_area(Area::PERSONAL).with_cell(Time::Meals, Some(Area::ADMIN)), "{}", computer.read("config/config.toml"));
+        }
+        // The last cell out: only what the device is for is left, on both.
+        set_cell(&desk_config, &phone.id, Time::Meals, None).unwrap();
+        desk.exchange(&folder, &key, NOW + 10 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 11 * MINUTE);
+        for computer in [&desk, &phone] {
+            assert_eq!(line(computer, &phone.id), Line::for_area(Area::PERSONAL), "{}", computer.read("config/config.toml"));
+            assert!(!computer.read("config/config.toml").contains("meals"), "{}", computer.read("config/config.toml"));
+        }
+        // Where it was taken out, its table went with it; the device that heard of it may keep
+        // the table's empty heading, as the sharing leaves any table it empties: it says nothing.
+        assert!(!desk.read("config/config.toml").contains(".at]"), "{}", desk.read("config/config.toml"));
+        assert_eq!(desk.exchange(&folder, &key, NOW + 12 * MINUTE).sent, 0, "nothing more to say");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn two_computers_agree() {
         let base = scratch("agree");

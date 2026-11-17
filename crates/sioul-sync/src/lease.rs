@@ -22,8 +22,16 @@
 //! the others' claims have had time to come through the sync. A sync that
 //! stopped can still hide a claim; what must never happen twice also wants
 //! the others heard from lately (`Keeper::others_heard`).
+//!
+//! What a thing is for chooses among them (docs/attention.md, "Which device
+//! tells"): the notices' claims are read per area, with what the person said
+//! each device is for (`Dispatch`, `told_by`, `keeper_for`). Among the
+//! devices a thing comes forward on now, the one used last tells it; no new
+//! file, the same claims. A device whose Sioul does not follow what devices
+//! are for tells by the rule before, the one used last of all.
 
 use serde::{Deserialize, Serialize};
+use sioul_core::areas::{Area, Here, Line, Time, Week};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -309,6 +317,151 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
     Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since }
 }
 
+/// What the devices are for now, as the claims on a part that follows you
+/// are read to say which device tells a thing (docs/attention.md, "Which
+/// device tells"). The same on every device that reads the same settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Dispatch {
+    /// What now is for, and the week's hours.
+    pub time: Time,
+    pub week: Week,
+    /// The line of each device that counts and whose Sioul follows what
+    /// devices are for (`devices::Entry::areas`), by its id, the device
+    /// asking among them. A device that is not here tells by the rule
+    /// before: when it is the one used last of all, everything. It counts
+    /// for nothing among these: what only it could be for is held by no
+    /// device, and comes on the others as the hours say, so that an older
+    /// Sioul never leaves a thing told by nobody.
+    pub lines: BTreeMap<String, Line>,
+}
+
+impl Dispatch {
+    /// One device alone, nothing said of it: every answer as before.
+    pub fn alone(computer: &str) -> Dispatch {
+        Dispatch { lines: BTreeMap::from([(computer.to_string(), Line::default())]), ..Dispatch::default() }
+    }
+
+    /// What the lines of every device that counts say together (`Here::among`), read as none of them.
+    fn together(&self) -> Here {
+        let lines: Vec<Line> = self.lines.values().copied().collect();
+        lines.split_first().map_or_else(Here::default, |(first, rest)| Here::among(*first, rest, self.week))
+    }
+
+    /// Whether something for `area` comes forward now on the device `id`,
+    /// one of those that follow what devices are for.
+    pub fn brings(&self, id: &str, area: Area) -> bool {
+        self.lines.get(id).is_some_and(|line| self.together().as_device(*line).brings(area, self.time, self.week))
+    }
+
+    /// Whether something for `area` comes forward now on some device that counts.
+    pub fn somewhere(&self, area: Area) -> bool {
+        area.meets(self.together().anywhere(self.time, self.week))
+    }
+}
+
+/// Which device tells a thing, as the claims and the devices' lines say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Told<'a> {
+    /// The device of this claim.
+    By(&'a Claim),
+    /// It comes forward on devices of which none runs now: it waits for
+    /// one, which tells it when it next can.
+    Waits,
+    /// No claim is alive: the device asking is alone, as before.
+    Alone,
+}
+
+/// Which device tells a thing for `area` (none: a thing no device narrows),
+/// among the live claims on a part that follows you: a pure reading of the
+/// claims and of what each device is for.
+/// - The device used last of all (the keeper before) runs a Sioul that does
+///   not follow what devices are for: it tells everything, as before, and
+///   the others stay silent.
+/// - Otherwise the devices that follow choose among themselves: of those
+///   the thing comes forward on now, the one used last. One that does not
+///   follow stays silent, since it is not the one used last of all.
+/// - A thing with no area, or that comes forward on no device that counts
+///   now (its row alone lets it come: `attention`), is told by the device
+///   used last of all, as before: nothing waits for good.
+pub fn told_by<'a>(claims: &'a [Claim], dispatch: &Dispatch, area: Option<Area>, now: i64) -> Told<'a> {
+    let Some(last) = choose(claims, Rule::FollowsYou, now) else { return Told::Alone };
+    let Some(area) = narrowed(claims, dispatch, area, now) else { return Told::By(last) };
+    let for_it = claims.iter().filter(|c| holds(c, Rule::FollowsYou, now) && dispatch.brings(&c.computer, area));
+    for_it.max_by(|a, b| a.active.cmp(&b.active).then_with(|| b.computer.cmp(&a.computer))).map_or(Told::Waits, Told::By)
+}
+
+/// The area the devices choose by for a thing, when they do: something is
+/// said of some device, the device used last of all follows what devices
+/// are for, the thing has an area, and it comes forward on some device that
+/// counts now. None: the device used last of all tells it, as before; with
+/// nothing said of any device, always.
+fn narrowed(claims: &[Claim], dispatch: &Dispatch, area: Option<Area>, now: i64) -> Option<Area> {
+    if dispatch.lines.values().all(|line| line.says_nothing()) {
+        return None;
+    }
+    let last = choose(claims, Rule::FollowsYou, now)?;
+    area.filter(|a| dispatch.lines.contains_key(&last.computer) && !a.is_empty() && dispatch.somewhere(*a))
+}
+
+/// Whether `computer` tells a thing for `area` now, as `told_by` reads the
+/// claims: its own claim chosen; alone; or, when no device the thing comes
+/// forward on runs, a device it comes forward on that asks all the same (a
+/// phone's background step, whose claim is closed while it is put away):
+/// it tells rather than nobody, as a device alone does.
+pub fn tells(claims: &[Claim], computer: &str, dispatch: &Dispatch, area: Option<Area>, now: i64) -> bool {
+    match told_by(claims, dispatch, area, now) {
+        Told::By(claim) => claim.computer == computer,
+        Told::Alone => true,
+        Told::Waits => area.is_some_and(|area| dispatch.brings(computer, area)),
+    }
+}
+
+/// The name a part is kept under for one area, as seen here (`KEPT`).
+fn kept_for(part: &str, area: Option<Area>) -> String {
+    match area {
+        Some(area) if !area.is_empty() => format!("{part}{}{}", '\u{1f}', area.id()),
+        _ => part.to_string(),
+    }
+}
+
+/// Who tells a thing for `area` on a part that follows you (the notices),
+/// as the claims read now and `dispatch` says what each device is for
+/// (`told_by`), without claiming. The settling time is counted among the
+/// devices the thing comes forward on: a device tells it once it has been
+/// the one for the settling time, or at once when no other of them runs.
+pub fn keeper_for(claims: &[Claim], part: &str, computer: &str, dispatch: &Dispatch, area: Option<Area>, now: i64) -> Keeper {
+    let Some(area) = narrowed(claims, dispatch, area, now) else {
+        // No device narrows it: the keeper as before, settled as the part is.
+        return match told_by(claims, dispatch, area, now) {
+            Told::By(_) => keeper(claims, part, computer, Rule::FollowsYou, now),
+            _ => Keeper::alone(computer),
+        };
+    };
+    let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && holds(c, Rule::FollowsYou, now) && dispatch.brings(&c.computer, area)).collect();
+    let others_heard = others.iter().map(|c| c.renewed).max().unwrap_or(0);
+    let chosen = match told_by(claims, dispatch, Some(area), now) {
+        Told::By(claim) => Some((claim.computer.clone(), claim.name.clone())),
+        // No device it comes forward on runs: this one, when it is for it.
+        _ if dispatch.brings(computer, area) => Some((computer.to_string(), host_name())),
+        _ => None,
+    };
+    let Some((chosen, name)) = chosen else {
+        return Keeper { computer: String::new(), name: String::new(), mine: false, settled: false, others_heard, others: others.len(), since: now };
+    };
+    let mine = chosen == computer;
+    let (settled, since) = match KEPT.lock() {
+        Ok(mut kept) => {
+            let entry = kept.entry(kept_for(part, Some(area))).or_insert_with(|| (chosen.clone(), now));
+            if entry.0 != chosen {
+                *entry = (chosen.clone(), now);
+            }
+            (mine && (others.is_empty() || now - entry.1 >= SETTLING), entry.1)
+        }
+        Err(_) => (false, now),
+    };
+    Keeper { computer: chosen, name, mine, settled, others_heard, others: others.len(), since }
+}
+
 /// Why invoices may not be numbered on a computer now, as the claims on
 /// them say (`may_number`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -375,7 +528,9 @@ pub fn close_with(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now
     let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, series, closed: true, pad: String::new() };
     write(folder, key, part, computer, &claim)?;
     if let Ok(mut kept) = KEPT.lock() {
-        kept.remove(part);
+        // The part, and each area it was read for (`kept_for`).
+        let per_area = format!("{part}{}", '\u{1f}');
+        kept.retain(|name, _| name != part && !name.starts_with(&per_area));
     }
     Ok(())
 }
@@ -509,6 +664,155 @@ mod tests {
         renew(&dir, &key, "follows", "desktop", 1000, 1000, false, Rule::FollowsYou, None).unwrap();
         assert!(renew(&dir, &key, "follows", "phone", 1600, 1600, false, Rule::FollowsYou, None).unwrap().mine);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn live(computer: &str, active: i64, now: i64) -> Claim {
+        Claim { computer: computer.into(), name: computer.into(), since: 0, renewed: now - 10, until: now - 10 + ALIVE, active, ..Claim::default() }
+    }
+
+    fn week() -> Week {
+        Week { work_hours: true, admin_hours: true, meals: true, sleep: true }
+    }
+
+    /// With nothing said of any device, the notices are read as before:
+    /// whatever a thing is for, the device used last of all tells it.
+    #[test]
+    fn with_nothing_said_the_device_used_last_tells_as_before() {
+        let now = 10_000;
+        let claims = [live("desk", 9_000, now), live("laptop", 9_500, now), live("phone", 9_200, now)];
+        let areas = [None, Some(Area::default()), Some(Area::WORK), Some(Area::ADMIN), Some(Area::LEISURE), Some(Area::PERSONAL), Some(Area::ALL)];
+        let lines: BTreeMap<String, Line> = ["desk", "laptop", "phone"].iter().map(|id| (id.to_string(), Line::default())).collect();
+        for time in Time::STATES.into_iter().chain([Time::Any, Time::Several(Area::MIXED)]) {
+            let dispatch = Dispatch { time, week: week(), lines: lines.clone() };
+            for area in areas {
+                assert_eq!(told_by(&claims, &dispatch, area, now), Told::By(&claims[1]), "{time:?} {area:?}");
+                assert_eq!(["desk", "laptop", "phone"].map(|d| tells(&claims, d, &dispatch, area, now)), [false, true, false]);
+            }
+        }
+        // The part's own keeper, settled as it always was, whatever the thing is for: no reading per area.
+        let dispatch = Dispatch { time: Time::Work, week: week(), lines: lines.clone() };
+        let (plain, per_area) = (keeper(&claims, "notices-unsaid", "laptop", Rule::FollowsYou, now), keeper_for(&claims, "notices-unsaid", "laptop", &dispatch, Some(Area::WORK), now));
+        assert_eq!(per_area, plain);
+        assert!(per_area.mine && per_area.others == 2);
+        // A claim of a device this one does not count yet (its entry not learned): as before, the one used last of all.
+        let unknown = [claims[0].clone(), live("new", 9_900, now)];
+        assert_eq!(told_by(&unknown, &dispatch, Some(Area::WORK), now), Told::By(&unknown[1]));
+        // No claim alive: alone, as before; a device alone with nothing said, the same.
+        assert_eq!(told_by(&[], &Dispatch::alone("desk"), Some(Area::WORK), now), Told::Alone);
+        assert!(tells(&[], "desk", &Dispatch::alone("desk"), Some(Area::LEISURE), now));
+    }
+
+    /// Among the devices a thing comes forward on now, the one used last
+    /// tells it: the work computer used last, leisure's mail is told by the
+    /// phone; with the phone put away, it waits there until the phone asks.
+    #[test]
+    fn the_devices_a_thing_is_for_choose_among_themselves() {
+        let now = 10_000;
+        let lines: BTreeMap<String, Line> = [("desk", Line::for_area(Area::WORK)), ("phone", Line::for_area(Area::PERSONAL)), ("tablet", Line::default())].into_iter().map(|(id, line)| (id.to_string(), line)).collect();
+        let at = |time: Time| Dispatch { time, week: week(), lines: lines.clone() };
+        // Everything runs; the desk was used last, then the phone, then the tablet.
+        let claims = [live("desk", 9_900, now), live("phone", 9_500, now), live("tablet", 9_000, now)];
+        let by = |time: Time, area: Area| match told_by(&claims, &at(time), Some(area), now) {
+            Told::By(claim) => claim.computer.clone(),
+            other => format!("{other:?}"),
+        };
+        assert_eq!((by(Time::Work, Area::WORK), by(Time::Leisure, Area::LEISURE), by(Time::Admin, Area::ADMIN)), ("desk".into(), "phone".into(), "phone".into()));
+        assert_eq!(by(Time::Admin, Area::MIXED), "phone", "a thing for two areas, where one of them comes forward");
+        // What comes forward on no device now (work's mail in the evening, which a row alone let come): the one used last of all.
+        assert_eq!(by(Time::Leisure, Area::WORK), "desk");
+        assert_eq!(told_by(&claims, &at(Time::Leisure), None, now), Told::By(&claims[0]), "a thing no device narrows");
+        // The phone put away (its claim closed): leisure's is the tablet's, which nothing was said of.
+        let closed = [claims[0].clone(), Claim { closed: true, until: now - 60, ..claims[1].clone() }, claims[2].clone()];
+        assert_eq!(told_by(&closed, &at(Time::Leisure), Some(Area::LEISURE), now), Told::By(&closed[2]));
+        // The tablet closed too: it waits; the phone's background step, asking, tells it; the desk never.
+        let alone = [claims[0].clone(), Claim { closed: true, until: now - 60, ..claims[1].clone() }];
+        assert_eq!(told_by(&alone, &at(Time::Leisure), Some(Area::LEISURE), now), Told::Waits);
+        assert_eq!(["desk", "phone", "tablet"].map(|d| tells(&alone, d, &at(Time::Leisure), Some(Area::LEISURE), now)), [false, true, true]);
+        // A cell the person changed: friends reach the phone during work; the desk, used last, stays silent for them.
+        let mut friends = at(Time::Work);
+        friends.lines.insert("phone".into(), Line::for_area(Area::PERSONAL).with_cell(Time::Work, Some(Area::LEISURE)));
+        friends.lines.remove("tablet");
+        assert_eq!(told_by(&claims[..2], &friends, Some(Area::LEISURE), now), Told::By(&claims[1]));
+        // The settling time is counted among the devices the thing is for: the phone alone for leisure tells at once,
+        // though the desk runs too; two devices for it, the one used last waits for the settling time.
+        let two = Dispatch { lines: lines.iter().filter(|(id, _)| id.as_str() != "tablet").map(|(id, line)| (id.clone(), *line)).collect(), ..at(Time::Leisure) };
+        let phone = keeper_for(&claims[..2], "notices-areas-a", "phone", &two, Some(Area::LEISURE), now);
+        assert!(phone.mine && phone.settled && phone.others == 0, "{phone:?}");
+        let desk = keeper_for(&claims[..2], "notices-areas-a", "desk", &two, Some(Area::LEISURE), now);
+        assert!(!desk.mine && !desk.settled && desk.computer == "phone" && desk.others == 1, "{desk:?}");
+        let phone = keeper_for(&claims, "notices-areas-b", "phone", &at(Time::Leisure), Some(Area::LEISURE), now);
+        assert!(phone.mine && !phone.settled && phone.others == 1, "the tablet may not have seen it yet: {phone:?}");
+        let later: Vec<Claim> = claims.iter().map(|c| Claim { renewed: c.renewed + SETTLING, until: c.until + SETTLING, ..c.clone() }).collect();
+        assert!(keeper_for(&later, "notices-areas-b", "phone", &at(Time::Leisure), Some(Area::LEISURE), now + SETTLING).settled);
+        // A thing no device narrows: the part's own keeper, settled as before.
+        let plain = keeper_for(&claims, "notices-areas-c", "desk", &at(Time::Leisure), None, now);
+        assert!(plain.mine && plain.computer == "desk" && plain.others == 2);
+        // Asked for a thing that comes forward on no running device, by a device that is not for it: not its to tell.
+        let waits = keeper_for(&alone, "notices-areas-d", "desk", &at(Time::Leisure), Some(Area::LEISURE), now);
+        assert!(!waits.mine && !waits.settled && waits.computer.is_empty(), "{waits:?}");
+    }
+
+    /// An older Sioul, a work computer and a personal phone together: each
+    /// thing is told exactly once, whichever was used last, or waits for a
+    /// device that is for it. The older one tells by the rule before (the
+    /// one used last of all tells everything); the two others read what each
+    /// device is for.
+    #[test]
+    fn an_older_device_a_work_computer_and_a_personal_phone_tell_each_thing_once() {
+        let now = 10_000;
+        let lines: BTreeMap<String, Line> = [("desk", Line::for_area(Area::WORK)), ("phone", Line::for_area(Area::PERSONAL))].into_iter().map(|(id, line)| (id.to_string(), line)).collect();
+        let devices = ["old", "desk", "phone"];
+        let things = [None, Some(Area::WORK), Some(Area::ADMIN), Some(Area::LEISURE), Some(Area::PERSONAL), Some(Area::MIXED), Some(Area::ALL)];
+        let mut walked = 0;
+        // Each order of use, and each device running or not (its claim closed).
+        for order in [[3, 2, 1], [3, 1, 2], [2, 3, 1], [1, 3, 2], [2, 1, 3], [1, 2, 3]] {
+            for running in 0..8u8 {
+                let claims: Vec<Claim> = devices.iter().zip(order).enumerate().map(|(i, (device, used))| if running & (1 << i) != 0 { live(device, 9_000 + used, now) } else { Claim { closed: true, until: now - 60, ..live(device, 9_000 + used, now) } }).collect();
+                let last = choose(&claims, Rule::FollowsYou, now).map(|c| c.computer.clone());
+                for time in Time::STATES.into_iter().chain([Time::Several(Area::MIXED)]) {
+                    let dispatch = Dispatch { time, week: week(), lines: lines.clone() };
+                    for thing in things {
+                        // What each device would do of a thing its own rules let it tell now.
+                        let tellers: Vec<&str> = devices
+                            .iter()
+                            .copied()
+                            .filter(|device| running & (1 << devices.iter().position(|d| d == device).unwrap()) != 0)
+                            .filter(|device| match *device {
+                                // The older Sioul: the device used last of all tells, whatever the thing is for.
+                                "old" => last.as_deref() == Some("old"),
+                                // The others: only what comes forward on them, or what no device narrows; then the claims read per area.
+                                device => {
+                                    let comes = thing.is_none_or(|area| dispatch.brings(device, area) || !dispatch.somewhere(area));
+                                    comes && tells(&claims, device, &dispatch, thing, now)
+                                }
+                            })
+                            .collect();
+                        assert!(tellers.len() <= 1, "told twice: {tellers:?} for {thing:?} at {time:?}, used {order:?}, running {running:03b}");
+                        // Told by nobody only while no running device may tell it: the older one was not used last
+                        // (it would tell everything), and no running device is one the thing comes forward on.
+                        if tellers.is_empty() && running != 0 {
+                            let runs = |device: &str| running & (1 << devices.iter().position(|d| *d == device).unwrap()) != 0;
+                            let for_it = ["desk", "phone"].iter().any(|d| runs(d) && thing.is_none_or(|area| dispatch.brings(d, area) || !dispatch.somewhere(area)));
+                            assert!(last.as_deref() != Some("old") && !for_it, "nobody tells {thing:?} at {time:?}, used {order:?}, running {running:03b}");
+                            assert_eq!(told_by(&claims, &dispatch, thing, now), Told::Waits, "it waits for a device that is for it");
+                        }
+                        walked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(walked, 6 * 8 * 6 * 7);
+        // In words, once: the three run, leisure's mail in the evening.
+        let all = |order: [i64; 3]| -> Vec<Claim> { devices.iter().zip(order).map(|(device, used)| live(device, 9_000 + used, now)).collect() };
+        let evening = Dispatch { time: Time::Leisure, week: week(), lines };
+        let said = |claims: &[Claim], thing: Area| match told_by(claims, &evening, Some(thing), now) {
+            Told::By(claim) => claim.computer.clone(),
+            other => format!("{other:?}"),
+        };
+        assert_eq!(said(&all([3, 2, 1]), Area::LEISURE), "old", "the older one used last tells everything, the others stay silent");
+        assert_eq!(said(&all([1, 3, 2]), Area::LEISURE), "phone", "the desk used last: the phone tells leisure's");
+        assert_eq!(said(&all([1, 2, 3]), Area::LEISURE), "phone");
+        assert_eq!(said(&all([2, 3, 1]), Area::WORK), "desk", "work's in the evening, let come by its row alone: the one used last of all");
     }
 
     /// The window and the command line ask the same (the second review,
