@@ -19,6 +19,7 @@
 //! (service-public.gouv.fr, sheet F31808).
 
 pub mod cii;
+pub mod edit;
 pub mod epc;
 pub mod html;
 pub mod ids;
@@ -152,6 +153,37 @@ pub fn all_in(dir: &Path) -> Vec<Invoice> {
 /// One issued invoice of `dir`, by number.
 pub fn find_in(dir: &Path, number: &str) -> Option<Invoice> {
     all_in(dir).into_iter().find(|i| i.number == number && !i.unreadable)
+}
+
+/// What changed outside Sioul in an issued invoice (`outside`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Outside {
+    /// Its record's bytes are not those written at issue.
+    pub record: bool,
+    /// Its kept file is not the file issued, or the record names another file.
+    pub file: bool,
+}
+
+impl Outside {
+    pub fn any(self) -> bool {
+        self.record || self.file
+    }
+}
+
+/// Whether an issued record of `dir`, or its kept file, was changed
+/// outside Sioul since it was issued: the record's bytes against the
+/// SHA-256 its journal's entry keeps (`series::Journal::records`, written
+/// from phase 3 on: a record issued before has none and is not judged), the
+/// kept file against the record's `file_sha256` (`kept::state`; a file not
+/// on this device yet is not "changed"). A record from before November 2026
+/// (format 1) has neither, and is never judged.
+pub fn outside(dir: &Path, invoice: &Invoice, journal: &series::Journal) -> Outside {
+    if invoice.number.is_empty() || invoice.unreadable || invoice.older.is_some() {
+        return Outside::default();
+    }
+    let record = journal.records.get(&invoice.number).is_some_and(|kept| std::fs::read(dir.join(file_name(&invoice.number))).is_ok_and(|bytes| !kept::sha256(&bytes).eq_ignore_ascii_case(kept.trim())));
+    let file = matches!(kept::state(dir, invoice), kept::State::Changed(_) | kept::State::Misnamed(_));
+    Outside { record, file }
 }
 
 /// Whether a draft's id is one: letters, digits and dashes, as Sioul gives

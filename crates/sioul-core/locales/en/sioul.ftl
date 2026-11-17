@@ -8375,3 +8375,6 @@ books-micro-effect-title = The micro regime ended on 1 January { $year }
 books-micro-effect = Your turnover passed the { $name } in { $before } and in { $last }. The real regime applies from 1 January { $year }: switch the income regime (Settings ▸ Invoices).
 books-micro-crossed-late-title = Your turnover of { $last } passed the micro regime's ceiling
 books-micro-crossed-late = { $turnover } received in { $last }, above the { $name }, { $amount }: one year above keeps the micro regime; above it again in { $year }, it ends on 1 January after.
+books-declare-correct = URSSAF’s sheet says to correct the declaration already made for that money ({ $period }): { $amount } excluding VAT given back on { $day }, counted in no period here.
+set-invoice-block = Invoices
+set-invoice-block-help = Who sends your invoices, how they are numbered and what they print, as your country asks; the books’ settings; the platform for electronic invoices.

@@ -957,18 +957,28 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         // Its file first, waiting beside it: the record names it with its
         // SHA-256, and is the commit; the file takes its name after.
         super::kept::write(dir, &mut invoice, &super::pdf::Options { qr: s.qr != Some(false) })?;
-        if let Err(e) = super::write_new(dir, &invoice) {
-            super::kept::remove(dir, &invoice);
-            return Err(e);
-        }
+        let written = match super::write_new(dir, &invoice) {
+            Ok(path) => path,
+            Err(e) => {
+                super::kept::remove(dir, &invoice);
+                return Err(e);
+            }
+        };
         if let Err(e) = super::kept::commit(dir, &invoice) {
             let _ = super::remove_issued(dir, &invoice.number);
             super::kept::remove(dir, &invoice);
             return Err(e);
         }
+        // The record's own SHA-256, of its bytes as written: it is never
+        // written again, so bytes that differ later were changed outside
+        // Sioul (`invoice::outside`). Kept in this device's journal, with its number.
+        let record_sha = std::fs::read(&written).map(|bytes| super::kept::sha256(&bytes)).unwrap_or_default();
         let mut own = Journal::own(dir, &numbering.device).unwrap_or_default();
         let before = own.series.get(&invoice.series).cloned();
-        own.series.insert(invoice.series.clone(), series::Last { last: n, number, day: day.to_string() });
+        own.series.insert(invoice.series.clone(), series::Last { last: n, number: number.clone(), day: day.to_string() });
+        if !record_sha.is_empty() {
+            own.records.insert(number, record_sha);
+        }
         if let Err(e) = own.save(dir, &numbering.device) {
             let _ = super::remove_issued(dir, &invoice.number);
             super::kept::remove(dir, &invoice);
@@ -985,7 +995,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         crate::filelock::with_lock(&lock, || {
             let _ = super::remove_issued(dir, &invoice.number);
             super::kept::remove(dir, &invoice);
-            let _ = forget_number(dir, &numbering.device, &invoice.series, given, before.as_ref());
+            let _ = forget_number(dir, &numbering.device, &invoice.series, &invoice.number, given, before.as_ref());
         });
     };
     // Its time marked, or a credit note's cancelled time freed.
@@ -1080,7 +1090,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
 /// halfway (under the numbering's lock): its sequence put back to `before`,
 /// only while the journal still says `given`; a number another process
 /// gave meanwhile stays, and the gap is said (`series::missing`).
-fn forget_number(dir: &Path, device: &str, sequence: &str, given: u64, before: Option<&series::Last>) -> Result<(), String> {
+fn forget_number(dir: &Path, device: &str, sequence: &str, number: &str, given: u64, before: Option<&series::Last>) -> Result<(), String> {
     let Some(mut own) = Journal::own(dir, device) else { return Ok(()) };
     if own.series.get(sequence).is_none_or(|l| l.last != given) {
         return Ok(());
@@ -1089,6 +1099,8 @@ fn forget_number(dir: &Path, device: &str, sequence: &str, given: u64, before: O
         Some(last) => own.series.insert(sequence.to_string(), last.clone()),
         None => own.series.remove(sequence),
     };
+    // Its record's hash goes with it: the record is taken out too.
+    own.records.remove(number);
     own.save(dir, device)
 }
 
@@ -1110,6 +1122,17 @@ fn freed_sessions(credit: &Invoice, records: &[Invoice]) -> Vec<String> {
         .filter(|l| !l.sessions.is_empty() && invoice.lines.iter().any(|o| (o.sessions == l.sessions || (older && o.description == l.description)) && l.amount >= o.amount))
         .flat_map(|l| l.sessions.iter().cloned())
         .collect()
+}
+
+/// The invoice `number` of `dir` sent on `day`, in this `device`'s life
+/// (`[[sent]]`): the mail "Write the mail" made for it left Sioul. Said
+/// once per device; the first day any device said counts.
+pub fn mark_sent(dir: &Path, device: &str, number: &str, day: Date) -> Result<(), String> {
+    lives::change_own(dir, device, |book| {
+        if !book.sent.iter().any(|s| s.invoice == number) {
+            book.sent.push(lives::Sent { invoice: number.to_string(), date: day.to_string() });
+        }
+    })
 }
 
 /// Why no payment goes on an invoice, in words; None when one may: a

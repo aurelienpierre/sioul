@@ -880,11 +880,52 @@ fn a_failed_issue_forgets_its_own_number_only() {
     let dir = place.invoices();
     let last = |n: u64| series::Last { last: n, number: format!("2026-{n:03}"), day: "2026-11-16".into() };
     let sequence = "2026-{N:3}";
-    let journal = |n: u64| Journal { format: 1, series: BTreeMap::from([(sequence.to_string(), last(n))]) };
+    let journal = |n: u64| Journal { format: 1, series: BTreeMap::from([(sequence.to_string(), last(n))]), records: BTreeMap::from([(format!("2026-{n:03}"), "ab".repeat(32))]) };
     journal(13).save(&dir, DESK).unwrap();
-    forget_number(&dir, DESK, sequence, 12, Some(&last(11))).unwrap();
+    forget_number(&dir, DESK, sequence, "2026-012", 12, Some(&last(11))).unwrap();
     assert_eq!(Journal::own(&dir, DESK).unwrap().series[sequence].last, 13, "another's number stays");
+    assert!(Journal::own(&dir, DESK).unwrap().records.contains_key("2026-013"), "and its record's hash");
     journal(12).save(&dir, DESK).unwrap();
-    forget_number(&dir, DESK, sequence, 12, Some(&last(11))).unwrap();
+    forget_number(&dir, DESK, sequence, "2026-012", 12, Some(&last(11))).unwrap();
     assert_eq!(Journal::own(&dir, DESK).unwrap().series[sequence].last, 11);
+    assert!(Journal::own(&dir, DESK).unwrap().records.is_empty(), "its record's hash goes with it");
+}
+
+/// The record's own SHA-256 kept at issue in this device's journal, with
+/// its number (phase 3): the record is never written again, so the window
+/// says when its bytes, or its kept file's, changed outside Sioul. A record
+/// issued before phase 3 has no entry, and is not judged.
+#[test]
+fn a_record_changed_outside_sioul_is_said() {
+    let place = Place::new("outside");
+    let dir = place.invoices();
+    let s = french("franchise");
+    let mut draft = fresh("en");
+    draft.lines.push(sold("Poster", 4000, Nature::Goods));
+    let made = issued(&place, &draft, &s, "2026-11-17");
+    let journal = Journal::load(&dir);
+    let kept = journal.records.get(&made.number).cloned().unwrap_or_default();
+    assert_eq!(kept, crate::invoice::kept::sha256(&std::fs::read(dir.join(crate::invoice::file_name(&made.number))).unwrap()), "the bytes written at issue");
+    let found = find_in(&dir, &made.number).unwrap();
+    assert_eq!(crate::invoice::outside(&dir, &found, &journal), crate::invoice::Outside::default(), "nothing changed");
+    // A payment lives apart: the record stays as it was.
+    add_payment(&dir, DESK, &made.number, Payment { date: "2026-11-18".into(), amount: 1000, means: "transfer".into(), ..Payment::default() }, &en()).unwrap();
+    assert!(!crate::invoice::outside(&dir, &find_in(&dir, &made.number).unwrap(), &journal).any());
+    // The record changed by hand: said; its file changed: said apart.
+    let record = dir.join(crate::invoice::file_name(&made.number));
+    let text = std::fs::read_to_string(&record).unwrap();
+    std::fs::write(&record, text.replace("Poster", "Posters")).unwrap();
+    let changed = crate::invoice::outside(&dir, &find_in(&dir, &made.number).unwrap(), &journal);
+    assert!(changed.record && !changed.file, "{changed:?}");
+    std::fs::write(&record, &text).unwrap();
+    let pdf = crate::invoice::kept::path(&dir, &found);
+    let mut bytes = std::fs::read(&pdf).unwrap();
+    bytes.push(b'\n');
+    std::fs::write(&pdf, bytes).unwrap();
+    let changed = crate::invoice::outside(&dir, &find_in(&dir, &made.number).unwrap(), &journal);
+    assert!(!changed.record && changed.file, "{changed:?}");
+    // A record without a journal's entry (issued before phase 3): not judged.
+    let older = Invoice { number: "2026-900".into(), date: "2026-10-01".into(), currency: "EUR".into(), ..made.clone() };
+    crate::invoice::keep_issued(&dir, &older).unwrap();
+    assert!(!crate::invoice::outside(&dir, &find_in(&dir, "2026-900").unwrap(), &Journal::load(&dir)).record);
 }

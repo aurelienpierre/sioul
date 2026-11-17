@@ -8749,3 +8749,6 @@ books-micro-effect-title = Le régime micro a pris fin le 1er janvier { $year }
 books-micro-effect = Votre chiffre d’affaires a dépassé le { $name } en { $before } et en { $last }. Le régime réel s’applique à partir du 1er janvier { $year } : changez de régime d’imposition (Paramètres ▸ Factures).
 books-micro-crossed-late-title = Votre chiffre d’affaires de { $last } a dépassé le plafond du régime micro
 books-micro-crossed-late = { $turnover } encaissés en { $last }, au-dessus du { $name }, { $amount } : une année au-dessus garde le régime micro ; au-dessus encore en { $year }, il prend fin au 1er janvier suivant.
+books-declare-correct = La fiche de l’Urssaf dit de corriger la déclaration déjà faite pour cet argent ({ $period }) : { $amount } hors TVA rendus le { $day }, comptés dans aucune période ici.
+set-invoice-block = Factures
+set-invoice-block-help = Qui envoie vos factures, comment elles sont numérotées et ce qu’elles impriment, comme votre pays le demande ; les réglages des livres ; la plateforme des factures électroniques.

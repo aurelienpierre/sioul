@@ -338,7 +338,8 @@ fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
         for item in items {
             let at = item.opens.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
             let notice = Notice { address: "sioul:budget/".into(), at, when: tr.day_short(item.due), who: item.who, what: item.what, ..Notice::new(Kind::Money, item.id.clone(), "money").with_area(Some(sioul_core::areas::Area::WORK)) };
-            rows.push((row(notice, vec![item.id.clone()], Vec::new(), json!({ "amount": item.amount, "note": item.note })), vec![item.id]));
+            // Open: the declaration view at its period (its "Declared" there).
+            rows.push((row(notice, vec![item.id.clone()], Vec::new(), json!({ "amount": item.amount, "note": item.note, "declaration": item.anchor.to_string() })), vec![item.id]));
         }
     }
     (rows, every)

@@ -409,8 +409,9 @@ pub fn books(s: &Session, args: &Args) -> Result<Answer, String> {
     let periods = declarations::periods_of_year(&loaded.input(), year, today);
     let start = periods.iter().map(|p| p.0).min().map_or(first, |p| p.min(first));
     // Rows of every invoice's (to keep a payment's bank line from coming back as a receipt of its own), then those open.
-    let span = books::rows(&loaded.input(), start, last, &s.tr);
-    let every: Vec<books::Row> = span.iter().filter(|r| r.day >= first).cloned().collect();
+    // Up to the last period's day to declare by (today at most): a refund made by then, of money of that period, counts in it.
+    let span = books::rows(&loaded.input(), start, declarations::due_of(&loaded.settings, last).min(today).max(last), &s.tr);
+    let every: Vec<books::Row> = span.iter().filter(|r| r.day >= first && r.day <= last).cloned().collect();
     // A receipt no invoice describes: its budget open; one an invoice says (matched or paid): its project too.
     let movement = |r: &books::Row| r.payment.is_empty() && !r.address.starts_with("sioul:invoice/");
     let open_row = |r: &books::Row| (!movement(r) || (open_budgets.contains(&r.budget) && !kept_labels.contains(&r.client))) && (r.invoice.is_empty() || consent.allows_projects([r.project.as_str()]));

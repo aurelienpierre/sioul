@@ -708,8 +708,9 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
         let folder = sioul_core::invoice::folder();
         let settings = sioul_core::books::Settings::of(&s.config.invoice, Some(&money.ledger));
         let invoices = sioul_core::invoice::all_in(&folder);
-        let booked = sioul_core::invoice::lives::Lives::load(&folder).booked;
-        let input = sioul_core::books::Input { settings: &settings, invoices: &invoices, booked: &booked, money: Some(money), budget: None };
+        let lives = sioul_core::invoice::lives::Lives::load(&folder);
+        let declared = sioul_core::books::declared_days(&lives);
+        let input = sioul_core::books::Input { settings: &settings, invoices: &invoices, booked: &lives.booked, declared: &declared, money: Some(money), budget: None };
         if let Some(line) = sioul_core::books::declarations::overview_line(&input, today, &s.tr) {
             shown.say_declared(&line);
         }

@@ -1052,6 +1052,11 @@ pub struct InvoiceSettings {
     /// The EPC payment QR code on euro invoices with an IBAN; on unless `false`.
     #[serde(default)]
     pub qr: Option<bool>,
+    /// The e-invoicing platform you use (France's plateforme agréée, a PA),
+    /// by its name: until Sioul sends through it, you upload each invoice's
+    /// PDF there, its Factur-X data inside (the guide says how).
+    #[serde(default)]
+    pub platform: String,
 }
 
 /// A contribution rate of your own, from a day, until a day.
@@ -2439,6 +2444,43 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
     })
 }
 
+/// The lists of `[invoice]` Settings ▸ Invoices writes whole: identifiers,
+/// the dated VAT schemes, bank accounts, legal lines, your contribution rates.
+pub const INVOICE_LISTS: [&str; 5] = ["id", "tax", "bank", "line", "contribution"];
+
+/// Writes one of `[invoice]`'s lists whole (`INVOICE_LISTS`), as
+/// `[[invoice.<list>]]` tables in their order, each a table of its texts,
+/// numbers and switches; an empty one is taken out. The rest of the file
+/// and its comments stay; what would not read back is refused
+/// (`write_document`).
+pub fn set_invoice_list(path: &Path, list: &str, rows: &[toml::Table]) -> Result<(), String> {
+    if !INVOICE_LISTS.contains(&list) {
+        return Err(format!("invoice.{list}: no such list"));
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if !doc.contains_key("invoice") {
+            doc["invoice"] = Item::Table(Table::new());
+        }
+        let invoice = doc["invoice"].as_table_mut().ok_or_else(|| format!("{}: invoice is not a table", path.display()))?;
+        if rows.is_empty() {
+            invoice.remove(list);
+        } else {
+            let mut tables = ArrayOfTables::new();
+            for row in rows {
+                let written: DocumentMut = toml::to_string(row).map_err(|e| e.to_string())?.parse().map_err(|e| format!("{e}"))?;
+                let mut table = Table::new();
+                for (key, item) in written.iter() {
+                    table.insert(key, item.clone());
+                }
+                tables.push(table);
+            }
+            invoice.insert(list, Item::ArrayOfTables(tables));
+        }
+        write_document(path, &doc)
+    })
+}
+
 /// Writes the mail filters whole, in their order, as `[[mail.filter]]`
 /// tables, each condition and each action an inline table on a line of its
 /// own (`rules::Filter`); the rest of the file and its comments stay. None:
@@ -3195,6 +3237,36 @@ mod tests {
         set_filters(&path, &[]).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(read(&path).is_empty() && !text.contains("[[mail.filter]]") && text.contains("threads = true"), "{text}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Settings ▸ Invoices writes `[invoice]`'s lists whole, the rest of the
+    /// file and its comments kept; an empty list taken out; a list Sioul
+    /// does not know, or rows that would not read, refused.
+    #[test]
+    fn invoice_lists_are_written_whole() {
+        let path = std::env::temp_dir().join(format!("sioul-invoice-lists-{}.toml", std::process::id()));
+        std::fs::write(&path, "# Mine\n[invoice]\nname = \"Camille Exemple\" # as printed\n\n[[invoice.bank]]\niban = \"FR76 3000 6000 0112 3456 7890 189\"\n").unwrap();
+        let row = |pairs: &[(&str, toml::Value)]| pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<toml::Table>();
+        let banks = [
+            row(&[("holder", "Camille Exemple".into()), ("iban", "FR76 3000 6000 0112 3456 7890 189".into()), ("bic", "EXMPFRPP".into())]),
+            row(&[("iban", "BE68 5390 0754 7034".into())]),
+        ];
+        set_invoice_list(&path, "bank", &banks).unwrap();
+        let read = |path: &Path| Config::load(path).unwrap().invoice;
+        let invoice = read(&path);
+        assert_eq!(invoice.banks.iter().map(|b| (b.holder.as_str(), b.bic.as_str())).collect::<Vec<_>>(), [("Camille Exemple", "EXMPFRPP"), ("", "")]);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# Mine") && text.contains("# as printed"), "{text}");
+        set_invoice_list(&path, "id", &[row(&[("kind", "siret".into()), ("value", "732 829 320 00017".into()), ("printed", true.into())])]).unwrap();
+        set_invoice_list(&path, "tax", &[row(&[("from", "2026-01-01".into()), ("scheme", "franchise".into())]), row(&[("from", "2027-03-14".into()), ("scheme", "liable".into())])]).unwrap();
+        let invoice = read(&path);
+        assert_eq!((invoice.ids.len(), invoice.tax.len(), invoice.banks.len(), invoice.name.as_str()), (1, 2, 2, "Camille Exemple"));
+        set_invoice_list(&path, "bank", &[]).unwrap();
+        assert!(read(&path).banks.is_empty() && !std::fs::read_to_string(&path).unwrap().contains("[[invoice.bank]]"));
+        assert!(set_invoice_list(&path, "nope", &[]).is_err());
+        assert!(set_invoice_list(&path, "tax", &[row(&[("from", "2026-01-01".into())])]).is_err(), "a scheme is asked: never written");
+        assert_eq!(read(&path).tax.len(), 2);
         let _ = std::fs::remove_file(&path);
     }
 

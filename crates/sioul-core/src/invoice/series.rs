@@ -14,6 +14,12 @@
 //! written in the same step as the record, under the numbering's lock, and
 //! read as the largest of every device's. A number of the journal's range
 //! with no record is said, never given again.
+//!
+//! Since phase 3 the journal's entry of each number also keeps the SHA-256
+//! of its record's bytes as they were written at issue (`records`): the
+//! record is never written again (its life lives apart, `lives`), so a
+//! record whose bytes differ from it was changed outside Sioul, which the
+//! window says (`invoice::outside`). A record from before has no entry.
 
 use super::record::Invoice;
 use jiff::civil::Date;
@@ -206,6 +212,11 @@ pub struct Journal {
     pub format: u32,
     #[serde(default)]
     pub series: BTreeMap<String, Last>,
+    /// Each number this device issued since phase 3: the SHA-256 of its
+    /// record's bytes as written at issue. An older journal has none; a
+    /// Sioul that does not know the table reads past it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub records: BTreeMap<String, String>,
 }
 
 fn first_format() -> u32 {
@@ -228,6 +239,10 @@ impl Journal {
                 if out.series.get(&sequence).is_none_or(|kept| kept.last < last.last) {
                     out.series.insert(sequence, last);
                 }
+            }
+            // A number's hash as the device that issued it wrote it (one device issues a number).
+            for (number, sha) in journal.records {
+                out.records.entry(number).or_insert(sha);
             }
         }
         out

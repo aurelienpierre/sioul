@@ -39,8 +39,10 @@
 //! and said (`Lives::newer`).
 //!
 //! The books write here too (`books`): what a payment in another currency
-//! came to in the books' own (`booked`), and the books' notices told (a
-//! threshold's step), each once whichever device told it.
+//! came to in the books' own (`booked`), the books' notices told (a
+//! threshold's step), each once whichever device told it, and the
+//! declarations you said made (`declared`, the declaration view's
+//! "Declared", taken back by a removal as any entry).
 
 use super::record::{Invoice, Kind, Payment};
 use serde::{Deserialize, Serialize};
@@ -96,6 +98,8 @@ pub struct Book {
     pub booked: Vec<Booked>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub told: Vec<Told>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declared: Vec<Declared>,
 }
 
 fn one() -> u32 {
@@ -169,6 +173,21 @@ pub struct Told {
     pub date: String,
 }
 
+/// A declaration said made, by its key ("declaration:2026-Q4",
+/// "des:2026-10"), on its day: the declaration view's "Declared". Its id
+/// (`declared_id`) lets an Undo take it back.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Declared {
+    pub id: String,
+    pub key: String,
+    pub date: String,
+}
+
+/// A declaration said made, the `n`th time it is said after being taken back.
+pub fn declared_id(key: &str, n: u32) -> String {
+    format!("declared:{key}/{n}")
+}
+
 /// A device's name as a file name: letters, digits and dashes.
 fn device_file(dir: &Path, device: &str) -> PathBuf {
     let name: String = device.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
@@ -227,6 +246,8 @@ pub struct Lives {
     pub booked: BTreeMap<String, i64>,
     /// The books' notices told, by key.
     pub told: BTreeSet<String>,
+    /// The declarations said made, by key: the first day it was said, its entries not taken back.
+    pub declared: BTreeMap<String, String>,
 }
 
 impl Lives {
@@ -279,7 +300,18 @@ impl Lives {
         said.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
         let booked: BTreeMap<String, i64> = said.into_iter().map(|b| (b.payment.clone(), b.amount)).collect();
         let told: BTreeSet<String> = books.iter().flat_map(|b| &b.told).map(|t| t.key.clone()).collect();
-        Lives { payments, settled, sent, removed, ids, newer: Vec::new(), booked, told }
+        let mut declared: BTreeMap<String, String> = BTreeMap::new();
+        for d in books.iter().flat_map(|b| &b.declared) {
+            ids.insert(d.id.clone());
+            if removed.contains(&d.id) {
+                continue;
+            }
+            let at = declared.entry(d.key.clone()).or_insert_with(|| d.date.clone());
+            if d.date < *at {
+                *at = d.date.clone();
+            }
+        }
+        Lives { payments, settled, sent, removed, ids, newer: Vec::new(), booked, told, declared }
     }
 
     /// The records given their life: their payments as read (`counted`),

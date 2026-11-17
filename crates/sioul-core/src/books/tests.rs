@@ -60,8 +60,11 @@ fn issued(number: &str, date: &str, who: Client, mut lines: Vec<Line>, scheme: &
     }
 }
 
+/// No declaration said made.
+static NONE_DECLARED: std::sync::LazyLock<BTreeMap<String, Date>> = std::sync::LazyLock::new(BTreeMap::new);
+
 fn input<'a>(settings: &'a Settings, invoices: &'a [Invoice], booked: &'a BTreeMap<String, i64>, money: Option<&'a Money>) -> Input<'a> {
-    Input { settings, invoices, booked, money, budget: None }
+    Input { settings, invoices, booked, declared: &NONE_DECLARED, money, budget: None }
 }
 
 /// The money of a work budget that declares: a bank line that paid
@@ -547,32 +550,60 @@ fn the_vat_summary_follows_when_vat_is_due() {
 }
 
 /// Money given back on a credit note (a refund paid back) is a negative
-/// receipt on its own day: it lowers the book's totals, the declaration
-/// and the micro ceiling's turnover of its period, the VAT collected on
-/// services on that day, the franchise's turnover; a credit note on paid
-/// services whose refund is not written yet is said by the VAT summary.
+/// receipt on its own day in the book: it lowers the book's totals, the
+/// VAT collected on services on that day, the franchise's turnover. The
+/// declarations count it where URSSAF's sheet says (phase 3, read as a
+/// search snippet): in the period its money came in while that declaration
+/// is not made (not said "Declared", nor past its day); after, in no period,
+/// the declaration of its own period saying to correct the earlier one; in
+/// its own period when its money came in it. A credit note on paid services
+/// whose refund is not written yet is said by the VAT summary.
 #[test]
-fn a_refund_lowers_its_own_period() {
+fn a_refund_follows_its_money_s_declaration() {
     let s = InvoiceSettings { vl: true, ..french("liable") };
     let settings = Settings::of(&s, None);
     let paid = issued("2026-090", "2026-09-10", client("Studio Lumen", "FR"), vec![line("Design", 100_000, Nature::Service, "S", 2000)], "liable", &[("2026-09-20", 120_000, "transfer")]);
-    let refund = Invoice {
+    let refund = |on: &str| Invoice {
         kind: Kind::CreditNote,
         corrects: Some(Cited { number: "2026-090".into(), date: "2026-09-10".into(), amount: 120_000 }),
-        ..issued("2026-091", "2026-10-05", client("Studio Lumen", "FR"), vec![line("Design, in part", 30_000, Nature::Service, "S", 2000)], "liable", &[("2026-10-08", 36_000, "transfer")])
+        ..issued("2026-091", "2026-10-05", client("Studio Lumen", "FR"), vec![line("Design, in part", 30_000, Nature::Service, "S", 2000)], "liable", &[(on, 36_000, "transfer")])
     };
-    let invoices = vec![paid, refund];
+    let invoices = vec![paid.clone(), refund("2026-10-08")];
     let none = BTreeMap::new();
     let tr = en();
     let i = input(&settings, &invoices, &none, None);
+    // The book keeps it on its day.
     let q4 = book(&i, day("2026-10-01"), day("2026-12-31"), &tr);
     assert_eq!(q4.rows.iter().map(|r| (r.day.to_string(), r.invoice.as_str(), r.amount, r.without_tax)).collect::<Vec<_>>(), [("2026-10-08".to_string(), "2026-091", Some(-36_000), Some(-30_000))]);
     assert_eq!(q4.totals[0].without_tax, -30_000);
-    let d = declarations::holding(&i, day("2026-10-08"), &tr).unwrap();
-    // More given back than received in the period: nothing below zero is declared (the review of phase 4, P4-17).
-    assert_eq!((d.turnover, d.declared, d.lines[0].social.map(|p| p.amount)), (-30_000, 0, Some(0)));
+    // Given back on 8 October, before the third quarter's declaration was made: it lowers that one.
     let q3 = declarations::holding(&i, day("2026-09-20"), &tr).unwrap();
-    assert_eq!(q3.turnover, 100_000, "the payment's period keeps what it received");
+    assert_eq!((q3.turnover, q3.declared), (70_000, 70_000), "the money's period, not yet declared");
+    let d = declarations::holding(&i, day("2026-10-08"), &tr).unwrap();
+    assert_eq!((d.turnover, d.declared, d.corrections.len()), (0, 0, 0), "never twice");
+    // The third quarter said "Declared" on 5 October: counted in none, the fourth quarter's says to correct it.
+    let said = BTreeMap::from([(format!("declaration:{}", q3.key()), day("2026-10-05"))]);
+    let declared = Input { declared: &said, ..input(&settings, &invoices, &none, None) };
+    let q3 = declarations::holding(&declared, day("2026-09-20"), &tr).unwrap();
+    assert_eq!(q3.turnover, 100_000, "the declaration made stays as it was");
+    let d = declarations::holding(&declared, day("2026-10-08"), &tr).unwrap();
+    assert_eq!((d.turnover, d.declared), (0, 0));
+    assert_eq!(d.corrections, [declarations::Correction { every: Every::Quarter, from: day("2026-07-01"), to: day("2026-09-30"), first: false, amount: 30_000, day: day("2026-10-08") }]);
+    let said = declarations::sentences(&tr, &d, "EUR");
+    assert!(said.iter().any(|l| l.contains("correct the declaration") && l.contains("Third quarter 2026") && l.contains("€300")), "{said:?}");
+    // Given back after the third quarter's day to declare by (2 November): the same, said "Declared" or not.
+    let late = vec![paid.clone(), refund("2026-11-10")];
+    let d = declarations::holding(&input(&settings, &late, &none, None), day("2026-11-10"), &tr).unwrap();
+    assert_eq!((d.turnover, d.corrections.len()), (0, 1));
+    // Given back in the period its money came in: it lowers that period.
+    let same = vec![issued("2026-094", "2026-10-01", client("Studio Lumen", "FR"), vec![line("Design", 100_000, Nature::Service, "S", 2000)], "liable", &[("2026-10-02", 120_000, "transfer")]), Invoice { corrects: Some(Cited { number: "2026-094".into(), date: "2026-10-01".into(), amount: 120_000 }), ..refund("2026-10-20") }];
+    let d = declarations::holding(&input(&settings, &same, &none, None), day("2026-10-20"), &tr).unwrap();
+    assert_eq!((d.turnover, d.corrections.len()), (70_000, 0));
+    // More given back than received in a period (its money from before the books begin): nothing below zero is declared (the review of phase 4, P4-17).
+    let begun = Settings::of(&InvoiceSettings { started: "2026-10-01".into(), ..s.clone() }, None);
+    let d = declarations::holding(&input(&begun, &invoices, &none, None), day("2026-10-08"), &tr).unwrap();
+    assert_eq!((d.turnover, d.declared, d.lines[0].social.map(|p| p.amount)), (-30_000, 0, Some(0)));
+    // The VAT summary takes the services' VAT off on the refund's day.
     let months = vat::between(&i, day("2026-09-01"), day("2026-10-31"));
     assert_eq!(months[0].entries[0].tax, 20_000);
     assert_eq!((months[1].entries[0].base, months[1].entries[0].tax), (-30_000, -6_000));

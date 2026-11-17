@@ -36,8 +36,9 @@ pub(crate) fn overview_line(config: &sioul_core::config::Config, money: &sioul_c
     let folder = sioul_core::invoice::folder();
     let settings = books::Settings::of(&config.invoice, Some(&money.ledger));
     let invoices = sioul_core::invoice::all_in(&folder);
-    let booked = sioul_core::invoice::lives::Lives::load(&folder).booked;
-    declarations::overview_line(&books::Input { settings: &settings, invoices: &invoices, booked: &booked, money: Some(money), budget: None }, today, tr())
+    let lives = sioul_core::invoice::lives::Lives::load(&folder);
+    let declared = books::declared_days(&lives);
+    declarations::overview_line(&books::Input { settings: &settings, invoices: &invoices, booked: &lives.booked, declared: &declared, money: Some(money), budget: None }, today, tr())
 }
 
 /// One dated item of the Porch's Money.
@@ -53,6 +54,8 @@ pub(crate) struct Item {
     pub amount: String,
     /// What it holds, under the row: the contributions estimated, the invoices a DES covers.
     pub note: String,
+    /// A day of its period: the declaration view opens there (the Porch's row's Open).
+    pub anchor: jiff::civil::Date,
 }
 
 /// The declarations and the DES to make now (`declarations::open_now`, `des::open_now`), as the Porch's items.
@@ -63,6 +66,10 @@ pub(crate) fn porch_items(loaded: &books::Loaded, today: jiff::civil::Date) -> V
     let money = |m: i64| tr.money_in(sioul_core::money::Money(m), &currency);
     let mut out = Vec::new();
     for d in declarations::open_now(&input, today, AFTER_DAYS, tr) {
+        // Said "Declared", here or on another device: done.
+        if loaded.declared.contains_key(&books::declaration_key(&d)) {
+            continue;
+        }
         let mut args = sioul_core::i18n::args();
         args.set("period", declarations::period_name(tr, &d));
         args.set("due", tr.day_short(d.due));
@@ -76,9 +83,13 @@ pub(crate) fn porch_items(loaded: &books::Loaded, today: jiff::civil::Date) -> V
             amount: if d.least() { tr.text("books-at-least-amount", Some(&{ let mut a = sioul_core::i18n::args(); a.set("amount", money(d.declared)); a })) } else { money(d.declared) },
             // A payment in another currency to say in euros; a zero period said as such ("Nothing received…: declare €0 by…"); else the estimate.
             note: declarations::porch_note(tr, &d, &currency),
+            anchor: d.from,
         });
     }
     for d in des::open_now(&input, today, AFTER_DAYS) {
+        if loaded.declared.contains_key(&books::des_key(&d)) {
+            continue;
+        }
         let mut args = sioul_core::i18n::args();
         args.set("month", tr.month_year(d.month));
         args.set("due", tr.day_short(d.due));
@@ -98,6 +109,7 @@ pub(crate) fn porch_items(loaded: &books::Loaded, today: jiff::civil::Date) -> V
             what: tr.text("books-porch-des-what", Some(&args)),
             amount: if d.foreign > 0 { tr.text("books-at-least-amount", Some(&{ let mut a = sioul_core::i18n::args(); a.set("amount", money(d.total)); a })) } else { money(d.total) },
             note: note.join("\n"),
+            anchor: d.month,
         });
     }
     out
@@ -219,7 +231,7 @@ mod tests {
         let totals = sioul_core::invoice::totals::compute(&mut lines, 0, &|_, _| (String::new(), String::new()));
         let client = Client { kind: "business".into(), name: "Beispiel GmbH".into(), address: Address { country: "DE".into(), city: "Berlin".into(), ..Address::default() }, ..Client::default() };
         let invoice = Invoice { format: 2, kind: Kind::Invoice, number: "2026-031".into(), date: "2026-09-30".into(), period_to: "2026-10-02".into(), currency: "EUR".into(), issuer: sioul_core::invoice::Issuer { preset: "fr".into(), ..Default::default() }, client, lines, totals, payments: vec![Payment { id: "p".into(), date: "2026-09-30".into(), amount: 120_000, means: "transfer".into(), ..Payment::default() }], ..Invoice::default() };
-        let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![invoice], booked: Default::default(), told: Default::default(), money: None };
+        let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![invoice], booked: Default::default(), told: Default::default(), declared: Default::default(), money: None };
         let _: Input = loaded.input();
         let items = porch_items(&loaded, day("2026-11-05"));
         assert_eq!(items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["money:books/declaration/2026-Q3", "money:books/des/2026-10"]);
@@ -241,7 +253,7 @@ mod tests {
             let client = Client { kind: "business".into(), name: "Beispiel GmbH".into(), address: Address { country: "DE".into(), city: "Berlin".into(), ..Address::default() }, ..Client::default() };
             Invoice { format: 2, kind: Kind::Invoice, number: number.into(), date: "2026-10-30".into(), period_to: "2026-10-30".into(), currency: currency.into(), issuer: sioul_core::invoice::Issuer { preset: "fr".into(), ..Default::default() }, client, lines, totals, ..Invoice::default() }
         };
-        let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![reverse("2026-031", "EUR", 120_000), reverse("2026-032", "USD", 50_000)], booked: Default::default(), told: Default::default(), money: None };
+        let loaded = books::Loaded { settings: Settings::of(&s, None), invoices: vec![reverse("2026-031", "EUR", 120_000), reverse("2026-032", "USD", 50_000)], booked: Default::default(), told: Default::default(), declared: Default::default(), money: None };
         let items = porch_items(&loaded, day("2026-11-05"));
         let des = items.iter().find(|i| i.id == "money:books/des/2026-10").expect("October's DES");
         let tr = tr();
@@ -254,5 +266,9 @@ mod tests {
         assert_eq!(note.len(), 3, "{}", des.note);
         assert_eq!(note[0], tr.text("books-des-foreign-note", Some(&f)));
         assert!(note[2].starts_with("2026-032 · Beispiel GmbH"), "{}", des.note);
+        assert_eq!(des.anchor, day("2026-10-01"), "Open: the declaration view at its month");
+        // Said "Declared" (on any device): no longer on the Porch.
+        let declared = books::Loaded { declared: std::collections::BTreeMap::from([("des:2026-10".to_string(), day("2026-11-04"))]), ..loaded };
+        assert!(porch_items(&declared, day("2026-11-05")).iter().all(|i| i.id != "money:books/des/2026-10"));
     }
 }
