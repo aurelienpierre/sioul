@@ -1,33 +1,48 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Finding an account's IMAP server from its address, the way Thunderbird does
-//! (<https://wiki.mozilla.org/Thunderbird:Autoconfiguration>), in this order:
+//! Finding an account's servers from its address, the way Thunderbird does
+//! (<https://wiki.mozilla.org/Thunderbird:Autoconfiguration>), under one
+//! rule: a password goes only where the person saw it go. That is the
+//! receiving server the form shows, a sending server shown or typed, or
+//! what the domain's own HTTPS settings or Thunderbird's list by the domain
+//! name. What unsigned DNS gives (MX, SRV) comes after those, is offered
+//! only when its server shows a certificate valid for its very name
+//! (`Search::certified`), and is said as something to check.
 //!
-//! 1. the provider's own settings, `autoconfig.<domain>` (cPanel hosts and
+//! The receiving server (`discover`), each step asked only when those
+//! before found nothing:
+//!
+//! 1. the domain's own settings, `autoconfig.<domain>` (cPanel hosts and
 //!    Nextcloud providers publish them), then `<domain>/.well-known/autoconfig`;
 //! 2. Thunderbird's list of providers (ISPDB), which knows Gmail and the big
 //!    ones, asked by the domain;
 //! 3. Google's and Microsoft's servers, when the domain's MX is theirs;
 //! 4. Thunderbird's list again, asked by the names of whoever receives the
-//!    domain's mail (`provider_names`): a domain of your own kept at a host
-//!    is found by its host's entry;
-//! 5. the domain's own SRV records (RFC 6186, RFC 8314), said as such, to
-//!    check: DNS is not signed;
-//! 6. a guess, `imap.<domain>` then `mail.<domain>` on port 993, for you to
-//!    check, offered only when the host shows a certificate valid for that
-//!    very name (`certified`): an alias of a host's server, whose
-//!    certificate names the host's server, is no guess.
+//!    domain's mail (`provider_names`), its server checked: a domain of
+//!    your own kept at a host is found by its host's entry;
+//! 5. a guess, `imap.<domain>` then `mail.<domain>` on port 993, checked:
+//!    an alias of a host's server, whose certificate names the host's
+//!    server, is no guess;
+//! 6. the domain's own SRV record `_imaps._tcp` (RFC 6186), checked, after
+//!    the guess, so that a forged record never wins over an
+//!    `imap.<domain>` that shows its own certificate.
+//!
+//! The sending server (`discover_smtp`), at an account's first message,
+//! when nobody reads the answer before its password follows it: the
+//! domain's HTTPS settings, as they are (the domain's own word, which may
+//! name Google's or Microsoft's server); Google's or Microsoft's server
+//! for an account whose receiving server is theirs alone; the account's
+//! receiving server on 465, then 587; then, checked and at the receiving
+//! server's keeper only (`same_keeper`), the list by the MX's names, the
+//! records `_submissions._tcp` and `_submission._tcp`, and `smtp.<domain>`.
 //!
 //! Only HTTPS: a settings file fetched in clear could send your password to
-//! someone else's server. The ISPDB is told the domain, then the name of
-//! whoever receives its mail, never the address; a name under the address's
-//! own domain is never told to it a second time.
-//!
-//! The sending server is found by the same steps (`discover_smtp`). What
-//! unsigned DNS names (an MX, an SRV target) is followed without anyone
-//! reading it only when it agrees with the receiving server the account
-//! already has (`same_keeper`).
+//! someone else's server. The ISPDB is told the domain, then the names of
+//! whoever receives its mail, never the address, never a name under the
+//! address's domain, nor under another domain of the person's own
+//! (`Search::withheld`). Each question has its limit, and a whole search
+//! `WHOLE` (28 seconds); one cut short says so.
 //!
 //! Google's mail is known before any of that: gmail.com and googlemail.com,
 //! and any domain whose mail Google receives (Google Workspace: its MX is
@@ -221,11 +236,16 @@ fn with_the_network<T>(run: impl FnOnce(&Ask) -> T) -> T {
 
 /// One search: what it asks of the outside, the time left of `WHOLE`, the
 /// certificates already checked (a host and port is never checked twice in
-/// one search), and the domains never told to Thunderbird's list.
+/// one search), and the person's domains, which Thunderbird's list is not told.
 struct Search<'a> {
     ask: &'a Ask<'a>,
-    own: Vec<String>,
+    /// The address's own domain.
+    domain: String,
+    /// The domains of the person's other addresses.
+    others: Vec<String>,
     checked: RefCell<HashMap<(String, u16, Probe), bool>>,
+    /// Which of `others` are providers' domains (`is_providers`), once asked.
+    providers: RefCell<HashMap<String, bool>>,
     /// A step was not started for want of time.
     late: std::cell::Cell<bool>,
 }
@@ -233,9 +253,33 @@ struct Search<'a> {
 impl<'a> Search<'a> {
     /// A search for an address at `domain`, the person's other domains `own`.
     fn new(ask: &'a Ask<'a>, domain: &str, own: &[String]) -> Search<'a> {
-        let mut own: Vec<String> = own.iter().filter_map(|d| domain_of(&format!("x@{d}"))).collect();
-        own.push(domain.to_string());
-        Search { ask, own, checked: RefCell::new(HashMap::new()), late: std::cell::Cell::new(false) }
+        let others = own.iter().filter_map(|d| domain_of(&format!("x@{d}"))).filter(|d| d != domain).collect();
+        Search { ask, domain: domain.to_string(), others, checked: RefCell::new(HashMap::new()), providers: RefCell::new(HashMap::new()), late: std::cell::Cell::new(false) }
+    }
+
+    /// Whether Thunderbird's list must not be told `name`: the address's own
+    /// domain or a name under it (the list was asked about it already), or
+    /// a name under another domain of the person's that is their own, a
+    /// customer's domain whose mail a provider keeps. Another domain of the
+    /// person's that is a provider's (an address at mailbox.org or at
+    /// orange.fr) tells the list nothing of theirs: it may be asked.
+    fn withheld(&self, name: &str) -> bool {
+        let mine = |domain: &str| under(name, domain) || under(domain, name);
+        mine(&self.domain) || self.others.iter().filter(|domain| mine(domain)).any(|domain| !self.is_providers(domain))
+    }
+
+    /// Whether one of the person's other domains is a provider's: the hosts
+    /// that receive its mail are all under it, as a provider's own are
+    /// (`mxext1.mailbox.org` for mailbox.org). Not known (no answer, no
+    /// time left): taken as the person's own, never told.
+    fn is_providers(&self, domain: &str) -> bool {
+        if let Some(known) = self.providers.borrow().get(domain) {
+            return *known;
+        }
+        let hosts = self.mx(domain);
+        let providers = !hosts.is_empty() && hosts.iter().all(|host| under(&lower(host), domain));
+        self.providers.borrow_mut().insert(domain.to_string(), providers);
+        providers
     }
 
     /// The time a step may take: at most `most`, at most what is left; none when too little is.
@@ -247,9 +291,11 @@ impl<'a> Search<'a> {
     }
 
     /// Nothing found for `domain`: said as such, or, when the time ran out
-    /// before every step was asked, as the network's slowness.
+    /// before every step was asked, as a search the network slowed, in the
+    /// person's language (`said::SEARCH_SLOW`); the window opens the empty
+    /// form for either.
     fn nothing(&self, domain: String) -> SyncError {
-        if self.late.get() { SyncError::Network(format!("no answer within {} s", WHOLE.as_secs())) } else { SyncError::NotFound(domain) }
+        if self.late.get() { SyncError::Said(crate::said::SEARCH_SLOW, domain) } else { SyncError::NotFound(domain) }
     }
 
     fn fetch(&self, url: &str) -> Option<String> {
@@ -296,7 +342,7 @@ impl<'a> Search<'a> {
     /// Thunderbird's list, asked by the names of whoever receives the
     /// domain's mail (`provider_names`): the entries it gives, in turn.
     fn by_the_exchangers<'b>(&'b self, exchangers: &'b [String], address: &'b str, domain: &'b str) -> impl Iterator<Item = Found> + 'b {
-        provider_names(exchangers, &self.own).into_iter().filter_map(move |name| self.settings(&format!("{ISPDB}{name}"), address, domain, FoundBy::IspdbMx))
+        provider_names(exchangers, |name| self.withheld(name)).into_iter().filter_map(move |name| self.settings(&format!("{ISPDB}{name}"), address, domain, FoundBy::IspdbMx))
     }
 }
 
@@ -350,13 +396,11 @@ pub(crate) fn discover_with(address: &str, ask: &Ask, own: &[String]) -> Result<
 /// asks them: each name above the hosts that receive the domain's mail, the
 /// longest first ("mx1.mail.ovh.net": "mail.ovh.net", then "ovh.net"), down
 /// to the name registered under its public suffix and never further
-/// (`trust::organisational`: the Public Suffix List). A name under one of
-/// the person's own domains (`own`: the address's, and the other
-/// addresses' kept in the configuration) is left out: the list was asked
-/// about the address's domain already, and is told nothing else of theirs.
-/// A name no host can have (an IP address, a name in Unicode, which DNS
-/// gives in its `xn--` form) is never asked. A few names at most.
-fn provider_names(exchangers: &[String], own: &[String]) -> Vec<String> {
+/// (`trust::organisational`: the Public Suffix List). A name `withheld`
+/// is left out (`Search::withheld`: the person's own domains). A name no
+/// host can have (an IP address, a name in Unicode, which DNS gives in its
+/// `xn--` form) is never asked. A few names at most.
+fn provider_names(exchangers: &[String], withheld: impl Fn(&str) -> bool) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for host in exchangers {
         let host = lower(host);
@@ -364,7 +408,7 @@ fn provider_names(exchangers: &[String], own: &[String]) -> Vec<String> {
         // The host itself only when it is the registered name: it has no name above it to ask.
         let mut name = if host == registered { Some(host.as_str()) } else { host.split_once('.').map(|(_, above)| above) };
         while let Some(candidate) = name.filter(|n| under(n, &registered)) {
-            if !own.iter().any(|mine| under(candidate, mine) || under(mine, candidate)) && !names.iter().any(|n| n == candidate) {
+            if !names.iter().any(|n| n == candidate) && !withheld(candidate) {
                 names.push(candidate.to_string());
             }
             name = candidate.split_once('.').map(|(_, above)| above);
@@ -564,13 +608,24 @@ pub(crate) fn is_google_mail_with(address: &str, mx: impl Fn(&str) -> Option<Vec
 /// which hickory reads through ConnectivityManager); None when it cannot be
 /// asked or does not answer within `limit`.
 fn mx_hosts(domain: &str, limit: Duration) -> Option<Vec<String>> {
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-    runtime.block_on(async {
+    bounded(limit, async {
         let resolver = mail_auth::MessageAuthenticator::new_system_conf().ok()?;
         let none = None::<&mail_auth::common::cache::NoCache<Box<str>, mail_auth::RecordSet<mail_auth::MX>>>;
-        let found = tokio::time::timeout(limit, resolver.mx_lookup(domain, none)).await.ok()?.ok()?;
+        let found = resolver.mx_lookup(domain, none).await.ok()?;
         Some(found.rrset.iter().flat_map(|mx| mx.exchanges.iter().map(|host| host.trim_end_matches('.').to_string())).collect())
     })
+    .flatten()
+}
+
+/// Runs `work` on a runtime of its own, for at most `limit`: past it, None,
+/// at once. What it left waiting on the system (a name lookup, which tokio
+/// runs on a thread of its pool) is left to end on its own: a runtime
+/// dropped the usual way would wait for it, past the limit.
+fn bounded<T>(limit: Duration, work: impl Future<Output = T>) -> Option<T> {
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+    let done = runtime.block_on(async { tokio::time::timeout(limit, work).await.ok() });
+    runtime.shutdown_background();
+    done
 }
 
 /// The SRV records of a name, asked of the system's DNS as `mx_hosts` asks
@@ -578,11 +633,10 @@ fn mx_hosts(domain: &str, limit: Duration) -> Option<Vec<String>> {
 /// cannot be asked, does not answer within `limit`, or has none.
 fn srv_records(name: &str, limit: Duration) -> Vec<Service> {
     use mail_auth::hickory_resolver::proto::rr::{Name, RData};
-    let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return Vec::new() };
-    runtime.block_on(async {
+    bounded(limit, async {
         let Ok(resolver) = mail_auth::MessageAuthenticator::new_system_conf() else { return Vec::new() };
         let Ok(name) = Name::from_str_relaxed(name) else { return Vec::new() };
-        let Ok(Ok(found)) = tokio::time::timeout(limit, resolver.resolver().srv_lookup(name)).await else { return Vec::new() };
+        let Ok(found) = resolver.resolver().srv_lookup(name).await else { return Vec::new() };
         found
             .answers()
             .iter()
@@ -592,6 +646,7 @@ fn srv_records(name: &str, limit: Duration) -> Vec<Service> {
             })
             .collect()
     })
+    .unwrap_or_default()
 }
 
 /// A settings file, within `limit`, the body read included.
@@ -618,11 +673,10 @@ fn guess(search: &Search, domain: &str, address: &str) -> Option<Found> {
 /// own), reached as `probe` says. Nothing is sent after the handshake. An
 /// alias of a host's server (a CNAME whose certificate names the host's
 /// server, not the alias) fails here, as its sign-in would. All of it
-/// within `limit`, the name's lookup included; the first address that
-/// connects decides.
+/// within `limit`, the name's lookup included (`bounded`); the first
+/// address that connects decides.
 fn shows_its_own_certificate(name: &str, at: (&str, u16), probe: Probe, config: Arc<rustls::ClientConfig>, limit: Duration) -> bool {
     let Ok(server) = ServerName::try_from(name.to_string()) else { return false };
-    let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return false };
     let check = async {
         for address in tokio::net::lookup_host(at).await.ok()? {
             let Ok(mut tcp) = TcpStream::connect(address).await else { continue };
@@ -635,7 +689,7 @@ fn shows_its_own_certificate(name: &str, at: (&str, u16), probe: Probe, config: 
         }
         None
     };
-    runtime.block_on(async { tokio::time::timeout(limit, check).await.ok().flatten().unwrap_or(false) })
+    bounded(limit, check).flatten().unwrap_or(false)
 }
 
 /// SMTP's STARTTLS, up to where TLS begins (RFC 3207): the greeting, EHLO
@@ -1247,7 +1301,7 @@ mod tests {
         // The names the list is asked about: above each exchanger, the longest
         // first, down to the registered name, never a public suffix alone.
         let own = |domains: &[&str]| domains.iter().map(|d| d.to_string()).collect::<Vec<_>>();
-        let names = |hosts: &[&str]| provider_names(&own(hosts), &own(&["example.org"]));
+        let names = |hosts: &[&str]| provider_names(&own(hosts), |name: &str| under(name, "example.org") || under("example.org", name));
         assert_eq!(names(&["mx1.mail.ovh.net.", "MX2.Mail.OVH.net"]), ["mail.ovh.net", "ovh.net"]);
         assert_eq!(names(&["mx.example.co.uk"]), ["example.co.uk"], "never co.uk");
         assert_eq!(names(&["host.example"]), ["host.example"], "a registered name receiving the mail itself");
@@ -1255,7 +1309,7 @@ mod tests {
         assert_eq!(names(&["a.b.c.d.e.host.example"]).len(), PROVIDER_NAMES, "a few names at most");
         // The address's own servers, and those of the person's other domains.
         assert!(names(&["mail.example.org", "mx.in.example.org", "example.org"]).is_empty());
-        assert!(provider_names(&own(&["mx.jane-family.example"]), &own(&["example.org", "jane-family.example"])).is_empty());
+        assert!(provider_names(&own(&["mx.jane-family.example"]), |name: &str| under(name, "jane-family.example")).is_empty());
         // Names no host has, and public suffixes alone, are never asked about.
         assert!(names(&["co.uk", "uk", "localhost", "mx_1.host.example", "mx.host.example/v1.1/x", "192.0.2.1", "mx.exämple.example", ""]).is_empty());
     }
@@ -1276,9 +1330,21 @@ mod tests {
         let asked = unicode.asked();
         assert!(asked.contains(&"GET https://autoconfig.thunderbird.net/v1.1/xn--exmple-cua.org".to_string()) && asked.contains(&"MX xn--exmple-cua.org".to_string()), "{asked:?}");
         assert_eq!(asked.iter().filter(|line| line.starts_with("GET https://autoconfig.thunderbird.net")).count(), 3, "the domain once, then the host's two names: {asked:?}");
-        let family = Outside { mx: vec![("example.org", vec!["mx.jane-family.example."])], own: vec!["jane-family.example".into()], ..Outside::default() };
+        // Another domain of the person's, a customer's whose mail a host
+        // keeps (its MX elsewhere): never told. One that is a provider's
+        // (its MX under it): asked, since it tells nothing of theirs.
+        let family = Outside { mx: vec![("example.org", vec!["mx.jane-family.example."]), ("jane-family.example", vec!["mx1.mail.host.example."])], own: vec!["jane-family.example".into()], ..Outside::default() };
         let _ = family.discover("jane@example.org");
-        assert!(family.asked().iter().all(|line| !line.contains("v1.1/jane-family.example")), "another of the person's domains");
+        let asked = family.asked();
+        assert!(asked.contains(&"MX jane-family.example".to_string()) && asked.iter().all(|line| !line.contains("v1.1/jane-family.example")), "{asked:?}");
+        let unanswered = Outside { mx: vec![("example.org", vec!["mx.jane-family.example."])], own: vec!["jane-family.example".into()], ..Outside::default() };
+        let _ = unanswered.discover("jane@example.org");
+        assert!(unanswered.asked().iter().all(|line| !line.contains("v1.1/jane-family.example")), "not known: never told");
+        let provider = Outside { mx: vec![("example.org", vec!["mxext1.mailbox.example."]), ("mailbox.example", vec!["mxext1.mailbox.example.", "mxext2.mailbox.example."])], own: vec!["mailbox.example".into()], ..Outside::default() };
+        let _ = provider.discover("jane@example.org");
+        let asked = provider.asked();
+        assert!(asked.contains(&"GET https://autoconfig.thunderbird.net/v1.1/mailbox.example".to_string()), "{asked:?}");
+        assert_eq!(asked.iter().filter(|line| *line == "MX mailbox.example").count(), 1, "asked once in a search");
         let numbers = Outside { mx: vec![("example.org", vec!["192.0.2.1"])], srv: vec![("_imaps._tcp.example.org.", vec![(0, 0, 993, "192.0.2.1")])], ..Outside::default() };
         assert_eq!(numbers.discover("jane@example.org"), Err(SyncError::NotFound("example.org".into())));
         let asked = numbers.asked();
@@ -1409,13 +1475,18 @@ mod tests {
     fn a_whole_search_ends_within_its_time() {
         assert!(WHOLE < Duration::from_secs(30));
         let slow = Outside { mx: vec![("example.org", vec!["mx1.mail.host.example."])], slow: true, ..Outside::default() };
-        // Said as the network's slowness, not as nothing found.
-        assert_eq!(slow.discover("jane@example.org"), Err(SyncError::Network("no answer within 28 s".into())));
+        // Said as a search the network slowed, not as nothing found, in the person's language.
+        let cut = slow.discover("jane@example.org");
+        assert_eq!(cut, Err(SyncError::Said(crate::said::SEARCH_SLOW, "example.org".into())));
+        for (language, words) in [("en", "too slowly"), ("fr", "trop lentement")] {
+            let said = cut.clone().unwrap_err().sentence(&sioul_core::i18n::Translator::new(language), "jane@example.org");
+            assert!(said.starts_with("jane@example.org") && said.contains("example.org") && said.contains(words) && !said.contains("sync-said") && !said.contains("within 28"), "{said}");
+        }
         assert!(slow.clock.get() <= WHOLE, "{:?}", slow.clock.get());
         let asked = slow.asked();
         assert_eq!(asked[..3], [format!("GET {OWN_SETTINGS}"), format!("GET {WELL_KNOWN}"), format!("GET {LIST_BY_DOMAIN}")], "{asked:?}");
         assert!(asked.len() < 9, "the later steps are not started once the time is spent: {asked:?}");
-        assert_eq!(slow.discover_smtp("jane@example.org", Some("ssl0.host.example")), Err(SyncError::Network("no answer within 28 s".into())));
+        assert_eq!(slow.discover_smtp("jane@example.org", Some("ssl0.host.example")), Err(SyncError::Said(crate::said::SEARCH_SLOW, "example.org".into())));
         assert!(slow.clock.get() <= WHOLE, "{:?}", slow.clock.get());
         // The steps' own limits: a settings file 8 s at most, a check 5 s, a DNS question 4 s.
         assert!(HTTP <= Duration::from_secs(8) && PROBE <= Duration::from_secs(5) && DNS <= Duration::from_secs(4));
@@ -1425,6 +1496,19 @@ mod tests {
         let _ = once.discover_smtp("jane@example.org", Some("ssl0.ovh.net"));
         let asked = once.asked();
         assert_eq!(asked.iter().filter(|line| *line == "TLS ssl0.ovh.net:465").count(), 1, "{asked:?}");
+    }
+
+    /// Work still waiting on the system when the limit comes (a name
+    /// lookup, which tokio runs on a thread of its pool) does not hold a
+    /// check past its limit: the runtime is let go in the background, where
+    /// dropping it would wait the lookup out.
+    #[test]
+    fn a_lookup_still_running_does_not_hold_the_check_past_its_limit() {
+        let began = Instant::now();
+        let done = bounded(Duration::from_millis(200), async { tokio::task::spawn_blocking(|| std::thread::sleep(Duration::from_secs(3))).await });
+        assert!(done.is_none(), "cut at its limit");
+        assert!(began.elapsed() < Duration::from_secs(1), "{:?}", began.elapsed());
+        assert_eq!(bounded(Duration::from_secs(1), async { 7 }), Some(7));
     }
 
     /// A certificate made for these tests alone, for the made-up names

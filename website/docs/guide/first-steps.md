@@ -92,7 +92,7 @@ Then, on the address's card in **Your accounts**, unfold **Settings for this add
 
 ### Your own domain at a host {#your-own-domain-at-a-host}
 
-An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself.
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
 
 Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
 

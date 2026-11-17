@@ -74,6 +74,11 @@ rustix = { version = "1", features = ["fs"] }
 # themselves (notify.rs, bus.rs); none on Android yet.
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 notify-rust.workspace = true
+# Certificates checked by the system's own verifier, for receiving, sending
+# and discovery's checks alike (imap.rs, `tls_config`): revocation, the
+# system's distrust, roots fetched on demand, missing intermediates. The
+# version mail-send brings already (Cargo.lock: 0.7.1), no feature of its own.
+rustls-platform-verifier = "0.7"
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # A computer reaches the key through the system's smart card service, PC/SC
 # (securitykey/smartcard.rs): its transport, and PC/SC itself for its typed

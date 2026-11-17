@@ -284,6 +284,8 @@ pub mod said {
     pub const GONE: &str = "sync-said-gone";
     /// No sending server found for an account's first message (its domain follows).
     pub const NO_SENDING_SERVER: &str = "sync-said-no-sending-server";
+    /// A search for an address's servers cut short at `discover::WHOLE` (its domain follows).
+    pub const SEARCH_SLOW: &str = "sync-said-search-slow";
     /// A message seen on the server only, to be brought here before this act.
     pub const OPEN_FIRST: &str = "sync-said-open-first";
 }

@@ -154,28 +154,58 @@ async fn read_line(tcp: &mut TcpStream) -> Result<String, SyncError> {
     }
 }
 
+/// How every certificate of Sioul's mail is checked: receiving, sending
+/// (`send::smtp_builder`) and discovery's checks (`discover::certified`),
+/// so that a server that passes one passes the others.
 pub(crate) fn tls_config() -> Arc<rustls::ClientConfig> {
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() {
         return insecure::config();
     }
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-    CONFIG
-        .get_or_init(|| {
-            let mut roots = rustls::RootCertStore::empty();
-            let (added, _) = roots.add_parsable_certificates(rustls_native_certs::load_native_certs().certs);
-            if added == 0 {
-                // A system without a certificate store, such as a bare container.
-                roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-            }
-            let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-                .with_safe_default_protocol_versions()
-                .expect("ring supports TLS 1.2 and 1.3")
-                .with_root_certificates(roots)
-                .with_no_client_auth();
-            Arc::new(config)
-        })
-        .clone()
+    CONFIG.get_or_init(|| Arc::new(checking(Arc::new(rustls::crypto::ring::default_provider())))).clone()
+}
+
+/// Windows and macOS: the system's own verifier (rustls-platform-verifier),
+/// with what it checks there and webpki does not: revocation (Windows asks
+/// of the server's own certificate), the system's distrust of a root it
+/// still keeps, roots Windows fetches on demand, intermediates a server
+/// leaves out, fetched by the system. Its `new` only keeps the provider as
+/// the crate stands; failing all the same, the system's roots as elsewhere.
+#[cfg(any(windows, target_os = "macos"))]
+fn checking(provider: Arc<rustls::crypto::CryptoProvider>) -> rustls::ClientConfig {
+    match rustls_platform_verifier::Verifier::new(provider.clone()) {
+        Ok(verifier) => rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .expect("ring supports TLS 1.2 and 1.3")
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(verifier))
+            .with_no_client_auth(),
+        Err(_) => with_roots(provider),
+    }
+}
+
+/// Linux and the BSDs, where the platform verifier reads these same roots
+/// with webpki, and Android, where it needs Java code Sioul does not ship:
+/// the system's certificates, checked by webpki.
+#[cfg(not(any(windows, target_os = "macos")))]
+fn checking(provider: Arc<rustls::crypto::CryptoProvider>) -> rustls::ClientConfig {
+    with_roots(provider)
+}
+
+/// The system's certificates, else Mozilla's (a system without a
+/// certificate store, such as a bare container), checked by webpki.
+fn with_roots(provider: Arc<rustls::crypto::CryptoProvider>) -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    let (added, _) = roots.add_parsable_certificates(rustls_native_certs::load_native_certs().certs);
+    if added == 0 {
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    }
+    rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .expect("ring supports TLS 1.2 and 1.3")
+        .with_root_certificates(roots)
+        .with_no_client_auth()
 }
 
 /// Waits at most `limit`; a server that does not answer is a network problem.

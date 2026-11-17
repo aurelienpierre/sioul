@@ -346,11 +346,11 @@ fn smtp_builder<'a>(account: &Account, host: &'a str, credentials: Option<(&'a s
         None => builder,
     };
     // The same certificate check as for IMAP and as discovery's
-    // (`imap::tls_config`: the system's certificates, else Mozilla's), on
-    // every system: a sending server that passed discovery's check passes
-    // here too, and the reverse. mail-send's own, rustls-platform-verifier,
-    // asks the system's verifier on Windows and macOS, with policies of its
-    // own, and on Android needs Java code Sioul does not ship.
+    // (`imap::tls_config`: the system's own verifier on Windows and macOS,
+    // the system's certificates with webpki elsewhere): a sending server
+    // that passed discovery's check passes here too, and the reverse.
+    // mail-send's own connector would ask the platform verifier on Android
+    // too, which there needs Java code Sioul does not ship.
     let builder = {
         let mut builder = builder;
         builder.tls_connector = tokio_rustls::TlsConnector::from(crate::imap::tls_config());

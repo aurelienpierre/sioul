@@ -5114,10 +5114,12 @@ impl qobject::Sioul {
                 Some(kind) => Ok(sioul_sync::discover::microsoft_found(&address, kind)),
                 None => sioul_sync::discover(&address),
             };
-            // Nothing found: no refusal, the form opens empty for the server's
-            // name to be typed, with what to type (the provider's own name).
+            // Nothing found, or a search the network cut short: no refusal, the
+            // form opens empty for the server's name to be typed, with what to
+            // type (the provider's own name).
             let (found, unfound) = match found {
-                Err(sioul_sync::SyncError::NotFound(domain)) => (Ok(sioul_sync::Found { host: String::new(), port: 993, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Guess, smtp: None }), Some(domain)),
+                Err(sioul_sync::SyncError::NotFound(domain)) => (Ok(sioul_sync::Found { host: String::new(), port: 993, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Guess, smtp: None }), Some(("account-by-hand", domain))),
+                Err(sioul_sync::SyncError::Said(sioul_sync::said::SEARCH_SLOW, domain)) => (Ok(sioul_sync::Found { host: String::new(), port: 993, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Guess, smtp: None }), Some(("account-by-hand-slow", domain))),
                 other => (other, None),
             };
             let result = found.map(|found| {
@@ -5142,7 +5144,7 @@ impl qobject::Sioul {
                 };
                 json(&FoundView {
                     by: match &unfound {
-                        Some(domain) => say("account-by-hand", &[("domain", domain.clone())]),
+                        Some((words, domain)) => say(words, &[("domain", domain.clone())]),
                         None => say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
                     },
                     hint: tr().text(hint, None),
