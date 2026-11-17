@@ -17,6 +17,10 @@
 //! A format-1 record (before November 2026) is never written at all: its
 //! own `paid` reads as a payment from before (`older:<number>`), which an
 //! older Sioul ticking Paid changes, and which a removal here takes back.
+//!
+//! The books write here too (`books`): what a payment in another currency
+//! came to in the books' own (`booked`), and the books' notices told (a
+//! threshold's step), each once whichever device told it.
 
 use super::record::{Invoice, Payment};
 use serde::{Deserialize, Serialize};
@@ -44,6 +48,10 @@ pub struct Book {
     pub removed: Vec<Removed>,
     #[serde(default)]
     pub sent: Vec<Sent>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub booked: Vec<Booked>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub told: Vec<Told>,
 }
 
 fn one() -> u32 {
@@ -88,6 +96,27 @@ pub struct Sent {
     pub date: String,
 }
 
+/// What a payment in another currency than the books' came to in theirs
+/// (the euros that reached you): the books count it so (`books`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Booked {
+    pub id: String,
+    pub payment: String,
+    /// In cents of the books' currency.
+    pub amount: i64,
+    /// When it was said, Unix milliseconds: the last said counts.
+    #[serde(default)]
+    pub at: i64,
+}
+
+/// A notice of the books told (a threshold's step: `books::thresholds`), by
+/// its key, on its day: told once, whichever device told it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Told {
+    pub key: String,
+    pub date: String,
+}
+
 /// A device's name as a file name: letters, digits and dashes.
 fn device_file(dir: &Path, device: &str) -> PathBuf {
     let name: String = device.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
@@ -126,6 +155,10 @@ pub struct Lives {
     pub removed: BTreeSet<String>,
     /// Each payment's evidence, by the payment's id: (evidence id, movement, bank's day).
     pub evidence: BTreeMap<String, (String, String, String)>,
+    /// What a payment in another currency came to in the books', by the payment's id (the last said).
+    pub booked: BTreeMap<String, i64>,
+    /// The books' notices told, by key.
+    pub told: BTreeSet<String>,
 }
 
 impl Lives {
@@ -165,7 +198,12 @@ impl Lives {
                 *at = s.date.clone();
             }
         }
-        Lives { payments, sent, removed, evidence }
+        // The last said of each payment.
+        let mut said: Vec<&Booked> = books.iter().flat_map(|b| &b.booked).filter(|b| !removed.contains(&b.id)).collect();
+        said.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
+        let booked: BTreeMap<String, i64> = said.into_iter().map(|b| (b.payment.clone(), b.amount)).collect();
+        let told: BTreeSet<String> = books.iter().flat_map(|b| &b.told).map(|t| t.key.clone()).collect();
+        Lives { payments, sent, removed, evidence, booked, told }
     }
 
     /// The records given their life: their payments, the day they were

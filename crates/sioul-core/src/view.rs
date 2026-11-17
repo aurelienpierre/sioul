@@ -604,7 +604,8 @@ pub struct BudgetCard {
     /// What it is for: "work", "admin", "leisure".
     pub area: &'static str,
     /// A work budget that declares: "Turnover received this quarter: €6,940,
-    /// to declare by 31 January." (`receipts::period_line`); "" otherwise.
+    /// to declare by 31 January." (`receipts::period_line`), said by the books
+    /// where the preset asks declarations (`BudgetsView::say_declared`); "" otherwise.
     pub declare: String,
     /// "monthly", "mensuel".
     pub period: String,
@@ -739,6 +740,18 @@ pub fn budgets_page(page: &MoneyPage, tr: &Translator, today: jiff::civil::Date)
         mail: page.mail.iter().filter(|l| l.state != MailState::Ignored).map(|l| mail_row(ledger, page.mail, l, tr)).collect(),
         choices: ledger.budgets.iter().map(|b| Choice { id: b.id.clone(), title: b.title.clone() }).collect(),
         incomes: incomes(ledger, tr),
+    }
+}
+
+impl BudgetsView {
+    /// The line of every budget that declares (its `declare`), said by the
+    /// books instead (`books::declarations::overview_line`), which hold the
+    /// invoices' payments too: the Overview then says what the declaration
+    /// view says.
+    pub fn say_declared(&mut self, line: &str) {
+        for card in self.budgets.iter_mut().chain(self.groups.iter_mut().flat_map(|g| g.budgets.iter_mut())).filter(|c| !c.declare.is_empty()) {
+            card.declare = line.to_string();
+        }
     }
 }
 

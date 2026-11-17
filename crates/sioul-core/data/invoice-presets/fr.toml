@@ -417,13 +417,19 @@ nature = "service"
 
 # Micro regime ceilings, turnover received in the calendar year, excluding
 # VAT (art. 50-0 and 102 ter CGI; SP F32353, checked 21 February 2026):
-# watched under the micro regime only. Mixed activity: both. Left after two
-# consecutive years above.
+# watched under the micro regime only. Mixed activity: the whole turnover
+# within €203,100, its services within €83,600 (`counts = "all"` on the
+# goods' ceiling). Left after two consecutive years above, on 1 January
+# after the second. The first year's is prorated: ceiling × days of activity
+# / 365 (SP F32353; URSSAF: a start on 1 March 2026, services, 83,600 ×
+# 306 / 365 = €70,087).
 [[threshold]]
 id = "micro-goods"
 kind = "micro"
 regime = "micro"
 activity = ["goods-bic"]
+counts = "all"
+prorated = true
 amount = 20310000
 from = "2026-01-01"
 
@@ -432,19 +438,28 @@ id = "micro-services"
 kind = "micro"
 regime = "micro"
 activity = ["services-bic", "bnc", "cipav"]
+prorated = true
 amount = 8360000
 from = "2026-01-01"
 
 # VAT franchise thresholds (art. 293 B CGI; SP F21746, checked 1 January
 # 2026; BOI-TVA-DECLA-40-10-10 §130–140), watched while the franchise holds:
 # the base one crossed, VAT from 1 January next year; the higher one
-# crossed, VAT from that day. Lawyers'
-# and authors' own thresholds are left out; software is not an author's.
+# crossed, VAT from that day (BOI-TVA-DECLA-40-10-20 §160), and invoices to
+# taxable clients for operations since then are corrected (§170). Counted:
+# operations located in France, excluding VAT, goods at delivery, services
+# at payment (BOI-TVA-DECLA-40-10-10 §180); mixed activity, the whole within
+# €85,000 and the services within €37,500 (§160). Prorated to the days of
+# activity in the first year, the higher one then applying (§285–295).
+# Lawyers' and authors' own thresholds are left out; software is not an
+# author's.
 [[threshold]]
 id = "franchise-goods"
 kind = "franchise"
 scheme = "franchise"
 activity = ["goods-bic"]
+counts = "all"
+prorated = true
 amount = 8500000
 from = "2026-01-01"
 
@@ -453,6 +468,9 @@ id = "franchise-goods-higher"
 kind = "franchise-higher"
 scheme = "franchise"
 activity = ["goods-bic"]
+counts = "all"
+prorated = true
+corrective = true
 amount = 9350000
 from = "2026-01-01"
 
@@ -461,6 +479,7 @@ id = "franchise-services"
 kind = "franchise"
 scheme = "franchise"
 activity = ["services-bic", "bnc", "cipav"]
+prorated = true
 amount = 3750000
 from = "2026-01-01"
 
@@ -469,14 +488,44 @@ id = "franchise-services-higher"
 kind = "franchise-higher"
 scheme = "franchise"
 activity = ["services-bic", "bnc", "cipav"]
+prorated = true
+corrective = true
 amount = 4125000
 from = "2026-01-01"
+
+# The URSSAF declaration of the micro regime (autoentrepreneur.urssaf.fr,
+# "L'essentiel du statut", read 16 November 2026): the turnover received in
+# each period, excluding VAT, one amount per activity, zero periods too;
+# monthly or quarterly, as chosen (quarterly unless said); due the last day
+# of the month after the period (January → end of February; the first
+# quarter → 30 April), moved to the next working day when it falls on a
+# weekend or a holiday; the first one at least 90 days after the start of
+# activity (a monthly start in January: due 31 May; a quarterly start in the
+# first quarter: due 31 July).
+[declaration]
+regime = "micro"
+periods = ["quarter", "month"]
+months_after = 1
+first_after_days = 90
+
+# The DES, déclaration européenne de services (douane.gouv.fr, updated
+# 7 February 2025; art. 289 B CGI; BOI-TVA-DECLA-20-20-40): services to
+# businesses in another member state, taxed there by the reverse charge,
+# declared month by month, at the latest the 10th working day of the
+# following month; under the franchise, the paper form cerfa 13694 may be
+# sent instead.
+[des]
+category = ["AE"]
+nature = ["service"]
+working_day = 10
 
 # Contributions on turnover received from 1 January 2026, metropolitan
 # France (autoentrepreneur.urssaf.fr, "L'essentiel du statut", read
 # 16 November 2026), under the micro regime, on turnover excluding VAT:
-# social contributions, the versement libératoire, and the CFP by trade.
-# ACRE and the chambers' tax are left out.
+# social contributions, the versement libératoire, and the CFP by trade
+# (commerçants 0.1 %, artisans 0.3 %, liberal professions 0.2 %). ACRE and
+# the chambers' tax are left out: a rate of your own covers ACRE
+# (`[[invoice.contribution]]`).
 [[contribution]]
 regime = "micro"
 kind = "social"

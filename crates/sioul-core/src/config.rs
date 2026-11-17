@@ -1022,6 +1022,59 @@ pub struct InvoiceSettings {
     /// The invoices' language by default ("en", "fr"); a client's own first.
     #[serde(default)]
     pub language: String,
+    /// The books (`books`): how often turnover is declared, "month" or
+    /// "quarter"; unsaid, as a budget that declares says, else the preset's first.
+    #[serde(default)]
+    pub declare: String,
+    /// The versement libératoire of income tax, paid with each declaration (France).
+    #[serde(default)]
+    pub vl: bool,
+    /// The trade the training contribution (CFP) is counted for: "commerce",
+    /// "craft", "liberal"; unsaid, from the activity where it tells.
+    #[serde(default)]
+    pub trade: String,
+    /// The day the activity started, "2026-03-01": the first year's
+    /// thresholds are prorated, the first declaration gathers its first periods.
+    #[serde(default)]
+    pub started: String,
+    /// The VAT summary's period: "month" (unsaid) or "quarter".
+    #[serde(default)]
+    pub vat_period: String,
+    /// Contribution rates of your own, each over the preset's from a day
+    /// (ACRE's, a rate URSSAF gave you): `[[invoice.contribution]]` kind
+    /// ("social", "vl", "cfp"), activity, rate (percent), from, until.
+    #[serde(default, rename = "contribution")]
+    pub contributions: Vec<ContributionSetting>,
+    /// Thresholds of your own, each over the preset's from a day:
+    /// `[[invoice.threshold]]` id (the preset's), amount, from.
+    #[serde(default, rename = "threshold")]
+    pub thresholds: Vec<ThresholdSetting>,
+}
+
+/// A contribution rate of your own, from a day, until a day.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct ContributionSetting {
+    pub kind: String,
+    /// The activity ("bnc") or, for the CFP, the trade ("liberal").
+    pub activity: String,
+    /// In percent: 12.8 for 12.8 %.
+    pub rate: f64,
+    /// "2026-03-01"; empty: always.
+    #[serde(default)]
+    pub from: String,
+    /// The last day it holds; empty: no end.
+    #[serde(default)]
+    pub until: String,
+}
+
+/// A threshold of your own, over the preset's of the same id from a day.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct ThresholdSetting {
+    pub id: String,
+    /// In the preset's currency: 37500 for €37,500.
+    pub amount: f64,
+    #[serde(default)]
+    pub from: String,
 }
 
 /// An identifier as Settings keeps it.

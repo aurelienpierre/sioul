@@ -3440,7 +3440,7 @@ porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a
 porch-sites = Sites
 porch-about-sites = Ce que vos sites ont signalé pendant votre absence, une ligne par site. Ouvrir un site lit ses nouvelles.
 porch-money = Argent
-porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte. L’argent du travail seulement aux heures de travail.
+porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte ; et chaque déclaration de chiffre d’affaires ou DES à faire, du jour où elle s’ouvre jusqu’à ce que vous l’écartiez. L’argent du travail seulement aux heures de travail.
 porch-open-budgets = Ouvrir dans Budgets
 # The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
 due-state-planned = Prévu
@@ -8527,3 +8527,136 @@ cli-help-summary = Affiche l’aide (un résumé avec « -h »)
 cli-version = Affiche la version
 cli-help-command = Affiche ce message ou l’aide des commandes données
 cli-help-command--subcommand = Affiche l’aide de ces commandes
+
+## Les livres (`books`) : le livre des recettes, les déclarations, le récapitulatif de TVA, les seuils, la DES.
+books-means-unsaid = non dit
+books-means-transfer = Virement
+books-means-card = Carte
+books-means-cash = Espèces
+books-means-cheque = Chèque
+books-means-direct-debit = Prélèvement
+books-means-other = Autre
+books-cash = espèces
+books-total-quarter = { $quarter ->
+    [1] Premier trimestre { $year }
+    [2] Deuxième trimestre { $year }
+    [3] Troisième trimestre { $year }
+   *[4] Quatrième trimestre { $year }
+}
+books-total-year = Année { $year }
+books-total = { $name } : { $least ->
+    [yes] au moins { $amount }
+   *[no] { $amount }
+} encaissés.
+books-total-taxed = { $name } : { $least ->
+    [yes] au moins { $amount }
+   *[no] { $amount }
+} encaissés TVA comprise, { $without } hors TVA.
+books-foreign-not-counted = { $n ->
+    [one] Un paiement en { $currency } n’est pas compté : dites ce qu’il vous a rapporté (sioul invoices received).
+   *[other] { $n } paiements en une autre devise ne sont pas comptés : dites ce que chacun vous a rapporté (sioul invoices received).
+}
+books-column-day = Jour
+books-column-client = Client
+books-column-nature = Nature
+books-column-invoice = Facture
+books-column-means = Moyen de paiement
+books-column-cash = Espèces
+books-column-amount = Encaissé
+books-column-without-tax = Hors TVA
+books-column-goods = Biens
+books-column-services = Services
+books-column-note = Note
+books-title = Livre des recettes de { $name }, du { $from } au { $to }
+books-name = votre entreprise
+books-vat-rate = TVA { $rate }
+books-vat-category-ae = Autoliquidation (le client doit la TVA)
+books-vat-category-k = Livraisons intracommunautaires (exonérées)
+books-vat-category-g = Exportations (exonérées)
+books-vat-category-o = Hors du champ de la TVA
+books-vat-category-e = Exonéré
+books-vat-category-z = Taux zéro
+books-period-days = du { $from } au { $to }
+books-declare = Du { $from } au { $to } : { $least ->
+    [yes] au moins { $turnover }
+   *[no] { $turnover }
+} encaissés hors TVA, à déclarer au plus tard le { $due }.
+books-declare-nothing = Rien d’encaissé du { $from } au { $to } : déclarez { $zero } au plus tard le { $due }.
+books-declare-line = { $name } : { $turnover } ; cotisations d’environ { $social } ({ $rate }).
+books-declare-vl = Impôt sur le revenu payé avec (versement libératoire) : environ { $vl } ({ $rate }).
+books-declare-line-no-rate = { $name } : { $turnover }.
+books-declare-cfp = Contribution à la formation professionnelle (CFP) : environ { $cfp } ({ $rate }).
+books-declare-cfp-unsaid = La contribution à la formation professionnelle n’est pas comptée tant que votre métier n’est pas dit : commerce, artisanat ou profession libérale (Paramètres ▸ Factures).
+books-declare-unsaid = { $amount } ne relève d’aucune activité dite : dites la vôtre (Paramètres ▸ Factures), et ses cotisations sont estimées.
+books-declare-estimate = Cotisations estimées : { $total }.
+books-declare-foreign = { $n ->
+    [one] Un paiement en une autre devise n’est pas compté : dites ce qu’il vous a rapporté.
+   *[other] { $n } paiements en une autre devise ne sont pas comptés : dites ce que chacun vous a rapporté.
+}
+books-vat-head = { $period } : { $tax } de TVA collectée, sur { $base } hors TVA.
+books-vat-nothing = { $period } : aucune TVA collectée.
+books-vat-line = { $name } : { $tax } sur { $base }.
+books-vat-line-untaxed = { $name } : { $base }, sans TVA ici.
+books-vat-credits = Avoirs sur des services d’une facture payée, non comptés tant que leur remboursement n’est pas écrit : { $numbers }.
+books-vat-foreign = Factures en une autre devise, non comptées : { $numbers }.
+books-vat-files-nothing = Sioul prépare votre déclaration de TVA ; il ne dépose rien.
+books-threshold-franchise-all = seuil de la franchise en base de TVA
+books-threshold-franchise-goods = seuil de la franchise en base de TVA pour les ventes
+books-threshold-franchise-service = seuil de la franchise en base de TVA pour les services
+books-threshold-franchise-higher-all = seuil majoré de la franchise en base de TVA
+books-threshold-franchise-higher-goods = seuil majoré de la franchise en base de TVA pour les ventes
+books-threshold-franchise-higher-service = seuil majoré de la franchise en base de TVA pour les services
+books-threshold-micro-all = plafond du régime micro
+books-threshold-micro-goods = plafond du régime micro pour les ventes
+books-threshold-micro-service = plafond du régime micro pour les services
+books-threshold-status = { $least ->
+    [yes] Au moins { $turnover } comptés
+   *[no] { $turnover } comptés
+} cette année pour le { $name }, { $amount }.
+books-threshold-above = { $least ->
+    [yes] Au moins { $turnover } comptés
+   *[no] { $turnover } comptés
+} cette année, au-dessus du { $name }, { $amount }.
+books-threshold-prorated = Calculé au prorata de vos jours d’activité depuis le { $started } : { $full } pour une année entière.
+books-near-franchise-title = Votre chiffre d’affaires approche du seuil de la franchise en base de TVA
+books-near-franchise = { $turnover } comptés cette année, 80 % du { $name }, { $amount }. Au-delà, la TVA s’applique à partir du 1er janvier { $next }.
+books-near-micro-title = Votre chiffre d’affaires approche du plafond du régime micro
+books-near-micro = { $turnover } encaissés cette année, 80 % du { $name }, { $amount }. Au-dessus deux années de suite, le régime micro prend fin.
+books-franchise-crossed-title = La TVA s’applique à partir du 1er janvier { $next }
+books-franchise-crossed = { $turnover } comptés cette année, au-dessus du { $name }, { $amount }. La TVA s’applique à partir du 1er janvier { $next } : changez de régime de TVA à cette date (Paramètres ▸ Factures).
+books-franchise-higher-title = La TVA s’applique à partir { $today ->
+    [yes] d’aujourd’hui, { $day }
+   *[no] du { $day }
+}
+books-franchise-higher = { $turnover } comptés cette année, au-dessus du { $name }, { $amount } : changez de régime de TVA (Paramètres ▸ Factures){ $corrective ->
+    [yes] , et les factures aux entreprises depuis ce jour reçoivent une facture rectificative.
+   *[no] .
+}
+books-micro-crossed-title = Votre chiffre d’affaires a dépassé le plafond du régime micro
+books-micro-crossed = { $turnover } encaissés cette année, au-dessus du { $name }, { $amount } : le régime micro reste cette année ; une deuxième année de suite au-dessus y met fin au 1er janvier suivant.
+books-micro-ends-title = Le régime micro prend fin le 1er janvier { $next }
+books-micro-ends = { $turnover } encaissés cette année, au-dessus du { $name } pour la deuxième année de suite : le régime micro prend fin le 1er janvier { $next } ; le régime réel s’applique à partir de cette date (Paramètres ▸ Factures).
+books-des = Services à des entreprises d’autres pays de l’UE, { $month } (DES) : { $total }, à déclarer au plus tard le { $due }.
+books-porch-declaration = Déclaration de chiffre d’affaires
+books-porch-declare-what = { $period } · au plus tard le { $due }
+books-porch-des = DES, services aux entreprises de l’UE
+books-porch-des-what = { $month } · au plus tard le { $due }
+books-for-the-books = Les livres
+books-file-name = Livre des recettes, du { $from } au { $to }
+books-none = Aucune recette pour l’instant : les livres commencent avec une facture émise, ou un budget de travail qui déclare.
+books-row-without = { $amount } hors TVA
+books-cli-no-declaration = Aucune déclaration de chiffre d’affaires : votre pays ou votre régime n’en demande pas ici (Paramètres ▸ Factures).
+books-cli-no-vat = Pas de récapitulatif de TVA : aucune facture émise en étant redevable de la TVA cette année.
+books-cli-no-threshold = Aucun seuil surveillé : la franchise ou le régime micro ne s’applique pas ici.
+books-cli-no-des = Aucune DES cette année : aucun service à une entreprise d’un autre pays de l’UE.
+books-cli-not-counted = non compté
+books-cli-no-payment = Aucun paiement de ce jour pour cette facture.
+books-cli-received = Le paiement du { $day } de la facture { $number } compte pour { $amount } dans les livres.
+books-cli-same-currency = Cette facture est dans la devise des livres : ce qu’elle a reçu compte tel quel.
+books-overview = { $every ->
+    [month] Chiffre d’affaires encaissé ce mois-ci
+   *[quarter] Chiffre d’affaires encaissé ce trimestre
+}, hors TVA : { $least ->
+    [yes] au moins { $turnover }
+   *[no] { $turnover }
+}, à déclarer au plus tard le { $due }.

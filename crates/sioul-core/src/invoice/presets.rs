@@ -302,8 +302,46 @@ pub struct Threshold {
     pub scheme: String,
     #[serde(default)]
     pub regime: String,
+    /// What it counts: "all", the whole turnover (France's goods thresholds,
+    /// which a mixed activity keeps in all); empty, only what its activities
+    /// sell (their nature: the services' part for services).
+    #[serde(default)]
+    pub counts: String,
+    /// Prorated to the days of activity in the first year (ceiling × days / 365).
+    #[serde(default)]
+    pub prorated: bool,
+    /// Crossed, invoices to businesses since that day are corrected (France's higher thresholds).
+    #[serde(default)]
+    pub corrective: bool,
     pub amount: i64,
     pub from: Date,
+}
+
+/// The declarations of turnover a regime asks (France's micro regime, to
+/// URSSAF): the turnover received in each period, one amount per activity.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct DeclarationRule {
+    /// The income regime it is for ("micro").
+    pub regime: String,
+    /// The periods one may choose, the first by default: "quarter", "month".
+    pub periods: Vec<String>,
+    /// Due the last day of the month this many months after the period's,
+    /// moved to the next working day.
+    pub months_after: u32,
+    /// The first one at least this many days after the start of activity.
+    #[serde(default)]
+    pub first_after_days: i64,
+}
+
+/// A declaration of services to businesses in other member states (France's
+/// DES): the lines of these categories and natures, month by month, due the
+/// n-th working day of the following month.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct DesRule {
+    pub category: Vec<String>,
+    #[serde(default)]
+    pub nature: Vec<String>,
+    pub working_day: u32,
 }
 
 /// A contribution rate on turnover received, in basis points, from a day.
@@ -374,6 +412,12 @@ pub struct Preset {
     pub threshold: Vec<Threshold>,
     #[serde(default)]
     pub contribution: Vec<Contribution>,
+    /// The declarations of turnover, when the country asks them (`books`).
+    #[serde(default)]
+    pub declaration: Option<DeclarationRule>,
+    /// The declaration of services to businesses in other member states (`books::des`).
+    #[serde(default)]
+    pub des: Option<DesRule>,
 }
 
 fn yes() -> bool {

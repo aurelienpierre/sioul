@@ -623,8 +623,8 @@ receipts-which-budget = Say which budget: --budget and its id. Only a work budge
 receipts-for-declaration = For the declaration
 receipts-previous = The period before
 receipts-next = The period after
-receipts-save = Save the receipts register…
-receipts-saved = The receipts register is saved in { $path }, as a spreadsheet (CSV) and as a PDF.
+receipts-save = Save the receipts book…
+receipts-saved = The receipts book is saved in { $path }, as a spreadsheet (CSV) and as a PDF.
 receipts-file-name = Receipts register, { $budget }, { $from } to { $to }
 receipts-none = No budget declares: a work budget that sets money aside for taxes, or says how often it declares, has a register.
 # The budgets page from one income to the next (docs/accounting.md, "The budgets page").
@@ -3404,7 +3404,7 @@ porch-about-phone = What your phone brought: the calls it declined, the calls yo
 porch-sites = Sites
 porch-about-sites = What your sites notified while you were away, a row per site. Opening a site reads its news.
 porch-money = Money
-porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account. Work money only in work's hours.
+porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account; and each declaration of turnover or DES to make, from the day it opens, until you dismiss it. Work money only in work's hours.
 porch-open-budgets = Open in Budgets
 # The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
 due-state-planned = Planned
@@ -8172,3 +8172,136 @@ topics-named-sites = Named from your senders' sites.
 topics-named-preset = Named after the topic preset most of its mail matches.
 topics-named-none = No name proposed: no topic preset and no kind of site holds most of it.
 topics-groups-waiting = Groups come once more mail is kept here.
+
+## The books (`books`): the receipts book, the declarations, the VAT summary, the thresholds, the DES.
+books-means-unsaid = not said
+books-means-transfer = Bank transfer
+books-means-card = Card
+books-means-cash = Cash
+books-means-cheque = Cheque
+books-means-direct-debit = Direct debit
+books-means-other = Other
+books-cash = cash
+books-total-quarter = { $quarter ->
+    [1] First quarter { $year }
+    [2] Second quarter { $year }
+    [3] Third quarter { $year }
+   *[4] Fourth quarter { $year }
+}
+books-total-year = Year { $year }
+books-total = { $name }: { $least ->
+    [yes] at least { $amount }
+   *[no] { $amount }
+} received.
+books-total-taxed = { $name }: { $least ->
+    [yes] at least { $amount }
+   *[no] { $amount }
+} received with VAT, { $without } excluding it.
+books-foreign-not-counted = { $n ->
+    [one] One payment in { $currency } is not counted: say what reached you for it (sioul invoices received).
+   *[other] { $n } payments in another currency are not counted: say what reached you for each (sioul invoices received).
+}
+books-column-day = Day
+books-column-client = Client
+books-column-nature = Nature
+books-column-invoice = Invoice
+books-column-means = Means of payment
+books-column-cash = Cash
+books-column-amount = Received
+books-column-without-tax = Excluding VAT
+books-column-goods = Goods
+books-column-services = Services
+books-column-note = Note
+books-title = Receipts book of { $name }, { $from } to { $to }
+books-name = your business
+books-vat-rate = VAT { $rate }
+books-vat-category-ae = Reverse charge (the client owes the VAT)
+books-vat-category-k = Intra-EU deliveries (exempt)
+books-vat-category-g = Exports (exempt)
+books-vat-category-o = Outside the scope of VAT
+books-vat-category-e = Exempt
+books-vat-category-z = Zero rate
+books-period-days = { $from } to { $to }
+books-declare = From { $from } to { $to }: { $least ->
+    [yes] at least { $turnover }
+   *[no] { $turnover }
+} received excluding VAT, to declare by { $due }.
+books-declare-nothing = Nothing received from { $from } to { $to }: declare { $zero } by { $due }.
+books-declare-line = { $name }: { $turnover }; contributions about { $social } ({ $rate }).
+books-declare-vl = Income tax paid with them (versement libératoire): about { $vl } ({ $rate }).
+books-declare-line-no-rate = { $name }: { $turnover }.
+books-declare-cfp = Training contribution (CFP): about { $cfp } ({ $rate }).
+books-declare-cfp-unsaid = The training contribution is not counted until your trade is said: commerce, craft or a liberal profession (Settings ▸ Invoices).
+books-declare-unsaid = { $amount } is in no activity said: say yours (Settings ▸ Invoices), and its contributions are estimated.
+books-declare-estimate = Contributions estimated: { $total }.
+books-declare-foreign = { $n ->
+    [one] One payment in another currency is not counted: say what reached you for it.
+   *[other] { $n } payments in another currency are not counted: say what reached you for each.
+}
+books-vat-head = { $period }: { $tax } of VAT collected, on { $base } excluding VAT.
+books-vat-nothing = { $period }: no VAT collected.
+books-vat-line = { $name }: { $tax } on { $base }.
+books-vat-line-untaxed = { $name }: { $base }, no VAT here.
+books-vat-credits = Credit notes on services of a paid invoice, not counted until their refund is written: { $numbers }.
+books-vat-foreign = Invoices in another currency, not counted: { $numbers }.
+books-vat-files-nothing = Sioul prepares your VAT return; it files nothing.
+books-threshold-franchise-all = VAT franchise's threshold
+books-threshold-franchise-goods = VAT franchise's threshold for sales
+books-threshold-franchise-service = VAT franchise's threshold for services
+books-threshold-franchise-higher-all = VAT franchise's higher threshold
+books-threshold-franchise-higher-goods = VAT franchise's higher threshold for sales
+books-threshold-franchise-higher-service = VAT franchise's higher threshold for services
+books-threshold-micro-all = micro regime's ceiling
+books-threshold-micro-goods = micro regime's ceiling for sales
+books-threshold-micro-service = micro regime's ceiling for services
+books-threshold-status = { $least ->
+    [yes] At least { $turnover }
+   *[no] { $turnover }
+} counted this year against the { $name }, { $amount }.
+books-threshold-above = { $least ->
+    [yes] At least { $turnover }
+   *[no] { $turnover }
+} counted this year, above the { $name }, { $amount }.
+books-threshold-prorated = Prorated to your days of activity since { $started }: { $full } for a whole year.
+books-near-franchise-title = Your turnover nears the VAT franchise's threshold
+books-near-franchise = { $turnover } counted this year, 80% of the { $name }, { $amount }. Past it, VAT applies from 1 January { $next }.
+books-near-micro-title = Your turnover nears the micro regime's ceiling
+books-near-micro = { $turnover } received this year, 80% of the { $name }, { $amount }. Above it two years in a row, the micro regime ends.
+books-franchise-crossed-title = VAT applies from 1 January { $next }
+books-franchise-crossed = { $turnover } counted this year, above the { $name }, { $amount }. VAT applies from 1 January { $next }: change the tax scheme then (Settings ▸ Invoices).
+books-franchise-higher-title = VAT applies from { $today ->
+    [yes] today, { $day }
+   *[no] { $day }
+}
+books-franchise-higher = { $turnover } counted this year, above the { $name }, { $amount }: switch the tax scheme (Settings ▸ Invoices){ $corrective ->
+    [yes] , and invoices to businesses since then get a corrective invoice.
+   *[no] .
+}
+books-micro-crossed-title = Your turnover passed the micro regime's ceiling
+books-micro-crossed = { $turnover } received this year, above the { $name }, { $amount }: the micro regime stays this year; a second year above in a row ends it on 1 January after it.
+books-micro-ends-title = The micro regime ends on 1 January { $next }
+books-micro-ends = { $turnover } received this year, above the { $name } for the second year in a row: the micro regime ends on 1 January { $next }; the real regime applies from then (Settings ▸ Invoices).
+books-des = Services to businesses in other EU countries, { $month } (DES): { $total }, to declare by { $due }.
+books-porch-declaration = Declaration of turnover
+books-porch-declare-what = { $period } · by { $due }
+books-porch-des = DES, services to EU businesses
+books-porch-des-what = { $month } · by { $due }
+books-for-the-books = The books
+books-file-name = Receipts book, { $from } to { $to }
+books-none = No receipt yet: the books begin with an invoice issued, or a work budget that declares.
+books-row-without = { $amount } excluding VAT
+books-cli-no-declaration = No declaration of turnover: your country or your regime asks none here (Settings ▸ Invoices).
+books-cli-no-vat = No VAT summary: no invoice issued liable to VAT this year.
+books-cli-no-threshold = No threshold watched: neither the franchise nor the micro regime applies here.
+books-cli-no-des = No DES this year: no service to a business in another EU country.
+books-cli-not-counted = not counted
+books-cli-no-payment = No payment of that day on this invoice.
+books-cli-received = The payment of { $day } on invoice { $number } counts as { $amount } in the books.
+books-cli-same-currency = This invoice is in the books' currency: what it received counts as it is.
+books-overview = { $every ->
+    [month] Turnover received this month
+   *[quarter] Turnover received this quarter
+}, excluding VAT: { $least ->
+    [yes] at least { $turnover }
+   *[no] { $turnover }
+}, to declare by { $due }.

@@ -149,11 +149,15 @@ pub struct Notice {
     /// device, a pause, a do-not-disturb), Unix seconds; none: its `until`,
     /// else its kind's (`Notice::relevance`).
     pub relevant: Option<i64>,
+    /// Its class when its source says another than its kind's: a date's
+    /// notice to do (a threshold of the books crossed, which asks a setting
+    /// changed and stays until it is: `books::thresholds`). None: its kind's.
+    pub class_said: Option<Class>,
 }
 
 impl Notice {
     pub fn new(about: impl Into<String>, kind: Kind, title: impl Into<String>, body: impl Into<String>) -> Notice {
-        Notice { about: about.into(), hint: String::new(), kind, title: title.into(), body: body.into(), actions: Vec::new(), until: None, icon: String::new(), relevant: None }
+        Notice { about: about.into(), hint: String::new(), kind, title: title.into(), body: body.into(), actions: Vec::new(), until: None, icon: String::new(), relevant: None, class_said: None }
     }
 
     /// With a button.
@@ -209,9 +213,16 @@ impl Notice {
         replacing(self.kind, &self.about)
     }
 
-    /// Its class (`Kind::class`).
+    /// Of this class rather than its kind's (`class_said`); a kind without
+    /// one stays without (no notice of Sioul's own).
+    pub fn of_class(mut self, class: Class) -> Notice {
+        self.class_said = Some(class);
+        self
+    }
+
+    /// Its class: its kind's (`Kind::class`), or the one its source said.
     pub fn class(&self) -> Option<Class> {
-        self.kind.class()
+        self.kind.class().map(|class| self.class_said.unwrap_or(class))
     }
 }
 
