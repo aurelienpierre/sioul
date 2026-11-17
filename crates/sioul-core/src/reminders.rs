@@ -276,6 +276,15 @@ impl Holds {
     pub fn level(&self, kind: Kind) -> Level {
         self.attention.level(attention::Row::Own(row_of(kind)), &self.now)
     }
+
+    /// The same on this device, by what the person said each device is for
+    /// (`quiet::Mode::on`): a work date waits on a device that is not for
+    /// work, for the device that is (docs/areas.md, "What each device is
+    /// for"). An event's own alarm and the time to leave never do.
+    pub fn on(mut self, lines: &crate::areas::Lines) -> Holds {
+        self.now.here = lines.here(self.now.week);
+        self
+    }
 }
 
 /// A reminder's row in the matrix.
@@ -1499,7 +1508,7 @@ mod tests {
         use crate::areas::{Time, Week};
         use crate::quiet::{Blocks, Mode, Reason};
         let now = at("2026-10-07T23:30").timestamp().as_second();
-        let mode = |time: Time, reason: Reason, until: Option<&str>| Mode { quiet: true, time, week: Week::default(), reason, until: until.map(at), back: None, label: String::new() };
+        let mode = |time: Time, reason: Reason, until: Option<&str>| Mode { quiet: true, time, week: Week::default(), reason, until: until.map(at), back: None, label: String::new(), here: crate::areas::Here::default() };
         let night = crate::needs::Kept { key: "sleep".into(), kind: "sleep", index: 0, name: String::new(), start: now - 3600, at: now, end: now + 7 * 3600, notices: false };
         let blocks = Blocks { kept: vec![night], sleep: true, night: true, ..Blocks::default() };
         assert_eq!(wait_of(&mode(Time::Sleep, Reason::Sleep, Some("2026-10-08T06:30")), &blocks, now), Wait::Sleep { from: now - 3600, until: now + 7 * 3600 });

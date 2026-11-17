@@ -404,6 +404,70 @@ area-filter-none = Nothing ticked
 area-filter-as-hours = As the hours say
 area-filter-name = What shows: { $areas }
 area-filter-how = How this filter works
+## What each device is for, and what comes to it when (docs/areas.md, "What each device is for")
+device-areas = { $areas ->
+    [work] work
+    [admin] your admin
+    [leisure] leisure
+    [work-admin] work and your admin
+    [work-leisure] work and leisure
+    [admin-leisure] your admin and leisure
+    [none] nothing
+   *[all] everything
+}
+device-areas-wait = { $areas ->
+    [work] work waits
+    [admin] your admin waits
+    [leisure] leisure waits
+    [work-admin] work and your admin wait
+    [work-leisure] work and leisure wait
+    [admin-leisure] your admin and leisure wait
+   *[all] everything waits
+}
+device-areas-come = { $areas ->
+    [work] work comes here
+    [admin] your admin comes here
+    [leisure] leisure comes here
+    [work-admin] work and your admin come here
+    [work-leisure] work and leisure come here
+    [admin-leisure] your admin and leisure come here
+    [none] nothing comes here
+   *[all] everything comes here
+}
+device-waits = This device is for { $for }: { $waits } on your other devices.
+device-waits-cell = On this device, at this time, { $waits } on your other devices: you set it so in Settings ▸ Devices.
+mailbox-rests-device = { $address } waits on your other devices: this one is not for it now.
+devices-grid-title = What comes forward, and when
+devices-grid-help = For each device, what comes forward at each time: what the time brings, kept to what the device is for. Change a cell to let something else through there, friends on a phone during work, or nothing at all during meals; "As its areas say" puts it back. What does not come forward on a device is folded there, never removed: its page still opens it.
+devices-grid-device = Device
+devices-cell-nothing = Nothing
+devices-cell-as-areas = As its areas say
+devices-cell-name = { $device }, { $time }: { $areas }
+devices-cell-name-changed = { $device }, { $time }: { $areas }, as you changed it
+devices-cell-help = What comes forward on this device at this time. Tick what should; with nothing ticked, nothing comes then. "As its areas say" goes back to what the time brings, kept to what the device is for.
+devices-cell-line = { $time }: { $areas }
+devices-cell-line-changed = { $time }: { $areas } (as you changed it)
+devices-now-time = { $time ->
+    [work] work
+    [admin] admin
+    [leisure] leisure
+    [meals] a meal
+    [sleep] sleep
+    [work-admin] work and admin
+   *[any] no hours set
+}
+devices-now = Now, { $time } until { $until }: { $comes }.
+devices-now-open = Now, { $time }: { $comes }.
+devices-older = Its Sioul is older: everything still comes there.
+devices-unheld = No device is for { $areas }: until one is, that comes on every device, as the hours say.
+devices-never-held = Whatever a device is for, these always come: doses and everything of Health, the codes you ask for, alarms and an event's own reminders, the people on your Always through list, and everything while you are Reachable. Calls and texts keep their own table.
+devices-cell-refused = { $said }: work, admin, leisure, joined by +, or none.
+devices-time-refused = { $said }: work, admin, leisure, meals or sleep.
+devices-unknown = No device is named { $device }. `sioul devices` lists them.
+devices-several = Several devices are named { $device }: give its id, as `sioul devices --json` shows it.
+devices-said-for = { $device } is now for { $areas }.
+devices-said-cell = { $device }, { $time }: { $areas }.
+devices-said-cell-usual = { $device }, { $time }: as its areas say again ({ $areas }).
 account-colour = Its colour
 account-colour-auto = As its rank gives it
 account-colour-n = Colour { $n }
@@ -8661,7 +8725,7 @@ invoices-settings-platform-help = From 1 September 2027 your invoices to French 
 ## Settings ▸ Devices and `sioul devices`: every device in one table (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, "Devices")
 settings-tab-devices = Devices
 devices-title = Your devices
-devices-help = Every device Sioul shares with, this one first: what each is, when it was last opened and when it last shared, its Sioul, what you say it is for, and what it shares. What a device is for is recorded and shown on all of them; nothing is held back or folded by it yet.
+devices-help = Every device Sioul shares with, this one first: what each is, when it was last opened and when it last shared, its Sioul, what you say it is for, and what it shares. Each device then brings forward only what it is for, at the hours for it; with nothing ticked, everything comes there, as before.
 devices-alone = This device does not share with your other devices, so it is the only one listed. Your folder and sharing sets it up.
 devices-as-of = Sioul is not looking from this device now: the others are said as it last saw them, { $when }.
 devices-this = This device

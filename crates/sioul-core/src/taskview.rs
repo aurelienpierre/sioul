@@ -1309,7 +1309,7 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let areas = crate::areas::TaskAreas { personal_categories: vec!["joy".into()], ..crate::areas::TaskAreas::usual() };
-        let evening = QuietTasks { time: crate::areas::Time::Leisure, week: Week { work_hours: true, ..Week::default() }, areas, no_movement: false };
+        let evening = QuietTasks { time: crate::areas::Time::Leisure, week: Week { work_hours: true, ..Week::default() }, areas, no_movement: false, here: crate::areas::Here::default() };
         let line = "Out of these hours: back tomorrow at 09:00.".to_string();
         let titles = |filter: &Filter| {
             let cx = Context { filter, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };

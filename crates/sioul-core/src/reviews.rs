@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn what_the_status_line_offers() {
-        let mode = |time: Time, reason: Reason| Mode { quiet: !time.works(), time, week: Week::default(), reason, until: None, back: None, label: String::new() };
+        let mode = |time: Time, reason: Reason| Mode { quiet: !time.works(), time, week: Week::default(), reason, until: None, back: None, label: String::new(), here: crate::areas::Here::default() };
         let evening = mode(Time::Leisure, Reason::Evening);
         let none = Reviews::default();
         let friday = |time: &str| at(&format!("2026-10-02T{time}[Europe/Paris]"));

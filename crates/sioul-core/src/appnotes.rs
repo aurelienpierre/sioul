@@ -49,7 +49,7 @@
 //! channels silent itself (`channels_plan`), and gives each back when the
 //! app is no longer gathered or you ask.
 
-use crate::areas::{Area, in_view};
+use crate::areas::Area;
 use crate::attention::{self, Attention, Event, Level, Source};
 use crate::i18n::Translator;
 use crate::quiet::Mode;
@@ -844,9 +844,10 @@ impl Ask<'_> {
         self.attention.level(attention::Row::Own(kind), &self.moment(at, mode))
     }
 
-    /// Whether the app is for that time (its area), or says nothing of it.
+    /// Whether the app is for that time on this phone (its area against the
+    /// phone's cell then, `Mode::brings`), or says nothing of it.
     fn area_fits(&self, mode: &Mode) -> bool {
-        self.area.is_none_or(|a| in_view(a, mode.time, mode.week))
+        self.area.is_none_or(|a| mode.brings(a))
     }
 }
 
@@ -1238,6 +1239,9 @@ pub struct Cause {
     pub own: Option<Own>,
     /// What it is for (its app's area, the address a mail came to), not now.
     pub area: Option<Area>,
+    /// This phone, and not the hour, keeps what it is for back now
+    /// (docs/areas.md, "What each device is for").
+    pub device: bool,
     /// The columns of the matrix that hold it now (`Attention::holding`):
     /// the time's, each layer by itself.
     pub columns: Vec<attention::Column>,
@@ -1274,13 +1278,15 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
         let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
         cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else if attention::is_person(id) { Own::Person } else { Own::App });
     }
-    if out.step == attention::Step::Area {
+    if matches!(out.step, attention::Step::Area | attention::Step::Device) {
         cause.area = ask.area;
+        cause.device = out.step == attention::Step::Device;
     }
     cause.columns = ask.attention.holding(&event, &moment);
     // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
     if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(&mode) {
         cause.area = ask.area;
+        cause.device = ask.area.is_some_and(|area| mode.keeps_back(area));
     }
     Some(cause)
 }

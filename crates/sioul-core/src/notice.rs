@@ -420,7 +420,7 @@ pub enum Decision {
 /// notice): told, piercing as its kind does (`attention::Kind::pierces`);
 /// none for new mail and the minor notices, which never pierce here.
 pub fn told(kind: Option<attention::Kind>) -> attention::Output {
-    attention::Output { level: attention::Level::Now, shown: true, told: true, pierce: kind.is_some_and(attention::Kind::pierces), step: attention::Step::Matrix }
+    attention::Output { level: attention::Level::Now, shown: true, told: true, pierce: kind.is_some_and(attention::Kind::pierces), step: attention::Step::Matrix, dispatched: false }
 }
 
 /// The moment of a process without the window (the command line), its
@@ -545,11 +545,11 @@ mod tests {
     use attention::{Kind as Row, Level, Output, Step};
 
     fn told(pierce: bool) -> Output {
-        Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix }
+        Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix, dispatched: false }
     }
 
     fn untold() -> Output {
-        Output { level: Level::Later, shown: false, told: false, pierce: false, step: Step::Matrix }
+        Output { level: Level::Later, shown: false, told: false, pierce: false, step: Step::Matrix, dispatched: false }
     }
 
     const NOW: i64 = 1_794_000_000;

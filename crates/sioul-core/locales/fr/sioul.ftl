@@ -428,6 +428,70 @@ area-filter-none = Rien de coché
 area-filter-as-hours = Selon vos heures
 area-filter-name = Ce qui s’affiche : { $areas }
 area-filter-how = Comment ce filtre fonctionne
+## Ce à quoi sert chaque appareil, et ce qui y arrive quand (docs/areas.md, "What each device is for")
+device-areas = { $areas ->
+    [work] le travail
+    [admin] vos démarches
+    [leisure] vos loisirs
+    [work-admin] le travail et vos démarches
+    [work-leisure] le travail et vos loisirs
+    [admin-leisure] vos démarches et vos loisirs
+    [none] rien
+   *[all] tout
+}
+device-areas-wait = { $areas ->
+    [work] le travail attend
+    [admin] vos démarches attendent
+    [leisure] vos loisirs attendent
+    [work-admin] le travail et vos démarches attendent
+    [work-leisure] le travail et vos loisirs attendent
+    [admin-leisure] vos démarches et vos loisirs attendent
+   *[all] tout attend
+}
+device-areas-come = { $areas ->
+    [work] le travail arrive ici
+    [admin] vos démarches arrivent ici
+    [leisure] vos loisirs arrivent ici
+    [work-admin] le travail et vos démarches arrivent ici
+    [work-leisure] le travail et vos loisirs arrivent ici
+    [admin-leisure] vos démarches et vos loisirs arrivent ici
+    [none] rien n’arrive ici
+   *[all] tout arrive ici
+}
+device-waits = Cet appareil est pour { $for } : { $waits } sur vos autres appareils.
+device-waits-cell = Sur cet appareil, à cette heure, { $waits } sur vos autres appareils : vous l’avez réglé ainsi dans Paramètres ▸ Appareils.
+mailbox-rests-device = { $address } attend sur vos autres appareils : celui-ci n’est pas pour elle en ce moment.
+devices-grid-title = Ce qui arrive, et quand
+devices-grid-help = Pour chaque appareil, ce qui arrive à chaque moment : ce que le moment amène, gardé à ce pour quoi l’appareil est fait. Changez une case pour y laisser passer autre chose, vos amis sur un téléphone pendant le travail, ou rien du tout pendant les repas ; « Selon ce à quoi il sert » la remet. Ce qui n’arrive pas sur un appareil y est replié, jamais retiré : sa page l’ouvre toujours.
+devices-grid-device = Appareil
+devices-cell-nothing = Rien
+devices-cell-as-areas = Selon ce à quoi il sert
+devices-cell-name = { $device }, { $time } : { $areas }
+devices-cell-name-changed = { $device }, { $time } : { $areas }, comme vous l’avez changé
+devices-cell-help = Ce qui arrive sur cet appareil à ce moment. Cochez ce qui doit arriver ; sans rien de coché, rien n’arrive alors. « Selon ce à quoi il sert » revient à ce que le moment amène, gardé à ce pour quoi l’appareil est fait.
+devices-cell-line = { $time } : { $areas }
+devices-cell-line-changed = { $time } : { $areas } (comme vous l’avez changé)
+devices-now-time = { $time ->
+    [work] le travail
+    [admin] les démarches
+    [leisure] les loisirs
+    [meals] un repas
+    [sleep] le sommeil
+    [work-admin] le travail et les démarches
+   *[any] aucune heure réglée
+}
+devices-now = En ce moment, { $time } jusqu’à { $until } : { $comes }.
+devices-now-open = En ce moment, { $time } : { $comes }.
+devices-older = Son Sioul est plus ancien : tout y arrive encore.
+devices-unheld = Aucun appareil n’est pour { $areas } : en attendant, cela arrive sur tous vos appareils, selon vos heures.
+devices-never-held = Quel que soit ce à quoi sert un appareil, ceci arrive toujours : les prises et tout ce qui est de Santé, les codes que vous demandez, les alarmes et les rappels propres à un événement, les personnes de votre liste Passent toujours, et tout pendant que vous êtes Joignable. Les appels et les SMS gardent leur propre tableau.
+devices-cell-refused = { $said } : work, admin, leisure, joints par +, ou none.
+devices-time-refused = { $said } : work, admin, leisure, meals ou sleep.
+devices-unknown = Aucun appareil ne s’appelle { $device }. `sioul devices` les liste.
+devices-several = Plusieurs appareils s’appellent { $device } : donnez son identifiant, comme `sioul devices --json` le montre.
+devices-said-for = { $device } est maintenant pour { $areas }.
+devices-said-cell = { $device }, { $time } : { $areas }.
+devices-said-cell-usual = { $device }, { $time } : de nouveau selon ce à quoi il sert ({ $areas }).
 account-colour = Sa couleur
 account-colour-auto = Selon son rang
 account-colour-n = Couleur { $n }
@@ -8386,8 +8450,15 @@ cli-invoices-pay--received = Pour une facture en une autre devise : ce qui vou
 cli-invoices-received = Ce qu’un paiement en une autre devise a donné dans celle des livres (en euros) : les livres le comptent ainsi
 cli-invoices-received--amount = Ce qui vous est parvenu, comme 92.50
 cli-invoices-received--day = Le paiement de ce jour ; sinon son dernier dont rien n’a encore été dit
-cli-devices = Vos appareils, celui-ci d’abord : ce qu’est chacun, où il en est, quand il a été ouvert et a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, ce qu’il partage
-cli-devices--json = Le tableau en JSON : une ligne par appareil, celui-ci d’abord
+cli-devices = Vos appareils, celui-ci d’abord : ce qu’est chacun, où il en est, quand il a été ouvert et a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, ce qui y arrive à chaque moment, ce qu’il partage. `for` et `at` disent à quoi sert un appareil.
+cli-devices--json = Le tableau en JSON : une ligne par appareil, celui-ci d’abord, chacun avec ses cases ; et les lignes propres à la grille
+cli-devices-for = Dit à quoi sert un appareil : le travail, les démarches, les loisirs, plusieurs à la fois si vous voulez. Chaque appareil ne fait alors venir que ce pour quoi il est fait.
+cli-devices-for--device = L’appareil : son nom tel que `sioul devices` le montre, ou son identifiant
+cli-devices-for--areas = work, admin, leisure, joints par + (work+leisure) ; everything, comme avant que rien ne soit dit
+cli-devices-at = Change ce qui arrive sur un appareil à un moment : une case de sa ligne.
+cli-devices-at--device = L’appareil : son nom tel que `sioul devices` le montre, ou son identifiant
+cli-devices-at--time = Le moment : work, admin, leisure, meals ou sleep
+cli-devices-at--areas = work, admin, leisure, joints par + ; none, pour rien à ce moment ; usual, selon ce à quoi sert l’appareil
 cli-books = Les livres : le livre des recettes, les déclarations, le récapitulatif de TVA, les seuils, la DES
 cli-books-receipts = Le livre des recettes : une ligne par paiement reçu, par jour, avec les totaux de ses trimestres et de ses années
 cli-books-receipts--year = Celui de cette année ; l’année en cours sinon
@@ -9037,7 +9108,7 @@ invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures 
 ## Paramètres ▸ Appareils et `sioul devices` : tous les appareils dans un tableau (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, « Devices »)
 settings-tab-devices = Appareils
 devices-title = Vos appareils
-devices-help = Chaque appareil avec lequel Sioul partage, celui-ci d’abord : ce qu’il est, quand il a été ouvert et quand il a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, et ce qu’il partage. Ce à quoi sert un appareil est noté et affiché sur tous ; rien n’est encore retenu ni replié d’après lui.
+devices-help = Chaque appareil avec lequel Sioul partage, celui-ci d’abord : ce qu’il est, quand il a été ouvert et quand il a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, et ce qu’il partage. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela ; sans rien de coché, tout y arrive, comme avant.
 devices-alone = Cet appareil ne partage pas avec vos autres appareils : il est donc le seul de la liste. Le partage se met en place dans Votre dossier et le partage.
 devices-as-of = Sioul ne regarde pas depuis cet appareil en ce moment : les autres sont dits tels qu’il les a vus pour la dernière fois, { $when }.
 devices-this = Cet appareil
