@@ -62,6 +62,16 @@ Panel {
 
     objectName: "vaultCard"
     Component.onCompleted: card.reload()
+
+    // Locked, by Lock or after its time without use: said at once, the page told.
+    Connections {
+        target: card.sioul
+
+        function onBitwardenLocked() {
+            card.reload()
+            card.changed()
+        }
+    }
     // Read again each time it shows: the vault locks by itself after its time without use.
     onVisibleChanged: if (card.visible) card.reload()
 

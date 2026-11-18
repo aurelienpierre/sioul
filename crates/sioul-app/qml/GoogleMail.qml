@@ -29,6 +29,8 @@ ColumnLayout {
     property var keys: null
     // Bitwarden on this device, as the Accounts page reads it: "missing", "locked" or "unlocked".
     property string vault: "missing"
+    // The page's keeper of fields holding a vault's password (VaultHeld.qml).
+    property var held: null
     property bool stepsShown: false
     property bool ownKey: false
     readonly property bool keyKept: form.found !== null && form.found.google_key === true
@@ -142,7 +144,8 @@ ColumnLayout {
             vault: form.vault
             site: "https://myaccount.google.com"
             user: form.address
-            onTaken: secret => appPassword.text = secret
+            field: appPassword
+            held: form.held
             onProblem: text => form.problem = text
         }
         Label {
@@ -262,7 +265,8 @@ ColumnLayout {
                 vault: form.vault
                 site: "https://console.cloud.google.com"
                 user: clientId.text
-                onTaken: secret => clientSecret.text = secret
+                field: clientSecret
+                held: form.held
                 onProblem: text => form.problem = text
             }
         }

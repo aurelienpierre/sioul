@@ -23,7 +23,7 @@ Who may reach you, and when, is in Settings ▸ [What reaches you](notifications
 ## Your accounts
 
 <figure markdown="span">
-  [![The "Your accounts" tab: at the top, "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: its mail service with its server, a switch and Remove, then what this address is for (Work ticked, Your admin, Leisure), how far back, how often it is fetched, the protection against harassment, its priority, "Name and signature…", and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
+  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: its mail service with its server, a switch and Remove, then what this address is for (Work ticked, Your admin, Leisure), how far back, how often it is fetched, the protection against harassment, its priority, "Name and signature…", and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
   <figcaption>One card per address, each of its services with a switch.</figcaption>
 </figure>
 
@@ -95,7 +95,7 @@ Four forms, one after the other:
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 - **Bitwarden**: your password manager's e-mail, and its server when it is not bitwarden.com; **Add** shows it at the top of **Your accounts** and opens the vault there. One account for the whole app: once one is set, this form says which.
 
-Every password field of these forms has **From Bitwarden…** under it, once your password manager is set: the vault opens if it is locked, then its logins are listed by the name the account logs in with, and the one you choose gives its password.
+Every password field of these forms has **From Bitwarden…** under it, once your password manager is set: the vault opens if it is locked, then its logins are listed by the name the account logs in with, and the one you choose gives its password; the button then says which login it was. That password stays in the field only while the vault is open and the form in view: locking the vault (or its time without use), leaving Add an account, or adding the account empties it. A password you typed yourself stays.
 
 On Android, **From this phone's accounts…** (this tablet's, on a tablet), above them, opens Android's own list of the accounts the device knows. A Google address fills the Google form and the mail form, with Google's two ways; any other fills the mail form, whose server Sioul then looks for, and the one for contacts and calendars. Android lends no password: Sioul asks for it once.
 

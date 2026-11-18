@@ -6,10 +6,13 @@
 // GoogleMail.qml, AccountPassword.qml): the vault opened first when it is
 // locked (VaultUnlock.qml, the security key where the window can ask one),
 // then its logins, found by the name the account logs in with as the user
-// name (LoginChooser.qml); the one chosen gives its password, and only it
-// leaves the vault. Shown once a Bitwarden account is set (Accounts ▸ Your
-// accounts ▸ Password manager). Another domain than the server's is no
-// warning here: the password goes to the account's own server.
+// name (LoginChooser.qml); the one chosen fills the field, and only its
+// password leaves the vault. The field is then told to the page's
+// VaultHeld.qml, which empties it when the vault locks or the form is left;
+// the button says which login filled it. Shown once a Bitwarden account is
+// set (Accounts ▸ Your accounts ▸ Password manager). Another domain than the
+// server's is no warning here: the password goes to the account's own
+// server.
 
 pragma ComponentBehavior: Bound
 
@@ -31,9 +34,19 @@ Button {
     property string site: ""
     // The name the account logs in with: its own, else its address.
     property string user: ""
+    // The field a login chosen fills (a PasswordField), and the page's keeper of
+    // such fields (VaultHeld.qml), which empties it when the vault locks.
+    property PasswordField field: null
+    property var held: null
+    // The login chosen is remembered for `site`, proposed first there next time,
+    // the Sites page's fills included: only for an account's own mail server
+    // (AccountPassword.qml), never for a form's, whose host may be a site's.
+    property bool remember: false
+    // The name of the login that filled the field, while it holds its password.
+    property string from: ""
 
-    // A login chosen: its password, and the login's name, to say where it came from.
-    signal taken(string password, string name)
+    // A login chosen and its password in the field: the login's name, to say where it came from.
+    signal taken(string name)
     // What went wrong, in words (the vault's answer).
     signal problem(string text)
     // The vault opened here: the page reads its state again.
@@ -48,11 +61,26 @@ Button {
     }
 
     function take(item) {
-        const login = JSON.parse(fill.sioul.bitwardenLogin(fill.site, item))
-        if (login.error)
+        const login = JSON.parse(fill.sioul.bitwardenLogin(fill.remember ? fill.site : "", item))
+        if (login.error) {
             fill.problem(login.error)
-        else
-            fill.taken(login.password, login.name)
+            return
+        }
+        fill.field.text = login.password
+        if (fill.held)
+            fill.held.took(fill.field)
+        fill.from = login.name
+        fill.taken(login.name)
+    }
+
+    // The field emptied (by hand, or as the vault locked): no login's password in it.
+    Connections {
+        target: fill.field
+
+        function onTextChanged() {
+            if (fill.field.text === "")
+                fill.from = ""
+        }
     }
 
     visible: fill.vault !== "missing"
@@ -61,7 +89,8 @@ Button {
     enabled: !fill.sioul.formBusy
     icon.name: "dialog-password"
     icon.color: fill.theme.text
-    text: fill.sioul.text("account-password-vault")
+    // Which login filled the field, once one did: "From Bitwarden: Cloud." (a press chooses another).
+    text: fill.from !== "" ? fill.theme.plain(fill.sioul.textWith("account-password-from", "name", fill.from)) : fill.sioul.text("account-password-vault")
     onClicked: fill.choose()
 
     // Bitwarden, opened here for the session.

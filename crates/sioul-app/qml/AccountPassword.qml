@@ -26,6 +26,9 @@ SafeDialog {
     property string vault: "missing"
     // What asks a security key (VaultUnlock.qml's `keys`): the window's, none on a phone.
     property var keys: null
+    // The page's keeper of fields holding a vault's password (VaultHeld.qml): the
+    // field emptied if the vault locks while the dialog is open.
+    property var held: null
     // A server that takes app passwords only (Google's, Yahoo's): its guide,
     // its field's name and the page where one is made, as Sioul knows them
     // (backend's app_password_for); empty for any other server.
@@ -52,10 +55,8 @@ SafeDialog {
         return dialog.account === null ? "" : dialog.account.login || dialog.account.address || ""
     }
 
-    // A login chosen in the vault: its password tested and kept at once.
-    function take(secret, name) {
-        password.text = secret
-        dialog.note = dialog.sioul.textWith("account-password-from", "name", name)
+    // A login chosen in the vault, its password in the field: tested and kept at once.
+    function take() {
         dialog.keep()
     }
 
@@ -119,7 +120,11 @@ SafeDialog {
             vault: dialog.vault
             site: dialog.site()
             user: dialog.login()
-            onTaken: (secret, name) => dialog.take(secret, name)
+            field: password
+            held: dialog.held
+            // The account's own mail server: the login chosen is proposed first there next time.
+            remember: true
+            onTaken: dialog.take()
             onProblem: text => dialog.problem = text
             onOpened: dialog.vault = dialog.sioul.bitwardenState()
         }

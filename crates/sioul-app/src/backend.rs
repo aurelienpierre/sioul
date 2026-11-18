@@ -3055,6 +3055,12 @@ pub mod qobject {
         #[qsignal]
         fn bitwarden_answered(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
 
+        /// The vault was locked: by Lock, or after its time without use. What
+        /// still holds something of it lets it go (VaultHeld.qml, the choosers'
+        /// lists, the password manager's card).
+        #[qsignal]
+        fn bitwarden_locked(self: Pin<&mut Sioul>);
+
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
         #[qsignal]
@@ -3504,7 +3510,7 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
 pub(crate) fn reading_json() -> String {
     let config = load_config();
     let reading = config.reading;
-    // colour: and the sites' colours, as Settings ▸ Display has them (SitesPage.qml, docs/colour.md).
+    // colour: and the sites' colours, as the Sites page's ⚙ has them (SitesPage.qml, docs/colour.md).
     serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named, "screen_colours": config.screen_colours.unwrap_or(true), "calmer_colours": config.calmer_colours.unwrap_or_default() }).to_string()
 }
 
@@ -7498,8 +7504,9 @@ impl qobject::Sioul {
         crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_unlock(&shared, &password, provider, &code))
     }
 
-    fn bitwarden_lock(self: Pin<&mut Self>) {
+    fn bitwarden_lock(mut self: Pin<&mut Self>) {
         crate::sites::bitwarden_lock(&self.shared());
+        self.as_mut().bitwarden_locked();
     }
 
     fn bitwarden_send_code(self: Pin<&mut Self>, password: &QString) -> i32 {
@@ -7559,11 +7566,13 @@ impl qobject::Sioul {
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
-        // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
+        // The Bitwarden vault locked once unused as long as you chose, away or not
+        // (Accounts, the password manager's card); what holds something of it lets it go.
         let lock_after = load_config().bitwarden.lock_after.unwrap_or(0);
         if crate::sites::bitwarden_lock_if_idle(&self.shared(), lock_after, jiff::Timestamp::now().as_second()) {
             let words = tr().text("bitwarden-locked", None);
             self.as_mut().set_status(QString::from(&words));
+            self.as_mut().bitwarden_locked();
         }
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that

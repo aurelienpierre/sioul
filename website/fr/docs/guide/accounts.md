@@ -23,7 +23,7 @@ Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](no
 ## Vos comptes {#your-accounts}
 
 <figure markdown="span">
-  [![L’onglet « Vos comptes » : en haut, « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courriel avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, « Nom et signature… », et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
+  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courriel avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, « Nom et signature… », et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
   <figcaption>Une fiche par adresse, chacun de ses services avec un interrupteur.</figcaption>
 </figure>
 
@@ -95,7 +95,7 @@ Quatre formulaires, l’un après l’autre :
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
 - **Bitwarden** : l’adresse de votre gestionnaire de mots de passe, et son serveur quand ce n’est pas bitwarden.com ; **Ajouter** le montre en haut de **Vos comptes** et y ouvre le coffre. Un seul compte pour toute l’application : une fois réglé, ce formulaire dit lequel.
 
-Chaque champ de mot de passe de ces formulaires a **Depuis Bitwarden…** en dessous, une fois votre gestionnaire de mots de passe réglé : le coffre s’ouvre s’il est verrouillé, puis ses identifiants sont listés par le nom avec lequel le compte se connecte, et celui que vous choisissez donne son mot de passe.
+Chaque champ de mot de passe de ces formulaires a **Depuis Bitwarden…** en dessous, une fois votre gestionnaire de mots de passe réglé : le coffre s’ouvre s’il est verrouillé, puis ses identifiants sont listés par le nom avec lequel le compte se connecte, et celui que vous choisissez donne son mot de passe ; le bouton dit alors de quel identifiant il vient. Ce mot de passe ne reste dans le champ que tant que le coffre est ouvert et le formulaire à l’écran : verrouiller le coffre (ou son temps sans usage), quitter Ajouter un compte, ou ajouter le compte le vide. Un mot de passe que vous avez tapé vous-même reste.
 
 Sur Android, **Depuis les comptes du téléphone…** (de la tablette, sur une tablette), au-dessus d’eux, ouvre la liste d’Android des comptes que l’appareil connaît. Une adresse Google remplit le formulaire de Google et celui des courriels, avec les deux façons de Google ; toute autre remplit le formulaire des courriels, dont Sioul cherche alors le serveur, et celui des contacts et agendas. Android ne prête aucun mot de passe : Sioul le demande une fois.
 

@@ -40,11 +40,34 @@ Item {
 
     function readVault() {
         page.vault = page.sioul.bitwardenState()
+        vaultHeld.follow(page.vault)
+    }
+
+    // The forms' fields holding a password taken from the vault (VaultHeld.qml):
+    // emptied as the vault locks, as the page or Add an account is left, and once
+    // the account is added.
+    VaultHeld {
+        id: vaultHeld
+
+        sioul: page.sioul
+    }
+    Connections {
+        target: tabs
+
+        function onCurrentIndexChanged() {
+            if (tabs.currentIndex !== 1)
+                vaultHeld.release()
+        }
     }
     // The password manager's card, once Your accounts made it.
     property VaultCard vaultCard: null
 
-    onVisibleChanged: if (page.visible) page.readVault()
+    onVisibleChanged: {
+        if (page.visible)
+            page.readVault()
+        else
+            vaultHeld.release()
+    }
     Component.onCompleted: page.readVault()
 
     // The password manager's card in view, at the top of Your accounts (a link by key:
@@ -153,7 +176,7 @@ Item {
     // An account's password, given on this device (AccountPassword.qml): made the first time.
     function askPassword(account) {
         if (passwordDialog.item === null)
-            passwordDialog.setSource("AccountPassword.qml", { sioul: page.sioul, theme: page.theme, keys: page.vaultKeys })
+            passwordDialog.setSource("AccountPassword.qml", { sioul: page.sioul, theme: page.theme, keys: page.vaultKeys, held: vaultHeld })
         passwordDialog.item.ask(account)
     }
 
@@ -248,6 +271,7 @@ Item {
         }
 
         function onAccountAdded() {
+            vaultHeld.release()
             if (addTab.item)
                 addTab.item.clear()
             tabs.currentIndex = 0
@@ -761,6 +785,7 @@ Item {
                                                 theme: page.theme
                                                 keys: page.vaultKeys
                                                 vault: page.vault
+                                                held: vaultHeld
                                                 address: addressField.text
                                                 found: page.found
                                                 againId: page.againId
@@ -860,7 +885,8 @@ Item {
                                                 vault: page.vault
                                                 site: host.text !== "" ? "https://" + host.text : ""
                                                 user: login.text !== "" ? login.text : addressField.text
-                                                onTaken: secret => password.text = secret
+                                                field: password
+                                                held: vaultHeld
                                                 onProblem: text => page.sioul.status = text
                                                 onOpened: page.readVault()
                                             }
@@ -1036,7 +1062,8 @@ Item {
                                             vault: page.vault
                                             site: davUrl.text
                                             user: davLogin.text !== "" ? davLogin.text : davAddress.text
-                                            onTaken: secret => davPassword.text = secret
+                                            field: davPassword
+                                            held: vaultHeld
                                             onProblem: text => page.sioul.status = text
                                             onOpened: page.readVault()
                                         }
@@ -1210,7 +1237,8 @@ Item {
                                             vault: page.vault
                                             site: "https://console.cloud.google.com"
                                             user: googleId.text
-                                            onTaken: secret => googleSecret.text = secret
+                                            field: googleSecret
+                                            held: vaultHeld
                                             onProblem: text => page.sioul.status = text
                                             onOpened: page.readVault()
                                         }

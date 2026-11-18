@@ -40,6 +40,7 @@ Item {
         property string status: ""
 
         signal bitwardenAnswered(int ticket, string answer)
+        signal bitwardenLocked
         signal keysChanged
         signal securityKeyChanged(string context, string state)
         signal accountAdded
@@ -70,9 +71,11 @@ Item {
         function bitwardenState() {
             return mock.vault
         }
+        // As the backend does: the vault emptied, then said.
         function bitwardenLock() {
             mock.locks += 1
             mock.vault = "locked"
+            mock.bitwardenLocked()
         }
         function bitwardenUnlock(password, provider, code) {
             return 1

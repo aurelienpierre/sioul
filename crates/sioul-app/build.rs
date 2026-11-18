@@ -178,6 +178,7 @@ fn main() {
         "qml/VaultCard.qml",
         "qml/VaultForm.qml",
         "qml/VaultFill.qml",
+        "qml/VaultHeld.qml",
         "qml/AccountPassword.qml",
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
