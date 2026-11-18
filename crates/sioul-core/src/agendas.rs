@@ -1214,6 +1214,12 @@ pub struct Override {
     /// Left out though the hours would show them.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub off: BTreeSet<String>,
+    /// The agendas of a named set chosen by its button, by place: the
+    /// Agenda's full views, which the hours never shape, show it alone
+    /// (`hidden_by_hand_with_set`); `on` and `off` say, as always, only what
+    /// differs from the hours at the press. An older Sioul leaves it unread.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub set: BTreeSet<String>,
 }
 
 impl Override {
@@ -1223,7 +1229,13 @@ impl Override {
         self.work == hours.work && self.until.is_none_or(|until| now < until)
     }
 
+    /// Nothing said at all: no agenda turned, no set chosen.
     pub fn is_empty(&self) -> bool {
+        self.turns_nothing() && self.set.is_empty()
+    }
+
+    /// No agenda turned on or off against the hours (a set chosen may be kept).
+    pub fn turns_nothing(&self) -> bool {
         self.on.is_empty() && self.off.is_empty()
     }
 }
@@ -1279,19 +1291,44 @@ pub fn turned(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: b
 /// (`hidden_by_hand`): your word is what differs from "kept hidden on this
 /// device, else shown", so that a work list unticked in the evening there
 /// is left out until work's hours change, as any word of yours.
+/// An agenda outside a set chosen by its button, ticked there, is said on,
+/// so that the Agenda's full views show it beside the set
+/// (`hidden_by_hand_with_set`).
 pub fn turned_by_hand(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, kept: &BTreeSet<String>, now: i64) -> Option<Override> {
-    turned_against(over, agendas, ids, on, hours, now, &|agenda| !kept.contains(&agenda.id))
+    let mut turned = turned_against(over, agendas, ids, on, hours, now, &|agenda| !kept.contains(&agenda.id));
+    if let Some(over) = turned.as_mut().filter(|o| on && !o.set.is_empty()) {
+        for id in ids.iter().filter(|id| !over.set.contains(*id) && agendas.iter().any(|a| &a.id == *id)) {
+            over.on.insert(id.clone());
+        }
+    }
+    turned
 }
 
-/// A named set chosen by its button: your own hand, so that every view shows
-/// the set alone, the full ones too, which read your word alone
-/// (`hidden_by_hand`): each of the set's agendas turned on and every other
-/// off, said for each, whatever the hours would do; until work's hours
-/// change, as any word of yours.
-pub fn set_chosen(agendas: &[Agenda], set: &[String], hours: Hours) -> Option<Override> {
-    let (on, off): (BTreeSet<String>, BTreeSet<String>) = agendas.iter().map(|a| a.id.clone()).partition(|id| set.contains(id));
-    let over = Override { work: hours.work, until: hours.until, on, off };
-    (!over.is_empty()).then_some(over)
+/// A named set chosen by its button (part 4): its agendas turned on and
+/// every other off against the hours at the press, only what differs from
+/// them said, as always (`turned`, against `out`: so that a time's set that
+/// changes meanwhile applies in the calm views, and a task list the hours
+/// hid at the press stays in the Tasks page's full views); and the set kept
+/// beside, so that the Agenda's full views show it alone
+/// (`hidden_by_hand_with_set`). Until work's hours change, as any word of yours.
+pub fn set_chosen(over: Option<&Override>, agendas: &[Agenda], set: &[String], hours: Hours, out: &BTreeSet<String>, now: i64) -> Option<Override> {
+    let (inside, outside): (Vec<String>, Vec<String>) = agendas.iter().map(|a| a.id.clone()).partition(|id| set.contains(id));
+    let turned_on = turned(over, agendas, &inside, true, hours, out, now);
+    let mut chosen = turned(turned_on.as_ref(), agendas, &outside, false, hours, out, now).unwrap_or(Override { work: hours.work, until: hours.until, ..Override::default() });
+    chosen.set = inside.into_iter().collect();
+    (!chosen.is_empty()).then_some(chosen)
+}
+
+/// What the Agenda's full views (the Day, the Week, the Month) leave out:
+/// your word alone (`hidden_by_hand`), and, while a set chosen by its
+/// button holds, every agenda outside it that you did not turn on since,
+/// so that the set shows alone there too, as in What comes.
+pub fn hidden_by_hand_with_set(agendas: &[Agenda], hours: Hours, over: Option<&Override>, kept: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
+    let mut hidden = hidden_by_hand(agendas, hours, over, kept, now);
+    if let Some(o) = over.filter(|o| o.holds(hours, now) && !o.set.is_empty()) {
+        hidden.extend(agendas.iter().filter(|a| !o.set.contains(&a.id) && !o.on.contains(&a.id)).map(|a| a.id.clone()));
+    }
+    hidden
 }
 
 fn turned_against(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, now: i64, usual: &dyn Fn(&Agenda) -> bool) -> Option<Override> {
@@ -1454,32 +1491,41 @@ mod tests {
         a
     }
 
-    /// A named set chosen by its button is your own hand: the set alone in
-    /// every view, What comes and the full views alike (the Day, the Week and
-    /// the Month read your word alone: the review of the branch `views`,
-    /// finding 8). After work, the work agenda already left out by the hours
-    /// is said off all the same, so that the full views leave it out too;
-    /// until work's hours change, then every agenda again, the work agenda
-    /// in its hours.
+    /// A named set chosen by its button (the review of the branch `views`,
+    /// finding 8 and its verification): What comes as on main, the press
+    /// saying only what differs from the hours then, so that a time's set
+    /// that changes meanwhile applies; the Tasks page's full lists as on
+    /// main, a task list the hours hid at the press staying there; the
+    /// Agenda's Day, Week and Month the set alone, the work agenda the hours
+    /// already left out among what they leave out. Until work's hours
+    /// change; then every agenda again, the work agenda in its hours.
     #[test]
-    fn a_set_chosen_shows_alone_in_every_view() {
+    fn a_set_chosen_shows_alone_in_the_agenda_and_as_on_main_elsewhere() {
         let work = agenda("work", Area::WORK, Reaches::AllDay);
         let home = agenda("home", Area::PERSONAL, Reaches::AllDay);
         let tom = agenda("tom", Area::PERSONAL, Reaches::AllDay);
-        let all = [work, home, tom];
+        let mut errands = Agenda::of(&collection("a", "errands", &["VTODO"]), &Said::default(), &Config::default(), false, &|| true);
+        errands.area = Area::WORK;
+        let all = [work, home, tom, errands];
         let none: BTreeSet<String> = BTreeSet::new();
         let ids = |set: BTreeSet<String>| set.into_iter().collect::<Vec<_>>();
         let after = Hours { set: true, work: false, until: Some(2_000) };
-        // As the button turned it before (against the hours): the full views still drew the work agenda.
-        let against = turned(None, &all, &["a/tom".to_string()], true, after, &none, 1_500);
-        let against = turned(against.as_ref(), &all, &["a/work".to_string(), "a/home".to_string()], false, after, &none, 1_500);
-        assert_eq!(ids(hidden_by_hand(&all, after, against.as_ref(), &none, 1_600)), ["a/home"], "the gap the review found");
-        let chosen = set_chosen(&all, &["a/tom".to_string()], after);
-        assert_eq!(ids(hidden(&all, after, chosen.as_ref(), &none, 1_600)), ["a/home", "a/work"], "What comes: the set alone");
-        assert_eq!(ids(hidden_by_hand(&all, after, chosen.as_ref(), &none, 1_600)), ["a/home", "a/work"], "the Day, the Week and the Month: the set alone too");
-        // Work's hours begin: the word goes, the hours again in What comes, everything in the full views.
+        let chosen = set_chosen(None, &all, &["a/tom".to_string()], after, &none, 1_500).unwrap();
+        // Only what differs from the hours at the press: home off; work and the work list, hidden by the hours, unsaid.
+        assert_eq!((ids(chosen.on.clone()), ids(chosen.off.clone()), ids(chosen.set.clone())), (vec![], vec!["a/home".to_string()], vec!["a/tom".to_string()]));
+        assert_eq!(ids(hidden(&all, after, Some(&chosen), &none, 1_600)), ["a/errands", "a/home", "a/work"], "What comes: the set alone");
+        assert_eq!(ids(hidden_by_hand(&all, after, Some(&chosen), &none, 1_600)), ["a/home"], "the Tasks page's full lists: as on main, the work list still there");
+        assert_eq!(ids(hidden_by_hand_with_set(&all, after, Some(&chosen), &none, 1_600)), ["a/errands", "a/home", "a/work"], "the Day, the Week and the Month: the set alone");
+        // A time's set changing meanwhile, work's hours the same, one that leaves tom out: it applies in
+        // What comes to what the press did not say, as on main (tom was shown by the hours then).
+        let other_set: BTreeSet<String> = ["a/tom".to_string()].into();
+        assert_eq!(ids(hidden(&all, after, Some(&chosen), &other_set, 1_700)), ["a/errands", "a/home", "a/tom", "a/work"]);
+        // An agenda ticked on by hand in a full view since: shown there.
+        let ticked = turned_by_hand(Some(&chosen), &all, &["a/work".to_string()], true, after, &none, 1_650);
+        assert_eq!(ids(hidden_by_hand_with_set(&all, after, ticked.as_ref(), &none, 1_700)), ["a/errands", "a/home"]);
+        // Work's hours begin: the word goes.
         let working = Hours { set: true, work: true, until: Some(9_000) };
-        assert!(hidden(&all, working, chosen.as_ref(), &none, 2_100).is_empty() && hidden_by_hand(&all, working, chosen.as_ref(), &none, 2_100).is_empty());
+        assert!(hidden(&all, working, Some(&chosen), &none, 2_100).is_empty() && hidden_by_hand_with_set(&all, working, Some(&chosen), &none, 2_100).is_empty());
     }
 
     /// By default the filter shows what the hours admit: a work agenda in

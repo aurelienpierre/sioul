@@ -67,19 +67,30 @@ pub fn entries(sessions: &[Session], tasks: &[Task], projects: &[Project], zone:
         .collect()
 }
 
-/// What a stretch of time is for, as the Time page's filter reads it
-/// (docs/areas.md, "A page's filter by area"): its project's, as the
-/// Projects page shows it (`Project::area_shown`); with no project known,
-/// its task's (`TaskAreas::of`); none for time noted on nothing, on a project
-/// gone, or on one that shows whatever the ticks, which every tick shows.
-pub fn area_of(entry: &Entry, projects: &[Project], tasks: &[Task], areas: &crate::areas::TaskAreas) -> Option<crate::areas::Area> {
-    if let Some(project) = projects.iter().find(|p| !entry.project.is_empty() && p.id == entry.project) {
-        return project.area_shown(tasks, areas);
+/// What each stretch of time is for, as the Time page's filter reads it
+/// (docs/areas.md, "A page's filter by area"), made once per reading of the
+/// page: each project's area once (`Project::area_shown`, which reads its
+/// open tasks), each task's once (`TaskAreas::of`), then a look-up a
+/// stretch, so that a year of stretches costs no more than its projects.
+pub struct StretchAreas {
+    projects: std::collections::BTreeMap<String, Option<crate::areas::Area>>,
+    tasks: std::collections::BTreeMap<String, crate::areas::Area>,
+}
+
+impl StretchAreas {
+    pub fn of(projects: &[Project], tasks: &[Task], areas: &crate::areas::TaskAreas) -> StretchAreas {
+        StretchAreas { projects: projects.iter().map(|p| (p.id.clone(), p.area_shown(tasks, areas))).collect(), tasks: tasks.iter().map(|t| (t.uid.clone(), areas.of(t))).collect() }
     }
-    if !entry.project.is_empty() {
-        return None;
+
+    /// A stretch's area: its project's, as the Projects page shows it; with
+    /// no project, its task's; none for time noted on nothing, on a project
+    /// gone, or on one that shows whatever the ticks, which every tick shows.
+    pub fn area_of(&self, entry: &Entry) -> Option<crate::areas::Area> {
+        if !entry.project.is_empty() {
+            return self.projects.get(&entry.project).copied().flatten();
+        }
+        if entry.task.is_empty() { None } else { self.tasks.get(&entry.task).copied() }
     }
-    tasks.iter().find(|t| !entry.task.is_empty() && t.uid == entry.task).map(|t| areas.of(t))
 }
 
 /// What `minutes` at `rate` an hour come to, to the cent.
@@ -382,6 +393,24 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
 mod tests {
     use super::*;
 
+    /// The Time page's filter asks each project's area once per reading,
+    /// never once per stretch (the review of the branch `views`, V6: a year of
+    /// 2,500 stretches on a project with neither a word nor a client took a
+    /// second on the window's thread): two projects, 3,000 tasks, 2,500
+    /// stretches, two asks.
+    #[test]
+    fn each_project_s_area_is_asked_once_per_reading() {
+        use crate::areas::{Area, TaskAreas};
+        let projects = [Project { id: "own".into(), title: "Own".into(), ..Project::default() }, Project { id: "lumen".into(), title: "Lumen".into(), client: Some("Lumen".into()), ..Project::default() }];
+        let tasks: Vec<Task> = (0..3000u32).map(|k| Task { uid: format!("t{k}"), projects: vec![if k % 3 == 0 { "own".to_string() } else { "lumen".to_string() }], categories: vec![if k % 2 == 0 { "Famille".to_string() } else { "courses".to_string() }], status: if k % 10 == 0 { crate::tasks::Status::NeedsAction } else { crate::tasks::Status::Completed }, ..Task::default() }).collect();
+        let entries: Vec<Entry> = (0..2500u32).map(|k| Entry { key: format!("e{k}"), start: i64::from(k) * 3600, day: Date::ZERO, minutes: 30, project: if k % 2 == 0 { "own".into() } else { "lumen".into() }, task: String::new(), title: String::new(), note: String::new(), billable: false, invoice: String::new() }).collect();
+        crate::projects::AREA_SHOWN_ASKED.with(|n| n.set(0));
+        let stretches = StretchAreas::of(&projects, &tasks, &TaskAreas::usual());
+        let shown = entries.iter().filter(|e| stretches.area_of(e).is_none_or(|a| a.meets(Area::LEISURE))).count();
+        assert_eq!(crate::projects::AREA_SHOWN_ASKED.with(std::cell::Cell::get), 2, "once a project");
+        assert_eq!(shown, 1250, "the unsaid project's open tasks are leisure's: its stretches show; the client's do not");
+    }
+
     /// What a stretch of time is for, as the Time page's filter reads it: its
     /// project's area (an unsaid one work's); with no project, its task's;
     /// none for time on nothing, or on a project gone.
@@ -392,7 +421,8 @@ mod tests {
         let projects = [Project { id: "garden".into(), area: Some("leisure".into()), ..Project::default() }, Project { id: "lumen".into(), client: Some("Studio Lumen".into()), ..Project::default() }];
         let tasks = [Task { uid: "report".into(), categories: vec!["Travail".into()], ..Task::default() }, Task { uid: "forms".into(), ..Task::default() }];
         let areas = TaskAreas { work_categories: vec!["travail".into()], ..TaskAreas::usual() };
-        let of = |e: Entry| area_of(&e, &projects, &tasks, &areas);
+        let stretches = StretchAreas::of(&projects, &tasks, &areas);
+        let of = |e: Entry| stretches.area_of(&e);
         assert_eq!(of(entry("garden", "report")), Some(Area::LEISURE), "its project's, before its task's");
         assert_eq!(of(entry("lumen", "")), Some(Area::WORK));
         assert_eq!(of(entry("", "report")), Some(Area::WORK), "no project: its task's");
