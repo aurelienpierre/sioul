@@ -28,15 +28,54 @@ SafePopup {
         panel.rows = panel.view === "" ? [] : JSON.parse(panel.sioul.settings(panel.view))
     }
 
-    // A setting at the top of the panel, its group's title above it (the window's images).
+    // A setting at the top of the panel, its group's title above it (a door by
+    // its key, the window's images). The first time the panel opens its rows are
+    // not laid out yet: the setting asked for is kept in view while they are,
+    // then left to the hand (the first move of the hand ends it at once).
+    property string wanted: ""
+
     function scrollTo(key) {
-        const at = panel.rows.findIndex(row => row.key === key)
+        panel.wanted = key
+        panel.place()
+        settled.restart()
+    }
+
+    function place() {
+        const at = panel.rows.findIndex(row => row.key === panel.wanted)
         const row = at < 0 ? null : shownRows.itemAt(at)
         const flick = scroll.contentItem as Flickable
         if (row === null || flick === null)
             return
         const top = row.mapToItem(flick.contentItem, 0, 0).y
         flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
+    }
+
+    Timer {
+        id: settled
+
+        interval: 400
+        onTriggered: panel.wanted = ""
+    }
+
+    // Placed again at each frame of the layout's work, a row's place moving after
+    // the panel's height said it changed; the setting kept a moment once still.
+    Timer {
+        interval: 40
+        repeat: true
+        running: panel.wanted !== "" && panel.opened
+        onTriggered: panel.place()
+    }
+
+    Connections {
+        target: scroll.contentItem as Flickable
+
+        function onContentHeightChanged() {
+            if (panel.wanted !== "")
+                settled.restart()
+        }
+        function onMovementStarted() {
+            panel.wanted = ""
+        }
     }
 
     // An item of the panel (a part's own line) at the top of the panel (the window's images).
@@ -65,6 +104,7 @@ SafePopup {
     modal: false
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     onAboutToShow: panel.reload()
+    onOpened: if (panel.wanted !== "") panel.place()
 
     background: Rectangle {
         color: panel.theme.surface
