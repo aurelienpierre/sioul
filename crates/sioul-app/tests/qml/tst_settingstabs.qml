@@ -60,8 +60,17 @@ Item {
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
                 "settings-tab-ai": "AI agents",
-                "settings-about-look": "Language, colours, the places' names, passwords as you type, what this device is.",
-                "settings-about-hours": "Working hours, hours for your admin, meals and the night, time off."
+                "settings-about-look": "Language, colours, the places' names, passwords as you type.",
+                "settings-about-hours": "Working hours, hours for your admin, meals and the night, time off.",
+                "settings-about-attention": "Who and what may reach you, on which channel and at what time; the exceptions, Do not disturb.",
+                "settings-about-words": "The words Sioul looks for in mail, papers, calls and tasks, in your languages.",
+                "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed, and notifications gathered.",
+                "settings-about-pauses": "Free time and the pause: when work ends, what helps you, the pause's screen.",
+                "settings-about-texts": "The multimedia messages sent from here through your phone.",
+                "settings-about-files": "Your notes folder, and sharing with your other devices.",
+                "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each.",
+                "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
+                "settings-about-ai": "What AI agents may use, project by project."
             },
             "fr": {
                 "ui-parameters": "Paramètres",
@@ -76,8 +85,17 @@ Item {
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
                 "settings-tab-ai": "Agents d’IA",
-                "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie, ce qu’est cet appareil.",
-                "settings-about-hours": "Heures de travail, heures pour vos démarches, repas et nuit, congés."
+                "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie.",
+                "settings-about-hours": "Heures de travail, heures pour vos démarches, repas et nuit, congés.",
+                "settings-about-attention": "Qui et ce qui peut vous joindre, par quel canal et à quelle heure ; les exceptions, « Ne pas déranger ».",
+                "settings-about-words": "Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.",
+                "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.",
+                "settings-about-pauses": "Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.",
+                "settings-about-texts": "Les messages multimédias envoyés d’ici par votre téléphone.",
+                "settings-about-files": "Votre dossier de notes, et le partage avec vos autres appareils.",
+                "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun.",
+                "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
+                "settings-about-ai": "Ce que les agents d’IA peuvent utiliser, projet par projet."
             }
         })
 
@@ -101,6 +119,22 @@ Item {
         }
         function devices() {
             return JSON.stringify({ on: false, why: "", stays: "", rows: [] })
+        }
+        // What the sections a link opens read, stood in for: nothing to show.
+        function textWith(key, name, value) {
+            return mock.text(key)
+        }
+        function textArgs(key, args) {
+            return mock.text(key)
+        }
+        function reachesView() {
+            return ""
+        }
+        function dndSetup() {
+            return ""
+        }
+        function appNotesSetup() {
+            return ""
         }
     }
 
@@ -235,10 +269,15 @@ Item {
             const entries = narrow.sections.map(s => one(narrow, "settingsSection:" + s))
             for (const entry of entries) {
                 const at = entry.mapToItem(phone, 0, 0)
+                const section = entry.objectName.slice("settingsSection:".length)
                 verify(entry.visible, entry.text + ": shows")
                 verify(at.x >= 0 && at.x + entry.width <= phone.width + 0.5, entry.text + ": within the page")
                 verify(entry.height >= 44, entry.text + ": a finger's height (" + entry.height + ")")
-                verify(entry.Accessible.description !== "", entry.text + ": says what it holds")
+                // Its line, in words (the stand-in gives a key back when it has no words for it).
+                compare(entry.Accessible.description, mock.text("settings-about-" + section), entry.text + ": says what it holds")
+                verify(entry.Accessible.description !== "" && entry.Accessible.description.indexOf("settings-about-") < 0, entry.text + ": in words")
+                // Its words ask no more than the row's width: they wrap (be09e855).
+                verify(entry.contentItem.implicitWidth <= entry.availableWidth + 0.5, entry.text + ": its words within the row (" + Math.round(entry.contentItem.implicitWidth) + " for " + Math.round(entry.availableWidth) + ")")
             }
             compare(entries[0].text, mock.text("settings-tab-look"))
             save(phone, "settings-phone-list-" + data.language)
@@ -259,20 +298,44 @@ Item {
             narrow.back()
         }
 
-        function test_a_link_opens_its_section_on_a_phone() {
+        function test_a_link_opens_its_section_on_a_phone_data() {
+            return [
+                { tag: "a setting's row", key: "time_off", section: "hours" },
+                { tag: "a section", key: "invoices", section: "invoices" },
+                { tag: "a section of no rows", key: "ai", section: "ai" },
+                { tag: "a list of words", key: "words.voicemail.operators", section: "words" },
+                { tag: "an older key, calls", key: "calls", section: "attention" },
+                { tag: "an older key, apps", key: "apps", section: "attention" },
+                { tag: "an older key, dnd", key: "dnd", section: "attention" },
+                { tag: "What reaches you's view", key: "attention.dnd", section: "attention" }
+            ]
+        }
+
+        // From elsewhere (a notice, the Porch, another page): the section open, and Back where the
+        // link was, as from any page; the list again at the next visit.
+        function test_a_link_opens_its_section_on_a_phone(data) {
             mock.language = "en"
             verify(narrow.listed, "the list first")
-            narrow.showSetting("time_off")
-            compare(narrow.section, "hours")
-            verify(!narrow.listed, "a setting's row: its section open")
-            narrow.back()
-            narrow.showSetting("invoices")
-            compare(narrow.section, "invoices")
-            verify(!narrow.listed, "a section's key: the section open")
-            narrow.back()
-            narrow.showSetting("ai")
-            compare(narrow.section, "ai")
-            verify(!narrow.listed, "a section of no rows: open")
+            narrow.showSetting(data.key)
+            compare(narrow.section, data.section)
+            verify(!narrow.listed, "its section open")
+            verify(!narrow.canGoBack, "Back leaves Settings, as from any page")
+            narrow.visible = false
+            narrow.visible = true
+            verify(narrow.listed, "the list at the next visit")
+        }
+
+        // Opened from the list: Back returns to it; a section left open, the list at the next visit.
+        function test_back_and_the_next_visit_on_a_phone() {
+            mock.language = "en"
+            one(narrow, "settingsSection:hours").clicked()
+            verify(narrow.canGoBack, "Back to the list")
+            narrow.visible = false
+            narrow.visible = true
+            verify(narrow.listed, "the list again")
+            // On a phone, nothing of a section is made behind the list.
+            compare(narrow.shown.length, 0, "no rows behind the list")
+            compare(one(narrow, "settingsTabs").model.length, 0, "no tabs made on a phone")
         }
     }
 }
