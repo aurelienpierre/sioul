@@ -111,8 +111,9 @@ pub struct AreaEstimate {
 /// (none a step of a bigger one, as the plan's ratio reads them,
 /// `capacity::finished`) that `counts` and that has an estimate and time
 /// spent, all its stretches summed beside its first estimate (else its
-/// current one), each under the first of its areas (`area_of`: work, then
-/// your admin, then leisure). An area with no such task has no line.
+/// current one), each under the first of the areas it leans to (`area_of`,
+/// `TaskAreas::leaning` in the window: work, then your admin, then leisure),
+/// so that each task counts once. An area with no such task has no line.
 pub fn estimates_by_area(entries: &[Entry], tasks: &[Task], area_of: &dyn Fn(&Task) -> crate::areas::Area, counts: &dyn Fn(&Task) -> bool, from: Date, to: Date, zone: &TimeZone) -> Vec<AreaEstimate> {
     let mut spent: std::collections::BTreeMap<&str, u32> = std::collections::BTreeMap::new();
     for e in entries.iter().filter(|e| !e.task.is_empty()) {
