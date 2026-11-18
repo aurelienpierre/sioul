@@ -8,7 +8,10 @@
 // Not shared yet: joining your other devices through your Nextcloud's own
 // sign-in (JoinPanel.qml), beside the two ways. A phone sharing beside
 // another phone: whether it replaces it, asked once. A computer that shares:
-// what a new device needs ("Add a device"), and a phone silent a day forgotten now.
+// what a new device needs ("Add a device"). Your devices themselves are
+// listed in their own tab (DevicesTab.qml), one line here leading to it; the
+// devices that no longer count and what waits to leave the server stay here,
+// with "Remove its files" (RemovalAsked.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -23,7 +26,7 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], withheld: [], devices: [], gone_devices: [], backup: {} })
+    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], withheld: [], gone_devices: [], backup: {} })
     // The other devices' files fetched from the server too: {shown, line, on, given, found}.
     readonly property var backup: panel.status.backup || ({})
     property string problem: ""
@@ -57,8 +60,11 @@ ColumnLayout {
     // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
     property string removing: ""
     property var removal: ({ text: "", live: false })
-    // Where it was pressed: "" in the devices' lists, "leaving" in what waits to leave the server.
+    // Where it was pressed: "" in the list of the devices that no longer count, "leaving" in what waits to leave the server.
     property string removingAt: ""
+
+    // The tab of your devices asked for (ParametersPage.qml shows it).
+    signal devicesAsked
 
     function askRemoval(id, at) {
         panel.removal = JSON.parse(panel.sioul.deviceFiles(id) || "{}")
@@ -485,109 +491,25 @@ ColumnLayout {
             onClicked: panel.stopping = false
         }
     }
-    // Your other devices, as this one knows them (docs/database.md, "Devices"):
-    // in use, closed, silent, off as you said; when each last shared, in
-    // words. Nothing red, no counts.
+    // Your devices have a tab of their own (DevicesTab.qml; docs/database.md,
+    // "Devices"): what each is, when it last shared, what it is for, and
+    // forgetting one. Here, one line that leads there.
     Label {
-        visible: panel.status.on && (panel.status.devices || []).length > 0
+        visible: panel.status.on
         Layout.topMargin: 12
         Layout.fillWidth: true
-        text: panel.sioul.text("share-devices")
-        font.weight: Font.DemiBold
+        text: panel.sioul.text("share-devices-moved")
         wrapMode: Text.Wrap
         color: panel.theme.text
     }
-    Repeater {
-        model: panel.status.on ? (panel.status.devices || []) : []
-
-        delegate: ColumnLayout {
-            id: device
-
-            required property var modelData
-
-            Layout.fillWidth: true
-            spacing: 2
-
-            Label {
-                Layout.fillWidth: true
-                text: device.modelData.name
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                color: panel.theme.text
-            }
-            Label {
-                Layout.fillWidth: true
-                text: [device.modelData.state].concat(device.modelData.notes || []).join(" ")
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: panel.theme.muted
-            }
-            // The Sioul it runs, as its entry says: an older one said calmly.
-            Label {
-                visible: text !== ""
-                Layout.fillWidth: true
-                text: device.modelData.build || ""
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: panel.theme.muted
-            }
-            // A phone silent a day, on a computer: forgotten now, said first what it changes.
-            Label {
-                visible: device.modelData.forget_now === true
-                Layout.fillWidth: true
-                text: panel.sioul.text("share-device-forget-now-help")
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: panel.theme.muted
-            }
-            RowLayout {
-                visible: device.modelData.off || device.modelData.forget || device.modelData.forget_now === true
-                spacing: 6
-
-                Button {
-                    visible: device.modelData.off
-                    flat: true
-                    text: panel.sioul.text("share-device-count-again")
-                    onClicked: {
-                        panel.problem = panel.sioul.deviceOff(device.modelData.id, false)
-                        panel.reload()
-                    }
-                }
-                Button {
-                    visible: device.modelData.forget
-                    flat: true
-                    text: panel.sioul.text("share-device-forget")
-                    onClicked: {
-                        panel.problem = panel.sioul.deviceForget(device.modelData.id)
-                        panel.reload()
-                    }
-                }
-                Button {
-                    visible: device.modelData.forget_now === true
-                    flat: true
-                    text: panel.sioul.text("share-device-forget-now")
-                    onClicked: {
-                        panel.problem = panel.sioul.deviceForget(device.modelData.id)
-                        panel.reload()
-                    }
-                }
-            }
-            // Its files taken out of the folder, forgotten first (docs/database.md, "Removing a device's files").
-            Button {
-                visible: panel.removing !== device.modelData.id
-                flat: true
-                text: panel.sioul.text("share-device-remove-live")
-                onClicked: panel.askRemoval(device.modelData.id)
-            }
-            RemovalAsked {
-                visible: panel.removing === device.modelData.id && panel.removingAt === ""
-                Layout.fillWidth: true
-                host: panel
-                deviceId: device.modelData.id
-            }
-        }
+    Button {
+        objectName: "shareToDevices"
+        visible: panel.status.on
+        flat: true
+        text: panel.sioul.text("share-devices-open")
+        icon.name: "go-next"
+        icon.color: panel.theme.text
+        onClicked: panel.devicesAsked()
     }
     // The devices that no longer count here (they left, you forgot them,
     // another replaces them) whose files are still in the folder: each with
@@ -1381,45 +1303,6 @@ ColumnLayout {
                 panel.problem = panel.sioul.text("folder-not-on-device")
             else
                 panel.choose(path)
-        }
-    }
-
-    // Before "Remove its files": what goes, with its size, and what stays,
-    // in plain words; then the press, or Cancel.
-    component RemovalAsked: ColumnLayout {
-        id: asked
-
-        // The panel it is said in: an inline component sees no id of the file's.
-        required property var host
-        // The device's id.
-        required property string deviceId
-
-        spacing: 4
-
-        Label {
-            Layout.fillWidth: true
-            text: asked.host.removal.text || ""
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            font.pixelSize: 13
-            color: asked.host.theme.text
-        }
-        RowLayout {
-            spacing: 6
-
-            Button {
-                text: asked.host.sioul.text("share-device-remove-confirm")
-                onClicked: {
-                    asked.host.problem = asked.host.sioul.deviceRemoveFiles(asked.deviceId)
-                    asked.host.removing = ""
-                    asked.host.reload()
-                }
-            }
-            Button {
-                flat: true
-                text: asked.host.sioul.text("ui-cancel")
-                onClicked: asked.host.removing = ""
-            }
         }
     }
 }

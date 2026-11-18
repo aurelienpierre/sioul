@@ -251,10 +251,12 @@ pub fn tints(ranked: &[&Account]) -> Vec<u8> {
 /// each with its folders (`folders`: as the server last listed them), its
 /// colour, whose stamps count for its mail, and, when it rests at `mode`,
 /// the line saying until when ("work@example.org rests until 09:00."; while
-/// you sleep, every address). The window's mailbox and the agents' read the same.
+/// you sleep, every address), or, where this device and not the hour keeps
+/// it back, that it waits on the other devices (`Mode::keeps_back`). The
+/// window's mailbox and the agents' read the same, each with its own
+/// moment: the window's on this device, the agents' the person's hours alone.
 pub fn addresses(config: &crate::config::Config, mode: &crate::quiet::Mode, now: &jiff::Zoned, tr: &Translator, folders: impl Fn(&str) -> Vec<Folder>) -> Vec<Address> {
-    use crate::areas::{Time, in_view};
-    let hours = (mode.time != Time::Any).then_some((mode.time, mode.week));
+    use crate::areas::Time;
     let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
     ranked.sort_by_key(|a| a.priority);
     let tints = tints(&ranked);
@@ -272,10 +274,13 @@ pub fn addresses(config: &crate::config::Config, mode: &crate::quiet::Mode, now:
         .zip(tints)
         .map(|(account, tint)| {
             let area = area_of(account);
-            let rests = hours.is_some_and(|(time, week)| time == Time::Sleep || !in_view(area, time, week));
+            // With no hours set, everything comes (`Time::Any`), but what this device is not for.
+            let rests = mode.time == Time::Sleep || !mode.brings(area);
             let resting = rests.then(|| {
                 if mode.sleeps() {
                     said("mailbox-rests-sleep", &[("until", until(mode.until.as_ref()))])
+                } else if mode.keeps_back(area) {
+                    said("mailbox-rests-device", &[("address", account.address.clone().unwrap_or_else(|| account.id.clone()))])
                 } else {
                     let back = if area == Area::WORK { mode.back.as_ref().or(mode.until.as_ref()) } else { mode.until.as_ref() };
                     said("mailbox-rests", &[("address", account.address.clone().unwrap_or_else(|| account.id.clone())), ("until", until(back))])
@@ -1069,7 +1074,7 @@ mod tests {
 
     /// A world at work time (every cell shows), with these lists.
     fn world_at(time: crate::areas::Time, blocked: &str, safe: &str) -> World {
-        let mode = crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason: crate::quiet::Reason::Working, until: None, back: None, label: String::new() };
+        let mode = crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason: crate::quiet::Reason::Working, until: None, back: None, label: String::new(), here: crate::areas::Here::default() };
         let senders = Senders { blocked: SenderList::parse(blocked), safe: SenderList::parse(safe), ..Senders::default() };
         World {
             senders,
@@ -1495,7 +1500,7 @@ mod tests {
         let now = jiff::Timestamp::from_second(NOW).unwrap().to_zoned(zone.clone());
         let back = jiff::Timestamp::from_second(NOW + 19 * 3600).unwrap().to_zoned(zone);
         let tr = Translator::new("en");
-        let mode = |time, reason| crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(back.clone()), back: Some(back.clone()), label: String::new() };
+        let mode = |time, reason| crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(back.clone()), back: Some(back.clone()), label: String::new(), here: crate::areas::Here::default() };
         let folders = |_: &str| vec![folder("INBOX", Some("/"), Some(Role::Inbox))];
         let at_work = addresses(&config, &mode(crate::areas::Time::Work, crate::quiet::Reason::Working), &now, &tr, folders);
         assert_eq!(at_work.iter().map(|a| a.account.id.as_str()).collect::<Vec<_>>(), ["work", "home"], "by priority");
@@ -1619,7 +1624,7 @@ mod tests {
         use crate::areas::{Time, Week};
         use crate::quiet::{Mode, Reason};
         let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
-        let mode = |time, reason| Mode { quiet: time != Time::Work, time, week, reason, until: None, back: None, label: String::new() };
+        let mode = |time, reason| Mode { quiet: time != Time::Work, time, week, reason, until: None, back: None, label: String::new(), here: crate::areas::Here::default() };
         assert_eq!(hours_say(&mode(Time::Work, Reason::Working)), Area::WORK);
         assert_eq!(hours_say(&mode(Time::Admin, Reason::AdminTime)), Area::ADMIN);
         assert_eq!(hours_say(&mode(Time::Leisure, Reason::Evening)), Area::LEISURE);

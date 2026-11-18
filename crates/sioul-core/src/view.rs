@@ -1475,10 +1475,11 @@ pub struct FolderEntry {
 
 /// The accounts and their folders, ranked as their mail is: above, average, below.
 /// Views of other folders are not listed, but Gmail's "All Mail", its archive.
-/// The mail page's accounts; `hours` what now is for (None: no hours set): an
-/// address whose area does not fit it rests, and every address while you
-/// sleep (docs/areas.md).
-pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours: Option<(crate::areas::Time, crate::areas::Week)>) -> Vec<MailAccountView> {
+/// The mail page's accounts; `mode` what now is for on this device: an
+/// address whose area does not come forward now rests, and every address
+/// while you sleep (docs/areas.md); none with no hours set, but what this
+/// device is not for.
+pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, mode: &crate::quiet::Mode) -> Vec<MailAccountView> {
     let mut ranked: Vec<&(Account, Vec<Folder>)> = accounts.iter().collect();
     ranked.sort_by_key(|(account, _)| account.priority);
     ranked
@@ -1487,7 +1488,7 @@ pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours
             let root = account.maildir_path();
             // An address whose area is unsaid is work's.
             let area = account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
-            let resting = hours.is_some_and(|(time, week)| time == crate::areas::Time::Sleep || !crate::areas::in_view(area, time, week));
+            let resting = mode.time == crate::areas::Time::Sleep || !mode.brings(area);
             // "All Mail" stands for the archive where there is none (Gmail).
             let has_archive = folders.iter().any(|f| f.role == Role::Archive);
             // Two folders for one purpose ("Archive" and "Archives") each keep their own name.
@@ -1691,6 +1692,27 @@ fn conversations(cards: &[Card], sent: &[Card], item: &dyn Fn(&Card, bool) -> Ma
 /// it has one (a search gives a message seen on its server only its own).
 /// `words`: what the codes detector looks for, as the Porch reads it.
 #[allow(clippy::too_many_arguments)]
+/// The messages read on this device only, by their Maildir file's unique
+/// name (`maildir::unique_part`): opened through a door on a device that is
+/// not for their address, they stay new on the server, and so on the device
+/// they are for, and show read here (docs/areas.md, "Opened elsewhere";
+/// review of phase 2, M5). Set by the window from its own file; empty
+/// elsewhere, and in every test.
+static READ_HERE: std::sync::RwLock<BTreeSet<String>> = std::sync::RwLock::new(BTreeSet::new());
+
+/// The messages read on this device only (`READ_HERE`), as the window keeps them.
+pub fn set_read_here(read: BTreeSet<String>) {
+    if let Ok(mut held) = READ_HERE.write() {
+        *held = read;
+    }
+}
+
+/// Whether the message in `path` was read on this device only.
+pub fn read_here(path: &std::path::Path) -> bool {
+    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    READ_HERE.read().is_ok_and(|held| !held.is_empty() && held.contains(maildir::unique_part(&name)))
+}
+
 pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &[String], own_domains: &[String], words: &crate::words::Words, tr: &Translator) -> MailItem {
     let outgoing = matches!(role, Role::Sent | Role::Drafts);
     let (trust_level, trust, checks) = if outgoing || own {
@@ -1726,7 +1748,8 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
         subject: if card.subject.trim().is_empty() { tr.text("mail-no-subject", None) } else { card.subject.clone() },
         date: date(tr, card.date),
         // In Sent, Drafts, Junk and Trash, nothing waits to be read.
-        unread: !own && matches!(role, Role::Inbox | Role::Other | Role::Archive) && !flags.contains('S'),
+        // Read here only (`read_here`): shown read on this device, new on the others.
+        unread: !own && matches!(role, Role::Inbox | Role::Other | Role::Archive) && !flags.contains('S') && !card.path.as_deref().is_some_and(read_here),
         flagged: flags.contains('F'),
         answered: flags.contains('R'),
         attachments: !card.attachments.is_empty(),

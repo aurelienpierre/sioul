@@ -100,7 +100,8 @@ fn live(config: &Config, now: &Zoned) -> Live {
     {
         return live.clone();
     }
-    let live = Live { clock: Clock::load(config, now) };
+    // On this phone: what an app is for is read against the phone's cells (`Clock::on`).
+    let live = Live { clock: Clock::load(config, now).on(crate::dispatch::lines()) };
     if let Ok(mut kept) = KEPT.lock() {
         *kept = Some((key, live.clone()));
     }
@@ -709,7 +710,7 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
             None => {}
         }
         if let Some(area) = cause.area {
-            why.push(format!("area ({})", area.id()));
+            why.push(if cause.device { format!("area ({}), not for this device", area.id()) } else { format!("area ({})", area.id()) });
         }
         if !cause.columns.is_empty() {
             why.push(column_words(&cause.columns, cause.nothing, gated).join(" + "));
@@ -890,7 +891,7 @@ pub(crate) fn let_talk_then(key: &str) -> String {
     // The newest of it still held (review of part 6, F5).
     let stamp = jiff::Timestamp::now().as_second();
     let Some(held) = ledger.held.values().filter(|h| h.conversation == key && h.until > stamp).max_by_key(|h| h.since) else { return String::new() };
-    let (id, columns) = talk_then(held, &crate::hours::attention_now());
+    let (id, columns) = talk_then(held, &crate::hours::attention_here());
     let words: Vec<String> = columns.iter().map(|c| c.id().to_string()).collect();
     if let Err(e) = sioul_core::attention::apply_change(&crate::backend::config_path(), &format!("attention.{id}"), None, &sioul_core::config::SettingValue::Texts(words)) {
         return e;
@@ -1628,7 +1629,7 @@ mod tests {
         impl appnotes::TimeSource for Work {
             fn mode(&self, _: &Zoned) -> sioul_core::quiet::Mode {
                 let week = sioul_core::areas::Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-                sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week, reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() }
+                sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week, reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() }
             }
             fn starts(&self, _: &Zoned, _: &Zoned) -> Vec<Zoned> {
                 Vec::new()

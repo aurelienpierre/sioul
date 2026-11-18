@@ -414,9 +414,10 @@ pub mod qobject {
         #[qinvokable]
         fn set_account_colour(self: Pin<&mut Sioul>, id: &QString, colour: i32) -> QString;
 
-        /// A message was opened: it is marked read.
+        /// A message was opened: it is marked read; on a device that is not
+        /// for its address, read here only (`mail::opened`): true then.
         #[qinvokable]
-        fn opened(self: Pin<&mut Sioul>, key: &QString);
+        fn opened(self: Pin<&mut Sioul>, key: &QString) -> bool;
 
         /// Does something to a message: "read", "unread", "flag", "unflag" at once;
         /// "archive", "trash", "junk", "not-junk", "not-spam" (mail set aside as
@@ -1436,9 +1437,27 @@ pub mod qobject {
         #[qinvokable]
         fn device_off(self: Pin<&mut Sioul>, id: &QString, off: bool) -> QString;
 
-        /// A device silent for a week, forgotten (Settings ▸ Your folder and sharing).
+        /// A device silent for a week, forgotten (Settings ▸ Devices).
         #[qinvokable]
         fn device_forget(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Settings ▸ Devices, as JSON (`share::devices`): `{ on, why, stays, rows, grid }`,
+        /// a row per device, this one first (`sioul_sync::device_table::Row`),
+        /// each with its five cells; `grid`, what is said around them
+        /// (`sioul_sync::device_grid::Grid`: the times' names, now on this
+        /// device, the areas no device is for, what is never kept back).
+        #[qinvokable]
+        fn devices(self: &Sioul) -> QString;
+
+        /// What you say of a device, written into the shared settings
+        /// (`share::say_of_device`): `field` "name" (the name you give it;
+        /// "" its system's again), "area" (what it is for: work, admin,
+        /// leisure joined by +; "" everything), or "at.<time>" (a cell: what
+        /// comes forward on it at work, admin, leisure, meals or sleep:
+        /// areas joined by +, "none" for nothing, "" as its areas say).
+        /// Returns what went wrong, else "".
+        #[qinvokable]
+        fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
@@ -3629,6 +3648,13 @@ pub(crate) fn mode_json() -> String {
         Reason::Paused => tr().text("mode-paused", None),
         Reason::Extended => String::new(),
     };
+    // Where this device, and not the hour, keeps what the time brings back: said after the
+    // time's own sentence (docs/areas.md, "What each device is for").
+    let line = match sioul_core::areafilter::device_line(tr(), &mode) {
+        Some(device) if line.is_empty() => device,
+        Some(device) => format!("{line} {device}"),
+        None => line,
+    };
     // The day closed today can be taken back, that day only.
     let today = overrides.closed_today(&now);
     // Which hours are set, and the night: the Porch asks for them while they are not.
@@ -3713,8 +3739,13 @@ fn compute(shared: &Shared) -> Views {
     if mode.quiet {
         porch.status = serde_json::from_str::<serde_json::Value>(&mode_json()).ok().and_then(|v| v["line"].as_str().map(str::to_string)).unwrap_or_default();
     }
-    // Closed, the Porch shows only codes: "Done for now" has nothing to close.
-    let shown = if porch.open { PorchState::newest_shown(&items) } else { BTreeMap::new() };
+    // Closed, the Porch shows only codes: "Done for now" has nothing to close. It closes what this
+    // device is for: an address that is another device's, shown here through a door ("Show all
+    // mail now"), stays open on the device it is for (docs/areas.md, "Opened elsewhere"; review of
+    // phase 2, M5). Nothing said of this device: every address, as before.
+    let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).is_some_and(|account| crate::mail::read_here_only(account, &mode));
+    let ours: Vec<Triaged> = items.iter().filter(|t| !another(t)).cloned().collect();
+    let shown = if porch.open { PorchState::newest_shown(&ours) } else { BTreeMap::new() };
     let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
         // The money read once (`movements::books`, made again only when a file changed).
         let words = sioul_core::words::Words::of(&world.config);
@@ -5370,8 +5401,8 @@ impl qobject::Sioul {
         QString::from(&said)
     }
 
-    fn opened(self: Pin<&mut Self>, key: &QString) {
-        mail::opened(&self.qt_thread(), &self.shared(), &key.to_string());
+    fn opened(self: Pin<&mut Self>, key: &QString) -> bool {
+        mail::opened(&self.qt_thread(), &self.shared(), &key.to_string())
     }
 
     fn act(self: Pin<&mut Self>, key: &QString, action: &QString, target: &QString) {
@@ -6883,6 +6914,25 @@ impl qobject::Sioul {
         QString::from(&crate::health::device_forget(&id.to_string()))
     }
 
+    fn devices(&self) -> QString {
+        QString::from(&crate::share::devices())
+    }
+
+    fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        let field = field.to_string();
+        let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
+        // What a device is for, or a cell of its line: what now brings on this device is said and
+        // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
+        if problem.is_empty() && field != "name" {
+            self.as_mut().set_mode(QString::from(&mode_json()));
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            show(&qt, &shared);
+            work::show_work(&qt, &shared);
+            mail::show_mail(&qt, &shared);
+        }
+        QString::from(&problem)
+    }
+
     fn needs(&self) -> QString {
         QString::from(&crate::health::needs_page())
     }
@@ -8161,6 +8211,10 @@ impl qobject::Sioul {
             mail::show_mail(&qt, &shared);
         }
         // What this device is: the window's, and the others' at the next exchange (its devices' entry).
+        // The notes folder moved: whether a sync app carries it, so whether notes and papers travel from here.
+        if key == "case_store" {
+            crate::devices::parts_now();
+        }
         if key == "device_kind" {
             self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
             crate::devicekind::name_in_words();

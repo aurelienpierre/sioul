@@ -44,6 +44,14 @@ pub struct Config {
     /// This device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
     #[serde(default)]
     pub device_kind: Option<String>,
+    /// What you said of each of your devices, by its id in the sharing
+    /// (`[device."<id>"]`, `device_said`): the name you give it, what it is
+    /// for. Shared with the settings, one entry per field, so that any
+    /// device may say it of the others; a Sioul before skips it. Read
+    /// leniently (`device_said::lenient`): a field that does not read is
+    /// passed over, never the whole configuration.
+    #[serde(rename = "device", default, deserialize_with = "crate::device_said::lenient")]
+    pub devices: std::collections::BTreeMap<String, crate::device_said::Said>,
     /// The notes folder: your Markdown files, with beside them your projects,
     /// budgets and papers. Its key in the file, `case_store`, is its first
     /// name, kept so that every configuration reads as before.

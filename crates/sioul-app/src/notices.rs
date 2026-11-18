@@ -283,7 +283,7 @@ fn sites() -> (Vec<(Value, Vec<String>)>, Vec<String>) {
     let every: Vec<String> = all.iter().flat_map(ids_of).collect();
     let rows = all
         .into_iter()
-        .filter(|site| sioul_core::areas::in_view(site.area, mode.time, mode.week))
+        .filter(|site| mode.brings(site.area))
         .filter_map(|site| {
             let mine = notices.of(&site.id);
             let newest = mine.iter().max_by_key(|n| n.at)?;
@@ -326,7 +326,7 @@ fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
     let coming = sioul_core::due::coming(now.date(), MONEY_DAYS);
     let items = crate::books::porch_items(&crate::books::loaded(now.date()), now.date());
     let every: Vec<String> = coming.iter().map(|c| rules::money_id(&c.address)).chain(rows.iter().flat_map(|(_, ids)| ids.iter().cloned())).chain(items.iter().map(|i| i.id.clone())).collect();
-    for coming in coming.into_iter().filter(|c| sioul_core::areas::in_view(c.area, mode.time, mode.week)) {
+    for coming in coming.into_iter().filter(|c| mode.brings(c.area)) {
         let (who, what, amount) = coming_words(&coming, tr);
         let id = rules::money_id(&coming.address);
         let at = coming.day.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
@@ -334,7 +334,7 @@ fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
         rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": amount, "state": coming.state.id() })), vec![id]));
     }
     // The books' items are the business's: work's hours.
-    if sioul_core::areas::in_view(sioul_core::areas::Area::WORK, mode.time, mode.week) {
+    if mode.brings(sioul_core::areas::Area::WORK) {
         for item in items {
             let at = item.opens.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
             let notice = Notice { address: "sioul:budget/".into(), at, when: tr.day_short(item.due), who: item.who, what: item.what, ..Notice::new(Kind::Money, item.id.clone(), "money").with_area(Some(sioul_core::areas::Area::WORK)) };
@@ -362,15 +362,16 @@ fn agenda_rows(overlaps: &str, now: &jiff::Zoned) -> Value {
     let mode = crate::backend::mode_now();
     let calendars = sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars);
     let work = |key: &str| std::path::Path::new(key).parent().and_then(|dir| calendars.iter().find(|c| c.dir == dir)).is_some_and(|c| sioul_core::agendas::marks_of(c).work);
-    let (shown, current) = agenda_rows_in(rows, now, mode.time, mode.week, &states(&|_, _| None), &work, tr());
+    let (shown, current) = agenda_rows_in(rows, now, &|area| mode.brings(area), &states(&|_, _| None), &work, tr());
     forget_once_a_day(&[Kind::Agenda], &current);
     shown
 }
 
-/// `agenda_rows` at a time of the day and week (`time`, `week`), with the
+/// `agenda_rows` at a time of the day and week on this device (`brings`:
+/// whether an area comes forward then, `quiet::Mode::brings`), with the
 /// words said (`states`) and whether an event's file is on a work agenda
 /// (`work`): the rows shown, and every conflict's notice (what its words are kept for).
-fn agenda_rows_in(rows: Vec<Value>, now: &jiff::Zoned, time: sioul_core::areas::Time, week: sioul_core::areas::Week, states: &States, work: &dyn Fn(&str) -> bool, tr: &sioul_core::i18n::Translator) -> (Value, Vec<String>) {
+fn agenda_rows_in(rows: Vec<Value>, now: &jiff::Zoned, brings: &dyn Fn(sioul_core::areas::Area) -> bool, states: &States, work: &dyn Fn(&str) -> bool, tr: &sioul_core::i18n::Translator) -> (Value, Vec<String>) {
     let mut current = Vec::new();
     let mut out = Vec::new();
     for conflict in rows {
@@ -383,7 +384,7 @@ fn agenda_rows_in(rows: Vec<Value>, now: &jiff::Zoned, time: sioul_core::areas::
         let during = conflict["kind"] == "during";
         let events: Vec<&Value> = if during { vec![&conflict["event"]] } else { vec![&conflict["first"], &conflict["second"]] };
         let area = if events.iter().any(|e| work(e["key"].as_str().unwrap_or_default())) { sioul_core::areas::Area::WORK } else { sioul_core::areas::Area::ADMIN };
-        if !sioul_core::areas::in_view(area, time, week) || settled(states, std::slice::from_ref(&id)) {
+        if !brings(area) || settled(states, std::slice::from_ref(&id)) {
             continue;
         }
         let first = events[0];
@@ -453,7 +454,7 @@ fn shortfall() -> Vec<(Value, Vec<String>)> {
 fn invoices_twice(now: &jiff::Zoned) -> Vec<(Value, Vec<String>)> {
     let twice = sioul_core::invoice::twice_in(&sioul_core::invoice::folder());
     let mode = crate::backend::mode_now();
-    if twice.is_empty() || !sioul_core::areas::in_view(sioul_core::areas::Area::WORK, mode.time, mode.week) {
+    if twice.is_empty() || !mode.brings(sioul_core::areas::Area::WORK) {
         return Vec::new();
     }
     let tr = tr();
@@ -719,7 +720,7 @@ mod tests {
             "gap": 0, "needed": 0, "at_once": true, "tentative": false, "answers": ["move", "keep"], "source": "" });
         let week = Week { work_hours: true, admin_hours: true, meals: false, sleep: false };
         let mine = |_: &str| false;
-        let (shown, current) = agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &mine, &tr);
+        let (shown, current) = agenda_rows_in(vec![pair.clone()], &now, &|area| sioul_core::areas::in_view(area, Time::Admin, week), &States::default(), &mine, &tr);
         let id = rules::agenda_id(pair["key"].as_str().unwrap());
         assert_eq!(current, [id.clone()]);
         let row = &shown[0];
@@ -730,13 +731,13 @@ mod tests {
         assert_eq!(row["conflict"]["first"]["key"], "/cal/home/a.ics");
         // A work agenda's: at work's time only.
         let work = |key: &str| key.ends_with("b.ics");
-        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(0));
-        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Work, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(1));
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, &|area| sioul_core::areas::in_view(area, Time::Admin, week), &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(0));
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, &|area| sioul_core::areas::in_view(area, Time::Work, week), &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(1));
         // Dismissed on another device: gone.
         let dir = std::env::temp_dir().join(format!("sioul-app-agenda-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         rules::say(&dir, "desk", std::slice::from_ref(&id), Mark::Dismissed, 1_000).unwrap();
-        assert_eq!(agenda_rows_in(vec![pair], &now, Time::Admin, week, &States::read(&dir), &mine, &tr).0.as_array().map(Vec::len), Some(0));
+        assert_eq!(agenda_rows_in(vec![pair], &now, &|area| sioul_core::areas::in_view(area, Time::Admin, week), &States::read(&dir), &mine, &tr).0.as_array().map(Vec::len), Some(0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

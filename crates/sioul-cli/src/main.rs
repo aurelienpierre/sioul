@@ -35,6 +35,7 @@
 //! - [`mail`]: the mail client: `sioul mail folders | list | act | send`.
 //! - [`pgp`]: OpenPGP keys: `sioul pgp list | make | import | export | lookup`.
 //! - [`dav`]: contacts and calendars: `sioul dav …`, `sioul contacts`, `sioul agenda`, `sioul event`.
+//! - [`devices`]: `sioul devices`, your devices in one table: what each is, when it last shared, what it is for.
 //! - [`tasks`]: tasks, notes, links and focus: `sioul tasks …`, `sioul focus …`, `sioul notes`, `sioul links`.
 //! - [`remind`]: reminders before dates: `sioul remind`, and `--watch` with the window closed.
 //! - [`mcp`]: `sioul mcp`, what Sioul keeps served to AI agents over the Model Context Protocol.
@@ -43,6 +44,7 @@
 
 mod accounts;
 mod dav;
+mod devices;
 mod mail;
 mod help;
 mod books;
@@ -137,6 +139,14 @@ enum Command {
     Invoices {
         #[command(subcommand)]
         command: Option<invoices::InvoicesCommand>,
+    },
+    /// Your devices, this one first: what each is, how it is now, when it last opened and shared, its Sioul, what you say it is for, what comes forward on it at each time, what it shares. `for` and `at` say what a device is for.
+    Devices {
+        /// The table in JSON: a row per device, this device first, each with its cells; and the grid's own lines.
+        #[arg(long)]
+        json: bool,
+        #[command(subcommand)]
+        command: Option<devices::DevicesCommand>,
     },
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
@@ -417,6 +427,7 @@ fn main() -> ExitCode {
         Command::Receipts(args) => money::receipts(&session, args),
         Command::Books { command } => books::run(&session, command),
         Command::Invoices { command } => invoices::run(&session, command),
+        Command::Devices { json, command } => devices::run(&session, json, command),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),

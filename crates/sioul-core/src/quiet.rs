@@ -21,7 +21,7 @@
 //! (Sonnentag & Fritz 2007, 2015); work cues in off-hours keep it from
 //! happening. Codes from verified senders still come at once: they are asked for.
 
-use crate::areas::{Area, TaskAreas, Time, Week, in_view};
+use crate::areas::{Area, Here, Lines, TaskAreas, Time, Week};
 use crate::config::TimeOff;
 use crate::window::{self, AdminWindow};
 use jiff::civil::Date;
@@ -84,9 +84,52 @@ pub struct Mode {
     pub back: Option<Zoned>,
     /// The time off's word, when it is time off.
     pub label: String,
+    /// This device among the others, by what each is for (docs/areas.md,
+    /// "What each device is for"): what it shows and tells now is what
+    /// comes forward on it (`brings`). As `mode` makes it, a device nobody
+    /// said anything of, which narrows nothing: the person's own week, for
+    /// the plan and for agents (`on` gives it this device's line).
+    pub here: Here,
 }
 
 impl Mode {
+    /// The same time on this device, by what the person said each device is
+    /// for (`lines`: this device's line and those of the others that count).
+    pub fn on(mut self, lines: &Lines) -> Mode {
+        self.here = lines.here(self.week);
+        self
+    }
+
+    /// Whether something for `area` comes forward on this device now: its
+    /// area meets this device's cell for the time (`Here::brings`). With
+    /// nothing said of this device, the hours' own answer (`areas::in_view`).
+    pub fn brings(&self, area: Area) -> bool {
+        self.here.brings(area, self.time, self.week)
+    }
+
+    /// Whether this device, and not the hour, keeps something for `area`
+    /// back now: for the words that say why.
+    pub fn keeps_back(&self, area: Area) -> bool {
+        self.here.keeps_back(area, self.time, self.week)
+    }
+
+    /// Whether something for `area` is another device's: this device keeps
+    /// it back now, or is for it at no time of the week (`Here::is_for`).
+    /// Opened here all the same, through a door, it is read here only, and
+    /// "Done for now" does not close it for that device (docs/areas.md,
+    /// "Opened elsewhere"; review of phase 2, M5). Never with nothing said
+    /// of this device.
+    pub fn for_another(&self, area: Area) -> bool {
+        self.keeps_back(area) || !self.here.is_for(area, self.week)
+    }
+
+    /// The areas that the hours bring now and this device does not, since it
+    /// is not for them: they wait on the other devices. None with nothing
+    /// said of this device.
+    pub fn elsewhere(&self) -> Area {
+        Area::ALL.each().filter(|one| self.keeps_back(*one)).fold(Area::default(), Area::with)
+    }
+
     /// Asleep: the night from winding down to waking, or a nap. Nothing
     /// disturbs, as usual (`notify`); tasks, projects and time wait behind a sentence.
     pub fn sleeps(&self) -> bool {
@@ -476,7 +519,7 @@ pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
     let hours = by_hours(&windows, time_off, overrides, now);
     // The pause holds everything Sioul shows, whatever the time (docs/pauses.md).
     if overrides.paused_from().is_some() {
-        return Mode { quiet: true, time: Time::Sleep, week, reason: Reason::Paused, until: None, back: hours.until.clone(), label: String::new() };
+        return Mode { quiet: true, time: Time::Sleep, week, reason: Reason::Paused, until: None, back: hours.until.clone(), label: String::new(), here: Here::default() };
     }
     // Work comes back when the block ends if these are work's hours; else as the hours say.
     let back_after = |end: i64| if hours.time.works() { at(end) } else { hours.until.clone() };
@@ -489,23 +532,23 @@ pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
         } else {
             Reason::Sleep
         };
-        return Mode { quiet: true, time: Time::Sleep, week, reason, until: at(block.end), back: back_after(block.end), label: String::new() };
+        return Mode { quiet: true, time: Time::Sleep, week, reason, until: at(block.end), back: back_after(block.end), label: String::new(), here: Here::default() };
     }
     // Free time: leisure whatever the hour, sleep first; the night's start ends it (docs/pauses.md).
     if let Some(since) = overrides.free_from().filter(|since| *since <= stamp) {
         let end = crate::pause::free_until(since, blocks, now.time_zone());
         if stamp < end {
-            return Mode { quiet: true, time: Time::Leisure, week, reason: Reason::FreeTime, until: at(end), back: None, label: String::new() };
+            return Mode { quiet: true, time: Time::Leisure, week, reason: Reason::FreeTime, until: at(end), back: None, label: String::new(), here: Here::default() };
         }
     }
     if let Some(block) = blocks.at(stamp, &["meal"]) {
-        return Mode { quiet: true, time: Time::Meals, week, reason: Reason::Meal, until: at(block.end), back: back_after(block.end), label: String::new() };
+        return Mode { quiet: true, time: Time::Meals, week, reason: Reason::Meal, until: at(block.end), back: back_after(block.end), label: String::new(), here: Here::default() };
     }
     // The hours' own end, or the next meal or night when it comes first; an
     // override and time off say their own time.
     let cut = matches!(hours.reason, Reason::Working | Reason::AdminTime | Reason::Evening | Reason::DayOff | Reason::NoHours | Reason::Extended);
     let until = if cut { earliest(hours.until.clone(), blocks.next_start(stamp).and_then(at)) } else { hours.until.clone() };
-    Mode { quiet: !(hours.time.works() || hours.time == Time::Any), time: hours.time, week, reason: hours.reason, until, back: hours.until, label: hours.label }
+    Mode { quiet: !(hours.time.works() || hours.time == Time::Any), time: hours.time, week, reason: hours.reason, until, back: hours.until, label: hours.label, here: Here::default() }
 }
 
 /// What the task pages need of the moment: whether work rests, whether
@@ -535,6 +578,9 @@ pub struct QuietTasks {
     /// In free time with movement off (energy-limiting illness): movement and
     /// exercise are not offered (docs/pauses.md, GP8).
     pub no_movement: bool,
+    /// This device among the others (`Mode::here`): a task stays in view on
+    /// the devices that are for it.
+    pub here: Here,
 }
 
 impl QuietTasks {
@@ -545,9 +591,19 @@ impl QuietTasks {
         }
         let area = self.areas.of(task);
         if task.office_hours && area.admin && !area.work {
-            return self.time.offices();
+            return self.time.offices() && self.office_here();
         }
-        in_view(area, self.time, self.week)
+        self.here.brings(area, self.time, self.week)
+    }
+
+    /// A call to an office keeps office hours, work's or admin's, whatever
+    /// admin's own hours, which no cell says: on a device that narrows, it
+    /// stays in view where the cell for now holds admin, or, the cell left
+    /// as the device's areas say, where the device is for admin (or no
+    /// device is). With nothing said of the device, always.
+    fn office_here(&self) -> bool {
+        let here = &self.here;
+        !here.narrows() || here.cell(self.time, self.week).admin || (here.line.changed(self.time).is_none() && (here.line.is_for().admin || here.unheld.admin))
     }
 }
 
@@ -586,13 +642,24 @@ impl Situation {
             closed.insert(today);
         }
         let no_movement = mode.free() && !config.free_time.movement(&config.planning);
-        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, projects), no_movement };
+        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, projects), no_movement, here: mode.here };
         Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()) }, closed, office_days, quiet_tasks }
     }
 
-    /// The task filter, by what the time is for; none when no hours are set.
+    /// The same moment on this device, by what the person said each device
+    /// is for (`Mode::on`): the task pages keep what comes forward on it.
+    /// Without it, the person's own week (the plan, agents).
+    pub fn on(mut self, lines: &Lines) -> Situation {
+        self.mode = self.mode.on(lines);
+        self.quiet_tasks.here = self.mode.here;
+        self
+    }
+
+    /// The task filter, by what the time is for; none when no hours are set,
+    /// but on a device the person said something of, which then keeps what
+    /// it is for.
     pub fn quiet_tasks(&self) -> Option<QuietTasks> {
-        (self.mode.time != Time::Any).then(|| self.quiet_tasks.clone())
+        (self.mode.time != Time::Any || self.mode.here.narrows()).then(|| self.quiet_tasks.clone())
     }
 }
 
@@ -624,6 +691,7 @@ mod tests {
         assert_eq!(now.put_back(&previous, &after).rest_until, Some(200));
     }
     use super::*;
+    use crate::areas::{Line, in_view};
     use crate::needs::{Days, Needs};
 
     fn at(text: &str) -> Zoned {
@@ -834,6 +902,48 @@ mod tests {
         assert!(!closed.closed_today(&at("2026-10-03T09:00[Europe/Paris]")), "today's plan is taken back the same day only");
     }
 
+    /// On a device the person said something of, the task pages keep what
+    /// comes forward on it, and the time says which areas wait on the other
+    /// devices; with nothing said, as the hours say.
+    #[test]
+    fn the_task_pages_keep_what_this_device_is_for() {
+        let task = |cats: &[&str]| crate::tasks::Task { categories: cats.iter().map(|s| s.to_string()).collect(), ..crate::tasks::Task::default() };
+        let office = |cats: &[&str]| crate::tasks::Task { office_hours: true, ..task(cats) };
+        let areas = TaskAreas { work_categories: vec!["travail".into()], ..TaskAreas::usual() };
+        let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
+        let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let at = |time: Time, mine: Line, other: Line| QuietTasks { time, week, areas: areas.clone(), no_movement: false, here: Lines::of(mine, &[other]).here(week) };
+        let unsaid = |time: Time| QuietTasks { time, week, areas: areas.clone(), no_movement: false, here: Here::default() };
+        // Work's task in working hours: on the computer, not on the phone.
+        let (on_computer, on_phone) = (at(Time::Work, computer, phone), at(Time::Work, phone, computer));
+        assert!(on_computer.keeps(&task(&["Travail"])) && !on_phone.keeps(&task(&["Travail"])) && unsaid(Time::Work).keeps(&task(&["Travail"])));
+        // A call to an office in working hours, admin having its own: on the device that is for admin.
+        assert!(unsaid(Time::Work).keeps(&office(&[])) && on_phone.keeps(&office(&[])) && !on_computer.keeps(&office(&[])));
+        // Nothing during work on the phone, by its cell: the call waits there too.
+        let silent = at(Time::Work, phone.with_cell(Time::Work, Some(Area::default())), computer);
+        assert!(!silent.keeps(&office(&[])));
+        // What is yours in the evening: on the phone.
+        let (on_computer, on_phone) = (at(Time::Leisure, computer, phone), at(Time::Leisure, phone, computer));
+        assert!(on_phone.keeps(&task(&["joy"])) && !on_computer.keeps(&task(&["joy"])));
+        // Asleep: no task at all, whatever the device.
+        let asleep = at(Time::Sleep, phone, computer);
+        assert!(!asleep.keeps(&task(&["joy"])));
+        // The time on a device: Friday evening on the work computer, leisure waits elsewhere; at noon, admin does
+        // (it comes in working hours while it has none of its own); with nothing said, nothing does.
+        let lines = Lines::of(computer, &[phone]);
+        let evening = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"));
+        assert_eq!((evening.elsewhere(), evening.clone().on(&lines).elsewhere()), (Area::default(), Area::LEISURE));
+        let noon = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T12:00[Europe/Paris]")).on(&lines);
+        assert_eq!(noon.elsewhere(), Area::ADMIN);
+        assert!(noon.brings(Area::WORK) && !noon.brings(Area::ADMIN) && noon.keeps_back(Area::ADMIN) && !noon.keeps_back(Area::LEISURE));
+        // The situation of the task pages on this device.
+        let config = crate::config::Config { windows: self::week(), ..crate::config::Config::default() };
+        let tr = crate::i18n::Translator::new("en");
+        let here = Situation::now(&config, &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"), &tr, &[]);
+        assert!(here.quiet_tasks.keeps(&task(&["joy"])));
+        assert!(!here.on(&lines).quiet_tasks.keeps(&task(&["joy"])));
+    }
+
     #[test]
     fn what_is_yours() {
         let task = |cats: &[&str], projects: &[&str]| crate::tasks::Task { categories: cats.iter().map(|s| s.to_string()).collect(), projects: projects.iter().map(|s| s.to_string()).collect(), ..crate::tasks::Task::default() };
@@ -844,7 +954,7 @@ mod tests {
         let areas = TaskAreas { work_categories: vec!["travail".into()], work_projects: vec!["client-x".into()], ..TaskAreas::usual() };
         let week = Week { work_hours: true, ..Week::default() };
         // Asleep: no task at all, yours neither.
-        let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone(), no_movement: false };
+        let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone(), no_movement: false, here: Here::default() };
         assert!(!night.keeps(&task(&[], &["taxes"])) && !night.keeps(&task(&["joy"], &[])) && !night.keeps(&task(&["Travail"], &[])));
         // In leisure (holidays, a day closed, the evening) and during a meal: only what is yours.
         for time in [Time::Leisure, Time::Meals] {
@@ -856,7 +966,7 @@ mod tests {
         let working = QuietTasks { time: Time::Work, ..night.clone() };
         assert!(working.keeps(&task(&[], &["taxes"])) && working.keeps(&task(&["Travail"], &[])) && !working.keeps(&task(&["joy"], &[])));
         // Admin with hours of its own: it waits for them; a call to an office still fits the working day.
-        let set = QuietTasks { time: Time::Work, week: Week { admin_hours: true, ..week }, areas, no_movement: false };
+        let set = QuietTasks { time: Time::Work, week: Week { admin_hours: true, ..week }, areas, no_movement: false, here: Here::default() };
         // In free time with movement off: no exercise offered.
         let free = QuietTasks { time: Time::Leisure, no_movement: true, ..set.clone() };
         assert!(!free.keeps(&task(&["joy", "Yoga"], &[])) && free.keeps(&task(&["joy"], &[])));
@@ -884,7 +994,7 @@ mod tests {
     #[test]
     fn nothing_disturbs_but_doses() {
         use crate::attention::{Attention, Column, Kind, Level, Now, Row};
-        let sleeping = Mode { quiet: true, time: Time::Sleep, week: Week::default(), reason: Reason::Sleep, until: None, back: None, label: String::new() };
+        let sleeping = Mode { quiet: true, time: Time::Sleep, week: Week::default(), reason: Reason::Sleep, until: None, back: None, label: String::new(), here: Here::default() };
         let awake = Mode { time: Time::Leisure, reason: Reason::Evening, ..sleeping.clone() };
         // As the matrix of what reaches you has it as usual (`attention`).
         let usual = Attention::usual();

@@ -9,9 +9,10 @@
 // passphrase typed once; none found, a sharing started there with it typed
 // twice; joined, what came and what still needs a sign-in, then Done. A
 // sharing device's sights: on a phone, whether it replaces another phone,
-// asked; on a computer, what a new device needs, and a phone silent a day
-// forgotten now. The sign-in itself is tested in sioul-sync (loginflow.rs,
-// remote.rs) and join.rs. In English and French. Run by tools/qml-test.sh.
+// asked; on a computer, what a new device needs (a phone silent a day is
+// forgotten in the devices' tab: tst_devices.qml). The sign-in itself is
+// tested in sioul-sync (loginflow.rs, remote.rs) and join.rs. In English and
+// French. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -55,8 +56,6 @@ Item {
                 "join-replace-no": "No, it is a second phone",
                 "share-mode-folder": "Through a folder your sync app carries",
                 "share-add-title": "Add a device",
-                "share-device-forget-now": "Forget it now",
-                "share-device-forget-now-help": "Silent for a day or more. Forgotten, it no longer holds your doses’ reminders back here; it counts again if it ever shares again, and nothing of it is deleted.",
                 "appnotes-open-info": "Sioul's app info",
                 "texts-setup-ask": "Allow in Android…",
                 "share-part-texts": "Texts",
@@ -80,8 +79,6 @@ Item {
                 "join-replace-no": "Non, c’est un second téléphone",
                 "share-mode-folder": "Par votre application de synchronisation",
                 "share-add-title": "Ajouter un appareil",
-                "share-device-forget-now": "L’oublier maintenant",
-                "share-device-forget-now-help": "Silencieux depuis un jour ou plus.",
                 "appnotes-open-info": "Infos de l’application Sioul",
                 "texts-setup-ask": "Autoriser dans Android…",
                 "ui-cancel": "Annuler"
@@ -110,7 +107,7 @@ Item {
             return "[]"
         }
         function shareStatus(folder) {
-            return JSON.stringify(Object.assign({ folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], devices: [], backup: {}, servers: [], build: "", add_device: [], replace: null }, mock.shareState))
+            return JSON.stringify(Object.assign({ folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], backup: {}, servers: [], build: "", add_device: [], replace: null }, mock.shareState))
         }
         function joinStatus() {
             return JSON.stringify(mock.stand)
@@ -138,10 +135,6 @@ Item {
         }
         function joinReplace(device, yes) {
             mock.said("replace " + device + " " + yes)
-            return ""
-        }
-        function deviceForget(device) {
-            mock.said("forget " + device)
             return ""
         }
         // What Android withholds on this phone (access.rs's lines), and the presses for it.
@@ -339,9 +332,9 @@ Item {
             compare(mock.calls, ["replace old-phone false"])
         }
 
-        function test_a_computer_says_what_a_new_device_needs_and_forgets_a_silent_phone_now() {
+        function test_a_computer_says_what_a_new_device_needs() {
             const lines = ["On the new device, open Sioul.", "Choose “Sign in to Murena”.", "The folder there, Documents/Sioul, is found by itself.", "Then type the passphrase: the one you chose for this sharing. Sioul never shows it."]
-            mock.shareState = { on: true, add_device: lines, devices: [{ id: "phone-id", name: "The phone (Moss)", state: "Silent since Sat 10 Oct 21:40.", notes: [], off: false, forget: false, forget_now: true, build: "" }] }
+            mock.shareState = { on: true, add_device: lines }
             panel.reload()
             // What a new device needs, on a press: never the passphrase.
             verify(shown(lines[0]) === null, "said on a press")
@@ -351,10 +344,6 @@ Item {
             adding.toggled()
             for (const line of lines)
                 verify(shown(line) !== null, line)
-            // A phone silent a day: what forgetting it changes, then the button.
-            verify(shown(mock.text("share-device-forget-now-help")) !== null)
-            press("Forget it now")
-            compare(mock.calls, ["forget phone-id"])
         }
     }
 }

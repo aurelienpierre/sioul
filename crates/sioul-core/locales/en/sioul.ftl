@@ -368,6 +368,7 @@ ui-no-text = This message has no text.
 ui-text-safe = Shown safely: nothing remote loads, nothing runs.
 reader-opening = Opening the message…
 reader-not-here = This message is not on this device now. It may have moved.
+reader-read-here-only = Read here only: this device is not for its address, so it stays new on the device that is. “Mark as read” marks it read everywhere.
 reader-looking = Looking for it on your servers…
 reader-no-invitation = The message of this event’s invitation is not on this device.
 reader-on-its-way = On its way to { $folder } · { $address }. It opens as soon as its copy is here.
@@ -404,6 +405,73 @@ area-filter-none = Nothing ticked
 area-filter-as-hours = As the hours say
 area-filter-name = What shows: { $areas }
 area-filter-how = How this filter works
+## What each device is for, and what comes to it when (docs/areas.md, "What each device is for")
+device-areas = { $areas ->
+    [work] work
+    [admin] your admin
+    [leisure] leisure
+    [work-admin] work and your admin
+    [work-leisure] work and leisure
+    [admin-leisure] your admin and leisure
+    [none] nothing
+   *[all] everything
+}
+device-areas-wait = { $areas ->
+    [work] work waits
+    [admin] your admin waits
+    [leisure] leisure waits
+    [work-admin] work and your admin wait
+    [work-leisure] work and leisure wait
+    [admin-leisure] your admin and leisure wait
+   *[all] everything waits
+}
+device-areas-come = { $areas ->
+    [work] work comes here
+    [admin] your admin comes here
+    [leisure] leisure comes here
+    [work-admin] work and your admin come here
+    [work-leisure] work and leisure come here
+    [admin-leisure] your admin and leisure come here
+    [none] nothing comes here
+   *[all] everything comes here
+}
+device-waits = This device is for { $for }: { $waits } on your other devices.
+device-waits-cell = On this device, at this time, { $waits } on your other devices: you set it so in Settings ▸ Devices.
+mailbox-rests-device = { $address } waits on your other devices: this one is not for it now.
+devices-grid-title = What comes forward, and when
+devices-grid-help = For each device, what comes forward at each time: what the time brings, kept to what the device is for. Change a cell to let something else through there, friends on a phone during work, or nothing at all during meals; "As its areas say" puts it back. What does not come forward on a device is folded there, never removed: its page still opens it.
+devices-grid-device = Device
+devices-cell-nothing = Nothing
+devices-cell-as-areas = As its areas say
+devices-cell-name = { $device }, { $time }: { $areas }
+devices-cell-name-changed = { $device }, { $time }: { $areas }, as you changed it
+devices-cell-help = What comes forward on this device at this time. Tick what should; with nothing ticked, nothing comes then. "As its areas say" goes back to what the time brings, kept to what the device is for.
+devices-cell-line = { $time }: { $areas }
+devices-cell-line-changed = { $time }: { $areas } (as you changed it)
+devices-now-time = { $time ->
+    [work] work
+    [admin] admin
+    [leisure] leisure
+    [meals] a meal
+    [sleep] sleep
+    [work-admin] work and admin
+   *[any] no hours set
+}
+devices-now = Now, { $time } until { $until }: { $comes }.
+devices-now-open = Now, { $time }: { $comes }.
+devices-older = Its Sioul is older: everything still comes there.
+devices-cells-apart = Its own settings say otherwise for now: it follows those until yours reach it.
+devices-settings-twice = This device does not share your settings: it reads the others by its own hours and does not hear what they told, so it may tell again something another device already told.
+devices-unheld = No device is for { $areas }: until one is, that comes on every device, as the hours say.
+devices-never-held = Whatever a device is for, these always come: doses and everything of Health, the codes you ask for, alarms and an event's own reminders, the people on your Always through list, and everything while you are Reachable. Calls and texts keep their own table.
+devices-cell-refused = { $said }: work, admin, leisure, joined by +, or none.
+devices-for-refused = { $said }: work, admin, leisure, joined by +, or everything.
+devices-time-refused = { $said }: work, admin, leisure, meals or sleep.
+devices-unknown = No device is named { $device }. `sioul devices` lists them.
+devices-several = Several devices are named { $device }: give its id, as `sioul devices --json` shows it.
+devices-said-for = { $device } is now for { $areas }.
+devices-said-cell = { $device }, { $time }: { $areas }.
+devices-said-cell-usual = { $device }, { $time }: as its areas say again ({ $areas }).
 account-colour = Its colour
 account-colour-auto = As its rank gives it
 account-colour-n = Colour { $n }
@@ -3734,10 +3802,6 @@ share-others = { $count ->
 }
 share-alone = No other device yet: on the other one, choose the same folder and type the same passphrase.
 share-last = Last exchange here: { $when }.
-share-devices = Your other devices
-share-device-in-use = In use now; last shared { $when }.
-share-device-quiet = In use when it last shared, { $when }, and silent since: it may have stopped without closing.
-share-device-closed = Closed { $when }; last shared { $shared }.
 share-device-older = An older Sioul: last heard { $when }.
 share-device-unread = What it says does not read here yet.
 share-device-holds = Known here by what it shared, last heard { $when }: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.
@@ -6774,7 +6838,7 @@ texts-refused-media-kind = Not sent: your phone sends pictures, videos, sounds, 
 texts-refused-old-phone = Not sent: your phone's Sioul cannot send pictures yet. Update it, then send it again.
 texts-refused-no-mms = Not sent: your carrier takes no multimedia messages from this phone.
 texts-refused-other = Not sent from here.
-texts-refused-not-counted = Not sent: your phone does not count the computer that wrote it among your devices. Look in Settings ▸ Your folder and sharing.
+texts-refused-not-counted = Not sent: your phone does not count the computer that wrote it among your devices. On the phone, Settings ▸ Devices: Count it again, on that computer's card.
 texts-refused-old-computer = Not sent: the computer that wrote it has an older Sioul than your phone. Update it, or send it again from here.
 texts-clocks = Not sent: your phone's clock and this computer's disagree by more than two minutes.
 texts-doubt = Your phone may not have sent it: look in its messages before you send it again.
@@ -6816,7 +6880,7 @@ replies-refused-line = Not sent: your phone no longer holds this message. Reply 
 replies-refused-code = Not sent from here: a code's message is answered on your phone.
 replies-refused-switched-off = Not sent: answers from your computers are off for { $app } on your phone.
 replies-refused-short-number = Not sent from here: a short number, or a sender named in letters, may cost money. Reply on your phone.
-replies-refused-not-counted = Not sent: your phone does not count this computer among your devices. Look in Settings ▸ Your folder and sharing.
+replies-refused-not-counted = Not sent: your phone does not count this computer among your devices. On the phone, Settings ▸ Devices: Count it again, on this computer's card.
 replies-refused-before-mark = Not sent: your phone started a new ledger after it was written. Send it again if you still want it to go.
 replies-refused = Not sent from here. Reply on your phone.
 replies-reply = Reply
@@ -8661,3 +8725,47 @@ invoices-settings-rate-add = A rate of your own
 invoices-settings-platform = Your e-invoicing platform
 invoices-settings-platform-hint = Its name, as you know it
 invoices-settings-platform-help = From 1 September 2027 your invoices to French businesses go through an approved platform (a PA), and your sales to private clients are reported there instead (e-reporting). Until Sioul sends through yours, upload those invoices’ PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet.
+
+## Settings ▸ Devices and `sioul devices`: every device in one table (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, "Devices")
+settings-tab-devices = Devices
+devices-title = Your devices
+devices-help = Every device Sioul shares with, this one first: what each is, when it was last opened and when it last shared, its Sioul, what you say it is for, and what it shares. Names and what each device is for travel with your settings. Each device then brings forward only what it is for, at the hours for it; with nothing ticked, everything comes there, as before.
+devices-alone = This device does not share with your other devices, so it is the only one listed. Your folder and sharing sets it up.
+devices-settings-stay = Settings and accounts do not travel from this device: a name or what a device is for, said here, stays here, and what your other devices say of them does not come here.
+devices-as-of = Sioul is not looking from this device now: the others are said as it last saw them, { $when }.
+devices-this = This device
+devices-col-name = Device
+devices-col-form = What it is
+devices-col-now = Now
+devices-col-opened = Last opened
+devices-col-shared = Last shared
+devices-col-sioul = Sioul
+devices-col-for = For
+devices-col-parts = Shares
+devices-col-id = Id
+devices-now-in-use = In use now.
+devices-now-in-use-then = In use when this device last looked.
+devices-now-quiet = Silent since { $when }: it may have stopped without closing.
+devices-now-closed = Closed since { $when }.
+devices-now-closed-unknown = Closed.
+devices-shared-never = Not yet.
+devices-shared-both = Read the others { $read }; wrote its own { $wrote }.
+devices-shared-read = Read the others { $read }.
+devices-shared-wrote = Wrote its own { $wrote }.
+devices-shared-off = This device does not share.
+devices-parts-unsaid = Its Sioul does not say what it shares.
+devices-parts-none = Nothing travels from this device.
+devices-parts-none-there = It shares no part.
+devices-parts-elsewhere = A part is switched on or off on the device itself, where its data lands.
+devices-parts-change = Change what travels from this device…
+devices-for-all = Everything comes here
+devices-rename = Rename…
+devices-rename-help = A name of your own for this device, which travels with your settings. Left empty, the name its system gives it comes back.
+devices-rename-field = The name you give it
+devices-system-name = Its system calls it { $system }.
+devices-plain-here = { $name } (this device)
+devices-plain-system = { $name } (named { $system } by its system)
+devices-plain-here-system = { $name } (this device, named { $system } by its system)
+devices-plain-line = { $label }: { $value }
+share-devices-moved = Your devices are listed in Settings ▸ Devices, with what each is for.
+share-devices-open = Open Devices

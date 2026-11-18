@@ -152,6 +152,7 @@ mod dated;
 mod desktop;
 mod devicekind;
 mod devices;
+mod dispatch;
 mod dnd;
 mod eventalarms;
 mod eventplace;

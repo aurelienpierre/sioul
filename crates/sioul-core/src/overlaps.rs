@@ -307,15 +307,16 @@ impl Notices {
     }
 
     /// The conflicts to say now, of `conflicts`: due, not said, not set aside,
-    /// not over, and their area in view now (`areas::in_view`): a work matter
-    /// (one of them of a work agenda) in work's time, any other in admin's.
-    pub fn to_say<'a>(&self, conflicts: &'a [Overlap], aside: &SetAside, now: i64, time: crate::areas::Time, week: crate::areas::Week) -> Vec<&'a Overlap> {
+    /// not over, and their area brought now (`brings`: on this device,
+    /// `quiet::Mode::brings`): a work matter (one of them of a work agenda)
+    /// in work's time, any other in admin's.
+    pub fn to_say<'a>(&self, conflicts: &'a [Overlap], aside: &SetAside, now: i64, brings: impl Fn(crate::areas::Area) -> bool) -> Vec<&'a Overlap> {
         conflicts
             .iter()
             .filter(|o| self.due.contains_key(&o.key) && !self.said.contains_key(&o.key) && !aside.holds(o) && o.first.end.max(o.second.end) > now)
             .filter(|o| {
                 let area = if o.first.work || o.second.work { crate::areas::Area::WORK } else { crate::areas::Area::ADMIN };
-                crate::areas::in_view(area, time, week)
+                brings(area)
             })
             .collect()
     }
@@ -361,17 +362,17 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert!(notices.due.contains_key(&found[0].key), "made by its organizer's change");
         let aside = SetAside::default();
-        assert!(notices.to_say(&found, &aside, 2_000, Time::Leisure, week).is_empty(), "never in the evening");
-        assert_eq!(notices.to_say(&found, &aside, 2_000, Time::Admin, week).len(), 1, "at an admin window");
+        assert!(notices.to_say(&found, &aside, 2_000, |area| crate::areas::in_view(area, Time::Leisure, week)).is_empty(), "never in the evening");
+        assert_eq!(notices.to_say(&found, &aside, 2_000, |area| crate::areas::in_view(area, Time::Admin, week)).len(), 1, "at an admin window");
         notices.said_now(&found[0].key, 2_100);
         look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_200);
-        assert!(notices.to_say(&found, &aside, 2_200, Time::Admin, week).is_empty(), "said once");
+        assert!(notices.to_say(&found, &aside, 2_200, |area| crate::areas::in_view(area, Time::Admin, week)).is_empty(), "said once");
         // A work matter: in work's time alone.
         let work = Occurrence { work: true, ..meeting.clone() };
         let mut notices = Notices::default();
         look(&mut notices, &[work.clone(), invited(50_000, true)], 1_000);
         let found = look(&mut notices, &[work.clone(), invited(37_000, true)], 2_000);
-        assert!(notices.to_say(&found, &aside, 2_000, Time::Admin, week).is_empty() && notices.to_say(&found, &aside, 2_000, Time::Work, week).len() == 1);
+        assert!(notices.to_say(&found, &aside, 2_000, |area| crate::areas::in_view(area, Time::Admin, week)).is_empty() && notices.to_say(&found, &aside, 2_000, |area| crate::areas::in_view(area, Time::Work, week)).len() == 1);
         // Your own event moved onto the invitation: you made it.
         let mut notices = Notices::default();
         look(&mut notices, &[meeting.clone(), invited(50_000, true)], 1_000);
@@ -391,7 +392,7 @@ mod tests {
         let found = look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_000);
         let mut kept = SetAside::default();
         kept.set(&found[0].key);
-        assert!(notices.to_say(&found, &kept, 2_000, Time::Admin, week).is_empty());
+        assert!(notices.to_say(&found, &kept, 2_000, |area| crate::areas::in_view(area, Time::Admin, week)).is_empty());
     }
 
     /// What takes time (§5.1): opaque, not cancelled, not declined; a whole

@@ -483,31 +483,10 @@ ColumnLayout {
         Layout.fillWidth: true
 
         sourceComponent: Component {
-            Flow {
-                id: areaRow
-
-                readonly property var on: field.setting.kind === "areas" ? String(field.setting.value).split("+") : []
-
-                spacing: 12
-
-                Repeater {
-                    model: field.setting.kind === "areas" ? ["work", "admin", "leisure"] : []
-
-                    delegate: CheckBox {
-                        id: area
-
-                        required property string modelData
-
-                        text: field.sioul.text("area-" + modelData)
-                        checked: areaRow.on.indexOf(modelData) >= 0
-                        onToggled: {
-                            const was = areaRow.on
-                            const now = ["work", "admin", "leisure"].filter(a => a === modelData ? checked : was.indexOf(a) >= 0)
-                            field.save(field.setting.key, now.join("+"), field.setting.value)
-                            area.checked = Qt.binding(() => areaRow.on.indexOf(area.modelData) >= 0)
-                        }
-                    }
-                }
+            AreaSwitches {
+                sioul: field.sioul
+                value: field.setting.kind === "areas" ? String(field.setting.value) : ""
+                onPicked: value => field.save(field.setting.key, value, field.setting.value)
             }
         }
     }

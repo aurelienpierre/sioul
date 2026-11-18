@@ -531,7 +531,7 @@ pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
     }
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
     let mode = crate::hours::mode_now();
-    let said: Vec<sioul_core::overlaps::Overlap> = notices.to_say(&found, &aside, stamp, mode.time, mode.week).into_iter().cloned().collect();
+    let said: Vec<sioul_core::overlaps::Overlap> = notices.to_say(&found, &aside, stamp, |area| mode.brings(area)).into_iter().cloned().collect();
     json(&warning_rows(said, &aside, &now))
 }
 

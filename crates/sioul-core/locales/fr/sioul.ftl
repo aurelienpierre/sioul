@@ -386,6 +386,7 @@ ui-no-text = Ce courriel n’a pas de texte.
 ui-text-safe = Affiché sans risque : rien de distant ne se charge, rien ne s’exécute.
 reader-opening = Ouverture du courriel…
 reader-not-here = Ce courriel n’est pas sur cet appareil pour l’instant. Il a peut-être été déplacé.
+reader-read-here-only = Lu ici seulement : cet appareil n’est pas fait pour son adresse, il reste donc nouveau sur celui qui l’est. « Marquer comme lu » le marque lu partout.
 reader-looking = Recherche sur vos serveurs…
 reader-no-invitation = Le courriel de l’invitation à cet événement n’est pas sur cet appareil.
 reader-on-its-way = En route vers { $folder } · { $address }. Il s’ouvre dès que sa copie est ici.
@@ -428,6 +429,73 @@ area-filter-none = Rien de coché
 area-filter-as-hours = Selon vos heures
 area-filter-name = Ce qui s’affiche : { $areas }
 area-filter-how = Comment ce filtre fonctionne
+## Ce à quoi sert chaque appareil, et ce qui y arrive quand (docs/areas.md, "What each device is for")
+device-areas = { $areas ->
+    [work] le travail
+    [admin] vos démarches
+    [leisure] vos loisirs
+    [work-admin] le travail et vos démarches
+    [work-leisure] le travail et vos loisirs
+    [admin-leisure] vos démarches et vos loisirs
+    [none] rien
+   *[all] tout
+}
+device-areas-wait = { $areas ->
+    [work] le travail attend
+    [admin] vos démarches attendent
+    [leisure] vos loisirs attendent
+    [work-admin] le travail et vos démarches attendent
+    [work-leisure] le travail et vos loisirs attendent
+    [admin-leisure] vos démarches et vos loisirs attendent
+   *[all] tout attend
+}
+device-areas-come = { $areas ->
+    [work] le travail arrive ici
+    [admin] vos démarches arrivent ici
+    [leisure] vos loisirs arrivent ici
+    [work-admin] le travail et vos démarches arrivent ici
+    [work-leisure] le travail et vos loisirs arrivent ici
+    [admin-leisure] vos démarches et vos loisirs arrivent ici
+    [none] rien n’arrive ici
+   *[all] tout arrive ici
+}
+device-waits = Cet appareil est pour { $for } : { $waits } sur vos autres appareils.
+device-waits-cell = Sur cet appareil, à cette heure, { $waits } sur vos autres appareils : vous l’avez réglé ainsi dans Paramètres ▸ Appareils.
+mailbox-rests-device = { $address } attend sur vos autres appareils : celui-ci n’est pas pour elle en ce moment.
+devices-grid-title = Ce qui arrive, et quand
+devices-grid-help = Pour chaque appareil, ce qui arrive à chaque moment : ce que le moment amène, gardé à ce pour quoi l’appareil est fait. Changez une case pour y laisser passer autre chose, vos amis sur un téléphone pendant le travail, ou rien du tout pendant les repas ; « Selon ce à quoi il sert » la remet. Ce qui n’arrive pas sur un appareil y est replié, jamais retiré : sa page l’ouvre toujours.
+devices-grid-device = Appareil
+devices-cell-nothing = Rien
+devices-cell-as-areas = Selon ce à quoi il sert
+devices-cell-name = { $device }, { $time } : { $areas }
+devices-cell-name-changed = { $device }, { $time } : { $areas }, comme vous l’avez changé
+devices-cell-help = Ce qui arrive sur cet appareil à ce moment. Cochez ce qui doit arriver ; sans rien de coché, rien n’arrive alors. « Selon ce à quoi il sert » revient à ce que le moment amène, gardé à ce pour quoi l’appareil est fait.
+devices-cell-line = { $time } : { $areas }
+devices-cell-line-changed = { $time } : { $areas } (comme vous l’avez changé)
+devices-now-time = { $time ->
+    [work] le travail
+    [admin] les démarches
+    [leisure] les loisirs
+    [meals] un repas
+    [sleep] le sommeil
+    [work-admin] le travail et les démarches
+   *[any] aucune heure réglée
+}
+devices-now = En ce moment, { $time } jusqu’à { $until } : { $comes }.
+devices-now-open = En ce moment, { $time } : { $comes }.
+devices-older = Son Sioul est plus ancien : tout y arrive encore.
+devices-cells-apart = Ses propres réglages disent autre chose pour l’instant : il suit ceux-là jusqu’à ce que les vôtres lui parviennent.
+devices-settings-twice = Cet appareil ne partage pas vos réglages : il lit les autres selon ses propres heures et n’apprend pas ce qu’ils ont dit, il peut donc redire ce qu’un autre appareil a déjà dit.
+devices-unheld = Aucun appareil n’est pour { $areas } : en attendant, cela arrive sur tous vos appareils, selon vos heures.
+devices-never-held = Quel que soit ce à quoi sert un appareil, ceci arrive toujours : les prises et tout ce qui est de Santé, les codes que vous demandez, les alarmes et les rappels propres à un événement, les personnes de votre liste Passent toujours, et tout pendant que vous êtes Joignable. Les appels et les SMS gardent leur propre tableau.
+devices-cell-refused = { $said } : work, admin, leisure, joints par +, ou none.
+devices-for-refused = { $said } : work, admin, leisure, joints par +, ou everything.
+devices-time-refused = { $said } : work, admin, leisure, meals ou sleep.
+devices-unknown = Aucun appareil ne s’appelle { $device }. `sioul devices` les liste.
+devices-several = Plusieurs appareils s’appellent { $device } : donnez son identifiant, comme `sioul devices --json` le montre.
+devices-said-for = { $device } est maintenant pour { $areas }.
+devices-said-cell = { $device }, { $time } : { $areas }.
+devices-said-cell-usual = { $device }, { $time } : de nouveau selon ce à quoi il sert ({ $areas }).
 account-colour = Sa couleur
 account-colour-auto = Selon son rang
 account-colour-n = Couleur { $n }
@@ -3770,10 +3838,6 @@ share-others = { $count ->
 }
 share-alone = Aucun autre appareil pour l’instant : sur l’autre, choisissez le même dossier et tapez la même phrase de passe.
 share-last = Dernier échange ici : { $when }.
-share-devices = Vos autres appareils
-share-device-in-use = Utilisé en ce moment ; dernier partage { $when }.
-share-device-quiet = Utilisé lors de son dernier partage, { $when }, et silencieux depuis : il s’est peut-être arrêté sans se fermer.
-share-device-closed = Fermé { $when } ; dernier partage { $shared }.
 share-device-older = Un Sioul plus ancien : entendu pour la dernière fois { $when }.
 share-device-unread = Ce qu’il dit ne se lit pas encore ici.
 share-device-holds = Connu ici par ce qu’il a partagé, entendu pour la dernière fois { $when } : jusqu’à sa mise à jour là-bas, ou jusqu’à ce que vous l’oubliiez ici, vos appareils continuent de partager sous la forme que lit un Sioul plus ancien.
@@ -6835,7 +6899,7 @@ texts-refused-media-kind = Pas envoyé : votre téléphone n’envoie que des 
 texts-refused-old-phone = Pas envoyé : le Sioul de votre téléphone ne sait pas encore envoyer d’images. Mettez-le à jour, puis renvoyez-le.
 texts-refused-no-mms = Pas envoyé : votre opérateur ne prend aucun message multimédia depuis ce téléphone.
 texts-refused-other = Pas envoyé d’ici.
-texts-refused-not-counted = Pas envoyé : votre téléphone ne compte pas l’ordinateur qui l’a écrit parmi vos appareils. Voyez Paramètres ▸ Votre dossier et le partage.
+texts-refused-not-counted = Pas envoyé : votre téléphone ne compte pas l’ordinateur qui l’a écrit parmi vos appareils. Sur le téléphone, Paramètres ▸ Appareils : Le compter de nouveau, sur la carte de cet ordinateur.
 texts-refused-old-computer = Pas envoyé : l’ordinateur qui l’a écrit a un Sioul plus ancien que votre téléphone. Mettez-le à jour, ou renvoyez-le d’ici.
 texts-clocks = Pas envoyé : l’horloge de votre téléphone et celle de cet ordinateur diffèrent de plus de deux minutes.
 texts-doubt = Votre téléphone ne l’a peut-être pas envoyé : regardez dans ses messages avant de le renvoyer.
@@ -6877,7 +6941,7 @@ replies-refused-line = Pas envoyée : votre téléphone n’a plus ce message.
 replies-refused-code = Pas envoyée d’ici : on répond au message d’un code depuis votre téléphone.
 replies-refused-switched-off = Pas envoyée : les réponses depuis vos ordinateurs sont désactivées pour { $app } sur votre téléphone.
 replies-refused-short-number = Pas envoyée d’ici : un numéro court, ou un expéditeur nommé en lettres, peut coûter de l’argent. Répondez depuis votre téléphone.
-replies-refused-not-counted = Pas envoyée : votre téléphone ne compte pas cet ordinateur parmi vos appareils. Voyez Paramètres ▸ Votre dossier et le partage.
+replies-refused-not-counted = Pas envoyée : votre téléphone ne compte pas cet ordinateur parmi vos appareils. Sur le téléphone, Paramètres ▸ Appareils : Le compter de nouveau, sur la carte de cet ordinateur.
 replies-refused-before-mark = Pas envoyée : votre téléphone a commencé un nouveau registre après qu’elle a été écrite. Renvoyez-la si vous voulez toujours qu’elle parte.
 replies-refused = Pas envoyée d’ici. Répondez depuis votre téléphone.
 replies-reply = Répondre
@@ -8390,6 +8454,15 @@ cli-invoices-pay--received = Pour une facture en une autre devise : ce qui vou
 cli-invoices-received = Ce qu’un paiement en une autre devise a donné dans celle des livres (en euros) : les livres le comptent ainsi
 cli-invoices-received--amount = Ce qui vous est parvenu, comme 92.50
 cli-invoices-received--day = Le paiement de ce jour ; sinon son dernier dont rien n’a encore été dit
+cli-devices = Vos appareils, celui-ci d’abord : ce qu’est chacun, où il en est, quand il a été ouvert et a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, ce qui y arrive à chaque moment, ce qu’il partage. `for` et `at` disent à quoi sert un appareil.
+cli-devices--json = Le tableau en JSON : une ligne par appareil, celui-ci d’abord, chacun avec ses cases ; et les lignes propres à la grille
+cli-devices-for = Dit à quoi sert un appareil : le travail, les démarches, les loisirs, plusieurs à la fois si vous voulez. Chaque appareil ne fait alors venir que ce pour quoi il est fait.
+cli-devices-for--device = L’appareil : son nom tel que `sioul devices` le montre, ou son identifiant
+cli-devices-for--areas = work, admin, leisure, joints par + (work+leisure) ; everything, comme avant que rien ne soit dit
+cli-devices-at = Change ce qui arrive sur un appareil à un moment : une case de sa ligne.
+cli-devices-at--device = L’appareil : son nom tel que `sioul devices` le montre, ou son identifiant
+cli-devices-at--time = Le moment : work, admin, leisure, meals ou sleep
+cli-devices-at--areas = work, admin, leisure, joints par + ; none, pour rien à ce moment ; usual, selon ce à quoi sert l’appareil
 cli-books = Les livres : le livre des recettes, les déclarations, le récapitulatif de TVA, les seuils, la DES
 cli-books-receipts = Le livre des recettes : une ligne par paiement reçu, par jour, avec les totaux de ses trimestres et de ses années
 cli-books-receipts--year = Celui de cette année ; l’année en cours sinon
@@ -9035,3 +9108,47 @@ invoices-settings-rate-add = Un taux à vous
 invoices-settings-platform = Votre plateforme de facturation électronique
 invoices-settings-platform-hint = Son nom, tel que vous le connaissez
 invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une plateforme agréée (une PA), et vos ventes aux particuliers y sont déclarées à la place (e-reporting). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures. Sous la franchise en base de TVA sans numéro de TVA, ce PDF ne porte pas encore de données Factur-X.
+
+## Paramètres ▸ Appareils et `sioul devices` : tous les appareils dans un tableau (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, « Devices »)
+settings-tab-devices = Appareils
+devices-title = Vos appareils
+devices-help = Chaque appareil avec lequel Sioul partage, celui-ci d’abord : ce qu’il est, quand il a été ouvert et quand il a partagé pour la dernière fois, son Sioul, ce à quoi vous dites qu’il sert, et ce qu’il partage. Les noms et ce à quoi sert chaque appareil voyagent avec vos réglages. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela ; sans rien de coché, tout y arrive, comme avant.
+devices-alone = Cet appareil ne partage pas avec vos autres appareils : il est donc le seul de la liste. Le partage se met en place dans Votre dossier et le partage.
+devices-settings-stay = Les réglages et comptes ne voyagent pas depuis cet appareil : un nom ou ce à quoi sert un appareil, dit ici, reste ici, et ce que vos autres appareils en disent n’arrive pas ici.
+devices-as-of = Sioul ne regarde pas depuis cet appareil en ce moment : les autres sont dits tels qu’il les a vus pour la dernière fois, { $when }.
+devices-this = Cet appareil
+devices-col-name = Appareil
+devices-col-form = Ce qu’il est
+devices-col-now = Maintenant
+devices-col-opened = Dernière ouverture
+devices-col-shared = Dernier partage
+devices-col-sioul = Sioul
+devices-col-for = Pour
+devices-col-parts = Partage
+devices-col-id = Identifiant
+devices-now-in-use = Utilisé en ce moment.
+devices-now-in-use-then = Utilisé quand cet appareil a regardé pour la dernière fois.
+devices-now-quiet = Silencieux depuis { $when } : il s’est peut-être arrêté sans se fermer.
+devices-now-closed = Fermé depuis { $when }.
+devices-now-closed-unknown = Fermé.
+devices-shared-never = Pas encore.
+devices-shared-both = A lu les autres { $read } ; a écrit les siens { $wrote }.
+devices-shared-read = A lu les autres { $read }.
+devices-shared-wrote = A écrit les siens { $wrote }.
+devices-shared-off = Cet appareil ne partage pas.
+devices-parts-unsaid = Son Sioul ne dit pas ce qu’il partage.
+devices-parts-none = Rien ne voyage depuis cet appareil.
+devices-parts-none-there = Il ne partage aucune partie.
+devices-parts-elsewhere = Une partie s’active ou se coupe sur l’appareil lui-même, là où ses données arrivent.
+devices-parts-change = Changer ce qui voyage depuis cet appareil…
+devices-for-all = Tout arrive ici
+devices-rename = Renommer…
+devices-rename-help = Un nom à vous pour cet appareil, qui voyage avec vos réglages. Laissé vide, le nom que lui donne son système revient.
+devices-rename-field = Le nom que vous lui donnez
+devices-system-name = Son système l’appelle { $system }.
+devices-plain-here = { $name } (cet appareil)
+devices-plain-system = { $name } (appelé { $system } par son système)
+devices-plain-here-system = { $name } (cet appareil, appelé { $system } par son système)
+devices-plain-line = { $label } : { $value }
+share-devices-moved = Vos appareils sont listés dans Paramètres ▸ Appareils, avec ce à quoi sert chacun.
+share-devices-open = Ouvrir Appareils

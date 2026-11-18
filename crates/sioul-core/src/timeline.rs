@@ -1988,7 +1988,7 @@ mod tests {
 
     fn moment(time: crate::areas::Time, reason: crate::quiet::Reason, until: &str) -> crate::quiet::Mode {
         let until = Timestamp::from_second(at(until)).unwrap().to_zoned(paris());
-        crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(until), back: None, label: String::new() }
+        crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(until), back: None, label: String::new(), here: crate::areas::Here::default() }
     }
 
     /// The head line (§4.2), given ahead by the moment: in work time what is

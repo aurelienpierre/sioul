@@ -49,7 +49,7 @@
 //! channels silent itself (`channels_plan`), and gives each back when the
 //! app is no longer gathered or you ask.
 
-use crate::areas::{Area, in_view};
+use crate::areas::Area;
 use crate::attention::{self, Attention, Event, Level, Source};
 use crate::i18n::Translator;
 use crate::quiet::Mode;
@@ -844,9 +844,13 @@ impl Ask<'_> {
         self.attention.level(attention::Row::Own(kind), &self.moment(at, mode))
     }
 
-    /// Whether the app is for that time (its area), or says nothing of it.
-    fn area_fits(&self, mode: &Mode) -> bool {
-        self.area.is_none_or(|a| in_view(a, mode.time, mode.week))
+    /// Whether the app is for that time on this phone (its area against the
+    /// phone's cell then, `Mode::brings`), or says nothing of it. While
+    /// Reachable lasts at `at`, the phone keeps nothing back: the hours
+    /// alone, before any device step (review of phase 2, N5).
+    fn area_fits(&self, at: &Zoned, mode: &Mode) -> bool {
+        let reachable = self.reachable.is_some_and(|until| at.timestamp().as_second() < until);
+        self.area.is_none_or(|a| if reachable { crate::areas::in_view(a, mode.time, mode.week) } else { mode.brings(a) })
     }
 }
 
@@ -995,7 +999,7 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
                 continue;
             }
             let mode = ask.clock.mode(&at);
-            if ask.level(attention::Kind::AppAutomatons, &at, &mode) == Level::Gathered && ask.area_fits(&mode) {
+            if ask.level(attention::Kind::AppAutomatons, &at, &mode) == Level::Gathered && ask.area_fits(&at, &mode) {
                 return Some(at);
             }
         }
@@ -1009,7 +1013,7 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
 pub fn gathers_now(ask: &Ask) -> bool {
     let mode = ask.clock.mode(ask.now);
     let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
-    ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(&mode)
+    ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(ask.now, &mode)
 }
 
 /// The gathered times from now on, within the coming days, in order; one
@@ -1087,7 +1091,7 @@ fn at_once(ask: &Ask) -> Decision {
         let event = Event::own(attention::Kind::AppAtOnce).for_area(ask.area).from_sources(ask.sources.to_vec());
         return by_matrix(ask, &[event], Why::AtOnce, Why::AtOnce);
     }
-    match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(mode)) {
+    match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(at, mode)) {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::AtOnce),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::AtOnce),
         None => Decision::held(ask.stamp() + RECHECK, Why::AtOnce),
@@ -1110,8 +1114,14 @@ fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decisi
         return by_matrix(ask, &[event.clone().for_area(ask.area).area_unsaid(talk.to_unsaid), event], Why::Allowed, Why::Waiting);
     }
     let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
-    // Its area and its times never meeting in the coming days, the matrix alone decides: nothing waits for good.
-    let next = first_moment(ask, &|at, mode| open(at, mode, ask.area)).or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
+    // This device for its area at no moment of the coming days: the hours alone, as on a device
+    // nothing is said of, so that a device never lets through what the hours hold (review of
+    // phase 2, M1); its area and its times never meeting even so, the matrix alone decides:
+    // nothing waits for good.
+    let by_hours = |mode: &Mode| Mode { here: crate::areas::Here::default(), ..mode.clone() };
+    let next = first_moment(ask, &|at, mode| open(at, mode, ask.area))
+        .or_else(|| first_moment(ask, &|at, mode| open(at, &by_hours(mode), ask.area)))
+        .or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
     match next {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::Allowed),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::Waiting),
@@ -1238,6 +1248,9 @@ pub struct Cause {
     pub own: Option<Own>,
     /// What it is for (its app's area, the address a mail came to), not now.
     pub area: Option<Area>,
+    /// This phone, and not the hour, keeps what it is for back now
+    /// (docs/areas.md, "What each device is for").
+    pub device: bool,
     /// The columns of the matrix that hold it now (`Attention::holding`):
     /// the time's, each layer by itself.
     pub columns: Vec<attention::Column>,
@@ -1274,13 +1287,16 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
         let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
         cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else if attention::is_person(id) { Own::Person } else { Own::App });
     }
-    if out.step == attention::Step::Area {
+    if matches!(out.step, attention::Step::Area | attention::Step::Device) {
         cause.area = ask.area;
+        cause.device = out.step == attention::Step::Device;
     }
     cause.columns = ask.attention.holding(&event, &moment);
     // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
-    if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(&mode) {
+    if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(ask.now, &mode) {
         cause.area = ask.area;
+        // While Reachable, the hours alone held it, never this device.
+        cause.device = !ask.reachable_now() && ask.area.is_some_and(|area| mode.keeps_back(area));
     }
     Some(cause)
 }
@@ -3123,5 +3139,41 @@ mod tests {
                 assert!(!held.starts_with("appnotes-"), "{why}: {held}");
             }
         }
+    }
+
+    /// An app "For work" on a phone said personal, beside a computer for
+    /// work: a colleague's message on a Tuesday at 21:15 waits for
+    /// Wednesday 09:00 there too, as the hours alone say. No moment of the
+    /// coming days brings work on that phone; the device never lets through
+    /// what the hours hold (review of phase 2, M1).
+    #[test]
+    fn a_work_app_on_a_personal_phone_waits_as_the_hours_say() {
+        use crate::areas::{Line, Lines};
+        struct OnPhone {
+            inner: TestClock,
+            lines: Lines,
+        }
+        impl TimeSource for OnPhone {
+            fn mode(&self, at: &Zoned) -> Mode {
+                self.inner.mode(at).on(&self.lines)
+            }
+            fn starts(&self, from: &Zoned, until: &Zoned) -> Vec<Zoned> {
+                self.inner.starts(from, until)
+            }
+        }
+        let evening = at("2026-10-06T21:15[Europe/Paris]");
+        let plain = TestClock::new();
+        let phone = OnPhone { inner: TestClock::new(), lines: Lines::of(Line::for_area(Area::PERSONAL), &[Line::for_area(Area::WORK)]) };
+        let choices = Choices::default();
+        let kind = classify(&posted(DISCORD_DM), &choices);
+        let gathered = vec!["09:00".to_string(), "13:00".to_string(), "18:00".to_string()];
+        let before = decide(&kind, Some(Who::Neutral), false, &choices, &ask(&evening, &plain, Some(Area::WORK), None));
+        let on_phone = Ask { reachable: None, silenced: false, now: &evening, clock: &phone, attention: usual(), gathered: &gathered, area: Some(Area::WORK), gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] };
+        let after = decide(&kind, Some(Who::Neutral), false, &choices, &on_phone);
+        assert!(before.until.is_some(), "by the hours, it waits for work");
+        assert_eq!((after.until, until_of(after.clone())), (before.until, until_of(before)), "the same wait on the phone");
+        // A safe person in it still comes at once, as on a device nothing is said of.
+        let safe = decide(&kind, Some(Who::Safe), false, &choices, &on_phone);
+        assert_eq!(safe.until, decide(&kind, Some(Who::Safe), false, &choices, &ask(&evening, &plain, Some(Area::WORK), None)).until);
     }
 }

@@ -1289,7 +1289,7 @@ mod tests {
         let _files = TELLABLE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@work.example\"\nhost = \"imap.work.example\"\narea = \"work\"\n").unwrap();
         let week = sioul_core::areas::Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-        let mode = |time: sioul_core::areas::Time, reason: sioul_core::quiet::Reason| sioul_core::quiet::Mode { quiet: true, time, week, reason, until: None, back: None, label: String::new() };
+        let mode = |time: sioul_core::areas::Time, reason: sioul_core::quiet::Reason| sioul_core::quiet::Mode { quiet: true, time, week, reason, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() };
         let now = jiff::Zoned::now();
         let evening = mode(sioul_core::areas::Time::Leisure, sioul_core::quiet::Reason::Evening);
         let people = sioul_core::everywhere::People::default_path();

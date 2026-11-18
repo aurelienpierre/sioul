@@ -159,6 +159,10 @@ pub struct Clock {
     held: Vec<(i64, i64)>,
     /// Free time's "Nothing at all", for this Free time.
     nothing: bool,
+    /// What the person said each device is for (`on`): the times this clock
+    /// gives are this device's (`Mode::on`). As made, nothing said: the
+    /// person's own hours. Calls never read it (`Moment` carries none).
+    lines: crate::areas::Lines,
 }
 
 impl Clock {
@@ -166,7 +170,15 @@ impl Clock {
     /// and each day's changes, the events' spans with their margins (`plan::event_spans`).
     pub fn new(config: &Config, overrides: Overrides, needs: Needs, days: Days, held: Vec<(i64, i64)>) -> Clock {
         let nothing = crate::pause::nothing_now(&overrides, &config.free_time);
-        Clock { windows: config.week_hours(), time_off: config.time_off.clone(), overrides, needs, days, held, nothing }
+        Clock { windows: config.week_hours(), time_off: config.time_off.clone(), overrides, needs, days, held, nothing, lines: crate::areas::Lines::default() }
+    }
+
+    /// The same clock on this device, by what the person said each device is
+    /// for: what another app's notification is for is read against this
+    /// phone's cells (`appnotes`). The calls' moments stay the hours' own.
+    pub fn on(mut self, lines: crate::areas::Lines) -> Clock {
+        self.lines = lines;
+        self
     }
 
     /// Read from the files: the overrides, Health, each day's changes, and the
@@ -188,7 +200,7 @@ impl Clock {
 
     /// The time at `at`.
     pub fn mode(&self, at: &Zoned) -> Mode {
-        crate::quiet::mode(&self.windows, &self.time_off, &self.overrides, &self.blocks(at), at)
+        crate::quiet::mode(&self.windows, &self.time_off, &self.overrides, &self.blocks(at), at).on(&self.lines)
     }
 
     /// The matrix's moment at `at`.

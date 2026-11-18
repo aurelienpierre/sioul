@@ -156,3 +156,23 @@ trusted_authserv_ids = ["mx.google.com"]
 [[site]]
 id = "proton"
 url = "https://mail.proton.me"
+
+# What you said of each of your devices (docs/database.md, "Devices"), by
+# its id in the sharing between your devices: the name you give it, and what
+# it is for (work, admin, leisure, joined by +). Settings ▸ Devices writes
+# these, from any of your devices; a device nothing is said of is for
+# everything, under its system's name.
+# [device."0d0f3a52-6f0c-4f4e-9b62-2f0f6f1f7a11"]
+# name = "Work laptop"
+# area = "work"
+#
+# Each device then brings forward only what it is for, at the hours for it
+# (docs/areas.md, "What each device is for"). A cell of its line can be
+# changed, one key per time (work, admin, leisure, meals, sleep): the areas
+# that come forward on it then, or "none" for nothing.
+# [device."7b1c9e04-52a8-4c0d-8f0e-93c1b2a4d5e6"]
+# name = "Pocket"
+# area = "admin+leisure"
+# [device."7b1c9e04-52a8-4c0d-8f0e-93c1b2a4d5e6".at]
+# work = "work+leisure"
+# meals = "none"

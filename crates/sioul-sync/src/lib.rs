@@ -88,6 +88,8 @@
 //! - [`blobs`]: notes and papers in the shared folder, sealed, one file at a time.
 //! - [`history`]: what a shared file held before another device's change, kept on this device.
 //! - [`devices`]: each device says how it is: when it started, closed, last read and wrote.
+//! - [`peers`]: what this device saw of the others, kept here: read for the table of your devices.
+//! - [`device_table`]: every device of yours in one table, for the window and the command line.
 //! - [`lease`]: one computer at a time for a part of the work: reminding doses, numbering invoices.
 //! - [`remote`]: the shared folder read from its server too, when the sync app is late.
 //! - [`loginflow`]: signing in to a Nextcloud through its own page in the browser, for a device joining the others.
@@ -113,7 +115,10 @@ pub mod calendars;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod colord;
 pub mod dav;
+pub mod device_grid;
+pub mod device_table;
 pub mod devices;
+pub mod dispatch;
 pub mod discover;
 pub mod favicon;
 pub mod disk;
@@ -140,6 +145,7 @@ pub mod mailbox;
 pub mod microsoft;
 pub mod notify;
 pub mod ocr;
+pub mod peers;
 pub mod photo;
 // What the computer says of itself (power, saving, idle, a metered connection): the spam filter's training by itself.
 pub mod power;

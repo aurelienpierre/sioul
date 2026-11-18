@@ -179,7 +179,7 @@ pub(crate) fn mailbox_filter(mode: &sioul_core::quiet::Mode, now: i64) -> (sioul
 fn mailbox_filter_in(path: &Path, mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::mailbox::Filter, sioul_core::areafilter::Shown) {
     let kept = kept_view(path);
     let said = sioul_core::mailbox::hours_say(mode);
-    let shown = sioul_core::areafilter::shown(&kept.areas, said, now, tr());
+    let shown = sioul_core::areafilter::shown(&kept.areas, said, now, tr()).on(tr(), mode);
     (sioul_core::mailbox::Filter { areas: kept.areas.shown(said, now), off: kept.off }, shown)
 }
 
@@ -766,6 +766,8 @@ fn names(entries: &[String]) -> String {
 
 pub(crate) fn views(shared: &Shared) -> MailViews {
     let config = load_config();
+    // The messages read here only, as this device's list says them now.
+    load_read_here();
     let (files, drafts) = hidden(shared);
     let waiting = waiting_words(shared);
     let accounts: Vec<(Account, Vec<Folder>)> = config.accounts.iter().filter(|a| a.syncs()).map(|a| (a.clone(), mailbox::folders(&a.id))).collect();
@@ -783,13 +785,12 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
-    let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
     let asked = shared.open_mailbox.lock().ok().and_then(|o| o.clone());
     let mailbox = asked.map(|ask| {
         let (files, said) = mailbox_waiting(&files, &waiting);
         mailbox_pages(&config, &ask, &files, &said)
     });
-    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
+    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), &mode)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
 }
 
 /// A folder's messages as its list reads them, from the folder's index
@@ -1567,16 +1568,69 @@ fn act_now_many(qt: &QtThread, shared: &Arc<Shared>, found: Vec<(Account, PathBu
     }
 }
 
-/// Opening a message marks it read, except while the window takes its own pictures.
-pub(crate) fn opened(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
+/// Opening a message marks it read, except while the window takes its own
+/// pictures; and except on a device that is not for its address, where it
+/// was opened through a door (the filter's boxes, "Show all mail now"): it
+/// is read here only (`read_here`), never on its server, so that it stays
+/// new on the device it is for, as the research found mail read on the phone
+/// forgotten at the office (docs/areas.md, "Opened elsewhere"; review of
+/// phase 2, M5). "Mark as read" in the reader marks it read everywhere.
+/// Whether it was read here only.
+pub(crate) fn opened(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> bool {
     if std::env::var_os("SIOUL_GRAB").is_some() {
-        return;
+        return false;
     }
-    if let Some((account, file)) = locate(key)
-        && !maildir::flags_of(&file).contains('S')
-    {
-        act_now(qt, shared, account, file, Action::Read(true));
+    let Some((account, file)) = locate(key) else { return false };
+    if maildir::flags_of(&file).contains('S') {
+        return false;
     }
+    if read_here_only(&account, &crate::hours::mode_now()) {
+        mark_read_here(&file);
+        show_mail(qt, shared);
+        return true;
+    }
+    act_now(qt, shared, account, file, Action::Read(true));
+    false
+}
+
+/// Whether a message to `account`, opened now (`mode`, this device's
+/// time), is read here only: its address is another device's
+/// (`Mode::for_another`), what it is for read as the fold reads it
+/// (`mailbox::area_of`: an address nobody classified is work's; review of
+/// phase 2, N4).
+pub(crate) fn read_here_only(account: &Account, mode: &sioul_core::quiet::Mode) -> bool {
+    mode.for_another(sioul_core::mailbox::area_of(account))
+}
+
+/// This device's own list of the messages read here only, never shared.
+fn read_here_path() -> PathBuf {
+    sioul_core::config::state_dir().join("read-here.txt")
+}
+
+/// How long a message read here only is remembered so: past it, it shows new here again if still unread.
+const READ_HERE_KEPT: i64 = 60 * 86_400;
+
+/// A message read here only, written into this device's list (its file's unique name and when).
+fn mark_read_here(file: &Path) {
+    let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let unique = maildir::unique_part(&name).to_string();
+    let now = jiff::Timestamp::now().as_second();
+    let path = read_here_path();
+    let _ = sioul_core::filelock::with_lock(&path, || {
+        let kept: Vec<String> = std::fs::read_to_string(&path).unwrap_or_default().lines().filter(|line| line.rsplit_once('\t').is_some_and(|(one, at)| one != unique && at.parse::<i64>().is_ok_and(|at| now - at < READ_HERE_KEPT))).map(str::to_string).collect();
+        let text = kept.into_iter().chain([format!("{unique}\t{now}")]).collect::<Vec<_>>().join("\n") + "\n";
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        std::fs::write(&path, text).map_err(|e| e.to_string())
+    });
+    load_read_here();
+}
+
+/// This device's list of the messages read here only, given to the mail's rows (`view::set_read_here`).
+fn load_read_here() {
+    let text = std::fs::read_to_string(read_here_path()).unwrap_or_default();
+    sioul_core::view::set_read_here(text.lines().filter_map(|line| line.split_once('\t').map(|(one, _)| one.to_string())).collect());
 }
 
 fn schedule(qt: &QtThread, shared: &Arc<Shared>, work: Work, line: String) {
@@ -2494,7 +2548,7 @@ mod tests {
             sent: 0,
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
-        let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false });
+        let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false, device: String::new() });
         let texts_of = |page: &Page| page_texts(page, &ask, &shown, &[]);
         let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
@@ -2581,7 +2635,7 @@ mod tests {
         let now = 1_800_000_000;
         let end = jiff::Timestamp::from_second(now + 3600).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
         let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
-        let at_work = Mode { quiet: false, time: Time::Work, week, reason: Reason::Working, until: Some(end), back: None, label: String::new() };
+        let at_work = Mode { quiet: false, time: Time::Work, week, reason: Reason::Working, until: Some(end), back: None, label: String::new(), here: sioul_core::areas::Here::default() };
         let evening = Mode { quiet: true, time: Time::Leisure, reason: Reason::Evening, until: None, ..at_work.clone() };
         let (filter, shown) = mailbox_filter_in(&path, &at_work, now);
         assert_eq!(filter, sioul_core::mailbox::Filter { areas: Area::WORK, off: Vec::new() }, "the older file's address is no filter");
@@ -3177,7 +3231,7 @@ mod tests {
             }
         }
         let addresses: Vec<sioul_core::mailbox::Address> = config.accounts.iter().enumerate().map(|(i, account)| sioul_core::mailbox::Address { account: account.clone(), folders: folders.clone(), trusted: vec!["mx.example.org".into()], tint: i as u8, resting: None }).collect();
-        let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() };
+        let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new(), here: sioul_core::areas::Here::default() };
         let zone = sioul_core::zone::current();
         let none = BTreeSet::new();
         let make = |ask: &sioul_core::mailbox::Ask| {
@@ -3185,7 +3239,7 @@ mod tests {
             sioul_core::mailbox::page(&addresses, &world, ask, &none, tr(), now, &zone, sioul_core::mailbox::STEP_FILL)
         };
         use sioul_core::mailbox::{Ask, Chip};
-        let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false };
+        let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false, device: String::new() };
         let page_texts = |page: &sioul_core::mailbox::Page| page_texts(page, &Ask::default(), &shown, &[]);
         // The first index: the newest of each folder at once, then steps while the page shows.
         let at = std::time::Instant::now();
@@ -3307,7 +3361,7 @@ mod tests {
         let config = Config { accounts: vec![work, home], ..Config::default() };
         let page = Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier: true, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let ask = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: vec!["home".into()] }), ..Ask::default() };
-        let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false };
+        let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false, device: String::new() };
         let parts = hidden_parts(&config, &ask);
         assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["on:home"], "leisure's resting mail never said: {parts:?}");
         assert!(parts[0].text.contains("noa@home.example.org"), "the address by its name: {}", parts[0].text);
@@ -3315,5 +3369,33 @@ mod tests {
         assert!(hidden_parts(&config, &only_areas).is_empty(), "an area left out by the hours or by you: nothing said");
         let head: serde_json::Value = serde_json::from_str(&page_texts(&page, &ask, &shown, &parts)[0]).unwrap();
         assert!(head.get("end").is_none() && head.get("earlier").is_none() && head.get("windows").is_none(), "no line at the list's end: {head}");
+    }
+
+    /// A message opened through a door on a phone not for work is read
+    /// there only, whether its address says it is work's or says nothing
+    /// (the fold reads that as work's too; review of phase 2, N4). On the
+    /// computer for work, or on a phone nothing is said of, it is read as
+    /// before; a personal address on the phone, as before too.
+    #[test]
+    fn an_address_nobody_classified_is_read_here_only_on_a_device_not_for_work() {
+        use sioul_core::areas::{Area, Line, Lines, Time, Week};
+        use sioul_core::quiet::{Mode, Reason};
+        let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let at = |time: Time, lines: &Lines| Mode { quiet: time != Time::Work, time, week, reason: if time == Time::Work { Reason::Working } else { Reason::Evening }, until: None, back: None, label: String::new(), here: Default::default() }.on(lines);
+        let (desk, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let account = |area: Option<&str>| {
+            let said = area.map(|area| format!("area = \"{area}\"\n")).unwrap_or_default();
+            let config: Config = toml::from_str(&format!("[[account]]\nid = \"office\"\nkind = \"imap\"\naddress = \"ana@work.example\"\nhost = \"imap.example.org\"\n{said}")).unwrap();
+            config.accounts[0].clone()
+        };
+        let (unsaid, work, home) = (account(None), account(Some("work")), account(Some("admin+leisure")));
+        for time in [Time::Work, Time::Leisure] {
+            let on_phone = at(time, &Lines::of(phone, &[desk]));
+            assert!(read_here_only(&unsaid, &on_phone) && read_here_only(&work, &on_phone), "{time:?}: read on the phone only");
+            assert!(!read_here_only(&home, &on_phone), "{time:?}");
+            let on_desk = at(time, &Lines::of(desk, &[phone]));
+            assert!(!read_here_only(&unsaid, &on_desk) && !read_here_only(&work, &on_desk), "{time:?}: the desk is for it");
+            assert!(!read_here_only(&unsaid, &at(time, &Lines::default())), "{time:?}: nothing said, as before");
+        }
     }
 }

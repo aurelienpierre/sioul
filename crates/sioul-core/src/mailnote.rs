@@ -338,7 +338,12 @@ pub fn never(t: &Triaged, newsletters: bool) -> bool {
 /// is told once (`waited`).
 pub fn moment(now: &crate::attention::Now, may: bool) -> String {
     let columns: Vec<&str> = now.times.iter().map(|c| c.id()).collect();
-    format!("{}:{}:{}:{}:{}:{may}", now.time.id(), columns.join("+"), now.slot, now.dnd, now.nothing)
+    let moment = format!("{}:{}:{}:{}:{}:{may}", now.time.id(), columns.join("+"), now.slot, now.dnd, now.nothing);
+    // Where a device narrows what comes (docs/areas.md, "Which device tells"), what comes forward
+    // on the device read now, and what no device holds, are part of the moment: a cell changed,
+    // a line said, a device that counts again or no more, begins a time as the hours do, and
+    // what waited is judged again. With nothing said, the moment's words are as they were.
+    if now.here.narrows() { format!("{moment}:{}:{}", crate::areas::Line::cell_id(now.here.cell(now.time, now.week)), crate::areas::Line::cell_id(now.here.unheld)) } else { moment }
 }
 
 /// What becomes of a new message now, as the matrix says of its sender.
@@ -555,7 +560,7 @@ mod tests {
     }
 
     fn mode(time: Time, reason: Why) -> Mode {
-        Mode { quiet: false, time, week: Week { work_hours: true, admin_hours: false, meals: true, sleep: true }, reason, until: None, back: None, label: String::new() }
+        Mode { quiet: false, time, week: Week { work_hours: true, admin_hours: false, meals: true, sleep: true }, reason, until: None, back: None, label: String::new(), here: crate::areas::Here::default() }
     }
 
     #[test]
@@ -784,6 +789,57 @@ mod tests {
         // Never read as the notices' words: a folder of its own.
         assert!(crate::notices::States::read(&folder).is_empty());
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Where the person said what each device is for: a friend's mail to
+    /// the personal address in the evening comes forward on the phone; on
+    /// the work computer it waits in the ledger, shown on its Porch, never
+    /// told there while the computer is for work alone. Read as the phone
+    /// (the keeper of the notices: `Lines::mine` its cells), the computer
+    /// finds it told now and claims it without a word (docs/areas.md, "Which
+    /// device tells"). The moment's words are as they were on a device
+    /// nothing is said of, and carry the cell read and what no device holds
+    /// on one that narrows.
+    #[test]
+    fn mail_waits_on_a_device_that_is_not_for_its_address() {
+        use crate::areas::{Area, Cells, Line, Lines, Other};
+        use crate::attention::{Attention, Event, Lane as MailLane, Level, Now, Source};
+        let senders = Senders { safe: crate::porch::SenderList::parse("ana@example.org"), ..Senders::default() };
+        let ana = message("home", "Ana <ana@example.org>", "", "Dinner on Friday", "21@example.org", &senders, crate::config::Priority::default());
+        let attention = Attention::usual();
+        let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let evening = |lines: Lines| mode(Time::Leisure, Why::Evening).on(&lines);
+        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::PERSONAL)), &Now::of(m));
+        let fate = |m: Mode| {
+            let decided = &decided;
+            move |t: &Triaged| match decided(t, &m) {
+                out if out.told => Fate::Now,
+                out if out.level == Level::Never => Fate::Never,
+                _ => Fate::Later,
+            }
+        };
+        let on_phone = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(Lines::of(phone, &[computer]))));
+        assert_eq!(on_phone.now.iter().map(|l| l.sender.as_str()).collect::<Vec<_>>(), ["Ana"]);
+        let on_computer = sort(&[ana.clone()], &Ledger::default(), false, fate(evening(Lines::of(computer, &[phone]))));
+        assert_eq!((on_computer.now.len(), on_computer.later.clone(), on_computer.never.len()), (0, vec![key(&ana)], 0), "it waits there, shown on the Porch");
+        // The computer read as the phone, which keeps the notices: told there now, so claimed here.
+        let week = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
+        let as_phone = Lines { mine: Cells::of(phone, week), key: None, others: vec![Other { cells: Cells::Line(computer), acts_on: None }] };
+        assert_eq!(sort(&[ana.clone()], &Ledger::default(), false, fate(evening(as_phone))).now.len(), 1);
+        // It never comes on the computer while it is for work alone: no time of its week tells it.
+        let mut ledger = Ledger::default();
+        ledger.wait(&key(&ana), 100);
+        for (time, why) in [(Time::Work, Why::Working), (Time::Leisure, Why::Evening), (Time::Meals, Why::Meal)] {
+            let there = mode(time, why).on(&Lines::of(computer, &[phone]));
+            assert!(waited(&[ana.clone()], &ledger, false, |t| decided(t, &there).told).is_empty(), "{time:?}");
+        }
+        // The moment: as it was with nothing said; with the cell read and what no device holds on a device that narrows.
+        let plain = mode(Time::Leisure, Why::Evening);
+        assert_eq!(moment(&Now::of(&plain), true), "leisure:leisure:false:false:false:true");
+        assert_eq!(moment(&Now::of(&plain.clone().on(&Lines::of(Line::default(), &[computer]))), true), "leisure:leisure:false:false:false:true");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(computer, &[phone]))), true), "leisure:leisure:false:false:false:true:none:none");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(phone, &[computer]))), true), "leisure:leisure:false:false:false:true:leisure:none");
+        assert_eq!(moment(&Now::of(&evening(Lines::of(computer, &[]))), true), "leisure:leisure:false:false:false:true:leisure:admin+leisure", "the phone no longer counts: leisure comes here");
     }
 
     #[test]

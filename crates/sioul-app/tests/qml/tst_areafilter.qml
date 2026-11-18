@@ -5,7 +5,8 @@
 // by area"), on a stand-in for Sioul: its button says what shows and unfolds
 // three boxes ticked as Rust says; a box ticked or unticked says the three as
 // they then stand, and shows Rust's word until Rust answers; "As the hours
-// say" only while your ticks hold; the "?" says how it works, once; at a
+// say" only while your ticks hold; the "?" says how it works, once, and when
+// this device is the reason an area is not ticked; at a
 // phone's 412 points nothing passes the window's edge, in the longest words
 // of both languages. Run by tools/qml-test.sh.
 
@@ -149,6 +150,20 @@ Item {
             tryCompare(filter, "unfolded", false)
             opened(filter)
             verify(!help.visible, "unfolded again: the boxes alone")
+        }
+
+        // Where this device, and not the hour, keeps an area back, the "?" says
+        // so after how the filter works; else its own words alone.
+        function test_the_question_mark_says_when_the_device_is_the_reason() {
+            const sentence = "Cet appareil est pour le travail : vos loisirs attendent sur vos autres appareils."
+            const filter = made({ work: false, admin: false, leisure: false, label: "Rien de coché", own: false, device: sentence })
+            opened(filter)
+            mouseClick(named(filter, "areaFilterHelp"))
+            const help = named(filter, "areaFilterHelpText")
+            verify(help.visible)
+            compare(help.text, filter.help + "\n\n" + sentence)
+            filter.shown = { work: true, admin: false, leisure: false, label: "Travail", own: false }
+            compare(help.text, filter.help)
         }
 
         // At a phone's 412 points, its button near the edge: the list, its

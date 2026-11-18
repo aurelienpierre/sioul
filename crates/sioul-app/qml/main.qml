@@ -4238,8 +4238,9 @@ SioulWindow {
             // panel's steps stood in for (`JoinPanel.stand`, as join.rs says them):
             // signing in in the browser, the folder found, joined. Then a sharing
             // device's sights, the panel shown as sharing: "Add a device" on a
-            // computer, a phone silent a day forgotten now, and on a phone whether
-            // it replaces another phone. Nothing signed in, sent nor asked.
+            // computer, and on a phone whether it replaces another phone; then
+            // Settings ▸ Devices, a phone silent a day stood in there with
+            // "Forget it now". Nothing signed in, sent nor asked.
             readonly property var joinSteps: [
                 () => window.page = 0,
                 () => {},
@@ -4275,15 +4276,27 @@ SioulWindow {
                 () => {
                     const share = parametersPage.share
                     const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
-                    const device = { id: "phone-id", name: sioul.text("device-the-phone") + " (Moss)", state: sioul.textArgs("share-device-closed", JSON.stringify({ when: when, shared: when })), notes: [], off: false, forget: false, forget_now: true, build: "" }
                     const adding = [sioul.text("share-add-intro"), sioul.text("share-add-murena"), sioul.textWith("share-add-place", "place", "Documents/Sioul"), sioul.text("share-add-passphrase")]
                     const asking = window.phoneGrab ? { id: "phone-id", ask: sioul.textArgs("join-replace-ask", JSON.stringify({ name: "Moss", when: when })) } : null
-                    share.status = Object.assign({}, share.status, { on: true, devices: window.phoneGrab ? [] : [device], add_device: window.phoneGrab ? [] : adding, replace: asking })
+                    share.status = Object.assign({}, share.status, { on: true, add_device: window.phoneGrab ? [] : adding, replace: asking })
                     share.adding = true
                 },
                 () => grabber.save(window.phoneGrab ? "share-replace" : "share-add-device"),
                 () => parametersPage.scrollBy(0.3),
-                () => grabber.save(window.phoneGrab ? "share-replace-down" : "share-forget-now"),
+                () => grabber.save(window.phoneGrab ? "share-replace-down" : "share-add-device-down"),
+                // Settings ▸ Devices, a phone silent a day stood in beside this device's own row: Forget it now.
+                () => parametersPage.section = "devices",
+                () => {},
+                () => {
+                    const devices = parametersPage.devices
+                    if (!devices || window.phoneGrab)
+                        return
+                    const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                    const own = (devices.view.rows || []).filter(row => row.here === true)
+                    const phone = { id: "phone-id", here: false, name: sioul.text("device-the-phone") + " (Moss)", given: "", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "", area_words: sioul.text("devices-for-all"), parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: true }
+                    devices.view = { on: true, rows: own.concat([phone]) }
+                },
+                () => grabber.save(window.phoneGrab ? "devices-phone" : "devices-forget-now"),
                 () => window.close()
             ]
             // This device's files sent to the server beside the sync app

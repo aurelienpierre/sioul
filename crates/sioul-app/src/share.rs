@@ -11,6 +11,7 @@ use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde::Serialize;
 use sioul_core::config::{Config, expand_home, state_dir};
+use sioul_sync::device_table::{holding, own_time_listed};
 use sioul_sync::share;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -173,7 +174,7 @@ fn carried_on_phone(said: Option<bool>, guessed: bool) -> bool {
 /// none does (`Here::notes_carried`). Carried: notes and papers stop
 /// travelling through the sharing here. Returns what went wrong, else "".
 pub(crate) fn set_notes_carried(carried: bool) -> String {
-    between_exchanges(|| {
+    let problem = between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         // Read as it is, never through `here()`, which takes this lock to mend it.
         let mut here = share::Here::load(&state_dir());
@@ -188,7 +189,12 @@ pub(crate) fn set_notes_carried(carried: bool) -> String {
             }
         }
         here.save(&state_dir()).err().unwrap_or_default()
-    })
+    });
+    // Notes and papers may no longer travel from here: the entry says so now (the review of phase 1, R2).
+    if problem.is_empty() {
+        crate::devices::parts_now();
+    }
+    problem
 }
 
 /// A phone's shared storage.
@@ -212,6 +218,17 @@ fn refused(part: &str, config: &Config, here: &share::Here) -> Option<String> {
         return None;
     }
     notes_carried(config, here).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
+}
+
+/// The parts this device shares now (`share::PARTS`), as its entry tells
+/// the others (`devices::Entry::parts`): each as switched here, else as
+/// before parts had switches, notes and papers left out while a sync app
+/// carries the notes folder, as `stores_here` leaves them.
+pub(crate) fn parts_shared() -> Vec<String> {
+    let here = here();
+    let config = load_config();
+    let carried = notes_carried(&config, &here).is_some();
+    share::PARTS.iter().filter(|part| here.shares(part, &config) && !(carried && matches!(**part, "notes" | "papers"))).map(|part| (*part).to_string()).collect()
 }
 
 /// What this device shares: each part as switched here, else as before parts had switches.
@@ -431,8 +448,6 @@ struct Status {
     gone_devices: Vec<GoneRow>,
     /// What this device takes out of the folder and its server, and why each waits (`leaving_rows`).
     leaving: Vec<LeavingRow>,
-    /// Your other devices, as this one knows them: in use, closed, silent, off as you said.
-    devices: Vec<crate::health::DeviceRow>,
     /// The other devices' files fetched from the server too: where it stands, the switch, the place given by hand.
     backup: Backup,
     /// The accounts Sioul can keep the folder in step with itself (`remote::MIRROR`).
@@ -599,11 +614,6 @@ pub(crate) fn status(folder: &str) -> String {
             Part { id, name, carries, on: shared, refused, guessed, last }
         })
         .collect();
-    // Every device holding the newer form back, or on an older Sioul once it travels, has its line.
-    // And every device keeping your own time around meetings from travelling, while some is set
-    // and this device shares its time (re-check of 857c39e, §3.2).
-    let holders = formats.as_ref().map(|f| holding(f, own_time_listed(here.shares("time", &config), !sioul_core::own_time::current().events.is_empty(), f))).unwrap_or_default();
-    let devices = if on { crate::health::device_rows(&holders) } else { Vec::new() };
     let backup = backup(on && mirror.is_none(), &path);
     let build = say("share-build", &[("build", sioul_core::build::DESCRIBED.to_string())]);
     // Pressed while the folder is not found on a server, it says why nothing went.
@@ -617,27 +627,88 @@ pub(crate) fn status(folder: &str) -> String {
     let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
     let leaving = if on { leaving_rows(&path) } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
 }
 
-/// Whether Settings names the devices that keep your own time around
-/// meetings from travelling: while this device shares its time, and either
-/// some is set here, or another device says it reads it, so may hold some to
-/// send here (review of e5bd27b, later 1: the device that needs the sentence
-/// is the one that has none of its own).
-fn own_time_listed(shares_time: bool, set_here: bool, f: &share::Formats) -> bool {
-    shares_time && (set_here || f.others_share_own_time)
+/// Settings ▸ Devices, as JSON: whether sharing is on here, and every
+/// device's row, this one first (`health::device_table`). Every device
+/// holding the newer form of what travels back, or on an older Sioul once
+/// it travels, has its line; and every device keeping your own time around
+/// meetings from travelling, while some is set and this device shares its
+/// time (re-check of 857c39e, §3.2). With sharing off: this device alone;
+/// a folder set whose key the keyring no longer holds, said so.
+pub(crate) fn devices() -> String {
+    #[derive(Serialize)]
+    struct Devices {
+        /// Sharing is on here.
+        on: bool,
+        /// Why it is not, when a folder is set all the same: its key is not held; else "".
+        why: String,
+        /// Sharing on, the part "settings" switched off here: what is said
+        /// in the tab stays on this device, and the others' word does not
+        /// come (the review of phase 1, R7); else "".
+        stays: String,
+        rows: Vec<crate::health::DeviceRow>,
+        /// What comes forward on each device at each time: the rows' cells are
+        /// set with it (`device_grid::grid`); here, what is said around them.
+        grid: sioul_sync::device_grid::Grid,
+    }
+    let here = here();
+    let vault = sealed(attached(&here));
+    let config = load_config();
+    let holders = match &vault {
+        Some((folder, key)) => {
+            let formats = share::formats(folder, key, &memory_path(), &here.id, now_ms());
+            holding(&formats, own_time_listed(here.shares("time", &config), !sioul_core::own_time::current().events.is_empty(), &formats))
+        }
+        None => Vec::new(),
+    };
+    let why = if vault.is_none() && here.folder_path().is_some() { tr().text("share-key-missing", None) } else { String::new() };
+    let stays = if vault.is_some() && !here.shares("settings", &config) { tr().text("devices-settings-stay", None) } else { String::new() };
+    let mut rows = crate::health::device_table(&holders);
+    // Each device's five cells, and now on this one: as the rule reads them (`dispatch::known`, `hours::mode_at`).
+    let now = sioul_core::zone::now();
+    let mut grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
+    // Settings that do not travel from here: what this device tells may come twice.
+    grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
+    json(&Devices { on: vault.is_some(), why, stays, rows, grid })
 }
 
-/// The devices the sharing lists as holding something back (`share::formats`),
-/// for Settings' rows (`health::device_rows`): the format's holders, those on an
-/// older Sioul once it travels, and, while some of your own time around
-/// meetings is set (`own_time_set`), those that keep it from travelling; each
-/// with when it was last heard (seconds).
-fn holding(f: &share::Formats, own_time_set: bool) -> Vec<(String, i64, crate::health::Holding)> {
-    use crate::health::Holding;
-    let own_time = f.own_time.iter().filter(|_| own_time_set).map(|id| (id, Holding::OwnTime));
-    f.holders.iter().map(|(id, _)| (id, Holding::Format)).chain(f.older.iter().map(|id| (id, Holding::Older))).chain(own_time).map(|(id, holds)| (id.clone(), f.heard.get(id).copied().unwrap_or(0) / 1000, holds)).collect()
+/// What you said of a device, written into the shared settings
+/// (`[device."<id>"]`, `sioul_core::device_said`): the name you give it
+/// (`field` "name"; "" its system's name again), what it is for ("area":
+/// work, admin, leisure joined by +; "" everything again), or one cell of
+/// its line ("at.work", "at.meals"…: what comes forward on it at that time,
+/// areas joined by +, "none" for nothing; "" as its areas say again). Any
+/// device may say it of any other: it travels with the settings. Returns
+/// what went wrong, else "".
+pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
+    let path = crate::backend::config_path();
+    let written = match (field, field.strip_prefix("at.")) {
+        ("name", _) => sioul_core::device_said::set_name(&path, id, value),
+        ("area", _) => sioul_core::device_said::set_area(&path, id, value),
+        (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
+        _ => Err(format!("{field}?")),
+    };
+    // This device's own line said here: its entry says its cells now, for the keeper of the notices.
+    if written.is_ok() && field != "name" && id == here().id {
+        std::thread::spawn(crate::devices::cells_now);
+    }
+    written.err().unwrap_or_default()
+}
+
+/// A cell as the window says it: its time, one of the five, and its areas
+/// ("" as the device's areas say; "none" nothing); in words when either
+/// does not read.
+fn said_cell(time: &str, value: &str) -> Result<(sioul_core::areas::Time, Option<sioul_core::areas::Area>), String> {
+    let say = |id: &str, said: &str| {
+        let mut args = sioul_core::i18n::args();
+        args.set("said", said.to_string());
+        tr().text(id, Some(&args))
+    };
+    let at = sioul_core::device_said::cell_time(time).ok_or_else(|| say("devices-time-refused", time))?;
+    let areas = sioul_core::device_said::said_cell(value).ok_or_else(|| say("devices-cell-refused", value.trim()))?;
+    Ok((at, areas))
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -1150,13 +1221,18 @@ pub(crate) fn set_part(part: &str, on: bool) -> String {
         return why;
     }
     // Between two exchanges: one never reads half the parts as they were.
-    between_exchanges(|| {
+    let problem = between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         // Read as it is, never through `here()`, which takes this lock to mend it.
         let mut here = share::Here::load(&state_dir());
         here.parts.insert((*part).to_string(), on);
         here.save(&state_dir()).err().unwrap_or_default()
-    })
+    });
+    // This device's entry says what it shares now, for the others to show it (Settings ▸ Devices).
+    if problem.is_empty() {
+        crate::devices::parts_now();
+    }
+    problem
 }
 
 /// A version kept, as the window lists it.
@@ -1544,6 +1620,17 @@ pub(crate) fn looked(part: &str, rule: sioul_sync::lease::Rule) -> sioul_sync::l
     let here = share::Here::load(&state_dir());
     let Some((folder, key)) = sealed(attached(&here)) else { return sioul_sync::lease::Keeper::alone(&here.id) };
     sioul_sync::lease::look(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), rule)
+}
+
+/// The keeper of a part as its claims read now (`looked`), with its entry
+/// as the folder holds it at the same moment (`devices::one`): what a device
+/// that does not keep the notices judges each letter by (`dispatch::judge`).
+/// None for the entry when it does not read, or with sharing off.
+pub(crate) fn keeper_and_entry(part: &str) -> (sioul_sync::lease::Keeper, Option<sioul_sync::devices::Entry>) {
+    let keeper = looked(part, sioul_sync::lease::Rule::FollowsYou);
+    let here = share::Here::load(&state_dir());
+    let entry = if keeper.mine { None } else { sealed(attached(&here)).and_then(|(folder, key)| sioul_sync::devices::one(&folder, &key, &keeper.computer)) };
+    (keeper, entry)
 }
 
 /// Claims renewed or closed one at a time: a phone put away and back at once
@@ -3496,6 +3583,105 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Settings ▸ Devices on a device that does not share: this device is
+    /// listed, first, named as its system names it and for everything; the
+    /// name you give it and what you say it is for go into the settings
+    /// (`[device."<id>"]`) and show at once; "" takes each back; an area
+    /// that names none, or a field that is not a device's, is refused and
+    /// said, nothing written.
+    #[test]
+    fn this_device_is_listed_with_what_you_say_of_it() {
+        sioul_core::config::stand_ins_only();
+        let dir = std::env::temp_dir().join(format!("sioul-app-devices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "theme = \"dark\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        let own_row = || serde_json::from_str::<serde_json::Value>(&devices()).unwrap()["rows"][0].clone();
+        let row = own_row();
+        let id = row["id"].as_str().unwrap().to_string();
+        assert!(row["here"] == true && !id.is_empty());
+        assert_eq!(id, share::Here::load(&state_dir()).id, "named by the sharing's own id");
+        assert!(row["given"] == "" && row["name"] == row["system"] && row["system"] != "", "its system's name while none is given");
+        assert_eq!((row["area"].as_str(), row["area_words"].as_str()), (Some(""), Some(tr().text("devices-for-all", None).as_str())));
+        assert_eq!(row["form"].as_str(), Some(crate::devicekind::kind().word()));
+        // Your word, written and shown at once.
+        assert_eq!(say_of_device(&id, "name", "Work desk"), "");
+        assert_eq!(say_of_device(&id, "area", "work+leisure"), "");
+        let row = own_row();
+        assert_eq!((row["name"].as_str(), row["given"].as_str(), row["area"].as_str()), (Some("Work desk"), Some("Work desk"), Some("work+leisure")));
+        assert_ne!(row["system"], row["name"]);
+        let text = std::fs::read_to_string(&config).unwrap();
+        assert!(text.contains("theme = \"dark\"") && text.contains("name = \"Work desk\"") && text.contains("area = \"work+leisure\""), "the settings hold it, the rest kept");
+        // Refused: said, nothing written.
+        assert!(!say_of_device(&id, "area", "elsewhere").is_empty());
+        assert!(!say_of_device(&id, "colour", "red").is_empty());
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        // Taken back: its system's name, everything.
+        assert_eq!(say_of_device(&id, "name", ""), "");
+        assert_eq!(say_of_device(&id, "area", ""), "");
+        let row = own_row();
+        assert!(row["given"] == "" && row["name"] == row["system"] && row["area"] == "");
+        assert!(!std::fs::read_to_string(&config).unwrap().contains("device"));
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Settings ▸ Devices says what comes forward on each device at each
+    /// time: this device's row has a cell for each time its week has (work
+    /// and admin hours set, Health's meals and sleep not), in words, as the
+    /// hours say while nothing is said of it; a cell said in the window
+    /// ("at.<time>") is written into the settings and shows at once, marked
+    /// as changed; "none" is your word for nothing; "" puts it back; a time
+    /// that is none of the five, or words that name no area, are refused in
+    /// words, nothing written. Alone, what this device is not for is said to
+    /// come all the same.
+    #[test]
+    fn the_grid_says_this_device_s_cells_and_a_cell_is_said_in_the_window() {
+        sioul_core::config::stand_ins_only();
+        let dir = std::env::temp_dir().join(format!("sioul-app-devices-grid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "theme = \"dark\"\n\n[[window]]\nday = \"mon\"\nstart = \"09:00\"\nend = \"17:00\"\n\n[[window]]\nday = \"tue\"\nkind = \"admin\"\nstart = \"18:00\"\nend = \"19:00\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        let view = || serde_json::from_str::<serde_json::Value>(&devices()).unwrap();
+        let shown = view();
+        let id = shown["rows"][0]["id"].as_str().unwrap().to_string();
+        assert_eq!(shown["grid"]["times"].as_array().map(Vec::len), Some(3), "{shown}");
+        let cells = |view: &serde_json::Value| view["rows"][0]["cells"].as_array().cloned().unwrap_or_default();
+        assert_eq!(cells(&shown).len(), 3, "a cell per time the week has");
+        assert!(shown["rows"][0]["follows"] == true && cells(&shown).iter().all(|cell| cell["own"] == false), "{shown}");
+        assert_eq!(cells(&shown).iter().map(|cell| cell["time"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["work", "admin", "leisure"]);
+        assert_eq!(shown["grid"]["unheld"], "", "nothing said of any device: nothing to say");
+        assert!(shown["grid"]["never"].as_str().is_some_and(|never| !never.is_empty()));
+        // A cell said: written, shown at once, marked.
+        assert_eq!(say_of_device(&id, "at.work", "work+leisure"), "");
+        assert_eq!(say_of_device(&id, "at.leisure", "none"), "");
+        let text = std::fs::read_to_string(&config).unwrap();
+        assert!(text.contains("work = \"work+leisure\"") && text.contains("leisure = \"none\"") && text.contains("theme = \"dark\""), "{text}");
+        let shown = view();
+        let cell = |time: usize| cells(&shown)[time].clone();
+        assert_eq!((cell(0)["areas"].as_str(), cell(0)["own"].as_bool(), cell(0)["leisure"].as_bool()), (Some("work+leisure"), Some(true), Some(true)));
+        assert_eq!((cell(2)["areas"].as_str(), cell(2)["own"].as_bool(), cell(2)["label"].as_str()), (Some(""), Some(true), Some(tr().text("devices-cell-nothing", None).as_str())));
+        assert_eq!(cell(1)["own"], false);
+        // Refused in words, nothing written.
+        assert!(!say_of_device(&id, "at.weekend", "work").is_empty() && !say_of_device(&id, "at.work", "often").is_empty() && !say_of_device(&id, "at.work+admin", "work").is_empty());
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        // As its areas say again: the cells go, and their table with them.
+        assert_eq!(say_of_device(&id, "at.work", ""), "");
+        assert_eq!(say_of_device(&id, "at.leisure", ""), "");
+        assert!(!std::fs::read_to_string(&config).unwrap().contains("device"));
+        // This device alone, said to be for work: the rest is for no device, and that is said.
+        assert_eq!(say_of_device(&id, "area", "work"), "");
+        let shown = view();
+        assert!(shown["grid"]["unheld"].as_str().is_some_and(|unheld| !unheld.is_empty()), "{shown}");
+        assert_eq!(say_of_device(&id, "area", ""), "");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The rows of what waits to leave: "Forget it and remove its files…"
     /// only under a device silent a day or more, never one heard of within
