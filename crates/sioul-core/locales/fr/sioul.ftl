@@ -2937,6 +2937,7 @@ time-week-of = Semaine du { $day }
 time-nothing-week = Rien de noté cette semaine.
 time-nothing-month = Rien de noté ce mois-ci.
 time-nothing-year = Rien de noté cette année.
+time-nothing-ticked = Rien de noté pour ce qui est coché ; { $all } en tout.
 project-done = Fait
 project-asked = Date demandée
 project-from = De { $sender }
@@ -3077,6 +3078,8 @@ time-period-month = Mois
 time-period-year = Année
 time-all-projects = Tous les projets
 time-total = { $time } en tout
+time-total-shown = { $shown } pour ce qui est coché, { $all } en tout
+time-part = { $shown } sur { $all }
 time-on-invoice = Sur la facture { $number }
 time-remove = Enlever ce temps
 fig-range = D’un mauvais mois à un bon
@@ -3203,10 +3206,13 @@ set-account-area = À quoi sert cette adresse
 set-account-area-help = Ses courriels viennent aux moments de ce à quoi elle sert : travail, vos démarches, loisirs, plusieurs à la fois. Les courriels de vos expéditeurs sûrs s’y affichent sur le Porche aux moments cochés pour eux, et sont notifiés quand ses heures commencent ; ceux des personnes qui passent toujours viennent tout de suite ; les codes viennent tout de suite, sauf pendant votre sommeil. Rien de coché : les heures du travail, pour que les courriels des autres n’atteignent jamais vos soirées, et ceux de vos expéditeurs sûrs notifiés à leurs moments.
 area-work = Travail
 area-personal = À vous, démarches ou loisirs
-project-field-personal = À vous, hors travail
-project-field-personal-help = Ses tâches restent en vue pendant le calme, avec la famille et les amis.
+project-field-area = À quoi il sert
+project-area-help = Les pages Projets et Temps le montrent à ces heures-là, et ses tâches y viennent sauf si elles disent les leurs.
+project-area-unsaid = Rien de coché : le projet d’un client compte comme travail ; un autre s’affiche sur les pages Projets et Temps pour ce à quoi servent ses tâches ouvertes.
+projects-filter-help = Les projets s’affichent selon leur usage, d’après vos heures : ceux du travail pendant vos heures de travail, ceux des démarches pendant vos heures de démarches, ceux des loisirs pendant votre temps libre. Cochez-en d’autres un moment. Le projet d’un client dont l’usage n’est pas dit compte comme travail ; un autre s’affiche pour ce à quoi servent ses tâches ouvertes, et toujours s’il n’en a aucune. La page Temps partage ces cases.
+projects-none-ticked = Aucun projet pour ce qui est coché.
+time-filter-help = Le temps s’affiche selon l’usage de son projet, d’après vos heures : celui du travail pendant vos heures de travail, celui des démarches pendant vos heures de démarches, celui des loisirs pendant votre temps libre. Cochez-en d’autres un moment ; la page Projets partage ces cases. Le temps sans projet compte selon sa tâche ; le temps noté sur rien s’affiche toujours. Ce qui est replié compte dans le total entier, à côté, et ce qui reste à facturer ne se replie jamais.
 project-routes = Les courriels qui arrivent ici tout seuls
-project-resting = Les projets de travail se reposent jusqu’au retour du travail.
 ui-show-anyway = Montrer quand même
 folder-server-only = Gardé sur le serveur seulement : clic droit pour en garder une copie ici.
 folder-keep = En garder une copie ici
@@ -4644,6 +4650,8 @@ agenda-availability-only = Seules ses heures occupées sont partagées ici : r
 agendas-filter = Agendas
 agendas-filter-hours = Comme disent les heures
 agendas-filter-until = Votre choix tient jusqu’à { $time }, puis les heures décident de nouveau.
+agendas-filter-every = Tous les agendas
+agendas-filter-until-every = Votre choix tient jusqu’à { $time }, puis tous les agendas s’affichent de nouveau.
 agendas-fold = Replier { $group }
 agendas-unfold = Déplier { $group }
 agendas-group-yours = Les vôtres
@@ -8023,7 +8031,7 @@ texts-archived-empty = Aucune conversation archivée.
 texts-copy = Copier
 texts-copy-all = Copier le SMS
 
-# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
+# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time.
 agenda-plan-first = Le plan : d’abord { $step }
 agenda-plan-then = Le plan : { $step }, puis { $then }
 agenda-plan-one = Le plan : { $step }
@@ -8039,8 +8047,6 @@ agenda-more = { $n ->
     [one] Une étape de plus d’aujourd’hui ne tient pas avant la fin de la journée : { $steps }.
    *[other] { $Countf } étapes de plus d’aujourd’hui ne tiennent pas avant la fin de la journée : { $steps }.
 }
-agenda-band = { $area }, { $time }
-agenda-band-other = Étapes d’autres heures, { $time }
 # The head line above today (the unified agenda, §4.2): what is under way, what comes next, given ahead.
 head-until = { $what } jusqu’à { $time }.
 head-next = Ensuite : { $time } { $what }.
@@ -8067,7 +8073,6 @@ agenda-show = Afficher
 agenda-show-steps = Les étapes du plan
 agenda-show-needs = Repas, siestes et nuit
 agenda-show-doses = Prises
-agenda-show-quiet = Les étapes mises de côté pour l’instant
 agenda-wake = Réveil
 card-gone = Ce n’est plus là.
 card-pinned = Fixée : { $when }

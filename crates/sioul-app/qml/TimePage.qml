@@ -5,6 +5,9 @@
 // hours of each project and what is left to bill, then each stretch of time,
 // newest first. Time is noted by hand here too; a click changes any stretch
 // not billed (its start, its end, what, its task), its menu takes it out.
+// The Projects page's filter by area (AreaFilter.qml, its ticks shared):
+// time on a project not ticked folds; one project chosen shows whatever the
+// ticks (docs/areas.md, "A page's filter by area").
 
 pragma ComponentBehavior: Bound
 
@@ -27,9 +30,6 @@ Item {
     property var projects: []
     property string problem: ""
     readonly property var periods: ["week", "month", "year"]
-    // Quiet time: time noted for work waits behind a word, unless you ask.
-    property bool anyway: false
-    readonly property bool resting: page.window.moment.quiet && !page.anyway
     // A narrow screen (a phone): the title and the choices under the arrows,
     // each stretch of time on two lines.
     readonly property bool narrow: page.width < 600
@@ -53,14 +53,22 @@ Item {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
 
+    // Every area ticked, whatever the hour (the window's pictures): what the
+    // projects' filter keeps until the hours change, as a tick of yours.
+    function showAll() {
+        page.sioul.tickProjectAreas("work+admin+leisure")
+        page.reload()
+    }
+
     // Time spent, noted by hand.
     function startNew() {
         timeDialog.now().begin(page.project)
     }
 
+    // The period asked: made off the window's thread, shown when it comes (`timeView`).
     function reload() {
         page.projects = JSON.parse(page.sioul.projectRows() || "[]")
-        page.shown = JSON.parse(page.sioul.timePage(page.period, page.iso(page.anchor), page.project) || "null")
+        page.sioul.showTimePage(page.period, page.iso(page.anchor), page.project)
     }
 
     function move(steps) {
@@ -92,12 +100,9 @@ Item {
         return day + "  ·  " + length
     }
 
-    // Shown anyway once: the next visit in quiet time asks again.
     onVisibleChanged: {
         if (page.visible)
             page.reload()
-        else
-            page.anyway = false
     }
     onPeriodChanged: page.reload()
     Component.onCompleted: page.reload()
@@ -105,6 +110,10 @@ Item {
     Connections {
         target: page.sioul
 
+        // The view asked, made.
+        function onTimeViewChanged() {
+            page.shown = JSON.parse(page.sioul.timeView || "null")
+        }
         function onLinksChanged() {
             page.reload()
         }
@@ -129,6 +138,11 @@ Item {
         target: page.window
 
         function onTodayChanged() {
+            if (page.visible)
+                page.reload()
+        }
+        // The time changed (work's hours over, a meal, the night): the filter's ticks follow.
+        function onMomentChanged() {
             if (page.visible)
                 page.reload()
         }
@@ -237,9 +251,28 @@ Item {
                 Layout.fillWidth: true
             }
 
+            // What shows: the time on work's, admin's, leisure's projects, as the hours say until
+            // you tick others; nothing else explains it. Hidden while one project is chosen.
+            AreaFilter {
+                objectName: "timeAreas"
+                visible: page.project === "" && page.shown !== null && !!page.shown.filter
+                sioul: page.sioul
+                theme: page.theme
+                shown: page.shown ? page.shown.filter || null : null
+                help: page.sioul.text("time-filter-help")
+                onTicked: picked => {
+                    page.sioul.tickProjectAreas(picked)
+                    page.reload()
+                }
+                onAsHours: {
+                    page.sioul.projectAreasAsHours()
+                    page.reload()
+                }
+            }
             Label {
                 Layout.fillWidth: true
-                text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.sioul.textWith("time-total", "time", page.shown.total)) : ""
+                // What the filter shows, with the whole beside it when it folds some ("12 h shown, 31 h in all").
+                text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.shown.total_line || page.sioul.textWith("time-total", "time", page.shown.total)) : ""
                 textFormat: Text.PlainText
                 font.pixelSize: 16
                 wrapMode: Text.Wrap
@@ -521,15 +554,6 @@ Item {
                 onSaved: page.reload()
             }
         }
-    }
-
-    // Work rests: one line, and the page behind it if you ask.
-    RestCover {
-        visible: page.resting
-        sioul: page.sioul
-        theme: page.theme
-        line: page.window.moment.line
-        onShown: page.anyway = true
     }
 
     Later {

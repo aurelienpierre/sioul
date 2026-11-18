@@ -626,10 +626,10 @@ pub struct TaskAreas {
     pub work_categories: Vec<String>,
     pub leisure_categories: Vec<String>,
     pub personal_categories: Vec<String>,
-    /// Projects for a client, and those marked work.
-    pub work_projects: Vec<String>,
-    /// Projects marked personal (family, friends, leisure, health).
-    pub personal_projects: Vec<String>,
+    /// The projects that give their tasks an area, by id, with that area
+    /// (`Project::area_of`): those whose record says one, and those for a
+    /// client, work's while unsaid (with the older box, work's and the box's).
+    pub projects: Vec<(String, Area)>,
 }
 
 impl TaskAreas {
@@ -645,8 +645,7 @@ impl TaskAreas {
             work_categories: words.work.clone(),
             leisure_categories: words.leisure.clone(),
             personal_categories: words.usual_personal.clone(),
-            work_projects: Vec::new(),
-            personal_projects: Vec::new(),
+            projects: Vec::new(),
         }
     }
 
@@ -661,9 +660,14 @@ impl TaskAreas {
             work_categories: words.tasks.work.clone(),
             leisure_categories,
             personal_categories,
-            work_projects: projects.iter().filter(|c| c.client.is_some() || c.area.as_deref() == Some("work")).map(|c| c.id.clone()).collect(),
-            personal_projects: projects.iter().filter(|c| c.area.as_deref() == Some("personal")).map(|c| c.id.clone()).collect(),
+            projects: TaskAreas::of_projects(projects),
         }
+    }
+
+    /// The projects that give their tasks an area, with it, by id
+    /// (`Project::area_of`): an unsaid project without a client gives none.
+    pub fn of_projects(projects: &[crate::projects::Project]) -> Vec<(String, Area)> {
+        projects.iter().filter_map(|c| c.area_of().map(|area| (c.id.clone(), area))).collect()
     }
 
     /// A task's area: its own (`X-SIOUL-AREA`), else what its categories,
@@ -680,14 +684,18 @@ impl TaskAreas {
             task.categories.iter().any(|c| list.contains(&fold(c)))
         };
         let mut area = Area::default();
-        if has(&self.work_categories) || task.projects.iter().any(|c| self.work_projects.contains(c)) || task.list_id.starts_with("local/github") {
+        if has(&self.work_categories) || task.list_id.starts_with("local/github") {
             area = area.with(Area::WORK);
         }
         if has(&self.leisure_categories) {
             area = area.with(Area::LEISURE);
         }
-        if has(&self.personal_categories) || task.projects.iter().any(|c| self.personal_projects.contains(c)) {
+        if has(&self.personal_categories) {
             area = area.with(Area::PERSONAL);
+        }
+        // Each of its projects' areas, as the project says it (`Project::area_of`).
+        for (_, of) in self.projects.iter().filter(|(id, _)| task.projects.contains(id)) {
+            area = area.with(*of);
         }
         if area.is_empty() { Area::ADMIN } else { area }
     }
@@ -1058,7 +1066,7 @@ mod tests {
             ("sioul-core/src/plan.rs", 3, 0, 0, 0, "the plan gives a task room in the hours of its area: the person's week, the same on every device"),
             ("sioul-core/src/attention.rs", 4, 12, 0, 0, "hours: this row and this address never meet in your week (`meets_at`); what you set or asked for, and what Reachable lets through, held by the hour alone (`own`, `site`); the hour's answer beside the device's, to say which holds a message (`letter`). Device: `Now::brings`, `keeps_back`, step 8 for dates, mail, other apps' messages and sites; `meets_somewhere` and a task reminder's devices (`is_for`)"),
             ("sioul-core/src/quiet.rs", 0, 8, 0, 0, "`Mode::brings`, `keeps_back`, `elsewhere` and `for_another`; what the task pages keep now (`QuietTasks`, the office's cell)"),
-            ("sioul-core/src/areafilter.rs", 0, 2, 0, 0, "the filter's ticks, for Mail and Budgets; the status line's sentence (`elsewhere`)"),
+            ("sioul-core/src/areafilter.rs", 0, 2, 0, 0, "the filter's ticks, for Mail, Budgets, and Projects and Time (one filter for both); the status line's sentence (`elsewhere`)"),
             ("sioul-core/src/mailbox.rs", 0, 2, 0, 0, "an address rests, and says whether the hour or this device is the reason"),
             ("sioul-core/src/view.rs", 0, 1, 0, 0, "the Mail page's accounts: an address rests"),
             ("sioul-core/src/appnotes.rs", 1, 2, 0, 0, "an app's notifications with a For, on a phone, and why one waits; while Reachable, the hours alone (`area_fits`)"),
@@ -1076,10 +1084,10 @@ mod tests {
             ("sioul-cli/src/mcp/read.rs", 0, 0, 1, 0, "agents read the hours alone"),
             ("sioul-cli/src/mcp/records.rs", 0, 0, 1, 0, "agents read the hours alone"),
             ("sioul-app/src/hours.rs", 0, 0, 1, 0, "`hours_mode_at`, by the hours alone: the doses, Health, calls and texts; `mode_at` gives it this device's lines"),
-            ("sioul-app/src/work.rs", 0, 0, 1, 1, "the task pages' situation on this device"),
+            ("sioul-app/src/work.rs", 0, 0, 1, 1, "the task pages' situation on this device: what Now and What comes keep; the full views and today's layout read none"),
             ("sioul-app/src/homecard.rs", 0, 0, 2, 2, "the home card's next step and its frames on this device"),
             ("sioul-app/src/appnotes.rs", 0, 0, 1, 1, "another app's notifications on a phone, on this device (`Clock::on`)"),
-            ("sioul-app/src/agenda.rs", 0, 0, 1, 0, "the agenda's filter by time: the hours of your agendas, the person's week, on every device alike"),
+            ("sioul-app/src/agenda.rs", 0, 0, 1, 0, "the agenda's filter by time in What comes (the Day, the Week and the Month by hand alone): the hours of your agendas, the person's week, on every device alike"),
             ("sioul-app/src/calls.rs", 0, 0, 1, 0, "calls keep their own matrix: never a device's"),
             ("sioul-app/src/phonemsgs.rs", 0, 0, 1, 0, "the phone's texts keep their own matrix: never a device's"),
             ("sioul-app/src/everywhere.rs", 0, 0, 1, 0, "do-not-disturb's look at the hours: no area"),

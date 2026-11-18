@@ -35,7 +35,105 @@ pub(crate) fn entries(shared: &Shared) -> Vec<Entry> {
 /// The projects, for the list.
 pub(crate) fn rows(shared: &Shared) -> String {
     let loaded = loaded(shared);
-    json(&projectview::rows(&loaded, &entries(shared), &loaded.projects))
+    json(&projectview::rows(&loaded, &entries(shared), &loaded.projects, &sioul_core::areas::TaskAreas::of_config(&load_config(), &loaded.projects)))
+}
+
+/// The Projects and Time pages' filter as this device keeps it (docs/areas.md,
+/// "A page's filter by area"): `$XDG_STATE_HOME/sioul/projects-view.toml`,
+/// never shared: the areas you ticked, while they hold. One for both pages:
+/// both show projects.
+#[derive(serde::Serialize, Deserialize, Default, PartialEq, Clone, Debug)]
+struct ProjectsView {
+    #[serde(default, skip_serializing_if = "is_as_the_hours_say")]
+    areas: sioul_core::areafilter::AreaFilter,
+}
+
+fn is_as_the_hours_say(filter: &sioul_core::areafilter::AreaFilter) -> bool {
+    *filter == sioul_core::areafilter::AreaFilter::default()
+}
+
+fn view_path() -> PathBuf {
+    sioul_core::config::state_dir().join("projects-view.toml")
+}
+
+fn kept_view(path: &std::path::Path) -> ProjectsView {
+    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// The view written back, only when it changed; its folder made first.
+fn write_view(path: &std::path::Path, view: &ProjectsView) {
+    if kept_view(path) != *view
+        && let Ok(text) = toml::to_string(view)
+    {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = sioul_core::filelock::replace(path, text.as_bytes());
+    }
+}
+
+/// What the Projects and Time pages show at `mode`, `now` in Unix seconds:
+/// the areas ticked as the hours say on this device (`areafilter::hours_say`),
+/// unless you ticked others, and the filter's button. Your ticks forgotten
+/// once they no longer hold.
+pub(crate) fn filter(mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::areas::Area, sioul_core::areafilter::Shown) {
+    filter_in(&view_path(), mode, now)
+}
+
+fn filter_in(path: &std::path::Path, mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::areas::Area, sioul_core::areafilter::Shown) {
+    let mut kept = kept_view(path);
+    let said = sioul_core::areafilter::hours_say(mode);
+    if kept.areas.settle(said, now) {
+        write_view(path, &kept);
+    }
+    (kept.areas.shown(said, now), sioul_core::areafilter::shown(&kept.areas, said, now, tr()).on(tr(), mode))
+}
+
+/// The areas you ticked in the projects' filter ("work+leisure", "" for
+/// none), at `mode`: kept until the hours change, a day at most.
+pub(crate) fn tick_areas(areas: &str, mode: &sioul_core::quiet::Mode, now: i64) {
+    tick_areas_in(&view_path(), areas, mode, now);
+}
+
+fn tick_areas_in(path: &std::path::Path, areas: &str, mode: &sioul_core::quiet::Mode, now: i64) {
+    let mut view = kept_view(path);
+    let ticked = sioul_core::areas::Area::parse(areas).unwrap_or_default();
+    view.areas.tick(ticked, sioul_core::areafilter::hours_say(mode), mode.until.as_ref().map(|z| z.timestamp().as_second()), now);
+    write_view(path, &view);
+}
+
+/// "As the hours say": your ticks in the projects' filter forgotten.
+pub(crate) fn areas_as_hours() {
+    let path = view_path();
+    let mut view = kept_view(&path);
+    view.areas.as_hours();
+    write_view(&path, &view);
+}
+
+/// The Projects page's list (docs/areas.md, "A page's filter by area"):
+/// every project in the list's order, each shown when its area
+/// (`Project::area_of`) meets the areas ticked; and the filter's button.
+/// JSON: {rows: [{…ProjectRow, shown}], filter}.
+pub(crate) fn page_rows(shared: &Shared) -> String {
+    let now = sioul_core::zone::now();
+    let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
+    let loaded = loaded(shared);
+    let rows = listed(projectview::rows(&loaded, &entries(shared), &loaded.projects, &sioul_core::areas::TaskAreas::of_config(&load_config(), &loaded.projects)), ticked);
+    json(&serde_json::json!({ "rows": rows, "filter": filter }))
+}
+
+/// A project's row, and whether the filter shows it.
+#[derive(serde::Serialize)]
+struct Listed {
+    #[serde(flatten)]
+    row: projectview::ProjectRow,
+    shown: bool,
+}
+
+/// Each row, shown when its area meets `ticked`, or whatever the ticks when
+/// it shows for none (`Project::area_shown`), in their order.
+fn listed(rows: Vec<projectview::ProjectRow>, ticked: sioul_core::areas::Area) -> Vec<Listed> {
+    rows.into_iter().map(|row| Listed { shown: sioul_core::areas::Area::parse(&row.area).is_none_or(|area| area.meets(ticked)), row }).collect()
 }
 
 /// One project's page, as JSON; "" when it is gone.
@@ -136,17 +234,38 @@ pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
     line_said(result)
 }
 
+/// The Time page as last asked (`Shared::time_asked`), made off the window's
+/// thread (each stretch's area once a reading, but its files and tasks read
+/// all the same), then shown (`time_view`): one run at a time, the newest
+/// asked last.
+pub(crate) fn show_time(qt: &QtThread, shared: &Arc<Shared>) {
+    let qt = qt.clone();
+    crate::backend::coalesced(shared, |s| &s.time_job, move |shared| {
+        let (period, anchor, project) = shared.time_asked.lock().map(|a| a.clone()).unwrap_or_default();
+        let view = time(shared, &period, &anchor, &project);
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().set_time_view(cxx_qt_lib::QString::from(&view)));
+    });
+}
+
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.
 pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -> String {
     let loaded = loaded(shared);
-    let today = sioul_core::zone::now().date();
+    let now = sioul_core::zone::now();
+    let today = now.date();
     let anchor = anchor.parse::<Date>().unwrap_or(today);
     let sessions = timelog::sessions();
     // Time noted by hand has no task, or was not timed: it can be taken out.
     let by_hand: std::collections::BTreeSet<String> = sessions.iter().filter(|s| s.task.is_empty() || !s.project.is_empty()).map(Session::key).collect();
     let all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let config = load_config();
-    let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
+    // The projects' filter (docs/areas.md, "A page's filter by area"): time on a project
+    // whose area is not ticked folds, and the lines say so; one project chosen by hand shows
+    // whatever the ticks. What is left to bill stays whole (`timereport::view`).
+    let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
+    // Each project's area once, each task's once, then a look-up a stretch (`StretchAreas`).
+    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects));
+    let shows = |e: &Entry| !project.is_empty() || stretches.area_of(e).is_none_or(|area| area.meets(ticked));
+    let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr(), &shows);
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
     let kinds: std::collections::BTreeMap<String, Option<timelog::Kind>> = sessions.iter().map(|s| (s.key(), s.kind)).collect();
     for entry in &mut view.entries {
@@ -154,7 +273,14 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
         entry.kind = timelog::Kind::id(kind).to_string();
         entry.kind_said = tr().text(&format!("time-kind-{}", entry.kind), None);
     }
-    json(&view)
+    #[derive(serde::Serialize)]
+    struct Shown {
+        #[serde(flatten)]
+        view: timereport::TimeView,
+        /// The projects' filter's button (`areafilter::Shown`).
+        filter: sioul_core::areafilter::Shown,
+    }
+    json(&Shown { view, filter })
 }
 
 /// A project's billable time from `from` to `to`, written as a spreadsheet at
@@ -614,6 +740,79 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The projects' filter, the Projects and Time pages' (docs/areas.md, "A
+    /// page's filter by area"): as the hours say on this device by default,
+    /// nothing at night but leisure's, any area one tick away, your ticks held
+    /// while the hours say the same and kept in this device's view file, "As
+    /// the hours say" back at once; a project listed when its area meets the
+    /// ticks, one that shows for no area (unsaid, no client, no open task)
+    /// whatever the ticks, every row given with whether it shows.
+    #[test]
+    fn the_projects_filter_follows_the_hours_until_you_tick() {
+        use sioul_core::areas::{Area, Here, Time, Week};
+        use sioul_core::quiet::{Mode, Reason};
+        let mode = |time: Time| Mode { quiet: time != Time::Work, time, week: Week { work_hours: true, admin_hours: true, ..Week::default() }, reason: Reason::Working, until: None, back: None, label: String::new(), here: Here::default() };
+        let dir = std::env::temp_dir().join(format!("sioul-projects-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("sioul").join("projects-view.toml");
+        let now = 1_800_000_000;
+        assert_eq!(filter_in(&path, &mode(Time::Work), now).0, Area::WORK, "at work, work's projects");
+        assert_eq!(filter_in(&path, &mode(Time::Admin), now).0, Area::ADMIN);
+        assert_eq!(filter_in(&path, &mode(Time::Leisure), now).0, Area::LEISURE, "in the evening, leisure's");
+        assert!(!path.exists(), "nothing written while nothing is ticked");
+        // Everything ticked in the evening, to manage them: held while the hours say leisure, kept here.
+        tick_areas_in(&path, "work+admin+leisure", &mode(Time::Leisure), now);
+        let (shown, filter) = filter_in(&path, &mode(Time::Leisure), now + 60);
+        assert_eq!((shown, filter.own), (Area::ALL, true));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("ticked = \"work+admin+leisure\""));
+        // The hours change: theirs again, and the ticks forgotten for good.
+        assert_eq!(filter_in(&path, &mode(Time::Work), now + 120).0, Area::WORK);
+        assert_eq!(filter_in(&path, &mode(Time::Leisure), now + 180).0, Area::LEISURE);
+        // "As the hours say".
+        tick_areas_in(&path, "work", &mode(Time::Leisure), now);
+        let mut view = kept_view(&path);
+        view.areas.as_hours();
+        write_view(&path, &view);
+        assert_eq!(filter_in(&path, &mode(Time::Leisure), now).0, Area::LEISURE);
+        // The rows: each with whether it shows, in their order.
+        let row = |id: &str, area: &str| projectview::ProjectRow { id: id.into(), title: id.into(), for_client: false, status: String::new(), client: String::new(), open_tasks: 0, unbilled: String::new(), area: area.into(), ai: false };
+        let rows = || vec![row("lumen", "work"), row("garden", "admin+leisure"), row("choir", "leisure"), row("old", "")];
+        let shown = |ticked: Area| listed(rows(), ticked).into_iter().map(|l| (l.row.id, l.shown)).collect::<Vec<_>>();
+        let at = |ids: &[(&str, bool)]| ids.iter().map(|(id, on)| (id.to_string(), *on)).collect::<Vec<_>>();
+        assert_eq!(shown(Area::LEISURE), at(&[("lumen", false), ("garden", true), ("choir", true), ("old", true)]));
+        assert_eq!(shown(Area::WORK), at(&[("lumen", true), ("garden", false), ("choir", false), ("old", true)]), "no area: whatever the ticks");
+        assert_eq!(shown(Area::default()), at(&[("lumen", false), ("garden", false), ("choir", false), ("old", true)]));
+        let json = serde_json::to_value(listed(rows(), Area::ADMIN)).unwrap();
+        assert_eq!((json[1]["id"].as_str(), json[1]["area"].as_str(), json[1]["shown"].as_bool()), (Some("garden"), Some("admin+leisure"), Some(true)), "{json}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The projects' filter shapes two pages alone, the Projects list and the
+    /// Time page (`page_rows`, `time`): the export, a project's page, its
+    /// invoices and every "to bill" read every stretch whatever the ticks (the
+    /// review of the branch `views`, finding 2). Read in this file's source:
+    /// each function of its own that asks the filter.
+    #[test]
+    fn only_the_projects_list_and_the_time_page_read_the_filter() {
+        let needle = ["filter(&crate::hours", "::mode_at("].concat();
+        let mut readers: Vec<String> = Vec::new();
+        let mut current = String::new();
+        for line in include_str!("projects.rs").lines() {
+            if let Some(rest) = ["pub(crate) fn ", "fn "].iter().find_map(|head| line.strip_prefix(head)) {
+                current = rest.split(['(', '<']).next().unwrap_or_default().to_string();
+            }
+            if line.starts_with("mod tests") {
+                break;
+            }
+            if line.contains(&needle) && !readers.contains(&current) {
+                readers.push(current.clone());
+            }
+        }
+        assert_eq!(readers, ["page_rows", "time"]);
+        // What the time page's "to bill" and the export read: every stretch (`entries`, unfiltered).
+        assert!(include_str!("projects.rs").contains("let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());"), "the export reads every stretch");
+    }
 
     /// Paid, then its Undo (review of 36002ea, must-fix 3): an invoice
     /// another device marked paid stays paid; one Paid made paid is unpaid

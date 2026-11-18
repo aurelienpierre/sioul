@@ -2261,7 +2261,10 @@ SioulWindow {
                 () => grabber.save("phone-agenda"),
                 () => window.page = 5,
                 () => grabber.save("phone-contacts"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => grabber.save("phone-projects"),
                 () => window.page = 9,
                 () => grabber.save("phone-budgets"),
@@ -2346,15 +2349,16 @@ SioulWindow {
                 () => grabber.save("notes"),
                 () => {
                     window.page = 7
+                    projectsPage.showAll()
                     projectsPage.open("fernhill")
                 },
                 () => {},
                 () => grabber.save("projects"),
                 // Time: last week, a whole one, whatever the day (and the hour:
-                // shown anyway in quiet time).
+                // every area ticked in its filter).
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                     timePage.move(-1)
                 },
                 () => {},
@@ -2690,7 +2694,10 @@ SioulWindow {
             ]
             // Projects, time and invoices, on invented data: a project's page, its invoice made, the Time page.
             readonly property var projects: [
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => grabber.save("projects"),
                 () => projectsPage.routesShown = true,
@@ -3620,7 +3627,10 @@ SioulWindow {
             // the editor, its time unfolded and its preview; issued, its pane; Paid…; the
             // list; Settings ▸ Invoices. A phone's layout with "phone" (run.sh).
             readonly property var invoicesSteps: [
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("project-client"),
@@ -4760,7 +4770,10 @@ SioulWindow {
                 () => window.parametersPage.save("projects.rename", true),
                 () => {},
                 () => grabber.save("projects-file-renamed"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("projects-file-page"),
@@ -4776,7 +4789,10 @@ SioulWindow {
                 () => window.showParameters("ai"),
                 () => {},
                 () => grabber.save("ai-settings"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("ai-project-closed"),
@@ -4907,7 +4923,7 @@ SioulWindow {
                 () => sioul.status = sioul.exportTimeCsv("studio", "2026-10-01", "2026-10-31", "file://" + grabber.folder + "/studio%20octobre.csv"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
                 () => window.close()
@@ -5290,12 +5306,15 @@ SioulWindow {
                 () => grabber.save("notes"),
                 () => notesPage.openFirst(),
                 () => grabber.save("note"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => grabber.save("projects"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
                 // Last week's, which has some: the first stretch changed.

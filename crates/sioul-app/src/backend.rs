@@ -103,6 +103,8 @@ pub mod qobject {
         #[qproperty(QString, places_found)]
         // The groups Sioul noticed, for Mail ▸ ⚙ ▸ Topics (`topics::find_groups`).
         #[qproperty(QString, topic_groups)]
+        // The Time page as last asked (`show_time_page`), made off the window's thread.
+        #[qproperty(QString, time_view)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -1093,7 +1095,7 @@ pub mod qobject {
         #[qinvokable]
         fn fold_task(self: Pin<&mut Sioul>, uid: &QString, open: bool);
 
-        /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
+        /// Asleep, Now chooses among every task all the same ("Show anyway" on its cover), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
 
@@ -2550,6 +2552,19 @@ pub mod qobject {
         #[qinvokable]
         fn project_rows(self: &Sioul) -> QString;
 
+        /// The Projects page's list, by its filter by area: {rows, all, filter}, as JSON.
+        #[qinvokable]
+        fn projects_page(self: &Sioul) -> QString;
+
+        /// The areas ticked in the projects' filter, the Projects and Time pages'
+        /// ("work+leisure", "" for none), kept until the hours change, a day at most.
+        #[qinvokable]
+        fn tick_project_areas(self: Pin<&mut Sioul>, areas: &QString);
+
+        /// "As the hours say": your ticks in the projects' filter forgotten.
+        #[qinvokable]
+        fn project_areas_as_hours(self: Pin<&mut Sioul>);
+
         /// One project's page, as JSON.
         #[qinvokable]
         fn project_page(self: &Sioul, id: &QString) -> QString;
@@ -2558,9 +2573,10 @@ pub mod qobject {
         #[qinvokable]
         fn save_project(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
 
-        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or all.
+        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or
+        /// all, made off the window's thread: `time_view` follows.
         #[qinvokable]
-        fn time_page(self: &Sioul, period: &QString, anchor: &QString, project: &QString) -> QString;
+        fn show_time_page(self: Pin<&mut Sioul>, period: &QString, anchor: &QString, project: &QString);
 
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
@@ -3153,6 +3169,7 @@ pub struct SioulRust {
     forecast: QString,
     places_found: QString,
     topic_groups: QString,
+    time_view: QString,
     shared: Arc<Shared>,
 }
 
@@ -3256,6 +3273,9 @@ pub(crate) struct Shared {
     /// from the older plan beside the newer calendars (review of 3a2fbd4, later 4).
     pub(crate) replan_due: AtomicBool,
     pub(crate) health_job: Job,
+    /// The Time page (`projects::show_time`), and what it asked last: period, day, project.
+    pub(crate) time_job: Job,
+    pub(crate) time_asked: Mutex<(String, String, String)>,
     /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
     pub(crate) agenda_job: Job,
     pub(crate) agenda_generation: AtomicU64,
@@ -7227,6 +7247,9 @@ impl qobject::Sioul {
         if shared.health_job.deferred.swap(false, Ordering::SeqCst) {
             crate::health::show_health(&qt, &shared);
         }
+        if shared.time_job.deferred.swap(false, Ordering::SeqCst) {
+            crate::projects::show_time(&qt, &shared);
+        }
         crate::share::set_shown(true);
         // Something shared to Sioul, a mailto: link opened with it: its draft (docs/android.md, "Sharing").
         crate::outside::take(self.as_mut());
@@ -8002,6 +8025,19 @@ impl qobject::Sioul {
         QString::from(&crate::projects::rows(&self.shared()))
     }
 
+    fn projects_page(&self) -> QString {
+        QString::from(&crate::projects::page_rows(&self.shared()))
+    }
+
+    fn tick_project_areas(self: Pin<&mut Self>, areas: &QString) {
+        let now = sioul_core::zone::now();
+        crate::projects::tick_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
+    }
+
+    fn project_areas_as_hours(self: Pin<&mut Self>) {
+        crate::projects::areas_as_hours();
+    }
+
     fn project_page(&self, id: &QString) -> QString {
         QString::from(&crate::projects::page(&self.shared(), &id.to_string()))
     }
@@ -8010,8 +8046,12 @@ impl qobject::Sioul {
         QString::from(&crate::projects::save(&self.qt_thread(), &self.shared(), &id.to_string(), &edit.to_string()))
     }
 
-    fn time_page(&self, period: &QString, anchor: &QString, project: &QString) -> QString {
-        QString::from(&crate::projects::time(&self.shared(), &period.to_string(), &anchor.to_string(), &project.to_string()))
+    fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {
+        let shared = self.shared();
+        if let Ok(mut asked) = shared.time_asked.lock() {
+            *asked = (period.to_string(), anchor.to_string(), project.to_string());
+        }
+        crate::projects::show_time(&self.qt_thread(), &shared);
     }
 
     fn note_time(self: Pin<&mut Self>, edit: &QString) -> QString {

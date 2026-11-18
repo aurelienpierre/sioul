@@ -2901,6 +2901,7 @@ time-week-of = Week of { $day }
 time-nothing-week = Nothing noted this week.
 time-nothing-month = Nothing noted this month.
 time-nothing-year = Nothing noted this year.
+time-nothing-ticked = Nothing noted for what is ticked; { $all } in all.
 project-done = Done
 project-asked = Date asked
 project-from = From { $sender }
@@ -3041,6 +3042,8 @@ time-period-month = Month
 time-period-year = Year
 time-all-projects = All projects
 time-total = { $time } in all
+time-total-shown = { $shown } shown, { $all } in all
+time-part = { $shown } of { $all }
 time-on-invoice = On invoice { $number }
 time-remove = Take this time out
 fig-range = From a bad month to a good one
@@ -3167,10 +3170,13 @@ set-account-area = What this address is for
 set-account-area-help = Its mail comes at the times for what it is for: work, your admin, leisure, any of them together. Your safe senders' mail to it is shown on the Porch at their times, and told once its hours begin; your Always through people's comes at once; codes come at once, but while you sleep. Nothing ticked: work's hours, so that the others' mail never reaches your evenings, and your safe senders' told at their times.
 area-work = Work
 area-personal = Yours, admin or leisure
-project-field-personal = Yours, outside work
-project-field-personal-help = Its tasks stay in view in quiet time, with family and friends.
+project-field-area = What it is for
+project-area-help = The Projects and Time pages show it in these hours, and its tasks come in them unless they say their own.
+project-area-unsaid = Nothing ticked: a client's project counts as work; another shows on the Projects and Time pages for what its open tasks are for.
+projects-filter-help = Projects show by what they are for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while. A client's project whose use is unsaid counts as work; another one shows for what its open tasks are for, and always when it has none. The Time page shares these ticks.
+projects-none-ticked = No project for what is ticked.
+time-filter-help = Time shows by what its project is for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while; the Projects page shares these ticks. Time on no project counts by its task; time noted on nothing always shows. What is folded is counted in the whole beside the total, and what is left to bill never folds.
 project-routes = Mail that comes here by itself
-project-resting = Work projects rest until work comes back.
 ui-show-anyway = Show anyway
 folder-server-only = Kept on the server only: right click to keep a copy here.
 folder-keep = Keep a copy here
@@ -4608,6 +4614,8 @@ agenda-availability-only = Only the times it is busy are shared here: nothing el
 agendas-filter = Agendas
 agendas-filter-hours = As the hours say
 agendas-filter-until = Your choice holds until { $time }, then the hours decide again.
+agendas-filter-every = Every agenda
+agendas-filter-until-every = Your choice holds until { $time }, then every agenda shows again.
 agendas-fold = Fold { $group }
 agendas-unfold = Unfold { $group }
 agendas-group-yours = Yours
@@ -7952,7 +7960,7 @@ texts-archived-empty = No archived conversation.
 texts-copy = Copy
 texts-copy-all = Copy the text
 
-# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
+# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time.
 agenda-plan-first = The plan: { $step } first
 agenda-plan-then = The plan: { $step }, then { $then }
 agenda-plan-one = The plan: { $step }
@@ -7968,8 +7976,6 @@ agenda-more = { $n ->
     [one] One more step of today does not fit before the end of the day: { $steps }.
    *[other] { $Count } more steps of today do not fit before the end of the day: { $steps }.
 }
-agenda-band = { $area }, { $time }
-agenda-band-other = Steps of other hours, { $time }
 # The head line above today (the unified agenda, §4.2): what is under way, what comes next, given ahead.
 head-until = { $what } until { $time }.
 head-next = Next: { $time } { $what }.
@@ -7996,7 +8002,6 @@ agenda-show = Show
 agenda-show-steps = The plan’s steps
 agenda-show-needs = Meals, naps and the night
 agenda-show-doses = Doses
-agenda-show-quiet = Steps kept out of view for now
 agenda-wake = Waking
 card-gone = This is no longer there.
 card-pinned = Pinned: { $when }

@@ -154,7 +154,7 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
 
 Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **Toutes les catégories**, ne montrent que les tâches d’un projet, d’un type ou d’une catégorie, dans chaque vue, Maintenant compris : « le prochain appel ». Le plan reste entier : un appel qui attend un message attend toujours. Sioul se souvient de vos choix.
 
-**Vos heures ne façonnent que Maintenant.** Liste, Tableau et Gantt montrent chaque tâche, travail, administratif et loisirs, quelle que soit l’heure, comme la boîte de réception et les Budgets : une tâche de travail y est aussi le soir. Maintenant reste calme et montre ce à quoi l’heure sert.
+**Vos heures ne façonnent que Maintenant.** La journée, Liste, Tableau, Gantt et Chercher montrent chaque tâche, travail, administratif et loisirs, quelle que soit l’heure : une tâche de travail y est aussi le soir, et La journée montre les étapes du jour de toutes. Maintenant reste calme et montre ce à quoi l’heure sert.
 
 **Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)). Sur Maintenant, une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de la vue, le plan entier. Sur Liste, Tableau et Gantt, seul ce que vous avez dit laisse une liste de côté : une que vous y avez décochée ou que vous gardez cachée ; jamais les heures. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
 
@@ -230,9 +230,9 @@ Google Tasks garde moins : une liste là-bas grise ce que Google ne garde pas 
 
 ## Pendant le calme, et pendant le sommeil {#in-quiet-time-and-while-you-sleep}
 
-Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour. Une tâche que vous créez sur la page Tâches reste en vue jusqu’à ce que vous quittiez la page, quelles que soient les heures, et sa ligne dit quand elle revient : « Hors de ces heures : de retour demain à 09:00. »
+Pendant le calme ([Les heures](hours.md#quiet-time)), **Maintenant** ne garde que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour. Les autres onglets montrent tout, quelle que soit l’heure. Une tâche que vous créez sur la page Tâches reste en vue dans Maintenant jusqu’à ce que vous quittiez la page, quelles que soient les heures, et sa ligne dit quand elle revient : « Hors de ces heures : de retour demain à 09:00. »
 
-Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), la page attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. **Nouveau ▾ ▸ Une tâche** montre quand même la page, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
+Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), **Maintenant** attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les onglets restent à portée : **La journée**, **Liste**, **Tableau**, **Gantt** et **Chercher** montrent tout. Dans Maintenant, **Nouveau ▾ ▸ Une tâche** le montre quand même, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
 
 ## Pour aller plus loin {#going-further}
 
@@ -408,6 +408,7 @@ Dans le formulaire d’une tâche, **Son rendez-vous…** trouve un événement 
 
 - Une tâche avant un événement n’écrit rien dans l’événement, parce qu’un serveur dit à chaque invité tout changement d’une réunion (RFC 6638). Aucune norme ne nomme une date d’un événement répété dans un lien (RFC 5545, RFC 9253) : la tâche le porte, sur une ligne propre à Sioul, et écrit sa date en clair, là où tout programme CalDAV la lit. Qu’aucun programme ne perde cette ligne, ou ce qu’il fait s’il la perd, n’a pas été testé.
 - Une date passée ne déplace rien d’elle-même : une tâche porte sur cette réunion-là, et laquelle vient ensuite, c’est à vous de le dire. C’est une règle de conception de Sioul, pas un résultat : aucune étude n’a été trouvée là-dessus.
+- Une vue complète sert à gérer, aussi ne cache-t-elle rien ; seul l’onglet calme, Maintenant, suit vos heures. Une règle de conception de Sioul aussi : se battre avec une page pour tout voir pèse plus que de tout voir.
 
 Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 6 à 23, 71, 72 et 73.
 

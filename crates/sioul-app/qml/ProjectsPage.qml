@@ -2,7 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Projects, the umbrella over everything else. On the left, each
-// with its open tasks and the time left to bill; on the right, the one open:
+// with its open tasks and the time left to bill, by Mail's filter by area
+// (AreaFilter.qml): work's, admin's or leisure's as the hours say on this
+// device, any of them one tick away (docs/areas.md); on the right, the one open:
 // what is coming, then what happened, on one line of time; its tasks one
 // click away as a board, a list or a calendar; its time and its invoices;
 // its client's profile (ClientProfileDialog.qml). "Make the invoice" opens
@@ -22,16 +24,15 @@ Item {
     required property var theme
     required property var window
 
+    // Every project, in the list's order, each with whether the filter shows it (`shown`).
     property var rows: []
+    readonly property var listed: page.rows.filter(r => r.shown === true)
+    // The filter by area as Rust says it (`areafilter::Shown`); kept on this device
+    // with Time's, in projects-view.toml.
+    property var filter: null
     // The mail that belongs to the one open: its routes, folded until asked.
     property bool routesShown: false
     property var routes: []
-    // Quiet time: only your own projects, unless you ask for the others;
-    // while you sleep, none.
-    property bool anyway: false
-    readonly property bool resting: page.window.moment.quiet && !page.anyway
-    readonly property bool rest: page.window.moment.sleep === true && !page.anyway
-    readonly property var listed: page.resting ? page.rows.filter(r => r.personal) : page.rows
     property string openId: ""
     // On a phone, the project open takes the page; Back closes it (main.qml).
     readonly property bool canGoBack: page.openId !== ""
@@ -44,7 +45,9 @@ Item {
     property var profile: null
 
     function reload() {
-        page.rows = JSON.parse(page.sioul.projectRows() || "[]")
+        const got = JSON.parse(page.sioul.projectsPage() || "{}")
+        page.rows = got.rows || []
+        page.filter = got.filter || null
         page.shown = page.openId !== "" ? JSON.parse(page.sioul.projectPage(page.openId) || "null") : null
         page.routes = page.openId !== "" ? JSON.parse(page.sioul.settings("project:" + page.openId) || "[]") : []
         page.profile = page.shown !== null && page.shown.for_client && page.shown.client !== "" ? JSON.parse(page.sioul.clientProfile(page.shown.client) || "null") : null
@@ -75,9 +78,18 @@ Item {
         return form
     }
 
+    // Every area ticked, whatever the hour (the window's pictures): what the
+    // projects' filter keeps until the hours change, as a tick of yours.
+    function showAll() {
+        page.sioul.tickProjectAreas("work+admin+leisure")
+        page.reload()
+    }
+
+    // The first the list shows, else the first of all (the window's pictures).
     function openFirst() {
-        if (page.rows.length > 0)
-            page.open(page.rows[0].id)
+        const first = page.listed.length > 0 ? page.listed[0] : page.rows[0]
+        if (first)
+            page.open(first.id)
     }
 
     // An amount as the core says amounts: digits in your language's way, the
@@ -123,14 +135,21 @@ Item {
             Qt.openUrlExternally(page.theme.fileUrl(made.pdf))
     }
 
-    // Shown anyway once: the next visit in quiet time, or asleep, asks again.
     onVisibleChanged: {
         if (page.visible)
             page.reload()
-        else
-            page.anyway = false
     }
     Component.onCompleted: page.reload()
+
+    // The time changed (work's hours over, a meal, the night): the filter's ticks follow.
+    Connections {
+        target: page.window
+
+        function onMomentChanged() {
+            if (page.visible)
+                page.reload()
+        }
+    }
 
     Connections {
         target: page.sioul
@@ -197,22 +216,33 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.theme.muted
             }
-            RowLayout {
-                visible: page.resting && page.listed.length < page.rows.length
+            // What shows: work's, admin's, leisure's projects, as the hours say until you tick
+            // others; nothing else explains it (docs/areas.md, "A page's filter by area").
+            AreaFilter {
+                objectName: "projectAreas"
+                visible: page.rows.length > 0 && page.filter !== null
+                sioul: page.sioul
+                theme: page.theme
+                shown: page.filter
+                help: page.sioul.text("projects-filter-help")
+                onTicked: picked => {
+                    page.sioul.tickProjectAreas(picked)
+                    page.reload()
+                }
+                onAsHours: {
+                    page.sioul.projectAreasAsHours()
+                    page.reload()
+                }
+            }
+            // Projects there are, none for what is ticked: said, one tick away above.
+            Label {
+                objectName: "projectsNoneTicked"
+                visible: page.rows.length > 0 && page.listed.length === 0
                 Layout.fillWidth: true
-                spacing: 8
-
-                Label {
-                    Layout.fillWidth: true
-                    text: page.sioul.text("project-resting")
-                    wrapMode: Text.Wrap
-                    color: page.theme.muted
-                }
-                Button {
-                    flat: true
-                    text: page.sioul.text("ui-show-anyway")
-                    onClicked: page.anyway = true
-                }
+                text: page.sioul.text("projects-none-ticked")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.muted
             }
             ListView {
                 id: list
@@ -631,14 +661,5 @@ Item {
                 onSaved: page.reload()
             }
         }
-    }
-
-    // Asleep: one line, and the projects if you ask.
-    RestCover {
-        visible: page.rest
-        sioul: page.sioul
-        theme: page.theme
-        line: page.window.moment.line
-        onShown: page.anyway = true
     }
 }

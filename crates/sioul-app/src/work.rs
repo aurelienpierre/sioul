@@ -150,7 +150,7 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, loaded: 
     })
 }
 
-/// Asleep, the tasks all the same: the page asked ("Show anyway"), until it is left.
+/// Asleep, Now chooses among every task all the same: its cover asked ("Show anyway"), until the page is left.
 static SHOWN_ANYWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
@@ -409,7 +409,13 @@ struct TasksShown {
     agendas_full: crate::agenda::FilterShown,
 }
 
-/// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
+/// Today, laid out: the events of today and every step the plan gives
+/// today, whatever the hour, for the Day, the Week and Tasks ▸ The day, which
+/// hide nothing. Its slots of time for you are those of today laid from the
+/// tasks the calm views keep now on this device, as today was always laid
+/// (`dayview::today`): those are written for every process of this device
+/// (notifications, and calls where a cell says so, read them), and the
+/// drawn day carries them in place of its own (`dayview::with_slots_of`).
 fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView {
     let now = sioul_core::zone::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
@@ -418,14 +424,23 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     // Today's events, from the plan's one read; deleted, or an occurrence left out, while "Undo" is offered: gone already.
     let (removed, skipped) = crate::mail::hidden_pim(shared);
     let events: Vec<sioul_core::agenda::Occurrence> = pim::without_waiting(desk.read.iter().filter(|o| o.end > midnight && o.start < next_midnight).cloned().collect(), &removed, &skipped);
-    let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
-    let mut day = sioul_core::dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
+    let two = sioul_core::dayview::today(&now, &events, &desk.plan, &desk.loaded.tasks, desk.filter.quiet.as_ref(), &desk.settings);
+    dressed_today(two, &desk.loaded.tasks, crate::capacity::dress)
+}
+
+/// Today's two layouts dressed: the slots in force written from the one laid
+/// from the tasks kept (`write`: `capacity::dress`, which writes them for
+/// every process of this device), never from the one drawn; the drawn day in
+/// words, given those slots in place of its own (`dayview::with_slots_of`).
+fn dressed_today(two: sioul_core::dayview::Today, tasks: &[Task], write: impl FnOnce(&mut sioul_core::dayview::DayView, &[Task])) -> sioul_core::dayview::DayView {
+    let sioul_core::dayview::Today { drawn: mut day, mut kept } = two;
     // Meals and naps without a name of their own: their usual one, in your language.
     for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
         block.title = crate::health::block_name(block.kind, &block.key, "");
     }
-    // Time for you, the free time kept, and why today holds what it holds, in words.
-    crate::capacity::dress(&mut day, &desk.loaded.tasks);
+    write(&mut kept, tasks);
+    crate::capacity::dress_words(&mut day, tasks);
+    sioul_core::dayview::with_slots_of(&mut day, &kept);
     day
 }
 
@@ -442,7 +457,10 @@ pub(crate) struct PlanShown {
     pub(crate) desk: Arc<Desk>,
     /// Today as laid and dressed then, or laid again since from it
     /// (`relay_today`): what the agenda draws of today, the one producer of
-    /// today's layout (the unified agenda, §2.5.1).
+    /// today's layout (the unified agenda, §2.5.1). Every task's steps,
+    /// whatever the hour, with the slots of time for you in force (those of
+    /// the tasks kept now): What comes leaves out the steps the hours hide
+    /// now (`quiet`).
     pub(crate) today: sioul_core::dayview::DayView,
 }
 
@@ -472,7 +490,8 @@ impl PlanShown {
         &self.desk.settings
     }
 
-    /// What quiet time hides now from the task pages (`Filter::quiet`).
+    /// What the hours hide now from the calm views, Tasks ▸ Now and the
+    /// Agenda's What comes (`Filter::quiet`); never from the full views.
     pub(crate) fn quiet(&self) -> Option<&sioul_core::quiet::QuietTasks> {
         self.desk.filter.quiet.as_ref()
     }
@@ -508,6 +527,46 @@ pub(crate) fn publish_now(shared: &Shared) {
     let desk = Desk::new(Arc::new(read_loaded(shared)), shared);
     let today = today_laid_out(&desk, shared);
     publish(PlanShown { stamp, made_on: sioul_core::zone::now().date(), desk: Arc::new(desk), today });
+}
+
+/// The same, the calm views' filter set to `quiet` (`Filter::quiet`), as the
+/// hours would set it: what the tests of the full views read.
+#[cfg(test)]
+pub(crate) fn publish_now_with(shared: &Shared, quiet: Option<sioul_core::quiet::QuietTasks>) {
+    let stamp = sioul_core::timeline::Stamp::now();
+    let mut desk = Desk::new(Arc::new(read_loaded(shared)), shared);
+    desk.filter.quiet = quiet;
+    let today = today_laid_out(&desk, shared);
+    publish(PlanShown { stamp, made_on: sioul_core::zone::now().date(), desk: Arc::new(desk), today });
+}
+
+/// A calm views' filter that hides work's tasks, as leisure does in a week
+/// with working hours: a task of the category "Travail" is work's.
+#[cfg(test)]
+pub(crate) fn hiding_work() -> sioul_core::quiet::QuietTasks {
+    use sioul_core::areas::{Here, TaskAreas, Time, Week};
+    sioul_core::quiet::QuietTasks { time: Time::Leisure, week: Week { work_hours: true, ..Week::default() }, areas: TaskAreas { work_categories: vec!["Travail".into()], ..TaskAreas::usual() }, no_movement: false, here: Here::default() }
+}
+
+/// A work task (category "Travail") pinned to a block later today, from ten
+/// minutes from now for half an hour, in `calendar`: a step the plan lays
+/// today whatever room the day has. False when less than three quarters of
+/// an hour are left before midnight: no block fits today.
+#[cfg(test)]
+pub(crate) fn work_task_pinned_today(calendar: &std::path::Path, uid: &str, title: &str) -> bool {
+    let now = sioul_core::zone::now();
+    let zone = now.time_zone().clone();
+    let start = now.timestamp().as_second() + 600;
+    let midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(start, |z| z.timestamp().as_second());
+    if midnight - start < 35 * 60 {
+        return false;
+    }
+    let edit = TaskEdit { title: title.into(), estimate: 30, categories: vec!["Travail".into()], ..TaskEdit::default() };
+    sioul_core::vdir::write_item(&calendar.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
+    let utc = |at: i64| jiff::Timestamp::from_second(at).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
+    let block = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{title}\r\n{}:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(start), utc(start + 1800), sioul_core::blocks::TASK);
+    std::fs::write(calendar.join(format!("{uid}-block.ics")), block).unwrap();
+    true
 }
 
 #[cfg(test)]
@@ -1477,6 +1536,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let related = loaded.world().related(&links::task_uri(uid));
     let mut detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
     detail.ratio_line = crate::capacity::ratio_line(task);
+    // Its area as its tags say, read as the plan reads it (your words and its projects', `TaskAreas::of_config`).
+    detail.area_tags = desk.settings.areas.by_tags(task).id();
     #[derive(Serialize)]
     struct Shown<'a> {
         #[serde(flatten)]
@@ -2990,6 +3051,53 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The slots of time for you are written from the layout of the tasks
+    /// kept, never from the one drawn (the review of the branch `views`, V2):
+    /// the writer is given the kept day, and the drawn day shows its slots in
+    /// place of its own.
+    #[test]
+    fn the_slots_written_are_the_kept_layout_s() {
+        use sioul_core::dayview::{Block, DayView, Today};
+        let gain = |key: &str, start: i64| Block { start, end: start + 1800, kind: "gain", title: String::new(), key: key.into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false };
+        let step = Block { start: 4_000, end: 7_600, kind: "task", title: "Figures".into(), key: "figures".into(), ..gain("figures", 4_000) };
+        let kept = DayView { blocks: vec![gain("gain:after", 10_000)], ..DayView::default() };
+        let drawn = DayView { blocks: vec![step, gain("gain:after", 20_000)], ..DayView::default() };
+        let mut written: Vec<(String, i64)> = Vec::new();
+        let day = dressed_today(Today { drawn, kept }, &[], |day, _| written = day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.key.clone(), b.start)).collect());
+        assert_eq!(written, [("gain:after".to_string(), 10_000)], "the kept day's slots, written");
+        let drawn_gains: Vec<i64> = day.blocks.iter().filter(|b| b.kind == "gain").map(|b| b.start).collect();
+        assert_eq!(drawn_gains, [10_000], "the drawn day shows them, never its own");
+        assert!(day.blocks.iter().any(|b| b.kind == "task" && b.key == "figures"), "its steps kept");
+    }
+
+    /// A full view hides nothing (the settings rework, 18 November 2026):
+    /// today's layout, which the Agenda's Day and Week and Tasks ▸ The day
+    /// draw, lays the step of a task the hours hide now, as any other; Now,
+    /// the calm tab, still chooses among the tasks the hours keep.
+    #[test]
+    fn today_s_layout_holds_what_the_hours_hide_and_now_does_not_choose_it() {
+        sioul_core::config::stand_ins_only();
+        let shared = Arc::new(Shared::default());
+        let calendar = sioul_core::vdir::create(sioul_core::vdir::Kind::Calendars, sioul_core::vdir::LOCAL, "Hidden work", None, &["VEVENT", "VTODO"]).unwrap();
+        if !work_task_pinned_today(&calendar.dir, "hidden-work", "Quarterly figures") {
+            // Too close to midnight for a block today: nothing to lay.
+            let _ = std::fs::remove_dir_all(&calendar.dir);
+            return;
+        }
+        let mut desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
+        desk.filter.quiet = Some(hiding_work());
+        let task = desk.task("hidden-work").cloned().unwrap();
+        assert!(!hiding_work().keeps(&task), "the hours hide it now");
+        let laid = today_laid_out(&desk, &shared);
+        assert!(laid.blocks.iter().any(|b| b.kind == "task" && b.key == "hidden-work"), "today's step laid: {:?}", laid.blocks);
+        let now = |desk: &Desk| serde_json::to_string(&taskview::now(&desk.context(), desk.today.weather, &desk.today.aside)).unwrap();
+        assert!(!now(&desk).contains("Quarterly figures"), "Now leaves it out: {}", now(&desk));
+        // The hours' filter gone (work's hours): Now may choose it.
+        desk.filter.quiet = None;
+        assert!(now(&desk).contains("Quarterly figures"), "{}", now(&desk));
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
 
     /// An errand's task is health, by its category or its title, as the home
     /// card reads it: the Recents guard covers its card (review of part 8,

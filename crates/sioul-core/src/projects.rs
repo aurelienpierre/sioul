@@ -16,6 +16,7 @@
 //! that a device not yet updated reads it as before. Renaming it is the
 //! person's choice, made once every device is updated (`rename_file`).
 
+use crate::areas::Area;
 use crate::card::Card;
 use crate::text::{contains_word, fold};
 use serde::Deserialize;
@@ -97,7 +98,9 @@ pub struct Project {
     /// The budget its invoices are expected in.
     #[serde(default)]
     pub budget: Option<String>,
-    /// "personal" for a matter of yours outside work (a garden, a trip): it stays in view in quiet time.
+    /// What it is for (docs/areas.md): the areas' words, `work`, `admin`,
+    /// `leisure`, joined by `+` ("admin+leisure"); "personal", the word of
+    /// an older Sioul, reads as admin and leisure (`Project::area_of`).
     #[serde(default)]
     pub area: Option<String>,
     /// Open to AI agents (`ai = true`): an agent connected with `sioul mcp`
@@ -113,6 +116,78 @@ impl Project {
     pub fn is_for_client(&self) -> bool {
         self.kind.as_deref() == Some("project")
     }
+
+    /// What it is for (docs/areas.md), as `mailbox::area_of` says an
+    /// address's and `Budget::area_of` a budget's: what its form's switches
+    /// say (`form_area`), else, unsaid, work's when it has a client; none for
+    /// an unsaid project without one. Its tasks read it as one of their tags
+    /// (`areas::TaskAreas`), so that a client's project is work's for the
+    /// plan as it always was; the Projects and Time pages read it through
+    /// `area_shown`.
+    pub fn area_of(&self) -> Option<Area> {
+        form_area(self.area.as_deref(), self.client.is_some()).or_else(|| self.client.is_some().then_some(Area::WORK))
+    }
+
+    /// What its record says, as its form's switches show it (`form_area`).
+    pub fn said_area(&self) -> Option<Area> {
+        form_area(self.area.as_deref(), self.client.is_some())
+    }
+
+    /// What it shows for on the Projects and Time pages (docs/areas.md, "A
+    /// page's filter by area"): `area_of`; an unsaid project without a
+    /// client, what its open tasks are for together (`TaskAreas::of`), so
+    /// that it shows when Now would offer one of them; none when it has no
+    /// open task: shown whatever the ticks.
+    pub fn area_shown(&self, tasks: &[crate::tasks::Task], areas: &crate::areas::TaskAreas) -> Option<Area> {
+        #[cfg(test)]
+        AREA_SHOWN_ASKED.with(|n| n.set(n.get() + 1));
+        self.area_of().or_else(|| {
+            let of = tasks.iter().filter(|t| t.status.is_open() && t.projects.contains(&self.id)).fold(Area::default(), |all, t| all.with(areas.of(t)));
+            (!of.is_empty()).then_some(of)
+        })
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread asked a project's area for the pages (`Project::area_shown`).
+    pub(crate) static AREA_SHOWN_ASKED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The older word, `personal`: one box, "Yours, outside work", which every
+/// Sioul reads (0.0.11 compares the record with this word alone).
+pub const OLDER_PERSONAL: &str = "personal";
+
+/// What a project's record says it is for (its `area`, beside whether it has
+/// a client), as its form's switches show it: the areas' words; `personal`,
+/// admin and leisure; the older box beside a client, all three, since a
+/// client's project with it was work's by its client and admin's and
+/// leisure's by the box, together; none when unsaid, or in words no Sioul
+/// reads.
+pub fn form_area(area: Option<&str>, client: bool) -> Option<Area> {
+    let area = area.map(str::trim)?;
+    if client && area == OLDER_PERSONAL { Some(Area::ALL) } else { Area::parse(area) }
+}
+
+/// What a record's `area` becomes when its form says `asked`: none to write
+/// when the switches say what the form showed of the record (`was`, beside
+/// the client it had then, `client_before`), so that an area the person did
+/// not touch is never rewritten, whatever else the save changes (its client
+/// added or taken out among them), and a word another Sioul wrote stays;
+/// else the words to write, read beside the client after the save
+/// (`client_after`): `personal`, the one word every Sioul reads, where it
+/// says what was asked (admin and leisure without a client; all three
+/// beside one, where 0.0.11 reads work by the client and the box); the
+/// areas' words for every other area; "" to take the key out.
+pub fn area_written(was: Option<&str>, asked: Option<Area>, client_before: bool, client_after: bool) -> Option<String> {
+    if form_area(was, client_before) == asked {
+        return None;
+    }
+    Some(match asked {
+        None => String::new(),
+        Some(area) if form_area(Some(OLDER_PERSONAL), client_after) == Some(area) => OLDER_PERSONAL.to_string(),
+        Some(area) => area.id(),
+    })
 }
 
 /// A project as its form gives it.
@@ -131,7 +206,9 @@ pub struct ProjectEdit {
     pub rate: f64,
     #[serde(default)]
     pub budget: String,
-    /// "personal", or "" for work and admin.
+    /// What it is for, as the areas' switches give it ("admin+leisure"); ""
+    /// for nothing ticked (`Project::area_of`). Written only when it differs
+    /// from what the record says (`area_written`).
     #[serde(default)]
     pub area: String,
     /// Open to AI agents; unsaid (a form that does not show it), the file's value stays.
@@ -149,7 +226,7 @@ impl ProjectEdit {
             client: project.client.clone().unwrap_or_default(),
             rate: project.rate.unwrap_or(0.0),
             budget: project.budget.clone().unwrap_or_default(),
-            area: project.area.clone().unwrap_or_default(),
+            area: project.said_area().map(Area::id).unwrap_or_default(),
             ai: Some(project.ai),
         }
     }
@@ -251,12 +328,23 @@ pub fn save_project(file: &Path, id: &str, edit: &ProjectEdit) -> Result<String,
         }
         let project = entry_mut(&mut doc, &id).ok_or_else(|| fail(format!("no project {id}")))?;
         project["title"] = value(edit.title.trim());
-        for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim()), ("area", edit.area.trim())] {
+        // What it is for: only what the switches changed (`area_written`), so that a save never
+        // takes out a word another Sioul wrote and this one reads the same.
+        let had_client = project.get("client").and_then(Item::as_str).is_some();
+        let area = area_written(project.get("area").and_then(Item::as_str), Area::parse(edit.area.trim()), had_client, !edit.client.trim().is_empty());
+        for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim())] {
             if text.is_empty() {
                 project.remove(key);
             } else {
                 project[key] = value(text);
             }
+        }
+        match area.as_deref() {
+            None => {}
+            Some("") => {
+                project.remove("area");
+            }
+            Some(text) => project["area"] = value(text),
         }
         if edit.rate > 0.0 {
             project["rate"] = value(edit.rate);
@@ -684,6 +772,170 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// What a project is for (docs/areas.md): read in the areas' words, an
+    /// older "personal" as admin and leisure, and beside a client as all three
+    /// (work's by the client, admin's and leisure's by the box, as 0.0.11 read
+    /// it); unsaid with a client, work's; unsaid without one, nothing of its
+    /// own, the Projects and Time pages taking its open tasks' areas, and
+    /// showing it whatever the ticks when it has none. Written only where the
+    /// switches change what the record says, admin and leisure without a
+    /// client as `personal`, so that a word another Sioul wrote and this one
+    /// reads stays, and one this one does not read is never taken out.
+    #[test]
+    fn a_project_s_area_is_read_defaulted_and_written() {
+        use crate::areas::{Area, TaskAreas};
+        let dir = scratch("project-areas");
+        let file = dir.join(FILE);
+        std::fs::write(&file, "[[project]]\nid = \"garden\"\ntitle = \"Garden\"\narea = \"personal\"\n\n[[project]]\nid = \"lumen\"\ntitle = \"Studio Lumen\"\nkind = \"project\"\nclient = \"Studio Lumen\"\n\n[[project]]\nid = \"taxes\"\ntitle = \"Taxes\"\n\n[[project]]\nid = \"choir\"\ntitle = \"Choir\"\narea = \"leisure+work\"\n\n[[project]]\nid = \"atelier\"\ntitle = \"Atelier Fougère\"\nkind = \"project\"\nclient = \"Atelier Fougère\"\narea = \"personal\"\n\n[[project]]\nid = \"later\"\ntitle = \"Later\"\narea = \"someday\"\n").unwrap();
+        let store = || ProjectStore::load(&dir).unwrap();
+        let of = |id: &str| store().get(id).unwrap().clone();
+        assert_eq!((of("garden").area_of(), of("garden").said_area()), (Some(Area::PERSONAL), Some(Area::PERSONAL)), "an older Sioul's word");
+        assert_eq!((of("lumen").area_of(), of("lumen").said_area()), (Some(Area::WORK), None), "a client's, unsaid: work's");
+        assert_eq!((of("taxes").area_of(), of("taxes").said_area()), (None, None), "unsaid without a client: nothing of its own");
+        assert_eq!(of("choir").area_of(), Some(Area::WORK.with(Area::LEISURE)));
+        assert_eq!((of("atelier").area_of(), of("atelier").said_area()), (Some(Area::ALL), Some(Area::ALL)), "the older box beside a client: all three");
+        // The pages: an unsaid project without a client shows for its open tasks, else whatever the ticks.
+        let areas = TaskAreas { work_categories: vec!["travail".into()], ..TaskAreas::usual() };
+        let task = |uid: &str, project: &str, categories: &[&str]| crate::tasks::Task { uid: uid.into(), projects: vec![project.to_string()], categories: categories.iter().map(|c| c.to_string()).collect(), ..crate::tasks::Task::default() };
+        let done = |t: crate::tasks::Task| crate::tasks::Task { status: crate::tasks::Status::Completed, ..t };
+        assert_eq!(of("taxes").area_shown(&[], &areas), None, "no open task: shown whatever the ticks");
+        assert_eq!(of("taxes").area_shown(&[done(task("filed", "taxes", &["travail"]))], &areas), None, "a task done is no open task");
+        assert_eq!(of("taxes").area_shown(&[task("form", "taxes", &[]), task("call", "taxes", &["Travail"])], &areas), Some(Area::ADMIN.with(Area::WORK)), "its open tasks' areas, together");
+        assert_eq!(of("lumen").area_shown(&[task("site", "lumen", &[])], &areas), Some(Area::WORK), "said or a client's: its own");
+        // Its tasks: what it says; a client's, work; the older box beside a client, all three; unsaid without one, nothing of it.
+        let areas = TaskAreas::of_config(&crate::config::Config::default(), &store().projects);
+        let of_task = |project: &str| areas.of(&crate::tasks::Task { projects: vec![project.to_string()], ..crate::tasks::Task::default() });
+        assert_eq!((of_task("garden"), of_task("lumen"), of_task("taxes"), of_task("choir"), of_task("atelier")), (Area::PERSONAL, Area::WORK, Area::ADMIN, Area::WORK.with(Area::LEISURE), Area::ALL));
+        // The form's view of it, and saves.
+        let form = |id: &str| ProjectEdit::of(&of(id));
+        let area_in = |id: &str| store().get(id).unwrap().area.clone();
+        assert_eq!((form("garden").area, form("atelier").area, form("taxes").area, form("later").area), ("admin+leisure".to_string(), "work+admin+leisure".to_string(), String::new(), String::new()));
+        let save = |id: &str, area: &str| save_project(&file, id, &ProjectEdit { area: area.into(), ..form(id) }).unwrap();
+        save("garden", "admin+leisure");
+        save("atelier", "work+admin+leisure");
+        save("later", "");
+        assert_eq!((area_in("garden"), area_in("atelier"), area_in("later")), (Some("personal".into()), Some("personal".into()), Some("someday".into())), "saved as shown: every word stays, one this Sioul does not read too");
+        save("garden", "leisure");
+        assert_eq!(area_in("garden"), Some("leisure".into()), "another area: the areas' words");
+        save("garden", "leisure+admin");
+        assert_eq!(area_in("garden"), Some("personal".into()), "admin and leisure: the word every Sioul reads");
+        save("atelier", "admin+leisure");
+        assert_eq!((area_in("atelier"), of("atelier").area_of()), (Some("admin+leisure".into()), Some(Area::PERSONAL)), "set by hand beside a client: what was said wins");
+        save("garden", "");
+        assert_eq!((area_in("garden"), of("garden").area_of()), (None, None), "nothing ticked: unsaid");
+        save("later", "someday");
+        assert_eq!(area_in("later"), Some("someday".into()), "a word no Sioul reads is never written, nor taken out");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A record this Sioul writes, read by 0.0.11's readers (main a467d9cd),
+    /// copied here as they were: the Projects page's `personal`
+    /// (`projectview.rs:114`), the tasks' projects (`areas.rs:664-665`) and
+    /// the form's one box (`ProjectDialog.qml:37`, the same comparison).
+    /// Admin and leisure, said by the switches, is the older box there; a
+    /// client's project keeps its box; another area has no older word.
+    #[test]
+    fn what_this_sioul_writes_an_older_one_reads() {
+        // main's readers, kept as they were.
+        fn main_personal(project: &Project) -> bool {
+            project.area.as_deref() == Some("personal")
+        }
+        fn main_work_projects(projects: &[Project]) -> Vec<String> {
+            projects.iter().filter(|c| c.client.is_some() || c.area.as_deref() == Some("work")).map(|c| c.id.clone()).collect()
+        }
+        fn main_personal_projects(projects: &[Project]) -> Vec<String> {
+            projects.iter().filter(|c| c.area.as_deref() == Some("personal")).map(|c| c.id.clone()).collect()
+        }
+        let dir = scratch("project-areas-older");
+        let file = dir.join(FILE);
+        let new = |title: &str, client: &str, area: &str| save_project(&file, "", &ProjectEdit { title: title.into(), kind: if client.is_empty() { String::new() } else { "project".into() }, client: client.into(), area: area.into(), ..ProjectEdit::default() }).unwrap();
+        let garden = new("Garden", "", "admin+leisure");
+        let lumen = new("Studio Lumen", "Studio Lumen", "");
+        let choir = new("Choir", "", "leisure");
+        let work = new("Desk", "", "work");
+        let read = ProjectStore::load(&dir).unwrap().projects;
+        let get = |id: &str| read.iter().find(|p| p.id == id).unwrap();
+        assert!(main_personal(get(&garden)), "the box ticked there");
+        assert!(!main_personal(get(&lumen)) && !main_personal(get(&choir)) && !main_personal(get(&work)));
+        assert_eq!(main_work_projects(&read), [lumen.clone(), work.clone()]);
+        assert_eq!(main_personal_projects(&read), [garden.clone()]);
+        // A client's project with the box, saved here as shown: still the box there.
+        std::fs::write(&file, format!("{}\n[[project]]\nid = \"atelier\"\ntitle = \"Atelier\"\nclient = \"Atelier\"\narea = \"personal\"\n", std::fs::read_to_string(&file).unwrap())).unwrap();
+        let atelier = ProjectStore::load(&dir).unwrap().get("atelier").cloned().unwrap();
+        save_project(&file, "atelier", &ProjectEdit { title: "Atelier, new name".into(), ..ProjectEdit::of(&atelier) }).unwrap();
+        let read = ProjectStore::load(&dir).unwrap().projects;
+        assert!(main_personal(read.iter().find(|p| p.id == "atelier").unwrap()) && main_work_projects(&read).contains(&"atelier".to_string()));
+        // All three ticked on a client's project: the older box there, work by the client.
+        let studio = new("Studio", "Studio Fougère", "work+admin+leisure");
+        let read = ProjectStore::load(&dir).unwrap().projects;
+        let got = read.iter().find(|p| p.id == studio).unwrap();
+        assert_eq!((got.area.as_deref(), got.area_of()), (Some("personal"), Some(crate::areas::Area::ALL)));
+        assert!(main_personal(got) && main_work_projects(&read).contains(&studio) && main_personal_projects(&read).contains(&studio), "work and the box, as here");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A save that adds or takes out a project's client, its switches left as
+    /// the form showed them: the area is never rewritten (the review of the
+    /// branch `views`, V1). `personal` stays `personal`, which 0.0.11 reads
+    /// as this Sioul does, the client's work beside it or not.
+    #[test]
+    fn the_client_changed_in_a_save_rewrites_no_area() {
+        use crate::areas::Area;
+        let dir = scratch("project-areas-client");
+        let file = dir.join(FILE);
+        std::fs::write(&file, "[[project]]\nid = \"garden\"\ntitle = \"Garden\"\narea = \"personal\"\n\n[[project]]\nid = \"atelier\"\ntitle = \"Atelier\"\nkind = \"project\"\nclient = \"Atelier\"\narea = \"personal\"\n").unwrap();
+        let of = |id: &str| ProjectStore::load(&dir).unwrap().get(id).unwrap().clone();
+        // A client added, the switches as the form showed them (admin and leisure).
+        let form = ProjectEdit::of(&of("garden"));
+        assert_eq!(form.area, "admin+leisure");
+        save_project(&file, "garden", &ProjectEdit { kind: "project".into(), client: "Studio Lumen".into(), ..form }).unwrap();
+        assert_eq!((of("garden").area.as_deref(), of("garden").area_of()), (Some("personal"), Some(Area::ALL)), "the box beside a client now, as 0.0.11 reads the same act");
+        // The client taken out, the switches as the form showed them (all three).
+        let form = ProjectEdit::of(&of("atelier"));
+        assert_eq!(form.area, "work+admin+leisure");
+        save_project(&file, "atelier", &ProjectEdit { kind: String::new(), client: String::new(), ..form }).unwrap();
+        assert_eq!((of("atelier").area.as_deref(), of("atelier").area_of()), (Some("personal"), Some(Area::PERSONAL)), "the box alone now, as 0.0.11 reads the same act");
+        // The words written for what is asked, beside the client after the save.
+        assert_eq!(area_written(None, Some(Area::ALL), false, true).as_deref(), Some("personal"), "all three beside a client: the older box");
+        assert_eq!(area_written(None, Some(Area::ALL), false, false).as_deref(), Some("work+admin+leisure"), "without one: no older word");
+        assert_eq!(area_written(None, Some(Area::PERSONAL), true, false).as_deref(), Some("personal"));
+        assert_eq!(area_written(None, Some(Area::PERSONAL), false, true).as_deref(), Some("admin+leisure"), "admin and leisure beside a client: said in words, so that it wins over the client");
+        assert_eq!(area_written(None, Some(Area::WORK), false, false).as_deref(), Some("work"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A client's project with the older box: its tasks are work's for the
+    /// plan, as 0.0.11 read them (work by its client, admin and leisure by
+    /// the box), so the plan lays them where main does; with admin hours of
+    /// their own, the same days and order as main's reading gives.
+    #[test]
+    fn a_client_s_project_with_the_older_box_is_planned_as_before() {
+        use crate::areas::{Area, TaskAreas};
+        use crate::window::AdminWindow;
+        let projects = vec![
+            Project { id: "atelier".into(), client: Some("Atelier".into()), area: Some("personal".into()), ..Project::default() },
+            Project { id: "lumen".into(), client: Some("Studio Lumen".into()), ..Project::default() },
+            Project { id: "garden".into(), area: Some("personal".into()), ..Project::default() },
+        ];
+        // main's reading, as entries: a client's project work's, the box's admin and leisure, both together.
+        let main = TaskAreas { projects: projects.iter().flat_map(|c| [(c.client.is_some()).then(|| (c.id.clone(), Area::WORK)), (c.area.as_deref() == Some("personal")).then(|| (c.id.clone(), Area::PERSONAL))]).flatten().collect(), ..TaskAreas::usual() };
+        let ours = TaskAreas { projects: TaskAreas::of_projects(&projects), ..TaskAreas::usual() };
+        let task = |uid: &str, project: &str, minutes: u32| crate::tasks::Task { uid: uid.into(), title: uid.into(), projects: vec![project.to_string()], estimate: minutes, ..crate::tasks::Task::default() };
+        let tasks = vec![task("brief", "atelier", 90), task("site", "lumen", 120), task("seeds", "garden", 30), task("forms", "", 45)];
+        for t in &tasks {
+            assert_eq!(ours.of(t), main.of(t), "{}", t.uid);
+        }
+        let window = |day: &str, start: &str, end: &str, kind: Option<&str>| AdminWindow { day: day.into(), start: start.into(), end: Some(end.into()), minutes: 0, kind: kind.map(str::to_string) };
+        let hours: Vec<AdminWindow> = ["monday", "tuesday", "wednesday", "thursday", "friday"].iter().flat_map(|d| [window(d, "09:00", "12:00", None), window(d, "14:00", "16:00", Some("admin"))]).collect();
+        let now: jiff::Zoned = "2026-10-05T08:00[Europe/Paris]".parse().unwrap();
+        let laid = |areas: TaskAreas| {
+            let settings = crate::plan::Settings::of_hours(&hours, areas).with_events(&now, &[]);
+            let made = crate::plan::plan(&tasks, now.date(), &settings, &std::collections::BTreeMap::new(), &std::collections::BTreeSet::new());
+            (format!("{:?}", made.days), made.order)
+        };
+        assert_eq!(laid(ours), laid(main), "the plan lays them where main does");
     }
 
     #[test]

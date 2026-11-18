@@ -154,7 +154,7 @@ One switch away from Now:
 
 Three choices at the top of the page, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices.
 
-**Your hours shape Now alone.** List, Board and Gantt show every task, work, admin and leisure, whatever the hour, as the mailbox and Budgets do: a work task is there in the evening too. Now stays calm and shows what the hour is for.
+**Your hours shape Now alone.** The day, List, Board, Gantt and Search show every task, work, admin and leisure, whatever the hour: a work task is there in the evening too, and The day shows today's steps of all of them. Now stays calm and shows what the hour is for.
 
 **Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
 
@@ -230,9 +230,9 @@ Google Tasks keeps less: a list there greys what Google does not keep (a day to 
 
 ## In quiet time, and while you sleep {#in-quiet-time-and-while-you-sleep}
 
-In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what fits now: in leisure and during a meal, what is yours; work waits for work to come back. A task you make on the Tasks page stays in view until you leave the page, whatever the hours, and its row says when it comes back: "Out of these hours: back tomorrow at 09:00."
+In quiet time ([Hours](hours.md#quiet-time)), **Now** keeps only what fits now: in leisure and during a meal, what is yours; work waits for work to come back. The other tabs show everything, whatever the hour. A task you make on the Tasks page stays in view on Now until you leave the page, whatever the hours, and its row says when it comes back: "Out of these hours: back tomorrow at 09:00."
 
-While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), the page waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. **New ▾ ▸ A task** shows the page anyway, a new task's form open. Task reminders wait too, for waking.
+While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), **Now** waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. The tabs stay in reach: **The day**, **List**, **Board**, **Gantt** and **Search** show everything. On Now, **New ▾ ▸ A task** shows it anyway, a new task's form open. Task reminders wait too, for waking.
 
 ## Going further {#going-further}
 
@@ -408,6 +408,7 @@ In a task's form, **Its appointment…** finds an event by a few words of its ti
 
 - A task before an event writes nothing into the event, because a server tells every guest of any change to a meeting (RFC 6638). No standard names one time of a repeating event in a tie (RFC 5545, RFC 9253), so the task carries it, on a line of Sioul's own, and writes its date out where every CalDAV program can read it. That no program loses that line, or what it does if it does, was not tested.
 - A time passed moves nothing by itself: a task is about that meeting, and which one comes next is yours to say. This is a design rule of Sioul's, not a finding: no study of it turned up.
+- A full view is for managing, so it hides nothing; only the calm tab, Now, follows your hours. A design rule of Sioul's too: fighting a page for the whole picture weighs more than seeing it.
 
 More in [what the research says](../dev/research.md), findings 6 to 23, 71, 72 and 73.
 

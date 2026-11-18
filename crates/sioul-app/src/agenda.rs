@@ -112,10 +112,6 @@ struct DayShown {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     hours: Vec<sioul_core::dayview::Stretch>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    bands: Vec<Placed>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    hidden: Vec<Placed>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     doses: Vec<Placed>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     edges: Vec<Placed>,
@@ -576,9 +572,10 @@ impl FilterNow {
         sioul_core::agendas::hidden(&self.agendas, self.hours, self.over.as_ref(), &self.out, self.now)
     }
 
-    /// Your word holds now.
-    fn chosen(&self) -> bool {
-        self.over.as_ref().is_some_and(|o| o.holds(self.hours, self.now))
+    /// Your word holds now and turns something: in the Agenda's full views
+    /// (`set_alone`), a set chosen by its button counts too.
+    fn chosen(&self, set_alone: bool) -> bool {
+        self.over.as_ref().is_some_and(|o| o.holds(self.hours, self.now) && (!o.turns_nothing() || (set_alone && !o.set.is_empty())))
     }
 
     /// The filter as its list shows it: the agendas taking events (the agenda's
@@ -594,11 +591,24 @@ impl FilterNow {
         sioul_core::agendas::hidden_by_hand(&self.agendas, self.hours, self.over.as_ref(), &self.kept, self.now)
     }
 
+    /// The same for the Agenda's Day, Week and Month: a set chosen by its
+    /// button shows alone there (`agendas::hidden_by_hand_with_set`); the
+    /// Tasks page's full lists keep `hidden_by_hand`, as on main.
+    pub(crate) fn hidden_in_agenda_full(&self) -> std::collections::BTreeSet<String> {
+        sioul_core::agendas::hidden_by_hand_with_set(&self.agendas, self.hours, self.over.as_ref(), &self.kept, self.now)
+    }
+
     /// The filter as the full lists show it (`full`): each agenda on unless
     /// your word leaves it out, whatever the hours; else as `shown`.
     pub(crate) fn shown_as(&self, tasks: bool, full: bool) -> FilterShown {
         use sioul_core::agendas::{Whose, default_on, shown};
-        let by_hand = if full { self.hidden_by_hand() } else { std::collections::BTreeSet::new() };
+        // The Agenda's full views (`!tasks`) show a set chosen by its button alone; the Tasks page's, your turns alone.
+        let set_alone = full && !tasks;
+        let by_hand = match (full, tasks) {
+            (false, _) => std::collections::BTreeSet::new(),
+            (true, true) => self.hidden_by_hand(),
+            (true, false) => self.hidden_in_agenda_full(),
+        };
         let mut groups: Vec<GroupShown> = Vec::new();
         let mut sorted: Vec<&sioul_core::agendas::Agenda> = self.agendas.iter().filter(|a| if tasks { a.tasks } else { a.events }).collect();
         sorted.sort_by(|a, b| (a.whose, a.person.to_lowercase(), a.name.to_lowercase(), &a.id).cmp(&(b.whose, b.person.to_lowercase(), b.name.to_lowercase(), &b.id)));
@@ -627,7 +637,7 @@ impl FilterNow {
                 });
             }
         }
-        let until = if self.chosen() {
+        let until = if self.chosen(set_alone) {
             self.over.as_ref().and_then(|o| o.until).and_then(|until| jiff::Timestamp::from_second(until).ok()).map(|t| sioul_core::quiet::until_text(tr(), &t.to_zoned(self.zoned.time_zone().clone()), &self.zoned)).unwrap_or_default()
         } else {
             String::new()
@@ -639,10 +649,11 @@ impl FilterNow {
             .iter()
             .map(|(name, set)| {
                 let listed: std::collections::BTreeSet<&str> = set.agendas.iter().map(String::as_str).filter(|id| groups.iter().any(|g| g.agendas.iter().any(|a| a.id == *id))).collect();
-                SetShown { name: name.clone(), agendas: set.agendas.clone(), times: set.times.clone(), by_time: self.by_time.as_deref() == Some(name.as_str()), showing: !listed.is_empty() && listed == on }
+                // A time brings a set in the calm views alone: never said in a full view, where the hours hide nothing.
+                SetShown { name: name.clone(), agendas: set.agendas.clone(), times: set.times.clone(), by_time: !full && self.by_time.as_deref() == Some(name.as_str()), showing: !listed.is_empty() && listed == on }
             })
             .collect();
-        FilterShown { chosen: self.chosen(), until, groups, sets }
+        FilterShown { chosen: self.chosen(set_alone), until, groups, sets }
     }
 }
 
@@ -708,14 +719,13 @@ pub(crate) fn turn_by_hand(ids: &[String], on: bool) -> String {
 }
 
 /// A set chosen by hand (part 4): its agendas shown, every other left out,
-/// as your word, holding until work's hours change (`agendas::turned`).
-/// Returns what went wrong, else "".
+/// as your word against the hours at the press, as always, and the set kept
+/// so that the Agenda's full views show it alone too (`agendas::set_chosen`);
+/// holding until work's hours change. Returns what went wrong, else "".
 pub(crate) fn use_set(name: &str) -> String {
     write_filter(|now| {
         let Some(set) = now.sets.get(name) else { return now.over.clone() };
-        let (inside, outside): (Vec<String>, Vec<String>) = now.agendas.iter().map(|a| a.id.clone()).partition(|id| set.agendas.contains(id));
-        let over = sioul_core::agendas::turned(now.over.as_ref(), &now.agendas, &inside, true, now.hours, &now.out, now.now);
-        sioul_core::agendas::turned(over.as_ref(), &now.agendas, &outside, false, now.hours, &now.out, now.now)
+        sioul_core::agendas::set_chosen(now.over.as_ref(), &now.agendas, &set.agendas, now.hours, &now.out, now.now)
     })
 }
 
@@ -995,7 +1005,11 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let mut health_read = None;
     if mode == Mode::Comes {
         if let Some(plan) = &plan {
-            items.extend(laid_items(plan, &occurrences, state.from, state.days, &now).into_iter().map(|mut item| {
+            // The calm tab follows the hours: today's steps of a task they hide now are not
+            // listed (today is laid with every task, for the Day and the Week), a coming
+            // day's are named "Work" (`timeline::comes`).
+            let hidden_today = |item: &timeline::Item| item.kind == timeline::Kind::Step && matches!(&item.source, timeline::Source::Plan { date, .. } if *date == today) && hidden_now(plan, &item.owner);
+            items.extend(laid_items(plan, &occurrences, state.from, state.days, &now).into_iter().filter(|item| !hidden_today(item)).map(|mut item| {
                 if errand(&item.owner) {
                     item.privacy = timeline::Privacy::Health;
                     item.address.clear();
@@ -1054,11 +1068,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         items = timeline::merge(items, stamp, &open);
     }
     named(&mut items);
-    // The agenda filter (several agendas): what the hours admit, unless you said
-    // otherwise until work's hours change. What it leaves out takes no lane, no
-    // bar and no column: it is not among the days.
+    // The agenda filter (several agendas): in What comes, the calm tab, what the
+    // hours admit unless you said otherwise until work's hours change; in the
+    // Day, the Week and the Month, full views, your word alone, never the hours
+    // (`FilterNow::hidden_by_hand`), as the Tasks page's list, board and Gantt.
+    // What it leaves out takes no lane, no bar and no column: it is not among the days.
     let filter = filter_now();
-    let filtered = filter.hidden();
+    let by_hand = mode != Mode::Comes;
+    let filtered = if by_hand { filter.hidden_in_agenda_full() } else { filter.hidden() };
     let left_out = |source: &timeline::Source| matches!(source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
     // What comes' next day past its days: its next event the filter shows, or its next date asked.
     let next = if mode == Mode::Comes {
@@ -1076,7 +1093,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let laid: Vec<timeline::Item> = items.iter().filter(|item| !left_out(&item.source)).filter(|item| if mode == Mode::Comes { !spans.spanning(&item.id) } else { !spans.bar(&item.id) }).cloned().collect();
     let mut days = timeline::days(&laid, state.from, state.days, today, &zone, tr());
     timeline::set_hours(&mut days, &load_config().week_hours(), &zone);
-    let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &now) } else { (None, Vec::new()) };
+    let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &filtered, &now) } else { (None, Vec::new()) };
     // The Day and the Week: overlapping agendas side by side in lanes, yours first;
     // conflicts joined by a thin bracket (one person in two places, §5.3 of the research).
     let mut brackets: Vec<Vec<Bracket>> = days.iter().map(|_| Vec::new()).collect();
@@ -1093,10 +1110,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             }
         }
     }
-    // What comes: each day's rows (`timeline::comes`), and today's head line above them.
-    let planned: &[sioul_core::tasks::Task] = plan.as_ref().map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
-    let quiet = plan.as_ref().and_then(|p| p.quiet());
-    let hidden = |uid: &str| quiet.is_some_and(|q| planned.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
+    // What comes: each day's rows (`timeline::comes`), and today's head line above
+    // them, a step of a task the hours hide now named "Work".
+    let hidden = |uid: &str| plan.as_deref().is_some_and(|p| hidden_now(p, uid));
     let comes: Vec<Option<timeline::Comes>> = match (&health_read, mode) {
         (Some((health, needs, needs_days)), Mode::Comes) => {
             // Tonight's evening too: after midnight, until its waking, the one before (`Needs::tonight`).
@@ -1110,7 +1126,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         }
         _ => days.iter().map(|_| None).collect(),
     };
-    let head = if mode == Mode::Comes && days.iter().any(|d| d.today) { head_frames(&items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &hidden, &now) } else { head };
+    let head = if mode == Mode::Comes && days.iter().any(|d| d.today) { head_frames(&items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &hidden, &filtered, &now) } else { head };
     // A day off shades its Month cell, from all the items: days off over several days are a bar, not at its head.
     let off = |d: &timeline::Day| d.date.parse::<jiff::civil::Date>().is_ok_and(|date| timeline::day_off(&items, date));
     let lines: Vec<(Vec<Placed>, bool)> = days.iter().map(|d| if mode == Mode::Month { (timeline::month_lines(d), off(d)) } else { (Vec::new(), false) }).collect();
@@ -1156,8 +1172,6 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 head: if matches!(mode, Mode::Drawn | Mode::Events) { d.head.into_iter().map(row).collect() } else { Vec::new() },
                 timed: if matches!(mode, Mode::Drawn | Mode::Events) { d.timed.into_iter().map(row).collect() } else { Vec::new() },
                 hours: d.hours,
-                bands: d.bands,
-                hidden: d.hidden,
                 doses: d.doses,
                 edges: d.edges,
                 planned: d.planned,
@@ -1177,7 +1191,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         spans: spans.events.iter().cloned().map(|placed| Row { detail: detail(&placed), spans: false, placed }).collect(),
         bars: spans.bars.clone(),
         bars_more: spans.bars_more.clone(),
-        filter: filter.shown(false),
+        filter: filter.shown_as(false, by_hand),
         hidden: filtered.clone(),
     };
     (json(&shown), read)
@@ -1228,10 +1242,9 @@ fn dates(from: jiff::civil::Date, count: i64) -> impl Iterator<Item = jiff::civi
 }
 
 /// Each day's steps, tasks done and time kept for you, as the plan lays them
-/// (`timeline::from_day`): today as the Tasks job laid and dressed it
-/// (`PlanShown::today`), the one producer of today's layout; a day to come
-/// laid from the plan (`dayview::lay_on`, every task: in quiet time those
-/// hidden now are folded into bands later, `timeline::dress`), within its
+/// (`timeline::from_day`), every task's whatever the hour: today as the Tasks
+/// job laid and dressed it (`PlanShown::today`), the one producer of today's
+/// layout; a day to come laid from the plan (`dayview::lay_on`), within its
 /// reach; a day gone by, its tasks done where their work was.
 fn laid_items(plan: &work::PlanShown, occurrences: &[Occurrence], from: jiff::civil::Date, count: i64, now: &Zoned) -> Vec<timeline::Item> {
     let zone = now.time_zone();
@@ -1367,9 +1380,11 @@ fn dose_items(health: &sioul_core::health::Health, from: jiff::civil::Date, coun
 }
 
 /// The days laid for the Day and the Week, dressed (`timeline::dress`): their
-/// hours, the night's edges, the doses' lane, quiet time's bands, the lists'
-/// line, today's lines; the hours shown; and today's head line, given ahead.
-fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], now: &Zoned) -> (Option<timeline::Frame>, Vec<timeline::HeadFrame>) {
+/// hours, the night's edges, the doses' lane, the lists' line, today's lines;
+/// the hours shown; and today's head line, given ahead, every step named as
+/// itself and what the filter leaves out by hand (`filtered`) left out.
+#[allow(clippy::too_many_arguments)]
+fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], filtered: &std::collections::BTreeSet<String>, now: &Zoned) -> (Option<timeline::Frame>, Vec<timeline::HeadFrame>) {
     let zone = now.time_zone().clone();
     let today = now.date();
     let config = load_config();
@@ -1381,10 +1396,6 @@ fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&w
         };
         stretches.into_iter().map(|(start, end, area)| sioul_core::dayview::Stretch { start, end, kind: area.id() }).collect()
     };
-    // In quiet time, what the task pages hide now (decision g): a coming day's steps of it make bands.
-    let planned = plan.map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
-    let quiet = plan.and_then(work::PlanShown::quiet);
-    let hidden = |uid: &str| quiet.is_some_and(|q| planned.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
     let horizon = today.checked_add(jiff::Span::new().days(sioul_core::plan::HORIZON_DAYS - 1)).unwrap_or(today);
     let dressing = timeline::Dressing {
         today,
@@ -1393,7 +1404,6 @@ fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&w
         tr: tr(),
         hours: &hours,
         horizon,
-        hidden: &hidden,
         said: plan.map(|p| p.today.said.clone()).unwrap_or_default(),
         day_start: i32::try_from(config.agenda.day_start.unwrap_or(7).min(23)).unwrap_or(7),
     };
@@ -1401,7 +1411,14 @@ fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&w
     if !days.iter().any(|d| d.today) {
         return (Some(frame), Vec::new());
     }
-    (Some(frame), head_frames(items, plan, occurrences, read, known, &hidden, now))
+    (Some(frame), head_frames(items, plan, occurrences, read, known, &|_| false, filtered, now))
+}
+
+/// Whether the hours hide a task (by UID) from the calm views now
+/// (`PlanShown::quiet`): What comes names its steps "Work" and leaves out
+/// today's. The full views never ask.
+fn hidden_now(plan: &work::PlanShown, uid: &str) -> bool {
+    plan.quiet().is_some_and(|q| plan.loaded().tasks.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)))
 }
 
 /// Whether a task (by UID) is a health errand among `tasks`: its block and
@@ -1442,9 +1459,11 @@ fn named(items: &mut [timeline::Item]) {
 /// appointments come from the days' read when it holds tomorrow (`read`, its
 /// span), else are read, and are marked with their tasks (`known`). Every
 /// thing is named as the timeline names it (`named`: an errand by its kind,
-/// never by its prescription), an agenda the filter leaves out is left out, and a
-/// task's block that quiet time hides now (`hidden`) is said as work.
-fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], hidden: &dyn Fn(&str) -> bool, now: &Zoned) -> Vec<timeline::HeadFrame> {
+/// never by its prescription), an agenda the view's filter leaves out
+/// (`filtered`) is left out, and in What comes a task's block or step that the
+/// hours hide now (`hidden`) is said as work; the Day and the Week hide none.
+#[allow(clippy::too_many_arguments)]
+fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], hidden: &dyn Fn(&str) -> bool, filtered: &std::collections::BTreeSet<String>, now: &Zoned) -> Vec<timeline::HeadFrame> {
     let zone = now.time_zone().clone();
     let today = now.date();
     let config = load_config();
@@ -1460,8 +1479,7 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
         .map(|(from, until, mode)| (from.timestamp().as_second(), until.timestamp().as_second(), mode))
         .collect();
     let (start, end) = (midnight(today, &zone), next_midnight.timestamp().as_second());
-    // What the agenda filter leaves out now is not said either.
-    let filtered = filter_now().hidden();
+    // What the view's filter leaves out is not said either.
     let shown = |item: &timeline::Item| !matches!(&item.source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
     let worded = |mut item: timeline::Item| {
         if matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step) && item.privacy != timeline::Privacy::Health && !item.owner.is_empty() && hidden(&item.owner) {
@@ -1680,6 +1698,8 @@ mod tests {
     /// three lanes and "+2"; a list starting after it began says "Ongoing since".
     #[test]
     fn what_comes_writes_an_event_over_several_days_once() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing comes", 2099);
@@ -1735,6 +1755,8 @@ mod tests {
     /// is said only when nothing comes later either.
     #[test]
     fn what_comes_names_the_next_day_past_its_days() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Comes later", None, &["VEVENT"]).unwrap();
         let base = jiff::civil::date(2091, 3, 5);
@@ -1783,6 +1805,8 @@ mod tests {
     /// week's row, out of its cells' lines.
     #[test]
     fn the_grids_draw_one_bar_per_long_event() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing grids", 2093);
@@ -2074,7 +2098,7 @@ mod tests {
         assert_eq!(use_set("Only one"), "");
         let now = filter_now();
         assert!(!now.hidden().contains(&place(&a)) && now.hidden().contains(&place(&b)), "{:?}", now.hidden());
-        assert!(now.chosen(), "your word");
+        assert!(now.chosen(true), "your word: the set, in the Agenda's full views");
         let listed = now.shown(false).sets;
         assert!(listed.iter().any(|s| s.name == "Only one" && s.times == ["leisure"]), "{listed:?}");
         assert_eq!(keep_set("Only one", None, Vec::new()), "");
@@ -2395,11 +2419,12 @@ mod tests {
         let shown = made(&shared).0;
         let parsed: serde_json::Value = serde_json::from_str(&shown).unwrap();
         let days = parsed["days"].as_array().unwrap();
-        // A coming day's steps hidden now (quiet time, the night) are drawn as bands, kept apart.
-        let kinds: std::collections::BTreeSet<String> = days.iter().flat_map(|d| d["timed"].as_array().cloned().unwrap_or_default().into_iter().chain(d["hidden"].as_array().cloned().unwrap_or_default())).map(|r| r["item"]["kind"].as_str().unwrap_or("").to_string()).collect();
+        // Every step drawn as itself, whatever the hour: no band folds any (the settings rework).
+        let kinds: std::collections::BTreeSet<String> = days.iter().flat_map(|d| d["timed"].as_array().cloned().unwrap_or_default()).map(|r| r["item"]["kind"].as_str().unwrap_or("").to_string()).collect();
         for kind in ["event", "step", "meal"] {
             assert!(kinds.contains(kind), "{kind} in {kinds:?}");
         }
+        assert!(days.iter().all(|d| d.get("bands").is_none() && d.get("hidden").is_none()), "no band, nothing kept apart");
         assert!(days.iter().all(|d| d["edges"].as_array().is_some_and(|e| !e.is_empty())), "the night's parts on each day");
         let doses = |d: &serde_json::Value| d["doses"].as_array().cloned().unwrap_or_default();
         let dose = tr().text("agenda-dose", None);
@@ -2414,11 +2439,12 @@ mod tests {
         // the errand's block, named by its kind as the timeline names it (review of 3a2fbd4, later 1).
         let evening = now.date().at(21, 0, 0, 0).to_zoned(zone.clone()).unwrap();
         let known = tasks_known(&shared);
-        let head = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
+        let none = std::collections::BTreeSet::new();
+        let head = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &none, &evening);
         let said = head.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
         assert!(said.contains(&tr().text("agenda-errand-refill", None)), "tomorrow's errand, said: {said}");
         assert!(!said.contains("Kindsoprazole") && !said.contains("Lumiel"), "{said}");
-        // In quiet time, a task's block that the task pages hide now is said as work (the proposal, §4.2).
+        // In What comes, a task's block that the hours hide now is said as work (the proposal, §4.2).
         let at = evening.timestamp().as_second() + 1800;
         let quiet_block = timeline::Item {
             id: "block:quiet".into(),
@@ -2437,13 +2463,13 @@ mod tests {
             owner: "kinds-task".into(),
             holds_time: true,
         };
-        let quiet = head_frames(&[quiet_block], work::plan_shown().as_deref(), &[], (0, 0), &known, &|uid| uid == "kinds-task", &evening);
+        let quiet = head_frames(&[quiet_block], work::plan_shown().as_deref(), &[], (0, 0), &known, &|uid| uid == "kinds-task", &none, &evening);
         let said = quiet.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
         assert!(said.contains(&tr().text("head-work", None)) && !said.contains("Quarterly report"), "{said}");
         // An agenda the filter leaves out is left out of it, its first appointment with it.
         {
             assert_eq!(turn(&[format!("{}/{}", calendar.account, calendar.id)], false), "");
-            let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
+            let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &filter_now().hidden_by_hand(), &evening);
             let _ = std::fs::remove_file(view_path());
             let said = hidden.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
             assert!(!said.contains(&tr().text("agenda-errand-refill", None)) && !said.contains("Kinds appointment"), "{said}");
@@ -2452,6 +2478,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_file(&health);
     }
+    /// A full view hides nothing (the settings rework, 18 November 2026): the
+    /// Day draws today's step of a task the hours hide now, as itself, never
+    /// named "Work"; What comes, the calm tab, still leaves it out, its block
+    /// listed as before. Both list the agenda filter (by hand in the Day,
+    /// `FilterNow::shown_as` full; by the hours in What comes, which no hours
+    /// set admit whole: `agendas::hidden_by_hand`'s own tests tell them apart).
+    #[test]
+    fn the_day_draws_today_s_step_the_hours_hide_and_what_comes_does_not() {
+        let _health_tests = crate::health::health_files_held();
+        let _view = view_read();
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Hidden today", None, &["VEVENT", "VTODO"]).unwrap();
+        let _gone = Gone(calendar.dir.clone());
+        if !work::work_task_pinned_today(&calendar.dir, "hidden-today", "Quarterly figures") {
+            // Too close to midnight for a block today: nothing to lay.
+            return;
+        }
+        let shared = Arc::new(Shared::default());
+        work::publish_now_with(&shared, Some(work::hiding_work()));
+        let ask = |days: i64, comes: bool| {
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = Zoned::now().date();
+                state.days = days;
+                state.upcoming = comes;
+                state.comes = comes;
+            }
+            serde_json::from_str::<serde_json::Value>(&made(&shared).0).unwrap()
+        };
+        let steps_of = |day: &serde_json::Value, key: &str| day[key].as_array().cloned().unwrap_or_default().into_iter().filter(|r| r["item"]["kind"] == "step" && r["item"]["owner"] == "hidden-today").map(|r| r["item"]["title"].as_str().unwrap_or("").to_string()).collect::<Vec<_>>();
+        let day = ask(1, false);
+        assert_eq!(steps_of(&day["days"][0], "timed"), ["Quarterly figures"], "the Day: today's step, as itself: {}", day["days"][0]);
+        // The filter's list as the full views give it: this agenda shown, as its usual (other tests' agendas come and go).
+        let place = format!("{}/{}", calendar.account, calendar.id);
+        let listed = |shown: &serde_json::Value| shown["filter"]["groups"].as_array().into_iter().flatten().flat_map(|g| g["agendas"].as_array().cloned().unwrap_or_default()).find(|a| a["id"] == place.as_str()).map(|a| (a["on"].as_bool(), a["usual"].as_bool()));
+        assert_eq!(listed(&day), Some((Some(true), Some(true))), "the Day's filter: {}", day["filter"]);
+        let comes = ask(COMES_FIRST_DAYS, true);
+        let today = comes["days"].as_array().unwrap().iter().find(|d| d["today"] == true).cloned().unwrap();
+        assert!(steps_of(&today["comes"], "rows").is_empty(), "What comes: not today's step {}", today["comes"]);
+        assert!(!today["comes"]["plan"].as_str().unwrap_or("").contains(&tr().text("head-work", None)), "nor named Work: {}", today["comes"]["plan"]);
+        assert_eq!(listed(&comes), Some((Some(true), Some(true))), "What comes' filter, no hours set: {}", comes["filter"]);
+        work::forget_plan();
+    }
+
     /// What comes and the Month say their own (the unified agenda, part 5):
     /// What comes' days carry their rows, today's doses by the minute, unnamed
     /// ("Dose"), another day's usual doses left out, and no `head`/`timed` of

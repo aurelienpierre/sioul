@@ -1190,7 +1190,8 @@ pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], r
         frees,
         sessions,
         related: related_views(cx.tr, related),
-        area_tags: cx.filter.quiet.as_ref().map_or_else(|| crate::areas::TaskAreas::usual().by_tags(task), |q| q.areas.by_tags(task)).id(),
+        // As its tags say: the hours' filter's reading when there is one, else the usual words with its projects' areas.
+        area_tags: cx.filter.quiet.as_ref().map_or_else(|| crate::areas::TaskAreas { projects: crate::areas::TaskAreas::of_projects(cx.projects), ..crate::areas::TaskAreas::usual() }.by_tags(task), |q| q.areas.by_tags(task)).id(),
         level: task.demands.level().map_or("", crate::demands::Level::id),
         estimate_first: task.estimate_first,
         felt_on: task.felt.last().and_then(|f| f.on).map(|d| d.to_string()).unwrap_or_default(),
