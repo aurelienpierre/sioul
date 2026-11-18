@@ -152,7 +152,7 @@ R: G6 (median of the last five after-ratings), CB6 (after-task ratings for learn
   - A property of the plan and of the kind, never of you.
   - R: TE25–26 (Kluger & DeNisi 1996, Hattie & Timperley 2007). G: 5, 15 %.
 
-- **Where the person sees it**: the Time page's "Done in this period, by area" (`timereport::estimates_by_area`): for the tasks done in the period that the page shows, the time spent on them beside their first estimate (else the current one), summed per area, each task under the first of its areas (work, then admin, then leisure), steps of a bigger task left out as here; three lines at most, one line of help, never a ratio or a grade (§11).
+- **Where the person sees it**: the Time page's "Done in this period, by area" (`timereport::estimates_by_area`): for the tasks done in the period that the page shows, the time spent on them beside their first estimate (else the current one), summed per area, each task once, under the area it leans to (`TaskAreas::leaning`: its own area; else, among its areas, those its categories say, so that a leisure task in a personal project counts as leisure; the first of them, work, then admin, then leisure), steps of a bigger task left out as here; three lines at most, one line of help, never a ratio or a grade (§11).
 
 ## 6. The day's free time
 

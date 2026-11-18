@@ -29,7 +29,7 @@ Sioul notes the time you spend, while you work or afterwards by hand, and keeps 
 
 - a bar per day (per month, over a year), stacked by project;
 - each project's hours, and what is left to bill, in hours and in money at its rate, the money counted line by line as its invoice will count it, so that the two agree to the cent;
-- **Done in this period, by area**: for the tasks done in the period, the time spent on them beside what you first estimated, one line for work, your admin and leisure each, so that you see where your guesses are off;
+- **Done in this period, by area**: for the tasks done in the period, the time spent on them beside what you first estimated, one line for work, your admin and leisure each, so that you see where your guesses are off (each task counts once: a leisure task in a personal project counts as leisure);
 - then each stretch of time, newest first.
 
 ## Where time comes from {#where-time-comes-from}

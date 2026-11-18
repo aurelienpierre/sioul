@@ -29,7 +29,7 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 
 - une barre par jour (par mois, sur une année), empilée par projet ;
 - les heures de chaque projet, et ce qui reste à facturer, en heures et en argent à son taux, l’argent compté ligne par ligne comme sa facture le comptera, pour que les deux s’accordent au centime près ;
-- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent ;
+- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent (chaque tâche compte une fois : une tâche de loisirs dans un projet personnel compte en loisirs) ;
 - puis chaque plage de temps, de la plus récente à la plus ancienne.
 
 ## D’où vient le temps {#where-time-comes-from}
