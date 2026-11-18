@@ -170,15 +170,21 @@ ScrollView {
             font.pixelSize: 13
             color: overview.theme.muted
         }
-        // The one chart, named after its account; its name chooses another.
+        // The one chart, named after its account; with several, its name is a
+        // button that chooses another, else words (a button keeps an outline).
+        Label {
+            visible: overview.chart !== null && !chartName.enabled
+            text: overview.chart ? overview.chart.name : ""
+            textFormat: Text.PlainText
+            color: overview.theme.text
+        }
         Button {
             id: chartName
 
             objectName: "chartName"
-            visible: overview.chart !== null
+            visible: overview.chart !== null && chartName.enabled
             flat: true
-            leftPadding: 0
-            text: overview.chart ? overview.theme.plain(overview.chart.name) + ((overview.view.charts || []).length > 1 ? "  ▾" : "") : ""
+            text: overview.chart ? overview.theme.plain(overview.chart.name) + "  ▾" : ""
             enabled: overview.view !== null && (overview.view.charts || []).length > 1
             Accessible.name: overview.sioul.text("ahead-chart-choose")
             ToolTip.visible: hovered && enabled

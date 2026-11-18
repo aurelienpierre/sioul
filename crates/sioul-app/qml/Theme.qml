@@ -51,6 +51,15 @@ QtObject {
     readonly property color selection: dark ? "#5d8471" : "#5f8572"
     readonly property color accent: dark ? "#93b5a2" : "#4c6b5c"
     readonly property color accentText: dark ? "#1e1f1c" : "#fbfaf7"
+    // What you type in or choose from (a text field, a text area, a combo box, a
+    // box to tick): a fill of its own, a step below a card's surface (light
+    // 93 L* against the cards' 98; dark 9 against 16) and away from a filled
+    // button's; the text on it 12:1 light and 13.5:1 dark, the placeholders 4.9:1 and 6.9:1.
+    readonly property color field: dark ? "#191a17" : "#eeece6"
+    // The firmer border of what you type in, and the outline of a flat button:
+    // 3:1 or more against the field, the cards, the page and a filled button,
+    // in both themes (WCAG's contrast for what tells a control apart).
+    readonly property color edge: dark ? "#807d73" : "#857d71"
     readonly property color warm: dark ? "#d4a56c" : "#8f6330"
     readonly property color forged: dark ? "#d38e70" : "#97573a"
     readonly property color focus: dark ? "#c9d9cf" : "#2f4a3d"

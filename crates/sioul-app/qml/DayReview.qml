@@ -234,9 +234,10 @@ SafeDialog {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(96, sheet.previewing ? preview.implicitHeight + 24 : memo.implicitHeight + 2)
-                color: sheet.theme.surface
+                // A field while you write in it (the theme's `field` and `edge`), a card while previewed.
+                color: sheet.previewing ? sheet.theme.surface : sheet.theme.field
                 radius: sheet.theme.radius
-                border.color: memo.activeFocus ? sheet.theme.focus : sheet.theme.line
+                border.color: memo.activeFocus ? sheet.theme.focus : sheet.previewing ? sheet.theme.line : sheet.theme.edge
 
                 TextArea {
                     id: memo

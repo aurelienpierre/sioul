@@ -1990,9 +1990,9 @@ Item {
 
                         // A field shows where it is: a border, darker when it has the focus.
                         background: Rectangle {
-                            color: page.theme.surface
+                            color: page.theme.field
                             radius: page.theme.radius
-                            border.color: writingSignature.activeFocus ? page.theme.focus : page.theme.line
+                            border.color: writingSignature.activeFocus ? page.theme.focus : page.theme.edge
                         }
                         Layout.fillWidth: true
                         Layout.preferredHeight: 110

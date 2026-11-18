@@ -1054,9 +1054,9 @@ SafeDialog {
                     readOnly: dialog.withOthers
                     // A field shows where it is: a border, darker when it has the focus.
                     background: Rectangle {
-                        color: dialog.theme.surface
+                        color: dialog.theme.field
                         radius: dialog.theme.radius
-                        border.color: notes.activeFocus ? dialog.theme.focus : dialog.theme.line
+                        border.color: notes.activeFocus ? dialog.theme.focus : dialog.theme.edge
                     }
                     Layout.fillWidth: true
                     Layout.preferredHeight: 80

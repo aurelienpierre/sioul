@@ -223,6 +223,10 @@ fn main() {
         "qml/KeysHint.qml",
         "qml/TitleBar.qml",
         "qml/WindowEdges.qml",
+        // Sioul's overrides of the Basic style, which cpp/style.cpp gives in place of Basic's own.
+        "qml/style/StyleButton.qml",
+        "qml/style/StyleTextField.qml",
+        "qml/style/StyleTextArea.qml",
     ];
     let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
@@ -237,8 +241,9 @@ fn main() {
     let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start; whether the palette is dark, for the icons;
-    // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output.
-    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp", "cpp/livesound.cpp"];
+    // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output;
+    // Sioul's overrides of the Basic style (a flat button's outline, a field's fill).
+    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp", "cpp/livesound.cpp", "cpp/style.cpp"];
     if !android {
         cpp.push("cpp/webengine.cpp");
         // SIGTERM and its kin end Sioul as its window's close does.

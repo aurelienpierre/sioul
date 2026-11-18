@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "crates" / "sioul-app"
-FOLDERS = [APP / "qml", APP / "qml" / "android", APP / "qml-desktop"]
+FOLDERS = [APP / "qml", APP / "qml" / "android", APP / "qml" / "style", APP / "qml-desktop"]
 NOTES = ROOT / "docs"
 OUT = ROOT / "website" / "docs" / "dev" / "qml.md"
 GITHUB = "https://github.com/aurelienpierre/sioul/blob/main"
@@ -68,7 +68,8 @@ NAMED = {
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",
     "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls", "Paths": "parts",
-    "WrapCheckBox": "controls", "PlainComboBox": "controls",
+    "WrapCheckBox": "controls", "PlainComboBox": "controls", "Tabs": "controls", "PageColumn": "controls",
+    "Section": "controls", "StyleButton": "controls", "StyleTextField": "controls", "StyleTextArea": "controls",
 }
 
 # Qt's page for each root type the files are based on (Qt 6).

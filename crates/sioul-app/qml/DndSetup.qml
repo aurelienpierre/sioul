@@ -295,9 +295,9 @@ ColumnLayout {
             Accessible.name: setup.sioul.text("dnd-setup-phones")
             wrapMode: TextArea.Wrap
             background: Rectangle {
-                color: setup.theme.surface
+                color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: phonesField.activeFocus ? setup.theme.focus : setup.theme.line
+                border.color: phonesField.activeFocus ? setup.theme.focus : setup.theme.edge
             }
         }
         TextArea {
@@ -308,9 +308,9 @@ ColumnLayout {
             Accessible.name: setup.sioul.text("dnd-setup-emails")
             wrapMode: TextArea.Wrap
             background: Rectangle {
-                color: setup.theme.surface
+                color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: emailsField.activeFocus ? setup.theme.focus : setup.theme.line
+                border.color: emailsField.activeFocus ? setup.theme.focus : setup.theme.edge
             }
         }
         RowLayout {

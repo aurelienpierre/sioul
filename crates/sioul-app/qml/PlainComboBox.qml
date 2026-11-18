@@ -7,7 +7,9 @@
 // of 5 October 2026). Each "&" is doubled for the list alone ("&&" is one);
 // the closed box is a text field, which shows the text as it is. Every
 // ComboBox of the window is one of these; one that brings its own delegate
-// doubles the "&" itself (TaskPanel's list of task lists).
+// doubles the "&" itself (TaskPanel's list of task lists). Drawn as a field,
+// not as a button: the theme's `field` and its firmer `edge`, as every text
+// field (qml/style/StyleTextField.qml); Basic's size.
 
 pragma ComponentBehavior: Bound
 
@@ -25,6 +27,21 @@ ComboBox {
     popup.bottomMargin: 6 + (box.safeArea ? box.safeArea.bottom : 0)
     popup.leftMargin: box.safeArea ? box.safeArea.left : 0
     popup.rightMargin: box.safeArea ? box.safeArea.right : 0
+
+    // Basic's background, as a field: the palette's base (the theme's `field`,
+    // SioulWindow.qml) and the window's theme's `edge`; pressed, Basic's mid tone.
+    background: Rectangle {
+        // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette's border then.
+        readonly property var shownIn: box.Window.window
+        readonly property var theme: shownIn ? shownIn.theme : undefined
+
+        implicitWidth: 140
+        implicitHeight: 40
+        visible: !box.flat || box.down
+        color: box.down ? box.palette.mid : box.palette.base
+        border.color: box.visualFocus ? box.palette.highlight : theme ? theme.edge : box.palette.mid
+        border.width: box.visualFocus ? 2 : 1
+    }
 
     // Basic's delegate, but for the "&" doubled.
     delegate: ItemDelegate {

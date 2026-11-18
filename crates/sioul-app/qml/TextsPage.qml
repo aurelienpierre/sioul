@@ -1171,9 +1171,9 @@ Item {
                         onTextChanged: page.count()
 
                         background: Rectangle {
-                            color: page.theme.surface
+                            color: page.theme.field
                             radius: page.theme.radius
-                            border.color: draft.activeFocus ? page.theme.focus : page.theme.line
+                            border.color: draft.activeFocus ? page.theme.focus : page.theme.edge
                         }
                     }
                 }

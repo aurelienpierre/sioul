@@ -61,9 +61,9 @@ ColumnLayout {
 
                 // A field shows where it is: a border, darker when it has the focus.
                 background: Rectangle {
-                    color: rows.theme.surface
+                    color: rows.theme.field
                     radius: rows.theme.radius
-                    border.color: area.activeFocus ? rows.theme.focus : rows.theme.line
+                    border.color: area.activeFocus ? rows.theme.focus : rows.theme.edge
                 }
             }
             ToolButton {

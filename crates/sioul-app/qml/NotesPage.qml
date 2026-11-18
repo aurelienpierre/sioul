@@ -727,9 +727,9 @@ Item {
 
                             // A field shows where it is: a border, darker when it has the focus.
                             background: Rectangle {
-                                color: page.theme.surface
+                                color: page.theme.field
                                 radius: page.theme.radius
-                                border.color: editor.activeFocus ? page.theme.focus : page.theme.line
+                                border.color: editor.activeFocus ? page.theme.focus : page.theme.edge
                             }
                             // "monospace" is a family on Linux only: the theme names each system's own.
                             font.family: page.theme.readingFamily || page.theme.mono

@@ -578,9 +578,9 @@ ColumnLayout {
 
                     // A field shows where it is: a border, darker when it has the focus.
                     background: Rectangle {
-                        color: field.theme.surface
+                        color: field.theme.field
                         radius: field.theme.radius
-                        border.color: longText.activeFocus ? field.theme.focus : field.theme.line
+                        border.color: longText.activeFocus ? field.theme.focus : field.theme.edge
                     }
                     onEditingFinished: {
                         if (text !== field.setting.value)

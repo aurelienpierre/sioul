@@ -592,9 +592,9 @@ Panel {
                     wrapMode: TextInput.Wrap
                     // Like every field, a border: light, darker when it has the focus.
                     background: Rectangle {
-                        color: "transparent"
+                        color: panel.theme.field
                         radius: panel.theme.radius
-                        border.color: title.activeFocus ? panel.theme.focus : panel.theme.line
+                        border.color: title.activeFocus ? panel.theme.focus : panel.theme.edge
                     }
                     Accessible.name: panel.making ? panel.sioul.text("task-new-title") : panel.sioul.text("task-title")
                     // A new task is made as its title is given; a task's title changed is saved.
@@ -2031,9 +2031,9 @@ Panel {
 
                 // A field shows where it is: a border, darker when it has the focus.
                 background: Rectangle {
-                    color: panel.theme.surface
+                    color: panel.theme.field
                     radius: panel.theme.radius
-                    border.color: taskNotes.activeFocus ? panel.theme.focus : panel.theme.line
+                    border.color: taskNotes.activeFocus ? panel.theme.focus : panel.theme.edge
                 }
                 visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true

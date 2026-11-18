@@ -310,9 +310,9 @@ ColumnLayout {
 
             // A field shows where it is: a border, darker when it has the focus.
             background: Rectangle {
-                color: form.theme.surface
+                color: form.theme.field
                 radius: form.theme.radius
-                border.color: notes.activeFocus ? form.theme.focus : form.theme.line
+                border.color: notes.activeFocus ? form.theme.focus : form.theme.edge
             }
             Layout.fillWidth: true
             Layout.preferredHeight: 90
@@ -327,9 +327,9 @@ ColumnLayout {
 
             // A field shows where it is: a border, darker when it has the focus.
             background: Rectangle {
-                color: form.theme.surface
+                color: form.theme.field
                 radius: form.theme.radius
-                border.color: urls.activeFocus ? form.theme.focus : form.theme.line
+                border.color: urls.activeFocus ? form.theme.focus : form.theme.edge
             }
             Layout.fillWidth: true
             Layout.preferredHeight: 60
