@@ -247,7 +247,7 @@ In `crates/sioul-core`, `crates/sioul-sync`, `crates/sioul-cli` and `crates/siou
 - the notes folder and routing, the known senders and "let in", the lanes and their reasons;
 - the summary, in English and French (`sioul porch`; the window shows sections of notices, not a summary);
 - admin windows, and the Porch's memory ("Done for now");
-- **accounts**: found from the address (the provider's autoconfig, then Thunderbird's ISPDB, then a guess said as such), passwords in the system keyring, written into the configuration without losing its comments;
+- **accounts**: found from the address (the provider's autoconfig, then Thunderbird's ISPDB, by the domain then by the host that receives its mail, then the domain's SRV records, then a guess said as such: [client.md](client.md), "Accounts: finding the servers"), passwords in the system keyring, written into the configuration without losing its comments;
 - **IMAP sync**, over TLS (rustls) or STARTTLS, into Maildir: the last 14 days at first, then only what arrives, for every folder but views of others (Gmail's "All Mail"); flags and deletions made elsewhere brought back; one fetch at a time per account, across processes; the server written to only when you act ([client.md](client.md));
 - **the watcher**: IDLE per account, reconnection with growing pauses, no retry after a refused password, the notification for "right now";
 - `sioul porch`, `done`, `card`, `projects` (once `cases`, still taken), `window`, `budgets`, `account add|portal|list|test|password|remove`, `sync` and `watch`;

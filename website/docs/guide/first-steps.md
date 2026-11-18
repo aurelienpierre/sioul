@@ -78,17 +78,34 @@ Already using Sioul on another device? On a device that does not share yet, the 
 
 1. Open **Accounts** (the person icon), then the **Add an account** tab.
 2. Under "Add a mail account", type your **email address** and choose **Find the server**.
-3. Sioul says what it found and where from: your provider's own settings, Thunderbird's list of providers, or a guess, said as such, to check before going on.
+3. Sioul says what it found and where from: your provider's own settings, Thunderbird's list of providers, your domain's own records, or a guess. The last two are said as such, to check before going on. When it finds nothing, the form opens empty for you to type the server: see [Your own domain at a host](#your-own-domain-at-a-host).
 4. Type your **password**. It goes to your system's keyring, nowhere else.
 5. Choose **Connect and add**. Sioul tests the password before keeping anything, then fetches your recent mail.
 
-Some providers want an **app password** instead of your usual one when two-step verification is on: you make it in your account's settings at the provider. Gmail and Google Workspace: below.
+Some providers want an **app password** instead of your usual one when two-step verification is on: you make it in your account's settings at the provider. Gmail and Google Workspace: below. Yahoo Mail wants one from every mail program that does not sign in on Yahoo's own page: below too.
 
 Outlook.com, Hotmail, Live, MSN and Microsoft 365 take no password at all: you sign in on Microsoft's own page, below.
 
 Fetching changes nothing on your mail server. Sioul writes there only when you act: opening a message marks it read, as any mail program does; archiving, deleting and moving happen ten seconds after you asked, so that "Undo" can stop them.
 
 Then, on the address's card in **Your accounts**, unfold **Settings for this address** and tick **What this address is for**: work, your admin, leisure, or several. Until you say, an address counts as work, so that it never reaches your evenings. See [Hours](hours.md).
+
+### Your own domain at a host {#your-own-domain-at-a-host}
+
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
+
+Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
+
+When Sioul finds nothing, the form opens with **Server** empty:
+
+1. Type the server name your host gives in its help pages, not `imap.` followed by your domain.
+2. Check **Login**: most hosts want your whole address.
+3. If your host gives another server for sending, unfold **Sending server, when it cannot be found** and type its name, port and encryption. Left empty, Sioul finds the sending server at the first message you send. One you type is tried with your password before anything is kept.
+4. Type your password, then choose **Connect and add**.
+
+If Sioul says that a certificate is for another name while you add an address, the name asked is most likely such an alias: replace it with the name from your host's help. Do not take it from the message, since on a network you do not trust another server could have answered. If an address that worked before says so, try again later or on another network.
+
+Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
 
 ### Gmail and Google Workspace
 
@@ -97,7 +114,21 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Use an app password**: make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification; **Make an app password** opens the page in your browser), paste it under **App password (from Google)**, then **Connect and add**.
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
+App passwords need 2-Step Verification. Google's help says the setting might not be available when 2-Step Verification is set up for security keys only, for a work, school or other organisation's account, or with Advanced Protection; **Sign in with Google** is then the way. Changing your Google password revokes every app password: make a new one for Sioul afterwards.
+
+For a Google Workspace address (your own domain at Google), **Sign in with Google** is the dependable way: Google may not offer it an app password, and since 1 May 2025 Workspace accounts no longer let other apps sign in with a user name and a password, office devices apart, Google says.
+
 Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On Android, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
+
+### Yahoo Mail {#yahoo-mail}
+
+Yahoo wants an app password from mail programs that do not sign in on Yahoo's own page, and never your Yahoo account's own password. Sioul is one of those programs. It finds Yahoo's servers from your address (yahoo.com and its country versions such as yahoo.fr, ymail.com, myyahoo.com, rocketmail.com) in Thunderbird's list of providers, and says where to make the app password before you type anything:
+
+1. After **Find the server**, choose **Make an app password**: your Yahoo account's security page opens in your browser (login.yahoo.com/account/security).
+2. There, under "External connections", choose "Create app password", name it Sioul, then "Generate password". Yahoo offers this only in a browser you have already used to sign in to Yahoo for several days in a row, and not in a private window; otherwise it says to use its webmail or its own app.
+3. Paste the app password under **Password**, then choose **Connect and add**.
+
+If Yahoo refuses a password later, Sioul says so and names the same page; the dialog that asks for the password again has the same **Make an app password** button. Not yet tried with a real Yahoo account. Source: Yahoo's help, "Generate and manage 3rd-party app passwords", <https://help.yahoo.com/kb/SLN15241.html>, read 17 November 2026.
 
 ### Outlook.com, Hotmail and Microsoft 365 {#outlook-and-microsoft-365}
 

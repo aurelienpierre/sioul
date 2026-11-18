@@ -78,17 +78,34 @@ Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne part
 
 1. Ouvrez **Comptes** (l’icône en forme de personne), puis l’onglet **Ajouter un compte**.
 2. Sous « Ajouter un compte de courriel », tapez votre **adresse électronique** et choisissez **Trouver le serveur**.
-3. Sioul dit ce qu’il a trouvé et d’où : les réglages de votre fournisseur lui-même, la liste des fournisseurs de Thunderbird, ou une supposition, dite comme telle, à vérifier avant d’aller plus loin.
+3. Sioul dit ce qu’il a trouvé et d’où : les réglages de votre fournisseur lui-même, la liste des fournisseurs de Thunderbird, les enregistrements de votre domaine, ou une supposition. Les deux derniers sont dits comme tels, à vérifier avant d’aller plus loin. Quand il ne trouve rien, le formulaire s’ouvre vide pour que vous tapiez le serveur : voir [Votre propre domaine chez un hébergeur](#your-own-domain-at-a-host).
 4. Tapez votre **mot de passe**. Il va dans le trousseau de votre système, nulle part ailleurs.
 5. Choisissez **Se connecter et ajouter**. Sioul essaie le mot de passe avant de garder quoi que ce soit, puis relève vos courriels récents.
 
-Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous.
+Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous. Yahoo Mail en demande un à tout logiciel de courriel qui ne se connecte pas sur la page de Yahoo elle-même : ci-dessous aussi.
 
 Outlook.com, Hotmail, Live, MSN et Microsoft 365 ne prennent aucun mot de passe : vous vous connectez sur la page de Microsoft elle-même, ci-dessous.
 
 Relever les courriels ne change rien sur votre serveur de courriel. Sioul n’y écrit que lorsque vous agissez : ouvrir un courriel le marque comme lu, comme dans tout logiciel de courriel ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
 Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages de cette adresse** et cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que ses courriels n’atteignent jamais vos soirées. Voir [Les heures](hours.md).
+
+### Votre propre domaine chez un hébergeur {#your-own-domain-at-a-host}
+
+Une adresse à un domaine à vous, dont un hébergeur garde les courriels (OVH, votre hébergeur web) : Sioul cherche le serveur de l’hébergeur. Il interroge la liste des fournisseurs de Thunderbird sur les serveurs qui reçoivent les courriels de votre domaine, puis essaie `imap.` suivi de votre domaine, puis lit les enregistrements de votre domaine. Il ne propose un serveur que s’il présente un certificat fait pour son nom même, et dit d’où vient le serveur, à vérifier avant de taper votre mot de passe. Pour les boîtes d’hébergement d’OVH, il trouve `ssl0.ovh.net` tout seul. Un hébergeur peut avoir plusieurs offres de courriel, chacune avec son serveur : son aide nomme le serveur de chacune, et celui que Sioul trouve peut être celui d’une autre offre.
+
+Sioul ne propose plus `imap.` suivi de votre domaine, sauf si ce nom marche. Chez beaucoup d’hébergeurs, ce n’est qu’un alias du serveur de l’hébergeur, dont le certificat nomme l’hébergeur : aucun logiciel de courriel ne peut s’y connecter sûrement, et Sioul le proposait, puis échouait.
+
+Quand Sioul ne trouve rien, le formulaire s’ouvre avec **Serveur** vide :
+
+1. Tapez le nom de serveur que votre hébergeur donne dans ses pages d’aide, et non `imap.` suivi de votre domaine.
+2. Vérifiez **Identifiant** : la plupart des hébergeurs demandent votre adresse entière.
+3. Si votre hébergeur donne un autre serveur pour l’envoi, dépliez **Serveur d’envoi, s’il ne se trouve pas** et tapez son nom, son port et son chiffrement. Laissé vide, Sioul trouve le serveur d’envoi au premier courriel que vous envoyez. Celui que vous tapez est essayé avec votre mot de passe avant que rien ne soit gardé.
+4. Tapez votre mot de passe, puis choisissez **Se connecter et ajouter**.
+
+Si Sioul dit qu’un certificat est pour un autre nom pendant que vous ajoutez une adresse, le nom demandé est très probablement un tel alias : remplacez-le par le nom donné dans l’aide de votre hébergeur. Ne le prenez pas dans le message, car sur un réseau auquel vous ne vous fiez pas un autre serveur a pu répondre. Si une adresse qui marchait avant le dit, réessayez plus tard ou sur un autre réseau.
+
+Sioul trouve le serveur d’envoi à votre premier courriel : d’abord les réglages de votre domaine ou la liste de Thunderbird d’après votre domaine, puis le serveur d’où viennent vos courriels, celui où va déjà votre mot de passe, puis ce que nomment l’entrée de l’hébergeur et les enregistrements de votre domaine, chez le même hébergeur seulement. Un compte ajouté avant cela, dont le serveur d’envoi a été gardé sous la forme `smtp.` suivi de votre domaine et est refusé pour son certificat : au courriel suivant, Sioul essaie pour l’envoi le serveur d’où viennent vos courriels. S’il accepte votre mot de passe, Sioul le garde, le dit une fois dans la ligne d’état en nommant les deux serveurs, et envoie par lui ; sinon, rien ne change et le refus est dit. Vos autres appareils envoient alors par lui aussi. Pas encore essayé avec une vraie boîte chez un hébergeur.
 
 ### Gmail et Google Workspace {#gmail-and-google-workspace}
 
@@ -97,7 +114,21 @@ Google refuse le mot de passe de votre compte dans les autres logiciels de courr
 - **Utiliser un mot de passe d’application** : créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes ; **Créer un mot de passe d’application** ouvre la page dans votre navigateur), collez-le sous **Mot de passe d’application (de Google)**, puis **Se connecter et ajouter**.
 - **Se connecter avec Google** : la page de Google elle-même s’ouvre dans votre navigateur. Pour les courriels, Google n’accepte qu’une clé Google à vous, pas celle de Sioul : un projet gratuit dans Google Cloud, fait une fois (**Faire votre clé Google** déplie les étapes), celui de vos agendas Google si vous l’avez fait. Google dit ensuite que l’application n’est pas validée : c’est la vôtre ; choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail. Publiez le projet (*Audience → Publier l’application*) : s’il reste en test, Google coupe l’accès tous les sept jours.
 
+Les mots de passe d’application demandent la validation en deux étapes. L’aide de Google dit que le réglage peut ne pas être disponible quand la validation en deux étapes n’est configurée que pour des clés de sécurité, pour le compte d’un travail, d’un établissement scolaire ou d’une autre organisation, ou avec la Protection Avancée ; **Se connecter avec Google** est alors la façon de faire. Changer le mot de passe de votre compte Google révoque tous les mots de passe d’application : créez-en un nouveau pour Sioul ensuite.
+
+Pour une adresse Google Workspace (votre propre domaine chez Google), **Se connecter avec Google** est la façon fiable : Google peut ne pas lui proposer de mot de passe d’application, et depuis le 1er mai 2025 les comptes Workspace ne laissent plus d’autres applications se connecter avec un nom d’utilisateur et un mot de passe, appareils de bureau à part, dit Google.
+
 Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur Android, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
+
+### Yahoo Mail {#yahoo-mail}
+
+Yahoo demande un mot de passe d’application aux logiciels de courriel qui ne se connectent pas sur la page de Yahoo elle-même, et jamais le mot de passe de votre compte Yahoo. Sioul est l’un de ces logiciels. Il trouve les serveurs de Yahoo d’après votre adresse (yahoo.com et ses versions par pays comme yahoo.fr, ymail.com, myyahoo.com, rocketmail.com) dans la liste des fournisseurs de Thunderbird, et dit où créer le mot de passe d’application avant que vous ne tapiez quoi que ce soit :
+
+1. Après **Trouver le serveur**, choisissez **Créer un mot de passe d’application** : la page de sécurité de votre compte Yahoo s’ouvre dans votre navigateur (login.yahoo.com/account/security).
+2. Là, sous « Connexions externes », choisissez « Créer un mot de passe d’application », nommez-le Sioul, puis « Générer le mot de passe ». Yahoo ne le propose que dans un navigateur déjà utilisé plusieurs jours de suite pour vous connecter à Yahoo, et pas en navigation privée ; sinon, il dit d’utiliser sa messagerie web ou sa propre application.
+3. Collez le mot de passe d’application sous **Mot de passe**, puis choisissez **Se connecter et ajouter**.
+
+Si Yahoo refuse un mot de passe plus tard, Sioul le dit et nomme la même page ; la fenêtre qui redemande le mot de passe a le même bouton **Créer un mot de passe d’application**. Pas encore essayé avec un vrai compte Yahoo. Source : l’aide de Yahoo, « Générer et gérer des mots de passe d’application tierce », <https://fr.aide.yahoo.com/kb/SLN15241.html>, lue le 17 novembre 2026.
 
 ### Outlook.com, Hotmail et Microsoft 365 {#outlook-and-microsoft-365}
 

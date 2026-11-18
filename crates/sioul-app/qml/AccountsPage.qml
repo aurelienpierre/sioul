@@ -178,6 +178,8 @@ Item {
     // The mail form signs this account in again (Google's mail), rather than adding one.
     property string againId: ""
     property bool davServerShown: false
+    // The mail form's sending server, unfolded: empty, it is found by itself.
+    property bool smtpServerShown: false
     property bool googleStepsShown: false
     // Microsoft's form with "What your administrator does" unfolded (for captures).
     property bool microsoftAdminUnfolded: false
@@ -552,18 +554,29 @@ Item {
                                 security.currentIndex = found.security === "starttls" ? 1 : 0
                                 login.text = found.login
                                 password.text = ""
+                                smtpHost.text = ""
+                                smtpPort.text = ""
+                                smtpSecurity.currentIndex = 0
+                                page.smtpServerShown = false
                                 // Once the found address's own bindings (its key kept) have followed.
                                 Qt.callLater(() => {
                                     if (googleMail.item)
                                         googleMail.item.reset()
                                 })
                                 // Google's and Microsoft's mail ask no account password: their own forms instead.
-                                if (!found.google && !found.microsoft)
+                                // Nothing found: the server's name is typed first.
+                                if (found.unfound === true)
+                                    host.forceActiveFocus()
+                                else if (!found.google && !found.microsoft)
                                     password.forceActiveFocus()
                             }
                             function clear() {
                                 addressField.text = ""
                                 password.text = ""
+                                smtpHost.text = ""
+                                smtpPort.text = ""
+                                smtpSecurity.currentIndex = 0
+                                page.smtpServerShown = false
                                 page.againId = ""
                                 if (googleMail.item)
                                     googleMail.item.reset()
@@ -776,6 +789,60 @@ Item {
                                                 onAccepted: if (connect.enabled) connect.clicked()
                                             }
                                         }
+                                        // The sending server, when it is not the one Sioul would find:
+                                        // folded; empty, it is found at the first message sent.
+                                        Button {
+                                            visible: !page.oauthFound
+                                            flat: true
+                                            text: (page.smtpServerShown ? "▾  " : "▸  ") + page.sioul.text("ui-smtp-server")
+                                            onClicked: page.smtpServerShown = !page.smtpServerShown
+                                        }
+                                        GridLayout {
+                                            visible: !page.oauthFound && page.smtpServerShown
+                                            Layout.fillWidth: true
+                                            columns: 2
+                                            columnSpacing: page.theme.gap
+                                            rowSpacing: 8
+
+                                            Label {
+                                                Layout.columnSpan: 2
+                                                Layout.fillWidth: true
+                                                text: page.sioul.text("ui-smtp-server-note")
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.muted
+                                            }
+                                            Label {
+                                                text: page.sioul.text("ui-host")
+                                                color: page.theme.muted
+                                            }
+                                            TextField {
+                                                id: smtpHost
+                                                Layout.fillWidth: true
+                                                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+                                            }
+                                            Label {
+                                                text: page.sioul.text("ui-port")
+                                                color: page.theme.muted
+                                            }
+                                            TextField {
+                                                id: smtpPort
+                                                Layout.preferredWidth: 100
+                                                placeholderText: smtpSecurity.currentIndex === 1 ? "587" : "465"
+                                                validator: IntValidator {
+                                                    bottom: 1
+                                                    top: 65535
+                                                }
+                                            }
+                                            Label {
+                                                text: page.sioul.text("ui-security")
+                                                color: page.theme.muted
+                                            }
+                                            PlainComboBox {
+                                                id: smtpSecurity
+                                                Layout.fillWidth: true
+                                                model: [page.sioul.text("security-tls"), page.sioul.text("security-starttls")]
+                                            }
+                                        }
                                         Label {
                                             visible: !page.oauthFound
                                             Layout.fillWidth: true
@@ -791,7 +858,17 @@ Item {
                                             enabled: !page.sioul.formBusy && password.text.length > 0 && host.text.length > 0
                                             onClicked: {
                                                 page.lastForm = "mail"
-                                                page.sioul.addAccount(addressField.text, host.text, parseInt(port.text), security.currentIndex === 1 ? "starttls" : "tls", login.text, password.text)
+                                                page.sioul.addMailAccount(JSON.stringify({
+                                                    address: addressField.text,
+                                                    host: host.text,
+                                                    port: parseInt(port.text) || 0,
+                                                    security: security.currentIndex === 1 ? "starttls" : "tls",
+                                                    login: login.text,
+                                                    password: password.text,
+                                                    smtp_host: smtpHost.text,
+                                                    smtp_port: parseInt(smtpPort.text) || 0,
+                                                    smtp_security: smtpSecurity.currentIndex === 1 ? "starttls" : "tls"
+                                                }))
                                             }
                                         }
                                     }
@@ -809,7 +886,7 @@ Item {
                                     Button {
                                         id: atMicrosoft
 
-                                        visible: page.found === null && page.sioul.formError !== "" && page.lastForm === "mail" && !page.sioul.formBusy && addressField.text.indexOf("@") > 0
+                                        visible: (page.found === null ? page.sioul.formError !== "" : page.found.unfound === true) && page.lastForm === "mail" && !page.sioul.formBusy && addressField.text.indexOf("@") > 0
                                         Layout.fillWidth: true
                                         flat: true
                                         text: page.sioul.text("ui-at-microsoft")

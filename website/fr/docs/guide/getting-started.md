@@ -52,7 +52,7 @@ Ouvrez ensuite Sioul depuis votre menu d’applications. Il parle français et a
 3. Tapez votre **mot de passe**. Il va dans le trousseau de votre système, et nulle part ailleurs.
 4. Choisissez **Se connecter et ajouter**. Sioul essaie le mot de passe avant de garder quoi que ce soit, puis relève vos courriels récents.
 
-Deux fournisseurs ne prennent pas de mot de passe ordinaire. Pour Gmail, Sioul propose un mot de passe d’application, ou la page de connexion de Google ; pour Outlook.com, Hotmail et Microsoft 365, la page de connexion de Microsoft. [Premiers pas](first-steps.md#gmail-and-google-workspace) décrit les deux.
+Trois fournisseurs ne prennent pas de mot de passe ordinaire. Pour Gmail, Sioul propose un mot de passe d’application, ou la page de connexion de Google ; pour Yahoo Mail, un mot de passe d’application, créé sur la page de sécurité de votre compte Yahoo ; pour Outlook.com, Hotmail et Microsoft 365, la page de connexion de Microsoft. [Premiers pas](first-steps.md#gmail-and-google-workspace) décrit les trois.
 
 Relever ne change rien sur votre serveur de courriel. Sioul n’y écrit que lorsque vous agissez : archiver, supprimer et déplacer se font dix secondes après votre demande, pour qu’**Annuler** puisse les arrêter.
 

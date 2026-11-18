@@ -354,6 +354,15 @@ pub mod qobject {
         #[qinvokable]
         fn add_account(self: Pin<&mut Sioul>, address: &QString, host: &QString, port: i32, security: &QString, login: &QString, password: &QString);
 
+        /// `add_account`, from the form's fields as JSON (address, host, port,
+        /// security, login, password), with the sending server typed there
+        /// (smtp_host, smtp_port, smtp_security): an empty `smtp_host` leaves
+        /// it to be found at the first message sent; one given is signed in
+        /// to before anything is kept, port 0 being the usual one for its
+        /// encryption.
+        #[qinvokable]
+        fn add_mail_account(self: Pin<&mut Sioul>, fields: &QString);
+
         /// Adds a web-only mailbox.
         #[qinvokable]
         fn add_portal(self: Pin<&mut Sioul>, name: &QString, url: &QString);
@@ -2260,6 +2269,13 @@ pub mod qobject {
         #[qinvokable]
         fn google_built_in(self: &Sioul) -> bool;
 
+        /// What the dialog that asks an account's password again shows for
+        /// its server `host`, as JSON: `guide` and `field` in your language,
+        /// `url` where its app password is made; `{}` when the server takes
+        /// the account's own password (`sioul_sync::AppPasswords::words`).
+        #[qinvokable]
+        fn app_password_for(self: &Sioul, host: &QString) -> QString;
+
         /// The camera, microphone and speaker of calls in sites, by their names: {"camera", "microphone", "speaker"}.
         #[qinvokable]
         fn call_devices(self: &Sioul) -> QString;
@@ -3932,10 +3948,21 @@ fn give_password(qt: &QtThread, shared: &Arc<Shared>, id: String, password: Stri
     });
 }
 
+/// A sending server typed in the form that adds a mail account.
+struct Sending {
+    host: String,
+    /// None: the usual port for its encryption.
+    port: Option<u16>,
+    security: Security,
+}
+
 /// A mail account added: tested with its password (given, or, `None`, the one
 /// its address's calendars and contacts use), then kept; its watcher started.
+/// A sending server typed with it (`sending`) is signed in to as well before
+/// anything is kept, then written with the account; without one, the
+/// sending server is found at the first message sent.
 #[allow(clippy::too_many_arguments)]
-fn add_mail(qt: &QtThread, shared: &Arc<Shared>, address: String, host: String, port: u16, security: Security, login: String, password: Option<String>) {
+fn add_mail(qt: &QtThread, shared: &Arc<Shared>, address: String, host: String, port: u16, security: Security, login: String, password: Option<String>, sending: Option<Sending>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let config = load_config();
@@ -3953,11 +3980,19 @@ fn add_mail(qt: &QtThread, shared: &Arc<Shared>, address: String, host: String, 
                 };
                 password.and_then(|password| {
                     let id = config.free_id(&address);
-                    let account = Account::imap(&id, &address, &host, port, security, Some(&login));
+                    let mut account = Account::imap(&id, &address, &host, port, security, Some(&login));
+                    if let Some(sending) = &sending {
+                        account.smtp_host = Some(sending.host.clone());
+                        account.smtp_port = sending.port;
+                        account.smtp_security = sending.security;
+                    }
                     let password = sioul_sync::tidy_password(&host, &password);
                     sioul_sync::test(&account, &password)
-                        .and_then(|_| secret::save(&account, &password))
                         .map_err(|e| e.sentence(tr(), &id))
+                        // The sending server typed: signed in to, nothing sent, before anything is kept.
+                        .and_then(|_| if sending.is_some() { sioul_sync::send::test(&account, &password).map_err(|e| say("account-sending-refused", &[("problem", e.sentence(tr(), &id))])) } else { Ok(()) })
+                        .and_then(|()| secret::save(&account, &password).map_err(|e| e.sentence(tr(), &id)))
+                        // The account and its sending server, in one step.
                         .and_then(|()| config::add_imap_account(&config_path(), &account))
                         .map(|()| account)
                 })
@@ -4632,7 +4667,7 @@ struct FoundView {
     login: String,
     /// "Found: …, from your provider's own settings."
     by: String,
-    /// Gmail's app password, or the general advice.
+    /// Gmail's app password or Yahoo's, or the general advice.
     hint: String,
     /// Where to make an app password, when the provider is known for wanting one.
     help_url: Option<&'static str>,
@@ -4641,6 +4676,11 @@ struct FoundView {
     google: bool,
     /// A Google key of your own is kept on this device for this address.
     google_key: bool,
+    /// Google keeps this address's mail and it is not Gmail's own: a
+    /// Google Workspace address, which Google may offer no app password.
+    workspace: bool,
+    /// Nothing was found: the form opens empty, for the server's name to be typed.
+    unfound: bool,
     /// Microsoft keeps this address's mail (Outlook.com, Microsoft 365):
     /// never a password there, Microsoft's own sign-in.
     microsoft: bool,
@@ -5105,6 +5145,14 @@ impl qobject::Sioul {
                 Some(kind) => Ok(sioul_sync::discover::microsoft_found(&address, kind)),
                 None => sioul_sync::discover(&address),
             };
+            // Nothing found, or a search the network cut short: no refusal, the
+            // form opens empty for the server's name to be typed, with what to
+            // type (the provider's own name).
+            let (found, unfound) = match found {
+                Err(sioul_sync::SyncError::NotFound(domain)) => (Ok(sioul_sync::Found { host: String::new(), port: 993, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Guess, smtp: None }), Some(("account-by-hand", domain))),
+                Err(sioul_sync::SyncError::Said(sioul_sync::said::SEARCH_SLOW, domain)) => (Ok(sioul_sync::Found { host: String::new(), port: 993, security: Security::Tls, username: address.clone(), by: sioul_sync::FoundBy::Guess, smtp: None }), Some(("account-by-hand-slow", domain))),
+                other => (other, None),
+            };
             let result = found.map(|found| {
                 let server = say(
                     "account-server",
@@ -5116,6 +5164,9 @@ impl qobject::Sioul {
                 );
                 // Gmail, or a domain whose mail Google keeps (its MX), or settings naming Google's server.
                 let google = found.by == sioul_sync::FoundBy::Google || found.host.eq_ignore_ascii_case(sioul_sync::discover::GOOGLE_IMAP);
+                // Said before the password is typed: Google's servers and Yahoo's take an
+                // app password only, made on a page of theirs; else the general advice.
+                let (hint, help_url) = sioul_sync::password_hint(&found.host);
                 // Outlook.com, Microsoft 365: by their domains, their MX, or settings naming their server.
                 let microsoft_kind = match found.by {
                     sioul_sync::FoundBy::Microsoft(kind) => Some(kind),
@@ -5123,9 +5174,14 @@ impl qobject::Sioul {
                     _ => None,
                 };
                 json(&FoundView {
-                    by: say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
-                    hint: tr().text(if google { "account-gmail-hint" } else { "account-app-password-hint" }, None),
-                    help_url: google.then_some(sioul_sync::GMAIL_APP_PASSWORDS),
+                    by: match &unfound {
+                        Some((words, domain)) => say(words, &[("domain", domain.clone())]),
+                        None => say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
+                    },
+                    hint: tr().text(hint, None),
+                    help_url,
+                    unfound: unfound.is_some(),
+                    workspace: google && !sioul_sync::is_gmail(&address),
                     google,
                     google_key: google && gmail::has_own_key(&address),
                     microsoft: microsoft_kind.is_some(),
@@ -5154,7 +5210,33 @@ impl qobject::Sioul {
         let port = u16::try_from(port).ok().filter(|p| *p > 0).unwrap_or(if security == Security::Tls { 993 } else { 143 });
         self.as_mut().set_form_busy(true);
         self.as_mut().set_form_error(QString::default());
-        add_mail(&self.qt_thread(), &self.shared(), address, host, port, security, login, Some(password));
+        add_mail(&self.qt_thread(), &self.shared(), address, host, port, security, login, Some(password), None);
+    }
+
+    fn add_mail_account(mut self: Pin<&mut Self>, fields: &QString) {
+        /// The mail form's fields, as it sends them.
+        #[derive(serde::Deserialize)]
+        struct Fields {
+            address: String,
+            host: String,
+            port: i32,
+            security: String,
+            login: String,
+            password: String,
+            smtp_host: String,
+            smtp_port: i32,
+            smtp_security: String,
+        }
+        let Ok(fields) = serde_json::from_str::<Fields>(&fields.to_string()) else { return };
+        let encryption = |named: &str| if named == "starttls" { Security::Starttls } else { Security::Tls };
+        let security = encryption(&fields.security);
+        let port = u16::try_from(fields.port).ok().filter(|p| *p > 0).unwrap_or(if security == Security::Tls { 993 } else { 143 });
+        // The sending server, when one was typed: no port given is the usual one for its encryption.
+        let smtp_host = fields.smtp_host.trim().to_string();
+        let sending = (!smtp_host.is_empty()).then(|| Sending { host: smtp_host, port: u16::try_from(fields.smtp_port).ok().filter(|p| *p > 0), security: encryption(&fields.smtp_security) });
+        self.as_mut().set_form_busy(true);
+        self.as_mut().set_form_error(QString::default());
+        add_mail(&self.qt_thread(), &self.shared(), fields.address.trim().to_ascii_lowercase(), fields.host.trim().to_string(), port, security, fields.login.trim().to_string(), Some(fields.password), sending);
     }
 
     fn add_mail_like(mut self: Pin<&mut Self>, address: &QString, host: &QString, port: i32, security: &QString, login: &QString) {
@@ -5163,7 +5245,7 @@ impl qobject::Sioul {
         let port = u16::try_from(port).ok().filter(|p| *p > 0).unwrap_or(if security == Security::Tls { 993 } else { 143 });
         self.as_mut().set_form_busy(true);
         self.as_mut().set_form_error(QString::default());
-        add_mail(&self.qt_thread(), &self.shared(), address, host, port, security, login, None);
+        add_mail(&self.qt_thread(), &self.shared(), address, host, port, security, login, None, None);
     }
 
     fn set_account_enabled(mut self: Pin<&mut Self>, id: &QString, on: bool) -> QString {
@@ -7368,6 +7450,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn app_password_for(&self, host: &QString) -> QString {
+        let words = sioul_sync::AppPasswords::only_at(host.to_string().trim().trim_end_matches('.')).and_then(sioul_sync::AppPasswords::words);
+        QString::from(&match words {
+            Some((guide, field, url)) => serde_json::json!({ "guide": tr().text(guide, None), "field": tr().text(field, None), "url": url }).to_string(),
+            None => "{}".to_string(),
+        })
+    }
+
     fn google_built_in(&self) -> bool {
         sioul_sync::google::built_in().is_some()
     }
@@ -8738,6 +8828,26 @@ impl qobject::Sioul {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Finding an address's servers, looking at what a server offers,
+    /// adding an account (its sign-ins) and answering an invitation (its
+    /// sending) wait on the network, up to `discover::WHOLE` for a search:
+    /// each runs on a thread of its own, never the window's.
+    #[test]
+    fn discovery_and_sign_ins_stay_off_the_window_s_thread() {
+        let backend = std::fs::read_to_string(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/backend.rs")).unwrap();
+        for (function, waits) in [
+            ("fn find_servers(mut self: Pin<&mut Self>", "sioul_sync::discover(&address)"),
+            ("fn scout_account(mut self: Pin<&mut Self>", "sioul_sync::scout::scout("),
+            ("fn add_mail(qt: &QtThread", "sioul_sync::send::test(&account"),
+            ("fn answer_invitation(mut self: Pin<&mut Self>", "pim::answer("),
+        ] {
+            let start = backend.find(function).unwrap_or_else(|| panic!("{function}"));
+            let spawned = backend[start..].find("std::thread::spawn").unwrap_or_else(|| panic!("{function}: a thread of its own"));
+            let waited = backend[start..].find(waits).unwrap_or_else(|| panic!("{function}: {waits}"));
+            assert!(spawned < waited, "{function}: {waits} runs off the window's thread");
+        }
+    }
 
     /// A mail report with nothing new leaves the views as they are while the
     /// address's Maildir stays as its last report left it: a message come,

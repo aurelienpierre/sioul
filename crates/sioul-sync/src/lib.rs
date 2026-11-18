@@ -183,6 +183,10 @@ use std::path::Path;
 /// Where Google makes app passwords: Gmail refuses the usual password over IMAP.
 pub const GMAIL_APP_PASSWORDS: &str = "https://myaccount.google.com/apppasswords";
 
+/// Where Yahoo makes app passwords: the account's security page, under
+/// "External connections" (Yahoo's help, SLN15241, read 17 November 2026).
+pub const YAHOO_APP_PASSWORDS: &str = "https://login.yahoo.com/account/security";
+
 /// Sioul's words for what this crate says itself (a hint, a page in your
 /// browser): the configuration's language, else the session's, as the window.
 pub(crate) fn translator() -> Translator {
@@ -214,13 +218,17 @@ pub fn is_gmail(address: &str) -> bool {
 }
 
 /// The password as the server wants it. Google shows app passwords as four
-/// groups of four letters ("abcd efgh ijkl mnop"); the spaces are not part of it.
+/// groups of four letters ("abcd efgh ijkl mnop"); the spaces are not part
+/// of it. Yahoo's servers take app passwords only, which hold no space
+/// either: the same is done for them. How Yahoo shows its app passwords is
+/// not verified here (no Yahoo account was used): sixteen letters, in one
+/// group or four, are taken as Google's are.
 pub fn tidy_password(host: &str, typed: &str) -> String {
     let groups: Vec<&str> = typed.split_whitespace().collect();
     let lengths: Vec<usize> = groups.iter().map(|g| g.len()).collect();
     let shaped = lengths == [16] || lengths == [4, 4, 4, 4];
     let letters = groups.iter().all(|g| g.chars().all(|c| c.is_ascii_alphabetic()));
-    if host.eq_ignore_ascii_case("imap.gmail.com") && shaped && letters { groups.concat() } else { typed.to_string() }
+    if AppPasswords::only_at(host).is_some() && shaped && letters { groups.concat() } else { typed.to_string() }
 }
 
 /// What learning the provider's authserv-id gave.
@@ -280,6 +288,10 @@ pub mod said {
     pub const RENUMBERED: &str = "sync-said-renumbered";
     /// The message is gone from the server.
     pub const GONE: &str = "sync-said-gone";
+    /// No sending server found for an account's first message (its domain follows).
+    pub const NO_SENDING_SERVER: &str = "sync-said-no-sending-server";
+    /// A search for an address's servers cut short at `discover::WHOLE` (its domain follows).
+    pub const SEARCH_SLOW: &str = "sync-said-search-slow";
     /// A message seen on the server only, to be brought here before this act.
     pub const OPEN_FIRST: &str = "sync-said-open-first";
 }
@@ -301,10 +313,19 @@ pub enum SyncError {
     Network(String),
     /// The server's certificate could not be checked: nothing was sent.
     Tls(String),
+    /// The server's certificate is for another name than the one asked:
+    /// nothing was sent. The name asked is most often an alias of a host's
+    /// server (`imap.<your domain>`), and the host's own name must be given
+    /// instead. `asked`: the name asked; `presented`: the names the
+    /// certificate is for, where they could be read, as plain words
+    /// (`certificate_refused`). They come from a certificate nobody vouched
+    /// for: they are shown, never offered to use.
+    TlsName { asked: String, presented: String },
     /// The server refused the login.
     Login(String),
-    /// The server wants an app password, not the account's usual one (Gmail, iCloud…).
-    AppPassword(String),
+    /// The server wants an app password, not the account's usual one (Gmail,
+    /// Yahoo, iCloud…); whose it is, so that the sentence names where it is made.
+    AppPassword(AppPasswords, String),
     /// The server refused a command.
     Server(String),
     /// The mail or the sync state could not be written.
@@ -331,6 +352,97 @@ pub enum SyncError {
     Said(&'static str, String),
 }
 
+/// Whose server wants an app password: the sentence that says so names the
+/// page where that provider makes one, and no page for a server Sioul does
+/// not know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppPasswords {
+    /// Google's mail: myaccount.google.com/apppasswords.
+    Google,
+    /// Yahoo's mail: its account's security page, "External connections".
+    Yahoo,
+    /// Another server, which asked for one in its own words.
+    Elsewhere,
+}
+
+impl AppPasswords {
+    /// What the dialog that asks a password again shows for this provider:
+    /// its guide, its field's name (message ids), and the page where its app
+    /// password is made; none for a server Sioul knows no page of.
+    pub fn words(self) -> Option<(&'static str, &'static str, &'static str)> {
+        match self {
+            AppPasswords::Google => Some(("ui-gmail-app-password-guide", "ui-gmail-app-password-field", GMAIL_APP_PASSWORDS)),
+            AppPasswords::Yahoo => Some(("ui-yahoo-app-password-guide", "ui-yahoo-app-password-field", YAHOO_APP_PASSWORDS)),
+            AppPasswords::Elsewhere => None,
+        }
+    }
+
+    /// The provider whose server `host` is, receiving or sending, when it
+    /// takes app passwords only: Google's and Yahoo's, by their names.
+    pub fn only_at(host: &str) -> Option<Self> {
+        if host.eq_ignore_ascii_case(discover::GOOGLE_IMAP) || host.eq_ignore_ascii_case(discover::GOOGLE_SMTP) {
+            Some(AppPasswords::Google)
+        } else if discover::is_yahoo_host(host) {
+            Some(AppPasswords::Yahoo)
+        } else {
+            None
+        }
+    }
+}
+
+/// What the account form says before a password is typed, for the server
+/// found, with the page to open when there is one: where Google or Yahoo
+/// makes the app password its server wants, else the general advice.
+pub fn password_hint(host: &str) -> (&'static str, Option<&'static str>) {
+    match AppPasswords::only_at(host) {
+        Some(AppPasswords::Google) => ("account-gmail-hint", Some(GMAIL_APP_PASSWORDS)),
+        Some(AppPasswords::Yahoo) => ("account-yahoo-hint", Some(YAHOO_APP_PASSWORDS)),
+        Some(AppPasswords::Elsewhere) | None => ("account-app-password-hint", None),
+    }
+}
+
+/// The most names of a refused certificate that are said.
+const NAMES_SAID: usize = 3;
+
+/// A certificate the TLS handshake with `host` refused, receiving or
+/// sending. One that is valid but for another name gets its own sentence
+/// (`SyncError::TlsName`): `host` is most often an alias of a host's server.
+/// The names it is for are said when rustls gives them (the DNS names of
+/// the certificate, a few of them, letters, digits, hyphens, dots and the
+/// wildcard's star alone: they are words from outside). Any other refusal
+/// is said with rustls's words.
+pub(crate) fn certificate_refused(error: &rustls::Error, host: &str) -> SyncError {
+    let asked = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    match error {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForNameContext { presented, .. }) => {
+            let names: Vec<&str> = presented
+                .iter()
+                .filter_map(|name| name.strip_prefix("DnsName(\"")?.strip_suffix("\")"))
+                .filter(|name| !name.is_empty() && name.len() <= 253 && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'*')))
+                .take(NAMES_SAID)
+                .collect();
+            SyncError::TlsName { asked, presented: names.join(", ") }
+        }
+        rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName) => SyncError::TlsName { asked, presented: String::new() },
+        other => SyncError::Tls(other.to_string()),
+    }
+}
+
+/// A password the server `host` refused, receiving or sending, in the words
+/// it `said`. Google's and Yahoo's servers take app passwords only: any
+/// refusal there says where to make one. So does a server that asks for one
+/// in its own words ("application-specific password required"), without a
+/// page Sioul could name. Any other refusal is said with the server's words.
+pub(crate) fn password_refused(host: &str, said: &str) -> SyncError {
+    let detail = said.trim().to_string();
+    let lower = detail.to_ascii_lowercase();
+    match AppPasswords::only_at(host) {
+        Some(whose) => SyncError::AppPassword(whose, detail),
+        None if lower.contains("application-specific password") || lower.contains("app password") => SyncError::AppPassword(AppPasswords::Elsewhere, detail),
+        None => SyncError::Login(detail),
+    }
+}
+
 impl SyncError {
     /// The message that says it ("sync-error-network").
     /// What went wrong, as a code and never its detail (no address, no
@@ -348,13 +460,17 @@ impl SyncError {
             SyncError::Keyring(_) => "sync-error-keyring",
             SyncError::Network(_) => "sync-error-network",
             SyncError::Tls(_) => "sync-error-tls",
+            SyncError::TlsName { presented, .. } if presented.is_empty() => "sync-error-tls-name",
+            SyncError::TlsName { .. } => "sync-error-tls-names",
             SyncError::Login(d) if d == google::SIGN_IN_AGAIN => "sync-error-google-again",
             SyncError::Login(d) if d == google::IN_TESTING => "sync-error-google-testing",
             SyncError::Login(d) if d == github::TOKEN_REFUSED => "sync-error-github-token",
             // Microsoft's refusals, each with what to do (microsoft.rs).
             SyncError::Login(d) if microsoft::message_of(d).is_some() => microsoft::message_of(d).unwrap_or("sync-error-login"),
             SyncError::Login(_) => "sync-error-login",
-            SyncError::AppPassword(_) => "sync-error-app-password",
+            SyncError::AppPassword(AppPasswords::Google, _) => "sync-error-app-password-google",
+            SyncError::AppPassword(AppPasswords::Yahoo, _) => "sync-error-app-password-yahoo",
+            SyncError::AppPassword(AppPasswords::Elsewhere, _) => "sync-error-app-password",
             SyncError::Server(_) => "sync-error-server",
             SyncError::Disk(_) => "sync-error-disk",
             SyncError::Refused(_) => "send-error-refused",
@@ -375,8 +491,9 @@ impl SyncError {
             | SyncError::Keyring(d)
             | SyncError::Network(d)
             | SyncError::Tls(d)
+            | SyncError::TlsName { presented: d, .. }
             | SyncError::Login(d)
-            | SyncError::AppPassword(d)
+            | SyncError::AppPassword(_, d)
             | SyncError::Server(d)
             | SyncError::Disk(d)
             | SyncError::Refused(d)
@@ -393,14 +510,14 @@ impl SyncError {
     pub fn is_lasting(&self) -> bool {
         matches!(
             self,
-            SyncError::Login(_) | SyncError::AppPassword(_) | SyncError::Tls(_) | SyncError::NoServer | SyncError::NoPassword | SyncError::BadAddress
+            SyncError::Login(_) | SyncError::AppPassword(..) | SyncError::Tls(_) | SyncError::TlsName { .. } | SyncError::NoServer | SyncError::NoPassword | SyncError::BadAddress
         )
     }
 
     /// Whether a password, given again, can help: none kept here yet, or the
     /// server refused the one kept (or wants an app password).
     pub fn wants_password(&self) -> bool {
-        matches!(self, SyncError::NoPassword | SyncError::Login(_) | SyncError::AppPassword(_))
+        matches!(self, SyncError::NoPassword | SyncError::Login(_) | SyncError::AppPassword(..))
     }
 
     /// The sentence, in your language: "home: the server cannot be reached (timed out)."
@@ -408,6 +525,10 @@ impl SyncError {
         let mut args = i18n::args();
         args.set("account", account.to_string());
         args.set("detail", self.detail().to_string());
+        if let SyncError::TlsName { asked, presented } = self {
+            args.set("host", asked.clone());
+            args.set("names", presented.clone());
+        }
         tr.text(self.message_id(), Some(&args))
     }
 }
@@ -431,7 +552,104 @@ mod tests {
         // Anything else is kept as typed, spaces included.
         assert_eq!(tidy_password("imap.gmail.com", "my long pass phrase"), "my long pass phrase");
         assert_eq!(tidy_password("mail.example.org", "abcd efgh ijkl mnop"), "abcd efgh ijkl mnop");
+        // Yahoo's servers, receiving and sending, take app passwords only: the same.
+        assert_eq!(tidy_password("imap.mail.yahoo.com", "abcd efgh ijkl mnop"), "abcdefghijklmnop");
+        assert_eq!(tidy_password("SMTP.mail.yahoo.com", "abcd efgh ijkl mnop"), "abcdefghijklmnop");
+        assert_eq!(tidy_password("imap.mail.yahoo.com", "my long pass phrase"), "my long pass phrase");
+        assert_eq!(AppPasswords::Yahoo.words().map(|(_, _, page)| page), Some(YAHOO_APP_PASSWORDS));
+        assert_eq!(AppPasswords::Elsewhere.words(), None);
         assert!(is_gmail("Someone@GMail.com") && !is_gmail("someone@example.org"));
+    }
+
+    /// A password refused where only an app password gets in: the sentence
+    /// names the page of the provider whose server refused, Google's for
+    /// Google, Yahoo's for Yahoo with its section and buttons as Yahoo names
+    /// them, and neither for another server, in English and in French. The
+    /// form says the same before a password is typed, and the dialog that
+    /// asks for a password again.
+    #[test]
+    fn an_app_password_s_sentence_names_where_its_provider_makes_it() {
+        let (en, fr) = (Translator::new("en"), Translator::new("fr"));
+        let google = password_refused("imap.gmail.com", "[AUTHENTICATIONFAILED] Invalid credentials (Failure)");
+        let yahoo = password_refused("imap.mail.yahoo.com", "[AUTHENTICATIONFAILED] Authentication failed.");
+        let other = password_refused("mail.example.org", "Application-specific password required");
+        assert_eq!((google.code(), yahoo.code(), other.code()), ("sync-error-app-password-google", "sync-error-app-password-yahoo", "sync-error-app-password"));
+        for error in [&google, &yahoo, &other] {
+            assert!(error.is_lasting() && error.wants_password(), "{error}");
+        }
+        let yahoo_page = YAHOO_APP_PASSWORDS.trim_start_matches("https://");
+        let google_page = GMAIL_APP_PASSWORDS.trim_start_matches("https://");
+        assert_eq!((yahoo_page, google_page), ("login.yahoo.com/account/security", "myaccount.google.com/apppasswords"));
+        let names = |sentence: &str, word: &str| sentence.to_lowercase().contains(word);
+        for (tr, account, section, steps) in [
+            (&en, "jane", "under \"External connections\"", ["\"Create app password\"", "\"Generate password\""]),
+            (&fr, "jeanne", "sous «\u{202f}Connexions externes\u{202f}»", ["«\u{202f}Créer un mot de passe d’application\u{202f}»", "«\u{202f}Générer le mot de passe\u{202f}»"]),
+        ] {
+            let said = yahoo.sentence(tr, account);
+            assert!(said.starts_with(account) && said.contains(yahoo_page) && said.contains(section) && steps.iter().all(|step| said.contains(step)), "{said}");
+            assert!(!names(&said, "google") && !names(&said, "sync-error"), "{said}");
+            let said = google.sentence(tr, account);
+            assert!(said.starts_with(account) && said.contains(google_page) && !names(&said, "yahoo") && !names(&said, "sync-error"), "{said}");
+            let said = other.sentence(tr, account);
+            assert!(said.starts_with(account) && !names(&said, "google") && !names(&said, "gmail") && !names(&said, "yahoo") && !names(&said, "sync-error"), "{said}");
+            // Before the password is typed, and when it is asked again.
+            for id in ["account-yahoo-hint", "ui-yahoo-app-password-guide"] {
+                let said = tr.text(id, None);
+                assert!(said.contains(yahoo_page) && said.contains(section) && said.contains(steps[0]) && !names(&said, "google"), "{id}: {said}");
+            }
+            assert!(names(&tr.text("ui-yahoo-app-password-field", None), "yahoo"));
+        }
+        assert_eq!(password_hint("imap.gmail.com"), ("account-gmail-hint", Some(GMAIL_APP_PASSWORDS)));
+        for host in ["imap.mail.yahoo.com", "Export.IMAP.Mail.Yahoo.com"] {
+            assert_eq!(password_hint(host), ("account-yahoo-hint", Some(YAHOO_APP_PASSWORDS)), "{host}");
+        }
+        assert_eq!(password_hint("mail.example.org"), ("account-app-password-hint", None));
+        assert_eq!((AppPasswords::only_at("smtp.gmail.com"), AppPasswords::only_at("smtp.mail.yahoo.com"), AppPasswords::only_at("smtp.example.org")), (Some(AppPasswords::Google), Some(AppPasswords::Yahoo), None));
+    }
+
+    /// A certificate that is valid, but for another name than the one asked:
+    /// the name asked is most often an alias of a host's server. Its own
+    /// sentence, in English and French, with the name asked and the names
+    /// the certificate is for, as plain words (a few DNS names, nothing
+    /// else a certificate could carry). It says to take the server's name
+    /// from the provider, never from the certificate. Any other refusal of a
+    /// certificate keeps the general sentence.
+    #[test]
+    fn a_certificate_for_another_name_says_the_name_is_an_alias() {
+        let presented = ["DnsName(\"ssl0.host.example\")", "IpAddress(192.0.2.1)", "DnsName(\"<b>press here</b>\")", "DnsName(\"*.host.example\")", "DirectoryName", "DnsName(\"www.ssl0.host.example\")", "DnsName(\"fourth.host.example\")"];
+        let other_name = rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForNameContext {
+            expected: rustls::pki_types::ServerName::try_from("imap.example.org").unwrap(),
+            presented: presented.iter().map(|name| name.to_string()).collect(),
+        });
+        let refused = certificate_refused(&other_name, " IMAP.Example.org. ");
+        assert_eq!(refused, SyncError::TlsName { asked: "imap.example.org".into(), presented: "ssl0.host.example, *.host.example, www.ssl0.host.example".into() });
+        assert!(refused.is_lasting() && !refused.wants_password(), "trying again cannot help, nor another password");
+        assert_eq!(refused.code(), "sync-error-tls-names");
+        let unnamed = certificate_refused(&rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName), "smtp.example.org");
+        assert_eq!(unnamed, SyncError::TlsName { asked: "smtp.example.org".into(), presented: String::new() });
+        assert_eq!(unnamed.code(), "sync-error-tls-name");
+        // Both say where to take the right name, that another server may have
+        // answered, that a name being added is probably an alias, and what to
+        // do for an address that worked before.
+        for (language, account, words) in [
+            ("en", "home", ["is probably an alias of your provider's server", "your mail provider's help", "another server may have answered", "If this address worked before", "try again later"]),
+            ("fr", "maison", ["est sans doute un alias du serveur de votre fournisseur", "l’aide de votre fournisseur de courriel", "un autre serveur a pu répondre", "Si cette adresse marchait avant", "réessayez plus tard"]),
+        ] {
+            let tr = Translator::new(language);
+            let said = refused.sentence(&tr, account);
+            assert!(said.starts_with(account) && said.contains("imap.example.org") && said.contains("(ssl0.host.example, *.host.example, www.ssl0.host.example)"), "{said}");
+            assert!(words.iter().all(|w| said.contains(w)) && !said.contains("sync-error") && !said.contains("press here"), "{said}");
+            let said = unnamed.sentence(&tr, account);
+            assert!(said.starts_with(account) && said.contains("smtp.example.org") && words.iter().all(|w| said.contains(w)) && !said.contains("()") && !said.contains("sync-error"), "{said}");
+            // Where the settings came from, said before a password is typed.
+            for by in [FoundBy::IspdbMx, FoundBy::Records] {
+                let said = tr.text(by.message_id(), None);
+                assert!(!said.is_empty() && !said.contains("account-by"), "{by:?}: {said}");
+            }
+        }
+        // Another refusal of a certificate: the general sentence, with rustls's words.
+        let unknown = certificate_refused(&rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer), "imap.example.org");
+        assert!(matches!(&unknown, SyncError::Tls(words) if !words.is_empty()) && unknown.code() == "sync-error-tls");
     }
 
     /// What Sioul found itself is said in your language, never as English

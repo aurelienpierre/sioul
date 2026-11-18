@@ -52,7 +52,7 @@ Then open Sioul from your application menu. It speaks English and French, as you
 3. Type your **password**. It goes to your system's keyring, and nowhere else.
 4. Choose **Connect and add**. Sioul tests the password before it keeps anything, then fetches your recent mail.
 
-Two providers take no ordinary password. For Gmail, Sioul offers an app password, or Google's own sign-in page; for Outlook.com, Hotmail and Microsoft 365, Microsoft's own sign-in page. [First steps](first-steps.md#gmail-and-google-workspace) has both.
+Three providers take no ordinary password. For Gmail, Sioul offers an app password, or Google's own sign-in page; for Yahoo Mail, an app password, made on your Yahoo account's security page; for Outlook.com, Hotmail and Microsoft 365, Microsoft's own sign-in page. [First steps](first-steps.md#gmail-and-google-workspace) has all three.
 
 Fetching changes nothing on your mail server. Sioul writes there only when you act: archiving, deleting and moving happen ten seconds after you asked, so that **Undo** can stop them.
 

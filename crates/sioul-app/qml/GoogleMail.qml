@@ -104,6 +104,14 @@ ColumnLayout {
             wrapMode: Text.Wrap
             color: form.theme.text
         }
+        // A Google Workspace address: Google may offer it no app password.
+        Label {
+            visible: form.found !== null && form.found.workspace === true
+            Layout.fillWidth: true
+            text: form.sioul.text("ui-gmail-workspace-app-password")
+            wrapMode: Text.Wrap
+            color: form.theme.muted
+        }
         Button {
             text: form.sioul.text("ui-app-passwords")
             icon.name: "internet-web-browser"

@@ -1881,7 +1881,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 }
             }
             if let Some(ics) = reply {
-                send_answer(&path, &ics, &asked, answer)?;
+                send_answer(qt, shared, &path, &ics, &asked, answer)?;
             }
             if older {
                 tell(qt, shared, tr().text(if answer == "add" { "invitation-older-added" } else { "invitation-older" }, None));
@@ -1889,7 +1889,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 return Ok(());
             }
         }
-        _ => send_answer(&path, &agenda::reply(&text, &load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default(), &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?, &asked, answer)?,
+        _ => send_answer(qt, shared, &path, &agenda::reply(&text, &load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default(), &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?, &asked, answer)?,
     }
     tell(qt, shared, tr().text(&format!("invitation-{answer}"), None));
     // Accepted or added, it takes its time in the plan at once, not after the
@@ -1900,7 +1900,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
 }
 
 /// The REPLY (`ics`, made by `agenda::reply`) to the organizer, through the account the invitation came to.
-fn send_answer(message: &Path, ics: &str, asked: &agenda::Invitation, answer: &str) -> Result<(), String> {
+fn send_answer(qt: &QtThread, shared: &Arc<Shared>, message: &Path, ics: &str, asked: &agenda::Invitation, answer: &str) -> Result<(), String> {
     let config = load_config();
     let account = config.account_of(message).cloned().ok_or_else(|| tr().text("mail-no-account", None))?;
     let me = account.address.clone().unwrap_or_default();
@@ -1909,25 +1909,16 @@ fn send_answer(message: &Path, ics: &str, asked: &agenda::Invitation, answer: &s
     let subject = say(&format!("invitation-subject-{answer}"), &[("summary", asked.summary.clone())]);
     let outgoing = sioul_core::compose::invitation_answer((&name, &me), &asked.organizer_address, &subject, &sentence, ics, sioul_core::zone::now().timestamp().as_second())?;
     let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
-    let account = with_smtp(&account)?;
-    match sioul_sync::send::send(&account, &password, &outgoing) {
+    let mut moved = None;
+    let sent = sioul_sync::send::send_built(&config_path(), &account, &password, &outgoing, &mut moved);
+    // A sending server moved on the way: said once, whatever became of the answer.
+    if let Some(moved) = &moved {
+        tell(qt, shared, moved.sentence(tr(), &account.id));
+    }
+    match sent {
         Ok(()) | Err(SyncError::NotFiled(_)) => Ok(()),
         Err(e) => Err(e.sentence(tr(), &account.id)),
     }
-}
-
-/// The account with its sending server, found and kept when it had none.
-pub(crate) fn with_smtp(account: &Account) -> Result<Account, String> {
-    if account.smtp_host.is_some() {
-        return Ok(account.clone());
-    }
-    let smtp = sioul_sync::discover_smtp(account.address.as_deref().unwrap_or(""), account.host.as_deref()).map_err(|e| e.sentence(tr(), &account.id))?;
-    config::set_smtp(&config_path(), &account.id, &smtp.host, smtp.port, smtp.security)?;
-    let mut account = account.clone();
-    account.smtp_host = Some(smtp.host);
-    account.smtp_port = Some(smtp.port);
-    account.smtp_security = smtp.security;
-    Ok(account)
 }
 
 /// Adds a Google account, or signs one in again (`again`: its id): Google's

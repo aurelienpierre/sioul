@@ -1088,8 +1088,8 @@ fn sha1_of(checksums: &str) -> Option<String> {
 /// Why, in a code the window says in words: "login:murena.io".
 fn code(error: &SyncError, host: &str) -> String {
     let kind = match error {
-        SyncError::Login(_) | SyncError::AppPassword(_) => "login",
-        SyncError::Tls(_) => "tls",
+        SyncError::Login(_) | SyncError::AppPassword(..) => "login",
+        SyncError::Tls(_) | SyncError::TlsName { .. } => "tls",
         SyncError::Network(_) => "network",
         SyncError::NoPassword => "no-password",
         SyncError::Disk(_) => "disk",
@@ -3532,8 +3532,8 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
 /// A failure's kind, from its error alone (no file under way).
 fn kind_of_error(e: &SyncError) -> &'static str {
     match e {
-        SyncError::Login(_) | SyncError::AppPassword(_) => "login",
-        SyncError::Tls(_) => "tls",
+        SyncError::Login(_) | SyncError::AppPassword(..) => "login",
+        SyncError::Tls(_) | SyncError::TlsName { .. } => "tls",
         SyncError::Server(d) if d == "quota" => "quota",
         SyncError::Server(_) => "server",
         SyncError::Disk(_) => "disk",
