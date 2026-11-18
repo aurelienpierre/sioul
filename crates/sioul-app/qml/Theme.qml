@@ -75,6 +75,8 @@ QtObject {
     property bool touch: false
     readonly property int gap: compact ? 10 : 16
     readonly property int radius: 6
+    // A page's column of text and forms (PageColumn.qml): a legible width, centred.
+    readonly property int readable: 720
 
     // A side panel's width (a page's settings, Health's): all of a phone's; on
     // a computer, two fifths of the window and a little more, from 520 to 760
