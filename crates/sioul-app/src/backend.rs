@@ -878,6 +878,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
 
+        /// An event marked busy or free from its card (`pim::set_event_busy`):
+        /// what went wrong, else "".
+        #[qinvokable]
+        fn set_event_busy(self: Pin<&mut Sioul>, key: &QString, busy: bool) -> QString;
+
         /// Deletes an event, or only the occurrence starting at `start`, after ten
         /// seconds to undo; never a meeting with others nor one of a calendar
         /// you only read. Returns what went wrong, else "".
@@ -2551,6 +2556,12 @@ pub mod qobject {
         /// A preset chosen ("usual", "quieter", "reachable"): what went wrong, else "".
         #[qinvokable]
         fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A choice of Settings ▸ What reaches you (`reaches::choose`; `what`:
+        /// "people.mail.safe", "group.reminders", "care.move"; `value`: a
+        /// behaviour's or a choice's id), its rows written whole: what went wrong, else "".
+        #[qinvokable]
+        fn reaches_choose(self: Pin<&mut Sioul>, what: &QString, value: &QString) -> QString;
 
         /// How someone reaches you, as JSON (`reaches::person`): a card's file or
         /// UID, or a sender's addresses (a JSON array, or one).
@@ -6014,6 +6025,10 @@ impl qobject::Sioul {
         QString::from(&result.err().unwrap_or_default())
     }
 
+    fn set_event_busy(self: Pin<&mut Self>, key: &QString, busy: bool) -> QString {
+        QString::from(&pim::set_event_busy(&self.qt_thread(), &self.shared(), &key.to_string(), busy))
+    }
+
     fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
         QString::from(&pim::move_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, new_start as i64, new_end as i64, only_this))
     }
@@ -7991,6 +8006,14 @@ impl qobject::Sioul {
 
     fn reaches_preset(self: Pin<&mut Self>, id: &QString) -> QString {
         let problem = crate::reaches::preset(&id.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
+    fn reaches_choose(self: Pin<&mut Self>, what: &QString, value: &QString) -> QString {
+        let problem = crate::reaches::choose(&what.to_string(), &value.to_string());
         if problem.is_empty() {
             self.attention_changed();
         }

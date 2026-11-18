@@ -460,29 +460,32 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who is on which list, under Settings ▸ What reaches you ▸ By person
-        // (its grids say when each list reaches you): the four lists; the
-        // people placed on them; your contacts' categories, each on a list or none.
+        // Who is in which circle, under Settings ▸ What reaches you ▸ People:
+        // three lists (Safe, Restricted, Blocked); the people placed on them; the
+        // groups of your contacts (their cards' categories), each on a list or none.
+        // Your contacts are everyone in your address books, with nothing to set:
+        // the list of them and the choice of them leave the page, and the lines
+        // `neutral-senders.txt` holds keep being read (`porch::Senders`), so that
+        // nothing changes for someone set so; one person is kept a plain contact
+        // inside a restricted group from their sheet (`reaches::person_change`).
         "senders" => {
-            for (key, id, path) in [
-                ("safe", "safe", config.safe_senders_path()),
-                ("neutral", "neutral", config.neutral_senders_path()),
-                ("restricted", "restricted", config.restricted_senders_path()),
-                ("blocked", "blocked-all", config.blocked_senders_path()),
-            ] {
+            for (key, id, path) in [("safe", "safe", config.safe_senders_path()), ("restricted", "restricted", config.restricted_senders_path()), ("blocked", "blocked-all", config.blocked_senders_path())] {
                 // Addresses and patterns, then numbers as written.
                 let list = SenderList::load(&path);
                 b.push(key, id, Kind::Senders, SettingValue::Texts(list.entries().into_iter().chain(list.numbers().iter().cloned()).collect()));
             }
             let senders = crate::porch::Senders::load(config);
+            // No list, Safe, Restricted, Blocked: your contacts are no choice, a group or a card
+            // set so by an older page reads as no list, which it is for anyone in your address books.
             let choices = |none: &str| -> Vec<Choice> {
                 std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text(none, None) })
-                    .chain(crate::porch::Standing::ALL.iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
+                    .chain(crate::porch::Standing::ALL.iter().filter(|l| **l != crate::porch::Standing::Neutral).map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
                     .collect()
             };
+            let shown = |standing: Option<crate::porch::Standing>| standing.filter(|s| *s != crate::porch::Standing::Neutral).map_or("", |s| s.as_str());
             // The people placed on a list themselves (their card): changed here or on their card.
             let mut cards: Vec<String> = Vec::new();
-            for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
+            for list in [&senders.safe, &senders.restricted, &senders.blocked] {
                 for uid in list.cards() {
                     if !cards.contains(uid) {
                         cards.push(uid.clone());
@@ -501,16 +504,16 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                     .collect();
                 named.sort_by_key(|(name, _)| crate::text::fold(name).into_iter().collect::<String>().to_lowercase());
                 for (name, uid) in named {
-                    let standing = senders.card_standing(&uid).map_or("", |s| s.as_str());
+                    let standing = shown(senders.card_standing(&uid));
                     let s = b.push(&format!("{}{uid}", crate::porch::CONTACT), "sender-person", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
                     s.choices = choices("sender-no-choice");
                 }
             }
-            // Your contacts' categories, those in use and those on a list.
+            // The groups of your contacts, those in use and those on a list.
             let mut names = senders.contacts.names();
-            for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
+            for list in [&senders.safe, &senders.restricted, &senders.blocked] {
                 for name in list.categories() {
                     if !names.iter().any(|n| crate::porch::category_key(n) == crate::porch::category_key(name)) {
                         names.push(name.clone());
@@ -522,7 +525,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("set-sender-categories-note", None), Vec::new());
                 let choices = choices("sender-no-list");
                 for name in names {
-                    let standing = senders.category_standing(&name).map_or("", |s| s.as_str());
+                    let standing = shown(senders.category_standing(&name));
                     let s = b.push(&format!("{}{name}", crate::porch::CATEGORY), "sender-category", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
@@ -749,6 +752,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long informative notices last, one length for all (docs/notifications.md).
             let s = b.push("notices.informative_minutes", "notices-informative", Kind::Int, SettingValue::Int(i64::from(config.notices.minutes())));
             Builder::range(s, f64::from(crate::notice::SHORTEST), f64::from(crate::notice::LONGEST), 1.0, "min");
+            // The times sites and other apps' automatons are gathered at (their cells say "gathered"):
+            // under Sioul's own notices ▸ Sites and apps, on the page.
+            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // Free time's "Nothing at all": its card's switch.
             b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
@@ -767,8 +773,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
-            // The times sites and other apps' automatons are gathered at: their cells say "gathered".
-            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
@@ -1660,8 +1664,8 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
@@ -1689,7 +1693,7 @@ mod tests {
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
-        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
@@ -1698,7 +1702,7 @@ mod tests {
         let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
-        assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
+        assert_eq!(keys("senders"), vec!["safe", "restricted", "blocked"]);
         assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
         // The sites' colours, which only the Sites page reads, then where Bitwarden is set.
         assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "link.bitwarden"]);

@@ -9,7 +9,10 @@
 // changed from As Sioul does now carries a dot. On a screen too narrow for a
 // row, its name stands above its marks, and the times' names stand upright
 // when even they are too wide (a phone shows lists instead: ReachesTab.qml).
-// Each choice is saved at once, the row whole ("attention.<row>").
+// Each choice is saved at once, the row whole ("attention.<row>"). With
+// `words` (What reaches you ▸ What comes when), each cell says its value in
+// one or two words in place of a mark, and the columns read now (`now`)
+// are marked.
 
 pragma ComponentBehavior: Bound
 
@@ -34,6 +37,10 @@ ColumnLayout {
 
     // Where a row is saved: "attention." and its id ("attention.mail.safe").
     property string prefix: "attention."
+    // Each cell in a word (its `word`) rather than a mark.
+    property bool words: false
+    // The columns read now, by id: their names marked.
+    property var now: []
     // The legend's "fixed" mark: shown only where a row has a fixed cell.
     readonly property bool anyFixed: grid.rows.some(r => r.cells.some(c => (c.locked || "") !== ""))
 
@@ -51,7 +58,17 @@ ColumnLayout {
         const out = []
         for (let i = 0; i < heads.count; i++) {
             const head = heads.itemAt(i)
-            out.push(head ? Math.max(grid.cell, head.implicitWidth + 10) : grid.cell)
+            let width = head ? Math.max(grid.cell, head.implicitWidth + 10) : grid.cell
+            // In words, as wide as the longest word of the column too.
+            if (grid.words) {
+                const id = grid.columns[i] ? grid.columns[i].id : ""
+                for (const row of grid.rows) {
+                    const cell = row.cells.find(c => c.column === id)
+                    if (cell)
+                        width = Math.max(width, metrics.advanceWidth(cell.word || "") + 16)
+                }
+            }
+            out.push(width)
         }
         return out
     }
@@ -167,6 +184,13 @@ ColumnLayout {
 
     spacing: 0
 
+    // The words' widths, in the cells' font.
+    FontMetrics {
+        id: metrics
+
+        font.pixelSize: 13
+    }
+
     // Measured once each, for the widths above.
     Repeater {
         id: heads
@@ -226,13 +250,17 @@ ColumnLayout {
                 Label {
                     id: flat
 
+                    readonly property bool now: strip.view.now.indexOf(head.modelData.id) >= 0
+
                     visible: !strip.view.upright
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     text: head.modelData.label
                     textFormat: Text.PlainText
                     font.pixelSize: 13
-                    color: strip.view.theme.muted
+                    font.weight: flat.now ? Font.DemiBold : Font.Normal
+                    font.underline: flat.now
+                    color: flat.now ? strip.view.theme.accent : strip.view.theme.muted
                 }
                 // Read from bottom to top, its end against the marks.
                 Label {
@@ -242,7 +270,7 @@ ColumnLayout {
                     text: head.modelData.label
                     textFormat: Text.PlainText
                     font.pixelSize: 13
-                    color: strip.view.theme.muted
+                    color: strip.view.now.indexOf(head.modelData.id) >= 0 ? strip.view.theme.accent : strip.view.theme.muted
                     transform: Rotation { angle: -90 }
                 }
             }
@@ -326,7 +354,17 @@ ColumnLayout {
                             color: box.down ? grid.theme.pressed : box.hovered || box.visualFocus ? grid.theme.hover : "transparent"
                         }
                         contentItem: Item {
+                            Label {
+                                visible: grid.words
+                                anchors.centerIn: parent
+                                text: box.modelData.word || ""
+                                textFormat: Text.PlainText
+                                font.pixelSize: 13
+                                font.weight: grid.now.indexOf(box.modelData.column) >= 0 ? Font.DemiBold : Font.Normal
+                                color: box.fixed ? grid.theme.muted : grid.theme.text
+                            }
                             LevelMark {
+                                visible: !grid.words
                                 anchors.centerIn: parent
                                 value: box.modelData.value
                                 always: row.modelData.id.endsWith(".always")
@@ -337,7 +375,7 @@ ColumnLayout {
                             // Changed from As Sioul does now: a dot in its corner.
                             Rectangle {
                                 visible: box.modelData.changed === true
-                                x: parent.width / 2 + 8
+                                x: grid.words ? parent.width - 6 : parent.width / 2 + 8
                                 y: 4
                                 width: 5
                                 height: 5
@@ -355,6 +393,8 @@ ColumnLayout {
     // What each mark shown in these rows says, and no other: at once on the
     // Always through row is ★, said apart.
     readonly property var legendMarks: {
+        if (grid.words)
+            return []
         const starred = r => r.id.endsWith(".always")
         const shown = id => grid.rows.some(r => r.cells.some(c => c.value === id && !(id === "now" && starred(r))))
         const used = grid.matrix.marks.filter(m => shown(m.id))
@@ -401,6 +441,7 @@ ColumnLayout {
             spacing: 5
 
             LevelMark {
+                visible: !grid.words
                 value: "now"
                 tint: grid.theme.muted
                 hole: grid.theme.background
@@ -458,7 +499,7 @@ ColumnLayout {
                     spacing: 8
 
                     LevelMark {
-                        visible: !line.said
+                        visible: !line.said && !grid.words
                         value: line.said ? "" : line.modelData.id
                         always: grid.openRow !== null && grid.openRow.id.endsWith(".always")
                         tint: line.current ? grid.theme.accent : grid.theme.text

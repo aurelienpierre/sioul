@@ -105,7 +105,7 @@ Les adresses Outlook.com, Hotmail, Live, MSN et Microsoft 365 se connectent sur 
 
 ## Qui peut vous joindre {#senders}
 
-Qui peut vous joindre, et quand, par courriel, par téléphone et par les messages des autres applications, et qui est sur quelle liste (sûrs, neutres, restreints, bloqués, avec des adresses, des numéros, des motifs comme `*@example.org`, les personnes mises sur une liste et les catégories de vos contacts) : Paramètres ▸ **Ce qui vous joint** ▸ **Par personne** ([Ce qui vous joint, et quand](notifications.md#by-person)). Pour une personne, sa fiche, depuis sa fiche de contact ou un message : **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Ce à quoi sert chaque adresse reste sur sa carte, plus haut : les courriels d’une adresse pour un autre moment attendent ce moment.
+Qui peut vous joindre, et quand, par courriel et par les messages des autres applications, et qui est dans quel cercle (sûrs, restreints, bloqués, avec des adresses, des numéros, des motifs comme `*@example.org`, les personnes mises sur une liste et vos groupes ; vos contacts sont toute personne de vos carnets d’adresses) : Paramètres ▸ **Ce qui vous joint** ▸ **Personnes** ([Ce qui vous joint, et quand](notifications.md#by-person)). Pour une personne, sa fiche, depuis sa fiche de contact ou un message : **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Ce à quoi sert chaque adresse reste sur sa carte, plus haut : les courriels d’une adresse pour un autre moment attendent ce moment.
 
 ## Chiffrement {#encryption}
 

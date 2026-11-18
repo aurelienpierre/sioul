@@ -45,15 +45,12 @@ Each day of each week is on or off, with one range of hours or several: **+** ad
 
 ## What reaches you {#what-reaches-you}
 
-One place for when each thing reaches you: mail, calls and other apps' messages by who sends them, Sioul's own notifications by what they are, at each time of your day. On top, what holds now, in sentences, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then five views:
+One page for when each thing reaches you: Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound. On top, what holds now in a sentence, the three states (As usual, Do not disturb, Reachable) and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then two tabs:
 
-- **By time**: a card for each time of your day, in sentences; **Change…** opens its rows.
-- **By person**: what reaches you by mail, by phone and by message from each list of people, **Tell me of new mail**, **Include newsletters**, and who is on which list.
-- **Sioul's own**: codes, doses, reminders, Health's notices, your sites and other apps, with **Sites' notifications gathered**.
-- **Exceptions**: the people who always get through, and each conversation, app or site with a choice of its own.
-- **Do not disturb**: what turns it on, what holds while it does, what each device does.
+- **Your rules**: **People**, a choice per circle (Always through, Safe, Your contacts, Restricted, Everyone else) for mail and for messages, with **Tell me of new mail** and **Include newsletters**; **Who is in which circle**, Always through beside the lists Safe, Restricted and Blocked, the people placed on them and your groups; **Sioul's own notices**, in four groups; **Moments**, what turns do-not-disturb on (**While busy** among them) and who holds what on a phone. One line counts what is set elsewhere, with a button to each place; calls are set for each phone, in **Devices**.
+- **What comes when**: every row at every time, a word in each cell, a press to change it.
 
-Free time's **Nothing at all** is on its card. See [What reaches you, and when](notifications.md).
+See [What reaches you, and when](notifications.md).
 
 ## Reminders {#reminders}
 

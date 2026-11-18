@@ -12,7 +12,7 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 2. **Let Sioul screen calls**: in **What Android must allow** on the same card, the line **Caller ID & spam app**; Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, **Android's default apps**, then "None".
 3. **Allow reading contacts**, the line **Contacts** there, if Android has not been asked yet: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
 4. **Who may call you, and when**: the card's section **Calls**, which you can set from any of your devices ([Each phone its own calls](#calls-per-phone)). Until you choose there, a phone keeps What reaches you's Calls rows and the call screening below.
-5. **The people who must always get through** (a carer, your doctor's office): put them on your Always through list, in What reaches you ▸ Exceptions, or from their card, **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). Their calls ring at any time, sleep and pauses included, unless you blocked them.
+5. **The people who must always get through** (a carer, your doctor's office): put them on your Always through list, in What reaches you ▸ Who is in which circle, or from their card, **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). Their calls ring at any time, sleep and pauses included, unless you blocked them.
 6. **Where declined calls go**: **Check \*#67#** and **Check \*#61#** open the phone app with the code typed in; you press call. Most operators send declined calls to voicemail.
 
 Your voicemail greeting can ask callers to send a text instead.

@@ -65,6 +65,7 @@
 //! - [`words`]: the words the detectors look for: shipped packs by language and country, and your changes.
 //! - [`reach`]: who reaches you, on which channel, and the clock that says what time it is, ahead.
 //! - [`attention`]: what reaches you, and when: one matrix of who and what by time, its pipeline, its words.
+//! - [`behaviours`]: the matrix read as a few choices for Settings ▸ What reaches you: a behaviour per circle, Sioul's own notices in four groups.
 //! - [`mailnote`]: new mail as a notification, at the times it may come.
 //! - [`letters`]: paper letters: a scan read by OCR, understood, and shown as a card.
 //! - [`voicemail`]: voicemail that the phone operator sends by mail.
@@ -143,6 +144,7 @@
 //! - [`needs`]: the day's needs, set first: meals, naps and night sleep.
 //! - [`pause`]: the two pauses: Free time, and Paused.
 //! - [`everywhere`]: do-not-disturb on every device.
+//! - [`busy`]: the stretches you are marked busy: your own events marked busy, a task marked busy while its timer runs.
 //! - [`reminders`]: reminders before dates: one quiet notification for each.
 //! - [`reviews`]: how each day went, as you said it.
 //! - [`sounds`]: sounds to rest by or to focus with, all made here.
@@ -196,7 +198,9 @@ pub mod areafilter;
 pub mod areas;
 pub mod availability;
 pub mod attention;
+pub mod behaviours;
 pub mod bank;
+pub mod busy;
 pub mod blocks;
 pub mod books;
 pub mod budget;

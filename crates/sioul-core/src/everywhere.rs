@@ -6,7 +6,8 @@
 //!
 //! - **The reasons**, each read from the one place that already says it, and
 //!   shared as it is: the pause and Free time (`quiet.toml`), the night and
-//!   naps (Health), a focus session (`time/running.toml`), and the switch
+//!   naps (Health), a busy stretch (`busy`: an event marked busy, a busy
+//!   task's timer in `time/running.toml`), and the switch
 //!   (`state/do-not-disturb.toml`, the only new record). Every device reads
 //!   the same files and comes to the same answer. The latest change wins: the
 //!   switch pressed off after a reason began holds that reason off until it
@@ -21,7 +22,7 @@
 //!   more press settles it. A Reachable press writes `on = false`, so that an
 //!   older Sioul reads do-not-disturb off.
 //! - **Reachable**: while it lasts, never past the night's start (waking, at
-//!   night: `reachable_end`), neither a focus session, nor the night, nor
+//!   night: `reachable_end`), neither a busy stretch, nor the night, nor
 //!   Free time turns do-not-disturb on; at its end, what an As usual before
 //!   it held off stays off (`held_off`); a pause pressed after it, or that
 //!   knew of it, ends it, and it holds no pause off. A device gone from the
@@ -140,7 +141,11 @@ pub struct DndSettings {
     /// The switch in the status line.
     #[serde(default = "yes")]
     pub button: bool,
-    /// While a focus session counts.
+    /// While busy (`busy`): an event marked busy, a busy task's timer.
+    /// The key keeps its name of before, "While I focus on a task", so that
+    /// every device and an older Sioul keep their switch: on an older Sioul
+    /// it still reads any focus session; here a timer on a task not marked
+    /// busy no longer turns do-not-disturb on.
     #[serde(default)]
     pub focus: bool,
     /// During the pause and Free time: the system's do-not-disturb too, beside
@@ -180,7 +185,8 @@ pub enum Why {
     Paused,
     FreeTime,
     Sleep,
-    Focus,
+    /// A busy stretch (`busy`), with `[dnd] focus` on.
+    Busy,
     Manual,
 }
 
@@ -190,18 +196,18 @@ impl Why {
             Why::Paused => "paused",
             Why::FreeTime => "free-time",
             Why::Sleep => "sleep",
-            Why::Focus => "focus",
+            Why::Busy => "busy",
             Why::Manual => "manual",
         }
     }
 
     pub fn parse(id: &str) -> Option<Why> {
-        [Why::Paused, Why::FreeTime, Why::Sleep, Why::Focus, Why::Manual].into_iter().find(|w| w.id() == id)
+        [Why::Paused, Why::FreeTime, Why::Sleep, Why::Busy, Why::Manual].into_iter().find(|w| w.id() == id)
     }
 
-    /// Silenced by the switch's own mode (sleep, focus, the switch), not a pause's.
+    /// Silenced by the switch's own mode (sleep, busy, the switch), not a pause's.
     pub fn global(self) -> bool {
-        matches!(self, Why::Sleep | Why::Focus | Why::Manual)
+        matches!(self, Why::Sleep | Why::Busy | Why::Manual)
     }
 }
 
@@ -558,8 +564,9 @@ pub struct Sources {
     pub free: Option<(i64, i64)>,
     /// Asleep, the night from winding down or a nap: since, until waking.
     pub sleep: Option<(i64, i64)>,
-    /// A focus session counting: its start, and when it stops holding do-not-disturb (`focus`).
-    pub focus: Option<(i64, i64)>,
+    /// The busy stretch holding now (`busy::holding`): its start and end;
+    /// read only while `[dnd] focus` asks for it.
+    pub busy: Option<(i64, i64)>,
     /// When the pause was last pressed, on or over (Unix seconds): a pause
     /// pressed after Reachable ends it.
     pub pause_pressed: Option<i64>,
@@ -577,18 +584,30 @@ pub struct Sources {
 /// the listener, the calls' table, `sioul remind --watch`, `sioul watch`,
 /// the MCP), a pause ending Reachable in all of them (review of part 3, F7).
 pub fn sources_at(overrides: &crate::quiet::Overrides, blocks: &crate::quiet::Blocks, now: &jiff::Zoned) -> Sources {
+    sources_for(overrides, blocks, now, &crate::agendas::read_config().dnd)
+}
+
+/// `sources_at`, with what turns do-not-disturb on as `settings` says it:
+/// the busy stretch read only when it can turn it on (`[dnd] focus`), the
+/// agendas being read for it.
+pub fn sources_for(overrides: &crate::quiet::Overrides, blocks: &crate::quiet::Blocks, now: &jiff::Zoned, settings: &DndSettings) -> Sources {
     let stamp = now.timestamp().as_second();
     let free = overrides.free_from().map(|since| (since, crate::pause::free_until(since, blocks, now.time_zone())));
     let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
-    let focus = crate::timelog::running().and_then(|r| focus(&r, stamp));
+    let busy = if settings.focus { crate::busy::holding(stamp) } else { None };
     let nights = blocks.kept.iter().filter(|k| k.kind == "sleep").map(|k| (k.start, k.end)).collect();
-    Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since, pause_saw: overrides.pause_saw, nights }
+    Sources { paused: overrides.paused_from(), free, sleep, busy, pause_pressed: overrides.paused_since, pause_saw: overrides.pause_saw, nights }
 }
 
 /// The same from the files alone, Health's blocks without the day's events:
 /// for what runs without the window (`attention::dnd_from_files`, the MCP).
 pub fn sources_from_files(now: &jiff::Zoned) -> Sources {
-    sources_at(&crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path()), &crate::quiet::Blocks::read(now, &[]), now)
+    sources_from_files_for(now, &crate::agendas::read_config().dnd)
+}
+
+/// `sources_from_files`, what turns do-not-disturb on as `settings` says it.
+pub fn sources_from_files_for(now: &jiff::Zoned, settings: &DndSettings) -> Sources {
+    sources_for(&crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path()), &crate::quiet::Blocks::read(now, &[]), now, settings)
 }
 
 /// The devices gone from the sharing by a sealed fact (they left, you forgot
@@ -638,9 +657,9 @@ impl Switch {
     }
 }
 
-/// A focus session as do-not-disturb reads it: counting (not paused), from
-/// its start until 30 minutes past the time chosen (three hours without one);
-/// none otherwise.
+/// A focus session's hold: counting (not paused), from its start until 30
+/// minutes past the time chosen (three hours without one); none otherwise.
+/// A busy task's timer holds so long (`busy::timer`).
 pub fn focus(running: &crate::timelog::Running, now: i64) -> Option<(i64, i64)> {
     if running.paused_at.is_some() || running.start <= 0 {
         return None;
@@ -657,7 +676,7 @@ pub struct Held {
     /// Unix seconds.
     pub since: i64,
     /// When it ends by itself (Unix seconds): the switch's end, waking, Free
-    /// time's end, a focus session's limit; none for the pause and an open switch.
+    /// time's end, a busy stretch's end; none for the pause and an open switch.
     pub until: Option<i64>,
     /// The device the switch was pressed on; "" for the other reasons.
     pub from: String,
@@ -700,15 +719,15 @@ impl Now {
         self.holds.iter().any(|h| h.why == why)
     }
 
-    /// Whether the switch's own mode holds (sleep, focus, the switch), beside the pauses'.
+    /// Whether the switch's own mode holds (sleep, busy, the switch), beside the pauses'.
     pub fn global(&self) -> bool {
         self.holds.iter().any(|h| h.why.global())
     }
 
     /// The end said: when every reason that holds ends by itself, the last of
-    /// them; a focus session's limit is never said (it is no promise).
+    /// them; a busy stretch's end is never said (a timer's is no promise).
     pub fn until(&self) -> Option<i64> {
-        if self.holds.is_empty() || self.holds.iter().any(|h| h.until.is_none() || h.why == Why::Focus) {
+        if self.holds.is_empty() || self.holds.iter().any(|h| h.until.is_none() || h.why == Why::Busy) {
             return None;
         }
         self.holds.iter().filter_map(|h| h.until).max()
@@ -719,7 +738,7 @@ impl Now {
         self.holds.iter().filter_map(|h| h.until).min()
     }
 
-    /// The first reason that holds and is not a pause's (sleep, focus, the switch).
+    /// The first reason that holds and is not a pause's (sleep, busy, the switch).
     pub fn global_why(&self) -> Option<Why> {
         self.holds.iter().map(|h| h.why).find(|w| w.global())
     }
@@ -728,7 +747,7 @@ impl Now {
     /// list: the switch or a focus session (sleep and the pauses keep their own
     /// rules, under which nothing is told).
     pub fn gates(&self) -> bool {
-        self.has(Why::Focus) || self.has(Why::Manual)
+        self.has(Why::Busy) || self.has(Why::Manual)
     }
 }
 
@@ -757,7 +776,7 @@ pub fn held_by_system(now: &Now, press: Option<&Press>, here: &str) -> bool {
 /// Why do-not-disturb holds at `now` (Unix seconds), from the reasons'
 /// sources, the settings and the switch's latest press. A press "off" made
 /// after a reason began holds that reason off until it ends; the pause first,
-/// then Free time (never with the pause), sleep, focus, the switch.
+/// then Free time (never with the pause), sleep, busy, the switch.
 pub fn now(settings: &DndSettings, sources: &Sources, press: Option<&Press>, now: i64) -> Now {
     // Reachable, while it lasts, never past its latest end (F2): never during a pause, and
     // ended by a pause pressed after it, or that knew of it whatever its clock (L2).
@@ -783,8 +802,8 @@ pub fn now(settings: &DndSettings, sources: &Sources, press: Option<&Press>, now
     };
     let mut holds = Vec::new();
     let mut add = |why: Why, since: i64, until: Option<i64>| {
-        // While Reachable lasts, neither Free time, nor the night, nor a focus session turns do-not-disturb on.
-        if reachable.is_some() && matches!(why, Why::FreeTime | Why::Sleep | Why::Focus) {
+        // While Reachable lasts, neither Free time, nor the night, nor a busy stretch turns do-not-disturb on.
+        if reachable.is_some() && matches!(why, Why::FreeTime | Why::Sleep | Why::Busy) {
             return;
         }
         if !pressed_off_after(since) {
@@ -804,9 +823,9 @@ pub fn now(settings: &DndSettings, sources: &Sources, press: Option<&Press>, now
         add(Why::Sleep, since, Some(until));
     }
     if settings.focus
-        && let Some((since, end)) = sources.focus.filter(|(_, end)| now < *end)
+        && let Some((since, end)) = sources.busy.filter(|(since, end)| *since <= now && now < *end)
     {
-        add(Why::Focus, since, Some(end));
+        add(Why::Busy, since, Some(end));
     }
     if let Some(p) = press.filter(|p| p.on) {
         let until = (p.until > 0).then_some(p.until / 1000);
@@ -920,7 +939,7 @@ pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, si
 pub struct Said {
     /// One sentence: "Do not disturb, on every device, until 15:00."; "" when off.
     pub line: String,
-    /// Why, in a few words: "While you focus on a task."
+    /// Why, in a few words: "While you are busy."
     pub why: String,
     /// A line per device: this one first, then the others.
     pub details: Vec<String>,
@@ -1370,16 +1389,16 @@ mod tests {
     fn reachable_holds_off_the_times_and_a_pause_ends_it() {
         let settings = DndSettings { sleep: true, focus: true, pauses: true, ..DndSettings::default() };
         let press = reachable(1_000, 8_000);
-        let before = Sources { sleep: Some((500, 9_000)), focus: Some((600, 9_000)), free: Some((700, 9_000)), ..Sources::default() };
+        let before = Sources { sleep: Some((500, 9_000)), busy: Some((600, 9_000)), free: Some((700, 9_000)), ..Sources::default() };
         let held = now(&settings, &before, Some(&press), 2_000);
         assert!(!held.on() && held.reachable.as_ref().is_some_and(|r| r.since == 1_000 && r.until == Some(8_000)), "{held:?}");
-        let during = Sources { sleep: Some((1_500, 9_000)), focus: Some((1_600, 9_000)), free: Some((1_700, 9_000)), ..Sources::default() };
+        let during = Sources { sleep: Some((1_500, 9_000)), busy: Some((1_600, 9_000)), free: Some((1_700, 9_000)), ..Sources::default() };
         assert!(!now(&settings, &during, Some(&press), 2_000).on());
         // Past its end: what began meanwhile holds, and what began before it and still holds turns on again.
         let after = now(&settings, &during, Some(&press), 8_000);
-        assert!(after.reachable.is_none() && after.has(Why::Sleep) && after.has(Why::Focus), "{after:?}");
+        assert!(after.reachable.is_none() && after.has(Why::Sleep) && after.has(Why::Busy), "{after:?}");
         let again = now(&settings, &before, Some(&press), 8_000);
-        assert!(again.has(Why::Sleep) && again.has(Why::Focus) && again.has(Why::FreeTime), "{again:?}");
+        assert!(again.has(Why::Sleep) && again.has(Why::Busy) && again.has(Why::FreeTime), "{again:?}");
         // A pause now: no Reachable, and the pause holds, though begun before the press.
         let paused = Sources { paused: Some(500), pause_pressed: Some(500), ..Sources::default() };
         let held = now(&settings, &paused, Some(&press), 2_000);
@@ -1459,9 +1478,9 @@ mod tests {
             late.device.get_mut("old-laptop").unwrap().open = true;
             let read = late.counted("phone", &|id| id != "old-laptop");
             let p = read.latest().unwrap();
-            let focus = Sources { focus: Some((t / 1000 - 3600, t / 1000 + 3600)), ..Sources::default() };
+            let focus = Sources { busy: Some((t / 1000 - 3600, t / 1000 + 3600)), ..Sources::default() };
             let held = now(&settings, &focus, Some(&p), t / 1000);
-            assert!(held.reachable.is_none() && held.has(Why::Focus) && !held.has(Why::Manual), "{state:?}: {held:?}");
+            assert!(held.reachable.is_none() && held.has(Why::Busy) && !held.has(Why::Manual), "{state:?}: {held:?}");
             assert!(read.release_stamps().is_empty());
             assert!(others(&read, "phone", &[], t / 1000, t, &|_| true).is_empty(), "no device that follows");
         }
@@ -1512,7 +1531,7 @@ mod tests {
         let t = 1_790_000_000_000;
         const MIN: i64 = 60_000;
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
-        let focus = Sources { focus: Some((t / 1000, t / 1000 + 4 * 3600)), ..Sources::default() };
+        let focus = Sources { busy: Some((t / 1000, t / 1000 + 4 * 3600)), ..Sources::default() };
         for other in ["phone", "desk"] {
             let mut s = switch(&[("phone", pressed(t + 30 * MIN, State::Usual, 0))]);
             let at = |s: &Switch, m: i64| now(&settings, &focus, s.latest().as_ref(), (t + m * MIN) / 1000);
@@ -1535,7 +1554,7 @@ mod tests {
         let mut plain = Switch::default();
         plain.press_state("phone", State::Reachable, t + 90 * MIN, false, t + 60 * MIN, "");
         assert_eq!(plain.device["phone"].held_off, 0);
-        assert!(now(&settings, &focus, plain.latest().as_ref(), (t + 95 * MIN) / 1000).has(Why::Focus));
+        assert!(now(&settings, &focus, plain.latest().as_ref(), (t + 95 * MIN) / 1000).has(Why::Busy));
         // After Do not disturb, nothing held off either.
         let mut after_dnd = switch(&[("desk", pressed(t, State::Dnd, 0))]);
         after_dnd.press_state("phone", State::Reachable, t + 90 * MIN, false, t + 60 * MIN, "");
@@ -1665,7 +1684,7 @@ mod tests {
         let usual = s.press_state("phone", State::Usual, 0, false, t, "");
         assert_eq!(usual, t);
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
-        let later = Sources { focus: Some((t / 1000 + 3600, t / 1000 + 4 * 3600)), ..Sources::default() };
+        let later = Sources { busy: Some((t / 1000 + 3600, t / 1000 + 4 * 3600)), ..Sources::default() };
         assert!(now(&settings, &later, s.latest().as_ref(), t / 1000 + 7200).on(), "the session begun an hour later holds");
         let night = Sources { sleep: Some((t / 1000 + 10 * 3600, t / 1000 + 18 * 3600)), ..Sources::default() };
         assert!(now(&settings, &night, s.latest().as_ref(), t / 1000 + 11 * 3600).on(), "tonight holds");
@@ -1715,13 +1734,13 @@ mod tests {
 
     #[test]
     fn each_trigger_is_a_setting_and_the_pause_comes_first() {
-        let sources = Sources { paused: Some(100), free: Some((50, 900)), sleep: Some((80, 2000)), focus: Some((90, 1000)), pause_pressed: Some(100), ..Sources::default() };
+        let sources = Sources { paused: Some(100), free: Some((50, 900)), sleep: Some((80, 2000)), busy: Some((90, 1000)), pause_pressed: Some(100), ..Sources::default() };
         let none = DndSettings { pauses: false, sleep: false, focus: false, ..DndSettings::default() };
         assert!(!now(&none, &sources, None, 500).on());
         let all = DndSettings { pauses: true, sleep: true, focus: true, ..DndSettings::default() };
         let held = now(&all, &sources, None, 500);
         // Free time never with the pause.
-        assert_eq!(held.holds.iter().map(|h| h.why).collect::<Vec<_>>(), vec![Why::Paused, Why::Sleep, Why::Focus]);
+        assert_eq!(held.holds.iter().map(|h| h.why).collect::<Vec<_>>(), vec![Why::Paused, Why::Sleep, Why::Busy]);
         assert_eq!(held.why(), Some(Why::Paused));
         assert!(held.global() && held.global_why() == Some(Why::Sleep));
         // The pause holds without an end: none said.
@@ -1737,18 +1756,18 @@ mod tests {
     #[test]
     fn pressed_off_after_a_reason_began_holds_it_off_until_it_ends() {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
-        let focus = Sources { focus: Some((1_000, 5_000)), ..Sources::default() };
+        let focus = Sources { busy: Some((1_000, 5_000)), ..Sources::default() };
         let off_after = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: String::new(), state: State::of(false), open: false, held_off: 0, gone: false };
         assert!(!now(&settings, &focus, Some(&off_after), 3_000).on(), "the person turned it off during the session");
         // A session begun after the press holds again.
-        let later = Sources { focus: Some((2_500, 6_000)), ..Sources::default() };
-        assert!(now(&settings, &later, Some(&off_after), 3_000).has(Why::Focus));
+        let later = Sources { busy: Some((2_500, 6_000)), ..Sources::default() };
+        assert!(now(&settings, &later, Some(&off_after), 3_000).has(Why::Busy));
         // A press "on" never holds a reason off; an "off" before it began neither.
         let on = Press { on: true, state: State::Dnd, ..off_after.clone() };
         let held = now(&settings, &focus, Some(&on), 3_000);
-        assert!(held.has(Why::Focus) && held.has(Why::Manual));
+        assert!(held.has(Why::Busy) && held.has(Why::Manual));
         let off_before = Press { at: 500_000, ..off_after };
-        assert!(now(&settings, &focus, Some(&off_before), 3_000).has(Why::Focus));
+        assert!(now(&settings, &focus, Some(&off_before), 3_000).has(Why::Busy));
     }
 
     #[test]
@@ -1756,7 +1775,7 @@ mod tests {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
         let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         assert!(now(&settings, &Sources::default(), Some(&press), 2_000).gates());
-        assert!(now(&settings, &Sources { focus: Some((1_000, 9_000)), ..Sources::default() }, None, 2_000).gates());
+        assert!(now(&settings, &Sources { busy: Some((1_000, 9_000)), ..Sources::default() }, None, 2_000).gates());
         // Sleep and the pauses keep their own rules.
         assert!(!now(&settings, &Sources { sleep: Some((1_000, 9_000)), ..Sources::default() }, None, 2_000).gates());
         assert!(!now(&settings, &Sources { paused: Some(1_000), ..Sources::default() }, None, 2_000).gates());
@@ -1765,7 +1784,7 @@ mod tests {
 
     #[test]
     fn a_forgotten_focus_session_lets_you_be_reached_again() {
-        let mut running = crate::timelog::Running { task: "t".into(), start: 1_000, planned: 25, paused_at: None, paused: 0 };
+        let mut running = crate::timelog::Running { task: "t".into(), start: 1_000, planned: 25, paused_at: None, paused: 0, busy: false };
         assert_eq!(focus(&running, 1_100), Some((1_000, 1_000 + 25 * 60 + FOCUS_GRACE)));
         assert_eq!(focus(&running, 1_000 + 25 * 60 + FOCUS_GRACE), None);
         // Its own pauses push the limit on; paused, it does not hold.
@@ -1979,7 +1998,7 @@ mod tests {
             for key in [
                 "dnd-everywhere", "dnd-everywhere-until", "dnd-here-only", "dnd-here-only-until", "dnd-waiting", "dnd-waiting-until", "dnd-not-everywhere", "dnd-not-everywhere-until", "dnd-elsewhere", "dnd-elsewhere-until", "dnd-own-only", "dnd-own-only-until",
                 "dnd-device-silenced", "dnd-device-cannot", "dnd-device-unsilenced", "dnd-device-behind", "dnd-device-older", "dnd-device-here", "dnd-device-on", "dnd-device-phone", "dnd-device-other",
-                "dnd-why-manual", "dnd-why-manual-from", "dnd-why-focus", "dnd-why-sleep", "dnd-why-paused", "dnd-why-free-time",
+                "dnd-why-manual", "dnd-why-manual-from", "dnd-why-busy", "dnd-why-sleep", "dnd-why-paused", "dnd-why-free-time",
                 "dnd-turned-off-here", "dnd-turned-off-here-until", "dnd-device-closed",
             ] {
                 let mut args = crate::i18n::args();
@@ -2026,7 +2045,7 @@ mod tests {
         assert_eq!(old.latest().unwrap().via, "");
         // A press "off" heard from the system holds off a reason begun before it, as any press.
         let settings = DndSettings { focus: true, ..DndSettings::default() };
-        let focus = Sources { focus: Some((1_000, 9_000)), ..Sources::default() };
+        let focus = Sources { busy: Some((1_000, 9_000)), ..Sources::default() };
         let off = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: VIA_SYSTEM.into(), state: State::of(false), open: false, held_off: 0, gone: false };
         assert!(!now(&settings, &focus, Some(&off), 3_000).on());
     }
