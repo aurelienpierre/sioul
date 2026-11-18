@@ -7,9 +7,9 @@
 // locked (VaultUnlock.qml, the security key where the window can ask one),
 // then its logins, found by the name the account logs in with as the user
 // name (LoginChooser.qml); the one chosen fills the field, and only its
-// password leaves the vault. The field is then told to the page's
-// VaultHeld.qml, which empties it when the vault locks or the form is left;
-// the button says which login filled it. Shown once a Bitwarden account is
+// password leaves the vault. The field is then the page's VaultHeld.qml's
+// for good, which purges it (and its undo) when the vault locks or the form
+// is left; the button says which login filled it, until the hand changes it. Shown once a Bitwarden account is
 // set (Accounts ▸ Your accounts ▸ Password manager). Another domain than the
 // server's is no warning here: the password goes to the account's own
 // server.
@@ -68,17 +68,29 @@ Button {
         }
         fill.field.text = login.password
         if (fill.held)
-            fill.held.took(fill.field)
+            fill.held.took(fill.field, login.password)
         fill.from = login.name
         fill.taken(login.name)
     }
 
-    // The field emptied (by hand, or as the vault locked): no login's password in it.
+    // The field emptied or typed in by hand: no longer that login's password as it gave it.
     Connections {
         target: fill.field
 
         function onTextChanged() {
             if (fill.field.text === "")
+                fill.from = ""
+        }
+        function onTextEdited() {
+            fill.from = ""
+        }
+    }
+    // Let go by the keeper (the vault locked, the form left): no login named.
+    Connections {
+        target: fill.held
+
+        function onPurged(field) {
+            if (field === fill.field)
                 fill.from = ""
         }
     }

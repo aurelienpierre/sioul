@@ -72,7 +72,12 @@ SafeDialog {
     modal: true
     width: Math.min(460, (parent ? dialog.roomWidth : 460) - 2 * dialog.theme.gap)
     title: dialog.theme.plain(dialog.account !== null ? (dialog.appPassword ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : "")
-    onClosed: password.text = ""
+    // Closed: emptied, and when the vault filled it, its undo and redo purged too (VaultHeld.qml).
+    onClosed: {
+        if (dialog.held)
+            dialog.held.letGo(password)
+        password.text = ""
+    }
 
     Connections {
         target: dialog.sioul
