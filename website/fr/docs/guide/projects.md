@@ -28,7 +28,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 - **Nom**.
 - **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent sa fiche de client quand il en a une ([Vos clients](time.md#your-clients)), sinon son adresse postale.
 - Sans cela, le projet est à vous.
-- **À quoi il sert** : travail, vos démarches, loisirs, plusieurs ensemble, les trois mêmes interrupteurs que partout ([Les heures](hours.md)). Les pages Projets et Temps le montrent à ces heures-là, et ses tâches y viennent sauf si elles disent les leurs. Rien de coché, il compte comme travail.
+- **À quoi il sert** : travail, vos démarches, loisirs, plusieurs ensemble, les trois mêmes interrupteurs que partout ([Les heures](hours.md)). Les pages Projets et Temps le montrent à ces heures-là, et ses tâches y viennent sauf si elles disent les leurs. Rien de coché, le projet d’un client compte comme travail ; un autre suit ses tâches ouvertes, et s’affiche à toute heure s’il n’en a aucune.
 - **Où il en est** : ouvert, en attente ou fermé.
 
 **Retirer de la liste** enlève un projet. Ses tâches, notes, courriels et temps restent où ils sont ; ils ne sont plus rassemblés sous lui.
@@ -69,12 +69,12 @@ Si votre dossier de notes contient encore `sioul-cases.toml`, le nom du fichier 
 
 ## Selon vos heures {#in-quiet-time}
 
-Le bouton au-dessus de la liste dit ce qu’elle montre (« Loisirs ▾ ») et ouvre trois cases, **Travail**, **Démarches** et **Loisirs**, cochées comme le disent vos heures sur cet appareil : les projets du travail pendant vos heures de travail, ceux de vos démarches pendant vos heures de démarches, ceux des loisirs le soir, aux repas et la nuit. Cochez-en une autre pour voir ses projets aussi : cela tient jusqu’au changement de vos heures ; **Selon vos heures** rend aussitôt les leurs. Un projet sans rien de coché compte comme travail. Rien ne couvre la page, à aucune heure, et un projet ouvert d’ailleurs s’ouvre quelles que soient les cases. La page [Temps](time.md#in-quiet-time) partage ces cases. Voir [Les heures](hours.md).
+Le bouton au-dessus de la liste dit ce qu’elle montre (« Loisirs ▾ ») et ouvre trois cases, **Travail**, **Démarches** et **Loisirs**, cochées comme le disent vos heures sur cet appareil : les projets du travail pendant vos heures de travail, ceux de vos démarches pendant vos heures de démarches, ceux des loisirs le soir, aux repas et la nuit. Cochez-en une autre pour voir ses projets aussi : cela tient jusqu’au changement de vos heures ; **Selon vos heures** rend aussitôt les leurs. Le projet d’un client sans rien de coché compte comme travail ; un autre sans rien de coché s’affiche pour ce à quoi servent ses tâches ouvertes, et à toute heure s’il n’en a aucune. Quand les cases ne montrent aucun projet, une phrase le dit : « Aucun projet pour ce qui est coché. » Rien ne couvre la page, à aucune heure, et un projet ouvert d’ailleurs s’ouvre quelles que soient les cases. La page [Temps](time.md#in-quiet-time) partage ces cases. Voir [Les heures](hours.md).
 
 ## Pour aller plus loin {#going-further}
 
 - **Une file sur le Porche** : **Projets montrés ici**, dans le ⚙ du Porche, donne à un projet sa propre file ([Le Porche](porch.md)).
-- **Sur un appareil pas encore mis à jour** : un Sioul plus ancien lit les trois interrupteurs comme si rien n’était dit, jusqu’à sa mise à jour ; sa seule case, **À vous, hors travail**, se lit ici comme démarches et loisirs.
+- **Sur un appareil pas encore mis à jour** : **Démarches** et **Loisirs** ensemble s’écrivent comme l’ancienne case **À vous, hors travail**, qu’un Sioul plus ancien lit, et cette case se lit ici comme démarches et loisirs (à côté d’un client, les trois, comme le Sioul plus ancien la lisait). Les autres choix sont nouveaux pour un Sioul plus ancien : il les lit comme si rien n’était dit, et enregistrer le formulaire du projet là-bas les retire. Mettez chaque appareil à jour avant de vous en servir.
 - **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
 - **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire la page d’un projet telle que la fenêtre la montre, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels. Il n’y change rien.
 

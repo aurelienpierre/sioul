@@ -249,7 +249,7 @@ A payment counts once, whatever your devices did: **Paid** ticked on two devices
 
 ## By your hours {#in-quiet-time}
 
-The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and shares its ticks: time on a project whose use is not ticked folds out of the bars, the projects and the list; time with no project counts by its task's use; time noted on nothing always shows. Choosing one project shows its time whatever the ticks. When the filter folds everything of the period: "Nothing noted for what is ticked." Nothing covers the page. See [Hours](hours.md).
+The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and shares its ticks: time on a project whose use is not ticked folds out of the bars, the projects and the list; time with no project counts by its task's use; time noted on nothing always shows. Choosing one project shows its time whatever the ticks. What folds is said: the total gives the whole beside what shows ("12 h shown, 31 h in all"; everything folded, "Nothing noted for what is ticked; 31 h in all."), and the line of time with no project says when part of it folds ("45 min of 2 h"). What is left to bill never folds, nor does the export. Nothing covers the page. See [Hours](hours.md).
 
 ## Not there yet {#not-there-yet}
 

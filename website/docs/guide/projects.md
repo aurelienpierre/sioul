@@ -28,7 +28,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 - **Name**.
 - **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
 - Without it, the project is yours.
-- **What it is for**: work, your admin, leisure, any of them together, the same three switches as everywhere ([Hours](hours.md)). The Projects and Time pages show it in those hours, and its tasks come in them unless they say their own. Nothing ticked, it counts as work.
+- **What it is for**: work, your admin, leisure, any of them together, the same three switches as everywhere ([Hours](hours.md)). The Projects and Time pages show it in those hours, and its tasks come in them unless they say their own. Nothing ticked, a client's project counts as work; another follows its open tasks, and shows at any hour when it has none.
 - **Where it stands**: open, waiting, or closed.
 
 **Take out of the list** removes a project. Its tasks, notes, mail and time stay where they are; they are no longer gathered under it.
@@ -69,12 +69,12 @@ If your notes folder still holds `sioul-cases.toml`, the file's name before proj
 
 ## By your hours {#in-quiet-time}
 
-The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change; **As the hours say** brings theirs back at once. A project with nothing ticked counts as work. Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
+The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change; **As the hours say** brings theirs back at once. A client's project with nothing ticked counts as work; another one with nothing ticked shows for what its open tasks are for, and at any hour when it has none. When the ticks show no project, one sentence says so: "No project for what is ticked." Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
 
 ## Going further {#going-further}
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
-- **On a device not updated yet**: an older Sioul reads the three switches as nothing said until it is updated; its one box, **Yours, outside work**, reads here as admin and leisure.
+- **On a device not updated yet**: **Admin** and **Leisure** together are written as the older **Yours, outside work**, which an older Sioul reads, and its box reads here as admin and leisure (beside a client, all three, as the older Sioul read it). Other choices are new to an older Sioul: it reads them as nothing said, and saving the project's form there takes them out. Update every device before using them.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
 

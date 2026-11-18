@@ -249,7 +249,7 @@ Un paiement compte une fois, quoi qu’aient fait vos appareils : la case **Pa
 
 ## Selon vos heures {#in-quiet-time}
 
-La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et partage ses cases : le temps d’un projet dont l’usage n’est pas coché se replie hors des barres, des projets et de la liste ; le temps sans projet compte selon l’usage de sa tâche ; le temps noté sur rien s’affiche toujours. Choisir un projet montre son temps quelles que soient les cases. Quand le filtre replie tout ce que la période contient : « Rien de noté pour ce qui est coché. » Rien ne couvre la page. Voir [Les heures](hours.md).
+La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et partage ses cases : le temps d’un projet dont l’usage n’est pas coché se replie hors des barres, des projets et de la liste ; le temps sans projet compte selon l’usage de sa tâche ; le temps noté sur rien s’affiche toujours. Choisir un projet montre son temps quelles que soient les cases. Ce qui se replie est dit : le total donne le tout à côté de ce qui s’affiche (« 12 h pour ce qui est coché, 31 h en tout » ; tout replié, « Rien de noté pour ce qui est coché ; 31 h en tout. »), et la ligne du temps sans projet dit quand une part s’en replie (« 45 min sur 2 h »). Ce qui reste à facturer ne se replie jamais, ni l’export. Rien ne couvre la page. Voir [Les heures](hours.md).
 
 ## Pas encore là {#not-there-yet}
 
