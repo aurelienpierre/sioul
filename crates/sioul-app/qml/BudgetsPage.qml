@@ -307,7 +307,7 @@ Item {
             Layout.fillWidth: true
             // On a computer, room at its end for the page's ⚙ (`moneySettingsHolder`, below), outside the
             // part that scrolls; on a phone the ⚙ is in the page's bar (`barSettings`): the row keeps its width.
-            rightPadding: page.window.compact ? 0 : (moneySettingsHolder.item ? moneySettingsHolder.item.width : 40) + 6
+            rightPadding: page.window.compact ? 0 : moneySettingsHolder.width + 6
             theme: page.theme
             model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]
             current: moneyTabs.ids[page.tab] || "overview"
