@@ -114,7 +114,7 @@ pub fn holding(now: i64) -> Option<(i64, i64)> {
     let timer = crate::timelog::running().and_then(|r| timer(&r, now));
     let mut from = now - DAY;
     loop {
-        let found = holding_of(&crate::agenda::occurrences(from, now + DAY), timer, now);
+        let found = holding_of(&holding_events(from, now + DAY, now), timer, now);
         match found {
             Some((start, _)) if start <= from && now - from < REACH => from = (start - DAY).max(now - REACH),
             other => return other,
@@ -133,7 +133,28 @@ pub fn holding_of(events: &[Occurrence], timer: Option<(i64, i64)>, now: i64) ->
 /// phone's do-not-disturb wakes at an event's start rather than at its
 /// background service's next step (review B11).
 pub fn next_start(now: i64) -> Option<i64> {
-    next_start_in(&stretches(now, now + DAY), now)
+    let timer = crate::timelog::running().and_then(|r| timer(&r, now));
+    next_start_in(&stretches_of(&holding_events(now - DAY, now + DAY, now), timer, now, now + DAY), now)
+}
+
+/// The events that hold the person busy (`holds_you`) between `from` and
+/// `to`, read from the calendars once a minute at most for do-not-disturb
+/// (review B9), not at each reading: kept with the minute and the window
+/// read, and read again for another minute or a wider window.
+fn holding_events(from: i64, to: i64, now: i64) -> Vec<Occurrence> {
+    static READ: std::sync::Mutex<Option<(i64, i64, i64, Vec<Occurrence>)>> = std::sync::Mutex::new(None);
+    let minute = now.div_euclid(60);
+    let mut kept = READ.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, read_from, read_to, events)) = kept.as_ref()
+        && *at == minute
+        && *read_from <= from
+        && to <= *read_to
+    {
+        return events.clone();
+    }
+    let events: Vec<Occurrence> = crate::agenda::occurrences(from, to).into_iter().filter(holds_you).collect();
+    *kept = Some((minute, from, to, events.clone()));
+    events
 }
 
 /// The first start of `stretches` after `now`.
