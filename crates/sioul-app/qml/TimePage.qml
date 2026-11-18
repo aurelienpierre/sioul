@@ -261,7 +261,8 @@ Item {
             }
             Label {
                 Layout.fillWidth: true
-                text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.sioul.textWith("time-total", "time", page.shown.total)) : ""
+                // What the filter shows, with the whole beside it when it folds some ("12 h shown, 31 h in all").
+                text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.shown.total_line || page.sioul.textWith("time-total", "time", page.shown.total)) : ""
                 textFormat: Text.PlainText
                 font.pixelSize: 16
                 wrapMode: Text.Wrap

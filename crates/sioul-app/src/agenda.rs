@@ -635,7 +635,8 @@ impl FilterNow {
             .iter()
             .map(|(name, set)| {
                 let listed: std::collections::BTreeSet<&str> = set.agendas.iter().map(String::as_str).filter(|id| groups.iter().any(|g| g.agendas.iter().any(|a| a.id == *id))).collect();
-                SetShown { name: name.clone(), agendas: set.agendas.clone(), times: set.times.clone(), by_time: self.by_time.as_deref() == Some(name.as_str()), showing: !listed.is_empty() && listed == on }
+                // A time brings a set in the calm views alone: never said in a full view, where the hours hide nothing.
+                SetShown { name: name.clone(), agendas: set.agendas.clone(), times: set.times.clone(), by_time: !full && self.by_time.as_deref() == Some(name.as_str()), showing: !listed.is_empty() && listed == on }
             })
             .collect();
         FilterShown { chosen: self.chosen(), until, groups, sets }
@@ -704,14 +705,12 @@ pub(crate) fn turn_by_hand(ids: &[String], on: bool) -> String {
 }
 
 /// A set chosen by hand (part 4): its agendas shown, every other left out,
-/// as your word, holding until work's hours change (`agendas::turned`).
-/// Returns what went wrong, else "".
+/// as your word, in every view, the full ones too (`agendas::set_chosen`),
+/// holding until work's hours change. Returns what went wrong, else "".
 pub(crate) fn use_set(name: &str) -> String {
     write_filter(|now| {
         let Some(set) = now.sets.get(name) else { return now.over.clone() };
-        let (inside, outside): (Vec<String>, Vec<String>) = now.agendas.iter().map(|a| a.id.clone()).partition(|id| set.agendas.contains(id));
-        let over = sioul_core::agendas::turned(now.over.as_ref(), &now.agendas, &inside, true, now.hours, &now.out, now.now);
-        sioul_core::agendas::turned(over.as_ref(), &now.agendas, &outside, false, now.hours, &now.out, now.now)
+        sioul_core::agendas::set_chosen(&now.agendas, &set.agendas, now.hours)
     })
 }
 

@@ -35,7 +35,7 @@ pub(crate) fn entries(shared: &Shared) -> Vec<Entry> {
 /// The projects, for the list.
 pub(crate) fn rows(shared: &Shared) -> String {
     let loaded = loaded(shared);
-    json(&projectview::rows(&loaded, &entries(shared), &loaded.projects))
+    json(&projectview::rows(&loaded, &entries(shared), &loaded.projects, &sioul_core::areas::TaskAreas::of_config(&load_config(), &loaded.projects)))
 }
 
 /// The Projects and Time pages' filter as this device keeps it (docs/areas.md,
@@ -118,7 +118,7 @@ pub(crate) fn page_rows(shared: &Shared) -> String {
     let now = sioul_core::zone::now();
     let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
     let loaded = loaded(shared);
-    let rows = listed(projectview::rows(&loaded, &entries(shared), &loaded.projects), ticked);
+    let rows = listed(projectview::rows(&loaded, &entries(shared), &loaded.projects, &sioul_core::areas::TaskAreas::of_config(&load_config(), &loaded.projects)), ticked);
     json(&serde_json::json!({ "rows": rows, "filter": filter }))
 }
 
@@ -130,9 +130,10 @@ struct Listed {
     shown: bool,
 }
 
-/// Each row, shown when its area meets `ticked`, in their order.
+/// Each row, shown when its area meets `ticked`, or whatever the ticks when
+/// it shows for none (`Project::area_shown`), in their order.
 fn listed(rows: Vec<projectview::ProjectRow>, ticked: sioul_core::areas::Area) -> Vec<Listed> {
-    rows.into_iter().map(|row| Listed { shown: sioul_core::areas::Area::parse(&row.area).unwrap_or(sioul_core::areas::Area::WORK).meets(ticked), row }).collect()
+    rows.into_iter().map(|row| Listed { shown: sioul_core::areas::Area::parse(&row.area).is_none_or(|area| area.meets(ticked)), row }).collect()
 }
 
 /// One project's page, as JSON; "" when it is gone.
@@ -242,26 +243,15 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     let sessions = timelog::sessions();
     // Time noted by hand has no task, or was not timed: it can be taken out.
     let by_hand: std::collections::BTreeSet<String> = sessions.iter().filter(|s| s.task.is_empty() || !s.project.is_empty()).map(Session::key).collect();
-    let mut all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
+    let all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let config = load_config();
     // The projects' filter (docs/areas.md, "A page's filter by area"): time on a project
-    // whose area is not ticked folds; one project chosen by hand shows whatever the ticks.
+    // whose area is not ticked folds, and the lines say so; one project chosen by hand shows
+    // whatever the ticks. What is left to bill stays whole (`timereport::view`).
     let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
-    let mut folded = false;
-    if project.is_empty() {
-        let areas = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects);
-        let (from, to) = timereport::bounds(period, anchor);
-        all.retain(|e| {
-            let kept = timereport::area_of(e, &loaded.projects, &loaded.tasks, &areas).is_none_or(|area| area.meets(ticked));
-            folded |= !kept && e.day >= from && e.day <= to;
-            kept
-        });
-    }
-    let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
-    // Nothing shown, but time folded by the filter: never "Nothing noted".
-    if folded && !view.sentence.is_empty() {
-        view.sentence = tr().text("time-nothing-ticked", None);
-    }
+    let areas = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects);
+    let shows = |e: &Entry| !project.is_empty() || timereport::area_of(e, &loaded.projects, &loaded.tasks, &areas).is_none_or(|area| area.meets(ticked));
+    let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr(), &shows);
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
     let kinds: std::collections::BTreeMap<String, Option<timelog::Kind>> = sessions.iter().map(|s| (s.key(), s.kind)).collect();
     for entry in &mut view.entries {
@@ -742,7 +732,8 @@ mod tests {
     /// nothing at night but leisure's, any area one tick away, your ticks held
     /// while the hours say the same and kept in this device's view file, "As
     /// the hours say" back at once; a project listed when its area meets the
-    /// ticks, an unsaid one as work's, every row given with whether it shows.
+    /// ticks, one that shows for no area (unsaid, no client, no open task)
+    /// whatever the ticks, every row given with whether it shows.
     #[test]
     fn the_projects_filter_follows_the_hours_until_you_tick() {
         use sioul_core::areas::{Area, Here, Time, Week};
@@ -775,12 +766,38 @@ mod tests {
         let rows = || vec![row("lumen", "work"), row("garden", "admin+leisure"), row("choir", "leisure"), row("old", "")];
         let shown = |ticked: Area| listed(rows(), ticked).into_iter().map(|l| (l.row.id, l.shown)).collect::<Vec<_>>();
         let at = |ids: &[(&str, bool)]| ids.iter().map(|(id, on)| (id.to_string(), *on)).collect::<Vec<_>>();
-        assert_eq!(shown(Area::LEISURE), at(&[("lumen", false), ("garden", true), ("choir", true), ("old", false)]));
-        assert_eq!(shown(Area::WORK), at(&[("lumen", true), ("garden", false), ("choir", false), ("old", true)]), "unsaid: work's");
-        assert_eq!(shown(Area::default()), at(&[("lumen", false), ("garden", false), ("choir", false), ("old", false)]));
+        assert_eq!(shown(Area::LEISURE), at(&[("lumen", false), ("garden", true), ("choir", true), ("old", true)]));
+        assert_eq!(shown(Area::WORK), at(&[("lumen", true), ("garden", false), ("choir", false), ("old", true)]), "no area: whatever the ticks");
+        assert_eq!(shown(Area::default()), at(&[("lumen", false), ("garden", false), ("choir", false), ("old", true)]));
         let json = serde_json::to_value(listed(rows(), Area::ADMIN)).unwrap();
         assert_eq!((json[1]["id"].as_str(), json[1]["area"].as_str(), json[1]["shown"].as_bool()), (Some("garden"), Some("admin+leisure"), Some(true)), "{json}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The projects' filter shapes two pages alone, the Projects list and the
+    /// Time page (`page_rows`, `time`): the export, a project's page, its
+    /// invoices and every "to bill" read every stretch whatever the ticks (the
+    /// review of the branch `views`, finding 2). Read in this file's source:
+    /// each function of its own that asks the filter.
+    #[test]
+    fn only_the_projects_list_and_the_time_page_read_the_filter() {
+        let needle = ["filter(&crate::hours", "::mode_at("].concat();
+        let mut readers: Vec<String> = Vec::new();
+        let mut current = String::new();
+        for line in include_str!("projects.rs").lines() {
+            if let Some(rest) = ["pub(crate) fn ", "fn "].iter().find_map(|head| line.strip_prefix(head)) {
+                current = rest.split(['(', '<']).next().unwrap_or_default().to_string();
+            }
+            if line.starts_with("mod tests") {
+                break;
+            }
+            if line.contains(&needle) && !readers.contains(&current) {
+                readers.push(current.clone());
+            }
+        }
+        assert_eq!(readers, ["page_rows", "time"]);
+        // What the time page's "to bill" and the export read: every stretch (`entries`, unfiltered).
+        assert!(include_str!("projects.rs").contains("let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());"), "the export reads every stretch");
     }
 
     /// Paid, then its Undo (review of 36002ea, must-fix 3): an invoice

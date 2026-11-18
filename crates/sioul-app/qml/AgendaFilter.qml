@@ -194,13 +194,14 @@ Button {
                                 elide: Text.ElideRight
                                 color: filter.theme.text
                             }
+                            // Your word forgotten: the hours again; in a full view, every agenda.
                             Button {
                                 objectName: "agendasAsHours"
                                 visible: filter.shown.chosen === true
                                 flat: true
-                                text: filter.sioul.text("agendas-filter-hours")
+                                text: filter.byHand ? filter.sioul.text("agendas-filter-every") : filter.sioul.text("agendas-filter-hours")
                                 ToolTip.visible: hovered && (filter.shown.until || "") !== ""
-                                ToolTip.text: filter.theme.plain(filter.sioul.textWith("agendas-filter-until", "time", filter.shown.until || ""))
+                                ToolTip.text: filter.theme.plain(filter.byHand ? filter.sioul.textWith("agendas-filter-until-every", "time", filter.shown.until || "") : filter.sioul.textWith("agendas-filter-until", "time", filter.shown.until || ""))
                                 ToolTip.delay: 300
                                 onClicked: filter.asTheHoursSay()
                             }

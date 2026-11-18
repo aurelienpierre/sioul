@@ -410,8 +410,12 @@ struct TasksShown {
 }
 
 /// Today, laid out: the events of today and every step the plan gives
-/// today, whatever the hour (a full view hides nothing: the Day and the Week
-/// draw what this lays; What comes and Now keep to what the hours keep).
+/// today, whatever the hour, for the Day, the Week and Tasks ▸ The day, which
+/// hide nothing. Its slots of time for you are those of today laid from the
+/// tasks the calm views keep now on this device, as today was always laid
+/// (`dayview::today`): those are written for every process of this device
+/// (notifications, and calls where a cell says so, read them), and the
+/// drawn day carries them in place of its own (`dayview::with_slots_of`).
 fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView {
     let now = sioul_core::zone::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
@@ -420,13 +424,15 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     // Today's events, from the plan's one read; deleted, or an occurrence left out, while "Undo" is offered: gone already.
     let (removed, skipped) = crate::mail::hidden_pim(shared);
     let events: Vec<sioul_core::agenda::Occurrence> = pim::without_waiting(desk.read.iter().filter(|o| o.end > midnight && o.start < next_midnight).cloned().collect(), &removed, &skipped);
-    let mut day = sioul_core::dayview::day(&now, &events, &desk.plan, &desk.loaded.tasks, &desk.settings);
+    let sioul_core::dayview::Today { drawn: mut day, mut kept } = sioul_core::dayview::today(&now, &events, &desk.plan, &desk.loaded.tasks, desk.filter.quiet.as_ref(), &desk.settings);
     // Meals and naps without a name of their own: their usual one, in your language.
     for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
         block.title = crate::health::block_name(block.kind, &block.key, "");
     }
-    // Time for you, the free time kept, and why today holds what it holds, in words.
-    crate::capacity::dress(&mut day, &desk.loaded.tasks);
+    // The slots in force written from the tasks kept, as always; the day drawn in words, with them.
+    crate::capacity::dress(&mut kept, &desk.loaded.tasks);
+    crate::capacity::dress_words(&mut day, &desk.loaded.tasks);
+    sioul_core::dayview::with_slots_of(&mut day, &kept);
     day
 }
 
@@ -444,8 +450,9 @@ pub(crate) struct PlanShown {
     /// Today as laid and dressed then, or laid again since from it
     /// (`relay_today`): what the agenda draws of today, the one producer of
     /// today's layout (the unified agenda, §2.5.1). Every task's steps,
-    /// whatever the hour: What comes leaves out those the hours hide now
-    /// (`quiet`).
+    /// whatever the hour, with the slots of time for you in force (those of
+    /// the tasks kept now): What comes leaves out the steps the hours hide
+    /// now (`quiet`).
     pub(crate) today: sioul_core::dayview::DayView,
 }
 
@@ -1521,6 +1528,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let related = loaded.world().related(&links::task_uri(uid));
     let mut detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
     detail.ratio_line = crate::capacity::ratio_line(task);
+    // Its area as its tags say, read as the plan reads it (your words and its projects', `TaskAreas::of_config`).
+    detail.area_tags = desk.settings.areas.by_tags(task).id();
     #[derive(Serialize)]
     struct Shown<'a> {
         #[serde(flatten)]

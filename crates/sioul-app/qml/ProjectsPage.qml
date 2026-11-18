@@ -78,6 +78,13 @@ Item {
         return form
     }
 
+    // Every area ticked, whatever the hour (the window's pictures): what the
+    // projects' filter keeps until the hours change, as a tick of yours.
+    function showAll() {
+        page.sioul.tickProjectAreas("work+admin+leisure")
+        page.reload()
+    }
+
     // The first the list shows, else the first of all (the window's pictures).
     function openFirst() {
         const first = page.listed.length > 0 ? page.listed[0] : page.rows[0]
@@ -226,6 +233,16 @@ Item {
                     page.sioul.projectAreasAsHours()
                     page.reload()
                 }
+            }
+            // Projects there are, none for what is ticked: said, one tick away above.
+            Label {
+                objectName: "projectsNoneTicked"
+                visible: page.rows.length > 0 && page.listed.length === 0
+                Layout.fillWidth: true
+                text: page.sioul.text("projects-none-ticked")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.muted
             }
             ListView {
                 id: list

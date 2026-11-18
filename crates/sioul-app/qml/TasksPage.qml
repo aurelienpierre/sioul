@@ -1466,6 +1466,7 @@ Item {
     // Asleep: over Now alone, one line, a thought noted for later, and Now's
     // tasks if you ask; the tabs stay in reach, and the other tabs show everything.
     RestCover {
+        objectName: "tasksRest"
         parent: nowView
         z: 1
         visible: page.rest
