@@ -412,7 +412,7 @@ pub struct Card<'a> {
 }
 
 /// One phone's section Calls, in words, for its card in Settings ▸ Devices:
-/// {set, profile, offered, profiles: [{id, label, chosen}], said, columns:
+/// {set, profile, offered, profiles: [{id, label, said, chosen}], said, columns:
 /// [{id, label}], rows: [{id, label, fixed, group, cells: [{when, rings,
 /// word}]}], switches: [{key, label, on}], groups (categories with no row
 /// yet), screens, sims, always}. A line that says nothing shows the profile
@@ -423,9 +423,11 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
     let offered = Profile::offered(card.area);
     let grid = said.filter(|s| s.says()).map_or_else(|| offered.grid(), Said::grid);
     let chosen = set.then_some(grid.profile);
-    let mut profiles: Vec<serde_json::Value> = Profile::OFFERED.iter().map(|p| json!({ "id": p.id(), "label": tr.text(&format!("phone-calls-profile-{}", p.id()), None), "chosen": chosen == Some(*p) })).collect();
+    // Each profile with what it does in a line; Professional's says that a second call does not ring outside work hours.
+    let profile = |p: Profile, chosen: bool| json!({ "id": p.id(), "label": tr.text(&format!("phone-calls-profile-{}", p.id()), None), "said": tr.text(&format!("phone-calls-profile-{}-said", p.id()), None), "chosen": chosen });
+    let mut profiles: Vec<serde_json::Value> = Profile::OFFERED.iter().map(|p| profile(*p, chosen == Some(*p))).collect();
     if chosen == Some(Profile::Own) {
-        profiles.push(json!({ "id": "none", "label": tr.text("phone-calls-profile-none", None), "chosen": true }));
+        profiles.push(profile(Profile::Own, true));
     }
     let said_words = match chosen {
         None => tr.text("phone-calls-unsaid", None),
@@ -746,8 +748,14 @@ mod tests {
             assert_eq!(view_own["not_screening"], "");
             let android = view(Some(&Said { profile: Some(Profile::AsAndroid), ..Said::default() }), &card, &tr);
             assert!(!android["said"].as_str().unwrap().is_empty());
+            let professional = &unsaid["profiles"][0];
+            assert_eq!(professional["id"], "professional");
+            if language == "en" {
+                assert!(professional["said"].as_str().unwrap().contains("a second call within 15 minutes does not ring outside work hours"), "{professional}");
+            }
             let mut words: Vec<String> = Vec::new();
             for v in [&unsaid, &view_own, &android] {
+                words.extend(v["profiles"].as_array().unwrap().iter().map(|p| p["said"].as_str().unwrap().to_string()));
                 for key in ["said", "sims", "always", "not_screening"] {
                     words.push(v[key].as_str().unwrap().to_string());
                 }

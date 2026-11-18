@@ -509,6 +509,11 @@ pub struct Inputs<'a> {
     /// The stretches you are busy in, from and to (Unix seconds:
     /// `busy::stretches`); asked only for a phone whose line says something.
     pub busy: &'a dyn Fn(i64, i64) -> Vec<(i64, i64)>,
+    /// Being busy turns do-not-disturb on (the box "While busy" among what
+    /// turns it on, the Busy rule's): a busy stretch is then do-not-disturb
+    /// on this phone's line, only Always through ringing; off, the line's
+    /// column "while busy" holds.
+    pub busy_is_dnd: bool,
 }
 
 /// A phone's table (docs/android.md, "Calls, per phone"). Its line saying
@@ -560,7 +565,7 @@ pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
         unverified: spam,
         called: grid.switches.called,
     };
-    let frames = line_frames(&LineMoments { attention: i.attention, clock: i.clock, layers: i.layers, busy: &busy, own: &own, grid: &grid, groups: &groups }, i.from, i.until);
+    let frames = line_frames(&LineMoments { attention: i.attention, clock: i.clock, layers: i.layers, busy: &busy, busy_is_dnd: i.busy_is_dnd, own: &own, grid: &grid, groups: &groups }, i.from, i.until);
     let mut made = table(Made {
         made: i.made,
         region,
@@ -626,6 +631,8 @@ pub struct LineMoments<'a> {
     pub layers: &'a Layers,
     /// Busy stretches (Unix seconds).
     pub busy: &'a [(i64, i64)],
+    /// Being busy turns do-not-disturb on (`Inputs::busy_is_dnd`).
+    pub busy_is_dnd: bool,
     /// The people's own rows (`own_rows`), read as the matrix says them.
     pub own: &'a [OwnRow],
     pub grid: &'a crate::calls_line::Grid,
@@ -634,7 +641,10 @@ pub struct LineMoments<'a> {
 
 /// The frames of a phone whose line says something: the clock's frames cut
 /// where do-not-disturb's layer, Reachable or a busy stretch begins or ends.
-/// The moment's column: busy, else the night (sleep), else work hours, else
+/// In this order: a pause, do-not-disturb's layer (its switch, a focus
+/// session), and a busy stretch while being busy turns do-not-disturb on
+/// (`busy_is_dnd`) hold all but Always through; then Reachable; then the
+/// moment's column: busy (that box off), else the night (sleep), else work hours, else
 /// the rest of the day (admin, leisure, meals, Free time). In a pause or
 /// under do-not-disturb's layer (its switch, a focus session) only Always
 /// through rings, and a person's own row as the matrix says it; while
@@ -658,7 +668,10 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
             let mut now = attention::Now::of_moment(&f.moment).layers(false, dnd);
             now.reachable = holds(m.layers.reachable);
             let busy = m.busy.iter().any(|&(a, b)| a <= start && start < b);
-            let held = dnd || now.times.contains(&attention::Column::Pause);
+            // Busy with its box among what turns do-not-disturb on: do-not-disturb, its rule, not the busy column.
+            let busy_dnd = busy && m.busy_is_dnd;
+            let busy = busy && !m.busy_is_dnd;
+            let held = dnd || busy_dnd || now.times.contains(&attention::Column::Pause);
             let when = if busy {
                 When::Busy
             } else if now.times.contains(&attention::Column::Sleep) {
@@ -694,7 +707,7 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
                 let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
                 ring.insert(o.row.clone(), android || m.attention.decide(&call, &now).level == Level::Now);
             }
-            let column = if busy && !held && !now.reachable && !android { "busy" } else { column_of(&now) }.to_string();
+            let column = if busy_dnd && !android { "dnd" } else if busy && !held && !now.reachable && !android { "busy" } else { column_of(&now) }.to_string();
             let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
             match out.last_mut() {
                 Some(last) if last.until == from_ms && last.column == column && last.hours == hours && last.ring == ring => last.until = until_ms,
@@ -3706,11 +3719,13 @@ mod line_tests {
         expecting: Option<Through>,
         screening: screening::Screening,
         busy: Vec<(i64, i64)>,
+        /// The stand-in for the box "While busy" among what turns do-not-disturb on.
+        busy_is_dnd: bool,
     }
 
     impl World {
         fn new() -> World {
-            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new() }
+            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new(), busy_is_dnd: false }
         }
 
         /// The table from Monday 16 November 2026, as `build` makes it; whether it asked for the busy stretches.
@@ -3721,7 +3736,7 @@ mod line_tests {
                 asked.set(true);
                 self.busy.clone()
             };
-            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy };
+            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, busy_is_dnd: self.busy_is_dnd };
             (build(&inputs, line), asked.get())
         }
 
@@ -3840,6 +3855,14 @@ mod line_tests {
         assert_eq!((friend_busy.refuse, friend_busy.column.as_str()), (true, "busy"));
         assert!(rings(&table, "01 99 00 00 03", "15:30") && rings(&table, safe, "15:30"));
         assert!(rings(&table, friend, "16:30"), "busy no more");
+        // The box "While busy" among what turns do-not-disturb on: a busy stretch is do-not-disturb,
+        // only Always through rings, the safe and the group too to voicemail; the busy column is not read.
+        let busy_dnd = World { busy_is_dnd: true, ..busy };
+        let (held, _) = busy_dnd.build(Some(&personal));
+        let safe_held = decide(Some(&held), &call(safe, "15:30"));
+        assert_eq!((safe_held.refuse, safe_held.column.as_str()), (true, "dnd"));
+        assert!(!rings(&held, "01 99 00 00 03", "15:30") && !rings(&held, friend, "15:30") && rings(&held, "01 99 00 00 06", "15:30"));
+        assert!(rings(&held, friend, "16:30"), "busy no more: the time's column again");
         // Claire is in the group (written "school") and Always through: Always through rings first, by their number.
         assert_eq!(table.numbers.get("+33199000006").map(String::as_str), Some("always-neutral"));
         assert!(!table.groups.contains_key("+33199000006") && table.groups.contains_key("+33199000003"));

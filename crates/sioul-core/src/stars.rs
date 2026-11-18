@@ -50,7 +50,8 @@ pub struct Seen {
 }
 
 /// What a place starred at its last look, by its ids; for a server, whether
-/// it keeps a star at all (none: not known yet), and when it was looked at.
+/// it keeps favourites (true once it answered one as its own; none: not
+/// known, and nothing is written there), and when it was looked at.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Memory {
     #[serde(default)]
