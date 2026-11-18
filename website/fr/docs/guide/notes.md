@@ -14,7 +14,7 @@ Vos notes sont un dossier de fichiers Markdown qui reste à vous. Ce peut être 
 - Ouvrir une note ne charge rien depuis internet. Une image venue du web s’affiche comme un lien vers elle : personne n’apprend que vous lisez la note. Rien de ce qui est écrit dans une note ne peut s’exécuter : le HTML s’affiche comme le texte qu’il est, sauf de simples marques comme le gras et l’italique.
 - Un lien dans une note ouvre une page web, une adresse électronique, un numéro de téléphone ou un fichier de cet ordinateur. Un programme, un script ou un installateur ne se lance jamais depuis une note : son dossier s’ouvre à la place. Un lien vers un dossier partagé du réseau n’est pas suivi.
 - Quand le partage de Sioul transporte vos notes, chacune est scellée sur votre appareil avant de le quitter. Le serveur du dossier partagé voit la taille de chaque fichier scellé, jamais son nom ni ce qu’il dit.
-- Quand un changement venu d’un autre appareil remplace une note ici, la note telle qu’elle était est gardée sur cet appareil, pour être remise : **Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
+- Quand un changement venu d’un autre appareil remplace une note ici, la note telle qu’elle était est gardée sur cet appareil, pour être remise : **Paramètres ▸ Partage ▸ Voir les versions précédentes** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
 
 ## Le même dossier qu’Obsidian et que Nextcloud Notes {#the-same-folder-as-obsidian-and-nextcloud-notes}
 
@@ -34,7 +34,7 @@ Une partie de ce que dessine Obsidian, Sioul le montre comme le texte que c’es
 
 ## Votre dossier de notes {#your-notes-folder}
 
-Il se choisit dans **Paramètres ▸ Votre dossier et le partage ▸ Le dossier des notes**. À côté de vos notes, le même dossier garde vos projets, vos budgets, vos papiers et vos lettres scannées, pour qu’ils voyagent tous ensemble quand le dossier est synchronisé avec vos autres appareils. Là où aucune synchronisation ne le transporte, le partage de Sioul peut les transporter, si vous les y activez ([Le partage](sharing.md)).
+Vos notes sont de simples fichiers Markdown dans un dossier à vous, sur cet appareil, que d’autres logiciels, un éditeur de notes parmi eux, peuvent ouvrir et synchroniser : Sioul s’y lie et ne les possède jamais. Tant que cet appareil n’en a pas, la page Notes le demande à sa place, en une phrase, avec **Choisir un dossier…**, qui ouvre le sélecteur de dossiers de votre système (sur Android, celui de Sioul, qui demande d’abord à Android **l’accès à tous les fichiers**) ; la page se remplit une fois un dossier choisi. Un dossier réglé mais illisible (sur un disque qui n’est pas branché, déplacé ou renommé) se dit de la même façon, avec son chemin et **Choisir de nouveau…** ; rebranché, la page se remplit d’elle-même en moins d’une minute. Jamais une liste vide à sa place. Ensuite, le dossier se change dans les réglages de la page (⚙), **Le dossier des notes**, sa première ligne ; il est propre à cet appareil, chacun de vos appareils disant où est sa copie. À côté de vos notes, le même dossier garde vos projets, vos budgets, vos papiers et vos lettres scannées, pour qu’ils voyagent tous ensemble quand le dossier est synchronisé avec vos autres appareils. Là où aucune synchronisation ne le transporte, le partage de Sioul peut les transporter, si vous les y activez ([Le partage](sharing.md)).
 
 ## Trouver une note {#finding-a-note}
 
@@ -56,7 +56,7 @@ Une ligne comme `- [ ] Demander l’attestation`, non cochée, est à un clic de
 
 ## Nouvelles notes {#new-notes}
 
-**Nouvelle note**, ou **Nouveau ▾ ▸ Une note**, demande son titre. Chaque nouvelle note va dans un dossier de vos notes, réglé dans le ⚙ de la page Notes : **Les nouvelles notes vont dans** (`notes`, sauf si vous le changez). Les notes que vous faites depuis ailleurs y vont aussi :
+**Nouvelle note**, ou **Nouveau ▾ ▸ Une note**, demande son titre. Chaque nouvelle note va dans un dossier de vos notes, réglé dans le ⚙ de la page Notes, sous le dossier des notes : **Les nouvelles notes vont dans** (`notes`, sauf si vous le changez). Les notes que vous faites depuis ailleurs y vont aussi :
 
 - depuis un courriel : avec son objet pour titre, en commençant par qui l’a écrit et ses premières lignes citées, le courriel lié à elle ;
 - depuis un événement : datée, avec la liste des personnes invitées, liée dans les deux sens, puis **Envoyer aux personnes invitées** ;

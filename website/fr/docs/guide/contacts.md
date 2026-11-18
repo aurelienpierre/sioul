@@ -131,7 +131,7 @@ Le ⚙ en haut de la page :
 
 ## Où vivent les contacts {#where-contacts-live}
 
-Sur votre serveur de contacts, en fiches standard : votre téléphone et les autres programmes les voient. Modifier un contact dans Sioul ne change que ce que vous avez changé : une photo ou les champs d’un autre programme restent tels qu’ils étaient. Quand une fiche a été modifiée ici et sur le serveur entre deux synchronisations, la version du serveur est gardée, et la vôtre est mise de côté parmi les versions précédentes (**Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes**, sous **Vos agendas et contacts**), sur Android aussi, à remettre si vous la préférez ; la ligne d’état le dit.
+Sur votre serveur de contacts, en fiches standard : votre téléphone et les autres programmes les voient. Modifier un contact dans Sioul ne change que ce que vous avez changé : une photo ou les champs d’un autre programme restent tels qu’ils étaient. Quand une fiche a été modifiée ici et sur le serveur entre deux synchronisations, la version du serveur est gardée, et la vôtre est mise de côté parmi les versions précédentes (**Paramètres ▸ Partage ▸ Voir les versions précédentes**, sous **Vos agendas et contacts**), sur Android aussi, à remettre si vous la préférez ; la ligne d’état le dit.
 
 Les contacts Google marchent de la même façon, en gardant moins : Sioul les écrit comme Google les lit, et dit ce qui serait perdu avant d’y déplacer un contact.
 

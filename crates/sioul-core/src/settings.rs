@@ -268,7 +268,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The pages whose ⚙ holds settings that only they read, and that a link
 /// by key opens there rather than in Settings (the settings rework of 18
 /// November 2026: a setting one page reads lives behind that page's ⚙).
-pub const PAGES: &[&str] = &["sites", "bitwarden", "agenda", "tasks", "money", "texts"];
+pub const PAGES: &[&str] = &["notes", "sites", "bitwarden", "agenda", "tasks", "money", "texts"];
 
 /// Where a setting lives, by its key or by its page's own name: the page of
 /// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
@@ -623,7 +623,20 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.push("github.mentioned", "github-mentioned", Kind::Bool, SettingValue::Bool(config.github.mentioned));
             }
         }
+        // The Notes page's own: the notes folder first (this device's own, `case_store`),
+        // your Markdown notes, which stay yours; then where new notes go.
         "notes" => {
+            b.group = tr.text("set-files-group", None);
+            b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
+            // The projects' file under its first name: renamed only when you say
+            // so (`projects::rename_file`); with both names there, which one is read.
+            if let Some(root) = config.notes_root_path() {
+                if crate::projects::only_old_in(&root) {
+                    b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
+                } else if crate::projects::both_in(&root) {
+                    b.note(tr.text("set-projects-both", None), Vec::new());
+                }
+            }
             b.push("notes_folder", "notes-folder", Kind::Text, SettingValue::Text(config.notes_folder.clone().unwrap_or_else(|| "notes".into())));
         }
         // How long text reads, behind "Aa" where it is read: a message, a note.
@@ -708,20 +721,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: device_kind_found(tr, found) })
                 .chain(crate::device_kind::DeviceKind::ALL.iter().map(|kind| Choice { value: SettingValue::Text(kind.word().to_string()), label: tr.text(&format!("set-device-kind-{}", kind.word()), None) }))
                 .collect();
-            // Your folder: notes, and beside them projects, budgets, letters. How far back
-            // mail and calendars go is the accounts', at the top of Accounts.
-            b.section = "files".into();
-            b.group = tr.text("set-files-group", None);
-            b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
-            // The projects' file under its first name: renamed only when you say
-            // so (`projects::rename_file`); with both names there, which one is read.
-            if let Some(root) = config.notes_root_path() {
-                if crate::projects::only_old_in(&root) {
-                    b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
-                } else if crate::projects::both_in(&root) {
-                    b.note(tr.text("set-projects-both", None), Vec::new());
-                }
-            }
+            // The notes folder is the Notes page's (its ⚙), the sharing Settings' own
+            // tab ("files", its id kept for older links: SharePanel.qml).
             b.section = "hours".into();
             b.group = tr.text("set-hours-group", None);
             let week = |windows: &[crate::window::AdminWindow]| SettingValue::Windows(windows.iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect());
@@ -1634,7 +1635,9 @@ mod tests {
         // and depend on what this computer holds: left out.
         // Your contacts' categories are this computer's: left out too.
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
-        assert_eq!(keys("notes"), vec!["notes_folder"]);
+        // The notes folder first (the projects' file's renaming shows only for a folder holding its
+        // first name: `the_projects_file_is_renamed_on_demand`), then where new notes go.
+        assert_eq!(keys("notes"), vec!["case_store", "notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
         assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "mail.leave_on_spam", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing", "mail.leave_spam"]);
         // An address's own, on its card in Accounts; what all share, under them.
@@ -1660,7 +1663,7 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
@@ -1734,7 +1737,7 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("texts", Some("texts")), ("texts.sending", Some("texts")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("case_store", Some("notes")), ("notes_folder", Some("notes")), ("files", None), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("texts", Some("texts")), ("texts.sending", Some("texts")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.
@@ -2051,7 +2054,7 @@ mod tests {
         std::fs::write(&path, format!("case_store = \"{}\"\n", notes.display().to_string().replace('\\', "/"))).unwrap();
         let config = Config::load(&path).unwrap();
         let tr = Translator::new("en");
-        let row = || for_view("parameters", &config, &tr, &[], None).into_iter().find(|s| s.section == "files" && (s.key == "projects.rename" || s.kind == Kind::Note));
+        let row = || for_view("notes", &config, &tr, &[], None).into_iter().find(|s| s.key == "projects.rename" || s.kind == Kind::Note);
         // No projects' file yet: nothing to say.
         assert!(row().is_none());
         // Its first name only: a button, never pressed by itself.
