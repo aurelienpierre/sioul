@@ -26,7 +26,9 @@ Contacts holds the people you deal with: their names first, their details folded
 
 Names come first, with one line under each, and a search field sits on top: a few letters of a name, an organisation, an e-mail address or a phone number find a contact. The search does not look into postal addresses.
 
-When your cards have categories, a choice under the search field shows the contacts of one category only, or **All categories**.
+Above the list, filters narrow it, each kept on this device until you change it: the address books shown (all, one or several), a group or **In no group**, and whether a card has or lacks a phone number, an e-mail address, a postal address or a title (Mr, Mrs…). They combine with the search, and the row says how many show: "132 of 840". **Show all** takes the filters off; the search stays.
+
+A title the card keeps in its own field shows greyed before the name.
 
 ## Your people {#household}
 
@@ -62,16 +64,16 @@ A contact opens on the right:
 - its **e-mail addresses**, each with **Write**, and its **phone numbers**, each with **Call**, which hands the number to your phone, or on a computer to the program that answers phone links;
 - **How they reach you**: who they are to you, in a sentence ("Your contacts: in your address book, on no list."), and their sheet ([below](#how-they-reach-you));
 - a small map with a pin at their address, once it is placed ([The map](#the-map));
-- folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in;
+- folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in, which a card of a book you can only read says, offering no **Edit**;
 - beside each postal address, **Directions**, which opens the way there as an event's place does ([Agenda](agenda.md#status-map-directions)): in your maps app when this system has one for `geo:` links, with the point the map placed it at when it has one, else on OpenStreetMap's page, or Apple's on a Mac;
 - what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them, and so does each message they sent you that Sioul proved comes from them; the [mail search](mail.md#searching) finds the rest, what you sent them among it.
 - **Bill this client**, which opens a draft invoice for them in Budgets ▸ Invoices, and **Client profile…**: what their invoices print (a business, a person or a public body, the legal name, the addresses, a SIREN or a VAT number, the language, currency and terms of their invoices), kept in your notes folder beside your projects, never in the card on your contacts' server. Once made, the profile shows in one line above them, "Client profile: A business · Belgium · BE0123456789 · invoices in French"; with none yet, the button reads **Make its client profile…**, and starts from the card ([Your clients](time.md#your-clients)).
 
-**To change it**, **Edit**, then **Save**: it is changed in place. On Android, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
+**To change it**, **Edit**, then **Save**: it is changed in place. Under the name, **Title, given names, family name** opens the name's parts: its title (Mr, Mrs…), given names, family name and suffix, which other programs sort and address by. Parts you type are kept as you typed them; a card that gives none gets them from its name, a title at its start going to the title. On Android, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
 
-**To delete one**, **Delete**: it waits ten seconds, with **Undo**.
+**To delete one**, **Delete**: it waits ten seconds, with **Undo**. A card of an address book you can only read is never changed nor deleted: its row's menu says so.
 
-**To move one** to another address book, across accounts too, choose it under **Address book** on its card. When the other place would not keep something (Google keeps less than an open server), Sioul says what, and asks before moving.
+**To move one** to another address book, across accounts too, choose it under **Address book** on its card, which shows the book it is in. When the other place would not keep something (Google keeps less than an open server), Sioul says what, and asks before moving. To move many, select them ([Many contacts at once](#many-at-once)).
 
 When you write a message, addresses are completed from your contacts.
 
@@ -92,6 +94,41 @@ Your choice for the person comes first; then their categories, when a list names
 Categories are the groups Nextcloud Contacts shows: "Family", "Friends", "Neighbours"; a card can have several. In the form, under **Categories**, × takes one off, and the field after them adds one, chosen among those your cards already have or typed. "amis" and "Amis" are one category, written as your cards first wrote it.
 
 They are saved in the card itself, so Nextcloud, your phone and other programs see them, and a card saved in Sioul keeps those it had. A list can name a category (Settings ▸ [What reaches you](notifications.md#who-is-on-which-list), "Your contacts' categories"): its people then reach you as that list says, by mail, by phone and through other apps' messages, unless you chose otherwise for them on their card. Nothing goes on a list by itself, family and friends included.
+
+## Address books {#address-books}
+
+An address book is where cards are kept, and with whom they are shared: one on your Nextcloud, Google's, one on this device alone. Contacts ⚙ ▸ **Address books** lists each with where it is kept, how many contacts it holds, whose it is ("Yours", "Shared with you by Sam") and whether it can be written. A line opens to what may be done with it:
+
+- **New address book…**: on an account whose server makes them, or on this device alone. It is made on the server at the next sync.
+- **Rename**: here, and on the server at the next sync, with **Undo**.
+- **Merge into…**: every contact moves into the other book, then the emptied book is removed, here and on its server once its contacts have left it there. **Undo** in the status line moves them all back.
+- **Remove…**: an empty book goes at once. A book holding contacts asks where they go: moved to another book, or deleted with it, a copy of them kept on this device first, the count said.
+- **Share**, on a Nextcloud: a user or a group of that server, to read or to change contacts; the line says who has it, and **Stop** takes it back.
+- **Stop showing**, for a book someone else shares with you: it leaves this device, and stays theirs.
+
+Google keeps one address book: Sioul says so on its line and offers nothing it would refuse. Contacts move into it and out of it like any other.
+
+## Many contacts at once {#many-at-once}
+
+**Select**, above the list, gives each row a box; **Select the 132 shown** takes all that the filters show. Then **With them…**:
+
+- **Move to an address book…**: each card keeps its identifier, so that nothing that points at it changes (a task, a person, a list naming it). Where its server has its own move, the card is moved there; else it is copied, and the old copy deleted only once the new one is there.
+- **Add to a group…** and **Remove from a group…**: a group in use, or a new one typed.
+- **Move the title into its field…**: a title at the start of a name (M., Mr, Mme, Mlle, Dr, Me, Pr, Mrs, Ms, Miss, Prof, a full stop or not) goes into the card's title field, and the name shown loses it. Each card shows its name before and after; **Also add them to a group** gives them a group in the same step.
+- **Delete…**
+
+Each says how many it will change before it runs, and why some cannot ("its address book can only be read"). It runs with its progress and a **Stop**, ends by naming what it could not do, card by card, and is undone as a whole with **Undo** in the status line.
+
+## Importing contacts {#importing}
+
+**Import…**, above the list and in Contacts ⚙ ▸ Address books, reads a vCard file (`.vcf`, as Google, a phone or a Nextcloud writes it) or a CSV file (`.csv`, as a spreadsheet or an address book exports it). On a computer, a `.vcf` or `.csv` file opened with Sioul goes to the same window; on Android, a file opened with Sioul from Files or a message does. The file is read on this device; nothing is sent anywhere.
+
+- **For a CSV file, which column is what**: each column is offered a field (title, given names, family name, the whole name, organisation, role, mobile, phone, e-mail address, street, postcode, town, country, birthday, note, groups) or **Leave out**, guessed from its heading in French or English and shown with its first values. Google's and Outlook's exports are recognised. The columns can be kept under a name, and come back by themselves for a file with the same headings.
+- **Where they go**: an address book that can be written, or a new one made in the same step, and groups added to every contact imported.
+- **Those already here**, by the same e-mail address or the same number, are completed with what the file adds: never doubled, and nothing they hold is written over. Two cards with the same name alone are both kept, for [Duplicates](#duplicates) to offer.
+- **Count them** says what will happen before anything is written: "312 new, 41 completed", and the lines that do not read. **Import** runs it with its progress, undone as a whole with **Undo**.
+
+Numbers are written with their country ("+33 6…"), by the country set in the Contacts settings. A title column goes to the title field; a title at the start of a name moves there too when you tick it. A spreadsheet's own `.xlsx` file is not read: save it as CSV first.
 
 ## Duplicates
 
@@ -124,7 +161,7 @@ On Android, Sioul syncs your address books itself and keeps its own copy of them
 
 The ⚙ at the top of the page:
 
-- **Address books**: renamed here, and on the server at the next sync. An empty address book can be deleted; one holding contacts stays.
+- **Address books**: each with where it is kept, how many contacts, whose it is and whether it can be written; made, renamed, merged, removed and shared there ([Address books](#address-books)).
 - **Place contacts on the map**: on or off.
 - **Map tiles**: where map images come from, as `https://…/{z}/{x}/{y}.png`. Empty: OpenStreetMap's.
 - **Country for phone numbers written without one**: the country "04 65 71 12 34" belongs to, to find the same number written "+33 4 65 71 12 34". By default, your system's.
@@ -137,7 +174,7 @@ Google contacts work the same way, with less kept: Sioul writes them as Google r
 
 ## Not there yet
 
-Changing a contact's photo in Sioul is planned. vCard files cannot be imported or exported from a button yet: your cards are plain `.vcf` files in Sioul's data folder, which other programs read. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond the ten seconds of **Undo**.
+Changing a contact's photo in Sioul is planned. vCard files cannot be exported from a button yet: your cards are plain `.vcf` files in Sioul's data folder, which other programs read. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond the ten seconds of **Undo**.
 
 ## Going further {#going-further}
 
@@ -148,6 +185,8 @@ Changing a contact's photo in Sioul is planned. vCard files cannot be imported o
 - **A card's photo** is read from the card itself. A card whose photo is a web address (`https` only) never has it fetched by itself: the card offers **Load the photo**, naming the server. Pressed, Sioul asks that server once (twenty seconds and one megabyte at most, a picture only) and keeps the copy here, which the card shows from then on.
 
 ## Why it works this way {#why-it-works-this-way}
+
+**Books for keeping and sharing, groups for deciding.** An address book says where a card is kept and with whom it is shared; a group says what the person is to you (a client, a supplier, family). Only groups, with your own choices, decide who reaches you, never a book: sorting contacts into books never changes who can reach you, and a card moved to another book keeps its identifier, its groups and its list. Groups travel inside each card to every app, and to Google, which keeps a single address book; so the same rule holds wherever your contacts are.
 
 A person is not a card. A card is for reaching someone, and every app of your phone reads it, as does the server that keeps it; a baby has no card, and one person may have two. So a person is Sioul's own record, kept on your devices, linked to the cards that are them.
 
@@ -186,7 +225,7 @@ As of October 2026, from each app's own documentation.
     | Lists the tasks, events and notes tied to the person | ✓ | partly²⁷ | ? | partly²⁸ | ✗²⁹ | ✗ |
     | Lists the mail you exchanged with them | partly³⁰ | partly²⁷ | ? | ✓ | partly²⁹ | ✗ |
     | Gets a deleted contact back | partly³¹ | ✓ | partly⁹ | ✓ | ✗ | ✗ |
-    | Imports and exports vCard files | ✗³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
+    | Imports and exports vCard files | partly³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
     | Puts your contacts' birthdays in your calendar | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
     | For other people: the people your admin is done for | ✓³⁶ | partly³⁷ | partly³⁸ | ? | ? | ? |
 
@@ -221,7 +260,7 @@ As of October 2026, from each app's own documentation.
     29. A button searches the contact's mail, another makes an event with them; the card lists nothing.
     30. The messages they sent you that Sioul proved are theirs, and those you tied to them; what you sent them, through the mail search.
     31. **Undo** for ten seconds after **Delete**; no bin after that.
-    32. No button yet; your cards are plain `.vcf` files that other programs read.
+    32. vCard and CSV files are imported, those already here completed; no export button yet, but your cards are plain `.vcf` files that other programs read.
     33. Classic Outlook opens and saves single vCards; new Outlook and the web import and export CSV only.
     34. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
     35. In Fossify Calendar; Etar has none.
@@ -337,6 +376,9 @@ As of October 2026, from each app's own documentation.
 - **Geocoding** follows Nominatim's usage policy: a User-Agent that names Sioul, one request every 1.1 seconds, over HTTPS, the address alone (its lines joined); an address it finds nothing for is asked once of the Base Adresse Nationale (region France), then of Photon, their first answer kept (`sioul_sync::geocode::locate`); the answers, found or not, are kept in `$XDG_CACHE_HOME/sioul/places.toml`. The map is Qt Location's OpenStreetMap plugin, with Qt's online lookup of providers turned off; the full map loads tiles only once at least one address is placed. The tile server, as with any web map, sees which areas you look at.
 - **Showing a card**: a card comes from a server or from anyone's vCard, so it is shown without markup: notes as plain text, web sites as links only when they are `http` or `https`, their text escaped. An embedded photo is kept in the cache, named by its content.
 - **Storage**: one `.vcf` file per card in vdir folders (`~/.local/share/sioul/contacts`), which khard and vdirsyncer read too; the sync's state is kept apart. Sioul does not encrypt them on the disk: your disk encryption does. Sioul's data, state and cache folders are made, or narrowed, to mode 0700 at each start on Linux and macOS, so that other accounts on the computer cannot read them; on Android, they are in the app's private storage.
+- **Address books**: made by an extended MKCOL (RFC 5689) at the next sync, renamed by PROPPATCH, deleted by DELETE (a book emptied by a merge only once its server holds none of its cards); a card moved between two books of one server by WebDAV's MOVE (RFC 4918 §9.9) with `If-Match` and `Overwrite: F`, else sent anew with `If-None-Match: *` and its old copy deleted once the new one has its ETag. Shared through Nextcloud's sharing (`oc:share`, `oc:invite`), as agendas are. Every writer of a card goes through one door that refuses a book its server makes read only.
+- **Many at once**: a batch keeps the whole plan, each card as it was, in `$XDG_STATE_HOME/sioul/contacts-batches/` before it runs (thirty days), then changes one card after the other; its Undo takes back each step that was done and leaves the others. The filters are kept in `$XDG_STATE_HOME/sioul/contacts-view.toml`, the import's kept columns in `contacts-import.toml` beside it. Titles are data (`crates/sioul-core/data/titles.toml`), and go to `N`'s honorific prefix (RFC 6350 §6.2.2); `TITLE`, the job, is not touched.
+- **Import**: vCard 2.1, 3.0 and 4.0 read by calcard (folded lines, quoted-printable, charsets); a 2.1 card is written as 3.0, the others as they come, each keeping its UID or given one. CSV: the byte-order mark dropped, UTF-8 else Windows-1252, the separator found among semicolon, comma and tab, quoted cells with line breaks; the headings' table is data (`contact-columns.toml`). At most 32 MB.
 - **Your people**: `persons.toml` in Sioul's data folder (`~/.local/share/sioul/`), beside the ties, never in the notes folder, a card or a contacts server ([the design note](../dev/persons.md)).
 - **Sealed sharing**: each record is encrypted with XChaCha20-Poly1305, under a key made from your passphrase by Argon2id and kept in each device's keyring; the shared folder's server sees which device wrote, when and how much, never what. The part **Senders** carries the four lists, the senders let in, Always through and others' public keys; **Calls** carries the screened calls, never a blocked number's; **Lists kept here** carries the address books kept on a device only; **Settings and accounts** carries your people, each field of each person apart, so that a name changed on one device and a date of birth added on another both stay. Contacts on a server are not in the sharing: they travel by their server ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 - **Android**: Sioul syncs address books into its private storage, not into Android's contacts provider. It asks for `READ_CONTACTS` only, never `WRITE_CONTACTS`. Calls are screened as Android's "Caller ID & spam app" (`CallScreeningService`), from a table Rust writes ahead and Java reads in milliseconds, without the network; a call that cannot be decided rings.
