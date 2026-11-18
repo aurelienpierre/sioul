@@ -860,6 +860,13 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             if let Err(e) = create_pending(client, &account.id, kind, home) {
                 report.problems.push(e);
             }
+            // Cards moved here between two of its address books: moved there by its own MOVE where it has one.
+            if kind == Kind::Contacts {
+                match move_on_server(client, &account.id) {
+                    Ok(moved) => report.sent += moved,
+                    Err(e) => report.problems.push(e),
+                }
+            }
         } else if kind == Kind::Calendars
             && google_changes_due(&account.id)
             && let Err(e) = crate::calendars::GoogleApi::new(account.address.as_deref().unwrap_or(login)).and_then(|api| google_changes(&api, &account.id))
@@ -1199,6 +1206,12 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         if state.deleted {
             let (_, found) = client.propfind(&state.url, "1", "<d:getetag/>")?;
             let held = found.iter().filter(|r| path_key(&r.href) != path_key(&state.url)).count();
+            // An address book emptied here by a merge or a removal (wave D): its cards
+            // still wait for their old copies' deletion there, after their new copies;
+            // it is deleted once they are gone, never shown again meanwhile.
+            if held > 0 && vdir::moving_out_of(&collection.dir) {
+                continue;
+            }
             if held > 0 {
                 state.deleted = false;
             } else {
@@ -1375,6 +1388,78 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
         }
     }
     refused.map_or(Ok(()), Err)
+}
+
+/// A file of an account's address books, as (book's folder id, file name);
+/// none elsewhere.
+fn card_place(account: &str, path: &Path) -> Option<(String, String)> {
+    let rest = path.strip_prefix(Kind::Contacts.root().join(account)).ok()?;
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    match parts.as_slice() {
+        [id, file] => Some((id.clone(), file.clone())),
+        _ => None,
+    }
+}
+
+/// Cards moved here from one address book of the account to another (a
+/// batch, a merge, a card's own chooser: `vdir::move_item`), moved on their
+/// server by WebDAV's own MOVE (RFC 4918 §9.9; RFC 6352 §6.3.2.1 holds a
+/// move into an address book to the rules of a PUT, the UID's among them),
+/// so that the card is never in two books there, nor in none: its old copy
+/// conditional on its ETag (a change made there meanwhile refuses it), the
+/// new name never written over (`Overwrite: F`). Done, both books' states
+/// follow at once, the new copy known by its address and its hash (its ETag
+/// when the server says it, else at the pull, `ItemState::sent`), and
+/// nothing waits for a deletion any more. Refused, or a server without MOVE
+/// (Google says so; 405, 501 elsewhere, after which no other is tried in
+/// this sync), the copy's way goes on as before: the new copy sent, then the
+/// old one deleted once it is there (`deletion_waits_for`). How many moved.
+fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
+    if client.is_google() {
+        return Ok(0);
+    }
+    let mut moved = 0;
+    for (old, new) in vdir::moves_waiting() {
+        let (Some((from_id, old_file)), Some((to_id, new_file))) = (card_place(account, &old), card_place(account, &new)) else { continue };
+        if from_id == to_id || old.exists() || !new.exists() {
+            continue;
+        }
+        let (from_path, to_path) = (vdir::state_path(account, Kind::Contacts, &from_id), vdir::state_path(account, Kind::Contacts, &to_id));
+        let (mut from, mut to) = (State::load(&from_path), State::load(&to_path));
+        // Both on the server, both written: else the copy's way (a book made here waits for its MKCOL).
+        if from.url.is_empty() || to.url.is_empty() || from.pending || to.pending || from.read_only || to.read_only || from.removed || to.removed {
+            continue;
+        }
+        // Never on the server (made here since its last sync): its PUT makes it in its new book.
+        let Some(at) = from.items.iter().position(|i| i.file == old_file) else { continue };
+        if to.items.iter().any(|i| i.file == new_file) || from.items[at].etag.is_empty() {
+            continue;
+        }
+        let source = absolute(&from.url, &from.items[at].href);
+        let target = format!("{}/{}", to.url.trim_end_matches('/'), url_segment(&new_file));
+        let etag = from.items[at].etag.clone();
+        let answer = client.send("MOVE", &source, &[("Destination", target.as_str()), ("Overwrite", "F"), ("If-Match", etag.as_str())], None)?;
+        match answer.status {
+            201 | 204 => {
+                let (size, mtime) = std::fs::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
+                let text = read_text(&new)?;
+                let etag = answer.etag.unwrap_or_default();
+                let sent = if etag.is_empty() { sent_hash(&text) } else { String::new() };
+                to.items.push(ItemState { href: path_key(&target), file: new_file, etag, hash: vdir::content_hash(text.as_bytes()), size, mtime, sent, ..ItemState::default() });
+                to.save(&to_path).map_err(SyncError::Disk)?;
+                from.items.remove(at);
+                from.save(&from_path).map_err(SyncError::Disk)?;
+                vdir::deletion_done(&old);
+                moved += 1;
+            }
+            // This server moves nothing: the copy's way for every card.
+            405 | 501 => break,
+            // Not this one (its old copy changed there: 412; the new book holds its UID: 409, 403;
+            // gone there: 404): the copy's way, which says each as it always did.
+            _ => {}
+        }
+    }
+    Ok(moved)
 }
 
 fn hash_of(path: &Path) -> Option<String> {
@@ -2828,6 +2913,17 @@ pub(crate) mod stand_in {
         /// REPORT, its ETag unchanged (as Google's calendar feeds stamp the
         /// time they are read): `rewrites_dtstamp`.
         rewrites_dtstamp: bool,
+        /// A CardDAV server (`start_books`): its collections address books,
+        /// made by an extended MKCOL, renamed by PROPPATCH, deleted, shared as
+        /// Nextcloud shares them (`oc:share`, `oc:invite`), a card moved
+        /// between two by MOVE (wave D).
+        books: bool,
+        /// Each collection's name, when it is not its folder's.
+        names: BTreeMap<String, String>,
+        /// It answers MOVE with 405, as a server without it does.
+        no_move: bool,
+        /// Each address book's shares: (principal, may write).
+        shares: BTreeMap<String, Vec<(String, bool)>>,
     }
 
     impl Dav {
@@ -2901,6 +2997,30 @@ pub(crate) mod stand_in {
         pub(crate) fn rewrites_dtstamp(&self) {
             self.held().rewrites_dtstamp = true;
         }
+
+        /// A CardDAV server with these address books, empty, as Nextcloud
+        /// keeps them (`Held::books`); and the address of their home.
+        pub(crate) fn start_books(books: &[&str]) -> (Arc<Dav>, String) {
+            let (dav, home) = Dav::start(books);
+            dav.held().books = true;
+            (dav, home)
+        }
+
+        /// The address books it holds now, each with its name.
+        pub(crate) fn books(&self) -> BTreeMap<String, String> {
+            let held = self.held();
+            held.calendars.keys().map(|k| (k.clone(), held.names.get(k).cloned().unwrap_or_else(|| k.clone()))).collect()
+        }
+
+        /// An address book's shares now: (principal, may write).
+        pub(crate) fn shares(&self, book: &str) -> Vec<(String, bool)> {
+            self.held().shares.get(book).cloned().unwrap_or_default()
+        }
+
+        /// From now on, MOVE is answered 405, as by a server without it.
+        pub(crate) fn refuse_moves(&self) {
+            self.held().no_move = true;
+        }
     }
 
     /// An item's text as it is read there: its DTSTAMP lines the time now
@@ -2957,7 +3077,13 @@ pub(crate) mod stand_in {
     }
 
     fn multistatus(responses: &str) -> Reply {
-        Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">{responses}</d:multistatus>"#))
+        Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:card="urn:ietf:params:xml:ns:carddav" xmlns:oc="http://owncloud.org/ns">{responses}</d:multistatus>"#))
+    }
+
+    /// The text of the first element named `name` in an XML body, whatever its namespace.
+    fn text_of(body: &str, name: &str) -> Option<String> {
+        let doc = roxmltree::Document::parse(body).ok()?;
+        doc.descendants().find(|n| n.tag_name().name() == name).and_then(|n| n.text()).map(|t| t.trim().to_string())
     }
 
     fn etag_prop(etag: &str) -> String {
@@ -2987,6 +3113,10 @@ pub(crate) mod stand_in {
 
         fn calendar_props(&self, calendar: &str) -> String {
             let last = self.last(calendar);
+            if self.books {
+                let name = self.names.get(calendar).map_or(calendar, String::as_str);
+                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token><oc:owner-principal>principals/users/jane</oc:owner-principal><d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal>", super::xml_escape(name));
+            }
             let set = self.components.get(calendar).map(|comps| format!("<c:supported-calendar-component-set>{}</c:supported-calendar-component-set>", comps.iter().map(|c| format!(r#"<c:comp name="{c}"/>"#)).collect::<String>())).unwrap_or_default();
             format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{set}")
         }
@@ -2995,6 +3125,17 @@ pub(crate) mod stand_in {
             let path = super::path_key(&request.path);
             let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
             match (request.method.as_str(), parts.as_slice()) {
+                // An address book made (RFC 5689's extended MKCOL), its name from the body; one there already, 405.
+                ("MKCOL", ["cal", book]) if self.books => {
+                    if self.calendars.contains_key(*book) || !request.body.contains("addressbook") {
+                        return Reply::new(405, "");
+                    }
+                    self.calendars.insert(book.to_string(), BTreeMap::new());
+                    if let Some(name) = text_of(&request.body, "displayname") {
+                        self.names.insert(book.to_string(), name);
+                    }
+                    Reply::new(201, "")
+                }
                 ("PROPFIND", ["cal"]) => {
                     let mut out = found("/cal/", "<d:resourcetype><d:collection/></d:resourcetype>");
                     for calendar in self.calendars.keys() {
@@ -3006,6 +3147,20 @@ pub(crate) mod stand_in {
                     multistatus(&out)
                 }
                 (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
+                ("PROPFIND", ["cal", book]) if self.books && request.body.contains("invite") => {
+                    let users: String = self
+                        .shares
+                        .get(*book)
+                        .into_iter()
+                        .flatten()
+                        .map(|(who, write)| {
+                            let href = who.trim_start_matches("principal:");
+                            let access = if *write { "<oc:read-write/>" } else { "<oc:read/>" };
+                            format!("<oc:user><d:href>{href}</d:href><oc:access>{access}</oc:access></oc:user>")
+                        })
+                        .collect();
+                    multistatus(&found(&format!("/cal/{book}/"), &format!("<oc:invite>{users}</oc:invite>")))
+                }
                 ("PROPFIND", ["cal", calendar]) => {
                     let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
                     for (item, (etag, _)) in &self.calendars[*calendar] {
@@ -3015,6 +3170,64 @@ pub(crate) mod stand_in {
                         out += &found(&format!("{base}/cal/{calendar}/there.ics"), &format!("{}<d:resourcetype/>", etag_prop("\"there\"")));
                     }
                     multistatus(&out)
+                }
+                // Renamed, deleted whole, shared, its shares read (Nextcloud's sharing plugin), a card moved.
+                ("PROPPATCH", ["cal", book]) if self.books => {
+                    if let Some(name) = text_of(&request.body, "displayname") {
+                        self.names.insert(book.to_string(), name);
+                    }
+                    multistatus(&found(&format!("/cal/{book}/"), "<d:displayname/>"))
+                }
+                ("DELETE", ["cal", book]) if self.books => {
+                    let items: Vec<String> = self.calendars[*book].keys().cloned().collect();
+                    for item in items {
+                        self.delete(book, &item);
+                    }
+                    self.calendars.remove(*book);
+                    self.names.remove(*book);
+                    self.shares.remove(*book);
+                    Reply::new(204, "")
+                }
+                ("OPTIONS", ["cal", _]) if self.books => Reply { status: 200, headers: vec![("DAV", "1, 3, extended-mkcol, access-control, addressbook, oc-resource-sharing".into())], body: String::new() },
+                ("POST", ["cal", book]) if self.books && request.body.contains("share") => {
+                    let doc = roxmltree::Document::parse(&request.body).unwrap();
+                    let shares = self.shares.entry(book.to_string()).or_default();
+                    for set in doc.descendants().filter(|n| n.tag_name().name() == "set") {
+                        let who = set.descendants().find(|n| n.tag_name().name() == "href").and_then(|n| n.text()).unwrap_or("").to_string();
+                        let write = set.descendants().any(|n| n.tag_name().name() == "read-write");
+                        shares.retain(|(w, _)| *w != who);
+                        shares.push((who, write));
+                    }
+                    for remove in doc.descendants().filter(|n| n.tag_name().name() == "remove") {
+                        let who = remove.descendants().find(|n| n.tag_name().name() == "href").and_then(|n| n.text()).unwrap_or("").to_string();
+                        shares.retain(|(w, _)| *w != who);
+                    }
+                    Reply::new(200, "")
+                }
+                ("MOVE", ["cal", book, item]) if self.books => {
+                    if self.no_move {
+                        return Reply::new(405, "");
+                    }
+                    let Some((etag, text)) = self.calendars[*book].get(*item).cloned() else { return Reply::new(404, "") };
+                    if request.header("If-Match").is_some_and(|wanted| wanted != etag) {
+                        return Reply::new(412, "");
+                    }
+                    let destination = request.header("Destination").map(super::path_key).unwrap_or_default();
+                    let to: Vec<&str> = destination.trim_start_matches('/').split('/').collect();
+                    let ["cal", target, name] = to.as_slice() else { return Reply::new(400, "") };
+                    let Some(there) = self.calendars.get(*target) else { return Reply::new(409, "") };
+                    if there.contains_key(*name) && request.header("Overwrite") == Some("F") {
+                        return Reply::new(412, "");
+                    }
+                    // RFC 6352 §6.3.2.1: one UID per address book.
+                    if uid_line(&text).is_some() && there.values().any(|(_, t)| uid_line(t) == uid_line(&text)) {
+                        return Reply::new(409, r#"<?xml version="1.0" encoding="utf-8"?><d:error xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav"><card:no-uid-conflict/></d:error>"#);
+                    }
+                    let (target, name) = (target.to_string(), name.to_string());
+                    self.delete(book, item);
+                    self.store(&target, &name, &text);
+                    // As Nextcloud: made there, its new ETag unsaid.
+                    Reply::new(201, "")
                 }
                 ("REPORT", ["cal", calendar]) if request.body.contains("sync-collection") => self.changes_since(calendar, &request.body),
                 ("REPORT", ["cal", calendar]) if request.body.contains("calendar-query") => self.query(calendar, &request.body),
@@ -3126,8 +3339,9 @@ pub(crate) mod stand_in {
             for href in doc.descendants().filter(|n| n.has_tag_name(("DAV:", "href"))).filter_map(|n| n.text()) {
                 let key = super::path_key(href);
                 let item = key.rsplit('/').next().unwrap_or("");
+                let data = if self.books { "card:address-data" } else { "c:calendar-data" };
                 out += &match self.calendars[calendar].get(item) {
-                    Some((etag, text)) => found(href, &format!("{}<c:calendar-data>{}</c:calendar-data>", etag_prop(etag), super::xml_escape(&as_read(text, self.rewrites_dtstamp)))),
+                    Some((etag, text)) => found(href, &format!("{}<{data}>{}</{data}>", etag_prop(etag), super::xml_escape(&as_read(text, self.rewrites_dtstamp)))),
                     None => missing(href),
                 };
             }
@@ -3135,6 +3349,10 @@ pub(crate) mod stand_in {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "dav_books_tests.rs"]
+mod books_tests;
 
 #[cfg(test)]
 mod tests {
