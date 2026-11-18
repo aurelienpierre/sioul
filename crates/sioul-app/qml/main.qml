@@ -1115,11 +1115,9 @@ SioulWindow {
     }
 
     // The sites' one web profile and Bitwarden's page that asks a security key
-    // (SitesWeb.qml): on computers only, made the first time a site's view or a
-    // vault's dialog wants it, from Sites or from Accounts.
-    Loader {
-        id: sitesWebLoader
-    }
+    // (SitesWeb.qml, held by `sitesWebLoader`, at the end of this file): on
+    // computers only, made the first time a site's view or a vault's dialog
+    // wants it, from Sites or from Accounts.
     function sitesWeb() {
         if (Qt.platform.os === "android")
             return null
@@ -5944,5 +5942,15 @@ SioulWindow {
             border.width: 1
             border.color: theme.line
         }
+    }
+
+    // The holder of the sites' web profile (SitesWeb.qml), declared last of the
+    // window's items on purpose: Qt makes them in this order and destroys them in
+    // the same order, so it goes after every page and every view that uses its
+    // profile (the Sites page's sites and pop-ups, the vault's key page in the
+    // dialogs of Sites and Accounts), as Qt asks of a WebEngineProfile. Keep it
+    // last (tests/web_profile.rs).
+    Loader {
+        id: sitesWebLoader
     }
 }
