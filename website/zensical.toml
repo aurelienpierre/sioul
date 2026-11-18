@@ -153,6 +153,7 @@ nav = [
     ] },
     { "Elsewhere" = [
       { "Compatibility" = "dev/compatibility.md" },
+      { "Extensions" = "dev/extensions.md" },
       { "Google" = "dev/google.md" },
       { "Microsoft" = "dev/microsoft.md" },
       { "GitHub" = "dev/github.md" },
