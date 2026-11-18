@@ -209,10 +209,9 @@ Item {
     // One setting in view: where the Porch sends you for the hours. Once the
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
-        // Calls are set up where they are screened (telephony); other apps' notifications on Android.
-        const android = page.android
-        // What the tab "This phone" held ("phone", "calls", "apps" on Android) is this device's card in Devices.
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "phone": "devices.here", "calls": page.sioul.telephony === true ? "devices.here" : "attention.calls", "apps": android ? "devices.here" : "attention.exceptions" }
+        // What the tab "This phone" held is this device's card in Devices ("phone"); who rings
+        // when, each phone's section Calls ("calls"); each app by time, a phone's card ("apps").
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "phone": "devices.here", "calls": "devices.calls", "apps": "devices.apps" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)
@@ -250,7 +249,11 @@ Item {
 
         interval: 150
         onTriggered: {
-            const item = page.rowItem(column, toSetting.key)
+            let item = page.rowItem(column, toSetting.key)
+            // A door into a phone's card: its section unfolded (DevicesTab.reveal), else the tab.
+            const devices = devicesLoader.item as DevicesTab
+            if (!item && devices && (toSetting.key === "devices.calls" || toSetting.key === "devices.apps"))
+                item = devices.reveal(toSetting.key.slice("devices.".length))
             const flick = scroll.contentItem as Flickable
             if (item && flick)
                 flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))

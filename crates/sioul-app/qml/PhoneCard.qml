@@ -11,8 +11,12 @@
 // (PhoneMessagesSetup.qml), texts (TextsSetup.qml), the call screening's own
 // settings and where a declined call goes (CallsSetup.qml), and
 // do-not-disturb on this phone (DndSetup.qml). Another phone's card says that
-// Android's accesses are set on that phone. At a phone's width every section
-// folds (CardFold.qml), and is made only once opened.
+// Android's accesses are set on that phone; on a computer, it lists each app,
+// conversation and site with times of its own, read and changed there too
+// (AppNotesSetup.qml's part "lists"). At a phone's width every section folds
+// (CardFold.qml), and is made only once opened. A door lands in one card's
+// part (`reveal`; DevicesTab.qml chooses the card): Settings ▸ Devices ▸ Calls
+// ("settings:devices.calls") and each app by time ("settings:devices.apps").
 
 pragma ComponentBehavior: Bound
 
@@ -37,6 +41,8 @@ ColumnLayout {
     property var own: ({ phone: false })
     // A phone's width: the sections fold.
     property bool folds: false
+    // How many apps, conversations and sites have times of their own.
+    property int lists: 0
 
     // A field of the phone's line said (DevicesTab.qml writes it, `deviceSay`).
     signal say(string field, string value)
@@ -44,6 +50,25 @@ ColumnLayout {
     signal ownSaid(var own)
 
     readonly property bool phoneHere: card.here && card.own.phone === true
+    // Each app, conversation and site by time: on this phone; on a computer, in every phone's card once some have times.
+    readonly property bool listsHere: card.phoneHere || (!card.here && card.own.phone !== true && card.calls !== null && card.lists > 0)
+
+    // The blocks shown, in words: changed only when one comes or goes, so that a
+    // reload (what this phone says of itself, read again) keeps them and what is unfolded.
+    readonly property string blocks: card.phoneHere ? ["apps", "lists", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd"]).join(" ") : card.listsHere ? "lists" : ""
+
+    // A door's part in view: its section unfolded, and returned to be scrolled to.
+    function reveal(part) {
+        const name = part === "calls" ? "foldCalls" : "fold-lists"
+        for (let i = 0; i < card.children.length; i++) {
+            const fold = card.children[i] as CardFold
+            if (fold && fold.objectName === name && fold.visible) {
+                fold.open = true
+                return fold
+            }
+        }
+        return null
+    }
 
     spacing: 10
 
@@ -115,7 +140,7 @@ ColumnLayout {
 
     // The tab "This phone"'s blocks, each made once shown.
     Repeater {
-        model: card.phoneHere ? ["apps", "lists", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd"]) : []
+        model: card.blocks === "" ? [] : card.blocks.split(" ")
 
         delegate: CardFold {
             id: block

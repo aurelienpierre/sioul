@@ -52,6 +52,16 @@ ColumnLayout {
     // What this phone says of itself, on the phone (`phonecard::view`): {phone, allow, restricted}.
     property var own: ({ phone: false })
     readonly property var rows: tab.view.rows || []
+    // The devices' ids, in the table's order: changed only when a device
+    // comes or goes, so that a reload keeps each card (its folds opened, its
+    // sections) instead of making them again.
+    property var ids: []
+    // The phone card a door lands in, by its part ("calls", "apps"): this
+    // device's when it is a phone, else the first phone's (`reveal`).
+    readonly property string callsDoor: tab.doorOf(id => tab.calls[id] !== undefined)
+    readonly property string appsDoor: tab.doorOf(id => tab.calls[id] !== undefined && (tab.own.phone === true ? tab.rows.some(r => r.id === id && r.here === true) : tab.lists > 0))
+    // How many apps, conversations and sites have times of their own (`appNotesSetup`).
+    property int lists: 0
     // What is said around the cells: the times' names, now on this device,
     // the areas no device is for, what is never kept back (`device_grid::Grid`).
     readonly property var grid: tab.view.grid || ({ times: [], now: "", unheld: "", never: "" })
@@ -86,9 +96,41 @@ ColumnLayout {
     }
 
     function reload() {
-        tab.view = JSON.parse(tab.sioul.devices() || "{}")
+        // What this device says of itself first: the cards are made knowing it.
         if (typeof tab.sioul.phoneCard === "function")
             tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
+        tab.view = JSON.parse(tab.sioul.devices() || "{}")
+        if (typeof tab.sioul.appNotesSetup === "function")
+            tab.lists = ((JSON.parse(tab.sioul.appNotesSetup() || "{}") || {}).grid || { rows: [] }).rows.length
+    }
+
+    // A door's part in view (ParametersPage.qml, "devices.calls", "devices.apps"):
+    // the card it lands in, that section unfolded; none without such a card.
+    function reveal(part) {
+        const id = part === "calls" ? tab.callsDoor : part === "apps" ? tab.appsDoor : ""
+        const card = id === "" ? null : tab.cardOf(tab, id)
+        return card ? card.reveal(part) : null
+    }
+
+    function cardOf(item, id) {
+        const card = item as PhoneCard
+        if (card && card.deviceId === id)
+            return card
+        for (let i = 0; i < item.children.length; i++) {
+            const found = tab.cardOf(item.children[i], id)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    // The device whose card a door lands in: this one when it fits, else the first that does.
+    function doorOf(fits) {
+        const here = tab.rows.find(r => r.here === true)
+        if (here && fits(here.id))
+            return here.id
+        const first = tab.rows.find(r => fits(r.id))
+        return first ? first.id : ""
     }
 
     function say(id, field, value) {
@@ -103,6 +145,12 @@ ColumnLayout {
 
     spacing: 8
     onVisibleChanged: if (visible) tab.reload()
+    // The cards follow the devices, not each reading of them.
+    onRowsChanged: {
+        const ids = tab.rows.map(r => r.id || "")
+        if (JSON.stringify(ids) !== JSON.stringify(tab.ids))
+            tab.ids = ids
+    }
     Component.onCompleted: tab.reload()
 
     // Back from Android's question or page: what it allows here, read again
@@ -244,13 +292,13 @@ ColumnLayout {
     }
 
     Repeater {
-        model: tab.rows
+        model: tab.ids
 
         delegate: Rectangle {
             id: device
 
-            required property var modelData
-            readonly property var row: device.modelData
+            required property string modelData
+            readonly property var row: tab.rows.find(r => r.id === device.modelData) || ({})
             readonly property string deviceId: device.row.id || ""
             readonly property bool renamed: (device.row.given || "") !== "" && device.row.given !== device.row.system
 
@@ -579,6 +627,7 @@ ColumnLayout {
                             calls: tab.calls[device.deviceId] || null
                             own: tab.own
                             folds: !tab.wide
+                            lists: tab.lists
                             onSay: (field, value) => tab.say(device.deviceId, field, value)
                             onOwnSaid: own => tab.own = own
                         }

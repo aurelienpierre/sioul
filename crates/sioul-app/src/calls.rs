@@ -299,6 +299,12 @@ fn busy_turns_dnd(config: &Config) -> bool {
     config.dnd.focus
 }
 
+/// What a phone whose line says nothing does today, for its card: the
+/// matrix's Calls rows and the shared screening (`calls_line::Today`).
+pub(crate) fn today(config: &Config) -> sioul_core::calls_line::Today {
+    sioul_core::calls_line::Today::of(&sioul_core::attention::Attention::of(config), &sioul_core::screening::Screening::of(config), busy_turns_dnd(config))
+}
+
 /// Whether this phone's own line in Settings ▸ Devices says what it lets ring
 /// (`sioul_core::calls_line`): its grid; none, the shared screening holds.
 pub(crate) fn line_here(config: &Config) -> Option<sioul_core::calls_line::Grid> {

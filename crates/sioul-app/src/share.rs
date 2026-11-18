@@ -687,13 +687,14 @@ pub(crate) fn devices() -> String {
 fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str)>) -> std::collections::BTreeMap<String, serde_json::Value> {
     let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
     let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config)).names();
+    let today = crate::calls::today(config);
     devices
         .filter_map(|(id, form)| {
             let said = config.devices.get(id);
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
-                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories };
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today) };
                 (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
             })
         })
@@ -742,7 +743,13 @@ fn say_of_calls(path: &Path, id: &str, field: &str, value: &str) -> Result<(), S
     let config = load_config();
     let offered = Profile::offered(config.devices.get(id).and_then(sioul_core::device_said::Said::area));
     let refused = || format!("{field} = {value}?");
-    match field.strip_prefix("calls.").unwrap_or_default() {
+    let rest = field.strip_prefix("calls.").unwrap_or_default();
+    // A first change on a line that says nothing starts from what the phone does today, never from a profile.
+    let unsaid = !config.devices.get(id).and_then(|s| s.calls.as_ref()).is_some_and(sioul_core::calls_line::Said::says);
+    if unsaid && (rest == "group.add" || rest.starts_with("cell.") || rest.starts_with("switch.")) {
+        line::start_from_today(path, id, &crate::calls::today(&config))?;
+    }
+    match rest {
         "profile" => line::set_profile(path, id, Profile::read(value).ok_or_else(refused)?),
         "group.add" => line::add_group(path, id, value, offered),
         "group.remove" => line::remove_group(path, id, value),

@@ -15,7 +15,13 @@
 // its state and one button (`phoneAllow`); the restricted settings' card,
 // its three steps each a button ticked when done (`restrictedStep`), the
 // drawing of ⋮ under the second; the blocks of the tab "This phone", made
-// only once unfolded. Run by tools/qml-test.sh. To see the cards, set
+// only once unfolded. A phone whose line says nothing: the table of what it
+// does today, a cell that varies saying so (a press makes it ring) and when
+// it rings under the table, no profile's line, that calls are set here.
+// The doors (`reveal`): Calls and each app by time, unfolded, in this
+// phone's card, else the first phone's; on a computer, each app by time
+// listed in a phone's card once some have times. A reload keeps the cards
+// and what is unfolded. Run by tools/qml-test.sh. To see the cards, set
 // `pictures` below to a folder (a change of your own, not to commit).
 
 import QtQuick
@@ -44,6 +50,10 @@ Item {
         property bool herePhone: false
         property bool telephony: false
         property var steps: ({ notice: false, info: false, back: false })
+        // The phone's line says nothing: the table of what it does today.
+        property bool today: false
+        // Apps, conversations and sites with times of their own (`appNotesSetup`'s grid's rows).
+        property int lists: 0
 
         readonly property var row: ({ here: false, name: "Moss", system: "The phone (Moss)", given: "Moss", form: "phone", form_words: "A phone", code: "closed", state: "Closed since 21:40.", notes: [], opened: "21:00", shared: "21:40", version: "0.0.11", older: false, build: "", area: "admin+leisure", area_words: "Admin, Leisure", parts: [], parts_words: "Settings", off: false, forget: false, forget_now: false, follows: false, cells: [] })
 
@@ -59,6 +69,9 @@ Item {
         }
         // `calls_line::view` for a Personal phone with a group School, as the core words it.
         function calls() {
+            return mock.today ? mock.callsToday() : mock.callsSaid()
+        }
+        function callsSaid() {
             return {
                 set: true, profile: "personal", offered: "personal",
                 profiles: [
@@ -85,6 +98,23 @@ Item {
                 sims: "Android does not tell a screening app which SIM a call comes on.",
                 always: "Whatever this table says, emergency numbers ring."
             }
+        }
+        // `calls_line::view` for a line that says nothing: what the phone does today, two cells varying.
+        function callsToday() {
+            const shown = mock.callsSaid()
+            const rows = shown.rows.filter(r => r.group !== true).map(r => Object.assign({}, r))
+            const contacts = rows.find(r => r.id === "contacts")
+            contacts.cells = mock.cells(["R", "R", "V", "R"])
+            contacts.cells[1] = Object.assign({}, contacts.cells[1], { varies: true, word: "Varies" })
+            contacts.cells[3] = Object.assign({}, contacts.cells[3], { varies: true, word: "As usual" })
+            return Object.assign({}, shown, {
+                set: false, profile: "", today: true,
+                profiles: shown.profiles.map(p => Object.assign({}, p, { chosen: false })),
+                said: "Until you change this table, this phone screens calls as every phone does.",
+                rows: rows,
+                details: ["Your contacts, The rest of the day: rings in Admin, Leisure, Meals; voicemail in Free time.", "While busy, calls ring as the time of day says."],
+                here: "Calls are set here, phone by phone."
+            })
         }
         function devices() {
             const phone = Object.assign({}, mock.row, { id: "phone", here: mock.herePhone })
@@ -128,7 +158,14 @@ Item {
         }
         // What the tab "This phone"'s blocks read, stood in for: nothing to show.
         function appNotesSetup() {
-            return ""
+            if (mock.lists === 0)
+                return ""
+            const cell = column => ({ column: column, value: "now", word: "Now", choices: ["now", "later"], said: "Chat, at " + column + ": At once." })
+            const row = i => ({ id: "app." + i, label: "Chat " + i, group: "Apps", group_id: "apps", help: "", changed: true, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "later", label: "Later", word: "Later" }], cells: [cell("work"), cell("sleep")] })
+            const rows = []
+            for (let i = 0; i < mock.lists; ++i)
+                rows.push(row(i))
+            return JSON.stringify({ android: mock.herePhone, access: true, restricted: false, contacts: true, hold: null, times: "", heard: "", rang: [], link: { available: false, linked: false, on: false, giving_back: false, given_back: false }, silenced: [], apps: [], conversations: [], sites: [], grid: { columns: [{ id: "work", label: "Work" }, { id: "sleep", label: "Sleep" }], marks: [], rows: rows }, more: false })
         }
         function appNotesChange(verb, json) {
             return ""
@@ -216,12 +253,18 @@ Item {
             grabImage(root).save(root.pictures + "/" + name + ".png")
         }
         function reload(width, herePhone) {
+            // Each test from cards made anew, at its width (a reload alone keeps them).
+            tab.view = ({ on: false, why: "", stays: "", rows: [] })
+            tab.ids = []
+            wait(10)
             root.width = width
             mock.herePhone = herePhone
             // A phone without telephony's own block of the call screening: none (a tablet's case).
             mock.telephony = false
             mock.asked = []
             mock.steps = { notice: false, info: false, back: false }
+            mock.today = false
+            mock.lists = 0
             tab.reload()
             wait(50)
         }
@@ -326,6 +369,68 @@ Item {
             wait(20)
             verify(named("block-dnd").item !== null, "made once unfolded")
             verify(named("fold-screening") === null || !showing(named("fold-screening")), "no call screening's block without telephony")
+        }
+
+        // A phone whose line says nothing: what it does today, nothing hidden (review of `reach`, R3).
+        function test_a_phone_that_says_nothing_shows_today() {
+            reload(1400, false)
+            mock.today = true
+            tab.reload()
+            wait(50)
+            verify(!showing(named("callsProfileSaid")), "no profile's line: the table is today's, not a profile's")
+            compare(named("callsProfile-personal").checked, false, "nothing chosen")
+            const varies = named("callsCell-contacts-day")
+            compare(varies.text, "Varies")
+            verify(!varies.highlighted, "a cell that varies is neither Rings nor Voicemail")
+            varies.clicked()
+            compare(mock.asked[mock.asked.length - 1], "say phone calls.cell.contacts.day rings")
+            compare(named("callsCell-contacts-busy").text, "As usual")
+            compare(all("callsDetail").length, 2, "when each varying cell rings, under the table")
+            verify(showing(named("callsHere")), "calls are set here; What reaches you's presets leave them")
+            verify(!showing(named("callsBack")), "nothing to take back")
+            save("phone-card-today")
+        }
+
+        // The doors: Calls and each app by time, unfolded, in the card they land in.
+        function test_doors_land_in_a_phone_s_card() {
+            // A computer, narrow: the first phone's Calls; no app by time listed, no door for them.
+            reload(412, false)
+            const calls = tab.reveal("calls")
+            verify(calls !== null && calls.objectName === "foldCalls" && calls.open, "Calls unfolded in the phone's card")
+            verify(named("phoneCard-phone").reveal("calls") === calls)
+            compare(tab.reveal("apps"), null, "no app has times of its own")
+            verify(named("fold-lists") === null || !showing(named("fold-lists")))
+            // Apps with times of their own: listed in the phone's card on a computer, read and changed there.
+            mock.lists = 2
+            tab.reload()
+            wait(50)
+            const lists = tab.reveal("apps")
+            verify(lists !== null && lists.objectName === "fold-lists" && lists.open, "each app by time, unfolded")
+            wait(50)
+            verify(named("block-lists").item !== null, "made once unfolded")
+            // This phone: its own card, both doors.
+            reload(412, true)
+            const here = named("setting:devices.here")
+            const own = tab.reveal("apps")
+            verify(own !== null && own.parent === here, "the lists of this phone's own card")
+            verify(tab.reveal("calls").parent === here)
+        }
+
+        // A reload (every 20 s while shown, after each change) keeps the cards and what is unfolded.
+        function test_a_reload_keeps_the_card() {
+            reload(412, true)
+            const card = named("setting:devices.here")
+            named("foldCalls").open = true
+            named("fold-dnd").open = true
+            named("callsRow-contacts").clicked()
+            wait(20)
+            const dnd = named("fold-dnd")
+            tab.reload()
+            wait(50)
+            verify(named("setting:devices.here") === card, "the same card")
+            verify(named("foldCalls").open, "Calls still unfolded")
+            verify(showing(named("callsCell-contacts-night")), "the row still open")
+            verify(named("fold-dnd") === dnd && dnd.open, "the tab's blocks kept, unfolded")
         }
     }
 }

@@ -216,7 +216,7 @@ ColumnLayout {
         Said {
             text: setup.sioul.text("calls-setup-when")
         }
-        // Settings ▸ What reaches you ▸ By person ▸ Calls, and its Always through people.
+        // Each phone's table in Settings ▸ Devices, and the Always through people.
         Flow {
             Layout.fillWidth: true
             spacing: 6
@@ -225,7 +225,7 @@ ColumnLayout {
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
                 flat: true
                 text: setup.sioul.text("calls-setup-when-open")
-                onClicked: setup.sioul.reminderOpened("settings:attention.calls", "", "")
+                onClicked: setup.sioul.reminderOpened("settings:devices.calls", "", "")
             }
             Button {
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)

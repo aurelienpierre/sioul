@@ -43,7 +43,8 @@ ColumnLayout {
     signal simsAsked
 
     readonly property var chosen: (line.view.profiles || []).find(p => p.chosen === true) || null
-    readonly property var shownProfile: line.chosen || (line.view.profiles || []).find(p => p.id === line.view.offered) || null
+    // The profile chosen; the one offered while the table shows neither today's nor yours.
+    readonly property var shownProfile: line.chosen || (line.view.today === true ? null : (line.view.profiles || []).find(p => p.id === line.view.offered) || null)
     readonly property bool android: line.view.profile === "as-android"
     // The rows' names' column, at a computer's width.
     readonly property int labelWidth: Math.min(220, Math.round(line.width * 0.28))
@@ -63,7 +64,9 @@ ColumnLayout {
         font.pixelSize: 13
         color: line.theme.muted
     }
-    // One cell: Rings (the accent's fill) or Voicemail; a press turns it to the other.
+    // One cell: Rings (the accent's fill) or Voicemail; a press turns it to the
+    // other. Today's cell that varies within its column (Varies, As usual):
+    // neither, and a press makes it ring.
     component Cell: Button {
         id: cell
 
@@ -71,13 +74,15 @@ ColumnLayout {
         required property var said
         required property string rowLabel
         required property string columnLabel
+        readonly property bool varies: cell.said.varies === true
 
         objectName: "callsCell-" + cell.rowId + "-" + (cell.said.when || "")
         text: line.theme.plain(cell.said.word || "")
-        highlighted: cell.said.rings === true
-        flat: cell.said.rings !== true
+        highlighted: cell.said.rings === true && !cell.varies
+        flat: cell.said.rings !== true || cell.varies
+        font.italic: cell.varies
         Accessible.name: cell.rowLabel + ", " + cell.columnLabel + ": " + (cell.said.word || "")
-        onClicked: line.say("calls.cell." + cell.rowId + "." + cell.said.when, cell.said.rings === true ? "voicemail" : "rings")
+        onClicked: line.say("calls.cell." + cell.rowId + "." + cell.said.when, cell.said.rings === true && !cell.varies ? "voicemail" : "rings")
     }
 
     // ---------------------------------------------------------------- the profile
@@ -375,10 +380,27 @@ ColumnLayout {
         }
     }
 
+    // Today's cells that vary: when each rings.
+    Repeater {
+        model: line.android ? [] : line.view.details || []
+
+        delegate: Note {
+            required property string modelData
+
+            objectName: "callsDetail"
+            text: modelData
+        }
+    }
+
     // ---------------------------------------------------------------- what always rings, the SIMs, the role
     Note {
         objectName: "callsAlways"
         text: line.view.always || ""
+    }
+    // What reaches you's presets leave calls as they are.
+    Note {
+        objectName: "callsHere"
+        text: line.view.here || ""
     }
     Said {
         objectName: "callsNotScreening"
@@ -402,7 +424,7 @@ ColumnLayout {
             text: line.sioul.text("phone-calls-sims-open")
             onClicked: line.simsAsked()
         }
-        // The line taken out: this phone screens as What reaches you says again.
+        // The line taken out: this phone screens as every phone does again.
         Button {
             objectName: "callsBack"
             visible: line.view.set === true
