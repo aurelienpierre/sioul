@@ -63,12 +63,13 @@ Item {
         list.close()
     }
 
-    // Unfolded under its button (the window's pictures and tests too).
+    // Unfolded under its button (the window's pictures and tests too); the list, for a picture of it.
     function unfold() {
         const at = button.mapToItem(list.parent, 0, button.height)
         list.x = Math.max(list.leftMargin, Math.min(at.x, list.parent.width - list.width - list.rightMargin))
         list.y = at.y + 2
         list.open()
+        return list
     }
 
     Button {

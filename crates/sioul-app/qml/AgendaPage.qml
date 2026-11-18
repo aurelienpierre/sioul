@@ -306,7 +306,7 @@ Item {
 
     // For the window's pictures: the steps' filter unfolded, then folded.
     function openStepAreas() {
-        (page.narrow ? stepAreasNarrow : stepAreasWide).unfold()
+        return (page.narrow ? stepAreasNarrow : stepAreasWide).unfold()
     }
 
     function closeStepAreas() {

@@ -357,6 +357,10 @@ Item {
                 objectName: "timeByArea"
                 visible: page.shown !== null && (page.shown.by_area || []).length > 0
                 Layout.fillWidth: true
+                // Narrow enough on a wide window that each number stays beside its area.
+                Layout.maximumWidth: 520
+                Layout.topMargin: 12
+                Layout.bottomMargin: 12
                 columns: 3
                 columnSpacing: 16
                 rowSpacing: 2
@@ -400,6 +404,9 @@ Item {
                 Label {
                     Layout.columnSpan: 3
                     Layout.fillWidth: true
+                    // The help wraps: its one long line must not widen the table on a phone.
+                    Layout.preferredWidth: 0
+                    Layout.topMargin: 4
                     text: page.sioul.text("time-by-area-help")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap

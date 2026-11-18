@@ -3474,9 +3474,11 @@ SioulWindow {
                 },
                 () => {},
                 () => {},
+                () => grabber.save("agenda-week-steps-filter"),
                 () => agendaPage.openStepAreas(),
                 () => {},
-                () => grabber.save("agenda-week-steps-filter"),
+                // A popup lies above the page: its own picture.
+                () => grabber.savePopup(agendaPage.openStepAreas(), "agenda-week-steps-filter-open"),
                 () => {
                     agendaPage.closeStepAreas()
                     sioul.tickStepAreas("admin+leisure")
@@ -3489,6 +3491,9 @@ SioulWindow {
                     window.page = 8
                     timePage.period = "month"
                 },
+                () => {},
+                // Every area ticked, so that the table has a line for each area with time in it.
+                () => timePage.showAll(),
                 () => {},
                 () => {},
                 () => grabber.save("time-by-area"),
