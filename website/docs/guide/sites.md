@@ -95,7 +95,7 @@ When a device cannot be opened, because another program holds it or it is unplug
 
 A screen wider than sRGB, as many photo laptops and some monitors have, makes websites' colours louder than their makers meant: a green comes out more saturated, a red brighter. On a computer, Sioul shows every site in your screen's own colours, read from its colour profile, and can soften loud colours further.
 
-- **Colours for this screen**, in Settings ▸ Display: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
+- **Colours for this screen**, in this page's ⚙: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
 - **Calmer colours on sites**: Off, A little, More. Loud colours are softened, their lightness and hue kept; greys, soft tints and faces barely move. It works on every computer, with or without a profile.
 - Both change every open site at once, its pop-up windows too, without reloading anything. Sioul's own window around the sites keeps its colours.
 

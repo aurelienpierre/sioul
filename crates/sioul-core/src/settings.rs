@@ -236,8 +236,21 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
     out
 }
 
+/// The pages whose ⚙ holds settings that only they read, and that a link
+/// by key opens there rather than in Settings (the settings rework of 18
+/// November 2026: a setting one page reads lives behind that page's ⚙).
+pub const PAGES: &[&str] = &["sites"];
+
+/// Where a setting lives, by its key or by its page's own name: the page of
+/// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
+/// to a setting (`settings:<key>`, `sioul:settings/<key>`) there
+/// (`SettingDoor.qml`); its place is `for_view`'s, nothing else to keep.
+pub fn page_of(key: &str, config: &Config, tr: &Translator) -> Option<&'static str> {
+    PAGES.iter().copied().find(|view| *view == key || for_view(view, config, tr, &[], None).iter().any(|s| s.kind != Kind::Note && s.key == key))
+}
+
 /// The settings of one page: "porch", "mail", "agenda", "tasks", "notes",
-/// "reading", "contacts", "time", "general". `lists` names the task lists
+/// "reading", "contacts", "sites", "general". `lists` names the task lists
 /// a new task can go into, as ("account/id", name).
 pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::projects::ProjectStore>) -> Vec<Setting> {
     let mut b = Builder { tr, out: Vec::new(), group: String::new(), section: String::new() };
@@ -582,6 +595,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         // How long text reads, behind "Aa" where it is read: a message, a note.
         "reading" => reading(&mut b, config),
         "sites" => {
+            // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md);
+            // the window says which profile, and leaves both out on a phone (backend.rs), whose
+            // sites open in the browser. Kept in the configuration, shared with the settings.
+            b.group = tr.text("set-sites-colours-group", None);
+            b.push("screen_colours", "screen-colours", Kind::Bool, SettingValue::Bool(config.screen_colours.unwrap_or(true)));
+            let s = b.push("calmer_colours", "calmer-colours", Kind::Choice, SettingValue::Text(config.calmer_colours.clone().unwrap_or_default()));
+            s.choices = [("", "set-calmer-colours-off"), ("little", "set-calmer-colours-little"), ("more", "set-calmer-colours-more")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            b.group = tr.text("set-bitwarden-group", None);
             b.push("bitwarden.email", "bitwarden-email", Kind::Text, SettingValue::Text(config.bitwarden.email.clone().unwrap_or_default()));
             b.push("bitwarden.server", "bitwarden-server", Kind::Text, SettingValue::Text(config.bitwarden.server.clone().unwrap_or_default()));
             // The vault as it is now, with Lock, and a lock after a time without use, as
@@ -622,11 +643,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("places_named", "places-named", Kind::Bool, SettingValue::Bool(config.places_named));
             // Passwords shown as they are typed, for whoever needs to see them (the window keeps it, per computer).
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
-            // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md);
-            // the window says which profile, and leaves both out on a phone (backend.rs).
-            b.push("screen_colours", "screen-colours", Kind::Bool, SettingValue::Bool(config.screen_colours.unwrap_or(true)));
-            let s = b.push("calmer_colours", "calmer-colours", Kind::Choice, SettingValue::Text(config.calmer_colours.clone().unwrap_or_default()));
-            s.choices = [("", "set-calmer-colours-off"), ("little", "set-calmer-colours-little"), ("more", "set-calmer-colours-more")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            // The sites' colours are the Sites page's own, behind its ⚙ (only it reads them).
             // What this device is for what follows you (`device_kind`, docs/android.md,
             // "Tablets"), this device's own: in its own tab on Android (Settings ▸ This
             // phone, or This tablet), in Display elsewhere. "" as the system says, which
@@ -1595,8 +1612,8 @@ mod tests {
         assert_eq!(
             parameters,
             vec![
-                // colour: "screen_colours", "calmer_colours".
-                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
+                // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
@@ -1629,6 +1646,8 @@ mod tests {
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
         assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
         assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
+        // The sites' colours, then Bitwarden: only the Sites page reads them.
+        assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "bitwarden.email", "bitwarden.server", "bitwarden.lock_after"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");
         for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "contacts", "parameters"] {
@@ -1640,6 +1659,26 @@ mod tests {
         }
         for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "contacts", "agenda"] {
             assert!(for_view(view, &config, &tr, &[], None).iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")), "{view}: a sentence is missing");
+        }
+    }
+
+    /// A link to a setting by its key opens the page whose ⚙ holds it: the
+    /// sites' colours on the Sites page; what Settings holds, Settings
+    /// (None); the page's own name, its ⚙.
+    #[test]
+    fn a_link_by_key_opens_the_page_that_holds_it() {
+        let config: Config = toml::from_str("").unwrap();
+        let tr = Translator::new("en");
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("theme", None), ("window", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+            assert_eq!(page_of(key, &config, &tr), page, "{key}");
+        }
+        // Each page's settings are its own: none of them is in Settings too.
+        let parameters: Vec<String> = for_view("parameters", &config, &tr, &[], None).into_iter().map(|s| s.key).collect();
+        for page in PAGES {
+            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note) {
+                assert!(!parameters.contains(&row.key), "{} is in {page} and in Settings", row.key);
+                assert_eq!(page_of(&row.key, &config, &tr), Some(*page), "{}", row.key);
+            }
         }
     }
 

@@ -1104,10 +1104,16 @@ SioulWindow {
             window.textsPage.select(id)
     }
 
-    // Settings, at one of them: the hours, from the Porch.
+    // A setting, by its key, where it lives (SettingDoor.qml): Settings at its
+    // tab (the hours, from the Porch), or the ⚙ of the page that reads it.
     function showParameters(key) {
-        window.page = 12
-        parametersPage.showSetting(key)
+        settingDoor.open(key)
+    }
+    SettingDoor {
+        id: settingDoor
+
+        window: window
+        sioul: sioul
     }
 
     // The Porch's card "Join your other devices": Settings ▸ Your folder and

@@ -3121,6 +3121,7 @@ bitwarden-factor-key-sites = Your account's second step is your security key, wh
 bitwarden-factor-key-phone = Your account's second step is your security key, which Sioul cannot ask for on Android. Add an authenticator app or codes by e-mail as a second step in Bitwarden, or type the password yourself.
 bitwarden-waiting = Waiting for Bitwarden…
 bitwarden-new-device = A new device: Bitwarden sent a code to your e-mail.
+set-bitwarden-group = Passwords
 set-bitwarden-email = Bitwarden account
 set-bitwarden-email-help = Its e-mail. The vault is read here, by Sioul itself, only when you fill a site’s form, and only with your master password, never kept.
 set-bitwarden-server = Bitwarden server
@@ -5176,6 +5177,7 @@ set-passwords-shown-help = Every password, passphrase and key field shows what y
 set-places-named = Show the places' names beside their icons
 set-places-named-help = The places on the left of the window show their names beside their icons, in a wider column: some people read words more easily than icons. Without it, their icons alone, and each one's name when the pointer rests on it, or at a long press on a touch screen.
 # colour: the sites in the screen's own colours, and calmer colours (docs/colour.md).
+set-sites-colours-group = Colours
 set-screen-colours = Colours for this screen
 set-screen-colours-help = Sites are shown in this screen's own colours, read from its colour profile, so that a wide-gamut screen does not make them louder than they are.
 set-calmer-colours = Calmer colours on sites

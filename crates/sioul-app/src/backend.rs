@@ -2736,9 +2736,14 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "time", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
+
+        /// Where a setting lives, by its key: the page whose ⚙ holds it
+        /// (`settings::page_of`: "sites"…), or "" for Settings (SettingDoor.qml).
+        #[qinvokable]
+        fn setting_page(self: &Sioul, key: &QString) -> QString;
 
         /// Changes one setting (its value as JSON); returns what went wrong, else "".
         #[qinvokable]
@@ -8207,8 +8212,8 @@ impl qobject::Sioul {
                 first.label = sioul_core::settings::device_kind_found(tr(), crate::devicekind::guessed());
             }
         }
-        // colour: what this screen gets, said under its switch; neither line on a
-        // phone, whose sites open in the browser (docs/colour.md).
+        // colour: what this screen gets, said under its switch (the Sites page's ⚙);
+        // neither line on a phone, whose sites open in the browser (docs/colour.md).
         if cfg!(target_os = "android") {
             rows.retain(|r| r.key != "screen_colours" && r.key != "calmer_colours");
         }
@@ -8234,6 +8239,10 @@ impl qobject::Sioul {
             rows.insert(at + 1, row);
         }
         QString::from(&json(&rows))
+    }
+
+    fn setting_page(&self, key: &QString) -> QString {
+        QString::from(sioul_core::settings::page_of(&key.to_string(), &load_config(), tr()).unwrap_or_default())
     }
 
     fn set_setting(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {

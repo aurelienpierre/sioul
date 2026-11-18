@@ -97,10 +97,18 @@ Item {
             runsOnSubFrames: true
         }]
     }
+    // This page's ⚙, open at one of its settings ("calmer_colours", from a link by key:
+    // SettingDoor.qml), or closed.
+    function openSettings(open, key) {
+        sitesSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => sitesSettings.scrollTo(key))
+    }
+
     // Chats covered: their daily time used (Health page), until it comes back.
     property bool chatsCovered: page.sioul.chatsCovered()
 
-    // colour: Settings ▸ Display's two lines, for every site and pop-up: the
+    // colour: the two lines of this page's ⚙, for every site and pop-up: the
     // screen's own colours, and calmer colours (cpp/screencolours.cpp, docs/colour.md).
     readonly property var colourSettings: page.sioul.reading ? JSON.parse(page.sioul.reading) : ({})
     Binding {
@@ -881,7 +889,7 @@ Item {
                     }
                 }
             }
-            // Adding a site, and Bitwarden's account: under the list, small.
+            // Adding a site, and the page's settings (its colours, Bitwarden): under the list, small.
             Flow {
                 Layout.fillWidth: true
                 spacing: 2
@@ -910,6 +918,8 @@ Item {
                     onClicked: page.showPresets()
                 }
                 SettingsButton {
+                    id: sitesSettings
+
                     sioul: page.sioul
                     theme: page.theme
                     view: "sites"

@@ -3157,6 +3157,7 @@ bitwarden-factor-key-sites = La seconde étape de votre compte est votre clé de
 bitwarden-factor-key-phone = La seconde étape de votre compte est votre clé de sécurité, que Sioul ne peut pas demander sur Android. Ajoutez une application d’authentification ou des codes par courriel comme seconde étape dans Bitwarden, ou tapez le mot de passe vous-même.
 bitwarden-waiting = En attente de Bitwarden…
 bitwarden-new-device = Un nouvel appareil : Bitwarden vous a envoyé un code par courriel.
+set-bitwarden-group = Mots de passe
 set-bitwarden-email = Compte Bitwarden
 set-bitwarden-email-help = Son adresse. Le coffre est lu ici, par Sioul lui-même, seulement quand vous remplissez le formulaire d’un site, et seulement avec votre mot de passe principal, jamais gardé.
 set-bitwarden-server = Serveur Bitwarden
@@ -5215,6 +5216,7 @@ set-passwords-shown-help = Chaque champ de mot de passe, de phrase de passe ou d
 set-places-named = Afficher le nom des lieux à côté de leur icône
 set-places-named-help = Les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large : certaines personnes lisent plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules, et le nom de chacun quand le pointeur s’y arrête, ou par un appui long sur un écran tactile.
 # colour: the sites in the screen's own colours, and calmer colours (docs/colour.md).
+set-sites-colours-group = Couleurs
 set-screen-colours = Couleurs adaptées à l’écran
 set-screen-colours-help = Les sites s’affichent dans les couleurs propres à cet écran, lues dans son profil de couleurs, pour qu’un écran à gamut large ne les rende pas plus criardes qu’elles ne sont.
 set-calmer-colours = Couleurs plus calmes sur les sites
