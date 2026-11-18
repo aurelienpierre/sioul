@@ -326,7 +326,7 @@ Each column is a whole set of tools: Thunderbird with Firefox and its password m
     6. Sioul: with Autocrypt (keys taken from verified mail only) and the Web Key Directory.
     7. Thunderbird: keys found by WKD and keys.openpgp.org; Autocrypt in part.
     8. Nextcloud: through the Mailvelope browser extension.
-    9. Sioul: security keys, and the passkeys kept on them, in the sites you keep and to open your Bitwarden vault from the Sites page; on computers; built on Chromium's WebAuthn and not yet tried with a real key; passkeys kept in a phone or in the system do not work on Linux and macOS.
+    9. Sioul: security keys, and the passkeys kept on them, in the sites you keep and to open your Bitwarden vault, from the Sites page or from Accounts; on computers; built on Chromium's WebAuthn and not yet tried with a real key; passkeys kept in a phone or in the system do not work on Linux and macOS.
     10. Firefox: USB keys with their PIN, and passkeys; the Mozilla account itself takes authenticator codes.
     11. Google: passkeys, security keys, and Advanced Protection.
     12. Proton: security keys as the account's second step; passkeys saved in Proton Pass.

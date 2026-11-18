@@ -53,6 +53,7 @@ fn main() {
         "qml/SpanLine.qml",
         "qml/MailOpener.qml",
         "qml/NoticeOpener.qml",
+        "qml/SettingDoor.qml",
         "qml/WeekPlanning.qml",
         "qml/DayHead.qml",
         "qml/Paths.qml",
@@ -133,6 +134,7 @@ fn main() {
         "qml/InvoiceSettings.qml",
         "qml/ContactMap.qml",
         "qml/SitesPage.qml",
+        "qml/SitesWeb.qml",
         "qml/DoneDialog.qml",
         "qml/DayReview.qml",
         "qml/DayReviewLine.qml",
@@ -172,6 +174,11 @@ fn main() {
         "qml/SitePopup.qml", "qml/PresetPlaceMenu.qml", "qml/PresetGroupMenu.qml", "qml/BankAccountDialog.qml", "qml/BankRulesDialog.qml", "qml/ReserveDialog.qml",
         "qml/LoginChooser.qml",
         "qml/VaultUnlock.qml",
+        // Bitwarden in Accounts: the password manager's card, its form, "From Bitwarden…".
+        "qml/VaultCard.qml",
+        "qml/VaultForm.qml",
+        "qml/VaultFill.qml",
+        "qml/VaultHeld.qml",
         "qml/AccountPassword.qml",
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
@@ -236,7 +243,7 @@ fn main() {
         "qml/style/StyleRadioButton.qml",
         "qml/style/StyleSpinBox.qml",
     ];
-    let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
     // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
     // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.

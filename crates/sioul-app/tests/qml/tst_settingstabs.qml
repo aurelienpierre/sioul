@@ -9,9 +9,8 @@
 // Devices takes the whole width. On a phone's width (412 points), the page
 // opens on the list of its sections, each with its name and a line saying
 // what it holds; a tap opens one, Back returns to the list, and a link to a
-// setting opens its section. A phone lists "This phone", which only Android
-// does: the stand-in names the tab a computer lists in its place (Texts)
-// with the phone's words, so that the row holds as many words as on a phone.
+// setting opens its section. The phone's page is told it runs on Android,
+// so that its list holds a phone's sections, This phone among them.
 // Run by tools/qml-test.sh. To see the pages, set `pictures` below to a
 // folder (a change of your own, not to commit).
 
@@ -43,8 +42,8 @@ Item {
         id: mock
 
         property string language: "en"
-        // Without telephony, the tab a computer lists stands for the phone's own.
-        readonly property bool telephony: false
+        // A phone: its own tab, This phone (the page told it runs on Android, below).
+        readonly property bool telephony: true
         readonly property string deviceKind: "phone"
         readonly property var words: ({
             "en": {
@@ -55,7 +54,7 @@ Item {
                 "settings-tab-words": "Words",
                 "settings-tab-reminders": "Reminders",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-texts": "This phone",
+                "settings-tab-phone": "This phone",
                 "settings-tab-files": "Your folder and sharing",
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
@@ -66,7 +65,7 @@ Item {
                 "settings-about-words": "The words Sioul looks for in mail, papers, calls and tasks, in your languages.",
                 "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed, and notifications gathered.",
                 "settings-about-pauses": "Free time and the pause: when work ends, what helps you, the pause's screen.",
-                "settings-about-texts": "The multimedia messages sent from here through your phone.",
+                "settings-about-phone": "What this device is, and what its system lets Sioul do: calls, other apps' notifications, texts, Do not disturb, alarms.",
                 "settings-about-files": "Your notes folder, and sharing with your other devices.",
                 "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each.",
                 "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
@@ -80,7 +79,7 @@ Item {
                 "settings-tab-words": "Mots",
                 "settings-tab-reminders": "Rappels",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-texts": "Ce téléphone",
+                "settings-tab-phone": "Ce téléphone",
                 "settings-tab-files": "Votre dossier et le partage",
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
@@ -91,7 +90,7 @@ Item {
                 "settings-about-words": "Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.",
                 "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.",
                 "settings-about-pauses": "Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.",
-                "settings-about-texts": "Les messages multimédias envoyés d’ici par votre téléphone.",
+                "settings-about-phone": "Ce qu’est cet appareil, et ce que son système laisse faire à Sioul : appels, notifications des autres applications, SMS, « Ne pas déranger », alarmes.",
                 "settings-about-files": "Votre dossier de notes, et le partage avec vos autres appareils.",
                 "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun.",
                 "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
@@ -136,6 +135,15 @@ Item {
         function appNotesSetup() {
             return ""
         }
+        function callsSetup() {
+            return ""
+        }
+        function phoneMessages() {
+            return ""
+        }
+        function texts() {
+            return ""
+        }
     }
 
     // A computer's window, the places beside the page left out (1400 less 56).
@@ -168,6 +176,7 @@ Item {
             anchors.fill: parent
             sioul: mock
             theme: phoneTheme
+            android: true
         }
     }
 
@@ -304,8 +313,8 @@ Item {
                 { tag: "a section", key: "invoices", section: "invoices" },
                 { tag: "a section of no rows", key: "ai", section: "ai" },
                 { tag: "a list of words", key: "words.voicemail.operators", section: "words" },
-                { tag: "an older key, calls", key: "calls", section: "attention" },
-                { tag: "an older key, apps", key: "apps", section: "attention" },
+                { tag: "an older key, calls (a phone: This phone)", key: "calls", section: "phone" },
+                { tag: "an older key, apps (Android: This phone)", key: "apps", section: "phone" },
                 { tag: "an older key, dnd", key: "dnd", section: "attention" },
                 { tag: "What reaches you's view", key: "attention.dnd", section: "attention" }
             ]

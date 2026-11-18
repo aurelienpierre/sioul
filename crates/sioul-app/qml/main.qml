@@ -218,8 +218,8 @@ SioulWindow {
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
-            // Accounts and Settings take no window.
-            const given = i === 11 || i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
+            // Settings takes no window; Accounts takes it for Bitwarden's key page (`vaultKeys`).
+            const given = i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
             const began = Date.now()
             loaders[i].setSource(window.pageFiles[i], given)
             // How long each page takes to make, in the log (a phone's: adb logcat).
@@ -874,12 +874,10 @@ SioulWindow {
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
         else if (item.kind === "health")
             window.page = 10
-        // Meals, naps and the night, where Health sets them (the Porch's card, Settings ▸ Hours).
-        else if (item.kind === "needs") {
-            window.page = 10
-            if (window.healthPage)
-                window.healthPage.showNeeds()
-        }
+        // The usual meals, naps and the night, in Settings ▸ Hours at their heading (the
+        // Porch's "Set my night", a meal's card, What reaches you ▸ Exceptions, Health's ⚙).
+        else if (item.kind === "needs")
+            window.showParameters("needs")
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
@@ -1104,11 +1102,32 @@ SioulWindow {
             window.textsPage.select(id)
     }
 
-    // Settings, at one of them: the hours, from the Porch.
+    // A setting, by its key, where it lives (SettingDoor.qml): Settings at its
+    // tab (the hours, from the Porch), or the ⚙ of the page that reads it.
     function showParameters(key) {
-        window.page = 12
-        parametersPage.showSetting(key)
+        settingDoor.open(key)
     }
+    SettingDoor {
+        id: settingDoor
+
+        window: window
+        sioul: sioul
+    }
+
+    // The sites' one web profile and Bitwarden's page that asks a security key
+    // (SitesWeb.qml, held by `sitesWebLoader`, at the end of this file): on
+    // computers only, made the first time a site's view or a vault's dialog
+    // wants it, from Sites or from Accounts.
+    function sitesWeb() {
+        if (Qt.platform.os === "android")
+            return null
+        if (sitesWebLoader.status === Loader.Null)
+            sitesWebLoader.setSource("SitesWeb.qml", { sioul: sioul, theme: theme })
+        return sitesWebLoader.item
+    }
+    // What asks a security key for a vault's dialog (VaultUnlock.qml's `keys`):
+    // Bitwarden's page, held unseen; none on a phone, which has no Qt WebEngine.
+    readonly property var vaultKeys: Qt.platform.os === "android" ? null : (() => window.sitesWeb().keyPage())
 
     // The Porch's card "Join your other devices": Settings ▸ Your folder and
     // sharing, where the join begins (SharePanel.qml, JoinPanel.qml): "murena",
@@ -2350,12 +2369,12 @@ SioulWindow {
                 () => healthPage.showMedicines(),
                 () => {},
                 () => grabber.save("health-medicines"),
-                // Its week, and its settings (the usual meals and night).
+                // Its week, and its settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),
@@ -2389,6 +2408,11 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("settings-hours"),
+                // The usual meals, naps and night, under their heading in the same tab.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
                 // Reachable for an hour (part 3: "Work now" went): the Porch open, every lane and address.
                 () => {
                     window.page = 0
@@ -3700,6 +3724,16 @@ SioulWindow {
                 () => {},
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
+                () => sitesPage.bitwardenUnlock.close(),
+                // Where Bitwarden is set: the password manager's card at the top of Accounts
+                // (none set on a demo profile), then its form in Add an account.
+                () => window.showParameters("bitwarden"),
+                () => {},
+                () => grabber.save("vault-card-none"),
+                () => accountsPage.addVault(),
+                () => {},
+                () => {},
+                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no
@@ -4853,13 +4887,20 @@ SioulWindow {
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.settingsPanel().showEnd(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings-end"),
                 () => healthPage.closeSettings(),
+                // The usual meals, naps and night, in Settings ▸ Hours at their heading.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
+                () => window.page = 10,
+                () => {},
                 // Dinner's menu, then its times for today only.
                 () => healthPage.showMenu("meal:2"),
                 () => {},
@@ -5224,12 +5265,12 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
-                // The week, then the settings (the usual meals and night).
+                // The week, then the settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),
@@ -5980,5 +6021,15 @@ SioulWindow {
             border.width: 1
             border.color: theme.line
         }
+    }
+
+    // The holder of the sites' web profile (SitesWeb.qml), declared last of the
+    // window's items on purpose: Qt makes them in this order and destroys them in
+    // the same order, so it goes after every page and every view that uses its
+    // profile (the Sites page's sites and pop-ups, the vault's key page in the
+    // dialogs of Sites and Accounts), as Qt asks of a WebEngineProfile. Keep it
+    // last (tests/web_profile.rs).
+    Loader {
+        id: sitesWebLoader
     }
 }

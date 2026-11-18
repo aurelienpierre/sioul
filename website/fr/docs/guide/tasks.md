@@ -361,6 +361,7 @@ Le ⚙ en haut de la page :
 - **Les nouvelles tâches vont dans** : la liste où va une nouvelle tâche, tapée en une ligne ou dans son formulaire (où une autre peut se choisir).
 - **Les créneaux vont dans** : l’agenda des tâches que vous fixez à une heure ; sauf si vous en choisissez un, « Tâches planifiées », créé la première fois avec la liste de chaque tâche (sur cet appareil pour une liste gardée ici, ou pour un compte Google).
 - **Une alarme dans chaque créneau** : désactivée sauf si vous l’activez ; cinq minutes avant lui, dans les créneaux faits ou déplacés à partir de là.
+- **Une attente finie** : quand une attente après une étape faite est finie (une réponse due), un rappel discret, une fois, quand le travail est là. Activé sauf si vous le désactivez.
 - **Ce que tient une journée** ([plus haut](#what-a-day-holds)) :
     - **Partir de** : *Comme maintenant*, *Plus léger* ou *Bien plus léger* ;
     - **Jours dont le plan apprend** : 28 sauf si vous changez, de 14 à 90 ;

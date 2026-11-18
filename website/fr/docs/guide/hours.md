@@ -1,5 +1,5 @@
 ---
-description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; à quoi sert chacun de vos appareils, et ce qui y arrive quand ; le calme, « Joignable », « Ne pas déranger » et « Travailler jusqu’à ce soir ».
+description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil réglés à côté ; chaque adresse, site, budget et tâche y est rattaché ; à quoi sert chacun de vos appareils, et ce qui y arrive quand ; le calme, « Joignable », « Ne pas déranger » et « Travailler jusqu’à ce soir ».
 ---
 
 # Les heures : travail, démarches, loisirs, repas, sommeil {#hours-work-your-admin-leisure-meals-sleep}
@@ -35,8 +35,8 @@ Le moment présent est toujours l’un de ces cinq :
 |---|---|---|
 | **Travail** | vos heures de travail, et le travail que vous demandez en dehors (**Travailler encore une demi-heure** et les autres, **Travailler jusqu’à ce soir**) | [Paramètres ▸ Heures](settings.md#hours) |
 | **Démarches** | vos heures pour vos démarches | [Paramètres ▸ Heures](settings.md#hours) |
-| **Repas** | chaque repas, de sa préparation à sa fin | [Santé](health.md#meals-rest-and-sleep) |
-| **Sommeil** | la nuit, du moment de se détendre au réveil ; chaque sieste, avec ses minutes pour revenir | [Santé](health.md#meals-rest-and-sleep) |
+| **Repas** | chaque repas, de sa préparation à sa fin | [Paramètres ▸ Heures](settings.md#hours), [Repas, repos et sommeil](health.md#meals-rest-and-sleep) |
+| **Sommeil** | la nuit, du moment de se détendre au réveil ; chaque sieste, avec ses minutes pour revenir | [Paramètres ▸ Heures](settings.md#hours), [Repas, repos et sommeil](health.md#meals-rest-and-sleep) |
 | **Loisirs** | tout le reste du temps : les soirées, les jours sans heures, les congés, le reste d’une journée close avec **Fini pour aujourd’hui** | rien à régler |
 
 **Quand ils se chevauchent**, le sommeil passe d’abord, puis les repas, puis les heures : un déjeuner pendant vos heures de travail est un repas tant qu’il dure ; **Travailler encore quatre heures** qui déborde sur la nuit laisse la nuit au sommeil. Les heures de travail et de démarches peuvent se chevaucher : ce que chacune apporte vient alors, tout ensemble.
@@ -45,7 +45,7 @@ L’heure avant le coucher appartient au sommeil : la Santé la garde libre, e
 
 ## Les heures {#the-hours}
 
-Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de travail** et **Heures pour vos démarches**. Chaque jour de chacune est actif ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, un déjeuner entre les deux). **Congés**, en dessous, prend les vacances et les arrêts maladie. Il n’y a pas de loisirs à régler : c’est tout le reste du temps, et les repas et le sommeil viennent de la page Santé, à un bouton de là.
+Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de travail** et **Heures pour vos démarches**. Chaque jour de chacune est actif ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, un déjeuner entre les deux). **Congés**, en dessous, prend les vacances et les arrêts maladie. Il n’y a pas de loisirs à régler : c’est tout le reste du temps. Entre les deux, **Repas, repos et sommeil** règle vos repas, siestes et nuit habituels ([Santé](health.md#meals-rest-and-sleep) dit ce qu’ils font).
 
 Les loisirs réglés en heures par un Sioul plus ancien (son « temps libre ») restent dans vos paramètres, intacts, et ne comptent plus. Le **temps libre** est maintenant une pause que vous prenez, quelle que soit l’heure : voir [Les pauses](pauses.md).
 
@@ -72,7 +72,7 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 
 Un ordinateur pour le travail, un téléphone pour vos démarches et vos amis, une tablette sur le canapé : dans **Paramètres ▸ Appareils**, trois interrupteurs sur la fiche de chaque appareil disent **Pour** quoi il est fait : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez. Vous pouvez le dire de n’importe quel appareil, depuis celui que vous avez en main. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela. Sans rien de coché, tout y arrive, comme avant : rien ne change sur aucun appareil tant que vous n’avez pas dit à quoi l’un d’eux sert.
 
-Sous les appareils, une grille dit **ce qui arrive, et quand** : pour chaque appareil, ce qui arrive à chaque moment de votre semaine (pas de colonne des démarches tant qu’elles n’ont pas d’heures à elles, pas de colonne des repas tant que la Santé n’en fixe pas).
+Sous les appareils, une grille dit **ce qui arrive, et quand** : pour chaque appareil, ce qui arrive à chaque moment de votre semaine (pas de colonne des démarches tant qu’elles n’ont pas d’heures à elles, pas de colonne des repas tant qu’aucun n’est réglé).
 
 | | Travail | Démarches | Loisirs, repas | Sommeil |
 |---|---|---|---|---|
@@ -163,7 +163,7 @@ Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange 
 - chaque adresse se replie sur la page Courriels ; seuls les sites de loisirs sont listés ;
 - Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une idée peut encore être notée pour plus tard.
 
-Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
+Sans nuit réglée dans Paramètres ▸ Heures, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
 
 ## Joignable, et travailler jusqu’à ce soir {#work-now}
 

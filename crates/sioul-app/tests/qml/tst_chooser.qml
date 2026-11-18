@@ -92,6 +92,7 @@ Item {
         property var later: []
 
         signal bitwardenFound(int ticket, string found)
+        signal bitwardenLocked
 
         // A naive stand-in: the real rules are sioul-sync's.
         function answer(site, user) {
@@ -299,6 +300,19 @@ Item {
             keyClick(Qt.Key_Return)
             compare(chosenSpy.count, 0, "Site ameli.fr and user aurore: nothing to take")
             verify(chooser.opened)
+        }
+
+        // The vault locked (Lock, its time without use): the chooser closes, nothing of
+        // the logins it listed kept, its fields emptied.
+        function test_the_vault_locked_takes_its_list() {
+            chooser.begin("https://ameli.fr")
+            tryCompare(chooser, "opened", true)
+            verify(listView().count > 0)
+            mock.bitwardenLocked()
+            tryCompare(chooser, "visible", false)
+            compare(chooser.shown.found.length, 0, "no login kept")
+            compare(chooser.site, "")
+            compare(chooser.user, "")
         }
 
         function test_escape_closes() {

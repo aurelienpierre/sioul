@@ -14,7 +14,8 @@
 // computer, the first time it shows on a phone, where each object counts
 // (tst_coming.qml), and there only what is in sight (MoneyBudgets.qml); the
 // other two the first time they show. A budget opened shows its ledger and
-// its balance in place of the tabs.
+// its balance in place of the tabs. Its ⚙, at the end of the tabs' row,
+// holds the reminder before a planned payment (`settings::for_view("money")`).
 
 pragma ComponentBehavior: Bound
 
@@ -241,6 +242,14 @@ Item {
             page.openId = page.view.budgets[0].id
     }
 
+    // The page's ⚙, open at one of its settings ("reminders.payment_days", from a link by
+    // key: SettingDoor.qml), or closed.
+    function openSettings(open, key) {
+        moneySettings.show(open)
+        if (open && key)
+            Qt.callLater(() => moneySettings.scrollTo(key))
+    }
+
     // An act on a movement said: its effect, and whether the payee's next ones go there too, asked once.
     function acted(text, ask) {
         overview.said = text
@@ -288,6 +297,8 @@ Item {
             objectName: "moneyTabs"
             name: page.sioul.text("ui-budgets")
             Layout.fillWidth: true
+            // Room at its end for the page's ⚙ (`moneySettings`, below), outside the part that scrolls.
+            rightPadding: moneySettings.width + 6
             theme: page.theme
             model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]
             current: moneyTabs.ids[page.tab] || "overview"
@@ -403,5 +414,18 @@ Item {
                 accounts: page.newAccounts
             }
         }
+    }
+
+    // The page's ⚙, at the end of the tabs' row, while no budget is open: the
+    // reminder before a planned payment (`settings::for_view("money")`).
+    SettingsButton {
+        id: moneySettings
+
+        visible: page.openId === ""
+        x: page.width - page.theme.gap - width
+        y: page.theme.gap + (moneyTabs.height - height) / 2
+        sioul: page.sioul
+        theme: page.theme
+        view: "money"
     }
 }

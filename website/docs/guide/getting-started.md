@@ -70,7 +70,7 @@ Sioul does not reach Microsoft's calendars and contacts: Microsoft does not offe
 
 ### 4. Set your hours {#set-your-hours}
 
-In **Settings ▸ Hours**, there are two weeks to fill: **Working hours** and **Hours for your admin**. Each day is on or off, with one range of hours or several. Every other time is leisure, with nothing to set; meals and sleep are set on the Health page.
+In **Settings ▸ Hours**, there are two weeks to fill: **Working hours** and **Hours for your admin**. Each day is on or off, with one range of hours or several. Every other time is leisure, with nothing to set; your usual meals and sleep are set in the same tab, under **Meals, rest and sleep**.
 
 This is the step that makes Sioul calm. Without hours, everything comes at any hour, as in other mail programs. Until they are set, the Porch asks once, with **Set my hours** and **Leave as is**.
 

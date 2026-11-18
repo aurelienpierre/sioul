@@ -2736,9 +2736,14 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "time", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
+
+        /// Where a setting lives, by its key: the page whose ⚙ holds it
+        /// (`settings::page_of`: "sites"…), or "" for Settings (SettingDoor.qml).
+        #[qinvokable]
+        fn setting_page(self: &Sioul, key: &QString) -> QString;
 
         /// Changes one setting (its value as JSON); returns what went wrong, else "".
         #[qinvokable]
@@ -3049,6 +3054,12 @@ pub mod qobject {
         /// unlock, a passkey or a code's sending gave, and its answer.
         #[qsignal]
         fn bitwarden_answered(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
+
+        /// The vault was locked: by Lock, or after its time without use. What
+        /// still holds something of it lets it go (VaultHeld.qml, the choosers'
+        /// lists, the password manager's card).
+        #[qsignal]
+        fn bitwarden_locked(self: Pin<&mut Sioul>);
 
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
@@ -3499,7 +3510,7 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
 pub(crate) fn reading_json() -> String {
     let config = load_config();
     let reading = config.reading;
-    // colour: and the sites' colours, as Settings ▸ Display has them (SitesPage.qml, docs/colour.md).
+    // colour: and the sites' colours, as the Sites page's ⚙ has them (SitesPage.qml, docs/colour.md).
     serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named, "screen_colours": config.screen_colours.unwrap_or(true), "calmer_colours": config.calmer_colours.unwrap_or_default() }).to_string()
 }
 
@@ -7021,8 +7032,11 @@ impl qobject::Sioul {
 
     fn save_needs(self: Pin<&mut Self>, edit: &QString, shown: &QString) -> QString {
         let problem = crate::health::save_needs(&edit.to_string(), &shown.to_string());
-        // The plan goes around them at once.
-        crate::work::show_work(&self.qt_thread(), &self.shared());
+        // The plan goes around them at once; the Health page reads its days again
+        // (they are set in Settings ▸ Hours, away from it).
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        crate::work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
         QString::from(&problem)
     }
 
@@ -7490,8 +7504,9 @@ impl qobject::Sioul {
         crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_unlock(&shared, &password, provider, &code))
     }
 
-    fn bitwarden_lock(self: Pin<&mut Self>) {
+    fn bitwarden_lock(mut self: Pin<&mut Self>) {
         crate::sites::bitwarden_lock(&self.shared());
+        self.as_mut().bitwarden_locked();
     }
 
     fn bitwarden_send_code(self: Pin<&mut Self>, password: &QString) -> i32 {
@@ -7551,11 +7566,13 @@ impl qobject::Sioul {
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
-        // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
+        // The Bitwarden vault locked once unused as long as you chose, away or not
+        // (Accounts, the password manager's card); what holds something of it lets it go.
         let lock_after = load_config().bitwarden.lock_after.unwrap_or(0);
         if crate::sites::bitwarden_lock_if_idle(&self.shared(), lock_after, jiff::Timestamp::now().as_second()) {
             let words = tr().text("bitwarden-locked", None);
             self.as_mut().set_status(QString::from(&words));
+            self.as_mut().bitwarden_locked();
         }
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
@@ -8207,8 +8224,8 @@ impl qobject::Sioul {
                 first.label = sioul_core::settings::device_kind_found(tr(), crate::devicekind::guessed());
             }
         }
-        // colour: what this screen gets, said under its switch; neither line on a
-        // phone, whose sites open in the browser (docs/colour.md).
+        // colour: what this screen gets, said under its switch (the Sites page's ⚙);
+        // neither line on a phone, whose sites open in the browser (docs/colour.md).
         if cfg!(target_os = "android") {
             rows.retain(|r| r.key != "screen_colours" && r.key != "calmer_colours");
         }
@@ -8234,6 +8251,10 @@ impl qobject::Sioul {
             rows.insert(at + 1, row);
         }
         QString::from(&json(&rows))
+    }
+
+    fn setting_page(&self, key: &QString) -> QString {
+        QString::from(sioul_core::settings::page_of(&key.to_string(), &load_config(), tr()).unwrap_or_default())
     }
 
     fn set_setting(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {

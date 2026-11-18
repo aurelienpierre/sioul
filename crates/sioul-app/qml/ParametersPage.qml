@@ -2,12 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What belongs to Sioul as a whole rather than to one page: language and
-// colours, working hours and days off, what reaches you and when
-// (ReachesTab.qml), the words Sioul looks for (WordsTab.qml), reminders,
-// the pauses, on a phone what sets it up
-// (PhoneSetup.qml), on a computer the multimedia messages sent from it
-// (TextsSending.qml), your folder and sharing, your devices (DevicesTab.qml),
-// invoices. Each setting says in a sentence what it changes and is saved at once.
+// colours, working hours, the usual meals and sleep and days off, what
+// reaches you and when (ReachesTab.qml), the words Sioul looks for
+// (WordsTab.qml), reminders, the pauses, on a phone what sets it up
+// (PhoneSetup.qml), your folder and sharing, your devices (DevicesTab.qml),
+// invoices. What one page alone reads is behind that page's ⚙ (SettingDoor.qml
+// opens it by its key). Each setting says in a sentence what it changes and
+// is saved at once.
 //
 // On a computer, the sections are tabs across the page (Tabs.qml), and each
 // section's rows sit in a centred column of legible width (PageColumn.qml),
@@ -43,11 +44,14 @@ Item {
         page.listShown = false
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
-    // reminders, the pauses; on Android, what sets it up (its system's); where
-    // there is no telephony (a computer, a tablet without a SIM), the texts it
-    // sends through the phone; your folder and sharing, your devices,
-    // invoices; what AI agents may use (each project closed to them until opened).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "devices", "invoices", "ai"])
+    // reminders, the pauses; on Android, what sets it up (its system's); your
+    // folder and sharing, your devices, invoices; what AI agents may use (each
+    // project closed to them until opened). The texts a device without
+    // telephony sends through the phone are the Texts page's ⚙.
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(page.android ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
+    // On Android: its own tab (This phone). The system's; the layout test of the
+    // tabs sets it to measure a phone's row (tst_settingstabs.qml).
+    property bool android: Qt.platform.os === "android"
     // A tab's name's key: Android's own tab named by what the device is ("This
     // phone", "This tablet", else "This device"), never by its system.
     function tabKey(section) {
@@ -74,8 +78,6 @@ Item {
             return page.sioul.text("settings-about-pauses")
         case "phone":
             return page.sioul.text("settings-about-phone")
-        case "texts":
-            return page.sioul.text("settings-about-texts")
         case "files":
             return page.sioul.text("settings-about-files")
         case "devices":
@@ -196,7 +198,7 @@ Item {
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
         // Calls are set up where they are screened (telephony); other apps' notifications on Android.
-        const android = Qt.platform.os === "android"
+        const android = page.android
         const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
@@ -506,20 +508,6 @@ Item {
 
                     sourceComponent: Component {
                         PhoneSetup {
-                            sioul: page.sioul
-                            theme: page.theme
-                        }
-                    }
-                }
-
-                // The multimedia messages sent from this computer (docs/texts.md).
-                Loader {
-                    active: page.section === "texts"
-                    visible: active
-                    Layout.fillWidth: true
-
-                    sourceComponent: Component {
-                        TextsSending {
                             sioul: page.sioul
                             theme: page.theme
                         }

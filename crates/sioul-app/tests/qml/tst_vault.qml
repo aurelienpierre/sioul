@@ -5,9 +5,11 @@
 // that answers as Bitwarden's server would: later, by ticket, as the window
 // does off its thread (sites.rs, `bitwarden_later`). The dialog says it
 // waits, asks nothing more meanwhile, takes its own answer and no other, and
-// forgets it once closed. A second step it cannot take: a security key from
-// a dialog that cannot ask one (Accounts, a phone) says where the key works;
-// Duo alone, as before. Run by tools/qml-test.sh.
+// forgets it once closed. A security key as second step: a dialog given the
+// window's key page (every dialog on a computer, from Sites or from
+// Accounts: SitesWeb.qml) offers it and asks it there; one without (a
+// phone) says what to do instead; Duo alone says it cannot be taken. Run by
+// tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -34,7 +36,6 @@ Item {
             "bitwarden-waiting": "Waiting for Bitwarden…",
             "bitwarden-open": "Open",
             "bitwarden-factor-unsupported": "Duo, not yet.",
-            "bitwarden-factor-key-sites": "Your key, from the Sites page.",
             "bitwarden-factor-key-phone": "Your key, not on a phone.",
             "bitwarden-code-sent": "The code was sent."
         })
@@ -69,12 +70,36 @@ Item {
         }
     }
 
-    // As Accounts has it: no page to ask a security key from.
+    // As a phone has it: no page to ask a security key from.
     VaultUnlock {
         id: unlock
 
         sioul: mock
         theme: testTheme
+    }
+
+    // As every dialog has it on a computer, Accounts' as Sites': the window's
+    // key page (SitesWeb.qml's `keyPage`), here a stand-in that records what it
+    // is asked and answers nothing yet.
+    property int keyPagesMade: 0
+    Component {
+        id: keyPageStandIn
+
+        Item {
+            property var ask: null
+
+            Component.onCompleted: root.keyPagesMade += 1
+            function runJavaScript(script, done) {
+                done("")
+            }
+        }
+    }
+    VaultUnlock {
+        id: withKey
+
+        sioul: mock
+        theme: testTheme
+        keys: () => keyPageStandIn
     }
 
     SignalSpy {
@@ -158,15 +183,38 @@ Item {
             verify(!unlock.busy)
         }
 
-        function test_a_key_it_cannot_ask_says_where_it_can() {
+        function test_a_key_it_cannot_ask_says_what_to_do_instead() {
             unlock.tryIt()
             mock.bitwardenAnswered(1, JSON.stringify({ factor: [7], key: { page: "https://vault.example.org/", script: "" } }))
             compare(unlock.offered.length, 0)
-            compare(unlock.problem, Qt.platform.os === "android" ? "Your key, not on a phone." : "Your key, from the Sites page.")
+            compare(unlock.problem, "Your key, not on a phone.")
             unlock.begin()
             unlock.tryIt()
             mock.bitwardenAnswered(2, JSON.stringify({ factor: [2] }))
             compare(unlock.problem, "Duo, not yet.", "Duo alone")
+        }
+
+        // On a computer, from Accounts as from Sites: the key offered, asked at once
+        // from the window's page, given what to ask; no sentence sends elsewhere.
+        function test_a_dialog_given_the_window_s_key_page_asks_the_key() {
+            unlock.close()
+            root.keyPagesMade = 0
+            withKey.begin()
+            tryCompare(withKey, "opened", true)
+            verify(withKey.keyCapable)
+            withKey.tryIt()
+            const ticket = mock.tickets
+            mock.bitwardenAnswered(ticket, JSON.stringify({ factor: [7], key: { page: "https://vault.example.org/", script: "/* ask */" } }))
+            compare(withKey.offered, [7])
+            compare(withKey.provider, 7)
+            compare(withKey.problem, "", "nothing said of another page")
+            tryVerify(() => withKey.keyView.item !== null, 2000, "the key's page made")
+            compare(withKey.keyView.item.ask.page, "https://vault.example.org/")
+            compare(withKey.keyView.item.ask.script, "/* ask */")
+            compare(root.keyPagesMade, 1)
+            withKey.close()
+            tryCompare(withKey, "visible", false, 2000)
+            unlock.begin()
         }
 
         function test_closed_it_waits_no_more() {

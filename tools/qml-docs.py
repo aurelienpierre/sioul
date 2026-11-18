@@ -64,6 +64,7 @@ NAMED = {
     "StatusLine": "status", "LineButton": "status", "NoisePlayer": "status", "HowWasIt": "status",
     "SettingsPanel": "settings", "SettingRow": "settings", "SettingsButton": "settings",
     "HealthSettings": "settings", "SharePanel": "settings", "NeedsSection": "settings",
+    "SettingDoor": "settings", "SitesWeb": "window", "VaultCard": "settings", "VaultForm": "settings", "VaultHeld": "settings",
     "ActionButton": "controls", "AddressField": "controls", "AudioPlayer": "controls",
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",

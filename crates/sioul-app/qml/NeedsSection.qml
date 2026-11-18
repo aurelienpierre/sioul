@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The usual meals, naps and night, set first, in the Health page's settings:
-// times kept free of tasks, the work planned around them (docs/health.md,
-// "Meals, rest and sleep"). Each block named as you like, on the weekdays
-// you choose, its notices on or off; a day that differs is changed on the
-// page itself, that day only. Nothing about eating or sleeping is recorded
-// here, and nothing is said when one passes.
+// The usual meals, naps and night, set first, in Settings ▸ Hours under
+// their own heading (SettingRow.qml's "needs" kind), since every page reads
+// the time now: times kept free of tasks, the work planned around them
+// (docs/health.md, "Meals, rest and sleep"). Each block named as you like,
+// on the weekdays you choose, its notices on or off; a day that differs is
+// changed on the Health page, that day only. Nothing about eating or
+// sleeping is recorded here, and nothing is said when one passes. Kept in
+// the health file (part "health" of the sharing): saved, the
+// Health page reads its days again (backend.rs, `save_needs`).
 
 pragma ComponentBehavior: Bound
 
@@ -22,11 +25,10 @@ ColumnLayout {
     // {needs, usual, gaps, wake}, as the backend gives it.
     property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true, alarm: [false, false, false, false, false, false, false] }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [], wake: { phone: false, names: [], short: [], next: "", exact: true, screen: true, notifications: true } })
     property string problem: ""
+    // What they are, in a sentence, said first (the row's own, `settings::for_view`).
+    property string about: ""
     // A narrow screen: each block's numbers under its name.
     readonly property bool narrow: section.width < 560
-
-    // Saved: the page's days follow.
-    signal changed
 
     function reload() {
         section.shown = JSON.parse(section.sioul.needs())
@@ -39,7 +41,6 @@ ColumnLayout {
         // With what the page showed: the change is set over the settings as they are now.
         section.problem = section.sioul.saveNeeds(JSON.stringify(needs), JSON.stringify(section.shown.needs))
         section.reload()
-        section.changed()
     }
 
     // "08:30" as typed, or nothing when it is no time.
@@ -53,15 +54,10 @@ ColumnLayout {
     spacing: 8
 
     Label {
-        Layout.topMargin: 12
-        text: section.sioul.text("needs-title")
-        font.pixelSize: 16
-        font.weight: Font.DemiBold
-        color: section.theme.accent
-    }
-    Label {
+        visible: section.about !== ""
         Layout.fillWidth: true
-        text: section.sioul.text("needs-help")
+        text: section.about
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: section.theme.muted

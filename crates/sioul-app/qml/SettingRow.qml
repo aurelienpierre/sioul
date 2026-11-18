@@ -32,8 +32,12 @@ ColumnLayout {
     signal save(string key, var value, var shown)
     // Another row of the panel asked for (a calendar of busy blocks opens Your availability).
     signal goTo(string key)
-    // What the panel shows changed behind its back (lists left): its rows read again.
+    // What the panel shows changed behind its back (lists left, the vault locked): its rows read again.
     signal changedElsewhere()
+    // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
+    signal unlockAsked()
+    // A link's button pressed: the panel it is in closes, its place shown (SettingsPanel.qml).
+    signal followed()
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -43,7 +47,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -64,7 +68,7 @@ ColumnLayout {
     }
 
     // Nothing to change here: a sentence, and a button to where it is
-    // changed (the Health page's meals and sleep, from the hours).
+    // changed (the automatic senders' words, from the Porch's Filed lane).
     Loader {
         active: field.setting.kind === "link"
         visible: active
@@ -89,14 +93,18 @@ ColumnLayout {
                     icon.name: "go-next"
                     icon.color: field.theme.text
                     // The window shows it, as a reminder's "Open" does (main.qml, openThing).
-                    onClicked: field.sioul.reminderOpened(String(field.setting.value), "", "")
+                    onClicked: {
+                        field.followed()
+                        field.sioul.reminderOpened(String(field.setting.value), "", "")
+                    }
                 }
             }
         }
     }
 
-    // The Bitwarden vault as it is now on this device, and Lock while it is
-    // open (decided 3 November 2026); asked again each time the panel shows.
+    // The Bitwarden vault as it is now on this device, Unlock while it is
+    // locked and Lock while it is open (decided 3 November 2026); asked again
+    // each time the card shows (VaultCard.qml).
     Loader {
         active: field.setting.kind === "vault"
         visible: active
@@ -120,6 +128,15 @@ ColumnLayout {
                     color: field.theme.text
                 }
                 Button {
+                    objectName: "vaultUnlock"
+                    visible: vault.open === "locked"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    icon.name: "dialog-password"
+                    icon.color: field.theme.text
+                    text: field.theme.plain(field.sioul.text("set-bitwarden-unlock"))
+                    onClicked: field.unlockAsked()
+                }
+                Button {
                     objectName: "vaultLock"
                     visible: vault.open === "unlocked"
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
@@ -129,6 +146,7 @@ ColumnLayout {
                     onClicked: {
                         field.sioul.bitwardenLock()
                         vault.open = field.sioul.bitwardenState()
+                        field.changedElsewhere()
                     }
                 }
             }
@@ -300,6 +318,33 @@ ColumnLayout {
                 title: field.setting.group === "" ? field.sioul.text("unsubscribed-group") : ""
                 onEnded: field.changedElsewhere()
             }
+        }
+    }
+
+    // Settings ▸ Hours' usual meals, naps and night (NeedsSection.qml), under their own
+    // heading: every page reads the time now. Its sentence said first there.
+    Loader {
+        active: field.setting.kind === "needs"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            NeedsSection {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
+    // The Texts page's ⚙: the multimedia messages sent from here (TextsSending.qml), its own
+    // title. Made by its file, not its type: it draws a SettingRow of its own.
+    Loader {
+        visible: field.setting.kind === "textssending"
+        Layout.fillWidth: true
+        Component.onCompleted: {
+            if (field.setting.kind === "textssending")
+                setSource("TextsSending.qml", { sioul: field.sioul, theme: field.theme })
         }
     }
 
@@ -1297,7 +1342,8 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
+        // The blocks say their sentence first themselves.
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

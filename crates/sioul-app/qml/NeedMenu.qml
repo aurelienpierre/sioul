@@ -19,7 +19,7 @@ SioulMenu {
 
     required property var sioul
     required property var theme
-    // "N min later", as Health's settings say.
+    // "N min later", as Settings ▸ Hours says (the usual meals, naps and night).
     property int later: 15
 
     signal acted(string action)
