@@ -92,8 +92,18 @@ Item {
         function reachesView() {
             return JSON.stringify(mock.view)
         }
+        // Who is in which circle (`settings::for_view("senders")`): a list, the line of
+        // what was named as your contacts (review C1), a group on that list.
         function settings(view) {
-            return "[]"
+            if (view !== "senders")
+                return "[]"
+            const row = (key, kind, label, value, choices, group) => ({ key: key, kind: kind, label: label, help: "", value: value, choices: choices, min: 0, max: 0, step: 1, unit: "", group: group })
+            const lists = [{ value: "", label: "No list" }, { value: "safe", label: "Safe" }, { value: "neutral", label: "Your contacts" }]
+            return JSON.stringify([
+                row("safe", "senders", "Safe", ["camille@example.org"], [], ""),
+                row("neutral", "senders", "2 addresses, numbers and domains you named as contacts", ["*@school.example.org", "+33 1 99 00 12 34"], [], ""),
+                row("category:Clients", "choice", "Clients", "neutral", lists, "Groups")
+            ])
         }
         function reachesChoose(what, value) {
             mock.chosen = mock.chosen.concat([[what, value]])
@@ -176,6 +186,25 @@ Item {
                 page.view = "rules"
                 page.rowOpen = ""
             }
+        }
+
+        // What was named as your contacts (review C1): one line, opened to read and remove, never
+        // to add to; a group on that list says so, not "No list".
+        function test_what_was_named_as_contacts() {
+            wide.readLists()
+            const line = find(wide, "namedContacts")
+            verify(line, "the line")
+            verify(line.text.indexOf("2 addresses, numbers and domains you named as contacts") >= 0, line.text)
+            verify(!find(wide, "namedContactsList"), "folded at first")
+            line.clicked()
+            const list = find(wide, "namedContactsList")
+            verify(list, "opened")
+            const named = wide.lists.find(l => l.key === "neutral")
+            compare(named.value.length, 2)
+            const group = wide.lists.find(l => l.key === "category:Clients")
+            compare(group.value, "neutral", "the group shows its list")
+            line.clicked()
+            verify(!find(wide, "namedContactsList"), "folded again")
         }
 
         // A computer: a table, the circles down, mail and messages across, each cell its behaviour in words.

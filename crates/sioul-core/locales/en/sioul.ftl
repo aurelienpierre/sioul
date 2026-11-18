@@ -5689,6 +5689,11 @@ sender-from-default = { $list }: in none of your address books, on no list.
 sender-now-restricted = { $entry } is restricted: their mail comes only as the Restricted row says, in What reaches you.
 sender-now-categories = { $entry }: as their groups say.
 set-restricted = Restricted
+set-sender-named-contacts = { $n ->
+    [one] One address, number or domain you named as a contact
+   *[other] { $n } addresses, numbers and domains you named as contacts
+}
+set-sender-named-contacts-help = Named in an older version, from a person's sheet or when unblocking: they come as your contacts do, even outside your address books. Remove one to have it judged as everyone else.
 set-restricted-help = Those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs. They reach you only as the Restricted row above says. An address, a number, or a pattern with *.
 set-sender-categories-group = Groups
 set-sender-categories-note = A person's own choice comes first, then their groups, then a domain. Everyone in your address books is among your contacts.

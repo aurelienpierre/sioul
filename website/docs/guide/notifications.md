@@ -67,6 +67,7 @@ Outside a line's times, your safe senders' mail waits on the Porch, shown; every
 - **People on a list**: everyone you placed on a list from their card or their sheet, each with **As their groups say**, **Safe**, **Restricted** or **Blocked**.
 - **Groups**: one line for each group your contacts belong to (Friends, Family, Clients…), with **No list** or one of the three. Everyone in the group takes it, unless their own choice says otherwise.
 - **One person kept a plain contact** inside a restricted group: on their sheet, **Your contacts** ([below](#a-persons-sheet)).
+- **Addresses, numbers and domains you named as contacts**: one line, shown only when there are some, for what an older version, a sheet or unblocking named as your contacts outside your address books (`*@school.example.org`, say). Press it to read them; remove one to have it judged as everyone else. A group or a person named so says **Your contacts**, never **No list**; **No list** takes it off.
 
 **From the person to the list**: a person's own choice comes first (their address or number, then their card), then their groups, then a domain or the start of a number; then your contacts; everyone else is a stranger. **Proof comes first**: mail that fails its checks is weighed as a stranger's, and forged mail is set aside, even when it claims a safe sender's address.
 

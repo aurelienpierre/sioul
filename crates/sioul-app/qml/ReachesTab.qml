@@ -641,6 +641,9 @@ ColumnLayout {
                 required property var modelData
                 required property int index
                 readonly property bool newGroup: listRow.modelData.group !== "" && (listRow.index === 0 || tab.lists[listRow.index - 1].group !== listRow.modelData.group)
+                // The addresses, numbers and domains named as your contacts: one line, opened to read and remove them.
+                readonly property bool named: listRow.modelData.key === "neutral"
+                property bool open: false
 
                 Layout.fillWidth: true
                 Layout.topMargin: listRow.newGroup ? 12 : 4
@@ -650,7 +653,19 @@ ColumnLayout {
                     visible: listRow.newGroup
                     text: listRow.modelData.group
                 }
+                Button {
+                    objectName: "namedContacts"
+                    visible: listRow.named
+                    Layout.maximumWidth: listRow.width
+                    flat: true
+                    text: (listRow.open ? "▾ " : "▸ ") + tab.theme.plain(listRow.modelData.label)
+                    Accessible.name: listRow.modelData.label
+                    Accessible.description: listRow.modelData.help
+                    onClicked: listRow.open = !listRow.open
+                }
                 SettingRow {
+                    objectName: listRow.named ? "namedContactsList" : ""
+                    visible: !listRow.named || listRow.open
                     Layout.fillWidth: true
                     setting: listRow.modelData
                     sioul: tab.sioul

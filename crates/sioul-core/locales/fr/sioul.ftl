@@ -5728,6 +5728,11 @@ sender-from-default = { $list } : dans aucun de vos carnets d’adresses, sur 
 sender-now-restricted = { $entry } est restreint : ses courriels ne viennent que comme le dit la ligne Restreints, dans Ce qui vous joint.
 sender-now-categories = { $entry } : comme le disent ses groupes.
 set-restricted = Restreints
+set-sender-named-contacts = { $n ->
+    [one] Une adresse, un numéro ou un domaine que vous avez nommé comme contact
+   *[other] { $n } adresses, numéros et domaines que vous avez nommés comme contacts
+}
+set-sender-named-contacts-help = Nommés dans une version plus ancienne, depuis la fiche d’une personne ou en débloquant : ils vous joignent comme vos contacts, même hors de vos carnets d’adresses. Retirez-en un pour qu’il soit jugé comme tous les autres.
 set-restricted-help = Ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont les courriels pèsent. Ils ne vous joignent que comme le dit la ligne Restreints, plus haut. Une adresse, un numéro, ou un motif avec *.
 set-sender-categories-group = Groupes
 set-sender-categories-note = Le choix propre à une personne passe d’abord, puis ses groupes, puis un domaine. Toute personne de vos carnets d’adresses est parmi vos contacts.

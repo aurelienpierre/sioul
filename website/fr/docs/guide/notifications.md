@@ -67,6 +67,7 @@ Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur
 - **Les personnes sur une liste** : chacune mise sur une liste depuis sa fiche, avec **Comme le disent ses groupes**, **Sûr**, **Restreint** ou **Bloqué**.
 - **Les groupes** : une ligne pour chaque groupe auquel vos contacts appartiennent (Amis, Famille, Clients…), avec **Aucune liste** ou l’une des trois. Toute personne du groupe le prend, sauf si son propre choix dit autre chose.
 - **Garder une personne simple contact** dans un groupe restreint : sur sa fiche, **Vos contacts** ([plus bas](#a-persons-sheet)).
+- **Les adresses, numéros et domaines que vous avez nommés comme contacts** : une ligne, montrée seulement quand il y en a, pour ce qu’une version plus ancienne, une fiche ou un déblocage a nommé comme vos contacts hors de vos carnets d’adresses (`*@ecole.example.org`, par exemple). Appuyez dessus pour les lire ; retirez-en un pour qu’il soit jugé comme tous les autres. Un groupe ou une personne nommés ainsi disent **Vos contacts**, jamais **Aucune liste** ; **Aucune liste** les en retire.
 
 **De la personne à la liste** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis ses groupes, puis un domaine ou le début d’un numéro ; puis vos contacts ; toute autre personne est inconnue. **La preuve d’abord** : un courriel qui échoue à ses vérifications est pesé comme celui d’un inconnu, et un courriel contrefait est mis de côté, même quand il se réclame de l’adresse d’un expéditeur sûr.
 
