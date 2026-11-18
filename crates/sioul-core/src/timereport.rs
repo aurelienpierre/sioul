@@ -67,6 +67,21 @@ pub fn entries(sessions: &[Session], tasks: &[Task], projects: &[Project], zone:
         .collect()
 }
 
+/// What a stretch of time is for, as the Time page's filter reads it
+/// (docs/areas.md, "A page's filter by area"): its project's area
+/// (`Project::area_of`, work's when unsaid); with no project known, its
+/// task's (`TaskAreas::of`); none for time noted on nothing, or on a project
+/// gone, which every tick shows.
+pub fn area_of(entry: &Entry, projects: &[Project], tasks: &[Task], areas: &crate::areas::TaskAreas) -> Option<crate::areas::Area> {
+    if let Some(project) = projects.iter().find(|p| !entry.project.is_empty() && p.id == entry.project) {
+        return Some(project.area_of());
+    }
+    if !entry.project.is_empty() {
+        return None;
+    }
+    tasks.iter().find(|t| !entry.task.is_empty() && t.uid == entry.task).map(|t| areas.of(t))
+}
+
 /// What `minutes` at `rate` an hour come to, to the cent.
 pub fn amount(minutes: u32, rate: f64) -> Money {
     Money((f64::from(minutes) * rate * 100.0 / 60.0).round() as i64)
@@ -338,6 +353,24 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a stretch of time is for, as the Time page's filter reads it: its
+    /// project's area (an unsaid one work's); with no project, its task's;
+    /// none for time on nothing, or on a project gone.
+    #[test]
+    fn a_stretch_of_time_is_for_its_project_s_area() {
+        use crate::areas::{Area, TaskAreas};
+        let entry = |project: &str, task: &str| Entry { key: String::new(), start: 0, day: Date::ZERO, minutes: 30, project: project.into(), task: task.into(), title: String::new(), note: String::new(), billable: false, invoice: String::new() };
+        let projects = [Project { id: "garden".into(), area: Some("leisure".into()), ..Project::default() }, Project { id: "lumen".into(), client: Some("Studio Lumen".into()), ..Project::default() }];
+        let tasks = [Task { uid: "report".into(), categories: vec!["Travail".into()], ..Task::default() }, Task { uid: "forms".into(), ..Task::default() }];
+        let areas = TaskAreas { work_categories: vec!["travail".into()], ..TaskAreas::usual() };
+        let of = |e: Entry| area_of(&e, &projects, &tasks, &areas);
+        assert_eq!(of(entry("garden", "report")), Some(Area::LEISURE), "its project's, before its task's");
+        assert_eq!(of(entry("lumen", "")), Some(Area::WORK));
+        assert_eq!(of(entry("", "report")), Some(Area::WORK), "no project: its task's");
+        assert_eq!(of(entry("", "forms")), Some(Area::ADMIN));
+        assert_eq!((of(entry("", "")), of(entry("gone", "report"))), (None, None), "on nothing, or a project gone: always shown");
+    }
 
     #[test]
     fn billable_time_as_a_spreadsheet() {

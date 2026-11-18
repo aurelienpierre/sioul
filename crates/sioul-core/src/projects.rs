@@ -16,6 +16,7 @@
 //! that a device not yet updated reads it as before. Renaming it is the
 //! person's choice, made once every device is updated (`rename_file`).
 
+use crate::areas::Area;
 use crate::card::Card;
 use crate::text::{contains_word, fold};
 use serde::Deserialize;
@@ -97,7 +98,9 @@ pub struct Project {
     /// The budget its invoices are expected in.
     #[serde(default)]
     pub budget: Option<String>,
-    /// "personal" for a matter of yours outside work (a garden, a trip): it stays in view in quiet time.
+    /// What it is for (docs/areas.md): the areas' words, `work`, `admin`,
+    /// `leisure`, joined by `+` ("admin+leisure"); "personal", the word of
+    /// an older Sioul, reads as admin and leisure (`Project::area_of`).
     #[serde(default)]
     pub area: Option<String>,
     /// Open to AI agents (`ai = true`): an agent connected with `sioul mcp`
@@ -112,6 +115,29 @@ impl Project {
     /// Work done for a client: its time can be billed.
     pub fn is_for_client(&self) -> bool {
         self.kind.as_deref() == Some("project")
+    }
+
+    /// What it is for (docs/areas.md), as `mailbox::area_of` says an
+    /// address's and `Budget::area_of` a budget's: what its record says
+    /// (`said_area`), else work's, a client's project or not, as the
+    /// Projects page has always folded it outside working hours.
+    pub fn area_of(&self) -> Area {
+        self.said_area().unwrap_or(Area::WORK)
+    }
+
+    /// What its record says it is for; none when unsaid, or in words no
+    /// Sioul reads.
+    pub fn said_area(&self) -> Option<Area> {
+        self.area.as_deref().and_then(Area::parse)
+    }
+
+    /// Whether it gives its tasks an area (`areas::TaskAreas`): when its
+    /// record says one, or, unsaid, when it has a client (work's). An unsaid
+    /// project without a client gives none, as before areas had three: its
+    /// tasks keep what their categories say, so that the plan lays them
+    /// where it did.
+    pub fn gives_its_tasks_an_area(&self) -> bool {
+        self.said_area().is_some() || self.client.is_some()
     }
 }
 
@@ -131,7 +157,8 @@ pub struct ProjectEdit {
     pub rate: f64,
     #[serde(default)]
     pub budget: String,
-    /// "personal", or "" for work and admin.
+    /// What it is for, as the areas' switches give it ("admin+leisure"); ""
+    /// for unsaid, work's (`Project::area_of`).
     #[serde(default)]
     pub area: String,
     /// Open to AI agents; unsaid (a form that does not show it), the file's value stays.
@@ -251,7 +278,9 @@ pub fn save_project(file: &Path, id: &str, edit: &ProjectEdit) -> Result<String,
         }
         let project = entry_mut(&mut doc, &id).ok_or_else(|| fail(format!("no project {id}")))?;
         project["title"] = value(edit.title.trim());
-        for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim()), ("area", edit.area.trim())] {
+        // The areas in the files' words and order ("admin+leisure"); an older "personal" written so.
+        let area = Area::parse(edit.area.trim()).map(Area::id).unwrap_or_default();
+        for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim()), ("area", area.as_str())] {
             if text.is_empty() {
                 project.remove(key);
             } else {
@@ -684,6 +713,48 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// What a project is for (docs/areas.md): read in the areas' words, an
+    /// older "personal" as admin and leisure; unsaid, work's, a client's
+    /// project or not; written from the three switches in the files' words
+    /// and order, an older word written anew, nothing ticked written as
+    /// nothing; what its tasks read of it (`areas::TaskAreas`): what it says,
+    /// a client's work, and nothing from an unsaid project without a client,
+    /// whose tasks the plan lays where it did.
+    #[test]
+    fn a_project_s_area_is_read_defaulted_and_written() {
+        use crate::areas::{Area, TaskAreas};
+        let dir = scratch("project-areas");
+        let file = dir.join(FILE);
+        std::fs::write(&file, "[[project]]\nid = \"garden\"\ntitle = \"Garden\"\narea = \"personal\"\n\n[[project]]\nid = \"lumen\"\ntitle = \"Studio Lumen\"\nkind = \"project\"\nclient = \"Studio Lumen\"\n\n[[project]]\nid = \"taxes\"\ntitle = \"Taxes\"\n\n[[project]]\nid = \"choir\"\ntitle = \"Choir\"\narea = \"leisure+work\"\n").unwrap();
+        let store = ProjectStore::load(&dir).unwrap();
+        let of = |id: &str| store.get(id).unwrap().clone();
+        assert_eq!((of("garden").area_of(), of("garden").said_area()), (Area::PERSONAL, Some(Area::PERSONAL)), "an older Sioul's word");
+        assert_eq!((of("lumen").area_of(), of("lumen").said_area()), (Area::WORK, None), "a client's, unsaid: work's");
+        assert_eq!((of("taxes").area_of(), of("taxes").said_area()), (Area::WORK, None), "unsaid without a client: work's still");
+        assert_eq!(of("choir").area_of(), Area::WORK.with(Area::LEISURE));
+        // Its tasks: what it says; a client's, work; an unsaid project without one, nothing of it.
+        let areas = TaskAreas::of_config(&crate::config::Config::default(), &store.projects);
+        let task = |project: &str| crate::tasks::Task { projects: vec![project.to_string()], ..crate::tasks::Task::default() };
+        assert_eq!(areas.of(&task("garden")), Area::PERSONAL);
+        assert_eq!(areas.of(&task("lumen")), Area::WORK);
+        assert_eq!(areas.of(&task("taxes")), Area::ADMIN, "as before: its categories, else your admin");
+        assert_eq!(areas.of(&task("choir")), Area::WORK.with(Area::LEISURE));
+        // Written from the switches, in the files' words and order; the form's view of it.
+        let edit = |area: &str| ProjectEdit { area: area.into(), ..ProjectEdit::of(&of("garden")) };
+        assert_eq!(ProjectEdit::of(&of("garden")).area, "personal", "the form starts from the record");
+        save_project(&file, "garden", &edit("leisure+admin")).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("area = \"admin+leisure\""));
+        save_project(&file, "garden", &edit("personal")).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("area = \"admin+leisure\""), "an older word, written anew");
+        save_project(&file, "garden", &edit("")).unwrap();
+        let garden = ProjectStore::load(&dir).unwrap().get("garden").unwrap().clone();
+        assert_eq!((garden.area.clone(), garden.area_of()), (None, Area::WORK), "nothing ticked: unsaid, work's");
+        // A word no Sioul reads is never written.
+        save_project(&file, "garden", &edit("someday")).unwrap();
+        assert_eq!(ProjectStore::load(&dir).unwrap().get("garden").unwrap().area, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
