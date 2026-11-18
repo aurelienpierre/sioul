@@ -1339,6 +1339,58 @@ mod tests {
         assert!(writes_of("care.doses", "off").is_err(), "doses are no care switch");
     }
 
+    /// The page's writer on a file (review T1): a choice of each table writes
+    /// the rows it names and no other; a row back to what Sioul ships is taken
+    /// out; the first write seeds every row the older keys set and takes them
+    /// out; the call screening's rows are refused.
+    #[test]
+    fn a_choice_reaches_the_file_through_the_page_s_writer() {
+        let dir = std::env::temp_dir().join(format!("sioul-reaches-choose-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        // An older configuration: your contacts' mail ticked for leisure too, no [attention] yet.
+        std::fs::write(&path, "language = \"en\"\n[reach]\nneutral = [\"work\", \"admin\", \"leisure\"]\n").unwrap();
+        let read = || Attention::of(&Config::load(&path).unwrap());
+        let seeded = read();
+        assert_eq!(seeded.cell(Row::People(Channel::Mail, Person::Neutral), Column::Leisure), Level::Now);
+        // People: Safe's mail In work hours writes mail.safe; the first write seeds the rest and takes [reach] out.
+        choose_at(&path, "people.mail.safe", "work").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[attention]") && !text.contains("[reach]"), "{text}");
+        let a = read();
+        assert_eq!(behaviours::reading(&a, Channel::Mail, behaviours::Circle::Safe), Some(Behaviour::Work));
+        assert_eq!(a.cell(Row::People(Channel::Mail, Person::Neutral), Column::Leisure), Level::Now, "the seeded row kept");
+        let before = read();
+        // Sioul's own: Reminders off writes its three rows, no other.
+        choose_at(&path, "group.reminders", "off").unwrap();
+        let after = read();
+        for row in Row::ALL {
+            let named = matches!(row, Row::Own(Kind::Before | Kind::DayBefore | Kind::Dates));
+            for column in Column::ALL {
+                if !named {
+                    assert_eq!(after.cell(row, column), before.cell(row, column), "{} {column:?}", row.id());
+                }
+            }
+        }
+        assert_eq!(behaviours::group_reading(&after, Group::Reminders), Some("off"));
+        // A care switch: one row.
+        choose_at(&path, "care.move", "off").unwrap();
+        assert_eq!(behaviours::care(&read(), Kind::Move), Some(false));
+        assert_eq!(behaviours::care(&read(), Kind::Needs), Some(true));
+        // Back to what Sioul ships: the row taken out of the file.
+        choose_at(&path, "group.reminders", "awake").unwrap();
+        choose_at(&path, "people.mail.safe", "awake").unwrap();
+        let config = Config::load(&path).unwrap();
+        let said = config.attention.as_ref().unwrap();
+        assert!(said.words("mail.safe").is_none() && said.words("before").is_none(), "{:?}", std::fs::read_to_string(&path));
+        // The call screening's rows: refused through the same writer.
+        let screened = [(Row::People(Channel::Calls, Person::Stranger), [Some(Level::Now); 9])];
+        assert!(attention::apply_rows(&path, &config, &screened).unwrap_err().contains("screening"));
+        assert!(choose_at(&path, "people.calls.safe", "always").is_err(), "calls are set per phone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// On a computer, a phone in the sharing holds messages unless its entry
     /// says it does not give Sioul notification access (an older Sioul's,
     /// which says nothing, holds them); when every phone says no, the
