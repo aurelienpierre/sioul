@@ -322,6 +322,8 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
                 let names: Vec<String> = report.kept_both.iter().map(|(_, title)| title.clone()).filter(|t| !t.trim().is_empty()).collect();
                 tell(qt, shared, say("dav-kept-both", &[("n", report.kept_both.len().to_string()), ("names", names.join(", "))]));
             }
+            // A book whose groups stopped deciding who reaches you, its writers changed (review V3).
+            crate::addressbooks::tell_groups_stopped();
             // Moved here, a meeting in both calendars by then: both stay, yours to choose, said once (M7).
             for (kind, title) in &report.moved_both {
                 tell(qt, shared, moved_both_line(kind, title));
@@ -424,7 +426,8 @@ pub(crate) fn load_contact_photo(qt: &QtThread, shared: &Arc<Shared>, url: &str)
 /// writable book whatever the card's once two could be written).
 pub(crate) fn books() -> String {
     let config = load_config();
-    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
+    // A book its server refused to make is never offered: its cards would stay on this device alone (review V9).
+    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
     json(&rows)
 }
 
@@ -434,7 +437,7 @@ pub(crate) fn books() -> String {
 pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book: &str, confirmed: bool) -> String {
     let fail = |e: String| serde_json::json!({ "error": e }).to_string();
     let Some(from) = ours(key) else { return fail(tr().text("contact-gone", None)) };
-    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
+    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
     if collection_of(&from).is_some_and(|c| c.read_only) || target.read_only {
         return fail(tr().text("contact-read-only", None));
     }
@@ -444,8 +447,13 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     let Ok(text) = std::fs::read_to_string(&from) else { return fail(tr().text("contact-gone", None)) };
     let provider = sioul_core::capabilities::provider_of(load_config().account(&target.account));
     let losses = sioul_core::capabilities::contact_losses(&text, provider);
-    if !losses.is_empty() && !confirmed {
-        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>() }).to_string();
+    // What the move does to who may reach the person, when it crosses a book whose groups are held back (review V1).
+    let config = load_config();
+    let reach = contacts::read(&from, &collection_of(&from).unwrap_or_else(|| target.clone()))
+        .map(|card| sioul_core::addressbooks::reach_of_move(&[&card], &target, &config, &sioul_core::porch::Senders::load(&config), tr()))
+        .unwrap_or_default();
+    if (!losses.is_empty() || reach.crosses) && !confirmed {
+        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>(), "reach": if reach.crosses { reach.said } else { Vec::new() } }).to_string();
     }
     let to = contacts::new_path(&target);
     // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).

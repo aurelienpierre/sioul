@@ -345,15 +345,40 @@ fn writers_now(qt: &QtThread, shared: &Arc<Shared>, place: &str, now: &Sharing) 
     if state.writers == writers {
         return;
     }
-    let counted = addressbooks::groups_count(&book, &config).count;
     state.writers = writers;
+    state.writers_known = true;
     if state.save(&path).is_err() {
         return;
     }
-    if counted && !addressbooks::groups_count(&book, &config).count {
-        tell(qt, shared, say("books-groups-stopped-now", &[("name", book.name.clone())]));
-    }
+    tell_groups_stopped();
     crate::pim::show_pim(qt, shared);
+}
+
+/// One notice, of the kind for things to know, for each book whose groups
+/// stopped deciding who reaches the person since this device last told of
+/// it (review V3): when its writers change, when it is shared to write here
+/// or elsewhere, and once at the update for a book already so. It names the
+/// book and who can now write it, and says where to turn its groups on;
+/// marked told just before it is posted, so one per book and change.
+/// Posted where someone is at the computer, as Sioul's informative notices
+/// are; a phone posts none.
+pub(crate) fn tell_groups_stopped() {
+    use sioul_core::notice::{Kind, Notice, address};
+    let config = load_config();
+    for (book, writers) in addressbooks::groups_to_tell(&config) {
+        let who: Vec<String> = writers.iter().map(|w| if w == "owner" { tr().text("book-groups-owner", None) } else { w.strip_prefix("group:").unwrap_or(w).to_string() }).collect();
+        let pairs = [("name", book.name.clone()), ("who", who.join(", "))];
+        let notice = Notice::new(address::settings("addressbooks"), Kind::Minor, say("books-groups-notice-title", &pairs), say("books-groups-notice-body", &pairs));
+        let claim: crate::tell::Claim = Box::new(move || match addressbooks::mark_groups_told(&book, &writers) {
+            Ok(()) => true,
+            Err(e) => {
+                // Not written: told by none, rather than again and again.
+                eprintln!("Sioul: address books: {e}");
+                false
+            }
+        });
+        crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
+    }
 }
 
 /// Who a book is shared with, in one line: "Only you.", "Sam can read it. The office can change it."

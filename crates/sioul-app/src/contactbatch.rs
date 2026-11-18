@@ -101,6 +101,9 @@ struct PlanView {
     losses: String,
     /// Who sees the book a move fills, or "".
     shared: String,
+    /// What it does to who may reach the person, crossing a book whose
+    /// groups are held back (review V1); for a move, that it stays so else.
+    reach: Vec<String>,
     /// "14 cannot change:", then each.
     cannot_line: String,
     cannot: Vec<Cannot>,
@@ -108,9 +111,26 @@ struct PlanView {
     previews: Vec<Preview>,
 }
 
+/// What a move or a group does to who may reach the person (review V1),
+/// counted on the cards it changes, by the lists' own step for groups.
+fn reach_of(shared: &Shared, asked: &Asked, plan: &Plan) -> Vec<String> {
+    let config = load_config();
+    let senders = sioul_core::porch::Senders::load(&config);
+    let changed: BTreeSet<String> = plan.steps.iter().map(|(_, step)| step.path().display().to_string()).collect();
+    let cards: Vec<Contact> = chosen(shared, &asked.keys).into_iter().filter(|c| changed.contains(&c.key)).collect();
+    let cards: Vec<&Contact> = cards.iter().collect();
+    let group = asked.group.trim().to_string();
+    match asked.action.as_str() {
+        "move" => sioul_core::addressbooks::find(&asked.book).map(|target| sioul_core::addressbooks::reach_of_move(&cards, &target, &config, &senders, tr()).said).unwrap_or_default(),
+        "group-add" | "title" if !group.is_empty() => Some(sioul_core::addressbooks::reach_of_groups(&cards, std::slice::from_ref(&group), &config, &senders, tr())).filter(|s| !s.is_empty()).into_iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// What the batch asked (`text`, JSON {keys, action, book, group}) would do,
 /// said before it runs: its count, its sentence, what cannot change and why.
 pub(crate) fn plan(shared: &Arc<Shared>, text: &str) -> String {
+    let shared_state: &Shared = shared;
     let asked: Asked = serde_json::from_str(text).unwrap_or_default();
     let (plan, book) = match planned(shared, &asked) {
         Ok(found) => found,
@@ -139,8 +159,9 @@ pub(crate) fn plan(shared: &Arc<Shared>, text: &str) -> String {
         "move" if count > 0 => sioul_core::addressbooks::find(&asked.book).map(|b| shared_line(&b)).unwrap_or_default(),
         _ => String::new(),
     };
+    let reach = if count == 0 { Vec::new() } else { reach_of(shared_state, &asked, &plan) };
     let cannot_line = if plan.cannot.is_empty() { String::new() } else { say("batch-cannot", &[("n", plan.cannot.len().to_string())]) };
-    json(&PlanView { count, sentence, note, losses, shared, cannot_line, cannot: plan.cannot, previews: plan.previews })
+    json(&PlanView { count, sentence, note, losses, shared, reach, cannot_line, cannot: plan.cannot, previews: plan.previews })
 }
 
 /// Runs the batch asked, as its plan says now; "" once started, else why not.

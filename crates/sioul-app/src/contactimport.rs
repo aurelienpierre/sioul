@@ -336,16 +336,20 @@ struct Asked {
     /// The columns kept under this name ("" not kept), at the run.
     #[serde(default)]
     keep_as: String,
+    /// The cards here sharing a UID with a card of the file under another
+    /// name, ticked one by one to be completed all the same (review V5).
+    #[serde(default)]
+    complete_also: Vec<String>,
+    /// The file's own groups that one of the person's lists reads, kept on
+    /// its new cards (off by default, review V6).
+    #[serde(default)]
+    keep_listed: bool,
 }
 
 /// The word of what a card already here would gain: "e-mail address jeanne@example.org".
 fn gain(kind: &str, value: &str) -> String {
     say(&format!("import-gain-{kind}"), &[("value", value.chars().take(120).collect())])
 }
-
-/// The cards found again, one line each with what the file would add, the
-/// first hundred (the count says the rest).
-const MOST_MATCHES_SHOWN: usize = 100;
 
 /// The import planned off the window's thread (`text`, JSON {fields, book,
 /// new_account, new_name, groups, groups_here, complete, titles,
@@ -386,14 +390,60 @@ pub(crate) fn plan(qt: &QtThread, shared: &Arc<Shared>, text: &str) {
         let groups: Vec<String> = asked.groups.split(',').map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).collect();
         let (removed, _) = crate::mail::hidden_pim(&shared);
         let existing: Vec<sioul_core::contacts::Contact> = sioul_core::contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
-        let options = contactimport::Options { groups, groups_here: asked.groups_here, complete: asked.complete, titles: asked.titles, international: asked.international };
+        // The groups one of the person's lists reads, by the lists' own function (review V6).
+        let senders = sioul_core::porch::Senders::load(&config);
+        let listed: std::collections::BTreeSet<String> = cards
+            .cards
+            .iter()
+            .flat_map(|(_, text)| sioul_core::contacts::contact_quiet(&sioul_core::lines::unfold(text), Path::new(""), &collection).categories)
+            .filter(|g| senders.category_standing(g).is_some())
+            .map(|g| sioul_core::porch::category_key(&g))
+            .collect();
+        let options = contactimport::Options {
+            groups,
+            groups_here: asked.groups_here,
+            complete: asked.complete,
+            titles: asked.titles,
+            international: asked.international,
+            complete_also: asked.complete_also.clone(),
+            listed,
+            keep_listed: asked.keep_listed,
+        };
         let imported = contactimport::plan(&cards, &existing, &collection, &options, crate::duplicates::region());
+        // What the new cards do to who may reach the person in a book whose groups are held back (review V1).
+        let new_cards: Vec<sioul_core::contacts::Contact> = imported
+            .plan
+            .steps
+            .iter()
+            .filter_map(|(_, step)| match step {
+                sioul_core::contactbatch::Step::Write { path, before: None, after } => Some(sioul_core::contacts::contact_quiet(&sioul_core::lines::unfold(after), path, &collection)),
+                _ => None,
+            })
+            .collect();
+        let reach = sioul_core::addressbooks::reach_of_import(&new_cards, &collection, &config, &senders, tr());
+        // The file's own groups (review V6): each with its cards; those a list reads kept only when ticked.
+        let groups_line = if imported.file_groups.is_empty() {
+            String::new()
+        } else {
+            say("import-file-groups", &[("groups", imported.file_groups.iter().map(|g| format!("{} ({})", g.name, g.cards)).collect::<Vec<_>>().join(", "))])
+        };
+        let listed_groups: Vec<String> = imported
+            .file_groups
+            .iter()
+            .filter(|g| g.listed)
+            .map(|g| {
+                let list = senders.category_standing(&g.name).map(|s| tr().text(&format!("sender-list-{}", s.as_str()), None)).unwrap_or_default();
+                say("import-keep-listed-one", &[("group", g.name.clone()), ("list", list), ("n", g.cards.to_string())])
+            })
+            .collect();
+        let keep_listed = if listed_groups.is_empty() { String::new() } else { say("import-keep-listed", &[("groups", listed_groups.join("; "))]) };
         let n = |count: usize| count.to_string();
         let summary = say("import-summary", &[("new", n(imported.new)), ("book", collection.name.clone())]);
         let more: Vec<String> = [
             rows.filter(|&rows| rows > imported.read).map(|rows| say("import-read-of", &[("read", n(imported.read)), ("rows", n(rows))])),
             Some(broken_line(&imported.broken)).filter(|l| !l.is_empty()),
             (imported.here > 0).then(|| say("import-here", &[("n", n(imported.here))])),
+            (imported.other_names > 0).then(|| say("import-other-names", &[("n", n(imported.other_names))])),
             (imported.twice > 0).then(|| say("import-twice", &[("n", n(imported.twice))])),
             (imported.apart > 0).then(|| say("import-apart", &[("n", n(imported.apart))])),
             (imported.read_only > 0).then(|| say("import-read-only", &[("n", n(imported.read_only))])),
@@ -401,26 +451,28 @@ pub(crate) fn plan(qt: &QtThread, shared: &Arc<Shared>, text: &str) {
             (imported.titled > 0 && !asked.titles).then(|| say("import-titled", &[("n", n(imported.titled))])),
             (imported.rewritten > 0).then(|| say("import-rewritten", &[("n", n(imported.rewritten))])),
             (cards.birthdays_as_written > 0).then(|| say("import-birthdays", &[("n", n(cards.birthdays_as_written))])),
+            Some(groups_line).filter(|l| !l.is_empty()),
+            Some(reach).filter(|l| !l.is_empty()),
         ]
         .into_iter()
         .flatten()
         .collect();
-        // Those already here, card by card, with what the file would add: read before "Complete them" is ticked.
+        // Those already here, every one, with what the file would add: read before "Complete them" is
+        // ticked (review V9: none changes unseen); one under another name with its own box (V5).
         let gaining: Vec<&contactimport::Match> = imported.matches.iter().filter(|m| !m.adds.is_empty()).collect();
         let matches: Vec<serde_json::Value> = gaining
             .iter()
-            .take(MOST_MATCHES_SHOWN)
             .map(|m| {
                 let adds: Vec<String> = m.adds.iter().map(|(kind, value)| gain(kind, value)).collect();
-                serde_json::json!({ "name": m.name, "adds": adds.join(" · "), "in_file": m.in_file })
+                let other = if m.other_name.is_empty() { String::new() } else { say("import-other-name", &[("name", m.other_name.clone())]) };
+                serde_json::json!({ "name": m.name, "adds": adds.join(" · "), "in_file": m.in_file, "key": m.key, "other": other, "ticked": asked.complete_also.contains(&m.key) })
             })
             .collect();
-        let matches_more = gaining.len().saturating_sub(MOST_MATCHES_SHOWN);
         let count = imported.plan.steps.len();
         let view = serde_json::json!({
             "step": "planned", "name": name, "line": summary, "more": more, "count": count,
-            "matches": matches, "matches_more": if matches_more > 0 { say("import-gains-more", &[("n", n(matches_more))]) } else { String::new() },
-            "gaining": gaining.len(), "complete": asked.complete,
+            "matches": matches, "gaining": gaining.len(), "complete": asked.complete,
+            "keep_listed": keep_listed, "keep_listed_ticked": asked.keep_listed,
         });
         // Kept for its run, while that file is still the one shown.
         if let Ok(mut kept) = SHOWN.lock()

@@ -221,7 +221,7 @@ ColumnLayout {
                 id: ask
 
                 property string action: ""
-                property var plan: ({ count: 0, sentence: "", note: "", losses: "", shared: "", cannot_line: "", cannot: [], previews: [] })
+                property var plan: ({ count: 0, sentence: "", note: "", losses: "", shared: "", reach: [], cannot_line: "", cannot: [], previews: [] })
                 // The title's move: each card's box, by its file; ticked at first only when sure.
                 property var ticked: ({})
                 readonly property var tickedKeys: (ask.plan.previews || []).filter(p => ask.ticked[p.key] === true).map(p => p.key)
@@ -352,6 +352,21 @@ ColumnLayout {
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: bar.theme.warm
+                        }
+                        // What it does to who may reach you, across a book whose groups are held back.
+                        Repeater {
+                            model: ask.plan.reach || []
+
+                            delegate: Label {
+                                required property string modelData
+
+                                objectName: "batchReach"
+                                Layout.fillWidth: true
+                                text: modelData
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: bar.theme.text
+                            }
                         }
                         // Who sees the book a move fills.
                         Label {

@@ -411,7 +411,7 @@ ColumnLayout {
                     spacing: 4
 
                     Repeater {
-                        model: setup.question.from === line.modelData.place ? [setup.question.sentence || "", setup.question.losses || "", setup.question.shared || ""].filter(l => l !== "") : []
+                        model: setup.question.from === line.modelData.place ? [setup.question.sentence || "", setup.question.losses || "", setup.question.shared || ""].concat(setup.question.reach || []).filter(l => l !== "") : []
 
                         delegate: Label {
                             required property string modelData

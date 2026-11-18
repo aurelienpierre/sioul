@@ -36,6 +36,10 @@ SafeDialog {
     property var fields: []
     // Something changed since the count was asked: it is asked again before Import.
     property bool edited: true
+    // The cards here under another name to complete all the same, by file, ticked one by one (review V5).
+    property var completeAlso: []
+    // The file's own groups that a list reads, kept on its new cards (off at first, review V6).
+    property bool keepListed: false
 
     // Shown when a step comes; closed when the import is.
     function follow() {
@@ -48,6 +52,8 @@ SafeDialog {
             if (another) {
                 complete.checked = false
                 groupsHere.checked = false
+                dialog.completeAlso = []
+                dialog.keepListed = false
                 international.checked = dialog.state.region === true && dialog.state.kind === "csv"
             }
         }
@@ -77,7 +83,9 @@ SafeDialog {
             complete: complete.checked,
             titles: titles.checked,
             international: international.checked,
-            keep_as: keepAs.text
+            keep_as: keepAs.text,
+            complete_also: dialog.completeAlso,
+            keep_listed: dialog.keepListed
         })
     }
 
@@ -353,28 +361,69 @@ SafeDialog {
                 font.weight: Font.DemiBold
                 color: dialog.theme.text
             }
-            Repeater {
-                model: dialog.state.step === "planned" ? dialog.state.matches || [] : []
+            // Every card that would gain, in a list that draws only what shows (review V9); a card
+            // whose identifier is here under another name has its own box, unticked (review V5).
+            ListView {
+                id: gains
 
-                delegate: Label {
-                    required property var modelData
-
-                    objectName: "importGain"
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    text: "•  " + modelData.name + (modelData.in_file ? " " + dialog.sioul.text("import-gain-in-file") : "") + " — " + modelData.adds
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: dialog.theme.text
-                }
-            }
-            Label {
-                visible: dialog.state.step === "planned" && (dialog.state.matches_more || "") !== ""
+                objectName: "importGains"
+                visible: dialog.state.step === "planned" && count > 0
                 Layout.fillWidth: true
                 Layout.leftMargin: 12
-                text: dialog.state.matches_more || ""
-                textFormat: Text.PlainText
-                color: dialog.theme.muted
+                Layout.preferredHeight: Math.min(contentHeight, 320)
+                clip: true
+                model: dialog.state.step === "planned" ? dialog.state.matches || [] : []
+
+                delegate: Item {
+                    id: gain
+
+                    required property var modelData
+
+                    width: gains.width
+                    height: Math.max(gainLine.implicitHeight, gainBox.visible ? gainBox.implicitHeight : 0) + 4
+
+                    CheckBox {
+                        id: gainBox
+
+                        objectName: "importGainBox"
+                        visible: gain.modelData.other !== ""
+                        checked: gain.modelData.ticked === true
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        Accessible.name: gain.modelData.name
+                        onToggled: {
+                            const next = dialog.completeAlso.filter(k => k !== gain.modelData.key)
+                            if (gainBox.checked)
+                                next.push(gain.modelData.key)
+                            dialog.completeAlso = next
+                            dialog.count()
+                        }
+                    }
+                    Label {
+                        id: gainLine
+
+                        objectName: "importGain"
+                        anchors.left: gainBox.visible ? gainBox.right : parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (gainBox.visible ? "" : "•  ") + gain.modelData.name + (gain.modelData.in_file ? " " + dialog.sioul.text("import-gain-in-file") : "") + (gain.modelData.other !== "" ? " (" + gain.modelData.other + ")" : "") + " — " + gain.modelData.adds
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: dialog.theme.text
+                    }
+                }
+            }
+            // The file's own groups that one of your lists reads: kept on its new cards only when ticked (review V6).
+            CheckBox {
+                objectName: "importKeepListed"
+                visible: dialog.state.step === "planned" && (dialog.state.keep_listed || "") !== ""
+                Layout.fillWidth: true
+                checked: dialog.keepListed
+                text: dialog.theme.plain(dialog.state.keep_listed || "")
+                onToggled: {
+                    dialog.keepListed = checked
+                    dialog.count()
+                }
             }
         }
     }

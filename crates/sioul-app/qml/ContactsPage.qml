@@ -145,14 +145,16 @@ Item {
     readonly property var noMail: ({ who: "neutral", choice: "", said: "", own: [], choices: [] })
     property var mail: page.noMail
 
-    // Into another address book: asked first when it would not keep everything.
+    // Into another address book: asked first when it would not keep everything,
+    // or when it changes who may reach you (a book whose groups are held back).
     function moveTo(book, confirmed) {
         if (!page.person || book.id === page.person.place)
             return
         const answer = JSON.parse(page.sioul.moveContact(page.openKey, book.id, confirmed))
-        if (answer.losses) {
+        if ((answer.losses || []).length > 0 || (answer.reach || []).length > 0) {
             bookMove.book = book
-            bookMove.ask(book.name, page.sioul.textArgs("contact-book-move-ask", JSON.stringify({ place: book.name, list: answer.losses.join(", ") })), page.sioul.text("move-anyway"))
+            const losses = (answer.losses || []).length > 0 ? [page.sioul.textArgs("contact-book-move-ask", JSON.stringify({ place: book.name, list: answer.losses.join(", ") }))] : []
+            bookMove.ask(book.name, (answer.reach || []).concat(losses).join(" "), page.sioul.text("move-anyway"))
             return
         }
         if (answer.error)
