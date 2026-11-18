@@ -628,7 +628,7 @@ pub struct TaskAreas {
     pub personal_categories: Vec<String>,
     /// The projects that give their tasks an area, by id, with that area
     /// (`Project::area_of`): those whose record says one, and those for a
-    /// client, work's while unsaid (`Project::gives_its_tasks_an_area`).
+    /// client, work's while unsaid (with the older box, work's and the box's).
     pub projects: Vec<(String, Area)>,
 }
 
@@ -665,9 +665,9 @@ impl TaskAreas {
     }
 
     /// The projects that give their tasks an area, with it, by id
-    /// (`Project::gives_its_tasks_an_area`, `Project::area_of`).
+    /// (`Project::area_of`): an unsaid project without a client gives none.
     pub fn of_projects(projects: &[crate::projects::Project]) -> Vec<(String, Area)> {
-        projects.iter().filter(|c| c.gives_its_tasks_an_area()).map(|c| (c.id.clone(), c.area_of())).collect()
+        projects.iter().filter_map(|c| c.area_of().map(|area| (c.id.clone(), area))).collect()
     }
 
     /// A task's area: its own (`X-SIOUL-AREA`), else what its categories,

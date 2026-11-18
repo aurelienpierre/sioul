@@ -67,8 +67,9 @@ pub struct ProjectView {
     pub client: String,
     pub rate: f64,
     pub budget: String,
-    /// What its record says it is for, in the files' words ("admin+leisure";
-    /// an older "personal" read so); "" when unsaid, work's (`Project::area_of`).
+    /// What its form's switches show (`projects::form_area`), in the files'
+    /// words ("admin+leisure"; an older "personal" read so, all three beside a
+    /// client); "" when unsaid.
     pub area: String,
     /// Open to AI agents (`Project::ai`).
     pub ai: bool,
@@ -93,15 +94,19 @@ pub struct ProjectRow {
     pub client: String,
     pub open_tasks: usize,
     pub unbilled: String,
-    /// What it is for, in the files' words ("work", "admin+leisure"):
-    /// `Project::area_of`, work's when unsaid. The Projects page's filter
-    /// lists it while one of them is ticked (docs/areas.md).
+    /// What it shows for, in the files' words ("work", "admin+leisure"):
+    /// `Project::area_shown`; "" when it shows whatever the ticks (unsaid,
+    /// no client, no open task). The Projects page's filter lists it while
+    /// one of them is ticked (docs/areas.md). Until 0.0.11, `personal`.
     pub area: String,
     /// Open to AI agents (`Project::ai`).
     pub ai: bool,
 }
 
-pub fn rows(loaded: &Loaded, entries: &[Entry], projects: &[Project]) -> Vec<ProjectRow> {
+/// Every project, for the list; `areas`, how tasks get their area (the
+/// person's words, `TaskAreas::of_config`): an unsaid project without a
+/// client shows for its open tasks' areas (`Project::area_shown`).
+pub fn rows(loaded: &Loaded, entries: &[Entry], projects: &[Project], areas: &crate::areas::TaskAreas) -> Vec<ProjectRow> {
     let mut out: Vec<ProjectRow> = projects
         .iter()
         .map(|c| {
@@ -114,7 +119,7 @@ pub fn rows(loaded: &Loaded, entries: &[Entry], projects: &[Project]) -> Vec<Pro
                 client: c.client.clone().unwrap_or_default(),
                 open_tasks: loaded.tasks.iter().filter(|t| t.status.is_open() && t.projects.iter().any(|x| x == &c.id)).count(),
                 unbilled: if unbilled > 0 { duration(unbilled) } else { String::new() },
-                area: c.area_of().id(),
+                area: c.area_shown(&loaded.tasks, areas).map(crate::areas::Area::id).unwrap_or_default(),
                 ai: c.ai,
             }
         })
@@ -414,7 +419,7 @@ mod tests {
         assert_eq!(page.moments.last().map(|m| m.detail.as_str()), Some("From Jane"));
         assert_eq!((page.open_tasks, page.done_tasks, page.unbilled.as_str()), (1, 1, "2 h 30"));
         assert_eq!(page.unbilled_amount, tr.money(crate::money::Money(15000)));
-        let listed = rows(&loaded, &entries, &[Project { id: "housing".into(), title: "Housing".into(), ..Project::default() }, lumen]);
+        let listed = rows(&loaded, &entries, &[Project { id: "housing".into(), title: "Housing".into(), ..Project::default() }, lumen], &crate::areas::TaskAreas::usual());
         assert_eq!(listed[0].id, "lumen", "projects first");
         let _ = std::fs::remove_dir_all(&root);
     }

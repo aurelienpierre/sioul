@@ -68,13 +68,13 @@ pub fn entries(sessions: &[Session], tasks: &[Task], projects: &[Project], zone:
 }
 
 /// What a stretch of time is for, as the Time page's filter reads it
-/// (docs/areas.md, "A page's filter by area"): its project's area
-/// (`Project::area_of`, work's when unsaid); with no project known, its
-/// task's (`TaskAreas::of`); none for time noted on nothing, or on a project
-/// gone, which every tick shows.
+/// (docs/areas.md, "A page's filter by area"): its project's, as the
+/// Projects page shows it (`Project::area_shown`); with no project known,
+/// its task's (`TaskAreas::of`); none for time noted on nothing, on a project
+/// gone, or on one that shows whatever the ticks, which every tick shows.
 pub fn area_of(entry: &Entry, projects: &[Project], tasks: &[Task], areas: &crate::areas::TaskAreas) -> Option<crate::areas::Area> {
     if let Some(project) = projects.iter().find(|p| !entry.project.is_empty() && p.id == entry.project) {
-        return Some(project.area_of());
+        return project.area_shown(tasks, areas);
     }
     if !entry.project.is_empty() {
         return None;
@@ -103,7 +103,10 @@ pub struct ProjectTime {
     pub title: String,
     /// Its place among the colours of the bars.
     pub index: usize,
+    /// Its minutes in the period that the filter shows.
     pub minutes: u32,
+    /// Those minutes in words; "45 min of 2 h" when the filter folds part of
+    /// them (time with no project, each stretch by its task's area).
     pub time: String,
     pub billable: bool,
     /// Billable time not on an invoice yet, whenever it was spent.
@@ -159,12 +162,17 @@ pub struct TimeView {
     pub period: String,
     /// The first day shown, to move from.
     pub from: String,
+    /// What the filter shows of the period, in words ("31 h").
     pub total: String,
+    /// The line under the title: "31 h in all"; when the filter folds some
+    /// of the period, "12 h shown, 31 h in all".
+    pub total_line: String,
     pub projects: Vec<ProjectTime>,
     pub bars: Vec<Bar>,
     pub most: u32,
     pub entries: Vec<EntryView>,
-    /// "Nothing noted this week.", when so.
+    /// "Nothing noted this week.", when so; "Nothing noted for what is
+    /// ticked; 31 h in all.", when the filter folds all of it.
     pub sentence: String,
 }
 
@@ -223,11 +231,17 @@ pub fn bounds(period: &str, anchor: Date) -> (Date, Date) {
     }
 }
 
-/// What the Time page shows for `period` around `anchor`, every project or one.
-pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str) -> bool, period: &str, anchor: Date, project: Option<&str>, default_rate: f64, today: Date, tr: &Translator) -> TimeView {
+/// What the Time page shows for `period` around `anchor`, every project or
+/// one, of the stretches `shows` keeps (the page's filter by area,
+/// docs/areas.md): the bars, the hours and the list follow it, and the lines
+/// say when it folds some of the period; what is left to bill is always
+/// whole, as invoices count it.
+#[allow(clippy::too_many_arguments)]
+pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str) -> bool, period: &str, anchor: Date, project: Option<&str>, default_rate: f64, today: Date, tr: &Translator, shows: &dyn Fn(&Entry) -> bool) -> TimeView {
     let (from, to) = bounds(period, anchor);
     let wanted = |e: &&Entry| project.is_none_or(|p| e.project == p);
-    let shown: Vec<&Entry> = all.iter().filter(wanted).filter(|e| e.day >= from && e.day <= to).collect();
+    let period_of: Vec<&Entry> = all.iter().filter(wanted).filter(|e| e.day >= from && e.day <= to).collect();
+    let shown: Vec<&Entry> = period_of.iter().copied().filter(|e| shows(e)).collect();
     // Projects with time in the period, the most first; then those with time left to bill.
     let mut ids: Vec<String> = Vec::new();
     for e in &shown {
@@ -237,7 +251,7 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
     }
     let minutes_of = |id: &str| shown.iter().filter(|e| e.project == id).map(|e| e.minutes).sum::<u32>();
     ids.sort_by_key(|id| std::cmp::Reverse(minutes_of(id)));
-    for e in all.iter().filter(wanted).filter(|e| e.billable && e.invoice.is_empty()) {
+    for e in all.iter().filter(wanted).filter(|e| e.billable && e.invoice.is_empty() && shows(e)) {
         if !ids.contains(&e.project) {
             ids.push(e.project.clone());
         }
@@ -250,12 +264,16 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
             let rate = found.and_then(|c| c.rate).unwrap_or(default_rate);
             let unbilled_minutes: u32 = all.iter().filter(|e| e.project == *id && e.billable && e.invoice.is_empty()).map(|e| e.minutes).sum();
             let minutes = minutes_of(id);
+            let whole: u32 = period_of.iter().filter(|e| e.project == *id).map(|e| e.minutes).sum();
+            let mut args = crate::i18n::args();
+            args.set("shown", duration(minutes));
+            args.set("all", duration(whole));
             ProjectTime {
                 id: id.clone(),
                 title: found.map_or_else(|| tr.text(if id.is_empty() { "time-no-project" } else { "time-gone-project" }, None), |c| c.title.clone()),
                 index,
                 minutes,
-                time: duration(minutes),
+                time: if whole > minutes { tr.text("time-part", Some(&args)) } else { duration(minutes) },
                 billable: found.is_some_and(Project::is_for_client),
                 unbilled_minutes,
                 unbilled: if unbilled_minutes > 0 { duration(unbilled_minutes) } else { String::new() },
@@ -305,6 +323,11 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
         days
     };
     let total: u32 = shown.iter().map(|e| e.minutes).sum();
+    let whole: u32 = period_of.iter().map(|e| e.minutes).sum();
+    let mut totals = crate::i18n::args();
+    totals.set("shown", duration(total));
+    totals.set("all", duration(whole));
+    totals.set("time", duration(total));
     let mut listed: Vec<&&Entry> = shown.iter().collect();
     listed.sort_by_key(|e| std::cmp::Reverse(e.start));
     let title = match period {
@@ -321,6 +344,7 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
         period: period.to_string(),
         from: from.to_string(),
         total: duration(total),
+        total_line: if whole > total { tr.text("time-total-shown", Some(&totals)) } else { tr.text("time-total", Some(&totals)) },
         most: bars.iter().map(|b| b.minutes).max().unwrap_or(0),
         bars,
         entries: listed
@@ -345,7 +369,11 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
                 kind_said: String::new(),
             })
             .collect(),
-        sentence: if total == 0 { tr.text(&format!("time-nothing-{period}"), None) } else { String::new() },
+        sentence: match (total, whole) {
+            (0, 0) => tr.text(&format!("time-nothing-{period}"), None),
+            (0, _) => tr.text("time-nothing-ticked", Some(&totals)),
+            _ => String::new(),
+        },
         projects: times,
     }
 }
@@ -411,7 +439,7 @@ mod tests {
         assert!(all[0].billable && !all[3].billable && !all[4].billable);
         let tr = Translator::new("en");
         let today: Date = "2026-10-07".parse().unwrap();
-        let week = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr);
+        let week = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &|_| true);
         assert_eq!(week.total, "3 h 45");
         assert_eq!(week.bars.len(), 7);
         assert_eq!((week.bars[0].minutes, week.bars[1].minutes, week.bars[2].minutes), (90, 90, 45));
@@ -419,9 +447,32 @@ mod tests {
         assert_eq!((lumen.id.as_str(), lumen.minutes, lumen.unbilled_minutes), ("lumen", 180, 120));
         assert_eq!(lumen.unbilled_amount, tr.money(Money(12000)));
         assert_eq!(week.entries[0].title, "HOUSING", "newest first, titled by its project");
-        let year = view(&all, &projects, &|_| false, "year", today, Some("lumen"), 40.0, today, &tr);
+        let year = view(&all, &projects, &|_| false, "year", today, Some("lumen"), 40.0, today, &tr, &|_| true);
         assert_eq!((year.bars.len(), year.bars[8].minutes, year.bars[9].minutes), (12, 15, 180));
         assert_eq!(amount(50, 60.0), Money(5000));
         assert_eq!((duration(45).as_str(), duration(120).as_str(), duration(150).as_str()), ("45 min", "2 h", "2 h 30"));
+        assert_eq!(week.total_line, "3 h 45 in all");
+        // The filter folds Lumen's time (its project's area not ticked): the lines say the whole
+        // beside what shows; what is left to bill is never folded.
+        let housing_only = |e: &Entry| e.project == "housing";
+        let folded = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &housing_only);
+        assert_eq!((folded.total.as_str(), folded.total_line.as_str(), folded.sentence.as_str()), ("45 min", "45 min shown, 3 h 45 in all", ""));
+        assert!(folded.projects.iter().all(|p| p.id == "housing") && folded.entries.iter().all(|e| e.project == "housing"), "Lumen folds");
+        let nothing = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &|_| false);
+        assert_eq!((nothing.total.as_str(), nothing.sentence.as_str()), ("0 min", "Nothing noted for what is ticked; 3 h 45 in all."));
+        // What is left to bill, whole whatever the filter: the same as unfiltered for every line it shows.
+        let whole = view(&all, &projects, &|_| false, "year", today, Some("lumen"), 40.0, today, &tr, &|_| true);
+        let lumen_folded_around = view(&all, &projects, &|_| false, "year", today, None, 40.0, today, &tr, &|e: &Entry| e.project == "lumen" && e.day == today.yesterday().unwrap());
+        let lumen_line = lumen_folded_around.projects.iter().find(|p| p.id == "lumen").unwrap();
+        assert_eq!((lumen_line.unbilled_minutes, lumen_line.unbilled_amount.clone()), (whole.projects[0].unbilled_minutes, whole.projects[0].unbilled_amount.clone()));
+        // Time with no project, its stretches folded one by one by their task's area: its line says it is partial.
+        let mut mixed = all.clone();
+        for (e, task) in mixed.iter_mut().zip(["work", "work", "home", "home", "home"]) {
+            e.project = String::new();
+            e.task = task.into();
+        }
+        let partial = view(&mixed, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &|e: &Entry| e.task == "home");
+        let none = partial.projects.iter().find(|p| p.id.is_empty()).unwrap();
+        assert_eq!((none.minutes, none.time.as_str()), (105, "1 h 45 of 3 h 45"));
     }
 }
