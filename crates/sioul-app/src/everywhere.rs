@@ -189,15 +189,19 @@ impl Look {
     }
 
     /// When to look again by itself: a reason's end, the next night or nap
-    /// when sleep counts, the time's end while do-not-disturb's layer reads
-    /// it, the end of Expecting a call (Unix seconds).
+    /// when sleep counts, the next busy stretch's start within the day while
+    /// "While busy" is on (review B11: an event begins by the clock, and a
+    /// phone's mode must not wait for its background service's next step),
+    /// the time's end while do-not-disturb's layer reads it, the end of
+    /// Expecting a call (Unix seconds).
     fn next_change(&self) -> Option<i64> {
         let stamp = self.now.timestamp().as_second();
         let night = if self.config.dnd.sleep { blocks(&self.now).kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.start > stamp).map(|k| k.start).min() } else { None };
+        let busy = if self.config.dnd.focus { sioul_core::busy::next_start(stamp) } else { None };
         let time = if self.state.gates() { self.mode.until.as_ref().map(|u| u.timestamp().as_second()) } else { None };
         let through = crate::calls::through_now(&self.switch).filter(|t| t.holds(stamp * 1000) && t.until > 0).map(|t| (t.until + 999) / 1000);
         let reachable = self.state.reachable.as_ref().and_then(|r| r.until);
-        [self.state.next_end(), night, time, through, reachable].into_iter().flatten().filter(|t| *t > stamp).min()
+        [self.state.next_end(), night, busy, time, through, reachable].into_iter().flatten().filter(|t| *t > stamp).min()
     }
 }
 

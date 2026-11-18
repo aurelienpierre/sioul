@@ -129,6 +129,18 @@ pub fn holding_of(events: &[Occurrence], timer: Option<(i64, i64)>, now: i64) ->
     holding_in(&stretches_of(events, timer, i64::MIN, i64::MAX), now)
 }
 
+/// When the next busy stretch begins within a day of `now`, so that a
+/// phone's do-not-disturb wakes at an event's start rather than at its
+/// background service's next step (review B11).
+pub fn next_start(now: i64) -> Option<i64> {
+    next_start_in(&stretches(now, now + DAY), now)
+}
+
+/// The first start of `stretches` after `now`.
+pub fn next_start_in(stretches: &[(i64, i64)], now: i64) -> Option<i64> {
+    stretches.iter().map(|(a, _)| *a).filter(|a| *a > now).min()
+}
+
 /// The stretch of `stretches` that holds at `now`.
 pub fn holding_in(stretches: &[(i64, i64)], now: i64) -> Option<(i64, i64)> {
     stretches.iter().copied().find(|(a, b)| *a <= now && now < *b)
@@ -220,5 +232,8 @@ mod tests {
         assert_eq!(holding_in(&[(5, 20), (30, 45)], 30), Some((30, 45)));
         assert_eq!(holding_in(&[(5, 20), (30, 45)], 20), None);
         assert!(stretches(10, 10).is_empty());
+        // The next start after now: one under way (cut at now) is no start to wake for.
+        assert_eq!(next_start_in(&merged(vec![(0, 50), (70, 90), (120, 130)], 30, 200), 30), Some(70));
+        assert_eq!(next_start_in(&[(30, 45)], 30), None);
     }
 }
