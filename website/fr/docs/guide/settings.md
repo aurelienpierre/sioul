@@ -31,7 +31,7 @@ La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affi
 
 <figure markdown="span">
   [![L’onglet Heures des Paramètres : « Heures de travail », chaque jour de la semaine coché ou non, avec ses plages horaires, d’un début à une fin, et une phrase sur ce qu’elles font ; puis « Heures pour vos démarches », réglées de la même façon.](../assets/screens/fr/settings-hours.png){ loading=lazy }](../assets/screens/fr/settings-hours.png "Ouvrir l’image en grand")
-  <figcaption>Deux semaines : travail, vos démarches. Puis les repas, le repos et le sommeil, et les congés.</figcaption>
+  <figcaption>Deux semaines : travail, vos démarches.</figcaption>
 </figure>
 
 - **Heures de travail** : ces jours et à ces heures, le travail peut vous joindre. En dehors, il se repose.

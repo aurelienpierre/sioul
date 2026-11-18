@@ -145,6 +145,7 @@ Item {
             verify(yOf(heading) >= 0 && yOf(heading) < root.height / 2, "their heading in view")
             verify(yOf(sections[0]) + sections[0].height <= yOf(off) + 0.5, "before the days off")
             compare(walk(page, i => i.visible && i.text === "set-hours-group", []).length, 1, "the hours' heading once")
+            compare(walk(page, i => i.visible && i.text === "needs-title-help", []).length, 1, "their sentence said once, by the block")
         }
 
         // Health's ⚙: a line, and a button that closes it and opens them where they are.

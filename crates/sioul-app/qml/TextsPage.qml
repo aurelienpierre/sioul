@@ -67,8 +67,6 @@ Item {
 
     // The question before a conversation is deleted, for the window's tests.
     readonly property alias deleteAsk: deleteChoice
-    // The conversation open, by its id ("+33199001234"), and texts.rs's
-    // `conversation` for it: {id, title, messages, drafts, can_write, group}.
     // The page's ⚙, open at one of its settings (from a link by key: SettingDoor.qml), or closed.
     function openSettings(open, key) {
         textsSettings.show(open)
@@ -76,6 +74,8 @@ Item {
             Qt.callLater(() => textsSettings.scrollTo(key))
     }
 
+    // The conversation open, by its id ("+33199001234"), and texts.rs's
+    // `conversation` for it: {id, title, messages, drafts, can_write, group}.
     property string openId: ""
     property string talkText: ""
     readonly property var talk: page.talkText ? JSON.parse(page.talkText) : null
@@ -270,7 +270,7 @@ Item {
 
     // How many texts the words take; with media attached, how much the
     // multimedia message takes of its limit. A limit changed since they were
-    // made (Settings ▸ Texts): made again for it, once.
+    // made (the Texts page's ⚙): made again for it, once.
     function count() {
         if (page.attached.length === 0) {
             page.counted = page.act("parts", { body: draft.text })

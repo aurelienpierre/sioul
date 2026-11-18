@@ -31,7 +31,7 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 
 <figure markdown="span">
   [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, with its ranges of hours (two on weekdays: 09:00–12:00 and 14:00–17:00) and + to add one, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
-  <figcaption>Two weeks: work, your admin. Then meals, rest and sleep, and time off.</figcaption>
+  <figcaption>Two weeks: work, your admin.</figcaption>
 </figure>
 
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.

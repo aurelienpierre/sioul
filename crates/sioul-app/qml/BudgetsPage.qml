@@ -14,7 +14,7 @@
 // computer, the first time it shows on a phone, where each object counts
 // (tst_coming.qml), and there only what is in sight (MoneyBudgets.qml); the
 // other two the first time they show. A budget opened shows its ledger and
-// its balance in place of the tabs. Its ⚙, at the top right above the tabs,
+// its balance in place of the tabs. Its ⚙, at the end of the tabs' row,
 // holds the reminder before a planned payment (`settings::for_view("money")`).
 
 pragma ComponentBehavior: Bound
@@ -285,8 +285,6 @@ Item {
         visible: page.openId === ""
         anchors.fill: parent
         anchors.margins: page.theme.gap
-        // Room for the page's ⚙ above the tabs (below, `moneySettings`).
-        anchors.topMargin: page.theme.gap + moneySettings.height
         spacing: page.theme.gap
 
         // The five tabs, as Sioul's other tabs: the one shown pressed, the others flat; in one
@@ -296,6 +294,8 @@ Item {
 
             Layout.fillWidth: true
             Layout.preferredHeight: tabs.implicitHeight
+            // Room at its end for the page's ⚙ (`moneySettings`, below).
+            Layout.rightMargin: moneySettings.width
             contentWidth: Math.max(tabStrip.width, tabs.implicitWidth)
             contentHeight: tabs.implicitHeight
             interactive: tabs.implicitWidth > tabStrip.width
@@ -460,15 +460,14 @@ Item {
         }
     }
 
-    // The page's ⚙, at the top right, above the tabs, while no budget is open:
-    // the reminder before a planned payment (`settings::for_view("money")`).
+    // The page's ⚙, at the end of the tabs' row, while no budget is open: the
+    // reminder before a planned payment (`settings::for_view("money")`).
     SettingsButton {
         id: moneySettings
 
         visible: page.openId === ""
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.margins: page.theme.gap / 2
+        x: page.width - page.theme.gap - width
+        y: page.theme.gap + (tabStrip.height - height) / 2
         sioul: page.sioul
         theme: page.theme
         view: "money"

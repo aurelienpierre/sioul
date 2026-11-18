@@ -21,6 +21,8 @@ TestCase {
     QtObject {
         id: mock
 
+        // A computer: a Texts page of its own.
+        property bool telephony: false
         readonly property var places: ({
             "screen_colours": "sites",
             "calmer_colours": "sites",
@@ -126,8 +128,9 @@ TestCase {
         compare(fakeWindow.parametersPage.asked, ["reminders.asked_days", "reminders_closed", "reminders.gathered", "reminders"])
     }
 
-    // The multimedia messages sent from here: the Texts page's ⚙, for the tab that was
-    // Settings ▸ Texts too.
+    // The multimedia messages sent from here: the Texts page's ⚙, by the setting's key
+    // or by the page's name ("texts"); a device with telephony has no Texts page:
+    // Settings, as for any key it does not show.
     function test_texts_open_the_texts_page_settings() {
         fakeWindow.textsPage = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
         door.open("texts")
@@ -135,6 +138,12 @@ TestCase {
         door.open("texts.sending")
         compare(fakeWindow.textsPage.asked, [[true, ""], [true, "texts.sending"]])
         compare(fakeWindow.parametersPage.asked, [])
+        mock.telephony = true
+        door.open("texts.sending")
+        compare(fakeWindow.page, 12, "a phone: no Texts page")
+        compare(fakeWindow.parametersPage.asked, ["texts.sending"])
+        compare(fakeWindow.textsPage.asked.length, 2)
+        mock.telephony = false
     }
 
     // What Settings holds: Settings, at its tab; the usual meals, naps and night

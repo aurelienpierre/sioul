@@ -5,8 +5,8 @@
 // Sioul, in English and French: with Devices among them, every tab shows
 // whole within the page, none past its edge nor over another, each tall
 // enough for a finger, in a few rows that leave the page room under them;
-// pressing one shows it. A phone also lists "This phone", which only
-// Android does: the row here holds one tab fewer than a phone's. Run by
+// pressing one shows it. The page is told it runs on Android, so that its
+// row holds a phone's tabs, "This phone" among them. Run by
 // tools/qml-test.sh. To see the tabs, set `pictures` below to a folder (a
 // change of your own, not to commit).
 
@@ -35,8 +35,8 @@ Item {
         id: mock
 
         property string language: "en"
-        // Without telephony, the tab a computer lists stands for the phone's own.
-        readonly property bool telephony: false
+        // A phone: its own tab, This phone (the page told it runs on Android, below).
+        readonly property bool telephony: true
         readonly property string deviceKind: "phone"
         readonly property var words: ({
             "en": {
@@ -47,7 +47,7 @@ Item {
                 "settings-tab-words": "Words",
                 "settings-tab-reminders": "Reminders",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-texts": "This phone",
+                "settings-tab-phone": "This phone",
                 "settings-tab-files": "Your folder and sharing",
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
@@ -61,7 +61,7 @@ Item {
                 "settings-tab-words": "Mots",
                 "settings-tab-reminders": "Rappels",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-texts": "Ce téléphone",
+                "settings-tab-phone": "Ce téléphone",
                 "settings-tab-files": "Votre dossier et le partage",
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
@@ -92,6 +92,7 @@ Item {
         anchors.fill: parent
         sioul: mock
         theme: testTheme
+        android: true
     }
 
     TestCase {
@@ -132,6 +133,8 @@ Item {
             const shown = tabs()
             compare(shown.length, page.sections.length, "every tab shows")
             verify(page.sections.indexOf("devices") >= 0, "Devices among them")
+            compare(page.sections.length, 11, "a phone's eleven tabs, This phone among them")
+            verify(shown.some(t => t.text === mock.text("settings-tab-phone")), "This phone shown")
             const edge = root.width
             const boxes = shown.map(t => {
                 const at = t.mapToItem(root, 0, 0)

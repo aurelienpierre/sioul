@@ -33,9 +33,15 @@ QtObject {
         "texts": [14, "textsPage"]
     })
 
+    // Whether this device has the page: a device with telephony (a phone, a tablet
+    // with a SIM) has no Texts page, as main.qml's `openTexts` says.
+    function here(view) {
+        return view !== "texts" || door.sioul.telephony !== true
+    }
+
     function open(key) {
         const view = door.sioul.settingPage(key) || ""
-        const place = door.pages[view]
+        const place = door.here(view) ? door.pages[view] : undefined
         if (place === undefined) {
             door.window.page = 12
             if (door.window.parametersPage)

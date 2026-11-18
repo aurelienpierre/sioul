@@ -38,7 +38,10 @@ Item {
     // folder and sharing, your devices, invoices; what AI agents may use (each
     // project closed to them until opened). The texts a device without
     // telephony sends through the phone are the Texts page's ⚙.
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(page.android ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
+    // On Android: its own tab (This phone). The system's; the layout test of the
+    // tabs sets it to measure a phone's row (tst_settingstabs.qml).
+    property bool android: Qt.platform.os === "android"
     // A tab's name's key: Android's own tab named by what the device is ("This
     // phone", "This tablet", else "This device"), never by its system.
     function tabKey(section) {
@@ -113,7 +116,7 @@ Item {
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
         // Calls are set up where they are screened (telephony); other apps' notifications on Android.
-        const android = Qt.platform.os === "android"
+        const android = page.android
         const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {

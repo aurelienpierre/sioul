@@ -1210,7 +1210,7 @@ fn window_ids(windows: &[crate::config::WindowValue]) -> Vec<Option<String>> {
 }
 
 /// The views whose rows `current_value` looks through for a key.
-const VIEWS: &[&str] = &["parameters", "porch", "mail", "senders", "accounts", "agenda", "tasks", "notes", "reading", "sites", "contacts", "lane:people"];
+const VIEWS: &[&str] = &["parameters", "porch", "mail", "senders", "accounts", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "money", "texts", "contacts", "lane:people"];
 
 /// A setting changed from the window: `value` as the window sends it, from
 /// `shown`, the value its row showed. A list (words, days off, hours, senders,
