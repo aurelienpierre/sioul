@@ -127,9 +127,226 @@ pub(crate) fn call(verb: &str, asked: &Value) -> Value {
     json!({ "lines": withheld(asked["join"] == true) })
 }
 
+// ---------------------------------------------------------------- restricted settings
+
+/// Android's restricted settings for Sioul installed from a file (design of
+/// 18 November 2026, section 4): what the card reads. No app can see
+/// whether the restriction was lifted, only whether each access works.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Restricted {
+    /// Android's version (its API level).
+    pub api: i64,
+    /// Where Sioul was installed from (`InstallSourceInfo`, Android 13 and
+    /// later): "file", "store", "other", "unspecified"; "" not said.
+    pub source: String,
+    /// Notification access needed here, and given.
+    pub notifications_needed: bool,
+    pub notifications_given: bool,
+    /// The part Texts on here, its three permissions given; their question
+    /// asked once, and its last answer a refusal at once (Android's notice
+    /// shown in its place, on Android 15 and later).
+    pub texts_on: bool,
+    pub texts_given: bool,
+    pub texts_asked: bool,
+    pub texts_at_once: bool,
+    /// What this phone did of the card's steps (`Steps`).
+    pub steps: Steps,
+}
+
+/// The card's steps pressed on this phone (Unix seconds; 0 never), its own
+/// (`restricted.json` in the state folder): Android's page where the greyed
+/// switch shows the notice opened (Android 13 and 14), Sioul's App info
+/// opened, and the accesses asked again by Sioul on its return after.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Steps {
+    #[serde(default)]
+    pub notice: i64,
+    #[serde(default)]
+    pub info: i64,
+    #[serde(default)]
+    pub back: i64,
+}
+
+impl Steps {
+    fn path() -> std::path::PathBuf {
+        sioul_core::config::state_dir().join("restricted.json")
+    }
+
+    pub(crate) fn load() -> Steps {
+        std::fs::read_to_string(Steps::path()).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    }
+
+    fn save(&self) {
+        let path = Steps::path();
+        let text = serde_json::to_string(self).unwrap_or_default();
+        if let Err(e) = sioul_core::filelock::replace(&path, text.as_bytes()) {
+            eprintln!("sioul: restricted settings: {}: {e}", path.display());
+        }
+    }
+}
+
+impl Restricted {
+    /// The texts are among what Android holds back: Android 15 and later, the part on.
+    fn texts_held(&self) -> bool {
+        self.api >= GUARDED_TEXTS && self.texts_on && !self.texts_given
+    }
+
+    fn notifications_held(&self) -> bool {
+        self.notifications_needed && !self.notifications_given
+    }
+}
+
+/// The card, for Sioul installed from a file on Android 13 and later while
+/// it needs an access Android keeps behind restricted settings
+/// (notification access; from 15, the texts' permissions): {intro, steps:
+/// [{step, said, button, done}], works, cannot}; none for any other install,
+/// nothing needed, or an older Android. Each step ticked when its outcome is
+/// seen: Android's notice shown (from 15, the texts' question refused at
+/// once; before, its page opened), Sioul's page opened, every access working.
+pub(crate) fn restricted(r: &Restricted, tr: &Translator) -> Option<Value> {
+    let texts = r.api >= GUARDED_TEXTS && r.texts_on;
+    if r.api < GUARDED || r.source != "file" || !(r.notifications_needed || texts) {
+        return None;
+    }
+    let works = !r.notifications_held() && !r.texts_held();
+    // From Android 15, a texts permission asked makes Android show its notice; before, the greyed switch on its page.
+    let by_texts = r.api >= GUARDED_TEXTS;
+    let notice = works || if by_texts { r.texts_asked && (r.texts_at_once || r.texts_given) } else { r.steps.notice > 0 };
+    let intro = if texts && r.notifications_needed { "restricted-intro-both" } else if texts { "restricted-intro-texts" } else { "restricted-intro-notifications" };
+    let step = |id: &str, said: &str, button: &str, done: bool| json!({ "step": id, "said": tr.text(said, None), "button": tr.text(button, None), "done": done });
+    Some(json!({
+        "intro": tr.text(intro, None),
+        "steps": [
+            step("notice", if by_texts { "restricted-notice-texts" } else { "restricted-notice-page" }, "restricted-notice-button", notice),
+            step("info", "restricted-info", "restricted-info-button", works || r.steps.info > 0),
+            step("back", if works { "restricted-back-done" } else { "restricted-back" }, "restricted-back-button", works),
+        ],
+        "works": works,
+        "cannot": tr.text("restricted-cannot-see", None),
+    }))
+}
+
+/// What Android and this phone say now, for the card; none elsewhere.
+fn restricted_here() -> Option<Restricted> {
+    let said = said_here()?;
+    let source = crate::steps::java("install-source", "{}");
+    let state = crate::steps::java("texts-state", "{}");
+    Some(Restricted {
+        api: said.api,
+        source: source["source"].as_str().unwrap_or_default().to_string(),
+        notifications_needed: said.notifications_needed,
+        notifications_given: said.notifications_given,
+        texts_on: said.texts_on,
+        texts_given: said.texts_given,
+        texts_asked: state["asked"] == true,
+        texts_at_once: state["at_once"] == true,
+        steps: Steps::load(),
+    })
+}
+
+/// The card of this phone (`restricted`); null elsewhere or when none.
+pub(crate) fn restricted_card() -> Value {
+    restricted_here().and_then(|r| restricted(&r, tr())).unwrap_or(Value::Null)
+}
+
+/// A step of the card pressed: "notice" (Android 15 and later: the texts'
+/// question; before: the page of notification access, where the greyed
+/// switch shows Android's notice), "info" (Sioul's App info), "back" (the
+/// accesses asked again now). The card again.
+pub(crate) fn restricted_step(step: &str) -> Value {
+    let Some(r) = restricted_here() else { return Value::Null };
+    let mut steps = r.steps;
+    let now = jiff::Timestamp::now().as_second();
+    match step {
+        "notice" if r.api >= GUARDED_TEXTS => {
+            crate::steps::java("texts-ask", "{}");
+        }
+        "notice" => {
+            crate::appnotes::change("open-access", "{}");
+            steps.notice = now;
+        }
+        "info" => {
+            crate::steps::java("texts-info", "{}");
+            steps.info = now;
+        }
+        "back" => ask_again(&r, &mut steps, now),
+        _ => {}
+    }
+    steps.save();
+    restricted_card()
+}
+
+/// Back in Sioul after its page was opened (the window shown again): the
+/// accesses still held asked again, once for each opening of the page.
+pub(crate) fn restricted_back() {
+    let Some(r) = restricted_here() else { return };
+    if r.source != "file" || r.steps.info <= r.steps.back {
+        return;
+    }
+    let mut steps = r.steps;
+    ask_again(&r, &mut steps, jiff::Timestamp::now().as_second());
+    steps.save();
+}
+
+fn ask_again(r: &Restricted, steps: &mut Steps, now: i64) {
+    if r.texts_held() {
+        crate::steps::java("texts-ask", "{}");
+    } else if r.notifications_held() {
+        crate::appnotes::change("open-access", "{}");
+    }
+    steps.back = now;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card of restricted settings: only for an install from a file, on
+    /// Android 13 and later, while an access it holds back is needed; each
+    /// step ticked when its outcome is seen; once every access works, all
+    /// three ticked. From 15, the notice comes from the texts' question;
+    /// before, from the page of notification access.
+    #[test]
+    fn the_restricted_settings_card_follows_what_it_can_see() {
+        let tr = Translator::new("en");
+        let base = Restricted { api: 36, source: "file".into(), notifications_needed: true, texts_on: true, ..Restricted::default() };
+        let done = |r: &Restricted| restricted(r, &tr).map(|card| card["steps"].as_array().unwrap().iter().map(|s| s["done"] == true).collect::<Vec<_>>());
+        assert_eq!(done(&base), Some(vec![false, false, false]));
+        for other in ["store", "other", "unspecified", ""] {
+            assert_eq!(restricted(&Restricted { source: other.into(), ..base.clone() }, &tr), None, "no card for {other:?}");
+        }
+        assert_eq!(restricted(&Restricted { api: 32, ..base.clone() }, &tr), None, "Android 12: nothing restricted");
+        assert_eq!(restricted(&Restricted { notifications_needed: false, texts_on: false, ..base.clone() }, &tr), None, "nothing needed");
+        // Android 16: the texts' question asked, refused at once: Android's notice shown.
+        let noticed = Restricted { texts_asked: true, texts_at_once: true, ..base.clone() };
+        assert_eq!(done(&noticed), Some(vec![true, false, false]));
+        let opened = Restricted { steps: Steps { info: 10, ..Steps::default() }, ..noticed.clone() };
+        assert_eq!(done(&opened), Some(vec![true, true, false]));
+        let card = restricted(&opened, &tr).unwrap();
+        assert!(card["steps"][0]["said"].as_str().unwrap().contains("texts") && card["intro"].as_str().unwrap().contains("texts"));
+        // Back in Sioul: what works is what the card follows.
+        let works = Restricted { notifications_given: true, texts_given: true, ..opened.clone() };
+        assert_eq!(done(&works), Some(vec![true, true, true]));
+        assert_eq!(restricted(&works, &tr).unwrap()["works"], true);
+        // Notification access alone works, the texts not yet: not done.
+        assert_eq!(done(&Restricted { notifications_given: true, ..opened.clone() }), Some(vec![true, true, false]));
+        // Android 13 and 14: notification access alone, its notice from the page opened.
+        let older = Restricted { api: 34, texts_on: true, ..base.clone() };
+        let card = restricted(&older, &tr).unwrap();
+        assert!(!card["intro"].as_str().unwrap().contains("texts"), "{card}");
+        assert_eq!(done(&Restricted { steps: Steps { notice: 5, ..Steps::default() }, ..older.clone() }), Some(vec![true, false, false]));
+        assert_eq!(restricted(&Restricted { notifications_needed: false, ..older }, &tr), None, "on 14 the texts are not restricted");
+        for language in ["en", "fr"] {
+            let tr = Translator::new(language);
+            for r in [base.clone(), works.clone(), Restricted { api: 33, ..base.clone() }] {
+                let card = restricted(&r, &tr).unwrap();
+                let words = [card["intro"].clone(), card["cannot"].clone()].into_iter().chain(card["steps"].as_array().unwrap().iter().flat_map(|s| [s["said"].clone(), s["button"].clone()]));
+                for said in words {
+                    assert!(!said.as_str().unwrap().starts_with("restricted-"), "{language}: {said}");
+                }
+            }
+        }
+    }
 
     /// What each state says, in the steps' order: nothing withheld, nothing
     /// said; the texts' line only while the part is on, the part's own line

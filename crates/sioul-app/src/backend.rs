@@ -1468,6 +1468,23 @@ pub mod qobject {
         #[qinvokable]
         fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
+        /// This phone's own card in Settings ▸ Devices, as JSON (`phonecard::view`):
+        /// `{ phone, allow, restricted }`, what Android must allow and its restricted
+        /// settings' card; `{ phone: false }` elsewhere.
+        #[qinvokable]
+        fn phone_card(self: Pin<&mut Sioul>) -> QString;
+
+        /// A line of what Android must allow pressed (`phonecard::ask`): "role",
+        /// "contacts", "history", "notifications", "texts", "dnd", "alarms",
+        /// "battery", "stars": Android's question or its page. The card again.
+        #[qinvokable]
+        fn phone_allow(self: Pin<&mut Sioul>, what: &QString) -> QString;
+
+        /// A step of the restricted settings' card pressed (`access::restricted_step`):
+        /// "notice", "info", "back". The card again, as `phone_card`.
+        #[qinvokable]
+        fn restricted_step(self: Pin<&mut Sioul>, step: &QString) -> QString;
+
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
         fn needs(self: &Sioul) -> QString;
@@ -7000,12 +7017,26 @@ impl qobject::Sioul {
         QString::from(&crate::share::devices())
     }
 
+    fn phone_card(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::view())
+    }
+
+    fn phone_allow(self: Pin<&mut Self>, what: &QString) -> QString {
+        QString::from(&crate::phonecard::ask(&what.to_string()))
+    }
+
+    fn restricted_step(self: Pin<&mut Self>, step: &QString) -> QString {
+        crate::access::restricted_step(&step.to_string());
+        QString::from(&crate::phonecard::view())
+    }
+
     fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
         let field = field.to_string();
         let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
         // What a device is for, or a cell of its line: what now brings on this device is said and
         // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
-        if problem.is_empty() && field != "name" {
+        // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device`).
+        if problem.is_empty() && field != "name" && !field.starts_with("calls.") {
             self.as_mut().set_mode(QString::from(&mode_json()));
             let (qt, shared) = (self.qt_thread(), self.shared());
             show(&qt, &shared);

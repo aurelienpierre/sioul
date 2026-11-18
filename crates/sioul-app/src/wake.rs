@@ -180,6 +180,11 @@ pub unsafe extern "C" fn sioul_wake_next(zone: *const c_char, fetch: bool) -> *m
     crate::alarms::handed(answer)
 }
 
+/// What Android allows the alarm, as bits (`allowed`), for the phone's checklist (`phonecard`).
+pub(crate) fn allowed_bits() -> i32 {
+    allowed()
+}
+
 /// What Android allows the alarm, as bits: 1 exact alarms, 2 the full
 /// screen, 4 notifications. All of it elsewhere, where nothing rings.
 fn allowed() -> i32 {

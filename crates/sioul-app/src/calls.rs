@@ -200,6 +200,15 @@ pub(crate) fn refresh(now: bool) {
     }
 }
 
+/// A task's timer started or stopped: a task marked busy is busy while its
+/// timer runs (`sioul_core::busy`), a column of this phone's own line, so the
+/// table is made again at once, off the window's thread.
+pub(crate) fn timer_changed() {
+    if phone() {
+        std::thread::spawn(|| refresh(true));
+    }
+}
+
 /// This phone's press on its notification (Java's file) carried into the
 /// shared switch once, and whether it screens calls said there, for your
 /// other devices: their window offers Expecting a call then. The file is
@@ -242,7 +251,10 @@ fn numbers() -> &'static screening::Numbers {
 /// screening with the numbers it knows by their kind that count today, and
 /// the frames from today's midnight, four days on (from midnight, so that a
 /// table made a minute later says the same and is not written again), with
-/// the matrix's layers: today's slots of time for you, do-not-disturb.
+/// the matrix's layers: today's slots of time for you, do-not-disturb. From
+/// this phone's own line in Settings ▸ Devices when it says something
+/// (`sioul_core::calls_line`), the busy stretches among its moments;
+/// otherwise from the shared screening, as before (`rules::build`).
 fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     let senders = Senders::load(config);
     let attention = Attention::of(config);
@@ -257,21 +269,31 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     };
     let from = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
     let until = from.checked_add(jiff::Span::new().days(rules::TABLE_DAYS)).unwrap_or_else(|_| now.clone());
-    // Always through: its people's numbers, read against who each number is; blocked beats it.
     let people = People::load(&People::default_path());
-    let always = rules::always_numbers(&people, senders.region(), &|key| senders.judge_number(key).who);
-    let (own_numbers, own_rows) = rules::own_rows(&attention, &senders);
-    rules::table(rules::Made {
-        made: now.timestamp().as_millisecond(),
-        region: senders.region(),
-        numbers: senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect(),
-        prefixes: senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect(),
-        always,
-        own: own_numbers,
-        expecting: rules::through_of(switch),
-        screening: Some(screening::TablePart::of(&Screening::of(config), numbers(), now.date())),
-        frames: rules::frames_with(&attention, &clock, &layers(), &from, &until, &own_rows),
-    })
+    let line = config.devices.get(&here_id()).and_then(|said| said.calls.as_ref());
+    rules::build(
+        &rules::Inputs {
+            made: now.timestamp().as_millisecond(),
+            senders: &senders,
+            attention: &attention,
+            clock: &clock,
+            layers: &layers(),
+            people: &people,
+            expecting: rules::through_of(switch),
+            screening: Screening::of(config),
+            numbers: numbers(),
+            from: &from,
+            until: &until,
+            busy: &sioul_core::busy::stretches,
+        },
+        line,
+    )
+}
+
+/// Whether this phone's own line in Settings ▸ Devices says what it lets ring
+/// (`sioul_core::calls_line`): its grid; none, the shared screening holds.
+pub(crate) fn line_here(config: &Config) -> Option<sioul_core::calls_line::Grid> {
+    config.devices.get(&here_id()).and_then(|said| said.calls.as_ref()).filter(|line| line.says()).map(sioul_core::calls_line::Said::grid)
 }
 
 

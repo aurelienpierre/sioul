@@ -1385,17 +1385,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The coordinator's rule (6 October 2026): the list's stars are said and
-    /// their contacts opened, never written. Checked in what the APK is made of.
+    /// Starred people both ways (the owner's decision of 18 November 2026,
+    /// which takes back the rule of 6 October 2026 that Sioul never writes a
+    /// star): Sioul may write contacts, and writes the star alone. One write
+    /// in DndContacts.java, an update of one column, `Contacts.STARRED`, of a
+    /// contact found by its lookup key; never a contact created, edited or
+    /// deleted, there or anywhere in the Java. Checked in what the APK is made of.
     #[test]
-    fn sioul_never_writes_a_contact_nor_a_star() {
+    fn sioul_writes_the_star_alone_never_a_contact() {
         let package = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/package");
         let manifest = std::fs::read_to_string(package.join("AndroidManifest.xml")).unwrap();
-        assert!(manifest.contains("android.permission.READ_CONTACTS"));
-        assert!(!manifest.contains("WRITE_CONTACTS"), "no permission to write contacts");
-        let contacts = std::fs::read_to_string(package.join("src/com/aurelienpierre/sioul/DndContacts.java")).unwrap();
-        for write in [".insert(", ".update(", ".delete(", "applyBatch", "ContentProviderOperation"] {
+        assert!(manifest.contains("android.permission.READ_CONTACTS") && manifest.contains("android.permission.WRITE_CONTACTS"));
+        let sources = package.join("src/com/aurelienpierre/sioul");
+        let contacts = std::fs::read_to_string(sources.join("DndContacts.java")).unwrap();
+        for write in [".insert(", ".delete(", "applyBatch", "ContentProviderOperation", "bulkInsert", "RawContacts.CONTENT_URI,", "Data.CONTENT_URI,"] {
             assert!(!contacts.contains(write), "DndContacts.java writes: {write}");
+        }
+        assert_eq!(contacts.matches(".update(").count(), 1, "one write");
+        assert!(contacts.contains("return resolver.update(contact, star, null, null) > 0;"));
+        assert_eq!(contacts.matches("star.put(").count(), 1, "one column");
+        assert!(contacts.contains("star.put(ContactsContract.Contacts.STARRED, on ? 1 : 0);"));
+        assert!(contacts.contains("Uri contact = ContactsContract.Contacts.lookupContact("), "a contact that exists, by its lookup key");
+        // No other Java file writes Android's contacts.
+        for entry in std::fs::read_dir(&sources).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == "DndContacts.java" || !name.ends_with(".java") {
+                continue;
+            }
+            let text = std::fs::read_to_string(entry.path()).unwrap();
+            if text.contains("ContactsContract") {
+                for write in [".insert(", ".update(", ".delete(", "applyBatch", "bulkInsert"] {
+                    assert!(!text.lines().any(|line| line.contains("ContactsContract") && line.contains(write)), "{name} writes contacts: {write}");
+                }
+            }
         }
     }
 

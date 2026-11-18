@@ -145,7 +145,10 @@ impl Look {
         let paused = state.has(Why::Paused);
         let free = state.has(Why::FreeTime) && !paused;
         let attention = sioul_core::attention::Attention::of(config);
-        let phone = phone_does();
+        // This phone's own line (Settings ▸ Devices): As Android does screens nothing, as a phone without the role.
+        let line = if cfg!(target_os = "android") { crate::calls::line_here(config) } else { None };
+        let phone = if line.as_ref().is_some_and(sioul_core::calls_line::Grid::screens_nothing) { sioul_core::attention::Phone::default() } else { phone_does() };
+        let own_line = phone.screens && line.is_some();
         // While this phone screens calls: whether the call screening lets numbers nobody knows ring at each
         // mode's moment by itself (`calls::unknown_rings`), so that the mode silences nothing it lets ring; the
         // matrix then lets them through only where your contacts may ring (`attention::Phone::unknown`).
@@ -161,7 +164,13 @@ impl Look {
             moment
         };
         let ask = |which: Which, moment: Moment| {
-            let silence = attention.silence_at(&moment, phone_at(&moment));
+            let mut silence = attention.silence_at(&moment, phone_at(&moment));
+            // This phone's own line decided what rings at every moment, a pause and do-not-disturb included:
+            // the mode lets every call it let ring sound, as Sioul decides what gets through.
+            if own_line {
+                silence.calls = Senders::Anyone;
+                silence.repeat = true;
+            }
             Ask { which, people: silence.calls != Senders::None, doses: silence.doses, desktop: gnome, silence: Some(silence), stack: true }
         };
         // The switch's mode adds nothing over this device's own do-not-disturb
@@ -417,9 +426,11 @@ fn apply_once() {
     crate::homecard::dnd_seen(moment());
     // On a phone, Android's alarm comes back at the next end, Sioul closed or not.
     crate::steps::next(look.next_change());
+    // Starred people both ways on this phone, every five minutes at most (`stars::here`): the list may change.
+    let starred = crate::stars::here(false);
     // The calls' table follows the pauses, the times and the switch at once (`calls::refresh`:
     // written again only when what it is made of changed, or every ten minutes).
-    crate::calls::refresh(false);
+    crate::calls::refresh(starred);
 }
 
 /// What this device asks of its system now, in a few words, and the status
@@ -927,6 +938,9 @@ fn setup_with(said: String) -> String {
     here["lines"] = serde_json::json!(lines);
     let people = People::read(&People::default_path());
     let problem = people.as_ref().err().map(|why| say("dnd-setup-unreadable", &[("why", why.clone())])).unwrap_or_default();
+    // Where each is starred, while starred people both ways is on (`stars::places`).
+    let books = if config.dnd.stars { sioul_core::vdir::collections(sioul_core::vdir::Kind::Contacts) } else { Vec::new() };
+    let this = if config.dnd.stars { crate::stars::place() } else { String::new() };
     let people: Vec<serde_json::Value> = people
         .unwrap_or_default()
         .people
@@ -939,7 +953,8 @@ fn setup_with(said: String) -> String {
             if p.emails.is_empty() {
                 notes.push(tr().text("dnd-setup-no-email", None));
             }
-            serde_json::json!({ "id": p.id, "name": p.name, "phones": p.phones, "emails": p.emails, "notes": notes })
+            let places = if config.dnd.stars { crate::stars::places(p, &this, &config, &books, tr()) } else { Vec::new() };
+            serde_json::json!({ "id": p.id, "name": p.name, "phones": p.phones, "emails": p.emails, "notes": notes, "places": places })
         })
         .collect();
     let mut setup = serde_json::json!({
@@ -949,6 +964,7 @@ fn setup_with(said: String) -> String {
         "problem": problem,
         "said": said,
         "android": cfg!(target_os = "android"),
+        "starring": crate::stars::switch_view(&config),
     });
     if cfg!(target_os = "android") {
         setup["stars"] = stars(&config);
@@ -1000,7 +1016,7 @@ fn stars_of(people: &People, answer: &serde_json::Value, tr: &sioul_core::i18n::
 /// asked… (`verb`, its JSON). Answers the tab again, with a line said, and
 /// whether something to share changed (the list, this device's setting).
 pub(crate) fn change(verb: &str, json: &str) -> (String, bool) {
-    let changes = matches!(verb, "add-safe" | "add-contact" | "add" | "edit" | "remove" | "gnome");
+    let changes = matches!(verb, "add-safe" | "add-contact" | "add" | "edit" | "remove" | "gnome" | "stars");
     let answer = change_here(verb, json);
     if verb == "gnome" {
         std::thread::spawn(apply);
@@ -1127,6 +1143,8 @@ fn change_here(verb: &str, json: &str) -> String {
         }
         // This phone kept in step in the background, or not (its own setting).
         "background" => crate::steps::set_background(asked["on"] == true).err().unwrap_or_default(),
+        // Starred people both ways, on every device (`stars::turn`: on a phone, Android asked first).
+        "stars" => crate::stars::turn(asked["on"] == true).err().unwrap_or_default(),
         // GNOME's consent, the same one the pauses use.
         "gnome" => sioul_core::settings::apply(&crate::backend::config_path(), &config, "pause.gnome", &sioul_core::config::SettingValue::Bool(asked["on"] == true)).err().unwrap_or_default(),
         _ => String::new(),

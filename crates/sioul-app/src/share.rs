@@ -652,6 +652,9 @@ pub(crate) fn devices() -> String {
         /// What comes forward on each device at each time: the rows' cells are
         /// set with it (`device_grid::grid`); here, what is said around them.
         grid: sioul_sync::device_grid::Grid,
+        /// Each phone's section Calls, by its id (`sioul_core::calls_line::view`):
+        /// a phone, or a device whose line says what it lets ring, or that screens calls.
+        calls: std::collections::BTreeMap<String, serde_json::Value>,
     }
     let here = here();
     let vault = sealed(attached(&here));
@@ -671,7 +674,27 @@ pub(crate) fn devices() -> String {
     let mut grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
     // Settings that do not travel from here: what this device tells may come twice.
     grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
-    json(&Devices { on: vault.is_some(), why, stays, rows, grid })
+    let calls = calls_views(&config, rows.iter().map(|r| (r.id.as_str(), r.form.as_str())));
+    json(&Devices { on: vault.is_some(), why, stays, rows, grid, calls })
+}
+
+/// Each phone's section Calls (`sioul_core::calls_line::view`), by its id:
+/// for a device that is a phone, whose line says what it lets ring, or that
+/// says it screens calls.
+fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str)>) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
+    let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config)).names();
+    devices
+        .filter_map(|(id, form)| {
+            let said = config.devices.get(id);
+            let line = said.and_then(|s| s.calls.as_ref());
+            let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
+            (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories };
+                (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
+            })
+        })
+        .collect()
 }
 
 /// What you said of a device, written into the shared settings
@@ -688,13 +711,59 @@ pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
         ("name", _) => sioul_core::device_said::set_name(&path, id, value),
         ("area", _) => sioul_core::device_said::set_area(&path, id, value),
         (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
+        _ if field.starts_with("calls.") => say_of_calls(&path, id, field, value),
         _ => Err(format!("{field}?")),
     };
+    // What a phone lets ring: that phone's table again, at once when it is this one.
+    if written.is_ok() && field.starts_with("calls.") {
+        if id == here().id {
+            std::thread::spawn(|| crate::calls::refresh(true));
+        }
+        return String::new();
+    }
     // This device's own line said here: its entry says its cells now, for the keeper of the notices.
     if written.is_ok() && field != "name" && id == here().id {
         std::thread::spawn(crate::devices::cells_now);
     }
     written.err().unwrap_or_default()
+}
+
+/// What a phone lets ring (`sioul_core::calls_line`), as the card says it:
+/// "calls.profile" (a profile's id), "calls.cell.<row>.<when>" ("rings" or
+/// "voicemail"), "calls.switch.<key>" ("on" or "off"), "calls.group.add"
+/// and "calls.group.remove" (a group's name), "calls.clear" (the line taken
+/// out: the shared screening again). A change by hand on a line that said
+/// nothing starts from the profile offered for what the phone is for.
+fn say_of_calls(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
+    use sioul_core::calls_line::{self as line, Profile, Row, When};
+    let config = load_config();
+    let offered = Profile::offered(config.devices.get(id).and_then(sioul_core::device_said::Said::area));
+    let refused = || format!("{field} = {value}?");
+    match field.strip_prefix("calls.").unwrap_or_default() {
+        "profile" => line::set_profile(path, id, Profile::read(value).ok_or_else(refused)?),
+        "group.add" => line::add_group(path, id, value, offered),
+        "group.remove" => line::remove_group(path, id, value),
+        "clear" => line::clear(path, id),
+        rest => {
+            if let Some(key) = rest.strip_prefix("switch.") {
+                let on = match value.trim() {
+                    "on" | "true" => true,
+                    "off" | "false" => false,
+                    _ => return Err(refused()),
+                };
+                return line::set_switch(path, id, key, on, offered);
+            }
+            let cell = rest.strip_prefix("cell.").ok_or_else(refused)?;
+            let (row, when) = cell.rsplit_once('.').ok_or_else(refused)?;
+            let (row, when) = (Row::read(row).ok_or_else(refused)?, When::read(when).ok_or_else(refused)?);
+            let rings = match value.trim() {
+                "rings" => true,
+                "voicemail" => false,
+                _ => return Err(refused()),
+            };
+            line::set_cell(path, id, &row, when, rings, offered)
+        }
+    }
 }
 
 /// A cell as the window says it: its time, one of the five, and its areas

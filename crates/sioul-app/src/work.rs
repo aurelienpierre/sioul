@@ -2063,6 +2063,8 @@ pub(crate) fn focus_start(qt: &QtThread, shared: &Arc<Shared>, uid: &str, minute
     if let Err(e) = timelog::keep_running(Some(&running)) {
         tell(qt, shared, e);
     }
+    // A busy task is busy while its timer runs: the phone's calls' table again.
+    crate::calls::timer_changed();
     // Started, it is in the "Started" column.
     if find(shared, uid).is_ok_and(|t| t.status == Status::NeedsAction) {
         let _ = change(qt, shared, uid, |text| tasks::set_status(text, Status::InProcess, &sioul_core::zone::current(), &sioul_core::zone::now()));
@@ -2096,6 +2098,7 @@ pub(crate) fn focus_stop(qt: &QtThread, shared: &Arc<Shared>, done: bool, note: 
         Ok(None) => return String::new(),
         Err(e) => return e,
     };
+    crate::calls::timer_changed();
     let mut args = tr().counted(session.minutes as usize);
     args.set("minutes", session.minutes.to_string());
     let kept = tr().text("focus-stopped", Some(&args));
