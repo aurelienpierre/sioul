@@ -10,6 +10,29 @@ use crate::contactbatch;
 use crate::vdir::{self, Kind, LOCAL};
 use std::sync::atomic::AtomicBool;
 
+fn tr() -> crate::i18n::Translator {
+    crate::i18n::Translator::new("en")
+}
+
+/// A book of this device's own with these files, made for one test.
+fn here_book(id: &str, cards: &[(&str, &str)]) -> Collection {
+    crate::config::stand_ins_only();
+    let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(LOCAL).join(id));
+    let dir = vdir::prepare(Kind::Contacts, LOCAL, id, id, None).unwrap();
+    for (file, text) in cards {
+        std::fs::write(dir.join(file), text).unwrap();
+    }
+    vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == LOCAL && c.id == id).unwrap()
+}
+
+fn in_book(book: &Collection) -> Vec<Contact> {
+    book.items().iter().filter_map(|p| contacts::read(p, book)).collect()
+}
+
+fn run_it(id: &str, steps: Vec<(String, Step)>, now: i64) -> contactbatch::Outcome {
+    contactbatch::run(&crate::config::state_dir().join(format!("{id}-records")), "import", steps, None, now, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap()
+}
+
 const V21: &[u8] = include_bytes!("../tests/fixtures/contacts/version-2.1.vcf");
 const V30: &[u8] = include_bytes!("../tests/fixtures/contacts/version-3.0.vcf");
 const V40: &[u8] = include_bytes!("../tests/fixtures/contacts/version-4.0.vcf");
@@ -21,7 +44,7 @@ fn france() -> Option<&'static Region> {
 }
 
 fn shown(text: &str) -> Contact {
-    contacts::contact(&lines::unfold(text), Path::new("/x.vcf"), &book_stub())
+    contacts::contact_quiet(&lines::unfold(text), Path::new("/x.vcf"), &book_stub())
 }
 
 fn book_stub() -> Collection {
@@ -71,19 +94,24 @@ fn vcards_of_the_three_versions() {
 
 /// A French spreadsheet's file: the mapping guessed from its French
 /// headings; the row over two lines read whole; a title column into the
-/// title field; numbers international; the line that does not read named.
+/// title field; numbers international when asked (06 39 98 is ARCEP's
+/// fiction block, which the numbering plan reads as Mayotte's); a two-way
+/// date read day first in a French table; the line that does not read named.
 #[test]
 fn a_french_spreadsheet_s_file() {
-    let table = crate::csv::read(&crate::csv::decode(FRENCH));
+    let (text, encoding) = crate::csv::decode_with(FRENCH);
+    assert_eq!(encoding, crate::csv::Encoding::Windows1252);
+    let table = crate::csv::read(&text);
     let fields = guess(&table.headings);
     use Field::*;
     assert_eq!(fields, [Title, Family, Given, Phone, Mobile, Email, Street, Postcode, Town, Birthday, Company, Note]);
     assert_eq!(export_of(&table.headings), None, "no preset: nothing assumed");
-    let cards = read_csv(&table, &fields);
-    assert_eq!((cards.cards.len(), cards.broken.clone()), (2, vec![6]), "{cards:?}");
-    let lea = shown(&international(&cards.cards[0].1, france()));
+    let cards = read_csv(&table, &fields, &tr());
+    assert_eq!((cards.cards.len(), cards.broken.clone(), table.unclosed), (2, vec![], Some((6, 1))), "{cards:?}");
+    let (written, rewritten) = international(&cards.cards[0].1, france());
+    let lea = shown(&written);
     assert_eq!((lea.name.as_str(), lea.prefix.as_str(), lea.given.as_str(), lea.family.as_str()), ("Léa Exemple", "Mme", "Léa", "Exemple"));
-    assert_eq!(lea.phones.iter().map(|p| (p.label.as_str(), p.value.as_str())).collect::<Vec<_>>(), [("", "+33465000010"), ("cell", "+33600000001")]);
+    assert_eq!((lea.phones.iter().map(|p| (p.label.as_str(), p.value.as_str())).collect::<Vec<_>>(), rewritten), (vec![("", "+33465710010"), ("cell", "+262639980001")], 2));
     assert_eq!((lea.addresses[0].value.as_str(), lea.birthday.as_str(), lea.notes.as_str()), ("3 rue de l'Exemple\n69000 Lyon", "1984-05-12", "Vient le mardi\npour le thé"));
     let jean = shown(&cards.cards[1].1);
     assert_eq!((jean.name.as_str(), jean.prefix.as_str(), jean.org.as_str(), cards.cards[1].0), ("Jean Martin", "M.", "Atelier Exemple", 4));
@@ -96,10 +124,10 @@ fn google_s_export() {
     let table = crate::csv::read(&crate::csv::decode(GOOGLE));
     assert_eq!(export_of(&table.headings).as_deref(), Some("Google Contacts"));
     let fields = guess(&table.headings);
-    let cards = read_csv(&table, &fields);
+    let cards = read_csv(&table, &fields, &tr());
     let jane = shown(&cards.cards[0].1);
     assert_eq!((jane.name.as_str(), jane.prefix.as_str(), jane.org.as_str(), jane.title.as_str()), ("Jane Example", "Ms", "Example Ltd", "Accountant"));
-    assert_eq!((jane.categories.clone(), jane.addresses[0].value.as_str()), (vec!["Work".to_string()], "1 Example Street\nLondon"));
+    assert_eq!((jane.categories.clone(), jane.addresses[0].value.as_str(), jane.birthday.as_str()), (vec!["Work".to_string()], "1 Example Street\nLondon", "1990-02-03"));
     assert!(shown(&cards.cards[1].1).categories.is_empty());
     let outlook = ["First Name", "Last Name", "Title", "E-mail Address", "Mobile Phone", "Job Title", "Business Phone"].map(String::from);
     assert_eq!(export_of(&outlook).as_deref(), Some("Outlook"));
@@ -127,52 +155,131 @@ fn a_mapping_kept_and_found_again() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// Those already here: matched by an e-mail address or a number written
-/// otherwise, completed with what the file adds, never doubled, nothing
-/// overwritten; a look-alike by name alone imported; the whole import undone.
+/// Review F14: a card already here (the same name and a number) is left as
+/// it is unless completing is asked, what the file would add listed first;
+/// completed, nothing it holds is overwritten; the groups go to new cards
+/// only unless asked; the whole import undone.
 #[test]
-fn a_match_completed_never_doubled_then_undone() {
-    crate::config::stand_ins_only();
-    let id = "import-here";
-    let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(LOCAL).join(id));
-    let dir = vdir::prepare(Kind::Contacts, LOCAL, id, "Here", None).unwrap();
-    let lea = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:here-lea\r\nFN:Léa E.\r\nN:E.;Léa;;;\r\nTEL;TYPE=CELL:+33 6 00 00 00 01\r\nNOTE:Déjà là\r\nEND:VCARD\r\n";
-    std::fs::write(dir.join("lea.vcf"), lea).unwrap();
-    let book = vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == LOCAL && c.id == id).unwrap();
-    let existing: Vec<Contact> = book.items().iter().filter_map(|p| contacts::read(p, &book)).collect();
+fn a_card_already_here_is_changed_only_when_asked() {
+    let lea = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:here-lea\r\nFN:Léa Exemple\r\nN:Exemple;Léa;;;\r\nTEL;TYPE=CELL:06 39 98 00 01\r\nNOTE:Déjà là\r\nEND:VCARD\r\n";
+    let book = here_book("import-here", &[("lea.vcf", lea)]);
     let table = crate::csv::read(&crate::csv::decode(FRENCH));
-    let cards = read_csv(&table, &guess(&table.headings));
-    let imported = plan(&cards, &existing, &book, &["Clients".into()], false, france());
-    assert_eq!((imported.new, imported.completed, imported.same, imported.broken.clone()), (1, 1, 0, vec![6]));
-    // The same file twice: the second time adds nothing, doubles nothing.
-    let outcome = contactbatch::run(&crate::config::state_dir().join("import-records"), "import", imported.plan.steps, None, 1_790_000_100, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+    let cards = read_csv(&table, &guess(&table.headings), &tr());
+    let mut options = Options { groups: vec!["Clients".into()], international: true, ..Options::default() };
+    let imported = plan(&cards, &in_book(&book), &book, &options, france());
+    assert_eq!((imported.new, imported.here, imported.completed, imported.apart), (1, 1, 0, 0));
+    let adds: Vec<(String, String)> = imported.matches[0].adds.clone();
+    assert!(adds.contains(&("email".into(), "lea@example.org".into())) && adds.contains(&("phone".into(), "+33465710010".into())) && adds.contains(&("title".into(), "Mme".into())), "{adds:?}");
+    assert!(!adds.iter().any(|(k, _)| k == "group"), "the import's groups go to new cards only");
+    assert!(!adds.iter().any(|(k, _)| k == "note"), "a note already there stays: {adds:?}");
+    // Asked: completed, the note and the name kept, nothing doubled.
+    options.complete = true;
+    options.groups_here = true;
+    let imported = plan(&cards, &in_book(&book), &book, &options, france());
+    assert_eq!((imported.new, imported.here, imported.completed), (1, 1, 1));
+    let outcome = run_it("import-here", imported.plan.steps, 1_790_000_100);
     assert_eq!(outcome.done, 2);
-    let after: Vec<Contact> = book.items().iter().filter_map(|p| contacts::read(p, &book)).collect();
-    assert_eq!(after.len(), 2);
+    let after = in_book(&book);
     let completed = after.iter().find(|c| c.uid == "here-lea").unwrap();
-    assert_eq!((completed.name.as_str(), completed.notes.as_str(), completed.prefix.as_str()), ("Léa E.", "Déjà là", "Mme"), "nothing overwritten, what lacked added");
-    assert_eq!(completed.phones.len(), 2, "the mobile written otherwise not doubled, the landline added: {:?}", completed.phones);
-    assert_eq!((completed.emails[0].value.as_str(), completed.categories.clone()), ("lea@example.org", vec!["Clients".to_string()]));
-    let again = plan(&cards, &after, &book, &["Clients".into()], false, france());
-    assert_eq!((again.new, again.completed, again.same), (0, 0, 2), "{:?}", again.plan.steps);
-    // A look-alike by name alone is a new card: Duplicates offers it.
-    let twin = Cards { cards: vec![(1, "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:twin\r\nFN:Jean Martin\r\nEMAIL:other@example.org\r\nEND:VCARD\r\n".into())], broken: vec![] };
-    assert_eq!(plan(&twin, &after, &book, &[], false, france()).new, 1);
+    assert_eq!((completed.name.as_str(), completed.notes.as_str(), completed.prefix.as_str(), completed.phones.len(), completed.categories.clone()), ("Léa Exemple", "Déjà là", "Mme", 2, vec!["Clients".to_string()]));
+    let again = plan(&cards, &after, &book, &options, france());
+    assert_eq!((again.new, again.here, again.completed), (0, 2, 0), "the same file again: nothing new, nothing doubled");
     // Undone as a whole: the new card gone, the completed one as it was.
-    contactbatch::undo(&crate::config::state_dir().join("import-records"), &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+    contactbatch::undo(&crate::config::state_dir().join("import-here-records"), &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
     assert_eq!(book.items().len(), 1);
-    assert_eq!(std::fs::read_to_string(dir.join("lea.vcf")).unwrap(), lea);
-    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(std::fs::read_to_string(book.dir.join("lea.vcf")).unwrap(), lea);
+    let _ = std::fs::remove_dir_all(&book.dir);
 }
 
-/// A file read half: each row that does not read named by its line, the others imported.
+/// Review F14: two people sharing a number or an address stay two, in a
+/// file and against a card here; counted as imported apart.
 #[test]
-fn a_half_read_file_is_reported_line_by_line() {
-    let text = "Nom;Prénom;E-mail\nExemple;Lou;lou@example.org\n;;\n;;not-an-address\nMartin;Sam;\n\"Exemple;Kim;kim@example.org\n";
+fn two_people_sharing_a_number_stay_two() {
+    let text = "Nom;Prénom;Portable;E-mail\nMartin;Jeanne;06 39 98 00 21;jeanne@example.org\nMartin;Paul;06 39 98 00 21;paul@example.org\nExemple;Lou;06 39 98 00 22;\n";
     let table = crate::csv::read(text);
-    let cards = read_csv(&table, &guess(&table.headings));
+    let cards = read_csv(&table, &guess(&table.headings), &tr());
+    let imported = plan(&cards, &[], &book_stub(), &Options::default(), france());
+    assert_eq!((imported.new, imported.apart, imported.twice), (3, 1, 0));
+    let jean = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:here-jean\r\nFN:Jean Dupont\r\nTEL;TYPE=HOME:04 65 71 00 01\r\nCATEGORIES:Famille\r\nEND:VCARD\r\n";
+    let book = here_book("import-apart", &[("jean.vcf", jean)]);
+    let table = crate::csv::read("Civilité;Nom;Prénom;Téléphone;E-mail;Groupes\nMme;Martin;Jeanne;04 65 71 00 01;jeanne@example.org;Urgences\n");
+    let cards = read_csv(&table, &guess(&table.headings), &tr());
+    let options = Options { groups: vec!["Clients".into()], complete: true, groups_here: true, ..Options::default() };
+    let imported = plan(&cards, &in_book(&book), &book, &options, france());
+    assert_eq!((imported.new, imported.here, imported.apart, imported.completed), (1, 0, 1, 0));
+    let Step::Write { before: None, after, .. } = &imported.plan.steps[0].1 else { panic!("a new card") };
+    assert!(after.contains("FN:Jeanne Martin") && after.contains("Urgences") && after.contains("Clients"), "{after}");
+    let _ = std::fs::remove_dir_all(&book.dir);
+}
+
+/// Review F13: a card whose UID is here is that card: the same file twice
+/// never writes it a second time, whatever it holds.
+#[test]
+fn the_same_file_twice_never_doubles_a_card() {
+    let atelier = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:u-1\r\nFN:Atelier Exemple\r\nADR:;;3 rue de l'Exemple;Lyon;;69000;France\r\nEND:VCARD\r\n";
+    let book = here_book("import-twice", &[]);
+    let cards = read_vcf(atelier);
+    let first = plan(&cards, &in_book(&book), &book, &Options::default(), france());
+    run_it("import-twice", first.plan.steps, 1_790_000_110);
+    let second = plan(&cards, &in_book(&book), &book, &Options::default(), france());
+    assert_eq!((second.new, second.here), (0, 1));
+    let mut twice = cards.clone();
+    twice.cards.push(twice.cards[0].clone());
+    let in_one_file = plan(&twice, &[], &book_stub(), &Options::default(), france());
+    assert_eq!((in_one_file.new, in_one_file.twice), (1, 1), "one UID twice in a file: one card");
+    let _ = std::fs::remove_dir_all(&book.dir);
+}
+
+/// Review F21: completing keeps a card's several organisations and roles.
+#[test]
+fn completing_keeps_every_line_of_a_single_value() {
+    let sam = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:here-sam\r\nFN:Sam Exemple\r\nORG:Atelier Exemple\r\nORG:Autre Atelier\r\nTITLE:Gérant\r\nTITLE:Formateur\r\nEMAIL:sam@example.org\r\nEND:VCARD\r\n";
+    let book = here_book("import-single", &[("sam.vcf", sam)]);
+    let cards = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:file-sam\r\nFN:Sam Exemple\r\nEMAIL:sam@example.org\r\nEND:VCARD\r\n");
+    let imported = plan(&cards, &in_book(&book), &book, &Options { complete: true, ..Options::default() }, france());
+    assert_eq!((imported.new, imported.here, imported.completed), (0, 1, 0), "nothing to add: nothing written");
+    let cards = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:file-sam\r\nFN:Sam Exemple\r\nEMAIL:sam@example.org\r\nURL:https://example.org/sam\r\nEND:VCARD\r\n");
+    let imported = plan(&cards, &in_book(&book), &book, &Options { complete: true, ..Options::default() }, france());
+    let Step::Write { after, .. } = &imported.plan.steps[0].1 else { panic!() };
+    assert!(after.contains("ORG:Atelier Exemple\r\n") && after.contains("ORG:Autre Atelier\r\n") && after.contains("TITLE:Formateur\r\n") && after.contains("URL:https://example.org/sam"), "{after}");
+    let _ = std::fs::remove_dir_all(&book.dir);
+}
+
+/// A file read half: each row that does not read named by its line, the
+/// others imported; birthdays read only when they read one way; an address
+/// written with its name; numbers given as an address left as they are.
+#[test]
+fn a_half_read_file_and_what_is_kept_as_written() {
+    let text = "Nom;Prénom;E-mail\nExemple;Lou;Lou <lou@example.org>\n;;\n;;not-an-address\nMartin;Sam;\n\"Exemple;Kim;kim@example.org\n";
+    let table = crate::csv::read(text);
+    let cards = read_csv(&table, &guess(&table.headings), &tr());
     assert_eq!(cards.cards.iter().map(|(line, _)| *line).collect::<Vec<_>>(), [2, 5]);
-    assert_eq!(cards.broken, [4, 6], "a row of nothing usable, a quote never closed");
-    assert_eq!(birthday("1984-5-2"), "1984-05-02");
-    assert_eq!(birthday("printemps"), "printemps");
+    assert_eq!((cards.broken.clone(), table.unclosed), (vec![4], Some((6, 1))), "a row of nothing usable, a quote never closed");
+    assert_eq!(shown(&cards.cards[0].1).emails[0].value, "lou@example.org");
+    assert_eq!(birthday("1984-5-2", false).as_deref(), Some("1984-05-02"));
+    assert_eq!(birthday("05/13/1984", false).as_deref(), Some("1984-05-13"), "a month first, said by its day");
+    assert_eq!(birthday("13/05/1984", false).as_deref(), Some("1984-05-13"));
+    assert_eq!((birthday("5/12/1984", false), birthday("5/12/1984", true).as_deref()), (None, Some("1984-12-05")), "two ways: a French table's day first, else as written");
+    assert_eq!((birthday("12/05/84", true), birthday("printemps", true)), (None, None));
+    let english = crate::csv::read("Name;Birthday\nLou Exemple;5/12/1984\n");
+    let cards = read_csv(&english, &guess(&english.headings), &tr());
+    let lou = shown(&cards.cards[0].1);
+    assert_eq!((lou.birthday.as_str(), cards.birthdays_as_written), ("", 1));
+    assert!(lou.notes.contains("5/12/1984"), "{}", lou.notes);
+    let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:n-1\r\nFN:Lou Exemple\r\nTEL;VALUE=uri:tel:0465711234\r\nTEL:04 65 71 12 34\r\nEND:VCARD\r\n";
+    let (written, n) = international(card, france());
+    assert!(written.contains("TEL;VALUE=uri:tel:0465711234\r\n") && written.contains("TEL:+33465711234\r\n") && n == 1, "{written}");
+}
+
+/// Review F7: a card too large, and a file of more cards than read, each said.
+#[test]
+fn the_limits_of_a_vcard_file() {
+    let big = format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lou\r\nNOTE:{}\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:3.0\r\nFN:Kim\r\nEND:VCARD\r\n", "x".repeat(MOST_CARD));
+    let read = read_vcf(&big);
+    assert_eq!((read.cards.len(), read.too_big.clone()), (1, vec![1]));
+    let many = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nEND:VCARD\r\n".repeat(MOST_CARDS + 2);
+    let read = read_vcf(&many);
+    assert_eq!((read.cards.len(), read.cut), (MOST_CARDS, Some(MOST_CARDS * 4 + 1)));
+    let nameless = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nNOTE:nothing else\r\nEND:VCARD\r\n");
+    assert_eq!((nameless.cards.len(), nameless.broken.clone()), (0, vec![1]), "a card of nobody does not read");
 }

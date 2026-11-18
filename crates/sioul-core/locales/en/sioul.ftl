@@ -1399,7 +1399,6 @@ contact-categories = Categories
 contact-category-add = category
 contact-category-remove = Take off the category { $category }
 contact-category-used = Categories in use
-contacts-category-all = All categories
 contacts-none-in = No contact in { $category }.
 set-phone-region = Country for phone numbers written without one
 set-phone-region-help = A number written without its country, as 01 99 00 12 34, is read as this country's, to find the same number written +33 1 99 00 12 34. Only to compare: cards keep their numbers as they are written.
@@ -3205,7 +3204,7 @@ set-task-lists-help = Renamed here and on the server at the next sync. An empty 
 set-calendars = Calendars
 set-calendars-help = Renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays.
 set-address-books = Address books
-set-address-books-help = Where your contacts are kept, and with whom each book is shared. Who may reach you is decided by a contact's groups, never by its address book.
+set-address-books-help = Where your contacts are kept, and with whom each book is shared. Who may reach you is decided by a contact's groups, never by its address book; the groups of a book someone else can write count only once you say so on its line.
 set-collections-remove = Delete it, here and on the server
 word-and = and
 health-every-days = { $days ->
@@ -8848,7 +8847,7 @@ batch-move = Move to an address book…
 batch-group-add = Add to a group…
 batch-group-remove = Remove from a group…
 batch-title = Move the title into its field…
-batch-delete = Delete…
+batch-delete-contacts = Delete…
 batch-book = Address book
 batch-group-name = Group
 batch-also-group = Also add them to a group
@@ -8876,7 +8875,7 @@ batch-ask-delete = { $n ->
     [one] Delete one contact?
    *[other] Delete { $n } contacts?
 }
-batch-ask-delete-note = Undo, in the status line, brings them back.
+batch-ask-delete-note = Undo, in the status line, brings them back for ten seconds; then, for thirty days, Contacts ⚙ ▸ Address books does.
 batch-cannot = { $n ->
     [one] One stays as it is:
    *[other] { $n } stay as they are:
@@ -8927,10 +8926,6 @@ batch-undone = { $n ->
     [one] One contact put back.
    *[other] { $n } contacts put back.
 }
-batch-undone-aside = { $n ->
-    [one] One had changed since: that version is kept in { $path }.
-   *[other] { $n } had changed since: those versions are kept in { $path }.
-}
 book-whose-yours = Yours
 book-whose-shared-by = Shared with you by { $owner }
 book-whose-shared = Shared with you
@@ -8954,7 +8949,7 @@ book-remove-cards = { $n ->
     [one] “{ $name }” holds one contact. Where does it go?
    *[other] “{ $name }” holds { $n } contacts. Where do they go?
 }
-book-remove-copy = Deleted with it, they are copied on this device first.
+book-remove-copy = This count is this device’s. On its server, “{ $name }” is deleted for everyone it is shared with; if someone added contacts there since the last sync, it is kept and shown here again. The contacts here are copied on this device first.
 books-new = New address book…
 books-new-where = Where
 books-new-name = Its name
@@ -9020,12 +9015,12 @@ import-columns = Which column is what
 import-keep-as = Keep these columns under a name (optional)
 import-into = Into the address book
 import-into-new = A new address book…
-import-groups = Add every contact to these groups (optional, separated by commas)
-import-titles = Move a title found at the start of a name into its field
-import-summary = { $new } new, { $completed } completed.
-import-same = { $n ->
-    [one] One already here, the file adds nothing to it.
-   *[other] { $n } already here, the file adds nothing to them.
+import-groups = Add every new contact to these groups (optional, separated by commas)
+import-titles = Move a title found at the start of a name into its field, where it cannot be anything but a title
+import-summary = { $new ->
+    [0] No new contact.
+    [one] One new contact, into “{ $book }”.
+   *[other] { $new } new contacts, into “{ $book }”.
 }
 import-read-only = { $n ->
     [one] One already here in an address book you only read: left as it is.
@@ -9059,6 +9054,142 @@ import-field-birthday = Birthday
 import-field-note = Note
 import-field-groups = Groups
 import-field-web = Web site
+batch-undone-left = { $n ->
+    [one] One stays as it is, said below.
+   *[other] { $n } stay as they are, said below.
+}
+batch-why-changed-since = it changed since this was planned
+batch-why-taken = another card took its place since
+batch-why-gone-since = it was moved or deleted since
+batch-why-changed-since-undo = it changed since: that version stays
+batch-why-book-gone = its address book is gone
+batch-why-elsewhere-now = it is in another address book now
+batch-why-undo-gone = This change can no longer be undone: its record is gone.
+batch-why-nothing-done = nothing was changed
+batch-why-household = its name holds two people: left as written
+batch-why-no-name-line = its name comes from another line of its card: change it from its card
+batch-why-target-refused = its server did not make that address book
+batch-title-group-only = Its title is in its field already: only the group is added.
+batch-title-sure-help = Ticked: the word cannot be anything but a title. Not ticked: it may be part of a name or a company; tick it if it is a title.
+batch-shared-theirs = “{ $book }” is someone else’s: its owner, and whoever it is shared with, will see what goes into it.
+batch-shared-with = “{ $book }” is shared with { $who }: they will see what goes into it.
+batch-shared-maybe = “{ $book }” may be shared with other people: its server is asked who sees it.
+batch-listed = { $when } · { $what }
+batch-listed-partly = Stopped after { $done } of { $planned }.
+batch-cannot-undo = Cannot be undone: { $why }.
+batch-undo-ask = { $n ->
+    [one] Put back the contact this change touched, as it was before? A contact changed since stays as it is.
+   *[other] Put back the { $n } contacts this change touched, as they were before? Those changed since stay as they are.
+}
+batch-undo = Undo…
+batch-undo-go = Put them back
+book-refused = Its server did not make this address book: it stays on this device alone, and nothing moves into it.
+book-kept-held = Kept: its server holds contacts that were added there since; they are here again.
+book-groups-count = Its groups decide who may reach me
+book-groups-owner = Its owner
+book-groups-stopped = { $who } can write this address book, so its groups no longer decide who may reach you: someone who can write it could otherwise add a card in a group that a list lets through. Turn on “Its groups decide who may reach me” if you trust them.
+books-groups-on = The groups of “{ $name }” now decide who may reach you.
+books-groups-off = The groups of “{ $name }” no longer decide who may reach you; its contacts stay yours.
+books-groups-failed = This choice could not be kept: the settings file cannot be written.
+books-groups-stopped-now = Someone else can now write “{ $name }”, so its groups no longer decide who may reach you. Turn on “Its groups decide who may reach me” on its line in Contacts ⚙ ▸ Address books if you trust them.
+book-remove-copy-here = They are copied on this device first, then deleted.
+book-not-yours-to-rename = Its server does not say this address book is yours: it is not renamed from here.
+book-not-yours-to-share = Its server does not say this address book is yours: it is not shared from here.
+books-merge-itself = An address book cannot be merged into itself.
+books-merge-ask = { $n ->
+    [one] Move the one contact of “{ $name }” into “{ $into }”, then remove “{ $name }”?
+   *[other] Move the { $n } contacts of “{ $name }” into “{ $into }”, then remove “{ $name }”?
+}
+books-rename-failed = This address book could not be renamed: its folder on this device cannot be written.
+books-remove-failed = This address book could not be removed: its folder on this device cannot be written.
+books-remove-undone = “{ $name }” is back, with its contacts.
+books-remove-too-late = Too late: its server deleted it already. Its contacts are kept in { $copy }; Import… brings them back.
+books-batches = Changes to many contacts, the last thirty days
+books-batches-none = No change to many contacts in the last thirty days.
+books-batches-help = Each can be undone as a whole: what changed since stays as it is.
+dav-kept-both = { $n ->
+    [one] One contact changed elsewhere before its move reached its server: it is kept in both address books, as you left it and as they changed it. { $names }
+   *[other] { $n } contacts changed elsewhere before their move reached their server: each is kept in both address books, as you left it and as they changed it. { $names }
+}
+import-birthday-as-written = Birthday, as the file writes it: { $day }
+import-lines-more = { $lines } and { $more } more
+import-encoding = Read as { $encoding ->
+    [utf8] UTF-8.
+    [utf16] UTF-16, a spreadsheet’s “Unicode text”.
+   *[windows1252] Windows-1252, as a French spreadsheet saves it. If accents look wrong, save the file again as UTF-8.
+}
+import-limit-card = { $n ->
+    [one] One card is larger than { $mb } MB and is not read: line { $lines }.
+   *[other] { $n } cards are larger than { $mb } MB and are not read: lines { $lines }.
+}
+import-limit-cards = Only the first { $most } cards are read: from line { $line } on, the file is not read.
+import-limit-columns = This file has { $n } columns: the first { $most } are offered, the others are not read.
+import-limit-rows = Only the first { $most } rows are read: from line { $line } on, the file is not read.
+import-limit-cell = { $n ->
+    [one] One row holds a cell larger than { $kb } KB and is not read: line { $lines }.
+   *[other] { $n } rows hold a cell larger than { $kb } KB and are not read: lines { $lines }.
+}
+import-unclosed = { $n ->
+    [one] A quote opened on line { $line } is never closed: from there, the one line to the end is not read.
+   *[other] A quote opened on line { $line } is never closed: from there, the { $n } lines to the end are not read.
+}
+import-overflow = { $n ->
+    [one] Line { $lines } has more cells than the file has columns: a separator inside an address may have shifted it. Look at it after the import.
+   *[other] { $n } rows have more cells than the file has columns: a separator inside an address may have shifted them (lines { $lines }). Look at them after the import.
+}
+import-separator = Columns separated by
+import-separator-semicolon = Semicolons (;)
+import-separator-comma = Commas (,)
+import-separator-tab = Tabs
+import-international = Write the numbers without a country code in their international form, as numbers of { $country } (Contacts ⚙)
+import-international-none = Numbers stay as the file writes them: no country is set for numbers without a country code (Contacts ⚙).
+import-groups-here = Also to those already here
+import-complete = Complete them with what the file adds
+import-complete-help = Off, a contact already here is left exactly as it is. On, it gains what is listed below; nothing it holds is replaced.
+import-gains = Already here, and what the file would add:
+import-gains-more = { $n ->
+    [one] And one more.
+   *[other] And { $n } more.
+}
+import-gain-in-file = (twice in the file)
+import-gain-email = e-mail address { $value }
+import-gain-phone = number { $value }
+import-gain-address = address { $value }
+import-gain-web = web site { $value }
+import-gain-org = organisation { $value }
+import-gain-role = role { $value }
+import-gain-birthday = birthday { $value }
+import-gain-note = note “{ $value }”
+import-gain-title = title { $value }
+import-gain-given = given names { $value }
+import-gain-family = family name { $value }
+import-gain-suffix = suffix { $value }
+import-gain-group = group { $value }
+import-read-of = { $read } of the file’s { $rows } rows read as contacts.
+import-here = { $n ->
+    [one] One is already here (the same identifier, or the same name with the same address or number): left as it is.
+   *[other] { $n } are already here (the same identifier, or the same name with the same address or number): left as they are.
+}
+import-twice = { $n ->
+    [one] One is in the file twice: imported once.
+   *[other] { $n } are in the file twice: each imported once.
+}
+import-apart = { $n ->
+    [one] One shares a number or an address with a card already here, under another name: imported apart.
+   *[other] { $n } share a number or an address with a card already here: imported apart.
+}
+import-completed = { $n ->
+    [one] One contact already here will change, as listed below.
+   *[other] { $n } contacts already here will change, as listed below.
+}
+import-rewritten = { $n ->
+    [one] One number is written in its international form.
+   *[other] { $n } numbers are written in their international form.
+}
+import-birthdays = { $n ->
+    [one] One birthday reads two ways, or none: it is kept as written, in its note.
+   *[other] { $n } birthdays read two ways, or none: each is kept as written, in its note.
+}
 
 ## Export (wave D, its own commit).
 

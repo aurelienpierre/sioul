@@ -161,7 +161,7 @@ impl Dealings {
         }
         let own: BTreeSet<String> = config.accounts.iter().filter_map(|a| a.address.as_deref()).map(str::to_ascii_lowercase).collect();
         // The address books: every address on a card.
-        let book = crate::porch::Book::load(crate::reach::region(config));
+        let book = crate::porch::Book::load(crate::reach::region(config), &crate::addressbooks::groups_held_back(config));
         for index in 0..book.len() {
             for address in book.card(index).map(|c| c.addresses.as_slice()).unwrap_or_default() {
                 dealings.with(address, Dealing::Book);

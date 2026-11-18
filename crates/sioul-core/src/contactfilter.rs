@@ -11,7 +11,8 @@
 //! the other pages keep their view: never shared, an older Sioul ignores it.
 //!
 //! An address book filters what is shown, nothing more: who may reach you is
-//! decided by a card's groups (porch.rs), never by its book.
+//! decided by a card's groups (porch.rs), never by its book (but for the
+//! trust a book someone else can write needs, `addressbooks::groups_count`).
 
 use crate::contacts::{self, Contact};
 use serde::{Deserialize, Serialize};
@@ -62,8 +63,9 @@ pub struct Filter {
     pub address: Want,
     #[serde(default, skip_serializing_if = "Want::is_any")]
     pub title: Want,
-    /// What the search field holds.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    /// What the search field holds: for this run of the window only, never
+    /// written to disk (review F23: the last name looked for is no one's business).
+    #[serde(default, skip_serializing)]
     pub name: String,
 }
 
@@ -75,12 +77,14 @@ impl Filter {
 
     /// As kept on this device; nothing kept, or unreadable: no filter.
     pub fn load(path: &Path) -> Filter {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        let mut kept: Filter = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        kept.name.clear();
+        kept
     }
 
-    /// Kept, only when it changed: written beside, then moved in.
+    /// Kept, the search left out, only when it changed: written beside, then moved in.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        if Filter::load(path) == *self {
+        if Filter::load(path) == (Filter { name: String::new(), ..self.clone() }) {
             return Ok(());
         }
         if let Some(dir) = path.parent() {
@@ -225,9 +229,9 @@ mod tests {
         assert_eq!(Filter::load(&path), Filter::default());
         let filter = Filter { books: vec!["cloud/pro".into()], title: Want::Has, phone: Want::Lacks, name: "Martin".into(), ..Filter::default() };
         filter.save(&path).unwrap();
-        assert_eq!(Filter::load(&path), filter);
+        assert_eq!(Filter::load(&path), Filter { name: String::new(), ..filter.clone() }, "the search is never kept");
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("title = \"has\"") && text.contains("phone = \"lacks\"") && !text.contains("email"), "{text}");
+        assert!(text.contains("title = \"has\"") && text.contains("phone = \"lacks\"") && !text.contains("email") && !text.contains("Martin"), "{text}");
         std::fs::write(&path, "books = 12").unwrap();
         assert_eq!(Filter::load(&path), Filter::default());
         let _ = std::fs::remove_dir_all(&dir);

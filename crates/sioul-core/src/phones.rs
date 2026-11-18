@@ -213,7 +213,9 @@ fn without_zero_in_parentheses(number: &str) -> String {
 /// A number's key, to compare it: its international form ("+33465711234"),
 /// its extension after ";ext=". A number written without its country takes
 /// `region`'s; a short code and a value that is not a number are compared as
-/// written, spaces aside. Never shown, never written to a card.
+/// written, spaces aside. Never shown. Written to a card in one place only:
+/// the import's "international form", when the person ticks it, its country
+/// named on the box (`contactimport::international`).
 pub fn key(value: &str, region: Option<&Region>) -> String {
     let value = value.trim_matches(|c: char| c.is_whitespace() || is_spacing(c));
     let value = value.get(..4).filter(|s| s.eq_ignore_ascii_case("tel:")).map_or(value, |_| value[4..].trim());

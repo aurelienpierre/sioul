@@ -6,15 +6,28 @@
 # only when a name follows it: "Mme" alone, "Meredith" or "Drake" hold none.
 # `cargo test -p sioul-core titles` checks that this file is well formed.
 #
-# words: the titles, as written without their full stop
-# about: who says them, for whoever reads this file
+# words:  the titles, as written without their full stop
+# unsure: those of them that are often something else when written without
+#         their full stop ("Me" is "me", "PR" public relations, "M" an
+#         initial): the title's move offers them unticked, and the guess of a
+#         name's parts never takes them. A title written with its full stop is
+#         sure; any title without its full stop is unsure on a card that looks
+#         like a company ("Dr Martens Store", "Miss Paris Institut").
+# about:  who says them, for whoever reads this file
+
+# Words that join two people in one name ("M. et Mme Dupont", "Mr and Mrs
+# Smith", "Jeanne & Paul"): a name holding one is two people's, and the
+# title's move never changes it.
+joiners = ["et", "and", "&", "+", "und"]
 
 [[language]]
 code = "fr"
-about = "Monsieur, Madame, Mademoiselle, Docteur, Maître, Professeur, and the English Mr many French cards carry"
-words = ["M", "Mr", "Mme", "Mlle", "Dr", "Me", "Pr"]
+about = "Monsieur, Madame, Mademoiselle, Docteur, Maître, Professeur, written short or in full, and the English Mr many French cards carry"
+words = ["M", "Mr", "Mme", "Mlle", "Dr", "Me", "Pr", "Monsieur", "Madame", "Mademoiselle", "Docteur", "Maître", "Professeur"]
+unsure = ["M", "Me", "Pr", "Docteur", "Maître", "Professeur"]
 
 [[language]]
 code = "en"
 about = "Mister, Missus, Ms, Miss, Doctor, Professor"
 words = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"]
+unsure = ["Prof"]

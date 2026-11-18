@@ -11,7 +11,13 @@
 //!
 //! An address book says where a card is kept and with whom it is shared.
 //! Who may reach you is decided by a card's groups, never by its book
-//! (porch.rs): nothing here touches a list, an area or a notification.
+//! (porch.rs), with one exception, about trust (the owner's answer of 18
+//! November 2026): the groups of a book someone else can write (one shared
+//! to write, one that is someone else's) count only once you say so for
+//! that book ("Its groups decide who may reach me", `groups_count`), since
+//! someone who can write it could otherwise add a card in a group that a
+//! list lets through. Its cards stay your contacts, their own lines on a
+//! list (UID, address, number) still count; only their groups are held back.
 //!
 //! The acts themselves go through the generic collections' layer (`vdir`:
 //! `create`, `rename_collection`, `delete_collection`, `remove_collection`,
@@ -52,6 +58,11 @@ pub struct BookLine {
     pub can_leave: bool,
     /// A server with one fixed book: what it allows, in a sentence; else "".
     pub fixed: String,
+    /// "Its groups decide who may reach me", as it reads now (`groups_count`).
+    pub groups: bool,
+    /// Why its groups stopped counting and how to turn them on, when someone
+    /// else can write it and nothing was said for those writers; else "".
+    pub groups_note: String,
 }
 
 /// Every address book, by account then name.
@@ -73,6 +84,7 @@ pub fn is_google(collection: &Collection, config: &Config) -> bool {
 /// A book's line.
 pub fn line(collection: &Collection, config: &Config, tr: &Translator) -> BookLine {
     let state = State::load(&collection.state_path());
+    let trust = groups_count(collection, config);
     let local = collection.account == vdir::LOCAL;
     let google = is_google(collection, config);
     let place = collection.place(config);
@@ -105,13 +117,113 @@ pub fn line(collection: &Collection, config: &Config, tr: &Translator) -> BookLi
         whose,
         writable,
         access: tr.text(if writable { "book-writable" } else { "book-read-only" }, None),
-        waiting: if state.pending && !local { tr.text("book-waiting", None) } else { String::new() },
-        can_rename: writable && !google && (yours || state.owned.is_none()),
+        waiting: if state.refused {
+            tr.text("book-refused", None)
+        } else if state.pending && !local {
+            tr.text("book-waiting", None)
+        } else if state.kept == "held" {
+            tr.text("book-kept-held", None)
+        } else {
+            String::new()
+        },
+        can_rename: writable && !google && !state.refused && (yours || state.owned.is_none()),
         can_remove: writable && !google && yours,
-        can_share: writable && !google && !local && yours,
+        can_share: writable && !google && !local && !state.refused && !state.pending && yours,
         can_leave: !local && !google && state.owned == Some(false) && !state.url.is_empty(),
         fixed: if google { tr.text("book-google-fixed", None) } else { String::new() },
+        groups: trust.count,
+        groups_note: if trust.said || trust.writers.is_empty() {
+            String::new()
+        } else {
+            let mut args = crate::i18n::args();
+            let named: Vec<String> = trust.writers.iter().map(|w| if w == "owner" { tr.text("book-groups-owner", None) } else { w.strip_prefix("group:").unwrap_or(w).to_string() }).collect();
+            args.set("who", named.join(", "));
+            tr.text("book-groups-stopped", Some(&args))
+        },
     }
+}
+
+/// Whether a book's groups decide who may reach the person, and why.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GroupsTrust {
+    pub count: bool,
+    /// Who else can write it now (`writers`).
+    pub writers: Vec<String>,
+    /// The person said it for these writers; else the default holds.
+    pub said: bool,
+}
+
+/// Who else can write a book now: its owner when it is someone else's, and
+/// those it is shared with to write, as its server last listed them
+/// (`State::writers`), sorted. None for a book of this device or Google's.
+/// A server that says neither whose a book is nor whom it is shared with
+/// gives none: the book is taken as yours alone, as its line says
+/// ("Its server does not say whose it is").
+pub fn writers(collection: &Collection, state: &State) -> Vec<String> {
+    if collection.account == vdir::LOCAL {
+        return Vec::new();
+    }
+    let mut who: Vec<String> = state.writers.clone();
+    if state.owned == Some(false) {
+        who.push(owner_in_id(&collection.id).map_or_else(|| "owner".to_string(), str::to_string));
+    }
+    who.sort();
+    who.dedup();
+    who
+}
+
+/// "Its groups decide who may reach me" for a book (the owner's answer of 18
+/// November 2026): as the person said it for the writers it has now; unsaid,
+/// or said for other writers, on for a book only the person can write, off
+/// for one someone else can write.
+pub fn groups_count(collection: &Collection, config: &Config) -> GroupsTrust {
+    let state = State::load(&collection.state_path());
+    let writers = writers(collection, &state);
+    let place = format!("{}/{}", collection.account, collection.id);
+    let said = config.contacts.books.get(&place).and_then(|b| {
+        let mut theirs = b.writers.clone();
+        theirs.sort();
+        theirs.dedup();
+        b.groups.filter(|_| theirs == writers)
+    });
+    GroupsTrust { count: said.unwrap_or(writers.is_empty()), said: said.is_some(), writers }
+}
+
+/// The books whose groups the lists of who may reach the person do not
+/// read now, by place ("account/id"): what `porch::Book` holds back.
+pub fn groups_held_back(config: &Config) -> std::collections::BTreeSet<String> {
+    vdir::collections(Kind::Contacts).into_iter().filter(|c| !groups_count(c, config).count).map(|c| format!("{}/{}", c.account, c.id)).collect()
+}
+
+/// "Its groups decide who may reach me" set for a book, with the writers it
+/// has now, into the settings (`[contacts.books."<place>"]`), comments kept;
+/// every device reads it.
+pub fn set_groups_count(path: &std::path::Path, collection: &Collection, on: bool) -> Result<(), String> {
+    let state = State::load(&collection.state_path());
+    let writers = writers(collection, &state);
+    let place = format!("{}/{}", collection.account, collection.id);
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        if !doc.contains_key("contacts") {
+            doc["contacts"] = toml_edit::table();
+        }
+        let contacts = doc["contacts"].as_table_mut().ok_or_else(|| format!("{}: contacts is not a table", path.display()))?;
+        if !contacts.contains_key("books") {
+            let mut table = toml_edit::Table::new();
+            table.set_implicit(true);
+            contacts.insert("books", toml_edit::Item::Table(table));
+        }
+        let books = contacts.get_mut("books").and_then(toml_edit::Item::as_table_mut).ok_or_else(|| format!("{}: contacts.books is not a table", path.display()))?;
+        let mut table = toml_edit::Table::new();
+        table.insert("groups", toml_edit::value(on));
+        let mut list = toml_edit::Array::new();
+        for writer in &writers {
+            list.push(writer.as_str());
+        }
+        table.insert("writers", toml_edit::value(list));
+        books.insert(&place, toml_edit::Item::Table(table));
+        crate::config::write_document(path, &doc)
+    })
 }
 
 /// An account a new address book can go into, as the form offers it.
@@ -181,8 +293,70 @@ pub fn removal(collection: &Collection, config: &Config, tr: &Translator) -> Rem
     if line.count == 0 {
         return Removal { act: "empty", sentence: tr.text("book-remove-empty", Some(&args)), count: 0, into: Vec::new(), note: String::new() };
     }
-    let into = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && c.dir != collection.dir).map(|c| (format!("{}/{}", c.account, c.id), c.label(config, tr))).collect();
-    Removal { act: "cards", sentence: tr.text("book-remove-cards", Some(&args)), count: line.count, into, note: tr.text("book-remove-copy", None) }
+    let into = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && c.dir != collection.dir && !State::load(&c.state_path()).refused).map(|c| (format!("{}/{}", c.account, c.id), c.label(config, tr))).collect();
+    // The count and the copy are this device's: on a server, the book goes for everyone it is
+    // shared with, and what was added there since the last sync keeps it (review F5).
+    let note = if collection.account == vdir::LOCAL { tr.text("book-remove-copy-here", None) } else { tr.text("book-remove-copy", Some(&args)) };
+    Removal { act: "cards", sentence: tr.text("book-remove-cards", Some(&args)), count: line.count, into, note }
+}
+
+/// What merging `from` into `into` would do, said before it runs (review F4):
+/// how many contacts go where, what the target's server would not keep, and
+/// who sees the target (`shared_with`, as its server last answered; none
+/// when not asked yet).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MergeQuestion {
+    pub sentence: String,
+    /// "“Google” would not keep: …", or "".
+    pub losses: String,
+    /// Who sees the target, or that it may be shared; "" for a book of this device.
+    pub shared: String,
+    /// Cards that cannot go there, in words, card by card; the merge waits while any.
+    pub cannot: Vec<crate::contactbatch::Cannot>,
+}
+
+/// The question before a merge.
+pub fn merge_question(from: &Collection, into: &Collection, config: &Config, tr: &Translator, shared_with: Option<&[String]>) -> MergeQuestion {
+    let cards: Vec<crate::contacts::Contact> = from.items().iter().filter_map(|p| crate::contacts::read(p, from)).collect();
+    let provider = crate::capabilities::provider_of(config.account(&into.account));
+    let plan = crate::contactbatch::plan_move(&cards.iter().collect::<Vec<_>>(), into, provider, tr);
+    let mut args = tr.counted(cards.len());
+    args.set("n", cards.len() as i64);
+    args.set("name", from.name.clone());
+    args.set("into", into.name.clone());
+    let losses = if plan.losses.is_empty() {
+        String::new()
+    } else {
+        let mut args = crate::i18n::args();
+        args.set("book", into.name.clone());
+        args.set("list", plan.losses.join(", "));
+        tr.text("batch-ask-losses", Some(&args))
+    };
+    MergeQuestion { sentence: tr.text("books-merge-ask", Some(&args)), losses, shared: shared_line(into, tr, shared_with), cannot: plan.cannot }
+}
+
+/// Who sees what goes into `book`: the people its server named, that it may
+/// be shared when not asked yet, its owner's when someone else's; "" for a
+/// book of this device, or one shared with nobody.
+pub fn shared_line(book: &Collection, tr: &Translator, shared_with: Option<&[String]>) -> String {
+    let state = State::load(&book.state_path());
+    let mut args = crate::i18n::args();
+    args.set("book", book.name.clone());
+    if book.account == vdir::LOCAL {
+        return String::new();
+    }
+    if state.owned == Some(false) {
+        args.set("owner", owner_in_id(&book.id).unwrap_or("").to_string());
+        return tr.text("batch-shared-theirs", Some(&args));
+    }
+    match shared_with {
+        Some([]) => String::new(),
+        Some(people) => {
+            args.set("who", people.join(", "));
+            tr.text("batch-shared-with", Some(&args))
+        }
+        None => tr.text("batch-shared-maybe", Some(&args)),
+    }
 }
 
 /// A book by its place, "account/id", among those shown.
@@ -237,5 +411,50 @@ mod tests {
         assert!(State::load(&new.state_path()).pending, "made on its server by the next sync");
         let _ = std::fs::remove_dir_all(Kind::Contacts.root().join("lines-cloud"));
         let _ = std::fs::remove_dir_all(crate::config::state_dir().join("dav").join("lines-cloud"));
+    }
+
+    /// "Its groups decide who may reach me" (the owner's answer of 18
+    /// November 2026): on for a book only you write; off, its line saying
+    /// why, for one someone else can write (shared to write, or someone
+    /// else's); switched on, kept in the settings with its writers; off again
+    /// when they change.
+    #[test]
+    fn a_book_s_groups_count_once_you_trust_who_writes_it() {
+        crate::config::stand_ins_only();
+        let tr = Translator::new("en");
+        let account = "trust-cloud";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        let made = |id: &str, state: State| {
+            vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            state.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+            find(&format!("{account}/{id}")).unwrap()
+        };
+        let mine = made("mine", State { url: "https://cloud.example.org/mine/".into(), owned: Some(true), ..State::default() });
+        let team = made("team", State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into(), "group:office".into()], ..State::default() });
+        let theirs = made("contacts_shared_by_lou", State { url: "https://cloud.example.org/lou/".into(), owned: Some(false), ..State::default() });
+        let dir = std::env::temp_dir().join(format!("sioul-book-trust-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\n[contacts]\nregion = \"FR\"\n").unwrap();
+        let config = || crate::config::Config::load(&path).unwrap();
+        assert!(groups_count(&mine, &config()).count && !groups_count(&team, &config()).count && !groups_count(&theirs, &config()).count);
+        assert_eq!(writers(&theirs, &State::load(&theirs.state_path())), ["lou"]);
+        let team_line = line(&team, &config(), &tr);
+        assert!(!team_line.groups && team_line.groups_note.starts_with("office, sam can write"), "{}", team_line.groups_note);
+        assert!(line(&mine, &config(), &tr).groups_note.is_empty());
+        assert_eq!(groups_held_back(&config()).into_iter().filter(|p| p.starts_with(account)).collect::<Vec<_>>(), ["trust-cloud/contacts_shared_by_lou", "trust-cloud/team"]);
+        // Switched on for these writers: kept in the settings, every device reading it; its note gone.
+        set_groups_count(&path, &team, true).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("# mine\n") && text.contains("region = \"FR\"") && text.contains("[contacts.books.\"trust-cloud/team\"]") && text.contains("groups = true"), "{text}");
+        assert!(groups_count(&team, &config()).count && line(&team, &config(), &tr).groups_note.is_empty());
+        // Its writers change: what was said no longer holds.
+        State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into()], ..State::default() }.save(&team.state_path()).unwrap();
+        assert!(!groups_count(&team, &config()).count && !line(&team, &config(), &tr).groups_note.is_empty());
+        // Turned off for a book only you write: said, kept.
+        set_groups_count(&path, &mine, false).unwrap();
+        assert!(!groups_count(&mine, &config()).count && line(&mine, &config(), &tr).groups_note.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 }

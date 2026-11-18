@@ -201,11 +201,25 @@ impl Mappings {
 
 // ---------------------------------------------------------------- reading
 
-/// The cards a file holds, each with the line it starts on, and the lines that do not read.
+/// The most cards read from one file, and the largest card (photos
+/// included): what goes past is not read, and said (review F7).
+pub const MOST_CARDS: usize = 20_000;
+pub const MOST_CARD: usize = 2 * 1024 * 1024;
+
+/// The cards a file holds, each with the line it starts on, and what did not read.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cards {
     pub cards: Vec<(usize, String)>,
+    /// Cards or rows that do not read, by their first line.
     pub broken: Vec<usize>,
+    /// Cards larger than `MOST_CARD`, by their first line: not read.
+    pub too_big: Vec<usize>,
+    /// The file held more than `MOST_CARDS` (or the table's rows more than
+    /// `csv::MOST_ROWS`): the first line not read.
+    pub cut: Option<usize>,
+    /// Birthdays that read two ways ("5/12/1984") or none: kept as the file
+    /// writes them in the card's note, never guessed (review F22).
+    pub birthdays_as_written: usize,
 }
 
 /// A card's UID, as its first `UID` line says.
@@ -216,39 +230,54 @@ fn uid_of(text: &str) -> Option<String> {
 /// Each card of a vCard file: its lines from `BEGIN:VCARD` to `END:VCARD`,
 /// read by calcard (folded lines, 2.1's quoted-printable and charsets); a 2.1
 /// (or 2.0) card written again as 3.0, any other kept as the file holds it;
-/// one without a UID given one. A card calcard does not read, or never
-/// closed, is named by its first line.
+/// one without a UID given one. A card calcard does not read, one never
+/// closed, or one that gives neither a name, an address, a number nor an
+/// organisation, is named by its first line; at most `MOST_CARDS` of
+/// `MOST_CARD` bytes each.
 pub fn read_vcf(text: &str) -> Cards {
     let mut out = Cards::default();
-    let mut current: Option<(usize, Vec<&str>)> = None;
+    let mut current: Option<(usize, Vec<&str>, usize)> = None;
     for (n, raw) in text.split('\n').enumerate() {
         let line = raw.trim_end_matches('\r');
         let bare = line.trim();
         if bare.eq_ignore_ascii_case("BEGIN:VCARD") {
-            if let Some((start, _)) = current.take() {
+            if let Some((start, _, _)) = current.take() {
                 out.broken.push(start);
             }
-            current = Some((n + 1, vec![line]));
+            if out.cards.len() >= MOST_CARDS {
+                out.cut = Some(n + 1);
+                return out;
+            }
+            current = Some((n + 1, vec![line], line.len()));
             continue;
         }
-        let Some((start, card)) = current.as_mut() else { continue };
-        card.push(line);
+        let Some((start, card, size)) = current.as_mut() else { continue };
+        *size += line.len() + 2;
+        if *size <= MOST_CARD {
+            card.push(line);
+        }
         if bare.eq_ignore_ascii_case("END:VCARD") {
-            let (start, card) = (*start, card.join("\r\n") + "\r\n");
+            let (start, too_big) = (*start, *size > MOST_CARD);
+            let card = card.join("\r\n") + "\r\n";
             current = None;
+            if too_big {
+                out.too_big.push(start);
+                continue;
+            }
             match one_card(&card) {
                 Some(card) => out.cards.push((start, card)),
                 None => out.broken.push(start),
             }
         }
     }
-    if let Some((start, _)) = current {
+    if let Some((start, _, _)) = current {
         out.broken.push(start);
     }
     out
 }
 
-/// One card's text, as Sioul keeps it; none when calcard does not read it.
+/// One card's text, as Sioul keeps it; none when calcard does not read it,
+/// or when it says nothing of anyone.
 fn one_card(text: &str) -> Option<String> {
     let parsed = contacts::parse(text)?;
     let old = matches!(parsed.version(), Some(calcard::vcard::VCardVersion::V2_1 | calcard::vcard::VCardVersion::V2_0));
@@ -256,13 +285,19 @@ fn one_card(text: &str) -> Option<String> {
         let mut out = String::new();
         parsed.write_to(&mut out, calcard::vcard::VCardVersion::V3_0).ok()?;
         // A line break decoded from quoted-printable (=0D=0A) is written "\r\n" by calcard,
-        // which vCard 3.0 does not know: one "\n".
-        out.replace("\\r\\n", "\\n")
+        // which vCard 3.0 does not know: one "\n"; and its charsets, decoded, are said no more.
+        let lines: Vec<String> = lines::unfold(&out.replace("\\r\\n", "\\n")).into_iter().map(|l| without_charset(&l)).collect();
+        lines::fold(&lines)
     } else {
         text.to_string()
     };
+    let unfolded = lines::unfold(&card);
+    let says = |name: &str| unfolded.iter().any(|l| lines::name(l) == name && !lines::value(l).trim().trim_matches(';').is_empty());
+    if !["FN", "N", "ORG", "EMAIL", "TEL"].iter().any(|p| says(p)) {
+        return None;
+    }
     if uid_of(&card).is_none() {
-        let mut all = lines::unfold(&card);
+        let mut all = unfolded;
         let at = all.iter().position(|l| lines::name(l) == "VERSION").map_or(1, |i| i + 1).min(all.len());
         all.insert(at, format!("UID:{}", crate::vdir::new_name()));
         card = lines::fold(&all);
@@ -270,27 +305,61 @@ fn one_card(text: &str) -> Option<String> {
     Some(card)
 }
 
+/// A line without its `CHARSET` parameter (a 2.1 card's, decoded already).
+fn without_charset(line: &str) -> String {
+    let value = lines::value(line);
+    if !line.contains(':') {
+        return line.to_string();
+    }
+    let head = &line[..line.len() - value.len() - 1];
+    let kept: Vec<&str> = head.split(';').filter(|p| !p.trim().to_ascii_uppercase().starts_with("CHARSET=")).collect();
+    format!("{}:{value}", kept.join(";"))
+}
+
 /// The cards a CSV table makes with these fields, one per row; a row that
-/// gives neither a name, an address nor a number does not read.
-pub fn read_csv(table: &Table, fields: &[Field]) -> Cards {
-    let mut out = Cards { cards: Vec::new(), broken: table.broken.clone() };
+/// gives neither a name, an address nor a number does not read. A birthday
+/// that reads two ways is kept in the note as `tr` words it.
+pub fn read_csv(table: &Table, fields: &[Field], tr: &crate::i18n::Translator) -> Cards {
+    let mut out = Cards { broken: table.broken.clone(), cut: table.cut, ..Cards::default() };
+    let day_first = french(&table.headings);
     for row in &table.rows {
-        let edit = edit_of_row(row, fields);
+        let (edit, as_written) = edit_of_row(row, fields, day_first, tr);
         if edit.name.trim().is_empty() && edit.emails.is_empty() && edit.phones.is_empty() && edit.org.trim().is_empty() {
             out.broken.push(row.line);
             continue;
         }
+        out.birthdays_as_written += usize::from(as_written);
         out.cards.push((row.line, contacts::new_card(&edit)));
     }
     out.broken.sort_unstable();
     out
 }
 
-/// One row as the contact form gives a card.
-fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
+/// An e-mail address as a cell writes it: "jeanne@example.org", or with its
+/// name, "Jeanne <jeanne@example.org>"; none without an `@`.
+fn address_in(text: &str) -> Option<String> {
+    let text = text.trim();
+    let inside = match (text.rfind('<'), text.rfind('>')) {
+        (Some(open), Some(close)) if open < close => &text[open + 1..close],
+        _ => text,
+    };
+    let inside = inside.trim().trim_start_matches("mailto:");
+    (inside.contains('@') && !inside.contains(char::is_whitespace)).then(|| inside.to_string())
+}
+
+/// One row as the contact form gives a card; whether its birthday was kept as written.
+/// Whether a table's headings are French ("Prénom", "Date de naissance"):
+/// its dates are read day first when they could be read both ways.
+fn french(headings: &[String]) -> bool {
+    const FRENCH: [&str; 12] = ["prenom", "prenoms", "nom", "nomdefamille", "civilite", "telephone", "courriel", "datedenaissance", "societe", "ville", "codepostal", "adresse"];
+    headings.iter().any(|h| FRENCH.contains(&heading_key(h).as_str()))
+}
+
+fn edit_of_row(row: &crate::csv::Row, fields: &[Field], day_first: bool, tr: &crate::i18n::Translator) -> (ContactEdit, bool) {
     let mut edit = ContactEdit { categories: Some(Vec::new()), ..ContactEdit::default() };
     let mut parts = NameParts::default();
     let mut additional = String::new();
+    let mut as_written = false;
     let (mut street, mut postcode, mut town, mut region, mut country) = (Vec::new(), String::new(), String::new(), String::new(), String::new());
     let add = |to: &mut String, value: &str| {
         if !value.is_empty() {
@@ -300,6 +369,7 @@ fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
             to.push_str(value);
         }
     };
+    let mut notes: Vec<String> = Vec::new();
     for (column, field) in fields.iter().enumerate() {
         let value = row.cell(column);
         if value.is_empty() {
@@ -318,8 +388,8 @@ fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
             Field::Mobile => edit.phones.push(Labeled { label: "cell".into(), value: value.into() }),
             Field::Phone => edit.phones.push(Labeled { label: String::new(), value: value.into() }),
             Field::Email => {
-                for address in value.split([',', ';', ' ']).map(str::trim).filter(|a| a.contains('@')) {
-                    edit.emails.push(Labeled { label: String::new(), value: address.into() });
+                for address in value.split([',', ';']).filter_map(address_in) {
+                    edit.emails.push(Labeled { label: String::new(), value: address });
                 }
             }
             Field::Street => street.push(value.to_string()),
@@ -328,13 +398,16 @@ fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
             Field::Region => region = value.into(),
             Field::Country => country = value.into(),
             Field::Address => edit.addresses.push(Labeled { label: String::new(), value: value.into() }),
-            Field::Birthday => edit.birthday = birthday(value),
-            Field::Note => {
-                if !edit.notes.is_empty() {
-                    edit.notes.push('\n');
+            Field::Birthday => match birthday(value, day_first) {
+                Some(day) => edit.birthday = day,
+                None => {
+                    as_written = true;
+                    let mut args = crate::i18n::args();
+                    args.set("day", value.to_string());
+                    notes.push(tr.text("import-birthday-as-written", Some(&args)));
                 }
-                edit.notes.push_str(value);
-            }
+            },
+            Field::Note => notes.insert(0, value.to_string()),
             Field::Groups => {
                 // Google's labels (" ::: ", its own "* myContacts" aside), else commas or semicolons.
                 let names: Vec<&str> = if value.contains(":::") { value.split(":::").collect() } else { value.split([',', ';']).collect() };
@@ -345,6 +418,7 @@ fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
             Field::Web => edit.urls.push(value.into()),
         }
     }
+    edit.notes = notes.join("\n");
     if !street.is_empty() || !postcode.is_empty() || !town.is_empty() {
         let city = [postcode.as_str(), town.as_str()].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" ");
         let lines: Vec<String> = street.into_iter().chain([city, region, country]).filter(|l| !l.trim().is_empty()).collect();
@@ -360,30 +434,51 @@ fn edit_of_row(row: &crate::csv::Row, fields: &[Field]) -> ContactEdit {
     if !parts.is_empty() {
         edit.parts = Some(parts);
     }
-    edit
+    (edit, as_written)
 }
 
-/// A birthday as a card writes it, from what a spreadsheet writes:
-/// "12/05/1984" (day first, as in France), "1984-05-12", "12.05.1984"; else as written.
-fn birthday(value: &str) -> String {
-    let parts: Vec<&str> = value.split(['/', '.', '-']).map(str::trim).collect();
+/// A birthday as a card writes it, from what a spreadsheet writes, only when
+/// it reads one way: "1984-05-12", "13/05/1984" (a day over 12 first),
+/// "05/13/1984" (a day over 12 second); one that reads two ways ("5/12/1984")
+/// day first only in a table of French headings (`day_first`). Else, a year
+/// in two digits, or no date: none, and it is kept as the file writes it
+/// (review F22: Outlook's months first were read as days).
+fn birthday(value: &str, day_first: bool) -> Option<String> {
+    let parts: Vec<&str> = value.trim().split(['/', '.', '-']).map(str::trim).collect();
+    let number = |p: &str| p.parse::<u32>().ok();
+    let valid = |y: &str, m: u32, d: u32| y.len() == 4 && number(y).is_some() && (1..=12).contains(&m) && (1..=31).contains(&d);
     match parts.as_slice() {
-        [y, m, d] if y.len() == 4 => format!("{y}-{m:0>2}-{d:0>2}"),
-        [d, m, y] if y.len() == 4 && d.len() <= 2 && m.len() <= 2 => format!("{y}-{m:0>2}-{d:0>2}"),
-        _ => value.to_string(),
+        [y, m, d] if y.len() == 4 => {
+            let (m, d) = (number(m)?, number(d)?);
+            valid(y, m, d).then(|| format!("{y}-{m:02}-{d:02}"))
+        }
+        [a, b, y] if y.len() == 4 => {
+            let (a, b) = (number(a)?, number(b)?);
+            match (a > 12, b > 12) {
+                (true, false) if valid(y, b, a) => Some(format!("{y}-{b:02}-{a:02}")),
+                (false, true) if valid(y, a, b) => Some(format!("{y}-{a:02}-{b:02}")),
+                // The same day both ways ("05/05/1984"), or a French table's.
+                (false, false) if (a == b || day_first) && valid(y, b, a) => Some(format!("{y}-{b:02}-{a:02}")),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }
 
 /// A card's numbers written in their international form, by `region`, when
-/// they can be (`phones::key`): "04 65 71 12 34" as "+33465711234". A short
-/// code, a number abroad already, or one with an extension, as written.
-pub fn international(text: &str, region: Option<&Region>) -> String {
+/// they can be (`phones::key`): "04 65 71 12 34" as "+33465711234"; how many.
+/// A short code, a number abroad already, one with an extension, and a
+/// number given as an address (`VALUE=uri`), as written. A number from
+/// another country written without its own code is read as `region`'s: the
+/// import asks first (its box says the country, review F22).
+pub fn international(text: &str, region: Option<&Region>) -> (String, usize) {
     let card = lines::unfold(text);
-    let mut changed = false;
+    let mut changed = 0;
     let out: Vec<String> = card
         .into_iter()
         .map(|line| {
-            if lines::name(&line) != "TEL" {
+            if lines::name(&line) != "TEL" || lines::param(&line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("uri")) {
                 return line;
             }
             let value = lines::unescape(lines::value(&line)).trim().to_string();
@@ -391,32 +486,69 @@ pub fn international(text: &str, region: Option<&Region>) -> String {
             if phones::is_international(&value) || !key.starts_with('+') || key.contains(';') {
                 return line;
             }
-            changed = true;
+            changed += 1;
             let head = &line[..line.len() - lines::value(&line).len()];
             format!("{head}{key}")
         })
         .collect();
-    if changed { lines::fold(&out) } else { text.to_string() }
+    if changed > 0 { (lines::fold(&out), changed) } else { (text.to_string(), 0) }
 }
 
 // ---------------------------------------------------------------- plan
+
+/// What an import is asked to do.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    /// Groups added to every card made.
+    pub groups: Vec<String>,
+    /// Those groups added to the cards already here too.
+    pub groups_here: bool,
+    /// The cards already here completed with what the file adds (off by default).
+    pub complete: bool,
+    /// A title at the start of a name moved into its field.
+    pub titles: bool,
+    /// Numbers written in their international form by the region.
+    pub international: bool,
+}
+
+/// A card of the file found already here, and what the file would add to it,
+/// each as (kind, value): ("email", "jeanne@example.org"), ("group", "Clients")…
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Match {
+    pub name: String,
+    pub adds: Vec<(String, String)>,
+    /// Found twice in the file, not among the cards here.
+    pub in_file: bool,
+}
 
 /// What an import will do, before it runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Imported {
     pub plan: Plan,
+    /// Cards read from the file.
+    pub read: usize,
     /// Cards made in the book chosen.
     pub new: usize,
-    /// Cards already here completed with what the file adds.
+    /// Cards of the file already here (the same UID, or the same name and an
+    /// address or a number), left as they are unless completing was asked.
+    pub here: usize,
+    /// Cards of the file found twice in it: the later ones left as the first.
+    pub twice: usize,
+    /// Of those already here, the cards that will change (completed, given the groups).
     pub completed: usize,
-    /// Cards already here, to which the file adds nothing.
-    pub same: usize,
+    /// New cards that share an address or a number with another card under
+    /// another name: another person, imported as their own card, said.
+    pub apart: usize,
     /// Cards already here in a book you only read: left, never doubled.
     pub read_only: usize,
     /// Lines that do not read.
     pub broken: Vec<usize>,
     /// Names that begin with a title (the move is offered).
     pub titled: usize,
+    /// Numbers written in their international form.
+    pub rewritten: usize,
+    /// Those already here, card by card, with what the file would add.
+    pub matches: Vec<Match>,
 }
 
 /// The first word of a label, as the form keeps it: "work, home" → "work".
@@ -430,86 +562,137 @@ struct Planned {
     before: Option<String>,
     after: String,
     read_only: bool,
+    name: String,
 }
 
-/// The import planned: each card of `cards` matched with those here
-/// (`existing`, every book's) by an e-mail address or a number, completed
-/// there; else made in `target`. `groups` added to every card imported,
-/// those completed too; `titles`: a title at the start of a name moved into
-/// its field. Numbers in their international form by `region`.
-pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, groups: &[String], titles: bool, region: Option<&'static Region>) -> Imported {
-    let mut planned: Vec<Planned> = Vec::new();
-    let mut by_address: BTreeMap<String, usize> = BTreeMap::new();
-    let mut by_number: BTreeMap<String, usize> = BTreeMap::new();
-    let mut names: Vec<String> = Vec::new();
-    let index = |contact: &Contact, at: usize, by_address: &mut BTreeMap<String, usize>, by_number: &mut BTreeMap<String, usize>| {
-        for email in &contact.emails {
-            by_address.entry(email.value.trim().to_lowercase()).or_insert(at);
+/// A name as two cards of one person compare it: its title aside, then as
+/// Duplicates compares names (case, accents, punctuation and word order aside).
+fn person_key(name: &str) -> String {
+    let name = crate::titles::split(name).map_or_else(|| name.to_string(), |(_, rest)| rest);
+    crate::duplicates::name_key(&name)
+}
+
+/// What finds a card again: its UID; its name with each address, each number.
+#[derive(Default)]
+struct Index {
+    uid: BTreeMap<String, usize>,
+    named: BTreeMap<(String, String), usize>,
+    /// Any card's addresses and numbers, whatever its name: to say who shares them.
+    any: BTreeMap<String, usize>,
+}
+
+impl Index {
+    fn keys(contact: &Contact, region: Option<&Region>) -> Vec<String> {
+        let addresses = contact.emails.iter().map(|e| e.value.trim().to_lowercase());
+        let numbers = contact.phones.iter().map(|p| phones::key(&p.value, region)).filter(|k| phones::is_whole(k));
+        addresses.chain(numbers).collect()
+    }
+
+    fn add(&mut self, contact: &Contact, text: &str, at: usize, region: Option<&Region>) {
+        if let Some(uid) = uid_of(text) {
+            self.uid.entry(uid).or_insert(at);
         }
-        for phone in &contact.phones {
-            let key = phones::key(&phone.value, region);
-            if phones::is_whole(&key) {
-                by_number.entry(key).or_insert(at);
+        let name = person_key(&contact.name);
+        for key in Self::keys(contact, region) {
+            if !name.is_empty() {
+                self.named.entry((name.clone(), key.clone())).or_insert(at);
             }
+            self.any.entry(key).or_insert(at);
         }
-    };
+    }
+
+    /// The card this one is: the same UID, or the same name and an address or a number.
+    fn same(&self, contact: &Contact, text: &str, region: Option<&Region>) -> Option<usize> {
+        if let Some(at) = uid_of(text).and_then(|uid| self.uid.get(&uid).copied()) {
+            return Some(at);
+        }
+        let name = person_key(&contact.name);
+        if name.is_empty() {
+            return None;
+        }
+        Self::keys(contact, region).into_iter().find_map(|key| self.named.get(&(name.clone(), key)).copied())
+    }
+
+    /// Whether another card shares one of its addresses or numbers.
+    fn shares(&self, contact: &Contact, region: Option<&Region>) -> bool {
+        Self::keys(contact, region).iter().any(|k| self.any.contains_key(k))
+    }
+}
+
+/// The import planned (review F13, F14): a card of the file is the card here
+/// with its UID, or with its name and one of its addresses or numbers; the
+/// same address or number under another name is another person, imported as
+/// their own card and counted. A card already here is never changed unless
+/// asked (`Options::complete`, `groups_here`), and what the file would add
+/// to it is listed card by card first. Two cards of one file follow the
+/// same rule. New cards go to `target` with `Options::groups`.
+pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &Options, region: Option<&'static Region>) -> Imported {
+    let mut planned: Vec<Planned> = Vec::new();
+    let mut index = Index::default();
     for contact in existing {
         let Ok(text) = std::fs::read_to_string(&contact.key) else { continue };
         let at = planned.len();
-        planned.push(Planned { path: PathBuf::from(&contact.key), before: Some(text.clone()), after: text, read_only: contact.read_only });
-        names.push(contact.name.clone());
-        index(contact, at, &mut by_address, &mut by_number);
+        index.add(contact, &text, at, region);
+        planned.push(Planned { path: PathBuf::from(&contact.key), before: Some(text.clone()), after: text, read_only: contact.read_only, name: contact.name.clone() });
     }
     let here = planned.len();
-    let mut out = Imported { broken: cards.broken.clone(), ..Imported::default() };
+    let mut out = Imported { broken: cards.broken.clone(), read: cards.cards.len(), ..Imported::default() };
     let mut taken: Vec<PathBuf> = Vec::new();
     for (_, text) in &cards.cards {
-        let mut text = international(text, region);
-        if titles && let contacts::TitleMove::Moves { text: moved, .. } = contacts::move_title(&text) {
+        let mut text = text.clone();
+        if options.international {
+            let (written, rewritten) = international(&text, region);
+            text = written;
+            out.rewritten += rewritten;
+        }
+        if options.titles && let contacts::TitleMove::Moves { text: moved, sure: true, .. } = contacts::move_title(&text) {
             text = moved;
         }
-        if !groups.is_empty() {
-            text = contacts::with_categories(&text, groups, &[]).unwrap_or(text);
-        }
-        let incoming = contacts::contact(&lines::unfold(&text), Path::new(""), target);
+        let incoming = contacts::contact_quiet(&lines::unfold(&text), Path::new(""), target);
         out.titled += usize::from(crate::titles::split(&incoming.name).is_some());
-        let matched = incoming.emails.iter().find_map(|e| by_address.get(&e.value.trim().to_lowercase()).copied()).or_else(|| incoming.phones.iter().find_map(|p| by_number.get(&phones::key(&p.value, region)).copied()));
-        match matched {
+        match index.same(&incoming, &text, region) {
+            Some(at) if planned[at].read_only => out.read_only += 1,
             Some(at) => {
-                if planned[at].read_only {
-                    out.read_only += 1;
-                    continue;
+                let in_file = at >= here;
+                if in_file {
+                    out.twice += 1;
+                } else {
+                    out.here += 1;
                 }
-                match completed(&planned[at].after, &incoming, groups, region) {
-                    Some(after) => planned[at].after = after,
-                    None => out.same += 1,
+                let groups: &[String] = if options.groups_here || in_file { &options.groups } else { &[] };
+                let (changed, adds) = completed(&planned[at].after, &incoming, groups, options.complete, region);
+                out.matches.push(Match { name: planned[at].name.clone(), adds, in_file });
+                if (options.complete || (options.groups_here && !in_file)) && let Some(after) = changed {
+                    planned[at].after = after;
+                    let now = contacts::contact_quiet(&lines::unfold(&planned[at].after), &planned[at].path, target);
+                    index.add(&now, &planned[at].after, at, region);
                 }
-                let now = contacts::contact(&lines::unfold(&planned[at].after), &planned[at].path, target);
-                index(&now, at, &mut by_address, &mut by_number);
             }
             None => {
+                out.apart += usize::from(index.shares(&incoming, region));
+                if !options.groups.is_empty() {
+                    text = contacts::with_categories(&text, &options.groups, &[]).unwrap_or(text);
+                }
                 let mut path = contacts::new_path(target);
                 while taken.contains(&path) {
                     path = contacts::new_path(target);
                 }
                 taken.push(path.clone());
                 let at = planned.len();
-                planned.push(Planned { path, before: None, after: text, read_only: false });
-                names.push(incoming.name.clone());
-                index(&incoming, at, &mut by_address, &mut by_number);
+                index.add(&incoming, &text, at, region);
+                planned.push(Planned { path, before: None, after: text, read_only: false, name: incoming.name.clone() });
             }
         }
     }
     for (at, p) in planned.into_iter().enumerate() {
-        let name = names.get(at).cloned().unwrap_or_default();
         match p.before {
             None => {
                 out.new += 1;
-                out.plan.steps.push((name, Step::Write { path: p.path, before: None, after: p.after }));
+                out.plan.steps.push((p.name, Step::Write { path: p.path, before: None, after: p.after }));
             }
             Some(before) if at < here && before != p.after => {
                 out.completed += 1;
-                out.plan.steps.push((name, Step::Write { path: p.path, before: Some(before), after: p.after }));
+                out.plan.steps.push((p.name, Step::Write { path: p.path, before: Some(before), after: p.after }));
             }
             Some(_) => {}
         }
@@ -517,62 +700,97 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, groups: &[
     out
 }
 
-/// A card here completed with what `incoming` adds: its addresses, numbers,
-/// postal addresses and web sites not there yet (numbers compared by
-/// `phones::key`, addresses case aside), a single value it lacks (its
-/// organisation, role, birthday, note, the name's parts), and its groups
-/// with those asked. A value already there is never overwritten. None when
-/// nothing is added.
-fn completed(text: &str, incoming: &Contact, groups: &[String], region: Option<&Region>) -> Option<String> {
-    let here = contacts::contact(&lines::unfold(text), Path::new(""), &Collection { kind: crate::vdir::Kind::Contacts, account: String::new(), id: String::new(), dir: PathBuf::new(), name: String::new(), color: None, read_only: false, components: Vec::new() });
+/// A card here completed with what `incoming` adds, when `complete`: its
+/// addresses, numbers, postal addresses and web sites not there yet
+/// (numbers compared by `phones::key`, addresses case aside), a single value
+/// it lacks (its organisation, role, birthday, note, the name's parts when it
+/// has none), the file's groups; and `groups` either way. A value already
+/// there is never overwritten, and a card's several `ORG` or `TITLE` lines
+/// stay (review F21). The card as it would be (None: nothing added), and what
+/// is added, as (kind, value), whether asked or not.
+fn completed(text: &str, incoming: &Contact, groups: &[String], complete: bool, region: Option<&Region>) -> (Option<String>, Vec<(String, String)>) {
+    let card = lines::unfold(text);
+    let here = contacts::contact_quiet(&card, Path::new(""), &Collection { kind: crate::vdir::Kind::Contacts, account: String::new(), id: String::new(), dir: PathBuf::new(), name: String::new(), color: None, read_only: false, components: Vec::new() });
+    let mut adds: Vec<(String, String)> = Vec::new();
+    let mut said = |kind: &str, value: &str| adds.push((kind.to_string(), value.to_string()));
     let keep = |list: &[Labeled]| list.iter().map(|l| Labeled { label: first_label(&l.label), value: l.value.clone() }).collect::<Vec<_>>();
     let mut emails = keep(&here.emails);
     for e in &incoming.emails {
         if !emails.iter().any(|h| h.value.eq_ignore_ascii_case(&e.value)) {
+            said("email", &e.value);
             emails.push(Labeled { label: first_label(&e.label), value: e.value.clone() });
         }
     }
-    let mut phones = keep(&here.phones);
+    let mut numbers = keep(&here.phones);
     for p in &incoming.phones {
-        if !phones.iter().any(|h| phones::key(&h.value, region) == phones::key(&p.value, region)) {
-            phones.push(Labeled { label: first_label(&p.label), value: p.value.clone() });
+        if !numbers.iter().any(|h| phones::key(&h.value, region) == phones::key(&p.value, region)) {
+            said("phone", &p.value);
+            numbers.push(Labeled { label: first_label(&p.label), value: p.value.clone() });
         }
     }
     let folded = |t: &str| crate::text::fold(&t.to_lowercase()).into_iter().filter(|c| c.is_alphanumeric()).collect::<String>();
     let mut addresses = keep(&here.addresses);
     for a in &incoming.addresses {
         if !addresses.iter().any(|h| folded(&h.value) == folded(&a.value)) {
+            said("address", a.value.lines().next().unwrap_or(""));
             addresses.push(Labeled { label: first_label(&a.label), value: a.value.clone() });
         }
     }
     let mut urls = here.urls.clone();
     for u in &incoming.urls {
         if !urls.iter().any(|h| h.trim_end_matches('/').eq_ignore_ascii_case(u.trim_end_matches('/'))) {
+            said("web", u);
             urls.push(u.clone());
         }
     }
-    let or = |mine: &str, theirs: &str| if mine.trim().is_empty() { theirs.to_string() } else { mine.to_string() };
+    // A single value: the card's own lines kept whole (several ORG stay several), the file's only where it has none.
+    let mut single = |kind: &str, property: &str, theirs: &str| {
+        let mine = contacts::joined(&card, property);
+        if mine.is_empty() && !theirs.trim().is_empty() {
+            said(kind, theirs);
+            theirs.to_string()
+        } else {
+            mine
+        }
+    };
+    let org = single("org", "ORG", &incoming.org);
+    let role = single("role", "TITLE", &incoming.title);
+    let birthday = single("birthday", "BDAY", &incoming.birthday);
+    let notes = single("note", "NOTE", &incoming.notes);
+    let name = contacts::joined(&card, "FN");
+    // Each part of the name it lacks (the same person: its name matched), never one it has.
+    let mut part = |kind: &str, mine: &str, theirs: &str| {
+        if mine.trim().is_empty() && !theirs.trim().is_empty() {
+            said(kind, theirs);
+            theirs.to_string()
+        } else {
+            mine.to_string()
+        }
+    };
+    let parts = NameParts {
+        prefix: part("title", &here.prefix, &incoming.prefix),
+        given: part("given", &here.given, &incoming.given),
+        family: part("family", &here.family, &incoming.family),
+        suffix: part("suffix", &here.suffix, &incoming.suffix),
+    };
     let mut categories = here.categories.clone();
-    for name in incoming.categories.iter().chain(groups) {
+    for name in incoming.categories.iter().filter(|_| complete).chain(groups) {
         if !categories.iter().any(|c| contacts::category_key(c) == contacts::category_key(name)) {
+            said("group", name);
             categories.push(name.clone());
         }
     }
-    let edit = ContactEdit {
-        name: or(&here.name, &incoming.name),
-        emails,
-        phones,
-        org: or(&here.org, &incoming.org),
-        title: or(&here.title, &incoming.title),
-        addresses,
-        birthday: or(&here.birthday, &incoming.birthday),
-        notes: or(&here.notes, &incoming.notes),
-        urls,
-        categories: Some(categories),
-        parts: Some(NameParts { prefix: or(&here.prefix, &incoming.prefix), given: or(&here.given, &incoming.given), family: or(&here.family, &incoming.family), suffix: or(&here.suffix, &incoming.suffix) }),
+    let edit = if complete {
+        ContactEdit { name: if name.is_empty() { incoming.name.clone() } else { name }, emails, phones: numbers, org, title: role, addresses, birthday, notes, urls, categories: Some(categories), parts: Some(parts) }
+    } else {
+        // Groups alone: everything else as the card holds it.
+        let mut adds_only = adds.clone();
+        adds_only.retain(|(k, _)| k == "group");
+        let after = if adds_only.is_empty() { None } else { contacts::with_categories(text, groups, &[]) };
+        return (after, adds);
     };
     let after = contacts::apply(text, &edit);
-    (after != text).then_some(after)
+    ((after != text).then_some(after), adds)
 }
 
 #[cfg(test)]

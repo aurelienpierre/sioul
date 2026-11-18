@@ -15,10 +15,18 @@
 //!    (`vdir::write_item`, `remove_item`, `move_item`): a card of a book you
 //!    only read is refused there too. Its progress told; it can be stopped
 //!    between two cards; what a door refused named, card by card.
-//! 4. **Undone** as a whole (`undo`): each step done is taken back, a step
-//!    never done (stopped, refused) left alone, a card changed since set
-//!    aside beside the record first. A move goes back by a move: the card
-//!    keeps its UID either way.
+//!    Each card is checked before its step: one changed since the plan was
+//!    made is left as it is, and said (review F17). Each step done is noted
+//!    beside the record (`<id>.log`), so that a batch cut short knows how far
+//!    it went.
+//! 4. **Undone** as a whole (`undo`), from the status line at once or from
+//!    Contacts ⚙ ▸ Address books for thirty days (`list`): each step done is
+//!    taken back while its card is as the batch left it; a card changed,
+//!    moved or deleted since is left as it is, and said; a card deleted is
+//!    never brought back beside the same card elsewhere. A move goes back by
+//!    a move: the card keeps its UID either way. A book a merge removed is
+//!    made again first, here and, at the next sync, on its server while it
+//!    is still there.
 //!
 //! A move keeps each card's text and UID (`vdir::move_item`): everything that
 //! points at a card (the sender lists' `contact:<UID>`, tasks, ties, persons)
@@ -60,16 +68,39 @@ pub struct Cannot {
     pub why: String,
 }
 
+/// One card of the title's move, shown before it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Preview {
+    /// Its file: the box of each card says which run.
+    pub key: String,
+    pub before: String,
+    pub after: String,
+    /// Ticked at first: the title cannot be anything else (`titles::sure`).
+    pub sure: bool,
+    /// What else is said of it ("its title is in its field already: the group alone"), or "".
+    pub note: String,
+}
+
 /// What a batch will do, before it runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Plan {
     /// Each card's name and its step.
     pub steps: Vec<(String, Step)>,
     pub cannot: Vec<Cannot>,
-    /// For the title's move: each card's name before and after.
-    pub previews: Vec<(String, String)>,
+    /// For the title's move: each card, before and after.
+    pub previews: Vec<Preview>,
     /// What the book a move goes to would not keep, in words, each once.
     pub losses: Vec<String>,
+}
+
+/// The book a merge removes once emptied: made again by its Undo.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Removed {
+    /// "account/id".
+    pub place: String,
+    pub name: String,
+    /// Made here and not on its server yet, or kept on this device alone: its folder goes at once.
+    pub here_only: bool,
 }
 
 /// What a batch did.
@@ -78,7 +109,7 @@ pub struct Outcome {
     /// Its record, to undo it.
     pub id: String,
     pub done: usize,
-    /// What a door refused, card by card.
+    /// What a door refused, or what changed since it was planned, card by card.
     pub failed: Vec<Cannot>,
     /// Stopped before its end: the cards after it were left as they were.
     pub stopped: bool,
@@ -89,8 +120,7 @@ pub struct Outcome {
 pub struct Undone {
     /// The cards put back.
     pub back: usize,
-    /// Versions changed since, set aside beside the record before it went.
-    pub aside: usize,
+    /// Those left as they are, and why: changed, moved or deleted since.
     pub failed: Vec<Cannot>,
 }
 
@@ -104,9 +134,9 @@ pub struct Record {
     /// "move", "groups", "title", "delete", "merge", "import".
     pub kind: String,
     pub steps: Vec<(String, Step)>,
-    /// A book a merge emptied and deleted, "account/id": shown again by its Undo.
+    /// A book a merge emptied and removed: made again by its Undo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deleted_book: Option<String>,
+    pub removed: Option<Removed>,
 }
 
 /// How long a batch can be undone: thirty days, as Duplicates' records.
@@ -143,7 +173,13 @@ pub fn plan_move(contacts: &[&Contact], target: &Collection, provider: crate::ca
         plan.cannot = contacts.iter().map(|c| cannot(c, tr.text("batch-why-target-read-only", None))).collect();
         return plan;
     }
-    let held: Vec<String> = target.items().iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| uid_of(&t)).collect();
+    // A book its server did not make (review F6): its cards would stay on this device alone.
+    if vdir::State::load(&target.state_path()).refused {
+        plan.cannot = contacts.iter().map(|c| cannot(c, tr.text("batch-why-target-refused", None))).collect();
+        return plan;
+    }
+    // The target's UIDs, and those of the cards planned before (review F8: two cards of one UID moved together).
+    let mut held: Vec<String> = target.items().iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| uid_of(&t)).collect();
     let mut taken: Vec<PathBuf> = Vec::new();
     for contact in contacts {
         if contact.read_only {
@@ -161,9 +197,12 @@ pub fn plan_move(contacts: &[&Contact], target: &Collection, provider: crate::ca
                 continue;
             }
         };
-        if uid_of(&text).is_some_and(|uid| held.contains(&uid)) {
-            plan.cannot.push(cannot(contact, tr.text("batch-why-same-uid", None)));
-            continue;
+        if let Some(uid) = uid_of(&text) {
+            if held.contains(&uid) {
+                plan.cannot.push(cannot(contact, tr.text("batch-why-same-uid", None)));
+                continue;
+            }
+            held.push(uid);
         }
         for loss in crate::capabilities::contact_losses(&text, provider) {
             let said = tr.text(&format!("loss-{loss}"), None);
@@ -226,8 +265,8 @@ pub fn plan_title(contacts: &[&Contact], group: Option<&str>, tr: &Translator) -
             }
         };
         let moved = match contacts::move_title(&text) {
-            TitleMove::Moves { before, after, text: moved, .. } => {
-                plan.previews.push((before, after));
+            TitleMove::Moves { before, after, sure, text: moved, .. } => {
+                plan.previews.push(Preview { key: contact.key.clone(), before, after, sure, note: String::new() });
                 Some(moved)
             }
             TitleMove::Differs(held) => {
@@ -236,8 +275,21 @@ pub fn plan_title(contacts: &[&Contact], group: Option<&str>, tr: &Translator) -
                 plan.cannot.push(cannot(contact, tr.text("batch-why-other-title", Some(&args))));
                 continue;
             }
+            // Two people in one name: never changed (review F18).
+            TitleMove::Household => {
+                plan.cannot.push(cannot(contact, tr.text("batch-why-household", None)));
+                continue;
+            }
             // Its title in its field already: only the group, when one is asked.
-            TitleMove::None if !contact.prefix.trim().is_empty() && !add.is_empty() => None,
+            TitleMove::None if !contact.prefix.trim().is_empty() && !add.is_empty() => {
+                plan.previews.push(Preview { key: contact.key.clone(), before: contact.name.clone(), after: contact.name.clone(), sure: true, note: tr.text("batch-title-group-only", None) });
+                None
+            }
+            // A title shown at the start of its name, with no name line to take it from.
+            TitleMove::None if crate::titles::split(&contact.name).is_some() && contact.prefix.trim().is_empty() => {
+                plan.cannot.push(cannot(contact, tr.text("batch-why-no-name-line", None)));
+                continue;
+            }
             TitleMove::None => continue,
         };
         let base = moved.as_deref().unwrap_or(&text);
@@ -272,32 +324,79 @@ pub fn uid_of(text: &str) -> Option<String> {
 
 // ---------------------------------------------------------------- run and undo
 
+/// The words of a step left as it is.
+fn why(tr: &Translator, key: &str) -> String {
+    tr.text(key, None)
+}
+
+/// A step's outcome noted beside the record, as it happens: how far a batch went.
+fn note(dir: &Path, id: &str, n: usize, done: bool) {
+    use std::io::Write;
+    if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{id}.log"))) {
+        let _ = writeln!(log, "{n} {}", if done { "done" } else { "left" });
+    }
+}
+
+/// The steps a batch did, by their place in its plan.
+fn steps_done(dir: &Path, id: &str) -> std::collections::BTreeSet<usize> {
+    std::fs::read_to_string(dir.join(format!("{id}.log")))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.split_once(' ').filter(|(_, what)| *what == "done").and_then(|(n, _)| n.parse().ok()))
+        .collect()
+}
+
+/// Whether a step's card is still as the plan read it, else why it is left.
+fn as_planned(step: &Step, tr: &Translator) -> Result<(), String> {
+    let now = |path: &Path| std::fs::read_to_string(path).ok();
+    match step {
+        Step::Write { path, before: Some(before), .. } | Step::Remove { path, before } => match now(path) {
+            Some(text) if &text == before => Ok(()),
+            Some(_) => Err(why(tr, "batch-why-changed-since")),
+            None => Err(why(tr, "batch-why-gone")),
+        },
+        Step::Write { path, before: None, .. } => if path.exists() { Err(why(tr, "batch-why-taken")) } else { Ok(()) },
+        Step::Move { from, to } => {
+            if !from.exists() {
+                Err(why(tr, "batch-why-gone"))
+            } else if to.exists() {
+                Err(why(tr, "batch-why-taken"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Keeps the plan, then runs it, one card after the other through the doors,
 /// `progress(done, total)` after each; `stop` set, it ends before the next
-/// card. `deleted_book`: the book a merge deletes once emptied, kept in the
-/// record for its Undo. Nothing to do: no record, an empty outcome.
-pub fn run(dir: &Path, kind: &str, steps: Vec<(String, Step)>, deleted_book: Option<String>, now: i64, stop: &AtomicBool, progress: &mut dyn FnMut(usize, usize)) -> Result<Outcome, String> {
+/// card. A card no longer as the plan read it is left, and said. `removed`:
+/// the book a merge removes once emptied, kept in the record for its Undo.
+/// Nothing to do: no record, an empty outcome.
+#[allow(clippy::too_many_arguments)]
+pub fn run(dir: &Path, kind: &str, steps: Vec<(String, Step)>, removed: Option<Removed>, now: i64, stop: &AtomicBool, tr: &Translator, progress: &mut dyn FnMut(usize, usize)) -> Result<Outcome, String> {
     if steps.is_empty() {
         return Ok(Outcome::default());
     }
     let fail = |e: std::io::Error| format!("{}: {e}", dir.display());
     std::fs::create_dir_all(dir).map_err(fail)?;
     let id = std::iter::once(format!("{now}-{kind}")).chain((2..1000).map(|n| format!("{now}-{kind}-{n}"))).find(|id| !dir.join(format!("{id}.json")).exists()).ok_or_else(|| format!("{}: full", dir.display()))?;
-    let record = Record { id: id.clone(), at: now, kind: kind.to_string(), steps, deleted_book };
+    let record = Record { id: id.clone(), at: now, kind: kind.to_string(), steps, removed };
     let text = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     crate::filelock::replace(&dir.join(format!("{id}.json")), text.as_bytes()).map_err(fail)?;
     let total = record.steps.len();
-    let mut outcome = Outcome { id, ..Outcome::default() };
+    let mut outcome = Outcome { id: id.clone(), ..Outcome::default() };
     for (n, (name, step)) in record.steps.iter().enumerate() {
         if stop.load(Ordering::Relaxed) {
             outcome.stopped = true;
             break;
         }
-        let done = match step {
+        let done = as_planned(step, tr).and_then(|()| match step {
             Step::Write { path, after, .. } => vdir::write_item(path, after),
             Step::Remove { path, .. } => vdir::remove_item(path),
             Step::Move { from, to } => vdir::move_item(from, to),
-        };
+        });
+        note(dir, &id, n, done.is_ok());
         match done {
             Ok(()) => outcome.done += 1,
             Err(why) => outcome.failed.push(Cannot { name: name.clone(), why }),
@@ -317,50 +416,79 @@ pub fn record(dir: &Path, id: &str) -> Option<Record> {
     Some(record)
 }
 
-/// Puts back what a batch did, the last step first: a step done is taken
-/// back, one never done (stopped, refused) is left alone; a card changed
-/// since is set aside first (`<id>.<n>.vcf` beside the record), then put
-/// back. Files outside `root` (the address books) are never touched. The
-/// book a merge deleted is shown again first, while its server still has it.
-/// Then the record goes.
-pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, progress: &mut dyn FnMut(usize, usize)) -> Result<Undone, String> {
-    let record = record(dir, id).ok_or_else(|| format!("{id}: nothing to undo"))?;
-    if let Some((account, book)) = record.deleted_book.as_deref().and_then(|b| b.split_once('/')) {
-        vdir::undelete_collection(vdir::Kind::Contacts, account, book)?;
+/// Whether a card of this UID is in an address book here now.
+pub(crate) fn uid_here(uid: &str) -> bool {
+    vdir::collections(vdir::Kind::Contacts).iter().flat_map(|c| c.items()).any(|p| std::fs::read_to_string(p).ok().and_then(|t| uid_of(&t)).as_deref() == Some(uid))
+}
+
+/// The book a merge removed, made again when its folder went (on this device
+/// alone, or made here and never sent); shown again when it waits for its
+/// deletion there. A server's book whose folder went is gone from its server.
+fn restore(removed: &Removed, tr: &Translator) -> Result<(), String> {
+    let Some((account, id)) = removed.place.split_once('/') else { return Err(why(tr, "batch-why-book-gone")) };
+    if vdir::Kind::Contacts.root().join(account).join(id).is_dir() {
+        return vdir::undelete_collection(vdir::Kind::Contacts, account, id).map_err(|_| why(tr, "batch-why-book-gone"));
     }
-    let inside = |path: &Path| path.starts_with(root) && !path.components().any(|c| c == std::path::Component::ParentDir);
+    if !removed.here_only {
+        return Err(why(tr, "batch-why-book-gone"));
+    }
+    vdir::restore_collection(vdir::Kind::Contacts, account, id, &removed.name).map_err(|_| why(tr, "batch-why-book-gone"))
+}
+
+/// Puts back what a batch did, the last step first, each step that was done
+/// while its card is as the batch left it; a card changed, moved or deleted
+/// since is left as it is, and said, never written over nor brought back
+/// beside itself (review F17). Files outside `root` (the address books) are
+/// never touched. The book a merge removed is made again first. Then the
+/// record goes, unless stopped.
+pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translator, progress: &mut dyn FnMut(usize, usize)) -> Result<Undone, String> {
+    let record = record(dir, id).ok_or_else(|| why(tr, "batch-why-undo-gone"))?;
     let mut undone = Undone::default();
+    if let Some(removed) = &record.removed
+        && let Err(why) = restore(removed, tr)
+    {
+        undone.failed.push(Cannot { name: removed.name.clone(), why });
+    }
+    let done = steps_done(dir, id);
+    let inside = |path: &Path| path.starts_with(root) && !path.components().any(|c| c == std::path::Component::ParentDir);
     let total = record.steps.len();
     for (n, (name, step)) in record.steps.iter().enumerate().rev() {
         if stop.load(Ordering::Relaxed) {
             break;
         }
+        let left = |key: &str| Err::<bool, String>(why(tr, key));
         let back: Result<bool, String> = match step {
             Step::Write { path, before, after } if inside(path) => {
                 let now = std::fs::read_to_string(path).ok();
-                if now.as_deref() == before.as_deref() {
-                    Ok(false)
-                } else {
-                    if now.as_ref().is_some_and(|now| now != after) {
-                        std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default()).map_err(|e| format!("{}: {e}", dir.display()))?;
-                        undone.aside += 1;
-                    }
+                if now.as_deref() == Some(after.as_str()) {
                     match before {
                         Some(before) => vdir::write_item(path, before).map(|()| true),
                         None => vdir::remove_item(path).map(|()| true),
                     }
+                } else if now.as_deref() == before.as_deref() || !done.contains(&n) {
+                    Ok(false)
+                } else if now.is_none() {
+                    left("batch-why-gone-since")
+                } else {
+                    left("batch-why-changed-since-undo")
                 }
             }
             Step::Remove { path, before } if inside(path) => {
-                if path.exists() || path.parent().is_some_and(|p| !p.is_dir()) {
+                if path.exists() || !done.contains(&n) {
                     Ok(false)
+                } else if path.parent().is_some_and(|p| !p.is_dir()) {
+                    left("batch-why-book-gone")
+                } else if uid_of(before).is_some_and(|uid| uid_here(&uid)) {
+                    left("batch-why-elsewhere-now")
                 } else {
                     vdir::write_item(path, before).map(|()| true)
                 }
             }
             Step::Move { from, to } if inside(from) && inside(to) => {
                 if to.exists() && !from.exists() {
-                    vdir::move_item(to, from).map(|()| true)
+                    if from.parent().is_some_and(|p| !p.is_dir()) { left("batch-why-book-gone") } else { vdir::move_item(to, from).map(|()| true) }
+                } else if done.contains(&n) && !from.exists() {
+                    left("batch-why-gone-since")
                 } else {
                     Ok(false)
                 }
@@ -376,11 +504,48 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, progress: &mut
     }
     if !stop.load(Ordering::Relaxed) {
         let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+        let _ = std::fs::remove_file(dir.join(format!("{id}.log")));
     }
     Ok(undone)
 }
 
-/// Records older than thirty days go, with what their undoing set aside.
+/// A batch of the last thirty days, as Contacts ⚙ ▸ Address books lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Listed {
+    pub id: String,
+    /// "move", "groups", "title", "delete", "merge", "import".
+    pub kind: String,
+    pub at: i64,
+    /// How many cards it planned, and how many it changed.
+    pub planned: usize,
+    pub done: usize,
+    /// Whether its Undo can still do something, and why not when it cannot ("" when it can).
+    pub why_not: String,
+}
+
+/// The batches of the last thirty days, the newest first.
+pub fn list(dir: &Path, now: i64, tr: &Translator) -> Vec<Listed> {
+    forget_old(dir, now);
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut found: Vec<Listed> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
+        .filter_map(|id| record(dir, &id))
+        .map(|r| {
+            let done = steps_done(dir, &r.id).len();
+            let why_not = match &r.removed {
+                Some(removed) if !removed.here_only && removed.place.split_once('/').is_none_or(|(a, i)| !vdir::Kind::Contacts.root().join(a).join(i).is_dir()) => why(tr, "batch-why-book-gone"),
+                _ if done == 0 => why(tr, "batch-why-nothing-done"),
+                _ => String::new(),
+            };
+            Listed { id: r.id.clone(), kind: r.kind.clone(), at: r.at, planned: r.steps.len(), done, why_not }
+        })
+        .collect();
+    found.sort_by(|a, b| b.at.cmp(&a.at).then(b.id.cmp(&a.id)));
+    found
+}
+
+/// Records older than thirty days go, with their notes.
 pub fn forget_old(dir: &Path, now: i64) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for path in entries.filter_map(Result::ok).map(|e| e.path()) {
@@ -419,8 +584,16 @@ mod tests {
         book.items().iter().map(|p| std::fs::read_to_string(p).unwrap()).collect()
     }
 
+    fn go(dir: &Path, kind: &str, steps: Vec<(String, Step)>, removed: Option<Removed>, now: i64) -> Outcome {
+        run(dir, kind, steps, removed, now, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap()
+    }
+
+    fn back(dir: &Path, id: &str) -> Undone {
+        undo(dir, id, &Kind::Contacts.root(), &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap()
+    }
+
     /// Groups added to a selection, then the batch undone as a whole: every
-    /// card as it was, byte for byte.
+    /// card as it was, byte for byte; listed for thirty days until then.
     #[test]
     fn groups_added_then_undone() {
         let book = book("batch-groups", &[("Lou", "CATEGORIES:Amis\r\n"), ("Sam", ""), ("Kim", "CATEGORIES:Clients\r\n")]);
@@ -430,13 +603,15 @@ mod tests {
         let plan = plan_groups(&chosen, &["Clients".into()], &["Amis".into()], &tr());
         assert_eq!((plan.steps.len(), plan.cannot.len()), (2, 0), "Kim has it already: not counted");
         let dir = crate::config::state_dir().join("batch-groups-records");
-        let outcome = run(&dir, "groups", plan.steps, None, 1_790_000_000, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let outcome = go(&dir, "groups", plan.steps, None, 1_790_000_000);
         assert_eq!((outcome.done, outcome.failed.len(), outcome.stopped), (2, 0, false));
         assert!(cards(&book).iter().all(|c| c.categories == ["Clients"]), "{:?}", cards(&book));
-        let undone = undo(&dir, &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
-        assert_eq!((undone.back, undone.aside), (2, 0));
+        let listed = list(&dir, 1_790_000_100, &tr());
+        assert_eq!(listed.iter().map(|l| (l.kind.as_str(), l.planned, l.done, l.why_not.as_str())).collect::<Vec<_>>(), [("groups", 2, 2, "")]);
+        let undone = back(&dir, &outcome.id);
+        assert_eq!((undone.back, undone.failed.len()), (2, 0));
         assert_eq!(texts(&book), before);
-        assert!(record(&dir, &outcome.id).is_none(), "the record goes with its Undo");
+        assert!(record(&dir, &outcome.id).is_none() && list(&dir, 1_790_000_100, &tr()).is_empty(), "the record goes with its Undo");
         let _ = std::fs::remove_dir_all(&book.dir);
     }
 
@@ -454,7 +629,7 @@ mod tests {
         assert_eq!(plan.steps.len(), 4);
         let stop = AtomicBool::new(false);
         let dir = crate::config::state_dir().join("batch-stopped-records");
-        let outcome = run(&dir, "move", plan.steps, None, 1_790_000_001, &stop, &mut |done, _| {
+        let outcome = run(&dir, "move", plan.steps, None, 1_790_000_001, &stop, &tr(), &mut |done, _| {
             if done == 2 {
                 stop.store(true, Ordering::Relaxed);
             }
@@ -470,7 +645,8 @@ mod tests {
         let mut all_uids = [uids(&from), uids(&to)].concat();
         all_uids.sort();
         assert_eq!(all_uids, ["batch-from-0", "batch-from-1", "batch-from-2", "batch-from-3"]);
-        let undone = undo(&dir, &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        assert_eq!(list(&dir, 1_790_000_100, &tr())[0].done, 2, "how far it went, kept beside the record");
+        let undone = back(&dir, &outcome.id);
         assert_eq!((undone.back, undone.failed.len()), (2, 0));
         assert_eq!((to.items().len(), texts(&from).len()), (0, 4));
         let mut now = texts(&from);
@@ -482,36 +658,117 @@ mod tests {
         let _ = std::fs::remove_dir_all(&to.dir);
     }
 
-    /// The title moved, with a group in the same step; a card changed after
-    /// the batch is set aside before its Undo; a deletion undone comes back.
+    /// Review F17: a card the stopped batch never wrote, changed since by a
+    /// sync, is left as it is by the Undo; a card changed after the batch
+    /// wrote it is left too, and said; a card moved since is never written
+    /// back in its old book.
+    #[test]
+    fn undo_never_writes_over_what_changed_since() {
+        let book = book("batch-since", &[("A", ""), ("B", ""), ("C", "")]);
+        let all = cards(&book);
+        let plan = plan_groups(&all.iter().collect::<Vec<_>>(), &["Clients".into()], &[], &tr());
+        let stop = AtomicBool::new(false);
+        let dir = crate::config::state_dir().join("batch-since-records");
+        let outcome = run(&dir, "groups", plan.steps, None, 1_790_000_010, &stop, &tr(), &mut |done, _| {
+            if done == 2 {
+                stop.store(true, Ordering::Relaxed);
+            }
+        })
+        .unwrap();
+        assert_eq!(outcome.done, 2);
+        let (first, second, third) = (book.dir.join("c0.vcf"), book.dir.join("c1.vcf"), book.dir.join("c2.vcf"));
+        // Another device's change to the third (never written by the batch), and to the second (written by it).
+        let theirs = std::fs::read_to_string(&third).unwrap().replace("END:VCARD", "TEL:+33465710003\r\nEND:VCARD");
+        std::fs::write(&third, &theirs).unwrap();
+        let changed = std::fs::read_to_string(&second).unwrap().replace("END:VCARD", "NOTE:later\r\nEND:VCARD");
+        std::fs::write(&second, &changed).unwrap();
+        // The first moved to another book since.
+        let other = book_named("batch-since-other");
+        vdir::move_item(&first, &other.dir.join("moved.vcf")).unwrap();
+        let undone = back(&dir, &outcome.id);
+        assert_eq!(undone.back, 0);
+        assert_eq!(undone.failed.iter().map(|f| f.why.clone()).collect::<Vec<_>>(), [tr().text("batch-why-changed-since-undo", None), tr().text("batch-why-gone-since", None)]);
+        assert_eq!((std::fs::read_to_string(&third).unwrap(), std::fs::read_to_string(&second).unwrap()), (theirs, changed), "both left as they are");
+        assert!(!first.exists(), "never written back beside the moved card");
+        let _ = std::fs::remove_dir_all(&book.dir);
+        let _ = std::fs::remove_dir_all(&other.dir);
+    }
+
+    /// Review F17: a plan run later meets a card changed since it was made: left, and said.
+    #[test]
+    fn a_plan_run_later_leaves_what_changed_since() {
+        let book = book("batch-later", &[("Lou", "")]);
+        let all = cards(&book);
+        let plan = plan_groups(&all.iter().collect::<Vec<_>>(), &["Clients".into()], &[], &tr());
+        let path = book.dir.join("c0.vcf");
+        let theirs = std::fs::read_to_string(&path).unwrap().replace("END:VCARD", "NOTE:Rappeler mardi\r\nEND:VCARD");
+        std::fs::write(&path, &theirs).unwrap();
+        let outcome = go(&crate::config::state_dir().join("batch-later-records"), "groups", plan.steps, None, 1_790_000_011);
+        assert_eq!((outcome.done, outcome.failed[0].why.clone()), (0, tr().text("batch-why-changed-since", None)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), theirs);
+        let _ = std::fs::remove_dir_all(&book.dir);
+    }
+
+    /// The title moved, with a group in the same step; a name of two people
+    /// left alone; each card's box ticked when the title is sure; a deletion
+    /// undone comes back, never beside the same card elsewhere.
     #[test]
     fn titles_and_deletions_undone() {
-        let book = book("batch-titles", &[("Mme Jeanne Martin", "N:Martin;Mme Jeanne;;;\r\n"), ("Meredith Example", ""), ("Lou Exemple", "N:Exemple;Lou;;Dr;\r\n")]);
+        let book = book("batch-titles", &[("Mme Jeanne Martin", "N:Martin;Mme Jeanne;;;\r\n"), ("Meredith Example", ""), ("Lou Exemple", "N:Exemple;Lou;;Dr;\r\n"), ("M. et Mme Dupont", ""), ("Me Camille Exemple", "N:Exemple;Camille;;;\r\n")]);
         let all = cards(&book);
         let chosen: Vec<&Contact> = all.iter().collect();
         let plan = plan_title(&chosen, Some("Professional"), &tr());
-        assert_eq!(plan.previews, [("Mme Jeanne Martin".to_string(), "Jeanne Martin".to_string())]);
-        assert_eq!(plan.steps.len(), 2, "Jeanne moved, Lou's title in its field already: its group alone; Meredith none");
+        let previews: Vec<(String, String, bool)> = plan.previews.iter().map(|p| (p.before.clone(), p.after.clone(), p.sure)).collect();
+        assert_eq!(
+            previews,
+            [("Mme Jeanne Martin".to_string(), "Jeanne Martin".to_string(), true), ("Lou Exemple".into(), "Lou Exemple".into(), true), ("Me Camille Exemple".into(), "Camille Exemple".into(), false)],
+            "Jeanne sure, Lou's group alone, Maître unsure"
+        );
+        assert_eq!(plan.cannot.iter().map(|c| (c.name.as_str(), c.why.clone())).collect::<Vec<_>>(), [("M. et Mme Dupont", tr().text("batch-why-household", None))]);
+        let steps: Vec<(String, Step)> = plan.steps.into_iter().filter(|(_, s)| !s.path().ends_with("c4.vcf")).collect();
         let dir = crate::config::state_dir().join("batch-titles-records");
-        let outcome = run(&dir, "title", plan.steps, None, 1_790_000_002, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let outcome = go(&dir, "title", steps, None, 1_790_000_002);
         let after = cards(&book);
         let jeanne = after.iter().find(|c| c.uid == "batch-titles-0").unwrap();
         assert_eq!((jeanne.name.as_str(), jeanne.prefix.as_str(), jeanne.categories.clone()), ("Jeanne Martin", "Mme", vec!["Professional".to_string()]));
-        // Changed since: set aside, then put back.
-        std::fs::write(&jeanne.key, std::fs::read_to_string(&jeanne.key).unwrap().replace("END:VCARD", "NOTE:later\r\nEND:VCARD")).unwrap();
-        let undone = undo(&dir, &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
-        assert_eq!((undone.back, undone.aside), (2, 1));
+        assert!(after.iter().any(|c| c.name == "Me Camille Exemple"), "unticked: unchanged");
+        let undone = back(&dir, &outcome.id);
+        assert_eq!(undone.back, 2);
         assert!(cards(&book).iter().all(|c| c.categories.is_empty()) && cards(&book).iter().any(|c| c.name == "Mme Jeanne Martin"));
-        // Deleted, then undone: back under its file name.
+        // Deleted, then undone: back under its file name; one whose UID is elsewhere now stays out.
         let all = cards(&book);
-        let chosen: Vec<&Contact> = all.iter().take(2).collect();
+        let chosen: Vec<&Contact> = all.iter().filter(|c| c.uid == "batch-titles-1" || c.uid == "batch-titles-2").collect();
         let plan = plan_delete(&chosen, &tr());
-        let outcome = run(&dir, "delete", plan.steps, None, 1_790_000_003, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
-        assert_eq!((outcome.done, book.items().len()), (2, 1));
-        undo(&dir, &outcome.id, &Kind::Contacts.root(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
-        assert_eq!(book.items().len(), 3);
+        let outcome = go(&dir, "delete", plan.steps, None, 1_790_000_003);
+        assert_eq!((outcome.done, book.items().len()), (2, 3));
+        let other = book_named("batch-titles-other");
+        std::fs::write(other.dir.join("again.vcf"), "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:batch-titles-2\r\nFN:Lou Exemple\r\nEND:VCARD\r\n").unwrap();
+        let undone = back(&dir, &outcome.id);
+        assert_eq!((undone.back, undone.failed.iter().map(|f| f.why.clone()).collect::<Vec<_>>()), (1, vec![tr().text("batch-why-elsewhere-now", None)]));
+        assert_eq!(book.items().len(), 4);
         let _ = std::fs::remove_dir_all(&book.dir);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&other.dir);
+    }
+
+    /// Review F3: a merge of a book kept on this device alone is undone: the
+    /// book made again with its name, its cards moved back.
+    #[test]
+    fn a_merge_of_this_device_s_book_is_undone() {
+        let from = book("batch-merge-from", &[("Lou", "")]);
+        let to = book("batch-merge-to", &[]);
+        let all = cards(&from);
+        let plan = plan_move(&all.iter().collect::<Vec<_>>(), &to, crate::capabilities::Provider::Dav, &tr());
+        let dir = crate::config::state_dir().join("batch-merge-records");
+        let removed = Removed { place: format!("{LOCAL}/batch-merge-from"), name: "Old book".into(), here_only: true };
+        let outcome = go(&dir, "merge", plan.steps, Some(removed), 1_790_000_040);
+        vdir::delete_collection(&from).unwrap();
+        assert!(!from.dir.exists());
+        let undone = back(&dir, &outcome.id);
+        assert_eq!((undone.back, undone.failed.len()), (1, 0), "{undone:?}");
+        let again = vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == LOCAL && c.id == "batch-merge-from").expect("made again");
+        assert_eq!((again.name.as_str(), again.items().len(), to.items().len()), ("Old book", 1, 0));
+        let _ = std::fs::remove_dir_all(&from.dir);
+        let _ = std::fs::remove_dir_all(&to.dir);
     }
 
     /// A book you only read is refused at the plan and at the doors
@@ -550,7 +807,9 @@ mod tests {
         book(id, &[])
     }
 
-    /// A card whose UID the target holds already is left, said: its server would refuse it.
+    /// A card whose UID the target holds already is left, said: its server
+    /// would refuse it; so is the second of two cards of one UID moved
+    /// together (review F8).
     #[test]
     fn a_move_never_doubles_a_uid() {
         let from = book("batch-uid-from", &[("Lou", "")]);
@@ -559,7 +818,15 @@ mod tests {
         let all = cards(&from);
         let plan = plan_move(&all.iter().collect::<Vec<_>>(), &to, crate::capabilities::Provider::Dav, &tr());
         assert_eq!((plan.steps.len(), plan.cannot[0].why.clone()), (0, tr().text("batch-why-same-uid", None)));
-        let _ = std::fs::remove_dir_all(&from.dir);
-        let _ = std::fs::remove_dir_all(&to.dir);
+        let twin = book("batch-uid-twin", &[]);
+        std::fs::write(twin.dir.join("same.vcf"), "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:batch-uid-from-0\r\nFN:Lou\r\nEND:VCARD\r\n").unwrap();
+        let third = book("batch-uid-third", &[]);
+        let mut both = cards(&from);
+        both.extend(cards(&twin));
+        let plan = plan_move(&both.iter().collect::<Vec<_>>(), &third, crate::capabilities::Provider::Dav, &tr());
+        assert_eq!((plan.steps.len(), plan.cannot.len()), (1, 1));
+        for b in [from, to, twin, third] {
+            let _ = std::fs::remove_dir_all(&b.dir);
+        }
     }
 }

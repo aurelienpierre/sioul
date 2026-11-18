@@ -690,6 +690,14 @@ pub fn undo(dir: &Path, id: &str, root: &Path) -> Result<(Vec<PathBuf>, usize), 
             continue;
         }
         let now = std::fs::read_to_string(&change.path).ok();
+        // A card moved to another book since (its file gone here, its UID there): left where it
+        // is now, never written back beside itself (review F23).
+        if now.is_none()
+            && let Some(uid) = change.before.as_deref().and_then(crate::contactbatch::uid_of)
+            && crate::contactbatch::uid_here(&uid)
+        {
+            continue;
+        }
         if now.is_some() && now != change.after && now != change.before {
             std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default()).map_err(|e| format!("{}: {e}", dir.display()))?;
             aside += 1;

@@ -651,14 +651,24 @@ fn push_once(slot: &mut Vec<usize>, index: usize) {
 impl Book {
     /// From contacts; `region` reads their numbers written without a country.
     pub fn of(contacts: &[crate::contacts::Contact], region: Option<&'static crate::phones::Region>) -> Book {
+        Book::trusting(contacts, region, &std::collections::BTreeSet::new())
+    }
+
+    /// From contacts, the groups of the cards of the books in `held` (by
+    /// place, "account/id") held back: a book someone else can write, its
+    /// groups not said to count (`addressbooks::groups_count`). Such a card
+    /// is still in your address books, by its UID, addresses, numbers and
+    /// name; no list reads its groups.
+    pub fn trusting(contacts: &[crate::contacts::Contact], region: Option<&'static crate::phones::Region>, held: &std::collections::BTreeSet<String>) -> Book {
         let mut book = Book { region, ..Book::default() };
         for contact in contacts {
             let index = book.cards.len();
             let mut keys: Vec<String> = Vec::new();
+            let counted = !held.contains(&contact.place);
             for name in contact.categories.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
                 let key = category_key(name);
                 book.names.entry(key.clone()).or_insert_with(|| name.to_string());
-                if !keys.contains(&key) {
+                if counted && !keys.contains(&key) {
                     keys.push(key);
                 }
             }
@@ -778,9 +788,10 @@ impl Book {
     }
 
     /// From every address book, kept while their files do not change: read
-    /// again only when one is added, changed or taken away, or the country
-    /// numbers are read in changes; never per message or per call.
-    pub fn load(region: Option<&'static crate::phones::Region>) -> std::sync::Arc<Book> {
+    /// again only when one is added, changed or taken away, the country
+    /// numbers are read in changes, or the books whose groups are held back
+    /// change (`held`, `addressbooks::groups_held_back`); never per message or per call.
+    pub fn load(region: Option<&'static crate::phones::Region>, held: &std::collections::BTreeSet<String>) -> std::sync::Arc<Book> {
         static KEPT: std::sync::Mutex<Option<(u64, std::sync::Arc<Book>)>> = std::sync::Mutex::new(None);
         let books = crate::vdir::collections(crate::vdir::Kind::Contacts);
         // Each book's place, and each card's name, size and time; the country.
@@ -791,6 +802,10 @@ impl Book {
             }
         };
         mix(region.map_or("", |r| r.code).as_bytes());
+        for place in held {
+            mix(b"held:");
+            mix(place.as_bytes());
+        }
         for book in &books {
             mix(book.dir.to_string_lossy().as_bytes());
             for item in book.items() {
@@ -808,7 +823,7 @@ impl Book {
         {
             return std::sync::Arc::clone(index);
         }
-        let index = std::sync::Arc::new(Book::of(&crate::contacts::all(), region));
+        let index = std::sync::Arc::new(Book::trusting(&crate::contacts::all(), region, held));
         *kept = Some((seal, std::sync::Arc::clone(&index)));
         index
     }
@@ -858,7 +873,7 @@ impl Senders {
             restricted: SenderList::load(&config.restricted_senders_path()),
             blocked: SenderList::load(&config.blocked_senders_path()),
             known: SenderList::load(&config.known_senders_path()),
-            contacts: Book::load(crate::reach::region(config)),
+            contacts: Book::load(crate::reach::region(config), &crate::addressbooks::groups_held_back(config)),
         }
     }
 
@@ -2368,6 +2383,42 @@ mod tests {
             phones: phones.iter().map(|p| crate::contacts::Labeled { label: String::new(), value: p.to_string() }).collect(),
             ..contact(categories, emails)
         }
+    }
+
+    /// The owner's answer of 18 November 2026: a card's groups decide who may
+    /// reach the person in a book only the person can write; in a book a
+    /// co-worker can write, only once the person says so for that book, and
+    /// again not when its writers change. A card's own line counts whatever
+    /// its book; and its groups still name it in your address books.
+    #[test]
+    fn a_group_counts_in_a_book_only_you_write_or_once_you_trust_its_writers() {
+        use crate::reach::Who;
+        use crate::vdir::{Kind, State};
+        crate::config::stand_ins_only();
+        let account = "porch-trust";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        let state = |id: &str, writers: &[&str]| State { url: format!("https://dav.example.org/{id}/"), owned: Some(true), writers: writers.iter().map(|w| w.to_string()).collect(), ..State::default() }.save(&crate::vdir::state_path(account, Kind::Contacts, id)).unwrap();
+        for id in ["mine", "team"] {
+            let dir = crate::vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            std::fs::write(dir.join("c.vcf"), format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{id}-1\r\nFN:Lou {id}\r\nEMAIL:{id}@example.org\r\nCATEGORIES:Clients\r\nEND:VCARD\r\n")).unwrap();
+        }
+        state("mine", &[]);
+        state("team", &["sam"]);
+        let judged = |config: &crate::config::Config, safe: &str| {
+            let cards: Vec<crate::contacts::Contact> = crate::contacts::all().into_iter().filter(|c| c.place.starts_with("porch-trust/")).collect();
+            let senders = Senders { safe: SenderList::parse(safe), contacts: std::sync::Arc::new(Book::trusting(&cards, None, &crate::addressbooks::groups_held_back(config))), ..Senders::default() };
+            (senders.judge("mine@example.org").who, senders.judge("team@example.org").who)
+        };
+        let unsaid = crate::config::Config::default();
+        assert_eq!(judged(&unsaid, "category:Clients"), (Who::Safe, Who::Neutral), "a co-worker can write the team's book: its card is yours, its group held back");
+        let trusted: crate::config::Config = toml::from_str("[contacts.books.\"porch-trust/team\"]\ngroups = true\nwriters = [\"sam\"]\n").unwrap();
+        assert_eq!(judged(&trusted, "category:Clients"), (Who::Safe, Who::Safe), "switched on for sam");
+        state("team", &["office", "sam"]);
+        assert_eq!(judged(&trusted, "category:Clients"), (Who::Safe, Who::Neutral), "its writers changed: off again until said");
+        assert_eq!(judged(&unsaid, "contact:team-1"), (Who::Neutral, Who::Safe), "the card's own line still counts");
+        let mine_off: crate::config::Config = toml::from_str("[contacts.books.\"porch-trust/mine\"]\ngroups = false\n").unwrap();
+        assert_eq!(judged(&mine_off, "category:Clients").0, Who::Neutral, "turned off for a book only you write");
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
     /// Decision 16 of 18 October 2026: a sender's own rows by ids alone, the

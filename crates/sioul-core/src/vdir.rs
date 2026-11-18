@@ -456,13 +456,6 @@ pub fn moves_waiting() -> Vec<(PathBuf, PathBuf)> {
     moved_change(|m| m.moved.iter().map(|i| (i.old.clone(), i.new.clone())).collect())
 }
 
-/// Whether items moved out of the collection at `dir` still wait for their
-/// old copies' deletion on its server: a book emptied by a merge is deleted
-/// there only once they are gone (`dav::send_changes`).
-pub fn moving_out_of(dir: &Path) -> bool {
-    moved_change(|m| m.moved.iter().any(|i| i.old.parent() == Some(dir)))
-}
-
 /// The old copy's deletion done on its server: nothing waits for it any more.
 pub fn deletion_done(old: &Path) {
     moved_change(|m| m.moved.retain(|i| i.old != old));
@@ -744,6 +737,7 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
         return Ok(copy);
     }
     state.removed = true;
+    state.kept.clear();
     state.save(&path)?;
     collection_said(collection.kind);
     Ok(copy)
@@ -792,8 +786,37 @@ pub fn delete_collection(collection: &Collection) -> Result<(), String> {
         return Ok(());
     }
     state.deleted = true;
+    state.kept.clear();
     state.save(&path)?;
     collection_said(collection.kind);
+    Ok(())
+}
+
+/// A collection whose folder went with its removal (one kept on this device
+/// alone, or made here and never sent: the Undo of a merge) made again,
+/// empty, with its name: on its server at the next sync for an account's.
+pub fn restore_collection(kind: Kind, account: &str, id: &str, name: &str) -> Result<(), String> {
+    if account != LOCAL {
+        State { pending: true, owned: Some(true), ..State::default() }.save(&state_path(account, kind, id))?;
+    }
+    prepare(kind, account, id, name, None).map_err(|e| e.to_string())?;
+    collection_said(kind);
+    Ok(())
+}
+
+/// A collection removed with its items here, not deleted on its server yet,
+/// shown again (the Undo of "Delete them with it"). Gone already, an error.
+pub fn unremove_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
+    let path = state_path(account, kind, id);
+    if !kind.root().join(account).join(id).is_dir() {
+        return Err(format!("{account}/{id}: gone"));
+    }
+    let mut state = State::load(&path);
+    if state.removed && !state.leave {
+        state.removed = false;
+        state.save(&path)?;
+        collection_said(kind);
+    }
     Ok(())
 }
 
@@ -936,6 +959,24 @@ pub struct State {
     /// `stop_showing`), and the sync asks it again before a DELETE.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owned: Option<bool>,
+    /// An address book made here whose server did not make it (an extended
+    /// MKCOL refused, or 405 with no address book there after it, review F6):
+    /// kept on this device, never asked again, said on its line; nothing is
+    /// moved into it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refused: bool,
+    /// Why a book removed or merged here is shown again rather than deleted
+    /// on its server (review F1, F5): "held", its server holds contacts this
+    /// device never had (added there since); "" none. Said on its line.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kept: String,
+    /// Who else may write this address book, as its server last listed it
+    /// (Nextcloud's `oc:invite`, those it is shared with to write): their
+    /// names, "group:<name>" for a group. Its groups decide who may reach
+    /// the person only once the person says so for these writers
+    /// (`addressbooks::groups_count`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writers: Vec<String>,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]

@@ -40,8 +40,9 @@ sioul-app/src/backend.rs	set_weather_place	1	std::fs::remove_file(weather_cache(
 # sioul-app/src/contactexport.rs: cards exported as one vCard file where you chose, never into the address books: no item.
 sioul-app/src/contactexport.rs	export	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
-# sioul-app/src/contactimport.rs: a file of contacts handed, kept for the window until it reads it (handed/contacts/), then taken out: no item (what it holds is written through vdir::write_item, by contactbatch::run).
+# sioul-app/src/contactimport.rs: a file of contacts handed, kept for the window until it reads it (handed/contacts/), taken out of the waiting ones (renamed) before its thread reads it, then removed: no item (what it holds is written through vdir::write_item, by contactbatch::run).
 sioul-app/src/contactimport.rs	keep_all	1	sioul_core::filelock::replace(&dir.join(format!("{}.{extension}", sioul_core::vdir::new_name())), &bytes)
+sioul-app/src/contactimport.rs	take	1	std::fs::rename(&next, &taken)
 sioul-app/src/contactimport.rs	read	1	std::fs::remove_file(&path)
 
 # sioul-app/src/calendarfile.rs: a calendar file handed, kept for the window until it shows it (handed/calendar/), then taken out: no item (what it holds is written through vdir::write_item).
@@ -276,10 +277,11 @@ sioul-core/src/config.rs	write_document	1	std::fs::write(&temporary, text)
 sioul-core/src/config.rs	write_document	1	std::fs::rename(&temporary, path)
 sioul-core/src/config.rs	mark_stand_in	1	std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 
-# sioul-core/src/contactbatch.rs: a batch's record (the cards as they were, to undo it), a version changed since set aside beside it, records older than thirty days: no item (the cards themselves go through vdir::write_item, remove_item, move_item).
+# sioul-core/src/contactbatch.rs: a batch's record (the cards as they were, to undo it), the note beside it of each step done, both removed once undone, records older than thirty days: no item (the cards themselves go through vdir::write_item, remove_item, move_item).
 sioul-core/src/contactbatch.rs	run	1	crate::filelock::replace(&dir.join(format!("{id}.json")), text.as_bytes())
-sioul-core/src/contactbatch.rs	undo	1	std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default())
+sioul-core/src/contactbatch.rs	note	1	std::fs::OpenOptions::new()
 sioul-core/src/contactbatch.rs	undo	1	std::fs::remove_file(dir.join(format!("{id}.json")))
+sioul-core/src/contactbatch.rs	undo	1	std::fs::remove_file(dir.join(format!("{id}.log")))
 sioul-core/src/contactbatch.rs	forget_old	1	std::fs::remove_file(&path)
 
 # sioul-core/src/contactfilter.rs: the Contacts page's filters, as this device keeps them (state): no item.
