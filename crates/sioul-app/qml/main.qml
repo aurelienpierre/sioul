@@ -3499,6 +3499,30 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("agenda-week"),
+                // The full views (A3): the Day draws every planned step, whatever the hour.
+                () => agendaPage.mode = "day",
+                () => {},
+                () => {},
+                () => grabber.save("agenda-day"),
+                // Now, with its cover when the run is at night (RUN_HOUR), the tabs in reach.
+                () => {
+                    window.page = 1
+                    tasksPage.mode = "now"
+                },
+                () => {},
+                () => grabber.save("tasks-now"),
+                // Projects and Time by their filter of areas, as the hours say: what folds, said.
+                () => window.page = 7,
+                () => {},
+                () => {},
+                () => grabber.save("projects"),
+                () => {
+                    window.page = 8
+                    timePage.move(-1)
+                },
+                () => {},
+                () => {},
+                () => grabber.save("time"),
                 () => {
                     window.page = 9
                     budgetsPage.showTab(0)
@@ -5317,8 +5341,10 @@ SioulWindow {
                     timePage.showAll()
                 },
                 () => grabber.save("time"),
-                // Last week's, which has some: the first stretch changed.
+                // Last week's, which has some: the first stretch changed, once the week's view has come
+                // (it is made off the window's thread: `timeView`).
                 () => timePage.move(-1),
+                () => {},
                 () => timePage.changeFirst(),
                 () => {
                     if (timePage.changing.item && timePage.changing.item.opened)

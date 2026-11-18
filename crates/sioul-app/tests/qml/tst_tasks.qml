@@ -100,9 +100,9 @@ Item {
             return found
         }
 
-        // A tab of the row by its words, shown.
-        function tab(page, key) {
-            return all(page, i => i.text === key && i.visible && i.clicked !== undefined)[0] || null
+        // A tab of the row by its name (Tabs.qml: `taskModes:<view>`), shown.
+        function tab(page, view) {
+            return all(page, i => i.objectName === "taskModes:" + view && i.visible)[0] || null
         }
 
         function test_the_cover_lies_on_now_alone() {
@@ -111,7 +111,7 @@ Item {
             compare(page.mode, "now")
             const cover = all(page, i => i.objectName === "tasksRest")[0]
             verify(cover !== undefined && cover.visible, "asleep, the cover over Now")
-            const list = tab(page, "task-mode-list")
+            const list = tab(page, "list")
             verify(list !== null && list.enabled, "the tab row in reach")
             // The cover starts under the tab row: it covers Now's pane alone.
             const coverTop = cover.mapToItem(page, 0, 0).y
@@ -123,7 +123,7 @@ Item {
             tryVerify(() => all(page, i => i.text === "Quarterly figures" && i.visible).length > 0, 2000, "List shows its task")
             verify(!cover.visible, "no cover over List")
             // Back on Now: the cover again.
-            mouseClick(tab(page, "task-mode-now"))
+            mouseClick(tab(page, "now"))
             compare(page.mode, "now")
             verify(cover.visible)
         }
