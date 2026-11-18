@@ -70,7 +70,7 @@ NAMED = {
     "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls", "Paths": "parts",
     "WrapCheckBox": "controls", "PlainComboBox": "controls", "Tabs": "controls", "PageColumn": "controls",
     "Section": "controls", "StyleButton": "controls", "StyleTextField": "controls", "StyleTextArea": "controls",
-    "StyleCheckBox": "controls", "StyleRadioButton": "controls", "StyleSpinBox": "controls",
+    "StyleCheckBox": "controls", "StyleRadioButton": "controls", "StyleSpinBox": "controls", "BareButton": "controls",
 }
 
 # Qt's page for each root type the files are based on (Qt 6).
