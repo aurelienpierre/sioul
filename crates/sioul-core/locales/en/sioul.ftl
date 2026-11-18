@@ -2757,6 +2757,11 @@ task-kind-out = Going out
 task-kind-read = Reading
 task-kind-think = Thinking it over
 task-kind-make = Making
+# Tasks on a phone: the button that unfolds the project, kind and category filters; how many are set.
+task-filters = { $n ->
+        [0] Filters
+       *[other] Filters ({ $n })
+    }
 task-filter-all = All kinds
 task-filter-any-category = Any category
 chip-kind = Kind

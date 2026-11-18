@@ -2793,6 +2793,11 @@ task-kind-out = Sortir
 task-kind-read = Lire
 task-kind-think = Y réfléchir
 task-kind-make = Faire, fabriquer
+# Les tâches sur un téléphone : le bouton qui déplie les filtres de projet, de type et de catégorie ; combien sont choisis.
+task-filters = { $n ->
+        [0] Filtres
+       *[other] Filtres ({ $n })
+    }
 task-filter-all = Tous les types
 task-filter-any-category = Toutes les catégories
 chip-kind = Type

@@ -99,6 +99,11 @@ Item {
     readonly property bool choosing: page.selecting || page.pickedList.length > 0
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
+    // On a phone, the project, kind and category filters folded behind one Filters button,
+    // which says how many are set: the first task comes rows sooner. Unfolded by it.
+    property bool filtersShown: false
+    readonly property bool filtersFolded: page.window.compact && !page.filtersShown
+    readonly property int filtersSet: (page.projectFilter !== "" ? 1 : 0) + (page.kindFilter !== "" ? 1 : 0) + (page.categoryFilter !== "" ? 1 : 0)
     // What the list keeps beside an open card: `listLeast` pixels, where its
     // rows still hold on one line (the day's weather and its three choices, in
     // French); narrower, the card covers its right part (main.qml).
@@ -317,10 +322,30 @@ Item {
                     Accessible.description: page.sioul.text("routines-tip")
                     onClicked: routinesDialog.now().show()
                 }
+                // On a phone: the three filters below, folded; how many are set, in its words.
+                Button {
+                    id: filtersButton
+
+                    objectName: "taskFilters"
+                    visible: page.window.compact
+                    checkable: true
+                    checked: page.filtersShown
+                    flat: true
+                    text: page.sioul.textCounted("task-filters", page.filtersSet)
+                    icon.name: "view-filter"
+                    icon.color: page.filtersShown ? page.theme.accentText : page.theme.text
+                    onClicked: {
+                        page.filtersShown = !page.filtersShown
+                        // A click on it flips its own tick: it stays the fold's.
+                        filtersButton.checked = Qt.binding(() => page.filtersShown)
+                    }
+                }
                 // The board and the timeline: one project, or all.
                 PlainComboBox {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
 
+                    objectName: "taskProjectFilter"
+                    visible: !page.filtersFolded
                     // On a phone, two choices a line.
                     width: page.narrow ? page.halfFlow : 200
                     model: choices.map(c => page.theme.plain(c.title))
@@ -336,6 +361,8 @@ Item {
 
                     readonly property var choices: [{ id: "", label: page.sioul.text("task-filter-all") }].concat(page.shown ? page.shown.kinds : [])
 
+                    objectName: "taskKindFilter"
+                    visible: !page.filtersFolded
                     width: page.narrow ? page.halfFlow : 190
                     model: choices.map(c => page.theme.plain(c.label))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === page.kindFilter))
@@ -348,7 +375,8 @@ Item {
                 PlainComboBox {
                     readonly property var choices: [""].concat(page.shown ? page.shown.categories : [])
 
-                    visible: choices.length > 1
+                    objectName: "taskCategoryFilter"
+                    visible: choices.length > 1 && !page.filtersFolded
                     // As wide as its longest choice ("Toutes les catégories" was cut),
                     // within its line: on a phone, the line but the settings' button.
                     implicitContentWidthPolicy: ComboBox.WidestText
