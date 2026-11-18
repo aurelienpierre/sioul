@@ -960,7 +960,9 @@ const STARS_EVERY: i64 = 15 * 60;
 /// Each card of an address book with its favourite as its server says it
 /// (`{http://nextcloud.com/ns}favorite`, "1" set, Nextcloud's contacts of
 /// May 2026): by its address there; and whether the server answered the
-/// property for any card (else it keeps none, or none is set yet).
+/// property as its own for any card (200, with its value). A card that is
+/// not a favourite is answered 404 by a Nextcloud that keeps them and by a
+/// server that keeps none alike: only a favourite set tells them apart.
 fn favourites(client: &Client, url: &str) -> Result<(BTreeMap<String, bool>, bool), SyncError> {
     let (status, responses) = client.propfind(url, "1", &format!(r#"<d:getetag/><nc:favorite xmlns:nc="{NEXTCLOUD}"/>"#))?;
     if status != 207 {
@@ -975,10 +977,10 @@ fn favourites(client: &Client, url: &str) -> Result<(BTreeMap<String, bool>, boo
     Ok((cards, answered))
 }
 
-/// A card's favourite set ("1") or cleared (an empty value), as Nextcloud's
-/// own contacts app writes it (cdav-library's `vcardPropSet`): a PROPPATCH
-/// of that property alone, never the card. Whether the server kept it;
-/// false when it refused the property: a server that keeps no star.
+/// A card's favourite set ("1") or cleared (an empty value, which the
+/// server reads as none and deletes), as Nextcloud's own contacts app
+/// writes it (cdav-library's `vcardPropSet`): a PROPPATCH of that property
+/// alone, never the card. Whether the server kept it.
 fn set_favourite(client: &Client, url: &str, on: bool) -> Result<bool, SyncError> {
     let value = if on { "<nc:favorite>1</nc:favorite>" } else { "<nc:favorite/>" };
     let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="DAV:" xmlns:nc="{NEXTCLOUD}"><d:set><d:prop>{value}</d:prop></d:set></d:propertyupdate>"#);
@@ -996,10 +998,16 @@ fn set_favourite(client: &Client, url: &str, on: bool) -> Result<bool, SyncError
 /// its server keeps a favourite per card, a card marked favourite adds its
 /// person to Always through, and everyone on it is marked favourite there,
 /// by the same rules as a phone's stars (never lost). Whether the server
-/// keeps one is asked, never guessed from its name: it said a favourite of
-/// a card, or it kept the first one Sioul wrote; refused, Sioul writes
-/// nothing more there and the page says so. A book you only read, or one
-/// shared with you, is left. Looked at again when the list changed, the
+/// keeps favourites is learnt by reading only, never by writing nor from
+/// its name: a PROPFIND of the property on the book and its cards, the
+/// server answering it as its own (a card marked favourite, by the
+/// person's own contacts app). Until one is, nothing is written there, and
+/// the list's block says that this book's favourites cannot be kept in step
+/// yet (a card that is not a favourite reads alike on a server that keeps
+/// them and on one that keeps none: Nextcloud stores the property as any
+/// other of the person's, `CustomPropertiesBackend`, and answers a card
+/// without it 404). Once known, it is remembered. A book you only read, or
+/// one shared with you, is left. Looked at again when the list changed, the
 /// book changed here, or every quarter of an hour. Whether the list changed.
 fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Result<bool, SyncError> {
     if listed.kind != Kind::Contacts || listed.read_only || listed.owned == Some(false) {
@@ -1008,9 +1016,6 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     let disk = |e: String| SyncError::Disk(e);
     let memory_path = sioul_core::stars::folder().join(account).join(format!("{}.json", listed.id));
     let mut memory = sioul_core::stars::Memory::load(&memory_path);
-    if memory.kept == Some(false) {
-        return Ok(false);
-    }
     let list = sioul_core::everywhere::People::default_path();
     let state_path = vdir::state_path(account, Kind::Contacts, &listed.id);
     let changed = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
@@ -1018,8 +1023,15 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
         return Ok(false);
     }
     let (marked, answered) = favourites(client, &listed.url)?;
+    memory.looked = now;
     if answered {
         memory.kept = Some(true);
+    }
+    let place = format!("book:{account}/{}", listed.id);
+    if memory.kept != Some(true) {
+        // Not known to keep favourites: nothing written, nothing taken from it; said on the page.
+        memory.save(&memory_path).map_err(disk)?;
+        return Ok(false);
     }
     let state = State::load(&state_path);
     let Some(book) = vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == account && c.id == listed.id) else { return Ok(false) };
@@ -1042,37 +1054,16 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     let config = drafts_config();
     let senders = sioul_core::porch::Senders::load(&config);
     let blocked = |c: &sioul_core::stars::Seen| c.phones.iter().any(|n| senders.judge_number(n).who == sioul_core::reach::Who::Blocked) || c.emails.iter().any(|e| senders.who(e) == sioul_core::reach::Who::Blocked);
-    let mut kept = memory.kept;
     let mut write = |star: &[String], unstar: &[String]| -> Vec<String> {
-        let mut failed = Vec::new();
-        for (href, on) in star.iter().map(|h| (h, true)).chain(unstar.iter().map(|h| (h, false))) {
-            if kept == Some(false) {
-                failed.push(href.clone());
-                continue;
-            }
-            match set_favourite(client, &absolute(&listed.url, href), on) {
-                Ok(true) => kept = Some(true),
-                Ok(false) => {
-                    // The first answer says whether the server keeps a star at all.
-                    if kept.is_none() {
-                        kept = Some(false);
-                    }
-                    failed.push(href.clone());
-                }
-                Err(_) => failed.push(href.clone()),
-            }
-        }
-        failed
+        star.iter()
+            .map(|h| (h, true))
+            .chain(unstar.iter().map(|h| (h, false)))
+            .filter(|(href, on)| !matches!(set_favourite(client, &absolute(&listed.url, href), *on), Ok(true)))
+            .map(|(href, _)| href.clone())
+            .collect()
     };
-    let place = format!("book:{account}/{}", listed.id);
     let result = sioul_core::stars::look(&list, &mut memory, &place, &seen, senders.region(), &blocked, Some(&mut write));
-    memory.kept = kept;
-    memory.looked = now;
     memory.save(&memory_path).map_err(disk)?;
-    if kept == Some(false) {
-        // It keeps no star: said on the page, never shown as a place people could be starred in.
-        let _ = sioul_core::stars::forget_place(&list, &place);
-    }
     result.map_err(disk)
 }
 
@@ -5449,8 +5440,8 @@ mod stars_tests {
 
     /// A favourite added; someone on the list marked; unmarked there, off
     /// the list; taken off in Sioul, unmarked there; the property alone,
-    /// never the card. A server that keeps no star: asked once by the first
-    /// write it refuses, then nothing more written.
+    /// never the card. A book with no favourite yet, and a server that keeps
+    /// none: nothing written, known by reading only, said on the page.
     #[test]
     fn nextcloud_s_favourites_kept_in_step() {
         let _ = home();
@@ -5460,6 +5451,13 @@ mod stars_tests {
             people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
         })
         .unwrap();
+        let client = Client::new("alex", "secret");
+        // A Nextcloud with no favourite yet: it cannot be told from a server that keeps none; nothing written.
+        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0) });
+        let listed = synced("stars-unmarked", &serve(quiet.clone()));
+        assert!(!keep_stars(&client, "stars-unmarked", &listed, 1_800_000_000).unwrap());
+        assert_eq!(*quiet.patches.lock().unwrap(), 0, "never written to learn");
+        assert_eq!(sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-unmarked").join("contacts.json")).kept, None);
         let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0) });
         let base = serve(server.clone());
         let listed = synced("stars-nextcloud", &base);
@@ -5486,7 +5484,7 @@ mod stars_tests {
         assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}fred.vcf")), Some(&false));
         assert!(names().is_empty(), "and nobody added back");
 
-        // A server that keeps no star: asked once, by the first write, then nothing.
+        // A server that keeps none: read, never written to, nothing added nor marked.
         sioul_core::everywhere::change_people(&list, |people| {
             people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
         })
@@ -5494,11 +5492,10 @@ mod stars_tests {
         let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0) });
         let listed = synced("stars-plain", &serve(plain.clone()));
         keep_stars(&client, "stars-plain", &listed, now).unwrap();
-        assert_eq!(*plain.patches.lock().unwrap(), 1, "asked once");
-        let memory = sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-plain").join("contacts.json"));
-        assert_eq!(memory.kept, Some(false));
         keep_stars(&client, "stars-plain", &listed, now + 2 * STARS_EVERY).unwrap();
-        assert_eq!(*plain.patches.lock().unwrap(), 1, "nothing more written there");
+        assert_eq!(*plain.patches.lock().unwrap(), 0, "nothing written there");
+        let memory = sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-plain").join("contacts.json"));
+        assert_eq!((memory.kept, memory.looked > 0), (None, true), "looked at, not known to keep favourites");
         assert!(People::load(&list).people.iter().all(|p| !p.starred.contains_key("book:stars-plain/contacts")), "never shown as a place to be starred in");
         // A book shared with you is left.
         let shared = Listed { owned: Some(false), ..synced("stars-shared", &base) };
