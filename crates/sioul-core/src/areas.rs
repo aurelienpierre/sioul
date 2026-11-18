@@ -1053,7 +1053,7 @@ mod tests {
     #[test]
     fn every_caller_of_the_rule_is_sorted() {
         // (file, calls of the hours' rule, calls of the device's, times made, of which given the lines, why)
-        let sorted: [(&str, usize, usize, usize, usize, &str); 37] = [
+        let sorted: [(&str, usize, usize, usize, usize, &str); 36] = [
             ("sioul-core/src/areas.rs", 2, 9, 0, 0, "the rule itself: `Here::brings` falls back on the hours with nothing said of the device, or for a thing with no area; `keeps_back` asks both to say which is the reason; `cell`, `anywhere`, `is_for` read the cells"),
             ("sioul-core/src/plan.rs", 3, 0, 0, 0, "the plan gives a task room in the hours of its area: the person's week, the same on every device"),
             ("sioul-core/src/attention.rs", 4, 12, 0, 0, "hours: this row and this address never meet in your week (`meets_at`); what you set or asked for, and what Reachable lets through, held by the hour alone (`own`, `site`); the hour's answer beside the device's, to say which holds a message (`letter`). Device: `Now::brings`, `keeps_back`, step 8 for dates, mail, other apps' messages and sites; `meets_somewhere` and a task reminder's devices (`is_for`)"),
@@ -1061,7 +1061,7 @@ mod tests {
             ("sioul-core/src/areafilter.rs", 0, 2, 0, 0, "the filter's ticks, for Mail and Budgets; the status line's sentence (`elsewhere`)"),
             ("sioul-core/src/mailbox.rs", 0, 2, 0, 0, "an address rests, and says whether the hour or this device is the reason"),
             ("sioul-core/src/view.rs", 0, 1, 0, 0, "the Mail page's accounts: an address rests"),
-            ("sioul-core/src/appnotes.rs", 0, 2, 0, 0, "an app's notifications with a For, on a phone, and why one waits"),
+            ("sioul-core/src/appnotes.rs", 1, 2, 0, 0, "an app's notifications with a For, on a phone, and why one waits; while Reachable, the hours alone (`area_fits`)"),
             ("sioul-core/src/mailnote.rs", 0, 1, 0, 0, "the moment's words carry the cell read now, so that a cell changed begins a time"),
             ("sioul-core/src/invoice/samples.rs", 0, 1, 0, 0, "not the rule: an invoice's own `elsewhere`"),
             ("sioul-core/src/agendas.rs", 0, 0, 1, 0, "the agenda's filter by the hours of its agendas (`agendas::Hours`): the person's week"),
@@ -1084,13 +1084,12 @@ mod tests {
             ("sioul-app/src/phonemsgs.rs", 0, 0, 1, 0, "the phone's texts keep their own matrix: never a device's"),
             ("sioul-app/src/everywhere.rs", 0, 0, 1, 0, "do-not-disturb's look at the hours: no area"),
             ("sioul-app/src/persons.rs", 0, 0, 1, 0, "whether offices are open now, to call one: the person's week"),
-            ("sioul-app/src/sites.rs", 0, 3, 0, 0, "the sites listed, their news on the Porch, the gathered notification"),
+            ("sioul-app/src/sites.rs", 1, 3, 0, 0, "the sites listed, their news on the Porch, the gathered notification; while Reachable, gathered by the hours alone"),
             ("sioul-app/src/notices.rs", 0, 5, 0, 0, "the Porch: sites, money, the books' items, the agenda's conflicts, invoices numbered twice"),
             ("sioul-app/src/pim.rs", 0, 1, 0, 0, "the agenda's conflicts said now"),
             ("sioul-app/src/books.rs", 0, 1, 0, 0, "the books' thresholds wait while the hours bring work and this computer is not for it"),
             ("sioul-app/src/dispatch.rs", 0, 0, 0, 0, "the devices that count: no rule asked"),
-            ("sioul-app/src/backend.rs", 0, 1, 0, 0, "\"Done for now\" closes what this device is for (`Mode::for_another`)"),
-            ("sioul-app/src/mail.rs", 0, 1, 0, 0, "a message opened through a door on a device not for its address, read here only (`Mode::for_another`)"),
+            ("sioul-app/src/mail.rs", 0, 1, 0, 0, "a message opened through a door on a device not for its address, read here only, and \"Done for now\" kept to what this device is for (`read_here_only`, `Mode::for_another`)"),
         ];
         // A call by its name: not the end of a longer name (`pin_view(`).
         let calls = |code: &str, name: &str| code.match_indices(name).filter(|(at, _)| !code[..*at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_')).count();
@@ -1126,6 +1125,44 @@ mod tests {
         }
     }
 
+    /// Reachable comes before every device step (review of phase 2, N5):
+    /// each function of the pipeline and of other apps' notifications that
+    /// asks a device (`.brings(`, `.keeps_back(`, `.is_for(`), and the
+    /// window's two that tell by the keeper (the sites' gathered news, the
+    /// books' thresholds), reads Reachable; the wrappers that only pass the
+    /// question on are left aside. A new device step without it fails.
+    #[test]
+    fn reachable_comes_before_every_device_step() {
+        let sources = sources();
+        let functions = |code: &str| -> Vec<(String, String)> {
+            let mut out: Vec<(String, String)> = Vec::new();
+            for line in code.lines() {
+                let trimmed = line.trim_start();
+                if let Some(rest) = ["pub(crate) fn ", "pub fn ", "fn "].iter().find_map(|head| trimmed.strip_prefix(head)) {
+                    out.push((rest.split(['(', '<']).next().unwrap_or_default().to_string(), String::new()));
+                }
+                if let Some((_, body)) = out.last_mut() {
+                    body.push_str(line);
+                    body.push('\n');
+                }
+            }
+            out
+        };
+        let asks = |body: &str| [".brings(", ".keeps_back(", ".is_for("].iter().any(|step| body.contains(step));
+        let mut checked = 0;
+        for (file, only) in [("sioul-core/src/attention.rs", None), ("sioul-core/src/appnotes.rs", None), ("sioul-app/src/sites.rs", Some("gather_tick")), ("sioul-app/src/books.rs", Some("tick"))] {
+            let code = &sources.iter().find(|(name, _)| name == file).unwrap_or_else(|| panic!("{file} is gone")).1;
+            for (name, body) in functions(code) {
+                if ["brings", "keeps_back", "is_for"].contains(&name.as_str()) || only.is_some_and(|only| only != name) || !asks(&body) {
+                    continue;
+                }
+                assert!(body.contains("reachable"), "{file}: {name} asks a device without reading Reachable first");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 8, "{checked} functions checked");
+    }
+
     /// The doses and everything of Health never read what a device is for:
     /// neither the rule, nor a device's line, nor the entry's word that its
     /// Sioul follows devices (`areas`). The health lease and what the doses
@@ -1142,40 +1179,53 @@ mod tests {
                 assert!(!code.contains(word), "{file} holds {word}: the doses and Health never read what a device is for");
             }
         }
-        // The hours' helpers the dose path calls in the window (`crate::hours::…`), and every helper
-        // of that file they call in turn, read the hours alone (`hours_mode_at`): never this
-        // device's lines (review of phase 2, L1).
-        let hours = &sources.iter().find(|(name, _)| name == "sioul-app/src/hours.rs").expect("the window's hours").1;
-        let body = |name: &str| -> String {
-            let start = hours.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("hours::{name} is gone"));
-            let rest = &hours[start..];
-            rest[..rest.find("\n}\n").map_or(rest.len(), |end| end + 2)].to_string()
+        // The window's helpers the dose path calls (`crate::hours::…`, `crate::tell::…`), and every
+        // helper of those two files they call in turn, read the hours alone (`hours_mode_at`): never
+        // this device's lines (review of phase 2, L1 and N6).
+        let files = [("hours", "sioul-app/src/hours.rs"), ("tell", "sioul-app/src/tell.rs")];
+        let code_of_file = |file: &str| sources.iter().find(|(name, _)| name == file).unwrap_or_else(|| panic!("{file} is gone")).1.clone();
+        let body = |file: &str, name: &str| -> Option<String> {
+            let code = code_of_file(file);
+            let start = code.match_indices(&format!("fn {name}(")).map(|(at, _)| at).find(|at| !code[..*at].ends_with('_'))?;
+            let rest = &code[start..];
+            Some(rest[..rest.find("\n}\n").map_or(rest.len(), |end| end + 2)].to_string())
         };
-        let defined: Vec<String> = hours.match_indices("fn ").filter_map(|(at, _)| hours[at + 3..].split('(').next().filter(|n| n.chars().all(|c| c.is_alphanumeric() || c == '_')).map(str::to_string)).collect();
-        let mut reached: Vec<String> = Vec::new();
-        let mut to_read: Vec<String> = health
-            .iter()
-            .flat_map(|file| sources.iter().find(|(name, _)| name == file).map(|(_, code)| code.clone()))
-            .flat_map(|code| code.match_indices("crate::hours::").map(|(at, _)| code[at + 14..].split(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or_default().to_string()).collect::<Vec<_>>())
-            .collect();
-        assert!(to_read.contains(&"doses_silent".to_string()) && to_read.contains(&"waking".to_string()), "the dose path's helpers were not found: {to_read:?}");
-        while let Some(name) = to_read.pop() {
-            if reached.contains(&name) || !defined.contains(&name) {
+        // A call by its whole name: `mode_at(` is not called by `hours_mode_at(`.
+        let calls = |code: &str, name: &str| code.match_indices(&format!("{name}(")).any(|(at, _)| !code[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_'));
+        let defined = |file: &str| -> Vec<String> {
+            let code = code_of_file(file);
+            code.match_indices("fn ").filter_map(|(at, _)| code[at + 3..].split('(').next().filter(|n| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_')).map(str::to_string)).collect()
+        };
+        // The calls a piece of code makes into those files, and into its own.
+        let called = |code: &str, own: Option<&str>| -> Vec<(String, String)> {
+            let mut out = Vec::new();
+            for (module, file) in files {
+                let prefix = format!("crate::{module}::");
+                out.extend(code.match_indices(&prefix).map(|(at, _)| (file.to_string(), code[at + prefix.len()..].split(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or_default().to_string())));
+            }
+            if let Some(own) = own {
+                out.extend(defined(own).into_iter().filter(|name| calls(code, name)).map(|name| (own.to_string(), name)));
+            }
+            out
+        };
+        let mut to_read: Vec<(String, String)> = health.iter().flat_map(|file| called(&code_of_file(file), None)).collect();
+        assert!(to_read.iter().any(|(_, name)| name == "doses_silent") && to_read.iter().any(|(file, _)| file.ends_with("tell.rs")), "the dose path's helpers were not found: {to_read:?}");
+        let mut reached: Vec<(String, String)> = Vec::new();
+        while let Some((file, name)) = to_read.pop() {
+            if reached.contains(&(file.clone(), name.clone())) {
                 continue;
             }
-            let code = body(&name);
-            for word in ["dispatch::", ".on(", "attention_here(", "with_layers("] {
-                assert!(!code.contains(word), "hours::{name}, on the dose path, holds {word}: the doses never read what a device is for");
+            let Some(code) = body(&file, &name) else { continue };
+            for word in ["dispatch::", ".on(&", "attention_here(", "with_layers("] {
+                assert!(!code.contains(word), "{file}: {name}, on the dose path, holds {word}: the doses never read what a device is for");
             }
-            for device_aware in ["mode_at(", "mode_now("] {
-                assert!(code.match_indices(device_aware).all(|(at, _)| code[..at].ends_with("hours_")), "hours::{name}, on the dose path, calls {device_aware}");
+            for device_aware in ["mode_at", "mode_now"] {
+                assert!(!calls(&code, device_aware), "{file}: {name}, on the dose path, calls {device_aware}");
             }
-            // A call by its whole name: `mode_at(` is not called by `hours_mode_at(`.
-            let calls = |other: &str| code.match_indices(&format!("{other}(")).any(|(at, _)| !code[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_'));
-            to_read.extend(defined.iter().filter(|other| **other != name && calls(other)).cloned());
-            reached.push(name);
+            to_read.extend(called(&code, Some(&file)).into_iter().filter(|call| *call != (file.clone(), name.clone())));
+            reached.push((file, name));
         }
-        assert!(reached.contains(&"hours_mode_at".to_string()), "{reached:?}");
+        assert!(reached.iter().any(|(_, name)| name == "hours_mode_at") && reached.iter().any(|(file, name)| file.ends_with("tell.rs") && name == "moment"), "{reached:?}");
         // What the doses read of an entry (`Entry::said`) names no area.
         let devices = &sources.iter().find(|(name, _)| name == "sioul-sync/src/devices.rs").expect("the entries").1;
         let said = devices.split("pub fn said(").nth(1).and_then(|rest| rest.split("\n    }\n").next()).expect("Entry::said");

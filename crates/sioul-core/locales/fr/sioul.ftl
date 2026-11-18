@@ -485,6 +485,7 @@ devices-now = En ce moment, { $time } jusqu’à { $until } : { $comes }.
 devices-now-open = En ce moment, { $time } : { $comes }.
 devices-older = Son Sioul est plus ancien : tout y arrive encore.
 devices-cells-apart = Ses propres réglages disent autre chose pour l’instant : il suit ceux-là jusqu’à ce que les vôtres lui parviennent.
+devices-settings-twice = Cet appareil ne partage pas vos réglages : il lit les autres selon ses propres heures et n’apprend pas ce qu’ils ont dit, il peut donc redire ce qu’un autre appareil a déjà dit.
 devices-unheld = Aucun appareil n’est pour { $areas } : en attendant, cela arrive sur tous vos appareils, selon vos heures.
 devices-never-held = Quel que soit ce à quoi sert un appareil, ceci arrive toujours : les prises et tout ce qui est de Santé, les codes que vous demandez, les alarmes et les rappels propres à un événement, les personnes de votre liste Passent toujours, et tout pendant que vous êtes Joignable. Les appels et les SMS gardent leur propre tableau.
 devices-cell-refused = { $said } : work, admin, leisure, joints par +, ou none.

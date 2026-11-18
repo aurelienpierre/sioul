@@ -845,9 +845,12 @@ impl Ask<'_> {
     }
 
     /// Whether the app is for that time on this phone (its area against the
-    /// phone's cell then, `Mode::brings`), or says nothing of it.
-    fn area_fits(&self, mode: &Mode) -> bool {
-        self.area.is_none_or(|a| mode.brings(a))
+    /// phone's cell then, `Mode::brings`), or says nothing of it. While
+    /// Reachable lasts at `at`, the phone keeps nothing back: the hours
+    /// alone, before any device step (review of phase 2, N5).
+    fn area_fits(&self, at: &Zoned, mode: &Mode) -> bool {
+        let reachable = self.reachable.is_some_and(|until| at.timestamp().as_second() < until);
+        self.area.is_none_or(|a| if reachable { crate::areas::in_view(a, mode.time, mode.week) } else { mode.brings(a) })
     }
 }
 
@@ -996,7 +999,7 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
                 continue;
             }
             let mode = ask.clock.mode(&at);
-            if ask.level(attention::Kind::AppAutomatons, &at, &mode) == Level::Gathered && ask.area_fits(&mode) {
+            if ask.level(attention::Kind::AppAutomatons, &at, &mode) == Level::Gathered && ask.area_fits(&at, &mode) {
                 return Some(at);
             }
         }
@@ -1010,7 +1013,7 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
 pub fn gathers_now(ask: &Ask) -> bool {
     let mode = ask.clock.mode(ask.now);
     let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
-    ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(&mode)
+    ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(ask.now, &mode)
 }
 
 /// The gathered times from now on, within the coming days, in order; one
@@ -1088,7 +1091,7 @@ fn at_once(ask: &Ask) -> Decision {
         let event = Event::own(attention::Kind::AppAtOnce).for_area(ask.area).from_sources(ask.sources.to_vec());
         return by_matrix(ask, &[event], Why::AtOnce, Why::AtOnce);
     }
-    match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(mode)) {
+    match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(at, mode)) {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::AtOnce),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::AtOnce),
         None => Decision::held(ask.stamp() + RECHECK, Why::AtOnce),
@@ -1290,9 +1293,10 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
     }
     cause.columns = ask.attention.holding(&event, &moment);
     // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
-    if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(&mode) {
+    if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(ask.now, &mode) {
         cause.area = ask.area;
-        cause.device = ask.area.is_some_and(|area| mode.keeps_back(area));
+        // While Reachable, the hours alone held it, never this device.
+        cause.device = !ask.reachable_now() && ask.area.is_some_and(|area| mode.keeps_back(area));
     }
     Some(cause)
 }

@@ -461,6 +461,7 @@ devices-now = Now, { $time } until { $until }: { $comes }.
 devices-now-open = Now, { $time }: { $comes }.
 devices-older = Its Sioul is older: everything still comes there.
 devices-cells-apart = Its own settings say otherwise for now: it follows those until yours reach it.
+devices-settings-twice = This device does not share your settings: it reads the others by its own hours and does not hear what they told, so it may tell again something another device already told.
 devices-unheld = No device is for { $areas }: until one is, that comes on every device, as the hours say.
 devices-never-held = Whatever a device is for, these always come: doses and everything of Health, the codes you ask for, alarms and an event's own reminders, the people on your Always through list, and everything while you are Reachable. Calls and texts keep their own table.
 devices-cell-refused = { $said }: work, admin, leisure, joined by +, or none.

@@ -52,7 +52,18 @@ pub struct Said {
     /// passed over and kept in the file.
     #[serde(default, deserialize_with = "cells", skip_serializing_if = "BTreeMap::is_empty")]
     pub at: BTreeMap<String, String>,
+    /// When the person last said what it is for or changed a cell (Unix
+    /// seconds, by the clock of the device it was said on), written with
+    /// them (`CHANGED`): the keeper of the notices judges an idle device that
+    /// shares your settings by this line once it is later than what that
+    /// device last said of itself (sioul-sync's `dispatch::Known`; review of
+    /// phase 2, N3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<i64>,
 }
+
+/// The key of `Said::changed` in `[device."<id>"]`.
+pub const CHANGED: &str = "changed";
 
 /// The cells of `[device."<id>".at]`: each key whose value is a text; any
 /// other value, and an `at` that is no table, read as nothing said, never as
@@ -125,7 +136,8 @@ fn read(value: &toml::Value) -> BTreeMap<String, Said> {
     let Some(devices) = value.as_table() else { return BTreeMap::new() };
     let word = |line: &toml::Table, field: &str| line.get(field).and_then(toml::Value::as_str).map(str::to_string);
     let cells = |line: &toml::Table| line.get("at").map(cells_of).unwrap_or_default();
-    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line) }))).collect()
+    let changed = |line: &toml::Table| line.get(CHANGED).and_then(toml::Value::as_integer);
+    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line), changed: changed(line) }))).collect()
 }
 
 /// The longest name a device is given, in characters: a line of a card.
@@ -224,6 +236,8 @@ pub fn set_cell(path: &Path, id: &str, time: Time, areas: Option<Area>) -> Resul
         if device.is_empty() {
             devices.remove(id);
         }
+        // A cell changed: when, for the keeper of the notices.
+        stamp(devices, id, true);
         if devices.is_empty() {
             doc.remove("device");
         }
@@ -276,11 +290,33 @@ fn set(path: &Path, id: &str, field: &str, value: Option<String>) -> Result<(), 
                 }
             }
         }
+        // What it is for said: when, for the keeper of the notices; a name is no change of it.
+        stamp(devices, id, field != "name");
         if devices.is_empty() {
             doc.remove("device");
         }
         crate::config::write_document(path, &doc)
     })
+}
+
+/// The device `id`'s line after a change: `changed` set to now when
+/// `said` (its area or a cell changed), and the line taken out when nothing
+/// but that time is left in it.
+fn stamp(devices: &mut dyn toml_edit::TableLike, id: &str, said: bool) {
+    let Some(line) = devices.get_mut(id).and_then(toml_edit::Item::as_table_like_mut) else { return };
+    if line.iter().all(|(key, _)| key == CHANGED) {
+        devices.remove(id);
+        return;
+    }
+    if said {
+        let now = jiff::Timestamp::now().as_second();
+        match line.get_mut(CHANGED) {
+            Some(slot) => *slot = toml_edit::value(now),
+            None => {
+                line.insert(CHANGED, toml_edit::value(now));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
