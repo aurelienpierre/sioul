@@ -361,6 +361,7 @@ The ⚙ at the top of the page:
 - **New tasks go into**: the list a new task goes into, typed in one line or in its form (where another can be chosen).
 - **Time blocks go into**: the calendar of the tasks you pin to a time; unless you choose one, "Planned tasks", made the first time with each task's list (on this device for a list kept here, or for a Google account).
 - **An alarm in each block**: off unless you turn it on; five minutes before it, in the blocks made or moved from then on.
+- **A wait over**: when a wait after a step done is over (an answer due), a quiet reminder, once, when work is there. On unless you turn it off.
 - **What a day holds** ([above](#what-a-day-holds)):
     - **Start from**: *As now*, *Lighter* or *Much lighter*;
     - **Days learned from**: 28 unless you change it, from 14 to 90;

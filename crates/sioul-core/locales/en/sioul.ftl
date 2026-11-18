@@ -4326,6 +4326,7 @@ set-reminders-mail-newsletters-help = Newsletters and mailing lists, filed on th
 reminders-closed-unavailable = Not on Windows yet: reminders come while Sioul's window is open.
 reminders-closed-no-command = The “sioul” command is not installed next to Sioul: reminders come while the window is open.
 set-reminders-group = Reminders
+set-reminders-elsewhere = Before an event is in the Agenda's settings (⚙), A wait over in the Tasks' settings, Payments planned in the Budgets page's settings: each with the things it reminds you of.
 set-reminders-asked = Dates asked: working days before
 set-reminders-asked-help = When work starts, so many working days before a date asked; 0 for none. One reminder per date, never repeated.
 set-reminders-waits = A wait over

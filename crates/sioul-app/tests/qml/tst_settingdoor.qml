@@ -28,7 +28,10 @@ TestCase {
             "link.bitwarden": "sites",
             "bitwarden": "bitwarden",
             "bitwarden.email": "bitwarden",
-            "bitwarden_vault": "bitwarden"
+            "bitwarden_vault": "bitwarden",
+            "reminders.before_event": "agenda",
+            "reminders.waits": "tasks",
+            "reminders.payment_days": "money"
         })
 
         function settingPage(key) {
@@ -58,6 +61,9 @@ TestCase {
         }
         property var sitesPage: FakePage {}
         property var accountsPage: FakePage {}
+        property var agendaPage: FakePage {}
+        property var tasksPage: FakePage {}
+        property var budgetsPage: FakePage {}
     }
 
     SettingDoor {
@@ -97,6 +103,24 @@ TestCase {
         compare(fakeWindow.parametersPage.asked, [], "not Settings")
         door.open("sites")
         compare(fakeWindow.sitesPage.asked[1], [true, ""], "the page's own name: its ⚙ at its top")
+    }
+
+    // Three reminders, each its page's: before an event in the Agenda's ⚙, a wait over
+    // in the Tasks', a planned payment in the Budgets page's; the others stay in Settings.
+    function test_the_reminders_open_their_pages_settings() {
+        for (const [key, page, name] of [["reminders.before_event", 4, "agendaPage"], ["reminders.waits", 1, "tasksPage"], ["reminders.payment_days", 9, "budgetsPage"]]) {
+            fakeWindow[name] = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
+            fakeWindow.page = 0
+            door.open(key)
+            compare(fakeWindow.page, page, key)
+            compare(fakeWindow[name].asked, [[true, key]], key)
+        }
+        for (const key of ["reminders.asked_days", "reminders_closed", "reminders.gathered", "reminders"]) {
+            fakeWindow.page = 0
+            door.open(key)
+            compare(fakeWindow.page, 12, key)
+        }
+        compare(fakeWindow.parametersPage.asked, ["reminders.asked_days", "reminders_closed", "reminders.gathered", "reminders"])
     }
 
     // What Settings holds: Settings, at its tab; the usual meals, naps and night

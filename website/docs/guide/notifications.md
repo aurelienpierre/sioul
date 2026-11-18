@@ -467,7 +467,7 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 ## Where to change each thing {#where-to-change-each-thing}
 
 - **Settings ▸ What reaches you**: the matrix, by time, by person and Sioul's own; **Tell me of new mail**, **Include newsletters**, **Sites' notifications gathered**, **Informative notices last**; Free time's **Nothing at all**; your lists; Always through and its list; on Android, each app, conversation and browser site; what turns do-not-disturb on, and what this device's system lets Sioul do.
-- **Settings ▸ Reminders**: **Before an event**, **Dates asked: working days before**, **A wait over**, **Payments planned: working days before**, **With Sioul's window closed**, **Gathered at** ([Settings](settings.md#reminders)).
+- **Settings ▸ Reminders**: **Dates asked: working days before**, **With Sioul's window closed**, **Gathered at** ([Settings](settings.md#reminders)); **Before an event** in the Agenda's ⚙, **A wait over** in the Tasks' ⚙, **Payments planned: working days before** in the Budgets page's ⚙.
 - **Settings ▸ This phone** (**This tablet** on a tablet), on Android: call screening, other apps' notification access and holding, Do Not Disturb's access, who is starred, keeping in step in the background, exact alarms ([Settings](settings.md#this-phone)).
 - **A person's sheet**, from their card or a message: their list, Always through ([above](#a-persons-sheet)).
 - **An event**: **Remind**, in its form and its details ([Agenda](agenda.md#reminders)).

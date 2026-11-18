@@ -4362,6 +4362,7 @@ set-reminders-mail-newsletters-help = Les infolettres et les listes de diffusion
 reminders-closed-unavailable = Pas encore sous Windows : les rappels viennent quand la fenêtre de Sioul est ouverte.
 reminders-closed-no-command = La commande « sioul » n’est pas installée à côté de Sioul : les rappels viennent quand la fenêtre est ouverte.
 set-reminders-group = Rappels
+set-reminders-elsewhere = Avant un événement est dans les réglages de l’Agenda (⚙), Une attente finie dans ceux des Tâches, Paiements prévus dans ceux de la page Budgets : chacun avec ce qu’il vous rappelle.
 set-reminders-asked = Dates demandées : jours travaillés avant
 set-reminders-asked-help = Au début du travail, tant de jours travaillés avant une date demandée ; 0 pour aucun. Un rappel par date, jamais répété.
 set-reminders-waits = Une attente finie

@@ -57,11 +57,9 @@ Un seul endroit pour quand chaque chose vous joint : les courriels, les appels
 
 Chaque rappel vient une fois, en notification discrète, sans son, jamais répété. Se souvenir « le 30 » de ce qui était prévu est ce qui échoue le plus souvent, avec l’autisme et avec le TDAH (Landsiedel, Williams & Abbot-Smith 2017 ; Altgassen, Kretschmer & Kliegel 2014), et les rappels aident là où c’est la mémoire qui fait défaut (Jamieson et al. 2014).
 
-- **Avant un événement** : un rappel discret, tant de temps avant chaque événement : aucun, 5, 10, 15 (sauf si vous le changez) ou 30 minutes, 1 ou 2 heures. Il est compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien : **Rappel**, dans son formulaire et dans ses détails ([Agenda](agenda.md#reminders)). Pas pour les journées entières, ni pour les agendas que vous lisez seulement. Sur Android, le réglage dit si le système laisse ces rappels venir à l’heure.
-- **Les alarmes d’un événement** sont dites à leur heure ; celle qui tombe à moins de cinq minutes du rappel de Sioul est dite une fois. La veille d’un événement, rien : le Porche et l’agenda montrent le lendemain.
+Trois rappels se règlent avec ce qu’ils vous rappellent : **Avant un événement** dans le [⚙ de l’Agenda](agenda.md#the-agenda-settings), **Une attente finie** dans le [⚙ des Tâches](tasks.md#the-tasks-settings), **Paiements prévus : jours travaillés avant** dans le [⚙ de la page Budgets](budgets.md#the-bank-watch) ([plus bas](#each-pages-own-settings)). Ici, les autres :
+
 - **Dates demandées : jours travaillés avant** : au début du travail, tant de jours travaillés avant la date demandée d’une tâche (2, sauf si vous changez ce nombre) ; 0 pour aucun.
-- **Une attente finie** : quand une attente après une étape faite est finie (une réponse due), une fois, quand le travail est là.
-- **Paiements prévus : jours travaillés avant** : au début du travail, tant de jours travaillés avant un paiement prévu (une facture, un impôt) ; 0 pour aucun. Le rappel dit si le compte le tiendra.
 - **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courriel n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Il continue après une mise à jour, et repart s’il a été arrêté autrement que par ce réglage (sous Linux et macOS, et à chaque ouverture de la fenêtre). Pas encore sous Windows.
 - **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Sur Android, les notifications des automates des autres applications reviennent alors. Voir [Les heures de regroupement](notifications.md#the-gathered-times).
 
@@ -181,8 +179,9 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 |---|---|
 | [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, les appels refusés par vos téléphones, la lecture d’un courriel, comment les courriels sont triés |
 | [Courriels](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, si dire Indésirable quitte aussi une liste, la lecture d’un courriel, les listes quittées |
-| [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
-| [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée, le fuseau horaire montré |
+| [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, le rappel quand une attente est finie, ce qui est du travail et ce qui est à vous, GitHub |
+| [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée, le rappel avant un événement, le fuseau horaire montré |
+| [Budgets](budgets.md#the-bank-watch) | le rappel avant un paiement prévu |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
 | [Notes](notes.md#new-notes) | où vont les nouvelles notes |
 | [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; un bouton vers votre compte Bitwarden, dans [Comptes](accounts.md#your-password-manager) |

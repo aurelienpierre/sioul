@@ -231,9 +231,12 @@ Item {
         doneDialog.now().grab(path)
     }
 
-    // For the window's tests: the settings, open or closed, and as an image.
-    function openSettings(open) {
+    // The page's ⚙, open or closed, and as an image (the window's tests); open at one of
+    // its settings ("reminders.waits", from a link by key: SettingDoor.qml).
+    function openSettings(open, key) {
         tasksSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => tasksSettings.scrollTo(key))
     }
 
     function grabSettings(path) {

@@ -232,6 +232,20 @@ impl Builder<'_> {
     }
 }
 
+/// The reminder before an event (`reminders.before_event`), the Agenda's ⚙'s:
+/// none, or a lead among the usual ones, the one set kept when it is not.
+fn before_event(b: &mut Builder<'_>, config: &Config) {
+    let tr = b.tr;
+    let lead = config.reminders.before_event;
+    let mut leads = crate::reminders::LEADS.to_vec();
+    if !leads.contains(&lead) {
+        leads.push(lead);
+        leads.sort_unstable();
+    }
+    let s = b.push("reminders.before_event", "reminders-before", Kind::Choice, SettingValue::Int(i64::from(lead)));
+    s.choices = leads.iter().map(|m| Choice { value: SettingValue::Int(i64::from(*m)), label: if *m == 0 { tr.text("set-reminders-before-none", None) } else { crate::reminders::lead_text(tr, *m) } }).collect();
+}
+
 /// The weeks of history a setting offers, and how each reads.
 fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
     let mut out = Vec::new();
@@ -247,7 +261,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The pages whose ⚙ holds settings that only they read, and that a link
 /// by key opens there rather than in Settings (the settings rework of 18
 /// November 2026: a setting one page reads lives behind that page's ⚙).
-pub const PAGES: &[&str] = &["sites", "bitwarden"];
+pub const PAGES: &[&str] = &["sites", "bitwarden", "agenda", "tasks", "money"];
 
 /// Where a setting lives, by its key or by its page's own name: the page of
 /// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
@@ -258,7 +272,7 @@ pub fn page_of(key: &str, config: &Config, tr: &Translator) -> Option<&'static s
 }
 
 /// The settings of one page: "porch", "mail", "agenda", "tasks", "notes",
-/// "reading", "contacts", "sites", "bitwarden", "general". `lists` names the task lists
+/// "reading", "contacts", "sites", "bitwarden", "money", "general". `lists` names the task lists
 /// a new task can go into, as ("account/id", name).
 pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::projects::ProjectStore>) -> Vec<Setting> {
     let mut b = Builder { tr, out: Vec::new(), group: String::new(), section: String::new() };
@@ -541,6 +555,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long a new event lasts, made from the timeline's "+" or the form (5 November 2026).
             let s = b.push("agenda.new_event", "agenda-new-event", Kind::Int, int(config.agenda.new_event, 30));
             Builder::range(s, 5.0, 240.0, 5.0, "min");
+            // An event's reminder before it, counted before its margin; each event may say its
+            // own (docs/reminders.md). Only the agenda's events have it: the Agenda's own.
+            before_event(&mut b, config);
             // What is typed in a place sent to suggest addresses (5 November 2026): on unless said off.
             b.push("agenda.suggest_addresses", "agenda-suggest-addresses", Kind::Bool, SettingValue::Bool(config.agenda.suggests_addresses()));
             // The time zone this device shows (`zone::current`): its own, followed, or one chosen.
@@ -571,6 +588,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("tasks.blocks", "task-blocks", Kind::Choice, SettingValue::Text(config.tasks.blocks.clone().unwrap_or_default()));
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-task-blocks-own", None) }).chain(calendars).collect();
             b.push("tasks.block_alarms", "task-block-alarms", Kind::Bool, SettingValue::Bool(config.tasks.block_alarms));
+            // A wait after a step done told once it is over (docs/reminders.md): the tasks' waits.
+            b.push("reminders.waits", "reminders-waits", Kind::Bool, SettingValue::Bool(config.reminders.waits));
             // What a day holds, as the plan learns it from your days (docs/capacity.md).
             b.group = tr.text("set-planning-group", None);
             let s = b.push("planning.start", "planning-start", Kind::Choice, SettingValue::Text(config.planning.start.clone().unwrap_or_default()));
@@ -639,6 +658,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 args.set("minutes", *m);
                 tr.text("set-bitwarden-lock-time", Some(&args))
             } }).collect();
+        }
+        // The Money page's own: the reminder before a planned payment (docs/reminders.md).
+        "money" => {
+            let s = b.push("reminders.payment_days", "reminders-payment", Kind::Int, SettingValue::Int(i64::from(config.reminders.payment_days)));
+            Builder::range(s, 0.0, 10.0, 1.0, "");
         }
         "contacts" => {
             b.collections(config, "address-books", crate::vdir::Kind::Contacts, "");
@@ -724,21 +748,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.section = "words".into();
             words_rows(&mut b, config);
             // Reminders before dates; with the window closed, the window says (an entry started with the session).
+            // Those of one page's things are behind that page's ⚙, said first.
             b.section = "reminders".into();
             b.group = tr.text("set-reminders-group", None);
-            // An event's reminder before it, counted before its margin; each event may say its own (docs/reminders.md).
-            let lead = config.reminders.before_event;
-            let mut leads = crate::reminders::LEADS.to_vec();
-            if !leads.contains(&lead) {
-                leads.push(lead);
-                leads.sort_unstable();
-            }
-            let s = b.push("reminders.before_event", "reminders-before", Kind::Choice, SettingValue::Int(i64::from(lead)));
-            s.choices = leads.iter().map(|m| Choice { value: SettingValue::Int(i64::from(*m)), label: if *m == 0 { tr.text("set-reminders-before-none", None) } else { crate::reminders::lead_text(tr, *m) } }).collect();
+            b.note(tr.text("set-reminders-elsewhere", None), Vec::new());
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
-            Builder::range(s, 0.0, 10.0, 1.0, "");
-            b.push("reminders.waits", "reminders-waits", Kind::Bool, SettingValue::Bool(config.reminders.waits));
-            let s = b.push("reminders.payment_days", "reminders-payment", Kind::Int, SettingValue::Int(i64::from(config.reminders.payment_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
             // The times sites and other apps' automatons are gathered at: their cells say "gathered".
@@ -1614,7 +1628,7 @@ mod tests {
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
-        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "tasks.blocks", "tasks.block_alarms", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
+        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "tasks.blocks", "tasks.block_alarms", "reminders.waits", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
         assert_eq!(for_view("tasks", &config, &tr, &[("acct/plan".into(), "Plan".into())], None).iter().find(|s| s.key == "tasks.list").unwrap().choices.len(), 2);
         assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Link);
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
@@ -1635,7 +1649,7 @@ mod tests {
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
                 "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
@@ -1679,16 +1693,22 @@ mod tests {
         // Bitwarden, Accounts' card: its account, its server, the lock after a time (the
         // vault's state once an e-mail is set: `the_vault_s_card_holds_its_account`).
         assert_eq!(keys("bitwarden"), vec!["bitwarden.email", "bitwarden.server", "bitwarden.lock_after"]);
+        // Three reminders, each its page's things': before an event in the Agenda's ⚙ (its
+        // calendars, which this computer may hold, left out), a wait over in the Tasks' (above),
+        // a planned payment in Money's.
+        let agenda = keys("agenda");
+        assert_eq!(agenda[agenda.iter().position(|k| k == "agenda.new_event").unwrap() + 1], "reminders.before_event", "{agenda:?}");
+        assert_eq!(keys("money"), vec!["reminders.payment_days"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");
-        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "contacts", "parameters"] {
+        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "money", "contacts", "parameters"] {
             for key in keys(view) {
                 if let Some(other) = seen.insert(key.clone(), view) {
                     panic!("{key} is set in {other} and in {view}");
                 }
             }
         }
-        for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "bitwarden", "contacts", "agenda"] {
+        for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "bitwarden", "money", "contacts", "agenda"] {
             assert!(for_view(view, &config, &tr, &[], None).iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")), "{view}: a sentence is missing");
         }
     }
@@ -1700,7 +1720,7 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.

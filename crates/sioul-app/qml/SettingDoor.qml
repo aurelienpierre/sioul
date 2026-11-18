@@ -26,7 +26,10 @@ QtObject {
     // are Accounts' card, at the top of Your accounts.
     readonly property var pages: ({
         "sites": [3, "sitesPage"],
-        "bitwarden": [11, "accountsPage"]
+        "bitwarden": [11, "accountsPage"],
+        "agenda": [4, "agendaPage"],
+        "tasks": [1, "tasksPage"],
+        "money": [9, "budgetsPage"]
     })
 
     function open(key) {
