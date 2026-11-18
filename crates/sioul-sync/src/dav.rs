@@ -617,6 +617,8 @@ fn home(client: &Client, kind: Kind, start: &str) -> Result<Option<String>, Sync
                 }
                 return Ok(home);
             }
+            // A passing failure (throttled, the server down): an error, asked again, never "no home" (review V9).
+            429 | 500..=599 => return Err(SyncError::Server(format!("PROPFIND {url}: {}", answer.status))),
             _ => return Ok(None),
         }
     }
@@ -646,6 +648,8 @@ pub struct Listed {
     /// For address books: those it is shared with to write (Nextcloud's
     /// `oc:invite`); none when it says nothing.
     pub writers: Vec<String>,
+    /// Whether the server said with whom it is shared (an `oc:invite` answered).
+    pub writers_known: bool,
 }
 
 /// Whether the server says a collection is yours: its owner (Nextcloud's
@@ -738,6 +742,7 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
             owned: owned_by_you(response, me.as_deref()),
             writers: response.prop(OWNCLOUD, "invite").map(|p| p.writers.clone()).unwrap_or_default(),
+            writers_known: response.prop(OWNCLOUD, "invite").is_some(),
             url,
             id,
         });
@@ -1024,6 +1029,7 @@ fn listed_here(account: &str, id: &str) -> Option<Listed> {
         transparent: state.transparent,
         owned: state.owned,
         writers: state.writers.clone(),
+        writers_known: state.writers_known,
     })
 }
 
@@ -1125,6 +1131,7 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             // Who else writes an address book, as listed now: its groups count once you say so for them.
             if collection.kind == Kind::Contacts {
                 state.writers = collection.writers.clone();
+                state.writers_known = collection.writers_known;
             }
             state.save(&path).map_err(SyncError::Disk)
         });
@@ -1227,19 +1234,26 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         // listing (207) shows that its server holds nothing this device has not; a card added
         // or changed there since keeps the book, shown again, and its line says why. Any other
         // answer keeps it hidden, asked again at the next sync.
+        // The listing must be whole (review V4): the book itself named, each member answered,
+        // and every card this device holds a row for among them; else kept, asked again.
         if state.removed && kind == Kind::Contacts && !state.leave {
-            match client.propfind(&state.url, "1", "<d:getetag/>") {
-                Ok(found) if holds_unknown(&state, &found) => {
-                    state.removed = false;
-                    state.kept = "held".into();
-                    go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
-                    continue;
-                }
-                Ok(_) => {}
-                Err(_) => continue,
+            let Ok(found) = client.propfind(&state.url, "1", "<d:getetag/>") else { continue };
+            let Some(members) = whole_listing(&state.url, &found) else { continue };
+            if holds_unknown(&state, &members) {
+                state.removed = false;
+                state.kept = "held".into();
+                go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+                continue;
+            }
+            if misses_rows(&state, &members) {
+                continue;
             }
         }
         if state.removed {
+            // Undone meanwhile (its Undo, while this sync ran): not deleted (review V9).
+            if !State::load(&path).removed {
+                continue;
+            }
             let answer = client.send("DELETE", &state.url, &[], None)?;
             if (200..300).contains(&answer.status) || answer.status == 404 {
                 let _ = std::fs::remove_dir_all(&collection.dir);
@@ -1270,7 +1284,9 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             // before the DELETE (review F1): any other answer (429, 503, 504, a timeout, a
             // body that does not read) keeps it, asked again at the next sync.
             let Ok(found) = client.propfind(&state.url, "1", "<d:getetag/>") else { continue };
-            let held = found.iter().filter(|r| path_key(&absolute(&state.url, &r.href)) != path_key(&state.url) && r.status.is_none_or(|s| s / 100 == 2)).count();
+            // A whole listing (review V4): the book itself named, each member answered; else kept.
+            let Some(members) = whole_listing(&state.url, &found) else { continue };
+            let held = members.len();
             // An address book emptied here by a merge or a removal (wave D): its cards
             // still wait for their old copies' deletion there, after their new copies;
             // it is deleted once they are gone, never shown again meanwhile.
@@ -1284,6 +1300,11 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
                     state.kept = "held".into();
                 }
             } else {
+                // Empty there, but this device still holds rows of its cards: the listing and
+                // this device disagree, kept and asked again (review V4); undone meanwhile, kept (V9).
+                if !state.items.is_empty() || !State::load(&path).deleted {
+                    continue;
+                }
                 let answer = client.send("DELETE", &state.url, &[], None)?;
                 if !(200..300).contains(&answer.status) && answer.status != 404 {
                     refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
@@ -1299,18 +1320,41 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
     refused.map_or(Ok(()), Err)
 }
 
-/// Whether a listing of a collection holds an item this device does not
-/// know as it is there: one it never had, or one changed there since.
-fn holds_unknown(state: &State, found: &[Response]) -> bool {
+/// A collection's listing as its deletion needs it (review V4): the
+/// collection itself named, and each member answered (no error inside the
+/// 207, its ETag given); its members then. None otherwise: a 207 of no
+/// response, one naming the collection alone where it lists members as
+/// errors, or any other answer that cannot tell what it holds.
+fn whole_listing<'a>(url: &str, found: &'a [Response]) -> Option<Vec<&'a Response>> {
+    let me = path_key(url);
+    if !found.iter().any(|r| path_key(&absolute(url, &r.href)) == me) {
+        return None;
+    }
+    let members: Vec<&Response> = found.iter().filter(|r| path_key(&absolute(url, &r.href)) != me).collect();
+    let answered = |r: &&Response| r.status.is_none_or(|s| s / 100 == 2) && r.props.iter().all(|p| p.status / 100 == 2) && r.text(DAV, "getetag").is_some();
+    members.iter().all(answered).then_some(members)
+}
+
+/// Whether a listing holds an item this device does not know as it is
+/// there: one it never had, one changed there since, or one whose ETag this
+/// device never learnt (review V9: it cannot tell it unchanged).
+fn holds_unknown(state: &State, members: &[&Response]) -> bool {
     let known: BTreeMap<String, &str> = state.items.iter().map(|i| (path_key(&absolute(&state.url, &i.href)), i.etag.as_str())).collect();
-    found.iter().filter(|r| path_key(&absolute(&state.url, &r.href)) != path_key(&state.url) && r.status.is_none_or(|s| s / 100 == 2)).any(|r| {
+    members.iter().any(|r| {
         let key = path_key(&absolute(&state.url, &r.href));
         match (known.get(&key), r.text(DAV, "getetag")) {
             (None, _) => true,
-            (Some(mine), Some(theirs)) => !mine.is_empty() && *mine != theirs,
-            (Some(_), None) => false,
+            (Some(mine), Some(theirs)) => mine.is_empty() || *mine != theirs,
+            (Some(_), None) => true,
         }
     })
+}
+
+/// Whether a listing leaves out a card this device holds a row for: it and
+/// this device disagree on what the collection holds (review V4).
+fn misses_rows(state: &State, members: &[&Response]) -> bool {
+    let listed: BTreeSet<String> = members.iter().map(|r| path_key(&absolute(&state.url, &r.href))).collect();
+    state.items.iter().any(|i| !listed.contains(&path_key(&absolute(&state.url, &i.href))))
 }
 
 /// Whether cards moved out of the collection at `dir` still wait for their
@@ -1470,7 +1514,13 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
         let made = match (kind, answer.status) {
             (_, 200..=299) => true,
             (Kind::Calendars, 405) => true,
-            (Kind::Contacts, 405) => client.propfind(&url, "0", "<d:resourcetype/>").is_ok_and(|found| found.iter().any(|r| r.is(CARDDAV, "addressbook"))),
+            // Its check failing for a passing reason: asked again at the next sync, never refused for good (review V9).
+            (Kind::Contacts, 405) => match client.propfind_answer(&url, "0", "<d:resourcetype/>") {
+                Ok((207, found)) => found.iter().any(|r| r.is(CARDDAV, "addressbook")),
+                // Nothing there: not made. A passing failure (5xx, 429, the network): asked again.
+                Ok((404 | 403 | 405 | 410, _)) => false,
+                _ => continue,
+            },
             _ => false,
         };
         // Refused for good (4xx but 429): never asked again; a passing error (5xx, 429): asked at the next sync.
@@ -1563,6 +1613,15 @@ fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
                     from.items[at].etag = etag.clone();
                     from.items[at].hash = agreed.clone();
                     from.save(&from_path).map_err(SyncError::Disk)?;
+                }
+                // Taken without its ETag (review V9): known as sent, its ETag (and the server's
+                // own version, should it alter it) learnt at the next pull of its book; moved then.
+                None if (200..300).contains(&put.status) => {
+                    from.items[at].etag = String::new();
+                    from.items[at].hash = vdir::content_hash(text.as_bytes());
+                    from.items[at].sent = sent_hash(&text);
+                    from.save(&from_path).map_err(SyncError::Disk)?;
+                    continue;
                 }
                 _ => continue,
             }
@@ -3062,6 +3121,12 @@ pub(crate) mod stand_in {
         no_move: bool,
         /// Each address book's shares: (principal, may write).
         shares: BTreeMap<String, Vec<(String, bool)>>,
+        /// Address books someone else owns, said by the standard `DAV:owner` alone: their owner.
+        owners: BTreeMap<String, String>,
+        /// A server that says neither Nextcloud's owner nor its shares (`oc:invite`).
+        plain: bool,
+        /// How a book's PROPFIND lists (review V4): 0 whole, 1 the book alone, 2 no response at all.
+        lists: u8,
     }
 
     impl Dav {
@@ -3158,6 +3223,21 @@ pub(crate) mod stand_in {
         /// From now on, MOVE is answered 405, as by a server without it.
         pub(crate) fn refuse_moves(&self) {
             self.held().no_move = true;
+        }
+
+        /// From now on, this address book is `owner`'s, as the standard `DAV:owner` says it.
+        pub(crate) fn owned_by(&self, book: &str, owner: &str) {
+            self.held().owners.insert(book.to_string(), owner.to_string());
+        }
+
+        /// From now on, it says neither Nextcloud's owner nor the shares of a book.
+        pub(crate) fn says_little(&self) {
+            self.held().plain = true;
+        }
+
+        /// From now on, a book's PROPFIND lists: 0 whole, 1 the book alone, 2 no response at all.
+        pub(crate) fn lists(&self, how: u8) {
+            self.held().lists = how;
         }
     }
 
@@ -3267,7 +3347,14 @@ pub(crate) mod stand_in {
             let last = self.last(calendar);
             if self.books {
                 let name = self.names.get(calendar).map_or(calendar, String::as_str);
-                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token><oc:owner-principal>principals/users/jane</oc:owner-principal><d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal><oc:invite>{}</oc:invite>", super::xml_escape(name), self.invite(calendar));
+                // Its owner as Nextcloud says it, or by the standard property alone; with or without its shares.
+                let owner = match self.owners.get(calendar) {
+                    Some(owner) => format!("<d:owner><d:href>/principals/users/{owner}/</d:href></d:owner>"),
+                    None if self.plain => String::new(),
+                    None => "<oc:owner-principal>principals/users/jane</oc:owner-principal>".to_string(),
+                };
+                let invite = if self.plain { String::new() } else { format!("<oc:invite>{}</oc:invite>", self.invite(calendar)) };
+                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{owner}<d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal>{invite}", super::xml_escape(name));
             }
             let set = self.components.get(calendar).map(|comps| format!("<c:supported-calendar-component-set>{}</c:supported-calendar-component-set>", comps.iter().map(|c| format!(r#"<c:comp name="{c}"/>"#)).collect::<String>())).unwrap_or_default();
             format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{set}")
@@ -3301,8 +3388,11 @@ pub(crate) mod stand_in {
                 (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
                 ("PROPFIND", ["cal", book]) if self.books && request.body.contains("invite") => multistatus(&found(&format!("/cal/{book}/"), &format!("<oc:invite>{}</oc:invite>", self.invite(book)))),
                 ("PROPFIND", ["cal", calendar]) => {
+                    if self.lists == 2 {
+                        return multistatus("");
+                    }
                     let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
-                    for (item, (etag, _)) in &self.calendars[*calendar] {
+                    for (item, (etag, _)) in self.calendars[*calendar].iter().filter(|_| self.lists == 0) {
                         out += &found(&format!("/cal/{calendar}/{item}"), &format!("{}<d:resourcetype/>", etag_prop(etag)));
                     }
                     if let Some(base) = &self.elsewhere {
@@ -3580,7 +3670,7 @@ mod tests {
         let state = State::load(&club.state_path());
         assert!(!state.renamed && !state.recoloured);
         // A listing names it otherwise: it keeps its folder's id by its address.
-        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true), writers: Vec::new() }];
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true), writers: Vec::new(), writers_known: false }];
         keep_ids("p5-sync", Kind::Calendars, &mut listed);
         assert_eq!(listed[0].id, club.id);
         // Whose it is, from the listing: its owner against your principal; else unknown.

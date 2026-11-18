@@ -361,3 +361,69 @@ fn a_card_imported_twice_is_written_once() {
     let imported = sioul_core::contactimport::plan(&cards, &cards_of("books-f13", "contacts"), &here, &sioul_core::contactimport::Options::default(), None);
     assert_eq!((imported.new, imported.here, imported.plan.steps.len()), (0, 1, 0));
 }
+
+/// Review V4: a merged book is deleted only on a listing that names it,
+/// answers each member, and leaves out no card this device holds a row for:
+/// a 207 naming the book alone, or no response at all, keeps it; the
+/// other person's card stays, and the book shows again once a whole listing
+/// says so.
+#[test]
+fn a_listing_that_cannot_tell_keeps_the_book() {
+    for (how, id) in [(1u8, "books-v4-alone"), (2u8, "books-v4-none")] {
+        let (dav, account) = merged_while_someone_adds(id);
+        dav.lists(how);
+        for _ in 0..2 {
+            let _ = sync_with(&client(), &account);
+        }
+        assert!(!dav.seen().iter().any(|s| s.starts_with("DELETE /cal/merged/ ")), "{id}: {:?}", dav.seen());
+        assert_eq!(uids(&dav, "merged"), ["theirs-1"], "{id}");
+        dav.lists(0);
+        for _ in 0..2 {
+            let _ = sync_with(&client(), &account);
+        }
+        assert!(book(id, "merged").is_some_and(|b| State::load(&b.state_path()).kept == "held"), "{id}: shown again, said");
+    }
+}
+
+/// Review V4: what the deletion reads as a whole listing: never an empty
+/// body, a multistatus of no response, a page that is no listing, nor one
+/// whose member is answered with an error inside it.
+#[test]
+fn what_a_whole_listing_is() {
+    let url = "http://127.0.0.1/cal/merged/";
+    assert!(multistatus("").is_err());
+    let (none, _) = multistatus(r#"<d:multistatus xmlns:d="DAV:"/>"#).unwrap();
+    assert!(whole_listing(url, &none).is_none());
+    let refused = r#"<d:multistatus xmlns:d="DAV:"><d:response><d:href>/cal/merged/</d:href><d:propstat><d:prop><d:getetag/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response><d:response><d:href>/cal/merged/a.vcf</d:href><d:status>HTTP/1.1 403 Forbidden</d:status></d:response></d:multistatus>"#;
+    let (responses, _) = multistatus(refused).unwrap();
+    assert!(whole_listing(url, &responses).is_none(), "a member refused inside the 207");
+    let empty = r#"<d:multistatus xmlns:d="DAV:"><d:response><d:href>/cal/merged/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#;
+    let (responses, _) = multistatus(empty).unwrap();
+    assert_eq!(whole_listing(url, &responses).map(|m| m.len()), Some(0), "the book itself, no member: empty");
+}
+
+/// Point 8 of the verification: a book whose server says, by the standard
+/// `DAV:owner` alone, that it is someone else's has its groups off until
+/// said; a server that says neither whose a book is nor whom it is shared
+/// with keeps its groups counting, and its line says so.
+#[test]
+fn whose_a_book_is_and_a_server_that_says_nothing() {
+    let (dav, home_url) = Dav::start_books(&["contacts", "theirs"]);
+    dav.owned_by("theirs", "sam");
+    let owner_account = account("books-owner", &home_url);
+    sync_with(&client(), &owner_account).unwrap();
+    let config: sioul_core::config::Config = toml::from_str("[[account]]\nid = \"books-owner\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n").unwrap();
+    let theirs = book("books-owner", "theirs").unwrap();
+    assert_eq!(State::load(&theirs.state_path()).owned, Some(false));
+    assert!(!sioul_core::addressbooks::groups_count(&theirs, &config).count, "someone else's: off until said");
+    let mine = book("books-owner", "contacts").unwrap();
+    assert!(sioul_core::addressbooks::groups_count(&mine, &config).count && sioul_core::addressbooks::line(&mine, &config, &tr()).groups_note.is_empty());
+    let (plain, plain_url) = Dav::start_books(&["contacts"]);
+    plain.says_little();
+    let quiet_account = account("books-plain", &plain_url);
+    sync_with(&client(), &quiet_account).unwrap();
+    let config: sioul_core::config::Config = toml::from_str("[[account]]\nid = \"books-plain\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n").unwrap();
+    let quiet = book("books-plain", "contacts").unwrap();
+    assert!(sioul_core::addressbooks::groups_count(&quiet, &config).count, "as today");
+    assert_eq!(sioul_core::addressbooks::line(&quiet, &config, &tr()).groups_note, tr().text("book-writers-unsaid", None));
+}
