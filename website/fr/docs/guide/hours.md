@@ -143,8 +143,8 @@ Le calme, c’est chaque fois que ce n’est pas le moment du travail : les lo
 - le Porche montre les codes, et les courriels que vos listes laissent passer à ce moment ;
 - les adresses de travail se replient sur la page Courriels, sans leurs points, et **Toutes les adresses** ne coche que ce que les heures apportent ([Courriels](mail.md#all-addresses)) ;
 - les sites de travail gardent leurs notifications pour plus tard ;
-- Projets ne montre que les vôtres, et Temps attend derrière **Montrer quand même** ;
-- Tâches ne montre que ce qui convient au moment présent.
+- Projets et Temps montrent les projets de ce que les heures apportent, tout le reste à une case près ([Projets](projects.md#in-quiet-time)) ;
+- Tâches ▸ Maintenant ne montre que ce qui convient au moment présent, et Ce qui vient, dans l’Agenda, que les étapes du plan pour ce moment ; leurs autres onglets montrent tout.
 
 Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revient demain à 09:00. »
 
@@ -161,7 +161,7 @@ Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange 
 - **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Plus tard** pour Prises ▸ Sommeil dans Paramètres ▸ Ce qui vous joint ▸ [Celles de Sioul](notifications.md#doses) : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
 - si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un courriel sur un projet vient parmi les personnes que vous connaissez ;
 - chaque adresse se replie sur la page Courriels ; seuls les sites de loisirs sont listés ;
-- Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une idée peut encore être notée pour plus tard.
+- Tâches ▸ Maintenant attend derrière une phrase et **Montrer quand même**, où une idée peut encore être notée pour plus tard ; les autres onglets montrent tout. Projets et Temps montrent ceux des loisirs, tout le reste à une case près.
 
 Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
 
@@ -195,6 +195,7 @@ Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régl
 - Les messages de travail du soir coûtent la soirée par leur ton (Butts, Becker & Boswell 2015), et le simple fait de s’attendre à les consulter fait du mal, qu’on les lise ou non (Becker et al. 2021).
 - Les tâches inachevées nourrissent la rumination et le mauvais sommeil (Syrek et al. 2017) ; prévoir où, quand et comment elles seront faites a augmenté le détachement le soir (Smit 2016). Aussi, clore la journée donne une place à chaque chose, et nomme la première étape.
 - L’heure avant le coucher, gardée libre de ce qui fait tourner la tête, fait partie des programmes pour le sommeil que suit la Santé (Harvey et al. 2021).
+- Les heures ne façonnent que les onglets calmes (Tâches ▸ Maintenant, Ce qui vient dans l’Agenda) ; une vue complète sert à gérer, aussi ne cache-t-elle rien, et le filtre d’une liste (Courriels, Budgets, Projets, Temps) montre tout à une case près. Une règle de conception de Sioul, pas un résultat : se battre avec une page pour tout voir pèse plus que de tout voir.
 - Les gens donnent déjà un rôle à leurs appareils : parmi 259 personnes en emploi au Royaume-Uni, celles qui tiennent le travail et la maison à part consacraient davantage leurs appareils à l’un ou à l’autre que celles qui les mêlent, avec autant d’appareils (Fleck, Cox & Robison 2015). Cette enquête n’a pas mesuré si cela aide, et aucune étude trouvée ne compare un appareil pour le travail à un appareil pour tout. Ce qui va de pair avec moins de détresse, c’est de se sentir maître de la limite, qu’on sépare ou qu’on mêle (Kossek et al. 2012, 591 cadres) ; pour les personnes qui préfèrent mêler, travailler sur le téléphone le soir allait même de pair avec moins de conflit à la maison (Derks et al. 2016). Aussi, c’est à vous de dire à quoi sert un appareil, rien n’est restreint tant que vous ne l’avez pas dit, chaque case se change et se remet, et ce qui est replié dit pourquoi et s’ouvre d’un geste.
 - Un appareil consacré ne tient pas la limite tout seul : 13 des 14 personnes qui voulaient « le travail au travail, la maison à la maison » travaillaient aussi sur l’ordinateur de la maison (Dearman & Pierce 2008), et des courriels lus sur le téléphone le soir étaient oubliés au bureau (Cecchinato, Cox & Bird 2015). Aussi, ce qui est replié s’ouvre, et l’ouvrir ne règle rien : un courriel ouvert sur un appareil qui n’est pas fait pour lui reste nouveau sur celui qui l’est.
 - Interrogées au fil de la journée, 16 personnes voulaient une notification sur l’appareil près d’elles et en cours d’utilisation : le téléphone presque toute la journée, un ordinateur seulement pendant qu’elles s’en servaient (Weber et al. 2016, lu dans la thèse de son premier auteur). Aussi, l’appareil dont vous vous êtes servi en dernier dit ce qui est pour lui, et le reste attend en vue et vous est dit sur l’appareil fait pour lui dès que vous le prenez ; un appareil n’en attend un autre que tant que celui-ci a dit être fait pour la chose, pour qu’un courriel puisse venir deux fois, jamais pas du tout.

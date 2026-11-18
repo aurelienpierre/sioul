@@ -27,7 +27,8 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 
 - **Name**.
 - **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
-- Without it, the project is yours. **Yours, outside work** keeps its tasks in view in quiet time, with family and friends.
+- Without it, the project is yours.
+- **What it is for**: work, your admin, leisure, any of them together, the same three switches as everywhere ([Hours](hours.md)). The Projects and Time pages show it in those hours, and its tasks come in them unless they say their own. Nothing ticked, it counts as work.
 - **Where it stands**: open, waiting, or closed.
 
 **Take out of the list** removes a project. Its tasks, notes, mail and time stay where they are; they are no longer gathered under it.
@@ -66,14 +67,14 @@ In one file, `sioul-projects.toml`, at the root of your notes folder: readable, 
 
 If your notes folder still holds `sioul-cases.toml`, the file's name before projects had one name, nothing changes: Sioul reads it and writes it as it is, so that a device not yet updated reads it too. When each of your devices has this version, **Rename to sioul-projects.toml**, in Settings ▸ Your folder and sharing, renames it, with a copy of the old file kept beside it. Links to a project written before still open it.
 
-## In quiet time {#in-quiet-time}
+## By your hours {#in-quiet-time}
 
-Projects for clients rest outside working hours: "Work projects rest until work comes back." **Show anyway** shows them all the same. While you sleep, the whole page waits behind one sentence and **Show anyway**. See [Hours](hours.md).
+The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change; **As the hours say** brings theirs back at once. A project with nothing ticked counts as work. Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
 
 ## Going further {#going-further}
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
-- **Yours, outside work**: a project of your own, marked so, stays in view in quiet time, when work projects rest.
+- **On a device not updated yet**: an older Sioul reads the three switches as nothing said until it is updated; its one box, **Yours, outside work**, reads here as admin and leisure.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
 
@@ -81,7 +82,7 @@ Projects for clients rest outside working hours: "Work projects rest until work 
 
 Filing mail by hand costs and fails: in 345 people's mail, finding a message by its folder took 59 seconds, by a search 17, and those who filed most found no more (Whittaker et al. 2011). So a project's mail comes to it by the routes you give it once, after Sioul checked who sent it, and you file nothing. Visual supports help many autistic people (Steinbrenner et al. 2020): a project's tasks can be drawn on a Gantt when that helps, and never must be.
 
-More in [what the research says](../dev/research.md), findings 13 and 61.
+The list follows your hours as Mail does, since work cues in the evening undo recovery, and everything is one tick away: a list is for managing too. More in [what the research says](../dev/research.md), findings 13, 21 and 61.
 
 ## Compared with other apps {#compared-with-other-apps}
 

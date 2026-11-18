@@ -27,7 +27,8 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 
 - **Nom**.
 - **Pour un client : son temps se facture à un taux horaire**. Puis : **Pour** (pour qui), **Une heure coûte** (sinon le taux de [Paramètres ▸ Factures](settings.md#invoices)), et **Factures attendues dans** : le budget où l’argent est attendu jusqu’au paiement. Quand **Pour** nomme l’un de vos [contacts](contacts.md) (son nom, ou son organisation), les factures prennent sa fiche de client quand il en a une ([Vos clients](time.md#your-clients)), sinon son adresse postale.
-- Sans cela, le projet est à vous. **À vous, hors travail** garde ses tâches en vue pendant le calme, avec la famille et les amis.
+- Sans cela, le projet est à vous.
+- **À quoi il sert** : travail, vos démarches, loisirs, plusieurs ensemble, les trois mêmes interrupteurs que partout ([Les heures](hours.md)). Les pages Projets et Temps le montrent à ces heures-là, et ses tâches y viennent sauf si elles disent les leurs. Rien de coché, il compte comme travail.
 - **Où il en est** : ouvert, en attente ou fermé.
 
 **Retirer de la liste** enlève un projet. Ses tâches, notes, courriels et temps restent où ils sont ; ils ne sont plus rassemblés sous lui.
@@ -66,14 +67,14 @@ Dans un seul fichier, `sioul-projects.toml`, à la racine de votre dossier de no
 
 Si votre dossier de notes contient encore `sioul-cases.toml`, le nom du fichier d’avant le nom unique des projets, rien ne change : Sioul le lit et l’écrit tel quel, pour qu’un appareil pas encore mis à jour le lise aussi. Quand chacun de vos appareils a cette version, **Renommer en sioul-projects.toml**, dans Paramètres ▸ Votre dossier et le partage, le renomme, en gardant une copie de l’ancien fichier à côté. Les liens vers un projet écrits avant l’ouvrent toujours.
 
-## Pendant le calme {#in-quiet-time}
+## Selon vos heures {#in-quiet-time}
 
-Les projets pour des clients se reposent en dehors des heures de travail : « Les projets de travail se reposent jusqu’au retour du travail. » **Montrer quand même** les montre malgré tout. Pendant le sommeil, toute la page attend derrière une phrase et **Montrer quand même**. Voir [Les heures](hours.md).
+Le bouton au-dessus de la liste dit ce qu’elle montre (« Loisirs ▾ ») et ouvre trois cases, **Travail**, **Démarches** et **Loisirs**, cochées comme le disent vos heures sur cet appareil : les projets du travail pendant vos heures de travail, ceux de vos démarches pendant vos heures de démarches, ceux des loisirs le soir, aux repas et la nuit. Cochez-en une autre pour voir ses projets aussi : cela tient jusqu’au changement de vos heures ; **Selon vos heures** rend aussitôt les leurs. Un projet sans rien de coché compte comme travail. Rien ne couvre la page, à aucune heure, et un projet ouvert d’ailleurs s’ouvre quelles que soient les cases. La page [Temps](time.md#in-quiet-time) partage ces cases. Voir [Les heures](hours.md).
 
 ## Pour aller plus loin {#going-further}
 
 - **Une file sur le Porche** : **Projets montrés ici**, dans le ⚙ du Porche, donne à un projet sa propre file ([Le Porche](porch.md)).
-- **À vous, hors travail** : un projet à vous, marqué ainsi, reste en vue pendant le calme, quand les projets de travail se reposent.
+- **Sur un appareil pas encore mis à jour** : un Sioul plus ancien lit les trois interrupteurs comme si rien n’était dit, jusqu’à sa mise à jour ; sa seule case, **À vous, hors travail**, se lit ici comme démarches et loisirs.
 - **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
 - **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire la page d’un projet telle que la fenêtre la montre, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels. Il n’y change rien.
 
@@ -81,7 +82,7 @@ Les projets pour des clients se reposent en dehors des heures de travail : «�
 
 Classer ses courriels à la main coûte et échoue : dans le courrier de 345 personnes, retrouver un courriel par son dossier prenait 59 secondes, par une recherche 17, et celles qui classaient le plus n’en retrouvaient pas davantage (Whittaker et al. 2011). Les courriels d’un projet y viennent donc par les règles que vous lui donnez une fois, après que Sioul a vérifié qui les envoie, et vous ne classez rien. Les supports visuels aident beaucoup de personnes autistes (Steinbrenner et al. 2020) : les tâches d’un projet peuvent se dessiner sur un Gantt quand cela aide, sans jamais y être obligées.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 13 et 61.
+La liste suit vos heures comme les Courriels, puisque les rappels du travail le soir défont la récupération, et tout est à une case près : une liste sert aussi à gérer. Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 13, 21 et 61.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 

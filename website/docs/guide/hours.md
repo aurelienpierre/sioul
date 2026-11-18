@@ -143,8 +143,8 @@ Quiet time is whenever it is not work's time: leisure (the evening, days without
 - the Porch shows codes, and the mail your lists let through now;
 - work addresses fold on the Mail page, without their dots, and **All addresses** ticks only what the hours bring ([Mail](mail.md#all-addresses));
 - work sites keep their notifications for later;
-- Projects shows only yours, and Time waits behind **Show anyway**;
-- Tasks shows only what fits now.
+- Projects and Time show the projects for what the hours bring, everything one tick away ([Projects](projects.md#in-quiet-time));
+- Tasks ▸ Now shows only what fits now, and the Agenda's What comes only the plan's steps for now; their other tabs show everything.
 
 One sentence in the status line says until when: "Work comes back tomorrow at 09:00."
 
@@ -161,7 +161,7 @@ From winding down to waking, and during a nap, nothing disturbs:
 - **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** for Doses ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;
-- Tasks, Projects and Time wait behind one sentence and **Show anyway**; on Tasks, a thought can still be noted for later.
+- Tasks ▸ Now waits behind one sentence and **Show anyway**, where a thought can still be noted for later; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
 
 Without a night set on the Health page, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
 
@@ -195,6 +195,7 @@ The Porch asks, in a card, for the hours not set yet, with **Set my hours**, whi
 - Work messages in the evening cost the evening through their tone (Butts, Becker & Boswell 2015), and merely expecting to check them does harm, read or not (Becker et al. 2021).
 - Unfinished tasks feed rumination and poor sleep (Syrek et al. 2017); planning where, when and how they will be done raised evening detachment (Smit 2016). So closing the day gives everything a place, and names the first step.
 - The hour before bed, kept free of what keeps the mind going, is part of the sleep programmes Health follows (Harvey et al. 2021).
+- The hours shape the calm tabs alone (Tasks ▸ Now, the Agenda's What comes); a full view is for managing, so it hides nothing, and a list's filter (Mail, Budgets, Projects, Time) shows everything one tick away. A design rule of Sioul's, not a finding: fighting a page for the whole picture weighs more than seeing it.
 - People already give their devices a role: among 259 UK workers, those who keep work and home apart dedicated their devices more than those who mix them, with as many devices (Fleck, Cox & Robison 2015). That survey did not measure whether it helps, and no study found tests a device for work against one for everything. What goes with less distress is feeling in control of the line, whether one separates or mixes (Kossek et al. 2012, 591 managers); for people who prefer to mix, work on the phone in the evening even went with less conflict at home (Derks et al. 2016). So what a device is for is yours to say, nothing is narrowed until you say it, every cell can be changed and put back, and what is folded says why and opens in one gesture.
 - A dedicated device does not hold the line alone: 13 of 14 people who wanted "work is work, home is home" worked on the home computer too (Dearman & Pierce 2008), and mail read on a phone in the evening was forgotten at the office (Cecchinato, Cox & Bird 2015). So a fold opens, and opening it settles nothing: a message opened on a device that is not for it stays new on the device that is.
 - Asked through the day, 16 people wanted a notification on the device near them and in use: the phone nearly all day, a computer only while used (Weber et al. 2016, read in its first author's thesis). So the device you used last tells what is for it, and what is not waits in view and is told on the device it is for once you pick it up; a device waits for another only while that one has said it is for the thing, so that a message may come twice but never not at all.
