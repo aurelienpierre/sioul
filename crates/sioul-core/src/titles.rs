@@ -29,12 +29,16 @@ struct Language {
     words: Vec<String>,
     #[serde(default)]
     unsure: Vec<String>,
+    #[serde(default)]
+    clear: Vec<String>,
 }
 
-/// The data, read once: every title, those unsure without their full stop, the joiners; lower case.
+/// The data, read once: every title, those unsure without their full stop,
+/// those clear on any card, the joiners; lower case.
 struct Known {
     words: Vec<String>,
     unsure: Vec<String>,
+    clear: Vec<String>,
     joiners: Vec<String>,
 }
 
@@ -48,13 +52,14 @@ fn known() -> &'static Known {
                 list.push(word);
             }
         };
-        let (mut words, mut unsure, mut joiners) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut words, mut unsure, mut clear, mut joiners) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for language in &titles.language {
             language.words.iter().for_each(|w| bare(&mut words, w));
             language.unsure.iter().for_each(|w| bare(&mut unsure, w));
+            language.clear.iter().for_each(|w| bare(&mut clear, w));
         }
         titles.joiners.iter().for_each(|w| bare(&mut joiners, w));
-        Known { words, unsure, joiners }
+        Known { words, unsure, clear, joiners }
     })
 }
 
@@ -85,18 +90,40 @@ pub fn split(name: &str) -> Option<(String, String)> {
 /// et Paul Martin"). The title's move never changes such a name.
 pub fn household(name: &str) -> bool {
     let words: Vec<&str> = name.split_whitespace().collect();
-    // Another title, not a middle initial ("Jean M. Dupont").
-    words.iter().skip(1).any(|w| known().joiners.contains(&bare(w)) || (is_title(w) && bare(w).chars().count() > 1)) || name.contains('&') || name.contains('+')
+    // Another title, not a middle initial ("Jean M. Dupont"); a title of one
+    // letter is one after a comma or a slash ("Mme Dupont, M. Martin", "Mme
+    // Jeanne / M. Paul Martin", review V7).
+    let after_break = |i: usize| i > 0 && (words[i - 1].ends_with([',', ';']) || words[i - 1] == "/");
+    words.iter().enumerate().skip(1).any(|(i, w)| known().joiners.contains(&bare(w)) || (is_title(w) && (bare(w).chars().count() > 1 || after_break(i))))
+        || name.contains('&')
+        || name.contains('+')
+        || name.contains('/')
 }
 
-/// Whether a title found is sure enough to move without asking: written with
-/// its full stop ("M.", "Dr."), or a word that is no other ("Mme", "Mrs"),
-/// never on a card that looks like a company when it has no full stop.
-pub fn sure(title: &str, company: bool) -> bool {
-    if title.trim().ends_with('.') {
+/// What a card says of itself, for its title: a company's (`KIND:org`, its
+/// name its organisation's, a name line with no person's names), a person's
+/// (name parts of its own, not Sioul's guess of its name), or nothing either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Card {
+    Company,
+    Person,
+    Unknown,
+}
+
+/// Whether a title found is sure enough to move without asking (review
+/// F18, V7): never on a company's card, its full stop or not; written with
+/// its full stop ("M.", "Dr.") on any other; else a word that is no other
+/// ("Mme", "Mrs": `clear`) on any other card, and a word that is not unsure
+/// ("Mr", "Dr") on a person's card alone. A card made in Sioul's form carries
+/// the guess of its name, which tells nothing: "Mr Bricolage Lyon" is asked.
+pub fn sure(title: &str, card: Card) -> bool {
+    if card == Card::Company {
+        return false;
+    }
+    if title.trim().ends_with('.') || known().clear.contains(&bare(title)) {
         return true;
     }
-    !company && !known().unsure.contains(&bare(title))
+    card == Card::Person && !known().unsure.contains(&bare(title))
 }
 
 /// Two titles the same, as written or not: "Mme" and "mme.".
@@ -114,6 +141,7 @@ mod tests {
         assert!(titles.joiners.contains(&"et".to_string()), "the joiners at the top of the file, before any [[language]], else they are that language's");
         assert_eq!(titles.language.iter().map(|l| l.code.as_str()).collect::<Vec<_>>(), ["fr", "en"]);
         assert!(titles.language.iter().all(|l| l.unsure.iter().all(|u| l.words.contains(u))), "an unsure word is one of the words");
+        assert!(titles.language.iter().all(|l| l.clear.iter().all(|c| l.words.contains(c) && !l.unsure.contains(c))), "a clear word is one of the words, never unsure");
         for word in ["M", "Mr", "Mme", "Mlle", "Dr", "Me", "Pr", "Mrs", "Ms", "Miss", "Prof"] {
             assert!(is_title(word) && is_title(&format!("{word}.")) && is_title(&word.to_uppercase()) && is_title(&word.to_lowercase()), "{word}");
         }
@@ -141,18 +169,21 @@ mod tests {
     }
 
     /// Two people in one name are never taken for one person's title; the
-    /// unsure words, and any title without its full stop on a company, are said unsure.
+    /// unsure words are said unsure; on a company's card no title is sure, a
+    /// full stop or not; on a card that says nothing of itself, only a full
+    /// stop or a title that is nothing else (review F18, V7).
     #[test]
     fn households_and_unsure_titles() {
-        for two in ["M. et Mme Dupont", "Mr and Mrs Smith", "Mme Jeanne et Paul Martin", "M & Mme Dupont", "Jeanne + Paul"] {
+        for two in ["M. et Mme Dupont", "Mr and Mrs Smith", "Mme Jeanne et Paul Martin", "M & Mme Dupont", "Jeanne + Paul", "Mme Dupont, M. Martin", "Mme Jeanne / M. Paul Martin"] {
             assert!(household(two), "{two}");
         }
         assert!(!household("Mme Jeanne Martin") && !household("Dr Paul Exemple") && !household("M. Jean M. Dupont"));
-        assert!(sure("Mme", false) && sure("Mrs", false) && sure("M.", false) && sure("Dr", false) && sure("Dr.", true));
+        assert!(sure("Mme", Card::Person) && sure("Mrs", Card::Person) && sure("M.", Card::Person) && sure("Dr", Card::Person));
         for unsure in ["Me", "Pr", "PR", "M", "Prof", "Docteur"] {
-            assert!(!sure(unsure, false), "{unsure}");
+            assert!(!sure(unsure, Card::Person), "{unsure}");
         }
-        assert!(!sure("Dr", true) && !sure("Miss", true) && !sure("Mr", true), "no full stop, on a company");
+        assert!(!sure("Dr.", Card::Company) && !sure("Mr.", Card::Company) && !sure("Miss", Card::Company), "never on a company");
+        assert!(sure("Mme", Card::Unknown) && sure("M.", Card::Unknown) && !sure("Mr", Card::Unknown) && !sure("Dr", Card::Unknown), "a card that says nothing");
         assert!(split("Madame Jeanne Martin").is_some(), "in full too");
     }
 }

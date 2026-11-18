@@ -203,6 +203,9 @@ sioul-cli/src/spam/jobs.rs	held	1	std::fs::OpenOptions::new()
 sioul-cli/src/spam/jobs.rs	prune	1	std::fs::remove_file(file(&job.id, extension))
 sioul-cli/src/spam/jobs.rs	finish	1	std::fs::remove_file(file(&self.job.id, "stop"))
 
+# sioul-core/src/addressbooks.rs: the books whose groups this device said stopped deciding who reaches the person, with their writers (state): no item.
+sioul-core/src/addressbooks.rs	mark_groups_told	1	crate::filelock::replace(&path, text.as_bytes())
+
 # sioul-core/src/clients.rs: client profiles, in the notes folder beside the projects: no item.
 sioul-core/src/clients.rs	save	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/clients.rs	save	1	std::fs::rename(&temporary, file)

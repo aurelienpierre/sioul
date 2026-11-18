@@ -509,6 +509,24 @@ pub struct Options {
     pub titles: bool,
     /// Numbers written in their international form by the region.
     pub international: bool,
+    /// The cards here, by file, that share a UID with a card of the file
+    /// under another name, ticked one by one to be completed all the same
+    /// (review V5); none by default.
+    pub complete_also: Vec<String>,
+    /// The groups one of the person's lists reads (`porch::Senders::category_standing`),
+    /// as compared (`porch::category_key`): a file's own such group is kept on
+    /// its new cards only when `keep_listed` (review V6).
+    pub listed: std::collections::BTreeSet<String>,
+    pub keep_listed: bool,
+}
+
+/// A group the file gives its own new cards, how many, and whether one of
+/// the person's lists reads it (review V6).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct FileGroup {
+    pub name: String,
+    pub cards: usize,
+    pub listed: bool,
 }
 
 /// A card of the file found already here, and what the file would add to it,
@@ -519,6 +537,12 @@ pub struct Match {
     pub adds: Vec<(String, String)>,
     /// Found twice in the file, not among the cards here.
     pub in_file: bool,
+    /// The card's file (its box, `Options::complete_also`).
+    pub key: String,
+    /// The name the file gives it, when it is clearly another than the
+    /// card's own under the same UID (review V5): left alone unless its own
+    /// box is ticked; else "".
+    pub other_name: String,
 }
 
 /// What an import will do, before it runs.
@@ -549,6 +573,10 @@ pub struct Imported {
     pub rewritten: usize,
     /// Those already here, card by card, with what the file would add.
     pub matches: Vec<Match>,
+    /// Cards whose UID is here under another name (review V5): listed, left alone by default.
+    pub other_names: usize,
+    /// The groups the file gives its own new cards (review V6), as first written.
+    pub file_groups: Vec<FileGroup>,
 }
 
 /// The first word of a label, as the form keeps it: "work, home" → "work".
@@ -572,11 +600,31 @@ fn person_key(name: &str) -> String {
     crate::duplicates::name_key(&name)
 }
 
+/// A card's title: its title field, else a title at the start of its name.
+fn title_of(contact: &Contact) -> String {
+    let field = contact.prefix.trim();
+    if !field.is_empty() {
+        return field.to_string();
+    }
+    crate::titles::split(&contact.name).map(|(title, _)| title).unwrap_or_default()
+}
+
+/// Two cards are two people by their names (review V5): different names
+/// once their titles are aside, or two titles that differ ("M. Martin" and
+/// "Mme Martin"). A name or a title missing on one side tells nothing.
+fn other_person(a: &Contact, b: &Contact) -> bool {
+    let (ka, kb) = (person_key(&a.name), person_key(&b.name));
+    let (ta, tb) = (title_of(a), title_of(b));
+    (!ka.is_empty() && !kb.is_empty() && ka != kb) || (!ta.is_empty() && !tb.is_empty() && !crate::titles::same(&ta, &tb))
+}
+
 /// What finds a card again: its UID; its name with each address, each number.
 #[derive(Default)]
 struct Index {
     uid: BTreeMap<String, usize>,
-    named: BTreeMap<(String, String), usize>,
+    named: BTreeMap<(String, String), Vec<usize>>,
+    /// Each card as it was indexed, by its place in the plan.
+    cards: BTreeMap<usize, Contact>,
     /// Any card's addresses and numbers, whatever its name: to say who shares them.
     any: BTreeMap<String, usize>,
 }
@@ -592,25 +640,35 @@ impl Index {
         if let Some(uid) = uid_of(text) {
             self.uid.entry(uid).or_insert(at);
         }
+        self.cards.insert(at, contact.clone());
         let name = person_key(&contact.name);
         for key in Self::keys(contact, region) {
             if !name.is_empty() {
-                self.named.entry((name.clone(), key.clone())).or_insert(at);
+                let slot = self.named.entry((name.clone(), key.clone())).or_default();
+                if !slot.contains(&at) {
+                    slot.push(at);
+                }
             }
             self.any.entry(key).or_insert(at);
         }
     }
 
-    /// The card this one is: the same UID, or the same name and an address or a number.
-    fn same(&self, contact: &Contact, text: &str, region: Option<&Region>) -> Option<usize> {
+    /// The card this one is, and whether it holds another name: the same
+    /// UID (whatever the name, said when it is clearly another, review V5),
+    /// or the same name, its title alike, and an address or a number.
+    fn same(&self, contact: &Contact, text: &str, region: Option<&Region>) -> Option<(usize, bool)> {
         if let Some(at) = uid_of(text).and_then(|uid| self.uid.get(&uid).copied()) {
-            return Some(at);
+            return Some((at, self.cards.get(&at).is_some_and(|here| other_person(here, contact))));
         }
         let name = person_key(&contact.name);
         if name.is_empty() {
             return None;
         }
-        Self::keys(contact, region).into_iter().find_map(|key| self.named.get(&(name.clone(), key)).copied())
+        Self::keys(contact, region)
+            .into_iter()
+            .flat_map(|key| self.named.get(&(name.clone(), key)).cloned().unwrap_or_default())
+            .find(|at| self.cards.get(at).is_none_or(|here| !other_person(here, contact)))
+            .map(|at| (at, false))
     }
 
     /// Whether another card shares one of its addresses or numbers.
@@ -651,18 +709,23 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &
         let incoming = contacts::contact_quiet(&lines::unfold(&text), Path::new(""), target);
         out.titled += usize::from(crate::titles::split(&incoming.name).is_some());
         match index.same(&incoming, &text, region) {
-            Some(at) if planned[at].read_only => out.read_only += 1,
-            Some(at) => {
+            Some((at, _)) if planned[at].read_only => out.read_only += 1,
+            Some((at, other_name)) => {
                 let in_file = at >= here;
-                if in_file {
+                let key = planned[at].path.display().to_string();
+                // The same UID under another name: left alone unless its own box is ticked (review V5).
+                let complete = if other_name { options.complete_also.contains(&key) } else { options.complete };
+                if other_name {
+                    out.other_names += 1;
+                } else if in_file {
                     out.twice += 1;
                 } else {
                     out.here += 1;
                 }
-                let groups: &[String] = if options.groups_here || in_file { &options.groups } else { &[] };
-                let (changed, adds) = completed(&planned[at].after, &incoming, groups, options.complete, region);
-                out.matches.push(Match { name: planned[at].name.clone(), adds, in_file });
-                if (options.complete || (options.groups_here && !in_file)) && let Some(after) = changed {
+                let groups: &[String] = if (options.groups_here && (!other_name || complete)) || in_file { &options.groups } else { &[] };
+                let (changed, adds) = completed(&planned[at].after, &incoming, groups, complete, region);
+                out.matches.push(Match { name: planned[at].name.clone(), adds, in_file, key, other_name: if other_name { incoming.name.clone() } else { String::new() } });
+                if (complete || (options.groups_here && !in_file && !other_name)) && let Some(after) = changed {
                     planned[at].after = after;
                     let now = contacts::contact_quiet(&lines::unfold(&planned[at].after), &planned[at].path, target);
                     index.add(&now, &planned[at].after, at, region);
@@ -670,6 +733,21 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &
             }
             None => {
                 out.apart += usize::from(index.shares(&incoming, region));
+                // The file's own groups, said; one a list of the person's reads kept only when asked (review V6).
+                let mut dropped: Vec<String> = Vec::new();
+                for group in incoming.categories.iter().map(|g| g.trim()).filter(|g| !g.is_empty()) {
+                    let listed = options.listed.contains(&crate::porch::category_key(group));
+                    match out.file_groups.iter_mut().find(|f| crate::porch::category_key(&f.name) == crate::porch::category_key(group)) {
+                        Some(found) => found.cards += 1,
+                        None => out.file_groups.push(FileGroup { name: group.to_string(), cards: 1, listed }),
+                    }
+                    if listed && !options.keep_listed {
+                        dropped.push(group.to_string());
+                    }
+                }
+                if !dropped.is_empty() {
+                    text = contacts::with_categories(&text, &[], &dropped).unwrap_or(text);
+                }
                 if !options.groups.is_empty() {
                     text = contacts::with_categories(&text, &options.groups, &[]).unwrap_or(text);
                 }

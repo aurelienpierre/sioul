@@ -1206,13 +1206,15 @@ pub fn from_contact(contact: &crate::contacts::Contact) -> Person {
 /// when a card has it; everyone whose card is in a category on it
 /// (`category:Friends`); a card on it (`contact:<UID>`); a number on it
 /// (`tel:+33…`). Patterns (`@example.org`, `*@example.org`, `tel:+3319900*`)
-/// name nobody: counted, left.
-pub fn from_safe(entries: &[String], contacts: &[crate::contacts::Contact]) -> (Vec<Person>, usize) {
+/// name nobody: counted, left. A group is read as the lists read it
+/// (`porch::in_deciding_group`): the cards of a book whose groups are held
+/// back (`held`, `addressbooks::groups_held_back`) are not in it (review V2).
+pub fn from_safe(entries: &[String], contacts: &[crate::contacts::Contact], held: &std::collections::BTreeSet<String>) -> (Vec<Person>, usize) {
     let (mut found, mut patterns) = (Vec::new(), 0);
     for entry in entries {
         let entry = entry.trim();
         if let Some(category) = crate::porch::category_of(entry) {
-            found.extend(contacts.iter().filter(|c| crate::contacts::in_category(c, category)).map(from_contact));
+            found.extend(contacts.iter().filter(|c| crate::porch::in_deciding_group(c, category, held)).map(from_contact));
         } else if let Some(uid) = crate::porch::card_of(entry) {
             found.extend(contacts.iter().filter(|c| c.uid.trim() == uid).map(from_contact));
         } else if let Some(number) = crate::porch::number_of(entry).filter(|n| !n.contains('*')) {
@@ -1934,13 +1936,18 @@ mod tests {
         };
         let contacts = vec![card("Alice", "alice@example.org", "+33 4 65 71 23 45", ""), card("Bob", "bob@example.org", "+33 1 99 00 00 01", "Famille"), card("Eve", "eve@example.org", "", "")];
         let safe = ["alice@example.org", "category:famille", "@example.com", "*@example.net", "dan@example.net", "contact:uid-Eve", "tel:+33 3 53 01 00 07", "tel:+33899*"].map(String::from).to_vec();
-        let (people, patterns) = from_safe(&safe, &contacts);
+        let (people, patterns) = from_safe(&safe, &contacts, &std::collections::BTreeSet::new());
         assert_eq!(patterns, 3, "a domain, a pattern, a prefix");
         assert_eq!(people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Alice", "Bob", "", "Eve", ""]);
         assert_eq!(people[0].phones, vec!["+33 4 65 71 23 45"]);
         assert_eq!(people[0].contact, "uid-Alice");
         assert_eq!(people[2].emails, vec!["dan@example.net"]);
         assert_eq!((people[3].contact.as_str(), people[4].phones.clone()), ("uid-Eve", vec!["+33 3 53 01 00 07".to_string()]));
+        // Review V2: Bob's book is one someone else can write, its groups held back: not brought by his group.
+        let mut held_back = contacts.clone();
+        held_back[1].place = "cloud/team".into();
+        let (people, _) = from_safe(&safe, &held_back, &["cloud/team".to_string()].into_iter().collect());
+        assert!(!people.iter().any(|p| p.name == "Bob"), "{people:?}");
     }
 
     #[test]

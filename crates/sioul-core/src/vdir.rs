@@ -977,6 +977,11 @@ pub struct State {
     /// (`addressbooks::groups_count`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub writers: Vec<String>,
+    /// Whether its server said with whom it is shared (Nextcloud's
+    /// `oc:invite`); when it says neither that nor that the book is someone
+    /// else's, its line says so (it is taken as the person's alone).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub writers_known: bool,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]

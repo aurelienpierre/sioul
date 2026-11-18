@@ -302,7 +302,7 @@ pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contac
 
 /// The contact a card stands for, its photo never written into the cache: a
 /// card only looked at (an import counted before anything is written).
-pub(crate) fn contact_quiet(card: &[String], path: &Path, book: &Collection) -> Contact {
+pub fn contact_quiet(card: &[String], path: &Path, book: &Collection) -> Contact {
     contact_with(card, path, book, false)
 }
 
@@ -398,14 +398,29 @@ fn n_line(card: &[String], wanted: &[String; 5]) -> String {
     format!("{head}{}", parts.join(";"))
 }
 
-/// Whether a card looks like a company's: `KIND:org`, its name its
-/// organisation's, or no person's parts (no given nor family name).
-fn company_like(card: &[String]) -> bool {
+/// What a card says of itself, for its title (review F18, V7): a company's
+/// (`KIND:org`, its name its organisation's, a name line with no given nor
+/// family name), a person's (name parts of its own), or nothing either way
+/// (no name line, or one that is only Sioul's guess of its name, as every
+/// card made in the form carries: "Mr Bricolage Lyon" there says nothing).
+fn card_kind(card: &[String]) -> crate::titles::Card {
+    use crate::titles::Card;
     let first = |property: &str| card.iter().find(|l| lines::name(l) == property).map(|l| shown(l)).unwrap_or_default();
     let fold = |t: &str| folded(t).split_whitespace().collect::<Vec<_>>().join(" ");
     let (name, org) = (first("FN"), first("ORG"));
-    let person = n_parts(card).is_some_and(|p| !p[0].trim().is_empty() || !p[1].trim().is_empty());
-    first("KIND").eq_ignore_ascii_case("org") || (!org.is_empty() && fold(&org) == fold(&name)) || !person
+    if first("KIND").eq_ignore_ascii_case("org") || (!org.is_empty() && fold(&org) == fold(&name)) {
+        return Card::Company;
+    }
+    let Some(parts) = n_parts(card) else { return Card::Unknown };
+    let names = |p: &[String; 5]| [fold(&p[0]), fold(&p[1])];
+    if names(&parts).iter().all(String::is_empty) {
+        return Card::Company;
+    }
+    if names(&parts) == names(&structured_name(&name)) || names(&parts) == names(&guessed_before(&name)) {
+        Card::Unknown
+    } else {
+        Card::Person
+    }
 }
 
 /// Whether a contact has a title: in its title field (`N`'s prefix), or at the
@@ -701,7 +716,7 @@ pub fn move_title(text: &str) -> TitleMove {
         return TitleMove::Household;
     }
     let Some((title, rest)) = crate::titles::split(&before) else { return TitleMove::None };
-    let sure = crate::titles::sure(&title, company_like(&card));
+    let sure = crate::titles::sure(&title, card_kind(&card));
     let current = n_parts(&card);
     let held = current.as_ref().map(|p| p[3].trim().to_string()).unwrap_or_default();
     if !held.is_empty() && !crate::titles::same(&held, &title) {
@@ -844,7 +859,8 @@ fn known_type(label: &str) -> Option<&'static str> {
 fn structured_name(name: &str) -> [String; 5] {
     // Only a sure title, never in a name of two people ("Me Work", "M. et Mme Dupont").
     let (prefix, rest) = match crate::titles::split(name) {
-        Some((title, rest)) if crate::titles::sure(&title, false) && !crate::titles::household(name) => (title, rest),
+        // The person names a person here (the form, a new card): a title that is not unsure is taken.
+        Some((title, rest)) if crate::titles::sure(&title, crate::titles::Card::Person) && !crate::titles::household(name) => (title, rest),
         _ => (String::new(), name.trim().to_string()),
     };
     let words: Vec<&str> = rest.split_whitespace().collect();
@@ -1049,7 +1065,8 @@ pub fn completions(contacts: &[Contact], typed: &str, limit: usize) -> Vec<Strin
 
 /// Where a new contact goes: the first address book that can be written to.
 pub fn default_book() -> Option<Collection> {
-    vdir::collections(Kind::Contacts).into_iter().find(|b| !b.read_only)
+    // Never a book its server refused to make (review V9).
+    vdir::collections(Kind::Contacts).into_iter().find(|b| !b.read_only && !vdir::State::load(&b.state_path()).refused)
 }
 
 /// The file a new contact gets in an address book.
@@ -1339,7 +1356,7 @@ mod tests {
     #[test]
     fn the_title_s_move_keeps_what_the_name_lines_carry() {
         let card = |fn_line: &str, extra: &str| format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:t-2\r\nFN:{fn_line}\r\n{extra}END:VCARD\r\n");
-        for household in ["M. et Mme Dupont", "Mr and Mrs Smith", "M & Mme Dupont", "Mme Jeanne et Paul Martin"] {
+        for household in ["M. et Mme Dupont", "Mr and Mrs Smith", "M & Mme Dupont", "Mme Jeanne et Paul Martin", "Mme Dupont, M. Martin", "Mme Jeanne / M. Paul Martin"] {
             assert_eq!(move_title(&card(household, "N:Dupont;;;;\r\n")), TitleMove::Household, "{household}");
         }
         let sure = |fn_line: &str, extra: &str| match move_title(&card(fn_line, extra)) {
@@ -1356,7 +1373,12 @@ mod tests {
         assert_eq!(sure("M Pokora", person), Some(false), "an initial");
         assert_eq!(sure("Dr Martens Store", "N:;;;;\r\nORG:Dr Martens Store\r\n"), Some(false), "a company's card");
         assert_eq!(sure("Miss Paris Institut", "ORG:Miss Paris Institut\r\n"), Some(false));
-        assert_eq!(sure("Mme Jeanne Martin", ""), Some(false), "no name's parts to tell a person: asked");
+        assert_eq!(sure("Mme Jeanne Martin", ""), Some(true), "no name's parts, a title that is nothing else");
+        // Review V7: a full stop never ticks a company; a card that only carries the guess of its name tells nothing.
+        assert_eq!(sure("Dr. Martens Store", "N:;;;;\r\nORG:Dr. Martens Store\r\n"), Some(false));
+        assert_eq!(sure("Mr Bricolage Lyon", "N:Lyon;Mr Bricolage;;;\r\n"), Some(false));
+        assert_eq!(sure("Dr Martens Store", "N:Store;Dr Martens;;;\r\n"), Some(false));
+        assert_eq!(sure("M. Night Exemple", "N:Exemple;M. Night;;;\r\n"), Some(true));
         // FN's and N's parameters, and N's lists of names, as they were.
         let four = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:t-4\r\nFN;LANGUAGE=fr:Dr. Paul Exemple\r\nN;SORT-AS=\"Exemple,Paul\":Exemple;Paul;Jean,Marie;;Jr.,M.D.\r\nEND:VCARD\r\n";
         let TitleMove::Moves { sure, text, .. } = move_title(four) else { panic!("found") };

@@ -7,12 +7,16 @@
 # `cargo test -p sioul-core titles` checks that this file is well formed.
 #
 # words:  the titles, as written without their full stop
+# clear:  those of them that are nothing else, followed by a name ("Mme",
+#         "Mrs"): ticked on any card but a company's
 # unsure: those of them that are often something else when written without
 #         their full stop ("Me" is "me", "PR" public relations, "M" an
 #         initial): the title's move offers them unticked, and the guess of a
 #         name's parts never takes them. A title written with its full stop is
-#         sure; any title without its full stop is unsure on a card that looks
-#         like a company ("Dr Martens Store", "Miss Paris Institut").
+#         sure on a person's card; any title is unsure on a card that looks
+#         like a company ("Dr Martens Store", "Miss Paris Institut"), and one
+#         neither clear nor written with its full stop is unsure on a card that
+#         does not say it is a person's ("Mr Bricolage Lyon").
 # about:  who says them, for whoever reads this file
 
 # Words that join two people in one name ("M. et Mme Dupont", "Mr and Mrs
@@ -25,9 +29,11 @@ code = "fr"
 about = "Monsieur, Madame, Mademoiselle, Docteur, Maître, Professeur, written short or in full, and the English Mr many French cards carry"
 words = ["M", "Mr", "Mme", "Mlle", "Dr", "Me", "Pr", "Monsieur", "Madame", "Mademoiselle", "Docteur", "Maître", "Professeur"]
 unsure = ["M", "Me", "Pr", "Docteur", "Maître", "Professeur"]
+clear = ["Mme", "Mlle", "Madame", "Mademoiselle"]
 
 [[language]]
 code = "en"
 about = "Mister, Missus, Ms, Miss, Doctor, Professor"
 words = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"]
 unsure = ["Prof"]
+clear = ["Mrs", "Ms", "Miss"]

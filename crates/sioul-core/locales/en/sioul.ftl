@@ -8857,7 +8857,7 @@ batch-ask-move = { $n ->
     [one] Move one contact to “{ $book }”?
    *[other] Move { $n } contacts to “{ $book }”?
 }
-batch-ask-move-note = Each keeps its identifier: nothing that points at it changes. Who may reach you stays as its groups say.
+batch-ask-move-note = Each keeps its identifier: nothing that points at it changes.
 batch-ask-losses = “{ $book }” would not keep: { $list }.
 batch-ask-group-add = { $n ->
     [one] Add one contact to the group “{ $group }”?
@@ -9085,13 +9085,44 @@ batch-undo = Undo…
 batch-undo-go = Put them back
 book-refused = Its server did not make this address book: it stays on this device alone, and nothing moves into it.
 book-kept-held = Kept: its server holds contacts that were added there since; they are here again.
+import-file-groups = The file gives its new contacts these groups: { $groups }.
+import-keep-listed-one = { $group } ({ $list }), { $n ->
+    [one] one card
+   *[other] { $n } cards
+}
+import-keep-listed = Also keep the groups that decide who may reach you: { $groups }
+import-other-names = { $n ->
+    [one] One has an identifier already here under another name: it is left alone; its own box below completes it all the same.
+   *[other] { $n } have an identifier already here under another name: each is left alone; its own box below completes it all the same.
+}
+import-other-name = same identifier, another name: { $name }
+batch-why-unrecorded = its record cannot be written on this device: stopped before it
+books-groups-notice-title = “{ $name }”: its groups no longer decide who reaches you
+books-groups-notice-body = { $who } can now write this address book. Its contacts stay yours; turn its groups on in Contacts ⚙ ▸ Address books if you trust them.
+batch-reach-stays = Who may reach you stays as its groups say.
+batch-reach-held = { $n ->
+    [one] One of these is on your { $list } list through a group; in this book it counts as a plain contact until you turn its groups on.
+   *[other] { $n } of these are on your { $list } list through a group; in this book they count as plain contacts until you turn its groups on.
+}
+batch-reach-let = { $n ->
+    [one] One of these carries a group that is on one of your lists ({ $lists }); once moved, it is let through as that list says.
+   *[other] { $n } of these carry a group that is on one of your lists ({ $lists }); once moved, they are let through as that list says.
+}
+batch-reach-group-held = { $n ->
+    [one] One of these is in an address book whose groups do not decide who may reach you: there, this group counts only once its groups are turned on ({ $lists }).
+   *[other] { $n } of these are in an address book whose groups do not decide who may reach you: there, this group counts only once its groups are turned on ({ $lists }).
+}
+import-reach-held = { $n ->
+    [one] In “{ $book }”, whose groups do not decide who may reach you, one new contact carries a group on one of your lists ({ $lists }): it counts as a plain contact until you turn its groups on.
+   *[other] In “{ $book }”, whose groups do not decide who may reach you, { $n } new contacts carry a group on one of your lists ({ $lists }): they count as plain contacts until you turn its groups on.
+}
+book-writers-unsaid = This server does not say who can write this book.
 book-groups-count = Its groups decide who may reach me
 book-groups-owner = Its owner
 book-groups-stopped = { $who } can write this address book, so its groups no longer decide who may reach you: someone who can write it could otherwise add a card in a group that a list lets through. Turn on “Its groups decide who may reach me” if you trust them.
 books-groups-on = The groups of “{ $name }” now decide who may reach you.
 books-groups-off = The groups of “{ $name }” no longer decide who may reach you; its contacts stay yours.
 books-groups-failed = This choice could not be kept: the settings file cannot be written.
-books-groups-stopped-now = Someone else can now write “{ $name }”, so its groups no longer decide who may reach you. Turn on “Its groups decide who may reach me” on its line in Contacts ⚙ ▸ Address books if you trust them.
 book-remove-copy-here = They are copied on this device first, then deleted.
 book-not-yours-to-rename = Its server does not say this address book is yours: it is not renamed from here.
 book-not-yours-to-share = Its server does not say this address book is yours: it is not shared from here.
@@ -9147,10 +9178,6 @@ import-groups-here = Also to those already here
 import-complete = Complete them with what the file adds
 import-complete-help = Off, a contact already here is left exactly as it is. On, it gains what is listed below; nothing it holds is replaced.
 import-gains = Already here, and what the file would add:
-import-gains-more = { $n ->
-    [one] And one more.
-   *[other] And { $n } more.
-}
 import-gain-in-file = (twice in the file)
 import-gain-email = e-mail address { $value }
 import-gain-phone = number { $value }

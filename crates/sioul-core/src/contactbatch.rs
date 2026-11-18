@@ -329,20 +329,35 @@ fn why(tr: &Translator, key: &str) -> String {
     tr.text(key, None)
 }
 
-/// A step's outcome noted beside the record, as it happens: how far a batch went.
-fn note(dir: &Path, id: &str, n: usize, done: bool) {
+/// A step noted beside the record, as it happens: "doing" before it,
+/// "done" or "left" after, so that how far a batch went is known even when
+/// Sioul stops in the middle of a step (review V8). False when it cannot be
+/// written: the batch then stops before that step.
+fn note(dir: &Path, id: &str, n: usize, word: &str) -> bool {
     use std::io::Write;
-    if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{id}.log"))) {
-        let _ = writeln!(log, "{n} {}", if done { "done" } else { "left" });
+    std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{id}.log"))).and_then(|mut log| writeln!(log, "{n} {word}").and_then(|()| log.sync_data())).is_ok()
+}
+
+/// Whether a step's effect shows on the files: its card written as it says,
+/// taken out, or moved.
+fn shows_done(step: &Step) -> bool {
+    match step {
+        Step::Write { path, after, .. } => std::fs::read_to_string(path).is_ok_and(|now| now == *after),
+        Step::Remove { path, .. } => !path.exists(),
+        Step::Move { from, to } => to.exists() && !from.exists(),
     }
 }
 
-/// The steps a batch did, by their place in its plan.
-fn steps_done(dir: &Path, id: &str) -> std::collections::BTreeSet<usize> {
-    std::fs::read_to_string(dir.join(format!("{id}.log")))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.split_once(' ').filter(|(_, what)| *what == "done").and_then(|(n, _)| n.parse().ok()))
+/// The steps a batch did, by their place in its plan: those noted done, and
+/// one begun and never noted after (Sioul stopped in it) whose effect shows.
+fn steps_done(dir: &Path, record: &Record) -> std::collections::BTreeSet<usize> {
+    let log = std::fs::read_to_string(dir.join(format!("{}.log", record.id))).unwrap_or_default();
+    let words: Vec<(usize, &str)> = log.lines().filter_map(|l| l.split_once(' ').and_then(|(n, w)| Some((n.parse().ok()?, w)))).collect();
+    let ended = |n: usize| words.iter().any(|(m, w)| *m == n && (*w == "done" || *w == "left"));
+    words
+        .iter()
+        .filter(|(n, word)| *word == "done" || (*word == "doing" && !ended(*n) && record.steps.get(*n).is_some_and(|(_, step)| shows_done(step))))
+        .map(|(n, _)| *n)
         .collect()
 }
 
@@ -391,12 +406,18 @@ pub fn run(dir: &Path, kind: &str, steps: Vec<(String, Step)>, removed: Option<R
             outcome.stopped = true;
             break;
         }
+        // Noted before it runs: a step that cannot be noted is not run (review V8).
+        if !note(dir, &id, n, "doing") {
+            outcome.stopped = true;
+            outcome.failed.push(Cannot { name: name.clone(), why: why(tr, "batch-why-unrecorded") });
+            break;
+        }
         let done = as_planned(step, tr).and_then(|()| match step {
             Step::Write { path, after, .. } => vdir::write_item(path, after),
             Step::Remove { path, .. } => vdir::remove_item(path),
             Step::Move { from, to } => vdir::move_item(from, to),
         });
-        note(dir, &id, n, done.is_ok());
+        note(dir, &id, n, if done.is_ok() { "done" } else { "left" });
         match done {
             Ok(()) => outcome.done += 1,
             Err(why) => outcome.failed.push(Cannot { name: name.clone(), why }),
@@ -449,7 +470,7 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translato
     {
         undone.failed.push(Cannot { name: removed.name.clone(), why });
     }
-    let done = steps_done(dir, id);
+    let done = steps_done(dir, &record);
     let inside = |path: &Path| path.starts_with(root) && !path.components().any(|c| c == std::path::Component::ParentDir);
     let total = record.steps.len();
     for (n, (name, step)) in record.steps.iter().enumerate().rev() {
@@ -532,7 +553,7 @@ pub fn list(dir: &Path, now: i64, tr: &Translator) -> Vec<Listed> {
         .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
         .filter_map(|id| record(dir, &id))
         .map(|r| {
-            let done = steps_done(dir, &r.id).len();
+            let done = steps_done(dir, &r).len();
             let why_not = match &r.removed {
                 Some(removed) if !removed.here_only && removed.place.split_once('/').is_none_or(|(a, i)| !vdir::Kind::Contacts.root().join(a).join(i).is_dir()) => why(tr, "batch-why-book-gone"),
                 _ if done == 0 => why(tr, "batch-why-nothing-done"),
@@ -613,6 +634,24 @@ mod tests {
         assert_eq!(texts(&book), before);
         assert!(record(&dir, &outcome.id).is_none() && list(&dir, 1_790_000_100, &tr()).is_empty(), "the record goes with its Undo");
         let _ = std::fs::remove_dir_all(&book.dir);
+    }
+
+    /// Review V8: Sioul stopped between a card's removal and its note: the
+    /// step begun ("doing", never "done") whose effect shows is counted done,
+    /// and its Undo puts the card back; a step that cannot be noted is not run.
+    #[test]
+    fn a_step_begun_and_never_noted_is_read_by_its_effect() {
+        let b = book("batch-begun", &[("Lou Exemple", ""), ("Sam Exemple", "")]);
+        let all = cards(&b);
+        let plan = plan_delete(&all.iter().collect::<Vec<_>>(), &tr());
+        let dir = crate::config::state_dir().join("batch-begun-records");
+        let outcome = go(&dir, "delete", plan.steps, None, 1_790_000_050);
+        assert_eq!((outcome.done, b.items().len()), (2, 0));
+        let log = dir.join(format!("{}.log", outcome.id));
+        std::fs::write(&log, "0 doing\n0 done\n1 doing\n").unwrap();
+        assert_eq!(list(&dir, 1_790_000_100, &tr()).iter().find(|l| l.id == outcome.id).map(|l| l.done), Some(2));
+        let undone = back(&dir, &outcome.id);
+        assert_eq!((undone.back, undone.failed.len(), b.items().len()), (2, 0, 2));
     }
 
     /// A move between two books stopped half-way, then undone: the cards moved

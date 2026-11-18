@@ -132,7 +132,10 @@ pub fn line(collection: &Collection, config: &Config, tr: &Translator) -> BookLi
         can_leave: !local && !google && state.owned == Some(false) && !state.url.is_empty(),
         fixed: if google { tr.text("book-google-fixed", None) } else { String::new() },
         groups: trust.count,
-        groups_note: if trust.said || trust.writers.is_empty() {
+        groups_note: if !local && !google && state.owned != Some(false) && !state.writers_known && !state.url.is_empty() {
+            // Its groups count, as before; said, since nothing tells who else can write it.
+            tr.text("book-writers-unsaid", None)
+        } else if trust.said || trust.writers.is_empty() {
             String::new()
         } else {
             let mut args = crate::i18n::args();
@@ -187,6 +190,161 @@ pub fn groups_count(collection: &Collection, config: &Config) -> GroupsTrust {
         b.groups.filter(|_| theirs == writers)
     });
     GroupsTrust { count: said.unwrap_or(writers.is_empty()), said: said.is_some(), writers }
+}
+
+/// A list's name in a sentence: "Safe", "Sûrs".
+fn list_name(standing: crate::porch::Standing, tr: &Translator) -> String {
+    tr.text(&format!("sender-list-{}", standing.as_str()), None)
+}
+
+/// "Safe: Clients, Amis; Blocked: Spam".
+fn lists_said(found: &[(crate::porch::Standing, Vec<String>)], tr: &Translator) -> String {
+    found.iter().map(|(standing, groups)| format!("{}: {}", list_name(*standing, tr), groups.join(", "))).collect::<Vec<_>>().join("; ")
+}
+
+/// Adds a card's standing through a group to counts kept in the lists' order.
+fn count_in(counts: &mut Vec<(crate::porch::Standing, usize, Vec<String>)>, standing: crate::porch::Standing, group: String) {
+    match counts.iter_mut().find(|(s, _, _)| *s == standing) {
+        Some((_, n, groups)) => {
+            *n += 1;
+            if !groups.contains(&group) {
+                groups.push(group);
+            }
+        }
+        None => counts.push((standing, 1, vec![group])),
+    }
+    counts.sort_by_key(|(s, _, _)| crate::porch::Standing::ALL.iter().position(|a| a == s));
+}
+
+/// What moving these cards into `target` does to who may reach the person
+/// (review V1), in sentences, counted by the lists' own step for groups
+/// (`porch::Senders::standing_by_groups`): into a book whose groups are held
+/// back, the cards that a group puts on a list count as plain contacts
+/// there; out of one into a book whose groups count, the cards whose group
+/// a list reads are let through as that list says. When nothing crosses that
+/// line: "Who may reach you stays as its groups say."
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Reach {
+    /// Some card crosses the line: the act is asked first, these sentences said.
+    pub crosses: bool,
+    pub said: Vec<String>,
+}
+
+pub fn reach_of_move(cards: &[&crate::contacts::Contact], target: &Collection, config: &Config, senders: &crate::porch::Senders, tr: &Translator) -> Reach {
+    let held = groups_held_back(config);
+    let into = !held.contains(&format!("{}/{}", target.account, target.id));
+    let (mut kept, mut let_in) = (Vec::new(), Vec::new());
+    for card in cards {
+        let from = !held.contains(&card.place);
+        if from == into {
+            continue;
+        }
+        if let Some((standing, group)) = senders.standing_by_groups(card, &card.categories) {
+            if from { count_in(&mut kept, standing, group) } else { count_in(&mut let_in, standing, group) }
+        }
+    }
+    let mut said: Vec<String> = kept
+        .iter()
+        .map(|(standing, n, _)| {
+            let mut args = tr.counted(*n);
+            args.set("n", *n as i64);
+            args.set("list", list_name(*standing, tr));
+            tr.text("batch-reach-held", Some(&args))
+        })
+        .collect();
+    if !let_in.is_empty() {
+        let n: usize = let_in.iter().map(|(_, n, _)| n).sum();
+        let mut args = tr.counted(n);
+        args.set("n", n as i64);
+        args.set("lists", lists_said(&let_in.iter().map(|(s, _, g)| (*s, g.clone())).collect::<Vec<_>>(), tr));
+        said.push(tr.text("batch-reach-let", Some(&args)));
+    }
+    let crosses = !said.is_empty();
+    if !crosses {
+        said.push(tr.text("batch-reach-stays", None));
+    }
+    Reach { crosses, said }
+}
+
+/// What giving these cards the groups `added` does where their book's groups
+/// are held back (review V1): there the group decides nothing until its
+/// groups are turned on. "" when no such card would stand on a list by it.
+pub fn reach_of_groups(cards: &[&crate::contacts::Contact], added: &[String], config: &Config, senders: &crate::porch::Senders, tr: &Translator) -> String {
+    let held = groups_held_back(config);
+    let mut counts = Vec::new();
+    for card in cards.iter().filter(|c| held.contains(&c.place)) {
+        if let Some((standing, group)) = senders.standing_by_groups(card, added) {
+            count_in(&mut counts, standing, group);
+        }
+    }
+    if counts.is_empty() {
+        return String::new();
+    }
+    let n: usize = counts.iter().map(|(_, n, _)| n).sum();
+    let mut args = tr.counted(n);
+    args.set("n", n as i64);
+    args.set("lists", lists_said(&counts.iter().map(|(s, _, g)| (*s, g.clone())).collect::<Vec<_>>(), tr));
+    tr.text("batch-reach-group-held", Some(&args))
+}
+
+/// What an import's new cards do in `target` when its groups are held back
+/// (review V1): those a group would put on a list count as plain contacts
+/// there. "" when the book's groups count, or no such card.
+pub fn reach_of_import(cards: &[crate::contacts::Contact], target: &Collection, config: &Config, senders: &crate::porch::Senders, tr: &Translator) -> String {
+    if !groups_held_back(config).contains(&format!("{}/{}", target.account, target.id)) {
+        return String::new();
+    }
+    let mut counts = Vec::new();
+    for card in cards {
+        if let Some((standing, group)) = senders.standing_by_groups(card, &card.categories) {
+            count_in(&mut counts, standing, group);
+        }
+    }
+    if counts.is_empty() {
+        return String::new();
+    }
+    let n: usize = counts.iter().map(|(_, n, _)| n).sum();
+    let mut args = tr.counted(n);
+    args.set("n", n as i64);
+    args.set("book", target.name.clone());
+    args.set("lists", lists_said(&counts.iter().map(|(s, _, g)| (*s, g.clone())).collect::<Vec<_>>(), tr));
+    tr.text("import-reach-held", Some(&args))
+}
+
+/// Where this device notes the books whose groups it said stopped deciding,
+/// with the writers it said it for (review V3): `$XDG_STATE_HOME/sioul/address-books-told.toml`.
+pub fn told_path() -> std::path::PathBuf {
+    crate::config::state_dir().join("address-books-told.toml")
+}
+
+/// The books whose groups stopped deciding who may reach the person because
+/// someone else can now write them, not said for these writers, and not yet
+/// told on this device for them (review V3): each with its writers. At the
+/// update, a book already shared to write is one of them, once.
+pub fn groups_to_tell(config: &Config) -> Vec<(Collection, Vec<String>)> {
+    let told: std::collections::BTreeMap<String, Vec<String>> = std::fs::read_to_string(told_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    vdir::collections(Kind::Contacts)
+        .into_iter()
+        .filter_map(|c| {
+            let trust = groups_count(&c, config);
+            let place = format!("{}/{}", c.account, c.id);
+            (!trust.count && !trust.said && !trust.writers.is_empty() && told.get(&place) != Some(&trust.writers)).then_some((c, trust.writers))
+        })
+        .collect()
+}
+
+/// A book told of for these writers, on this device: not told again until they change.
+pub fn mark_groups_told(collection: &Collection, writers: &[String]) -> Result<(), String> {
+    let path = told_path();
+    crate::filelock::with_lock(&path, || {
+        let mut told: std::collections::BTreeMap<String, Vec<String>> = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        told.insert(format!("{}/{}", collection.account, collection.id), writers.to_vec());
+        let text = toml::to_string(&told).map_err(|e| e.to_string())?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
+    })
 }
 
 /// The books whose groups the lists of who may reach the person do not
@@ -311,6 +469,8 @@ pub struct MergeQuestion {
     pub losses: String,
     /// Who sees the target, or that it may be shared; "" for a book of this device.
     pub shared: String,
+    /// What the merge does to who may reach the person (`reach_of_move`).
+    pub reach: Vec<String>,
     /// Cards that cannot go there, in words, card by card; the merge waits while any.
     pub cannot: Vec<crate::contactbatch::Cannot>,
 }
@@ -332,7 +492,9 @@ pub fn merge_question(from: &Collection, into: &Collection, config: &Config, tr:
         args.set("list", plan.losses.join(", "));
         tr.text("batch-ask-losses", Some(&args))
     };
-    MergeQuestion { sentence: tr.text("books-merge-ask", Some(&args)), losses, shared: shared_line(into, tr, shared_with), cannot: plan.cannot }
+    let senders = crate::porch::Senders::load(config);
+    let reach = reach_of_move(&cards.iter().collect::<Vec<_>>(), into, config, &senders, tr).said;
+    MergeQuestion { sentence: tr.text("books-merge-ask", Some(&args)), losses, shared: shared_line(into, tr, shared_with), reach, cannot: plan.cannot }
 }
 
 /// Who sees what goes into `book`: the people its server named, that it may
@@ -400,7 +562,7 @@ mod tests {
         let pro_book = find("lines-cloud/pro").unwrap();
         let asked = removal(&pro_book, &config, &tr);
         assert_eq!((asked.act, asked.count), ("cards", 2));
-        assert!(asked.into.iter().any(|(p, _)| p == "lines-cloud/unknown") && !asked.into.iter().any(|(p, _)| p.contains("shared_by")), "{:?}", asked.into);
+        assert!(asked.into.iter().any(|(p, _)| p == "lines-cloud/unknown") && !asked.into.iter().any(|(p, _)| p.starts_with("lines-cloud/") && p.contains("shared_by")), "{:?}", asked.into);
         assert_eq!(removal(&find("lines-cloud/contacts_shared_by_sam").unwrap(), &config, &tr).act, "leave");
         // Made here: a home among the accounts, never Google's; a name needed.
         assert_eq!(homes(&config, &tr).iter().map(|h| h.id.as_str()).collect::<Vec<_>>(), ["lines-cloud", "local"]);
@@ -411,6 +573,42 @@ mod tests {
         assert!(State::load(&new.state_path()).pending, "made on its server by the next sync");
         let _ = std::fs::remove_dir_all(Kind::Contacts.root().join("lines-cloud"));
         let _ = std::fs::remove_dir_all(crate::config::state_dir().join("dav").join("lines-cloud"));
+    }
+
+    /// Review V1: a move, a group given, an import, said with what they do
+    /// to who may reach the person across a book whose groups are held back,
+    /// counted by the lists' own step; "stays as its groups say" only when
+    /// nothing crosses.
+    #[test]
+    fn what_a_move_does_to_who_may_reach_you_is_said_first() {
+        use crate::porch::{SenderList, Senders};
+        crate::config::stand_ins_only();
+        let tr = Translator::new("en");
+        let account = "reach-cloud";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        let made = |id: &str, writers: &[&str]| {
+            vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            State { url: format!("https://cloud.example.org/{id}/"), owned: Some(true), writers: writers.iter().map(|w| w.to_string()).collect(), writers_known: true, ..State::default() }.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+            find(&format!("{account}/{id}")).unwrap()
+        };
+        let (mine, other, team) = (made("mine", &[]), made("other", &[]), made("team", &["sam"]));
+        let card = |book: &Collection, uid: &str, group: &str| crate::contacts::Contact { uid: uid.into(), name: uid.into(), place: format!("{}/{}", book.account, book.id), categories: vec![group.into()], ..crate::contacts::Contact::default() };
+        let senders = Senders { safe: SenderList::parse("category:Clients\ncontact:own-line"), ..Senders::default() };
+        let config = Config::default();
+        let (lou, noa, own) = (card(&mine, "lou", "Clients"), card(&mine, "noa", "Clients"), card(&mine, "own-line", "Clients"));
+        let into = reach_of_move(&[&lou, &noa, &own], &team, &config, &senders, &tr);
+        assert!(into.crosses && into.said == [tr.text("batch-reach-held", Some(&{ let mut a = tr.counted(2); a.set("n", 2i64); a.set("list", "Safe"); a }))], "{:?}", into.said);
+        let planted = card(&team, "planted", "Clients");
+        let out = reach_of_move(&[&planted], &mine, &config, &senders, &tr);
+        assert!(out.crosses && out.said[0].contains("(Safe: Clients)"), "{:?}", out.said);
+        let stays = reach_of_move(&[&lou], &other, &config, &senders, &tr);
+        assert!(!stays.crosses && stays.said == [tr.text("batch-reach-stays", None)]);
+        // A group given where the book's groups are held back; an import into that book.
+        assert!(reach_of_groups(&[&planted], &["Clients".to_string()], &config, &senders, &tr).contains("Safe: Clients"));
+        assert!(reach_of_groups(&[&lou], &["Clients".to_string()], &config, &senders, &tr).is_empty(), "its book's groups count: the group decides, as asked");
+        assert!(reach_of_import(std::slice::from_ref(&planted), &team, &config, &senders, &tr).contains("“team”"));
+        assert!(reach_of_import(std::slice::from_ref(&lou), &mine, &config, &senders, &tr).is_empty());
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
     /// "Its groups decide who may reach me" (the owner's answer of 18
@@ -429,8 +627,8 @@ mod tests {
             state.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
             find(&format!("{account}/{id}")).unwrap()
         };
-        let mine = made("mine", State { url: "https://cloud.example.org/mine/".into(), owned: Some(true), ..State::default() });
-        let team = made("team", State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into(), "group:office".into()], ..State::default() });
+        let mine = made("mine", State { url: "https://cloud.example.org/mine/".into(), owned: Some(true), writers_known: true, ..State::default() });
+        let team = made("team", State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into(), "group:office".into()], writers_known: true, ..State::default() });
         let theirs = made("contacts_shared_by_lou", State { url: "https://cloud.example.org/lou/".into(), owned: Some(false), ..State::default() });
         let dir = std::env::temp_dir().join(format!("sioul-book-trust-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -449,8 +647,19 @@ mod tests {
         assert!(text.starts_with("# mine\n") && text.contains("region = \"FR\"") && text.contains("[contacts.books.\"trust-cloud/team\"]") && text.contains("groups = true"), "{text}");
         assert!(groups_count(&team, &config()).count && line(&team, &config(), &tr).groups_note.is_empty());
         // Its writers change: what was said no longer holds.
-        State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into()], ..State::default() }.save(&team.state_path()).unwrap();
+        State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["sam".into()], writers_known: true, ..State::default() }.save(&team.state_path()).unwrap();
         assert!(!groups_count(&team, &config()).count && !line(&team, &config(), &tr).groups_note.is_empty());
+        // Told once per book and writers on this device (review V3): someone else's book, the team's for sam.
+        let to_tell = |c: &Config| groups_to_tell(c).into_iter().filter(|(b, _)| b.account == account).map(|(b, w)| (b.id, w)).collect::<Vec<_>>();
+        assert_eq!(to_tell(&config()), [("contacts_shared_by_lou".to_string(), vec!["lou".to_string()]), ("team".to_string(), vec!["sam".to_string()])]);
+        mark_groups_told(&team, &["sam".to_string()]).unwrap();
+        assert_eq!(to_tell(&config()).len(), 1, "the team's told");
+        State { url: "https://cloud.example.org/team/".into(), owned: Some(true), writers: vec!["office".into(), "sam".into()], writers_known: true, ..State::default() }.save(&team.state_path()).unwrap();
+        assert_eq!(to_tell(&config()).len(), 2, "its writers changed again: told again");
+        // A server that says neither whose a book is nor who can write it (point 8): its groups count, said on its line.
+        let quiet = made("quiet", State { url: "https://cloud.example.org/quiet/".into(), ..State::default() });
+        assert!(groups_count(&quiet, &config()).count);
+        assert_eq!(line(&quiet, &config(), &tr).groups_note, tr.text("book-writers-unsaid", None));
         // Turned off for a book only you write: said, kept.
         set_groups_count(&path, &mine, false).unwrap();
         assert!(!groups_count(&mine, &config()).count && line(&mine, &config(), &tr).groups_note.is_empty());

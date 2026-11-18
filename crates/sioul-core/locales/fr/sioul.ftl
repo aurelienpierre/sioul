@@ -9242,7 +9242,7 @@ batch-ask-move = { $n ->
     [one] Déplacer un contact vers « { $book } » ?
    *[other] Déplacer { $n } contacts vers « { $book } » ?
 }
-batch-ask-move-note = Chacun garde son identifiant : rien de ce qui le désigne ne change. Qui peut vous joindre reste ce que disent ses groupes.
+batch-ask-move-note = Chacun garde son identifiant : rien de ce qui le désigne ne change.
 batch-ask-losses = « { $book } » ne garderait pas : { $list }.
 batch-ask-group-add = { $n ->
     [one] Ajouter un contact au groupe « { $group } » ?
@@ -9470,13 +9470,44 @@ batch-undo = Annuler…
 batch-undo-go = Les remettre
 book-refused = Son serveur n’a pas créé ce carnet d’adresses : il reste sur cet appareil seul, et rien n’y est déplacé.
 book-kept-held = Gardé : son serveur contient des contacts ajoutés là-bas depuis ; ils sont de nouveau ici.
+import-file-groups = Le fichier donne ces groupes à ses nouveaux contacts : { $groups }.
+import-keep-listed-one = { $group } ({ $list }), { $n ->
+    [one] une fiche
+   *[other] { $n } fiches
+}
+import-keep-listed = Garder aussi les groupes qui décident qui peut vous joindre : { $groups }
+import-other-names = { $n ->
+    [one] Un a un identifiant déjà là sous un autre nom : il est laissé tel quel ; sa propre case ci-dessous le complète quand même.
+   *[other] { $n } ont un identifiant déjà là sous un autre nom : chacun est laissé tel quel ; sa propre case ci-dessous le complète quand même.
+}
+import-other-name = même identifiant, autre nom : { $name }
+batch-why-unrecorded = sa trace ne peut pas être écrite sur cet appareil : arrêté avant lui
+books-groups-notice-title = « { $name } » : ses groupes ne décident plus qui vous joint
+books-groups-notice-body = { $who } peut maintenant modifier ce carnet d’adresses. Ses contacts restent les vôtres ; activez ses groupes dans Contacts ⚙ ▸ Carnets d’adresses si vous avez confiance.
+batch-reach-stays = Qui peut vous joindre reste ce que disent ses groupes.
+batch-reach-held = { $n ->
+    [one] L’un d’eux est sur votre liste { $list } par un groupe ; dans ce carnet, il compte comme un simple contact tant que vous n’activez pas ses groupes.
+   *[other] { $n } d’entre eux sont sur votre liste { $list } par un groupe ; dans ce carnet, ils comptent comme de simples contacts tant que vous n’activez pas ses groupes.
+}
+batch-reach-let = { $n ->
+    [one] L’un d’eux porte un groupe qu’une de vos listes lit ({ $lists }) ; une fois déplacé, il passe comme cette liste le dit.
+   *[other] { $n } d’entre eux portent un groupe qu’une de vos listes lit ({ $lists }) ; une fois déplacés, ils passent comme cette liste le dit.
+}
+batch-reach-group-held = { $n ->
+    [one] L’un d’eux est dans un carnet d’adresses dont les groupes ne décident pas qui peut vous joindre : là, ce groupe ne compte qu’une fois ses groupes activés ({ $lists }).
+   *[other] { $n } d’entre eux sont dans un carnet d’adresses dont les groupes ne décident pas qui peut vous joindre : là, ce groupe ne compte qu’une fois ses groupes activés ({ $lists }).
+}
+import-reach-held = { $n ->
+    [one] Dans « { $book } », dont les groupes ne décident pas qui peut vous joindre, un nouveau contact porte un groupe d’une de vos listes ({ $lists }) : il compte comme un simple contact tant que vous n’activez pas ses groupes.
+   *[other] Dans « { $book } », dont les groupes ne décident pas qui peut vous joindre, { $n } nouveaux contacts portent un groupe d’une de vos listes ({ $lists }) : ils comptent comme de simples contacts tant que vous n’activez pas ses groupes.
+}
+book-writers-unsaid = Ce serveur ne dit pas qui peut modifier ce carnet.
 book-groups-count = Ses groupes décident qui peut me joindre
 book-groups-owner = Son propriétaire
 book-groups-stopped = { $who } peut modifier ce carnet d’adresses, donc ses groupes ne décident plus qui peut vous joindre : quelqu’un qui peut le modifier pourrait sinon y ajouter une fiche dans un groupe qu’une liste laisse passer. Activez « Ses groupes décident qui peut me joindre » si vous avez confiance.
 books-groups-on = Les groupes de « { $name } » décident maintenant qui peut vous joindre.
 books-groups-off = Les groupes de « { $name } » ne décident plus qui peut vous joindre ; ses contacts restent les vôtres.
 books-groups-failed = Ce choix n’a pas pu être gardé : le fichier des réglages ne peut pas être écrit.
-books-groups-stopped-now = Quelqu’un d’autre peut maintenant modifier « { $name } », donc ses groupes ne décident plus qui peut vous joindre. Activez « Ses groupes décident qui peut me joindre » sur sa ligne, dans Contacts ⚙ ▸ Carnets d’adresses, si vous avez confiance.
 book-remove-copy-here = Ils sont d’abord copiés sur cet appareil, puis supprimés.
 book-not-yours-to-rename = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas renommé d’ici.
 book-not-yours-to-share = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas partagé d’ici.
@@ -9532,10 +9563,6 @@ import-groups-here = Aussi à ceux déjà là
 import-complete = Les compléter avec ce que le fichier ajoute
 import-complete-help = Décoché, un contact déjà là reste exactement tel qu’il est. Coché, il reçoit ce qui est listé ci-dessous ; rien de ce qu’il contient n’est remplacé.
 import-gains = Déjà là, et ce que le fichier ajouterait :
-import-gains-more = { $n ->
-    [one] Et un autre.
-   *[other] Et { $n } autres.
-}
 import-gain-in-file = (deux fois dans le fichier)
 import-gain-email = adresse électronique { $value }
 import-gain-phone = numéro { $value }

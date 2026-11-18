@@ -283,3 +283,39 @@ fn the_limits_of_a_vcard_file() {
     let nameless = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nNOTE:nothing else\r\nEND:VCARD\r\n");
     assert_eq!((nameless.cards.len(), nameless.broken.clone()), (0, vec![1]), "a card of nobody does not read");
 }
+
+/// Review V5: two titles that differ are two people at one number ("M.
+/// Martin", "Mme Martin"); a card whose UID is here under another name is
+/// listed apart, left alone, completed only when its own box is ticked.
+#[test]
+fn two_titles_or_two_names_under_one_identifier_stay_two() {
+    let table = crate::csv::read("Civilité;Nom;Téléphone;E-mail\nM.;Martin;04 65 71 00 01;paul@example.org\nMme;Martin;04 65 71 00 01;jeanne@example.org\n");
+    let cards = read_csv(&table, &guess(&table.headings), &tr());
+    let both = plan(&cards, &[], &book_stub(), &Options { complete: true, ..Options::default() }, france());
+    assert_eq!((both.new, both.twice, both.apart), (2, 0, 1), "{:?}", both.matches);
+    let here = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:1\r\nFN:Paul Exemple\r\nEMAIL:paul@example.org\r\nEND:VCARD\r\n";
+    let book = here_book("import-v5", &[("paul.vcf", here)]);
+    let file = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:1\r\nFN:Jeanne Martin\r\nEMAIL:jeanne@example.org\r\nTEL:+33465710042\r\nEND:VCARD\r\n");
+    let completing = plan(&file, &in_book(&book), &book, &Options { complete: true, ..Options::default() }, france());
+    assert_eq!((completing.new, completing.here, completing.other_names, completing.completed), (0, 0, 1, 0));
+    let found = &completing.matches[0];
+    assert_eq!((found.name.as_str(), found.other_name.as_str()), ("Paul Exemple", "Jeanne Martin"));
+    let ticked = plan(&file, &in_book(&book), &book, &Options { complete: true, complete_also: vec![found.key.clone()], ..Options::default() }, france());
+    assert_eq!(ticked.completed, 1, "its own box ticked");
+    let _ = std::fs::remove_dir_all(&book.dir);
+}
+
+/// Review V6: the groups a file gives its own new cards are said, with how
+/// many; one that a list of the person's reads is kept only when asked.
+#[test]
+fn a_file_s_own_groups_are_said_and_listed_ones_kept_only_when_asked() {
+    let file = read_vcf("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:g-1\r\nFN:Sam Inconnu\r\nTEL:+33465710077\r\nCATEGORIES:Famille,Voisins\r\nEND:VCARD\r\n");
+    let listed: std::collections::BTreeSet<String> = [crate::porch::category_key("Famille")].into_iter().collect();
+    let held = plan(&file, &[], &book_stub(), &Options { listed: listed.clone(), ..Options::default() }, france());
+    assert_eq!(held.file_groups, [FileGroup { name: "Famille".into(), cards: 1, listed: true }, FileGroup { name: "Voisins".into(), cards: 1, listed: false }]);
+    let Step::Write { after, .. } = &held.plan.steps[0].1 else { panic!("a new card") };
+    assert!(!after.contains("Famille") && after.contains("Voisins"), "{after}");
+    let kept = plan(&file, &[], &book_stub(), &Options { listed, keep_listed: true, ..Options::default() }, france());
+    let Step::Write { after, .. } = &kept.plan.steps[0].1 else { panic!("a new card") };
+    assert!(after.contains("Famille") && after.contains("Voisins"), "{after}");
+}
