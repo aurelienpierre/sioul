@@ -9,8 +9,8 @@
 //!
 //! - **A behaviour** is a named pattern over a row's nine cells (the seven
 //!   times, time for you, do not disturb): Always, When awake, In work and
-//!   admin hours, In work hours, At the gathered times, Shown never told,
-//!   Never (`Behaviour`, `pattern`). Mail and messages have their own
+//!   admin hours, In work hours, At the gathered times, Never told
+//!   (`Behaviour`, `pattern`). Mail and messages have their own
 //!   patterns, since a phone cannot show what it holds and mail is shown on
 //!   the Porch without a word; the circle changes two things only, as the
 //!   matrix shipped them: outside a behaviour's times your safe senders' and
@@ -54,14 +54,14 @@ pub enum Behaviour {
     Work,
     /// At the gathered times (Sioul's own rows that take them).
     Gathered,
-    /// Shown on the Porch, never told (mail).
-    Shown,
-    /// Never: mail out of sight, a message held, at every time.
+    /// Never told, at any time: mail shown on the Porch without a word, a
+    /// message held. One choice for what the matrix says two ways for mail
+    /// (shown, or out of sight), both of which never tell.
     Never,
 }
 
 impl Behaviour {
-    pub const ALL: [Behaviour; 7] = [Behaviour::Always, Behaviour::Awake, Behaviour::WorkAdmin, Behaviour::Work, Behaviour::Gathered, Behaviour::Shown, Behaviour::Never];
+    pub const ALL: [Behaviour; 6] = [Behaviour::Always, Behaviour::Awake, Behaviour::WorkAdmin, Behaviour::Work, Behaviour::Gathered, Behaviour::Never];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -70,7 +70,6 @@ impl Behaviour {
             Behaviour::WorkAdmin => "work-admin",
             Behaviour::Work => "work",
             Behaviour::Gathered => "gathered",
-            Behaviour::Shown => "shown",
             Behaviour::Never => "never",
         }
     }
@@ -151,8 +150,7 @@ pub fn cells_of(attention: &Attention, row: Row) -> [Level; 9] {
 /// | When awake | ● ● ● ● o o o ◑ ◑ |
 /// | Work and admin | ● ● o o o o o ◑ ◑ |
 /// | Work | ● o o o o o o ◑ ◑ |
-/// | Shown, never told | ◑ everywhere |
-/// | Never | ○ everywhere |
+/// | Never told | ◑ everywhere |
 ///
 /// where o is ◑ for Always through and Safe (shown on the Porch, untold) and
 /// ○ for the others (out of sight).
@@ -163,7 +161,7 @@ pub fn cells_of(attention: &Attention, row: Row) -> [Level; 9] {
 /// | When awake | ● ● ● ● ○ ○ f ● ◑ |
 /// | Work and admin | ● ● ○ ○ ○ ○ ○ ● ○ |
 /// | Work | ● ○ ○ ○ ○ ○ ○ ● ○ |
-/// | Never | ○ everywhere |
+/// | Never told | ○ everywhere |
 ///
 /// where f is ● for Safe (Free time lets your safe people through) and ○ for
 /// the others. Gathered is no people's row's; a message cannot be shown.
@@ -181,8 +179,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
                 Behaviour::Awake => [Now, Now, Now, Now, off, off, off, Quiet, Quiet],
                 Behaviour::WorkAdmin => [Now, Now, off, off, off, off, off, Quiet, Quiet],
                 Behaviour::Work => [Now, off, off, off, off, off, off, Quiet, Quiet],
-                Behaviour::Shown => [Quiet; 9],
-                Behaviour::Never => [Later; 9],
+                Behaviour::Never => [Quiet; 9],
                 Behaviour::Gathered => return None,
             }
         }
@@ -194,7 +191,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
                 Behaviour::WorkAdmin => [Now, Now, Later, Later, Later, Later, Later, Now, Later],
                 Behaviour::Work => [Now, Later, Later, Later, Later, Later, Later, Now, Later],
                 Behaviour::Never => [Later; 9],
-                Behaviour::Shown | Behaviour::Gathered => return None,
+                Behaviour::Gathered => return None,
             }
         }
         Channel::Calls => return None,
@@ -391,8 +388,7 @@ mod tests {
         assert_eq!(mail(Person::Safe, Behaviour::WorkAdmin), Some([N, N, Q, Q, Q, Q, Q, Q, Q]));
         assert_eq!(mail(Person::Stranger, Behaviour::WorkAdmin), Some([N, N, L, L, L, L, L, Q, Q]));
         assert_eq!(mail(Person::Restricted, Behaviour::Work), Some([N, L, L, L, L, L, L, Q, Q]));
-        assert_eq!(mail(Person::Neutral, Behaviour::Shown), Some([Q; 9]));
-        assert_eq!(mail(Person::Neutral, Behaviour::Never), Some([L; 9]));
+        assert_eq!(mail(Person::Neutral, Behaviour::Never), Some([Q; 9]));
         assert_eq!(mail(Person::Neutral, Behaviour::Gathered), None);
         assert_eq!(messages(Person::Always, Behaviour::Always), Some([N; 9]));
         assert_eq!(messages(Person::Safe, Behaviour::Awake), Some([N, N, N, N, L, L, N, N, Q]));
@@ -400,11 +396,12 @@ mod tests {
         assert_eq!(messages(Person::Stranger, Behaviour::WorkAdmin), Some([N, N, L, L, L, L, L, N, L]));
         assert_eq!(messages(Person::Restricted, Behaviour::Work), Some([N, L, L, L, L, L, L, N, L]));
         assert_eq!(messages(Person::Neutral, Behaviour::Never), Some([L; 9]));
-        // What a row cannot hold is no pattern: a message cannot be shown; Always through's
-        // messages only Always; the blocked and the calls are no page's rows.
-        assert_eq!(messages(Person::Neutral, Behaviour::Shown), None);
+        // What a row cannot hold is no pattern: Always through's messages only Always (they
+        // are never held), the gathered times for no person; the blocked and the calls are no
+        // page's rows.
         assert_eq!(messages(Person::Always, Behaviour::Awake), None);
-        assert_eq!(mail(Person::Always, Behaviour::Never), None);
+        assert_eq!(messages(Person::Always, Behaviour::Never), None);
+        assert_eq!(mail(Person::Always, Behaviour::Never), Some([Q; 9]));
         assert_eq!(mail(Person::Blocked, Behaviour::Never), None);
         assert_eq!(pattern(Row::People(Channel::Calls, Person::Safe), Behaviour::Always), None);
     }
@@ -459,15 +456,15 @@ mod tests {
         let mut groups = Attention::usual();
         groups.set(Row::People(Channel::Messages, Person::Groups), Column::Leisure, Level::Later).unwrap();
         assert_eq!(reading(&groups, Channel::Messages, Circle::Contacts), None);
-        // A layer's cell that holds nothing more, on a row that waits at every time: still Never.
+        // A layer's cell that holds nothing more, on a row that waits at every time: still Never told.
         let mut never = Attention::usual();
-        for (row, cells) in writes(Channel::Mail, Circle::Others, Behaviour::Never).unwrap() {
+        for (row, cells) in writes(Channel::Messages, Circle::Others, Behaviour::Never).unwrap() {
             for (column, level) in Column::ALL.iter().zip(cells) {
                 never.set(row, *column, level).unwrap();
             }
         }
-        never.set(Row::People(Channel::Mail, Person::Stranger), Column::Dnd, Level::Quiet).unwrap();
-        assert_eq!(reading(&never, Channel::Mail, Circle::Others), Some(Behaviour::Never));
+        never.set(Row::People(Channel::Messages, Person::Stranger), Column::Slot, Level::Now).unwrap();
+        assert_eq!(reading(&never, Channel::Messages, Circle::Others), Some(Behaviour::Never));
         // Doses held in a pause: the group's choice is no more theirs.
         let mut doses = Attention::usual();
         doses.set(Row::Own(Kind::Doses), Column::Pause, Level::Later).unwrap();
@@ -528,8 +525,8 @@ mod tests {
     #[test]
     fn what_each_line_offers() {
         use Behaviour::*;
-        assert_eq!(offered(Channel::Mail, Circle::Always), vec![Always, Awake, WorkAdmin, Work, Shown]);
-        assert_eq!(offered(Channel::Mail, Circle::Safe), vec![Always, Awake, WorkAdmin, Work, Shown, Never]);
+        assert_eq!(offered(Channel::Mail, Circle::Always), vec![Always, Awake, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Mail, Circle::Safe), vec![Always, Awake, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Messages, Circle::Always), vec![Always]);
         assert_eq!(offered(Channel::Messages, Circle::Contacts), vec![Always, Awake, WorkAdmin, Work, Never]);
         // Two rows set apart from each other read as yours, whatever each says.

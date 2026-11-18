@@ -3776,7 +3776,7 @@ settings-tab-ai = Agents d’IA
 # Les paramètres sur un téléphone : la liste des sections, chacune avec une ligne qui dit ce qu’elle contient.
 settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la saisie.
 settings-about-hours = Heures de travail, heures pour vos démarches, repas et nuit, congés.
-settings-about-attention = Qui et ce qui peut vous joindre, par quel canal et à quelle heure ; les exceptions, « Ne pas déranger ».
+settings-about-attention = Qui vous joint, et quand ; les avis de Sioul ; « Ne pas déranger » sur tous vos appareils.
 settings-about-words = Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.
 settings-about-reminders = Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.
 settings-about-pauses = Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.
@@ -4379,7 +4379,7 @@ mail-note-opens = Le Porche ouvre : { $count } { $n ->
     }.
 mail-note-letter = { $sender }, { $subject }
 set-reminders-mail = Me dire les nouveaux courriels
-set-reminders-mail-help = Quand arrivent des courriels que leur ligne laisse venir maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Les courriels qui attendaient leur moment sont dits une fois, quand ils viennent. Quand ils peuvent venir, ce sont les lignes Courriels, plus bas ; jamais pour les codes (ils ont leur propre ligne), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos comptes moins importants.
+set-reminders-mail-help = Une notification discrète par lot de courriels que son cercle laisse venir maintenant ; jamais pour les codes, les courriels mis de côté ou bloqués, ni ce que vous envoyez vous-même.
 set-reminders-mail-newsletters = Avec les infolettres
 set-reminders-mail-newsletters-help = Les infolettres et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon.
 reminders-closed-unavailable = Pas encore sous Windows : les rappels viennent quand la fenêtre de Sioul est ouverte.
@@ -6827,8 +6827,9 @@ reach-behaviour-awake = Quand vous ne dormez pas
 reach-behaviour-work-admin = Aux heures de travail et de démarches
 reach-behaviour-work = Aux heures de travail
 reach-behaviour-gathered = Aux heures de regroupement
-reach-behaviour-shown = Affiché, jamais notifié
-reach-behaviour-never = Jamais
+reach-behaviour-never = Jamais notifié
+reach-behaviour-never-help-mail = Le courriel reste sur le Porche, sans un mot.
+reach-behaviour-never-help-messages = Un message est retenu, à tout moment.
 reach-own = À votre façon
 reach-own-help = Réglé case par case, dans Ce qui vient quand.
 reach-people-automatic = Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant.
@@ -6917,6 +6918,7 @@ busy = Indisponible
 busy-help = Compte dans la disponibilité que vous partagez, et tant qu’il dure vos règles pour les moments indisponibles s’appliquent.
 busy-task = Indisponible pendant que j’y travaille
 busy-task-help = Tant que son minuteur tourne, il compte dans la disponibilité que vous partagez et vos règles pour les moments indisponibles s’appliquent.
+busy-with-others = Une réunion avec d’autres garde l’indisponibilité que son organisateur a dite : Sioul ne l’écrit jamais.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = Tout de suite
 attention-source-gathered = Aux heures de regroupement

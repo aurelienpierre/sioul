@@ -752,6 +752,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long informative notices last, one length for all (docs/notifications.md).
             let s = b.push("notices.informative_minutes", "notices-informative", Kind::Int, SettingValue::Int(i64::from(config.notices.minutes())));
             Builder::range(s, f64::from(crate::notice::SHORTEST), f64::from(crate::notice::LONGEST), 1.0, "min");
+            // The times sites and other apps' automatons are gathered at (their cells say "gathered"):
+            // under Sioul's own notices ▸ Sites and apps, on the page.
+            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // Free time's "Nothing at all": its card's switch.
             b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
@@ -770,8 +773,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
-            // The times sites and other apps' automatons are gathered at: their cells say "gathered".
-            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
@@ -1663,8 +1664,8 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
@@ -1692,7 +1693,7 @@ mod tests {
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
-        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,

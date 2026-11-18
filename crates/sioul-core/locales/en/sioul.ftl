@@ -3740,7 +3740,7 @@ settings-tab-ai = AI agents
 # Settings on a phone: the list of sections, each with one line saying what it holds.
 settings-about-look = Language, colours, the places' names, passwords as you type.
 settings-about-hours = Working hours, hours for your admin, meals and the night, time off.
-settings-about-attention = Who and what may reach you, on which channel and at what time; the exceptions, Do not disturb.
+settings-about-attention = Who reaches you, and when; Sioul's own notices; do not disturb on every device.
 settings-about-words = The words Sioul looks for in mail, papers, calls and tasks, in your languages.
 settings-about-reminders = Reminders of dates asked, with Sioul's window closed, and notifications gathered.
 settings-about-pauses = Free time and the pause: when work ends, what helps you, the pause's screen.
@@ -4343,7 +4343,7 @@ mail-note-opens = The Porch opens: { $count } { $n ->
     } for you.
 mail-note-letter = { $sender }, { $subject }
 set-reminders-mail = Tell me of new mail
-set-reminders-mail-help = When mail arrives that its row lets come now, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes. When it may come is the Mail rows', below; never for codes (they have a row of their own), nor for what is set aside, blocked, sent by yourself or come to your less important accounts.
+set-reminders-mail-help = One quiet notification for each batch of mail its circle lets come now; never for codes, mail set aside or blocked, nor what you send yourself.
 set-reminders-mail-newsletters = Include newsletters
 set-reminders-mail-newsletters-help = Newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way.
 reminders-closed-unavailable = Not on Windows yet: reminders come while Sioul's window is open.
@@ -6766,8 +6766,9 @@ reach-behaviour-awake = When awake
 reach-behaviour-work-admin = In work and admin hours
 reach-behaviour-work = In work hours
 reach-behaviour-gathered = At the gathered times
-reach-behaviour-shown = Shown, never told
-reach-behaviour-never = Never
+reach-behaviour-never = Never told
+reach-behaviour-never-help-mail = Mail stays on the Porch, without a word.
+reach-behaviour-never-help-messages = A message is held, at every time.
 reach-own = Your own
 reach-own-help = Set cell by cell, in What comes when.
 reach-people-automatic = A message is told only while what it was written to, an address or an app, is for now.
@@ -6856,6 +6857,7 @@ busy = Busy
 busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.
 busy-task = Busy while I work on it
 busy-task-help = While its timer runs, it counts in the availability you share and your rules for busy time apply.
+busy-with-others = A meeting with others keeps its organizer's busy or free: Sioul never writes it.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = At once
 attention-source-gathered = At the gathered times
