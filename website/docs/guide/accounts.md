@@ -27,7 +27,9 @@ Who may reach you, and when, is in Settings ▸ [What reaches you](notifications
   <figcaption>One card per address, each of its services with a switch.</figcaption>
 </figure>
 
-At the top, **How far back mail and the agenda reach**: from one week to one year, or everything. Older mail is fetched at the next round; "Everything" can take a while, and room on disk.
+At the top, **Password manager**: your Bitwarden account, one for the whole app ([below](#your-password-manager)).
+
+Then **How far back mail and the agenda reach**: from one week to one year, or everything. Older mail is fetched at the next round; "Everything" can take a while, and room on disk.
 
 Then one card per address, with each of its services: **Mail**; **Calendars, tasks and contacts**; **Google: calendars, contacts and tasks**. Each has:
 
@@ -36,6 +38,16 @@ Then one card per address, with each of its services: **Mail**; **Calendars, tas
 - **Remove**.
 
 **What this server offers**, at the top of the card, asks the server what else it has: calendars and contacts beside the mail, and for a Nextcloud, its version and its apps. What Sioul can use is added in one click.
+
+### Your password manager {#your-password-manager}
+
+Sioul fills sites' logins and accounts' passwords from your Bitwarden vault, read by Sioul itself: nothing else to install. Its card, at the top of **Your accounts**, holds:
+
+- **Bitwarden account**: its e-mail; **Bitwarden server**: empty for bitwarden.com, or bitwarden.eu, or your own server's address (Vaultwarden too).
+- **Bitwarden on this device**: "Bitwarden is open." with **Lock**, or "Bitwarden is locked." with **Unlock**. Unlock opens the vault for the session: with your security key alone, or with your master password and the second step your account asks for ([Sites](sites.md#logins-from-bitwarden) says each). On a phone, by the master password and a code: an authenticator app's, an e-mail's, a YubiKey's, a recovery code.
+- **Lock Bitwarden**: after a time without use, from five minutes to four hours, as Bitwarden's own apps do; until you choose, it stays open until Sioul closes.
+
+Without an account, the card has one line and **Add your Bitwarden account**, which opens its form in [Add an account](#add-an-account). The account travels with your settings to your other devices, when you [share them](sharing.md); the vault itself never leaves the device that opened it. The Sites page fills logins from the same vault, and its ⚙ has a button to this card.
 
 ### A mail address
 
@@ -62,9 +74,9 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 ### An account from your other device
 
-[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. The logins whose user name is this address are listed, then those made for its domain under another user name (a customer number, another address), the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
+[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…** (shown once your [password manager](#your-password-manager) is set). The logins whose user name is this address are listed, then those made for its domain under another user name (a customer number, another address), the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
 
-From this page, your Bitwarden vault opens with its master password and a second step other than a security key: an app's code, an e-mail's, a YubiKey's code, a recovery code. To open it with your security key, open it from the Sites page first (**Fill the login**, or ⋮ ▸ **Choose a login…**): it then stays open until Sioul closes, here too. On Android, a security key cannot open the vault yet: use another second step of your Bitwarden account.
+From this page, your Bitwarden vault opens as from the Sites page: with your security key, alone or as a second step, or with your master password and an app's code, an e-mail's, a YubiKey's code, a recovery code. It then stays open for every page until you lock it or Sioul closes. On Android, a security key cannot open the vault yet: use another second step of your Bitwarden account.
 
 ### Google's mail
 
@@ -76,11 +88,14 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft 
 
 ## Add an account
 
-Three forms, one after the other:
+Four forms, one after the other:
 
 - **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password (for Workspace, the sign-in is the dependable way: Google may not offer it an app password); for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
+- **Bitwarden**: your password manager's e-mail, and its server when it is not bitwarden.com; **Add** shows it at the top of **Your accounts** and opens the vault there. One account for the whole app: once one is set, this form says which.
+
+Every password field of these forms has **From Bitwarden…** under it, once your password manager is set: the vault opens if it is locked, then its logins are listed by the name the account logs in with, and the one you choose gives its password.
 
 On Android, **From this phone's accounts…** (this tablet's, on a tablet), above them, opens Android's own list of the accounts the device knows. A Google address fills the Google form and the mail form, with Google's two ways; any other fills the mail form, whose server Sioul then looks for, and the one for contacts and calendars. Android lends no password: Sioul asks for it once.
 
@@ -248,4 +263,4 @@ As of October 2026, from each app's own documentation.
 - **OpenPGP**: RFC 9580, with Sequoia-PGP and its pure-Rust cryptography. A key made here is Ed25519 for signing and Curve25519 for encryption, valid three years, its secret parts encrypted with a random passphrase kept in the keyring. Autocrypt Level 1: your mail carries your key; a key in a sender's header is kept only when it names that sender, public parts only. Others' keys are looked up only when you ask: their domain's Web Key Directory, then keys.openpgp.org, over HTTPS only. No S/MIME.
 - **The security key**: OpenPGP card specification 3.4, through the system's smart card service, PC/SC (pcscd on Linux, which most systems start when a program asks; the Smart Card service on Windows; CryptoTokenKit on macOS). The key is opened for one operation, then reset, so that its PIN does not stay given for another program; readers are connected in shared mode. The PIN is kept in memory, encrypted, for fifteen minutes without use, never written. A signature the key makes is checked against its public part before the message goes. Library logging is capped, so that no PIN or session key can reach a log.
 - **GnuPG**: its smart card daemon keeps the key for itself after using it, unless `scdaemon.conf` says `pcsc-shared`. **Let GnuPG release it** runs `gpgconf --kill scdaemon`, on that click only, and so does Sioul at the end of its own GnuPG renewal, cleaning up after its own run; gpg starts it again when it needs the key, and asks its PIN again then. Sioul never changes GnuPG's settings.
-- **Bitwarden from this page**: the vault opens with its master password and a second step that this dialog can ask for: an authenticator app's code, an e-mail code, a YubiKey's one-time code, a recovery code. A security key, as a second step or alone, is asked only by the Sites page's dialog, on a computer; the vault then stays open for every page until Sioul closes. How the vault is read: [Sites, for technical readers](sites.md#for-technical-readers).
+- **Bitwarden from this page**: the vault opens as from the Sites page. On a computer, the window holds the sites' web profile and Bitwarden's own page that asks a security key, unseen, made the first time one is needed, for the dialogs of both pages; on Android, which has no web engine for it, the master password and a second step other than a key. How the vault is read: [Sites, for technical readers](sites.md#for-technical-readers).

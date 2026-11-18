@@ -145,6 +145,8 @@ SafePopup {
                         onSave: (key, value, shown) => panel.save(key, value, shown)
                         onGoTo: key => panel.scrollTo(key)
                         onChangedElsewhere: panel.reload()
+                        // A link followed: its place shows, not this panel over it.
+                        onFollowed: panel.close()
                     }
                 }
             }

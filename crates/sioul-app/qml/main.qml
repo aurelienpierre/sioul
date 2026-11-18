@@ -218,8 +218,8 @@ SioulWindow {
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
-            // Accounts and Settings take no window.
-            const given = i === 11 || i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
+            // Settings takes no window; Accounts takes it for Bitwarden's key page (`vaultKeys`).
+            const given = i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
             const began = Date.now()
             loaders[i].setSource(window.pageFiles[i], given)
             // How long each page takes to make, in the log (a phone's: adb logcat).
@@ -1113,6 +1113,23 @@ SioulWindow {
         window: window
         sioul: sioul
     }
+
+    // The sites' one web profile and Bitwarden's page that asks a security key
+    // (SitesWeb.qml): on computers only, made the first time a site's view or a
+    // vault's dialog wants it, from Sites or from Accounts.
+    Loader {
+        id: sitesWebLoader
+    }
+    function sitesWeb() {
+        if (Qt.platform.os === "android")
+            return null
+        if (sitesWebLoader.status === Loader.Null)
+            sitesWebLoader.setSource("SitesWeb.qml", { sioul: sioul, theme: theme })
+        return sitesWebLoader.item
+    }
+    // What asks a security key for a vault's dialog (VaultUnlock.qml's `keys`):
+    // Bitwarden's page, held unseen; none on a phone, which has no Qt WebEngine.
+    readonly property var vaultKeys: Qt.platform.os === "android" ? null : (() => window.sitesWeb().keyPage())
 
     // The Porch's card "Join your other devices": Settings ▸ Your folder and
     // sharing, where the join begins (SharePanel.qml, JoinPanel.qml): "murena",
@@ -3631,6 +3648,16 @@ SioulWindow {
                 () => {},
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
+                () => sitesPage.bitwardenUnlock.close(),
+                // Where Bitwarden is set: the password manager's card at the top of Accounts
+                // (none set on a demo profile), then its form in Add an account.
+                () => window.showParameters("bitwarden"),
+                () => {},
+                () => grabber.save("vault-card-none"),
+                () => accountsPage.addVault(),
+                () => {},
+                () => {},
+                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no

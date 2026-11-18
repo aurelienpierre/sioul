@@ -24,7 +24,11 @@ TestCase {
         readonly property var places: ({
             "screen_colours": "sites",
             "calmer_colours": "sites",
-            "sites": "sites"
+            "sites": "sites",
+            "link.bitwarden": "sites",
+            "bitwarden": "bitwarden",
+            "bitwarden.email": "bitwarden",
+            "bitwarden_vault": "bitwarden"
         })
 
         function settingPage(key) {
@@ -53,6 +57,7 @@ TestCase {
             }
         }
         property var sitesPage: FakePage {}
+        property var accountsPage: FakePage {}
     }
 
     SettingDoor {
@@ -66,6 +71,22 @@ TestCase {
         fakeWindow.page = 0
         fakeWindow.parametersPage.asked = []
         fakeWindow.sitesPage = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
+        fakeWindow.accountsPage = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
+    }
+
+    // Bitwarden: Accounts, its password manager's card; the vault's own key opens it.
+    function test_bitwarden_opens_the_accounts_card() {
+        door.open("bitwarden")
+        compare(fakeWindow.page, 11)
+        compare(fakeWindow.accountsPage.asked, [[true, ""]])
+        door.open("bitwarden.email")
+        door.open("bitwarden_vault")
+        compare(fakeWindow.accountsPage.asked.slice(1), [[true, "bitwarden.email"], [true, "bitwarden_vault"]])
+        // The Sites page's line about it is the Sites page's own.
+        door.open("link.bitwarden")
+        compare(fakeWindow.page, 3)
+        compare(fakeWindow.sitesPage.asked, [[true, "link.bitwarden"]])
+        compare(fakeWindow.parametersPage.asked, [], "never Settings")
     }
 
     // The sites' colours: the Sites page, its ⚙ open at the row.

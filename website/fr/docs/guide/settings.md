@@ -185,7 +185,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée, le fuseau horaire montré |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
 | [Notes](notes.md#new-notes) | où vont les nouvelles notes |
-| [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; votre compte Bitwarden |
+| [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; un bouton vers votre compte Bitwarden, dans [Comptes](accounts.md#your-password-manager) |
 | [Santé](health.md#prescriptions) | où vont les démarches, la pause pour bouger, la limite des discussions ; un bouton vers les repas, siestes et nuit habituels, dans [Heures](#hours) |
 
 Le ⚙ les ouvre à droite de la page, qui reste à côté : deux cinquièmes de la fenêtre et un peu plus, de 520 à 760 pixels ; dans une fenêtre de moins de 720 pixels de large (celle d’un téléphone, d’une tablette en écran partagé), sur toute la fenêtre. Échap ou un clic à côté les ferme.

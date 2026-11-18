@@ -185,7 +185,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the time zone shown |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
-| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; your Bitwarden account |
+| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager) |
 | [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.

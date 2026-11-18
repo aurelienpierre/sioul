@@ -81,8 +81,9 @@ pub enum Kind {
     /// list, each in words, its editor, "Try it" and running them on the
     /// inboxes; read and written whole (`config::set_filters`). Nothing in `value`.
     Filters,
-    /// The Bitwarden vault on this device as it is now, open or locked, and
-    /// **Lock** while it is open (the window asks `bitwarden_state`, and
+    /// The Bitwarden vault on this device as it is now, open or locked, with
+    /// **Unlock** while it is locked (the card that shows it opens its dialog)
+    /// and **Lock** while it is open (the window asks `bitwarden_state`, and
     /// locks with `bitwarden_lock`). Nothing in `value`, nothing saved.
     Vault,
     /// The agendas, the window's own block (`AgendasSetup.qml`): each one's
@@ -246,7 +247,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The pages whose ⚙ holds settings that only they read, and that a link
 /// by key opens there rather than in Settings (the settings rework of 18
 /// November 2026: a setting one page reads lives behind that page's ⚙).
-pub const PAGES: &[&str] = &["sites"];
+pub const PAGES: &[&str] = &["sites", "bitwarden"];
 
 /// Where a setting lives, by its key or by its page's own name: the page of
 /// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
@@ -257,7 +258,7 @@ pub fn page_of(key: &str, config: &Config, tr: &Translator) -> Option<&'static s
 }
 
 /// The settings of one page: "porch", "mail", "agenda", "tasks", "notes",
-/// "reading", "contacts", "sites", "general". `lists` names the task lists
+/// "reading", "contacts", "sites", "bitwarden", "general". `lists` names the task lists
 /// a new task can go into, as ("account/id", name).
 pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::projects::ProjectStore>) -> Vec<Setting> {
     let mut b = Builder { tr, out: Vec::new(), group: String::new(), section: String::new() };
@@ -609,11 +610,20 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("screen_colours", "screen-colours", Kind::Bool, SettingValue::Bool(config.screen_colours.unwrap_or(true)));
             let s = b.push("calmer_colours", "calmer-colours", Kind::Choice, SettingValue::Text(config.calmer_colours.clone().unwrap_or_default()));
             s.choices = [("", "set-calmer-colours-off"), ("little", "set-calmer-colours-little"), ("more", "set-calmer-colours-more")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            // Bitwarden is Accounts' (the password manager's card): Sites and the account
+            // forms both use it. One line here says where, with a button.
             b.group = tr.text("set-bitwarden-group", None);
+            b.push("link.bitwarden", "sites-bitwarden", Kind::Link, SettingValue::Text("settings:bitwarden".into()));
+        }
+        // Bitwarden, one vault for the whole app: the password manager's card at the
+        // top of Accounts ▸ Your accounts (`VaultCard.qml`). Sites fills logins from
+        // it, the account forms take passwords from it. Kept in `[bitwarden]` of the
+        // configuration, shared with the other settings; the vault itself never.
+        "bitwarden" => {
             b.push("bitwarden.email", "bitwarden-email", Kind::Text, SettingValue::Text(config.bitwarden.email.clone().unwrap_or_default()));
             b.push("bitwarden.server", "bitwarden-server", Kind::Text, SettingValue::Text(config.bitwarden.server.clone().unwrap_or_default()));
-            // The vault as it is now, with Lock, and a lock after a time without use, as
-            // Bitwarden's own apps offer (decided 3 November 2026): never by default.
+            // The vault as it is now, with Unlock and Lock, and a lock after a time without
+            // use, as Bitwarden's own apps offer (decided 3 November 2026): never by default.
             if config.bitwarden.email.as_deref().is_some_and(|e| !e.trim().is_empty()) {
                 b.push("bitwarden_vault", "bitwarden-vault", Kind::Vault, SettingValue::Bool(false));
             }
@@ -1664,18 +1674,21 @@ mod tests {
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
         assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
         assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
-        // The sites' colours, then Bitwarden: only the Sites page reads them.
-        assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "bitwarden.email", "bitwarden.server", "bitwarden.lock_after"]);
+        // The sites' colours, which only the Sites page reads, then where Bitwarden is set.
+        assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "link.bitwarden"]);
+        // Bitwarden, Accounts' card: its account, its server, the lock after a time (the
+        // vault's state once an e-mail is set: `the_vault_s_card_holds_its_account`).
+        assert_eq!(keys("bitwarden"), vec!["bitwarden.email", "bitwarden.server", "bitwarden.lock_after"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");
-        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "contacts", "parameters"] {
+        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "contacts", "parameters"] {
             for key in keys(view) {
                 if let Some(other) = seen.insert(key.clone(), view) {
                     panic!("{key} is set in {other} and in {view}");
                 }
             }
         }
-        for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "contacts", "agenda"] {
+        for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "bitwarden", "contacts", "agenda"] {
             assert!(for_view(view, &config, &tr, &[], None).iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")), "{view}: a sentence is missing");
         }
     }
@@ -1687,7 +1700,7 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.
@@ -1698,6 +1711,25 @@ mod tests {
                 assert_eq!(page_of(&row.key, &config, &tr), Some(*page), "{}", row.key);
             }
         }
+    }
+
+    /// Bitwarden's card in Accounts: its account and server, then the vault's
+    /// state (open or locked, with Unlock and Lock) once an e-mail is set, then
+    /// the lock after a time; the Sites page's ⚙ keeps one line, a door to it.
+    #[test]
+    fn the_vault_s_card_holds_its_account() {
+        let tr = Translator::new("en");
+        let set: Config = toml::from_str("[bitwarden]\nemail = \"jane@example.org\"\nlock_after = 15\n").unwrap();
+        let rows = for_view("bitwarden", &set, &tr, &[], None);
+        assert_eq!(rows.iter().map(|s| (s.key.as_str(), s.kind)).collect::<Vec<_>>(), [("bitwarden.email", Kind::Text), ("bitwarden.server", Kind::Text), ("bitwarden_vault", Kind::Vault), ("bitwarden.lock_after", Kind::Choice)]);
+        assert_eq!(rows[0].value, SettingValue::Text("jane@example.org".into()));
+        assert_eq!(rows[3].value, SettingValue::Int(15));
+        assert_eq!(page_of("bitwarden_vault", &set, &tr), Some("bitwarden"));
+        let sites = for_view("sites", &set, &tr, &[], None);
+        let door = sites.iter().find(|s| s.key == "link.bitwarden").unwrap();
+        assert_eq!((door.kind, &door.value), (Kind::Link, &SettingValue::Text("settings:bitwarden".into())));
+        assert!(door.help.contains("Accounts"), "{}", door.help);
+        assert!(sites.iter().all(|s| !s.key.starts_with("bitwarden")), "nothing of Bitwarden set in Sites");
     }
 
     /// The words tab: the languages and countries ticked, then each line's

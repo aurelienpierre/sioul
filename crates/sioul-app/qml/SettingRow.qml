@@ -32,8 +32,12 @@ ColumnLayout {
     signal save(string key, var value, var shown)
     // Another row of the panel asked for (a calendar of busy blocks opens Your availability).
     signal goTo(string key)
-    // What the panel shows changed behind its back (lists left): its rows read again.
+    // What the panel shows changed behind its back (lists left, the vault locked): its rows read again.
     signal changedElsewhere()
+    // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
+    signal unlockAsked()
+    // A link's button pressed: the panel it is in closes, its place shown (SettingsPanel.qml).
+    signal followed()
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -89,14 +93,18 @@ ColumnLayout {
                     icon.name: "go-next"
                     icon.color: field.theme.text
                     // The window shows it, as a reminder's "Open" does (main.qml, openThing).
-                    onClicked: field.sioul.reminderOpened(String(field.setting.value), "", "")
+                    onClicked: {
+                        field.followed()
+                        field.sioul.reminderOpened(String(field.setting.value), "", "")
+                    }
                 }
             }
         }
     }
 
-    // The Bitwarden vault as it is now on this device, and Lock while it is
-    // open (decided 3 November 2026); asked again each time the panel shows.
+    // The Bitwarden vault as it is now on this device, Unlock while it is
+    // locked and Lock while it is open (decided 3 November 2026); asked again
+    // each time the card shows (VaultCard.qml).
     Loader {
         active: field.setting.kind === "vault"
         visible: active
@@ -120,6 +128,15 @@ ColumnLayout {
                     color: field.theme.text
                 }
                 Button {
+                    objectName: "vaultUnlock"
+                    visible: vault.open === "locked"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    icon.name: "dialog-password"
+                    icon.color: field.theme.text
+                    text: field.theme.plain(field.sioul.text("set-bitwarden-unlock"))
+                    onClicked: field.unlockAsked()
+                }
+                Button {
                     objectName: "vaultLock"
                     visible: vault.open === "unlocked"
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
@@ -129,6 +146,7 @@ ColumnLayout {
                     onClicked: {
                         field.sioul.bitwardenLock()
                         vault.open = field.sioul.bitwardenState()
+                        field.changedElsewhere()
                     }
                 }
             }

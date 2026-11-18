@@ -7,7 +7,9 @@
 // accepted, then wait for the Porch, unless the site is in real time; calls
 // and video work (microphone, camera, sharing the screen). A site can be
 // silenced; a chat's real time is one tick away, always in view. Logins come
-// from Bitwarden when you ask.
+// from Bitwarden when you ask, its account set in Accounts (VaultCard.qml).
+// The profile every site shares, and Bitwarden's page that asks a security
+// key, are the window's (SitesWeb.qml), so that Accounts asks a key too.
 
 pragma ComponentBehavior: Bound
 
@@ -62,17 +64,6 @@ Item {
     property var leaving: ({})
     // The pop-ups open (`openPopup`): their pages are closed with the sites'.
     property var popups: []
-    // In every page, before its own scripts: Qt 6.10–6.11 never answers
-    // PublicKeyCredential.getClientCapabilities(), and sites asking for a
-    // security key wait for it forever (QTBUG-149575); without it they ask
-    // the key directly. Injection point 2: DocumentCreation; world 0: the page's.
-    readonly property var webauthnFix: ({
-        name: "sioul-webauthn",
-        sourceCode: "if (window.PublicKeyCredential && PublicKeyCredential.getClientCapabilities) { delete PublicKeyCredential.getClientCapabilities; }",
-        injectionPoint: 2,
-        worldId: 0,
-        runsOnSubFrames: true
-    })
     // Calls take the camera, microphone and speaker you chose, by their names
     // (the browser's own ids are each site's), and change them during a call
     // (src/calls.js, docs/sites.md). The names go only to sites allowed a
@@ -87,9 +78,10 @@ Item {
     function devicesFor(site) {
         return site && (site.microphone || site.camera) ? page.callDevices : ({})
     }
-    // A page's scripts, for a site (null: a page of no site, the vault's).
+    // A page's scripts, for a site (null: a page of no site).
     function webFixesFor(site) {
-        return [page.webauthnFix, {
+        // In every page, before its own scripts, the security keys' fix (SitesWeb.qml).
+        return [page.window.sitesWeb().webauthnFix, {
             name: "sioul-calls",
             sourceCode: "(" + page.callsScript + ")(" + JSON.stringify(page.devicesFor(site)) + ", " + JSON.stringify(page.callToken) + ");",
             injectionPoint: 2,
@@ -556,45 +548,21 @@ Item {
         }
     }
 
-    // One profile for every site: logins kept, files cached on disk. Its
-    // prototype, once complete, starts Chromium (some 25 MB in Sioul's process
-    // and 45 MB in its zygotes, with no site): made with the first site's
-    // view, a site kept open or one opened, never for the page shown with no
-    // site open.
-    Component {
-        id: prototypeKind
-
-        WebEngineProfilePrototype {
-            storageName: "sioul-sites"
-            httpCacheType: WebEngineProfile.DiskHttpCache
-            httpCacheMaximumSize: 512 * 1024 * 1024
-            persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
-            // What a site was allowed is kept: notifications for good (`keepPermissions`),
-            // a microphone, a camera, a screen while its switch is on.
-            persistentPermissionsPolicy: WebEngineProfile.PersistentPermissionsPolicy.StoreOnDisk
-        }
-    }
+    // One profile for every site: logins kept, files cached on disk. It is
+    // the window's (SitesWeb.qml), shared with Bitwarden's page that asks a
+    // security key, and starts Chromium once made (some 25 MB in Sioul's
+    // process and 45 MB in its zygotes, with no site): made with the first
+    // site's view, a site kept open or one opened, never for the page shown
+    // with no site open.
     property WebEngineProfile profile: null
     readonly property bool profileWanted: page.sites.some(s => page.alive(s))
     onProfileWantedChanged: page.makeProfile()
 
-    // The profile, from its prototype, complete once made (it lives with the
-    // page); no view exists before it.
+    // The profile, complete once made; no view exists before it.
     function makeProfile() {
         if (page.profile !== null || !page.profileWanted)
             return
-        const made = prototypeKind.createObject(page).instance()
-        // Without Qt's name in it: some chats refuse browsers they do not know.
-        made.httpUserAgent = made.httpUserAgent.replace(/ QtWebEngine\/[\d.]+/, "")
-        // Nor in the brands it tells sites: Google refuses sign-in to browsers it takes for embedded.
-        const brands = made.clientHints.fullVersionList
-        const kept = {}
-        for (const name in brands) {
-            if (!/qt/i.test(name))
-                kept[name] = brands[name]
-        }
-        made.clientHints.fullVersionList = kept
-        page.profile = made
+        page.profile = page.window.sitesWeb().profile()
         page.keepPermissions()
     }
 
@@ -1742,30 +1710,14 @@ Item {
     }
 
     // Bitwarden, opened once for the session (VaultUnlock.qml), the security
-    // key asked from Bitwarden's own page, held unseen in the dialog: the page
-    // must be the vault's, since Bitwarden takes keys' signatures for its
-    // address only.
+    // key asked from Bitwarden's own page, held unseen in the dialog: the
+    // window's (SitesWeb.qml), as from Accounts.
     VaultUnlock {
         id: unlock
 
         sioul: page.sioul
         theme: page.theme
-        keyReady: page.profile !== null
-        keyComponent: Component {
-            WebEngineView {
-                profile: page.profile
-                url: unlock.keyAsk !== null ? unlock.keyAsk.page : ""
-                // Injection point 1: once the page's document is ready.
-                Component.onCompleted: userScripts.collection = page.webFixesFor(null).concat([{
-                    name: "sioul-key",
-                    sourceCode: unlock.keyAsk.script,
-                    injectionPoint: 1,
-                    worldId: 0,
-                    runsOnSubFrames: false
-                }])
-                onWebAuthUxRequested: request => webAuth.show(request)
-            }
-        }
+        keys: page.window.vaultKeys
         onUnlocked: {
             if (page.afterUnlock === "choose")
                 page.chooseLogin()

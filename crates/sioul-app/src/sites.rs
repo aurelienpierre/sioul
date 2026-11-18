@@ -517,7 +517,7 @@ fn remembered(email: &str) -> String {
     format!("Bitwarden device token for {}", email.trim().to_lowercase())
 }
 
-/// "missing" (no account set in Sites ⚙), "locked", "unlocked".
+/// "missing" (no account set: Accounts' password manager card), "locked", "unlocked".
 pub(crate) fn bitwarden_state(shared: &Shared) -> String {
     // A made-up vault for the window's tests, from a JSON list of logins (never in Sioul's builds).
     #[cfg(feature = "insecure-test-tls")]

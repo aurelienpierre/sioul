@@ -3,9 +3,9 @@
 
 // An account's password, given on this device: an account come from another
 // device arrives without one, since passwords never travel. Typed, or taken
-// from your Bitwarden vault, found by the name the account logs in with (its
-// address, unless it names another) as the user name; tested with the
-// account's server before this device's keyring keeps it.
+// from your Bitwarden vault (VaultFill.qml), found by the name the account
+// logs in with (its address, unless it names another) as the user name;
+// tested with the account's server before this device's keyring keeps it.
 
 pragma ComponentBehavior: Bound
 
@@ -24,6 +24,8 @@ SafeDialog {
     property string note: ""
     // Bitwarden: "missing" (no account set), "locked" or "unlocked".
     property string vault: "missing"
+    // What asks a security key (VaultUnlock.qml's `keys`): the window's, none on a phone.
+    property var keys: null
     // A server that takes app passwords only (Google's, Yahoo's): its guide,
     // its field's name and the page where one is made, as Sioul knows them
     // (backend's app_password_for); empty for any other server.
@@ -50,27 +52,10 @@ SafeDialog {
         return dialog.account === null ? "" : dialog.account.login || dialog.account.address || ""
     }
 
-    // The vault opened first when it is locked; then its logins, found by the account's login as the user name.
-    function fromVault() {
-        dialog.problem = ""
-        dialog.vault = dialog.sioul.bitwardenState()
-        if (dialog.vault === "missing")
-            dialog.problem = dialog.sioul.text("account-password-vault-missing")
-        else if (dialog.vault === "locked")
-            unlock.begin()
-        else
-            chooser.now().beginForAccount(dialog.site(), dialog.login())
-    }
-
     // A login chosen in the vault: its password tested and kept at once.
-    function take(item) {
-        const login = JSON.parse(dialog.sioul.bitwardenLogin(dialog.site(), item))
-        if (login.error) {
-            dialog.problem = login.error
-            return
-        }
-        password.text = login.password
-        dialog.note = dialog.sioul.textWith("account-password-from", "name", login.name)
+    function take(secret, name) {
+        password.text = secret
+        dialog.note = dialog.sioul.textWith("account-password-from", "name", name)
         dialog.keep()
     }
 
@@ -127,13 +112,16 @@ SafeDialog {
             placeholderText: dialog.theme.plain(dialog.appPassword ? dialog.appWords.field : dialog.sioul.text("ui-password"))
             onAccepted: dialog.keep()
         }
-        Button {
-            visible: dialog.vault !== "missing"
-            enabled: !dialog.sioul.formBusy
-            flat: true
-            icon.name: "dialog-password"
-            text: dialog.sioul.text("account-password-vault")
-            onClicked: dialog.fromVault()
+        VaultFill {
+            sioul: dialog.sioul
+            theme: dialog.theme
+            keys: dialog.keys
+            vault: dialog.vault
+            site: dialog.site()
+            user: dialog.login()
+            onTaken: (secret, name) => dialog.take(secret, name)
+            onProblem: text => dialog.problem = text
+            onOpened: dialog.vault = dialog.sioul.bitwardenState()
         }
         Label {
             visible: dialog.sioul.formBusy || dialog.note !== ""
@@ -167,32 +155,4 @@ SafeDialog {
         onRejected: dialog.close()
     }
 
-    // Bitwarden, opened here for the session: by its master password and a
-    // second step (no security key outside the Sites page's).
-    VaultUnlock {
-        id: unlock
-
-        sioul: dialog.sioul
-        theme: dialog.theme
-        onUnlocked: {
-            dialog.vault = "unlocked"
-            chooser.now().beginForAccount(dialog.site(), dialog.login())
-        }
-    }
-
-    // Made the first time. Another domain than the server's is no warning
-    // here: the password goes to the account's own server.
-    Later {
-        id: chooser
-
-        sourceComponent: Component {
-            LoginChooser {
-                sioul: dialog.sioul
-                theme: dialog.theme
-                warnElsewhere: false
-                takeText: dialog.sioul.text("account-password-use")
-                onChosen: item => dialog.take(item)
-            }
-        }
-    }
 }

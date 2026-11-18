@@ -5,8 +5,8 @@
 // (`settings:<key>`), a notice (`sioul:settings/<key>`) or a page
 // (main.qml's `showParameters`). A setting that one page reads lives behind
 // that page's ⚙ (the core's `settings::page_of`, asked as `settingPage`):
-// the page is shown, its ⚙ opened at the setting. Every other one is in
-// Settings, at its tab
+// the page is shown, its ⚙ opened at the setting; Bitwarden's are the
+// Accounts page's card. Every other one is in Settings, at its tab
 // (ParametersPage.qml's `showSetting`, which also knows the older keys).
 // The window's pages are made the first time they are shown: each is asked
 // for once its page number is set.
@@ -22,9 +22,11 @@ QtObject {
     required property var sioul
 
     // The pages whose ⚙ holds settings of their own, as `settings::PAGES`
-    // names them: the window's page number and its name there.
+    // names them: the window's page number and its name there. Bitwarden's
+    // are Accounts' card, at the top of Your accounts.
     readonly property var pages: ({
-        "sites": [3, "sitesPage"]
+        "sites": [3, "sitesPage"],
+        "bitwarden": [11, "accountsPage"]
     })
 
     function open(key) {
