@@ -1622,7 +1622,7 @@ fn mark_read_here(file: &Path) {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        std::fs::write(&path, text).map_err(|e| e.to_string())
+        sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| e.to_string())
     });
     load_read_here();
 }
