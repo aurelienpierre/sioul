@@ -1783,6 +1783,8 @@ def write_tasks(p: Profile, mail: dict):
                             categories=[t("family", "famille")], due=c.day(8), contacts=["hugo"])),
         ("home-tasks", task(c, "gym", t("Book the climbing gym for Saturday", "Réserver la salle d'escalade pour samedi"), estimate=5, kind="online",
                             categories=[t("leisure", "loisirs")], due=c.this_week(4), contacts=["jonas"])),
+        ("home-tasks", task(c, "score", t("Print the Ave verum score", "Imprimer la partition de l'Ave verum"), status="COMPLETED", estimate=10, kind="make",
+                            categories=[t("leisure", "loisirs")], project="choir", completed=c.at(c.day(-2), "20:40"))),
     ]
     for calendar, text in tasks:
         uid = text.split("UID:")[1].split("\r\n")[0]
@@ -2588,9 +2590,10 @@ def write_time(p: Profile):
     for offset in range(0, (c.today - c.monday).days):
         session(c.monday + timedelta(days=offset), "14:15", 50, project="fernhill", note=t("Homepage, details", "Page d'accueil, détails"))
     session(c.today, "11:20", 40, task="sketch", note=t("the left layout's header, with the serif title", "l'en-tête de la mise en page de gauche, avec le titre à empattements"))
-    # Time for every area: the bus pass (admin) and the thank-you to Oskar (work), both done,
-    # timed: the Time page sets each beside its first estimate, by area.
+    # Time for every area: the bus pass (admin), the choir's score (leisure) and the thank-you
+    # to Oskar (work), all done, timed: the Time page sets each beside its first estimate, by area.
     session(c.day(-3), "18:10", 15, task="bus-pass")
+    session(c.day(-2), "20:15", 20, task="score")
     session(c.today, "09:05", 10, task="oskar")
 
     by_month: dict[str, list] = {}

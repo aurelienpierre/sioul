@@ -248,6 +248,19 @@ pub(crate) fn show_time(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.
+/// Where a task done counts in the Time page's table by area: once, where it
+/// leans (`TaskAreas::leaning`: a leisure task in a personal project, leisure),
+/// among the areas ticked while no project is chosen, so that no line comes
+/// for an area left out.
+fn table_area(task_areas: &sioul_core::areas::TaskAreas, task: &sioul_core::tasks::Task, project: &str, ticked: sioul_core::areas::Area) -> sioul_core::areas::Area {
+    let leaning = task_areas.leaning(task);
+    if !project.is_empty() {
+        return leaning;
+    }
+    let shown = leaning.both(ticked);
+    if shown.is_empty() { task_areas.of(task).both(ticked) } else { shown }
+}
+
 pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -> String {
     let loaded = loaded(shared);
     let now = sioul_core::zone::now();
@@ -278,7 +291,8 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     // project's; else those of an area ticked), their time beside their first estimate.
     let (from, to) = timereport::bounds(period, anchor);
     let counts = |t: &sioul_core::tasks::Task| if project.is_empty() { task_areas.of(t).meets(ticked) } else { t.projects.iter().any(|p| p == project) };
-    let by_area = timereport::estimates_by_area(&all, &loaded.tasks, &|t| task_areas.of(t), &counts, from, to, &sioul_core::zone::current());
+    let leans = |t: &sioul_core::tasks::Task| table_area(&task_areas, t, project, ticked);
+    let by_area = timereport::estimates_by_area(&all, &loaded.tasks, &leans, &counts, from, to, &sioul_core::zone::current());
     #[derive(serde::Serialize)]
     struct Shown {
         #[serde(flatten)]
@@ -748,6 +762,25 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Time page's table by area counts each task once, where it leans,
+    /// and never under an area that is not ticked.
+    #[test]
+    fn a_leisure_task_in_a_personal_project_counts_as_leisure() {
+        use sioul_core::areas::{Area, TaskAreas};
+        let areas = TaskAreas {
+            work_categories: vec!["work".into()],
+            leisure_categories: vec!["leisure".into()],
+            personal_categories: Vec::new(),
+            projects: vec![("choir".into(), Area::PERSONAL)],
+        };
+        let score = sioul_core::tasks::Task { categories: vec!["leisure".into()], projects: vec!["choir".into()], ..Default::default() };
+        assert_eq!(table_area(&areas, &score, "", Area::ALL), Area::LEISURE);
+        assert_eq!(table_area(&areas, &score, "choir", Area::WORK), Area::LEISURE, "one project chosen: the ticks aside");
+        assert_eq!(table_area(&areas, &score, "", Area::ADMIN), Area::ADMIN, "leisure not ticked: the area ticked it is in");
+        let errand = sioul_core::tasks::Task { projects: vec!["choir".into()], ..Default::default() };
+        assert_eq!(table_area(&areas, &errand, "", Area::ALL), Area::PERSONAL, "nothing narrower: the first of both, admin, in the table");
+    }
 
     /// The projects' filter, the Projects and Time pages' (docs/areas.md, "A
     /// page's filter by area"): as the hours say on this device by default,

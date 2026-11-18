@@ -3475,18 +3475,18 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("agenda-week-steps-filter"),
-                () => agendaPage.openStepAreas(),
-                () => {},
-                // A popup lies above the page: its own picture.
-                () => grabber.savePopup(agendaPage.openStepAreas(), "agenda-week-steps-filter-open"),
-                () => {
-                    agendaPage.closeStepAreas()
-                    sioul.tickStepAreas("admin+leisure")
-                },
+                () => sioul.tickStepAreas("admin+leisure"),
                 () => {},
                 () => {},
                 () => grabber.save("agenda-week-admin-leisure"),
-                () => sioul.stepAreasEverything(),
+                () => agendaPage.openStepAreas(),
+                () => {},
+                // A popup lies above the page: its own picture, two areas ticked, "Everything" offered.
+                () => grabber.savePopup(agendaPage.openStepAreas(), "agenda-week-steps-filter-open"),
+                () => {
+                    agendaPage.closeStepAreas()
+                    sioul.stepAreasEverything()
+                },
                 () => {
                     window.page = 8
                     timePage.period = "month"
