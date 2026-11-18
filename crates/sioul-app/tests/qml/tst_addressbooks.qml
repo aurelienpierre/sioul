@@ -56,7 +56,7 @@ Item {
         function removeAddressBook(place, how) { mock.calls = mock.calls.concat([["remove", place, how]]); return "" }
         function mergeQuestion(from, into) {
             mock.calls = mock.calls.concat([["question", from, into]])
-            return JSON.stringify({ sentence: "Move the 840 contacts of “Contacts” into “" + into + "”, then remove “Contacts”?", losses: "", shared: "“Professional” is shared with office: they will see what goes into it.", cannot: [] })
+            return JSON.stringify({ sentence: "Move the 840 contacts of “Contacts” into “" + into + "”, then remove “Contacts”?", losses: "", shared: "“Professional” is shared with office: they will see what goes into it.", reach: ["Who may reach you stays as its groups say."], cannot: [] })
         }
         function readContactsBatches() { mock.calls = mock.calls.concat([["batches"]]) }
         function undoContactsBatch(id) { mock.calls = mock.calls.concat([["undo", id]]); return "" }
@@ -179,8 +179,9 @@ Item {
             compare(root.calls("remove"), [], "nothing merged before the question is answered")
             verify(root.calls("sharing").indexOf(JSON.stringify(["sharing", "cloud/pro"])) >= 0, "who sees the target asked of its server")
             const asked = root.named(contacts, "addressBookMergeQuestion").map(l => l.text)
-            compare(asked.length, 2)
+            compare(asked.length, 3)
             verify(asked[1].indexOf("shared with office") >= 0, asked[1])
+            compare(asked[2], "Who may reach you stays as its groups say.", "what the merge does to who may reach you")
             mouseClick(root.named(contacts, "addressBookMergeConfirm")[0])
             compare(root.calls("remove"), [JSON.stringify(["remove", "cloud/contacts", "move:cloud/pro"])])
             // Removed: where its contacts go, asked first, then the same question.

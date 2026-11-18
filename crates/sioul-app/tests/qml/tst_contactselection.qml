@@ -43,7 +43,7 @@ Item {
             if (a.action === "title")
                 return JSON.stringify({ count: 2, sentence: "", note: "", losses: "", shared: "", cannot_line: "2 stay as they are:", cannot: [{ name: "Lou Exemple", why: "its title field holds Dr already" }, { name: "M. et Mme Dupont", why: "its name holds two people: left as written" }],
                     previews: [{ key: "/a.vcf", before: "Mme Jeanne Martin", after: "Jeanne Martin", sure: true, note: "" }, { key: "/b.vcf", before: "Me Work", after: "Work", sure: false, note: "" }] })
-            return JSON.stringify({ count: a.keys.length, sentence: "Move " + a.keys.length + " contacts to “Professional”?", note: "Each keeps its identifier.", losses: "", shared: a.book === "cloud/pro" ? "“Professional” is shared with office: they will see what goes into it." : "", cannot_line: "", cannot: [], previews: [] })
+            return JSON.stringify({ count: a.keys.length, sentence: "Move " + a.keys.length + " contacts to “Professional”?", note: "Each keeps its identifier.", losses: "", shared: a.book === "cloud/pro" ? "“Professional” is shared with office: they will see what goes into it." : "", reach: a.book === "cloud/pro" ? ["2 of these are on your Safe list through a group; in this book they count as plain contacts until you turn its groups on."] : ["Who may reach you stays as its groups say."], cannot_line: "", cannot: [], previews: [] })
         }
         function runContactsBatch(text) { mock.ran = mock.ran.concat([JSON.parse(text)]); return "" }
         function stopContactsBatch() { mock.stopped++ }
@@ -127,6 +127,10 @@ Item {
             compare(root.named(dialog.contentItem, "batchSentence")[0].text, "Move 2 contacts to “Professional”?")
             const shared = root.named(dialog.contentItem, "batchShared")[0]
             verify(shared.visible && shared.text.indexOf("shared with office") >= 0, "who sees the book it fills, said first")
+            // Review V1: what the move does to who may reach you, said before it runs.
+            const reach = root.named(dialog.contentItem, "batchReach")
+            compare(reach.length, 1)
+            verify(reach[0].visible && reach[0].text.startsWith("2 of these are on your Safe list"), reach[0].text)
             compare(mock.ran.length, 0, "nothing runs before Go")
             dialog.accept()
             compare(JSON.stringify(mock.ran[0]), JSON.stringify({ keys: ["/a.vcf", "/b.vcf"], action: "move", book: "cloud/pro", group: "" }))
