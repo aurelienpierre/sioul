@@ -263,7 +263,8 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     // whatever the ticks. What is left to bill stays whole (`timereport::view`).
     let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
     // Each project's area once, each task's once, then a look-up a stretch (`StretchAreas`).
-    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects));
+    let task_areas = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects);
+    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &task_areas);
     let shows = |e: &Entry| !project.is_empty() || stretches.area_of(e).is_none_or(|area| area.meets(ticked));
     let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr(), &shows);
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
@@ -273,14 +274,21 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
         entry.kind = timelog::Kind::id(kind).to_string();
         entry.kind_said = tr().text(&format!("time-kind-{}", entry.kind), None);
     }
+    // Where estimates are off, by area: the tasks done in the period that the page shows (one
+    // project's; else those of an area ticked), their time beside their first estimate.
+    let (from, to) = timereport::bounds(period, anchor);
+    let counts = |t: &sioul_core::tasks::Task| if project.is_empty() { task_areas.of(t).meets(ticked) } else { t.projects.iter().any(|p| p == project) };
+    let by_area = timereport::estimates_by_area(&all, &loaded.tasks, &|t| task_areas.of(t), &counts, from, to, &sioul_core::zone::current());
     #[derive(serde::Serialize)]
     struct Shown {
         #[serde(flatten)]
         view: timereport::TimeView,
         /// The projects' filter's button (`areafilter::Shown`).
         filter: sioul_core::areafilter::Shown,
+        /// Time spent beside first estimates, by area, for the tasks done in the period.
+        by_area: Vec<timereport::AreaEstimate>,
     }
-    json(&Shown { view, filter })
+    json(&Shown { view, filter, by_area })
 }
 
 /// A project's billable time from `from` to `to`, written as a spreadsheet at

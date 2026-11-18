@@ -2588,6 +2588,10 @@ def write_time(p: Profile):
     for offset in range(0, (c.today - c.monday).days):
         session(c.monday + timedelta(days=offset), "14:15", 50, project="fernhill", note=t("Homepage, details", "Page d'accueil, détails"))
     session(c.today, "11:20", 40, task="sketch", note=t("the left layout's header, with the serif title", "l'en-tête de la mise en page de gauche, avec le titre à empattements"))
+    # Time for every area: the bus pass (admin) and the thank-you to Oskar (work), both done,
+    # timed: the Time page sets each beside its first estimate, by area.
+    session(c.day(-3), "18:10", 15, task="bus-pass")
+    session(c.today, "09:05", 10, task="oskar")
 
     by_month: dict[str, list] = {}
     for s in sessions:

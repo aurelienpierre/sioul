@@ -421,6 +421,9 @@ area-filter-none = Nothing ticked
 area-filter-as-hours = As the hours say
 area-filter-name = What shows: { $areas }
 area-filter-how = How this filter works
+area-filter-all = All areas
+area-filter-everything = Everything
+agenda-steps-filter-help = The steps of the plan show by what their task is for: every area unless you untick one. What you tick stays until you change it; As the hours say ticks what now is for. Events follow the Agendas filter; meals, the night and doses follow Show.
 ## What each device is for, and what comes to it when (docs/areas.md, "What each device is for")
 device-areas = { $areas ->
     [work] work
@@ -3176,6 +3179,10 @@ project-area-unsaid = Nothing ticked: a client's project counts as work; another
 projects-filter-help = Projects show by what they are for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while. A client's project whose use is unsaid counts as work; another one shows for what its open tasks are for, and always when it has none. The Time page shares these ticks.
 projects-none-ticked = No project for what is ticked.
 time-filter-help = Time shows by what its project is for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while; the Projects page shares these ticks. Time on no project counts by its task; time noted on nothing always shows. What is folded is counted in the whole beside the total, and what is left to bill never folds.
+time-by-area = Done in this period, by area
+time-by-area-spent = Spent
+time-by-area-estimated = First estimate
+time-by-area-help = For the tasks done in this period: the time spent on them beside what was first estimated. The plan learns from both, in every area.
 project-routes = Mail that comes here by itself
 ui-show-anyway = Show anyway
 folder-server-only = Kept on the server only: right click to keep a copy here.
