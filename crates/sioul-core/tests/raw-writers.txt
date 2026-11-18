@@ -300,6 +300,8 @@ sioul-core/src/duplicates.rs	done	2	std::fs::remove_file(&path)
 sioul-core/src/duplicates.rs	undo	1	std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default())
 sioul-core/src/duplicates.rs	undo	1	std::fs::remove_file(&record)
 
+# sioul-core/src/stars.rs: what a phone or a book starred at its last look (state, that place's own): no item.
+sioul-core/src/stars.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 # sioul-core/src/everywhere.rs: the notes of what went everywhere: no item.
 sioul-core/src/everywhere.rs	save	2	write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)

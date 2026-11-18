@@ -158,11 +158,18 @@ pub struct DndSettings {
     /// Android: this device keeps in step in the background (its own, never shared).
     #[serde(default = "yes")]
     pub background: bool,
+    /// Starred people both ways (`stars`; the owner's decision of 18
+    /// November 2026): a contact starred on a phone, or a favourite on a
+    /// server that keeps one, is on the Always through list, and everyone
+    /// on it is starred where their contact is. Off: as before, nothing is
+    /// starred nor added by Sioul.
+    #[serde(default)]
+    pub stars: bool,
 }
 
 impl Default for DndSettings {
     fn default() -> Self {
-        DndSettings { button: true, focus: false, pauses: true, sleep: false, people: true, background: true }
+        DndSettings { button: true, focus: false, pauses: true, sleep: false, people: true, background: true, stars: false }
     }
 }
 
@@ -1025,6 +1032,12 @@ pub struct Person {
     /// The contact card they came from (its UID), to find it again.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub contact: String,
+    /// Where they are starred, as each place said at its last look
+    /// (`stars::record`): a phone by its id, a book by "book:" and its
+    /// place; "starred", "not-starred" (held there, no star), "absent" (no
+    /// contact there holds them).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub starred: std::collections::BTreeMap<String, String>,
     /// What a later version writes here, kept as it is: written back unchanged,
     /// so that this device never sends another version's person as changed.
     #[serde(flatten)]
@@ -1198,6 +1211,7 @@ pub fn from_contact(contact: &crate::contacts::Contact) -> Person {
         phones: contact.phones.iter().map(|p| p.value.trim().to_string()).filter(|v| !v.is_empty()).collect(),
         emails: contact.emails.iter().map(|e| e.value.trim().to_string()).filter(|v| !v.is_empty()).collect(),
         contact: contact.uid.clone(),
+        starred: std::collections::BTreeMap::new(),
         other: toml::Table::new(),
     }
 }
