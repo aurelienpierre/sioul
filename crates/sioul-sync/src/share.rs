@@ -11301,6 +11301,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// What a project is for (docs/areas.md) travels with its record: the
+    /// areas' words written on one device are read on the other, a change
+    /// back the same way, the record's other fields kept; the field stays a
+    /// plain string, which a Sioul from before the three switches still reads
+    /// (as unsaid when its words are new to it), and an older "personal" read
+    /// on a new one as admin and leisure.
+    #[test]
+    fn a_project_s_area_travels_with_its_record() {
+        use sioul_core::areas::Area;
+        use sioul_core::projects::{ProjectEdit, ProjectStore, file_in, save_project};
+        let base = scratch("project-area");
+        let folder = base.join("Nextcloud").join("Documents").join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+        std::fs::create_dir_all(&desk_notes).unwrap();
+        std::fs::write(desk_notes.join(sioul_core::projects::FILE), "[[project]]\nid = \"garden\"\ntitle = \"Garden\"\narea = \"personal\"\n\n[[project.route]]\nfrom_domains = [\"seeds.example\"]\n").unwrap();
+        desk.exchange_notes(&folder, &key, NOW, &desk_notes);
+        phone.exchange_notes(&folder, &key, NOW + MINUTE, &phone_notes);
+        let area_on = |notes: &Path| ProjectStore::load(notes).unwrap().get("garden").map(|p| (p.area.clone(), p.area_of(), p.routes.len())).unwrap();
+        assert_eq!(area_on(&phone_notes), (Some("personal".into()), Area::PERSONAL, 1), "an older word, read as admin and leisure");
+        // Leisure alone, said on the phone: on the desk at the next exchange, its route kept.
+        let garden = ProjectStore::load(&phone_notes).unwrap().get("garden").cloned().unwrap();
+        save_project(&file_in(&phone_notes), "garden", &ProjectEdit { area: "leisure".into(), ..ProjectEdit::of(&garden) }).unwrap();
+        phone.exchange_notes(&folder, &key, NOW + 2 * MINUTE, &phone_notes);
+        desk.exchange_notes(&folder, &key, NOW + 3 * MINUTE, &desk_notes);
+        assert_eq!(area_on(&desk_notes), (Some("leisure".into()), Area::LEISURE, 1));
+        // Work and leisure, said on the desk: back on the phone, in the files' words.
+        save_project(&file_in(&desk_notes), "garden", &ProjectEdit { area: "leisure+work".into(), ..ProjectEdit::of(&garden) }).unwrap();
+        desk.exchange_notes(&folder, &key, NOW + 4 * MINUTE, &desk_notes);
+        phone.exchange_notes(&folder, &key, NOW + 5 * MINUTE, &phone_notes);
+        assert_eq!(area_on(&phone_notes), (Some("work+leisure".into()), Area::WORK.with(Area::LEISURE), 1));
+        // A plain string, as every Sioul's projects read it.
+        let record: toml::Table = std::fs::read_to_string(file_in(&phone_notes)).unwrap().parse().unwrap();
+        assert_eq!(record["project"][0]["area"].as_str(), Some("work+leisure"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn what_was_read_is_known_and_a_lost_record_comes_back() {
         let base = scratch("doses");
