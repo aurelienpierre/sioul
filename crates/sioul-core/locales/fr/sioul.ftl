@@ -4681,6 +4681,58 @@ agenda-stop-showing = Ne plus l’afficher…
 agenda-remove-confirm = Supprimer
 agenda-leave-confirm = Ne plus l’afficher
 agenda-keep = Le garder
+# Agendas abonnés par leur adresse web (18 novembre 2026, docs/client.md, « Calendars by their address »).
+subscribe-open = S’abonner à un agenda…
+subscribe-title = S’abonner à un agenda par son adresse
+subscribe-address = L’adresse de l’agenda
+subscribe-address-hint = https://…, ou une adresse webcal
+subscribe-where-moodle = Moodle : dans le calendrier, « Import or export calendars », puis « Export calendar », puis « Get calendar URL », et « Copy URL » (les mots de Moodle en anglais).
+subscribe-where-pronote = PRONOTE : « Communication > Agenda », puis « Exporter l’agenda au format iCal » en haut à droite, là où l’établissement le permet. Pas encore essayé avec une vraie adresse.
+subscribe-official = Ou un agenda officiel français :
+subscribe-official-public = Jours fériés · { $name }
+subscribe-official-school = Vacances scolaires · { $name }
+subscribe-choose-public = Les jours fériés d’un territoire…
+subscribe-choose-school = Les vacances scolaires d’une zone…
+subscribe-name = Son nom
+subscribe-holidays = Ce qu’il tient
+subscribe-holidays-none = Des événements
+subscribe-holidays-public = Des jours fériés
+subscribe-holidays-school = Des vacances scolaires
+subscribe-days-off = Ses jours comptent comme mes jours sans travail
+subscribe-after-class = Les vacances commencent après la classe : leur premier jour est encore un jour de classe, et le jour de la reprise n’en fait pas partie
+subscribe-make = S’abonner
+subscribe-reading = Un agenda est en cours de lecture. Réessayez dans un instant.
+subscribe-refreshed = Agenda lu : ses événements sont à jour.
+subscribe-unchanged = Agenda lu : rien n’a changé.
+subscribe-refresh = Actualiser
+subscribe-change = Changer l’adresse
+subscribe-change-save = Garder cette adresse
+subscribe-stop = Arrêter…
+subscribe-stop-question = Arrêter cet agenda sur tous vos appareils ? Ses événements quittent chacun d’eux ; vous pourrez vous abonner de nouveau plus tard.
+subscribe-stop-confirm = L’arrêter
+subscribe-line-read = Lu { $when }.
+subscribe-line-never = Pas encore lu sur cet appareil.
+subscribe-line-no-calendar = Cette adresse ne donne plus d’agenda, depuis { $since }. { $why } { $kept ->
+        [yes] La dernière copie reste.
+       *[no] Rien n’en a encore été lu.
+    } Changez l’adresse, ou actualisez.
+subscribe-line-unreached = Pas joint depuis { $since }. { $why } { $kept ->
+        [yes] La dernière copie reste ;
+       *[no] {""}
+    } Sioul réessaie plus tard.
+subscribe-not-https = Seule une adresse https:// est lue, ou une adresse webcal.
+subscribe-not-address = Ce n’est pas l’adresse d’un agenda.
+subscribe-not-public = Cette adresse est sur un réseau privé : Sioul lit seulement des adresses publiques.
+subscribe-redirects = Cette adresse renvoie ailleurs plus de trois fois.
+subscribe-too-large = Cet agenda pèse plus de dix mégaoctets : il n’a pas été lu.
+subscribe-too-many = Cet agenda tient plus de vingt mille événements : il n’a pas été lu.
+subscribe-page = L’adresse donne une page web, pas un agenda : peut-être une page de connexion.
+subscribe-text = Le serveur a répondu « { $said } », pas un agenda.
+subscribe-empty = Le serveur n’a rien répondu.
+subscribe-not-calendar = La réponse n’est pas un agenda.
+subscribe-gone = Le serveur ne connaît plus cette adresse.
+subscribe-status = Le serveur a répondu par le code { $status }.
+subscribe-network = Le serveur n’a pas pu être joint.
 agenda-remove-question = Supprimer « { $name } », { $count ->
         [one] { $what ->
             [tasks] une tâche

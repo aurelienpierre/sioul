@@ -502,6 +502,31 @@ Item {
             Qt.callLater(() => button.scrollTo(key))
     }
 
+    // "Subscribe to a calendar…" asked from elsewhere (Settings ▸ Hours ▸ Vacations and
+    // holidays): Agenda ⚙ opened at Your agendas, its form open once the panel holds it.
+    function askSubscribe() {
+        page.openSettings(true, "agendas")
+        subscribeTries.tries = 0
+        subscribeTries.start()
+    }
+    Timer {
+        id: subscribeTries
+
+        property int tries: 0
+
+        interval: 60
+        repeat: true
+        onTriggered: {
+            const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("agendasSetup")
+            if (setup !== null) {
+                setup.askSubscribe()
+                stop()
+            } else if (++tries > 20) {
+                stop()
+            }
+        }
+    }
+
     // For the window's images: one agenda's line opened in Agenda ⚙ ▸ Your agendas.
     function openAgendaLine(id) {
         const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("agendasSetup")

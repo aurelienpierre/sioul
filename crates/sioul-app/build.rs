@@ -36,6 +36,7 @@ fn main() {
         "qml/AgendaPage.qml",
         "qml/AgendaFilter.qml",
         "qml/AgendasSetup.qml",
+        "qml/SubscribeForm.qml",
         "qml/LinkLine.qml",
         "qml/AvailabilitySetup.qml",
         "qml/AvailabilityChooser.qml",

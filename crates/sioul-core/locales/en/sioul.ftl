@@ -4645,6 +4645,58 @@ agenda-stop-showing = Stop showing…
 agenda-remove-confirm = Remove
 agenda-leave-confirm = Stop showing
 agenda-keep = Keep it
+# Calendars subscribed by their web address (18 November 2026, docs/client.md, "Calendars by their address").
+subscribe-open = Subscribe to a calendar…
+subscribe-title = Subscribe to a calendar by its address
+subscribe-address = The calendar's address
+subscribe-address-hint = https://… or webcal://…
+subscribe-where-moodle = Moodle: in the calendar, "Import or export calendars", then "Export calendar", then "Get calendar URL", and "Copy URL".
+subscribe-where-pronote = PRONOTE: "Communication > Agenda", then "Exporter l'agenda au format iCal" at the top right, where the school allows it (its French screens' words). Not tried with a real address yet.
+subscribe-official = Or an official French calendar:
+subscribe-official-public = Public holidays · { $name }
+subscribe-official-school = School holidays · { $name }
+subscribe-choose-public = Public holidays of a territory…
+subscribe-choose-school = School holidays of a zone…
+subscribe-name = Its name
+subscribe-holidays = What it holds
+subscribe-holidays-none = Events
+subscribe-holidays-public = Public holidays
+subscribe-holidays-school = School holidays
+subscribe-days-off = Its days count as my days off
+subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
+subscribe-make = Subscribe
+subscribe-reading = A calendar is being read. Try again in a moment.
+subscribe-refreshed = Calendar read: its events are up to date.
+subscribe-unchanged = Calendar read: nothing changed.
+subscribe-refresh = Refresh now
+subscribe-change = Change the address
+subscribe-change-save = Keep this address
+subscribe-stop = Stop…
+subscribe-stop-question = Stop this calendar on all your devices? Its events leave each of them; you can subscribe again later.
+subscribe-stop-confirm = Stop it
+subscribe-line-read = Read { $when }.
+subscribe-line-never = Not read on this device yet.
+subscribe-line-no-calendar = This address no longer gives a calendar, since { $since }. { $why } { $kept ->
+        [yes] The last copy stays.
+       *[no] Nothing was read from it yet.
+    } Change the address, or refresh now.
+subscribe-line-unreached = Not reached since { $since }. { $why } { $kept ->
+        [yes] The last copy stays;
+       *[no] {""}
+    } Sioul tries again later.
+subscribe-not-https = Only an address beginning with https:// or webcal:// is read.
+subscribe-not-address = This is not a calendar's address.
+subscribe-not-public = This address is on a private network: Sioul reads public addresses only.
+subscribe-redirects = This address sends elsewhere more than three times.
+subscribe-too-large = This calendar weighs more than ten megabytes: it was not read.
+subscribe-too-many = This calendar holds more than twenty thousand events: it was not read.
+subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
+subscribe-text = The server answered "{ $said }", not a calendar.
+subscribe-empty = The server answered nothing.
+subscribe-not-calendar = The answer is not a calendar.
+subscribe-gone = The server no longer knows this address.
+subscribe-status = The server answered with code { $status }.
+subscribe-network = The server could not be reached.
 agenda-remove-question = Remove “{ $name }”, { $count ->
         [one] one { $what ->
             [tasks] task

@@ -881,6 +881,11 @@ SioulWindow {
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
+        // "Subscribe to a calendar…" from Settings ▸ Hours ▸ Vacations and holidays: the Agenda's ⚙, its form open.
+        else if (item.kind === "settings:agendas.subscribe") {
+            window.page = 4
+            Qt.callLater(() => agendaPage.askSubscribe())
+        }
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
