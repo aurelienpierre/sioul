@@ -2,11 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The Health page's settings (its ⚙), set once or rarely, made the first
-// time they open: where the pharmacy and renewal errands go, the usual
-// meals, naps and night, the pause to move, the limit on chats. The
-// medicines and the prescriptions are the page's content, changed there
-// (MedicinesSection.qml), as is a day that differs, that day only. On the
-// right of the window, all of a phone's; Escape or a click outside closes it.
+// time they open: where the pharmacy and renewal errands go, the pause to
+// move, the limit on chats. The usual meals, naps and night are in
+// Settings ▸ Hours, since every page reads the time now: one line here
+// leads there. The medicines and the prescriptions are the page's content,
+// changed there (MedicinesSection.qml), as is a day that differs, that day
+// only. On the right of the window, all of a phone's; Escape or a click
+// outside closes it.
 
 pragma ComponentBehavior: Bound
 
@@ -25,12 +27,11 @@ SafePopup {
     // As the backend gives it (`health::settings_view`).
     property var shown: ({ movement: { enabled: true, minutes: 45 }, chats: { enabled: false, minutes: 60, locked_minutes: 30 }, errands_list: "", lists: [] })
 
-    // Something changed that the page shows (the usual meals, naps and night): it reads its days again.
+    // Something changed that the page shows: it reads its days again.
     signal changed
 
     function reload() {
         panel.shown = JSON.parse(panel.sioul.healthSettings())
-        needs.reload()
     }
 
     // A setting changed.
@@ -46,51 +47,12 @@ SafePopup {
         panel.saved()
     }
 
-    // Opened where the usual meals, naps and night are set (the Porch's "Set
-    // my night", Settings ▸ Hours): scrolled there once open, and kept there a
-    // moment while the rows above it are laid out, then left to the hand.
-    property bool toNeeds: false
-
-    function showNeeds() {
-        panel.toNeeds = true
-        if (panel.opened)
-            panel.scrollToNeeds()
-        else
-            panel.open()
-    }
-
-    function scrollToNeeds() {
-        const flick = scroll.contentItem as Flickable
-        if (flick)
-            flick.contentY = Math.max(0, Math.min(needs.y - 8, column.implicitHeight - flick.height))
-        needsSettled.restart()
-    }
-
-    onOpened: if (panel.toNeeds) panel.scrollToNeeds()
-
-    // The panel's end brought into view: the night's last rows, the pause to
-    // move and the limit on chats (the window's pictures).
+    // The panel's end brought into view: the pause to move and the limit on
+    // chats (the window's pictures).
     function showEnd() {
-        panel.toNeeds = false
         const flick = scroll.contentItem as Flickable
         if (flick)
             flick.contentY = Math.max(0, column.implicitHeight - flick.height)
-    }
-
-    Connections {
-        target: needs
-
-        function onYChanged() {
-            if (panel.toNeeds && panel.opened)
-                panel.scrollToNeeds()
-        }
-    }
-
-    Timer {
-        id: needsSettled
-
-        interval: 400
-        onTriggered: panel.toNeeds = false
     }
 
     parent: Overlay.overlay
@@ -171,15 +133,31 @@ SafePopup {
                 }
             }
 
-            // The usual meals, naps and night.
-            NeedsSection {
-                id: needs
-
+            // The usual meals, naps and night: in Settings ▸ Hours, where every page's time is set.
+            Label {
+                Layout.topMargin: 12
+                text: panel.sioul.text("needs-title")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: panel.theme.accent
+            }
+            Label {
                 Layout.fillWidth: true
-                Layout.topMargin: 6
-                sioul: panel.sioul
-                theme: panel.theme
-                onChanged: panel.changed()
+                text: panel.sioul.text("health-needs-elsewhere")
+                wrapMode: Text.Wrap
+                color: panel.theme.text
+            }
+            Button {
+                objectName: "healthNeedsLink"
+                implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                flat: true
+                text: panel.sioul.text("health-needs-open")
+                icon.name: "go-next"
+                icon.color: panel.theme.text
+                onClicked: {
+                    panel.close()
+                    panel.sioul.reminderOpened("needs", "", "")
+                }
             }
 
             // A pause to move, while focusing.

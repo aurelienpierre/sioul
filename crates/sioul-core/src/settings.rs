@@ -62,7 +62,8 @@ pub enum Kind {
     Note,
     /// A secret kept in the system keyring, typed and never shown: `value` says whether one is kept.
     Secret,
-    /// Nothing to change here: a button to where it is changed (`value`: "needs", the Health page's meals and sleep).
+    /// Nothing to change here: a button to where it is changed (`value`: the
+    /// window's `openThing` kind, "settings:<key>" for another setting).
     Link,
     /// Nothing to change: a sentence (`help`) and a button (`label`) that
     /// does one thing when pressed, never by itself; pressing it saves `true`
@@ -107,6 +108,12 @@ pub enum Kind {
     /// settings; the e-invoicing platform. The window reads and writes them
     /// itself (`invoice_settings`, `set_invoice_setting`). Nothing in `value`.
     Invoicing,
+    /// The usual meals, naps and night, the window's own block
+    /// (`NeedsSection.qml`) in Settings ▸ Hours: every page reads the time
+    /// now. Kept in the health file (`needs::Needs`, part "health"
+    /// of the sharing), read and written by the window itself (`needs`,
+    /// `save_needs`). Nothing in `value`.
+    Needs,
     /// Leaving the lists of the mail you called spam, the window's own block
     /// (`LeaveSpam.qml`): a row when there are some, found off the window's
     /// thread (`leave_spam_look`), and its sheet (docs/client.md,
@@ -673,11 +680,15 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-hours-group", None);
             let week = |windows: &[crate::window::AdminWindow]| SettingValue::Windows(windows.iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect());
             // Working hours and hours for your own admin, each its own week; leisure
-            // is every other time, meals and sleep come from Health (docs/areas.md).
+            // is every other time (docs/areas.md).
             let of = |kind: &str| config.windows.iter().filter(|w| w.kind() == kind).cloned().collect::<Vec<_>>();
             b.push("window", "windows", Kind::Windows, week(&of("work")));
             b.push("window.admin", "windows-admin", Kind::Windows, week(&of("admin")));
-            b.push("link.needs", "hours-leisure", Kind::Link, SettingValue::Text("needs".into()));
+            // The usual meals, naps and night, under their own heading: every page reads
+            // the time now (docs/health.md). Kept in the health file, never in this one.
+            b.group = tr.text("needs-title", None);
+            b.said("needs", Kind::Needs, tr.text("needs-title", None), tr.text("needs-help", None), SettingValue::Text(String::new()));
+            b.group = tr.text("set-time-off-group", None);
             let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
             b.push("time_off", "time-off", Kind::TimeOff, SettingValue::TimeOff(off));
             // What reaches you, and when (docs/attention.md): the matrix is the tab's own
@@ -1613,7 +1624,7 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
@@ -1633,6 +1644,13 @@ mod tests {
         assert_eq!(crate::invoice::life::preset_of(&older.invoice).id, "fr");
         assert_eq!(crate::invoice::life::scheme_on(&older.invoice, today), ("franchise".to_string(), "TVA non applicable, art. 293 B du CGI".to_string()));
         assert_eq!(crate::invoice::life::issuer_on(&older.invoice, today).name, "Camille Exemple EI", "as typed: the form not said yet");
+        // Settings ▸ Hours: the two weeks under their heading, then the usual meals, naps and night under
+        // theirs (the window's own block, every page reading the time now), then the days off under theirs.
+        let hours: Vec<(String, Kind, String)> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "hours").map(|s| (s.key, s.kind, s.group)).collect();
+        assert_eq!(
+            hours,
+            [("window", Kind::Windows, "Working hours and quiet time"), ("window.admin", Kind::Windows, "Working hours and quiet time"), ("needs", Kind::Needs, "Meals, rest and sleep"), ("time_off", Kind::TimeOff, "Days off")].map(|(k, kind, g)| (k.to_string(), kind, g.to_string()))
+        );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
         assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
@@ -1669,7 +1687,7 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("theme", None), ("window", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.

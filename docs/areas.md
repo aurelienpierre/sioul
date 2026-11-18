@@ -46,7 +46,7 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 
 **No working or admin hours at all**: everything comes, as before any were set (`Time::Any`); meals and sleep keep their time when Health sets them. Leisure lets only your safe senders through: someone who has not set hours yet would see no other mail. Mail, calls and other apps' messages read such a time as working and admin hours together: the more open of a row's two cells (`attention::Now::of`, [attention.md](attention.md), Q14).
 
-**No night set**: nights are leisure, and nothing keeps notifications away while you sleep. The Porch asks for it in a card, "Set my night" (the Health page, at its meals and night) or "Leave as is", which stops asking.
+**No night set**: nights are leisure, and nothing keeps notifications away while you sleep. The Porch asks for it in a card, "Set my night" (Settings ▸ Hours, at the meals and night) or "Leave as is", which stops asking.
 
 ### What each time brings
 

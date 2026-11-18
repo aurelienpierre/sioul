@@ -146,7 +146,7 @@ An address the Porch was never closed on shows its last two weeks only. Older ma
 When there is something, a few lines come before the lanes:
 
 - **When your hours are not set**, a card asks for them, with **Set my hours** (which opens Settings at them) and **Leave as is** (which stops asking).
-- **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens the Health page where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
+- **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens Settings ▸ Hours where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
 - **Notes deleted many at once**, on a device that shares its notes: how many went, from which folders, when, and when they leave your other devices by themselves, with **Put them back**, **Take them out now** and **Leave as is**. Nothing has to be pressed. Said once: once shown, the card does not come back after you leave the Porch; Settings says it as long as it lasts. See [Sharing](sharing.md#notes-and-papers).
 - **The topics Sioul started** from the senders it knows, the first time enough mail is here: which ones, and where to rename or remove them, with **Leave as is** ([Mail, Topics](mail.md#topics)).
 - **Where you stopped**: the line you left when something interrupted you, with its task, until you press **Done**. See [Tasks](tasks.md#starting-and-stopping).

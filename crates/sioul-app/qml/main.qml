@@ -874,12 +874,10 @@ SioulWindow {
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
         else if (item.kind === "health")
             window.page = 10
-        // Meals, naps and the night, where Health sets them (the Porch's card, Settings ▸ Hours).
-        else if (item.kind === "needs") {
-            window.page = 10
-            if (window.healthPage)
-                window.healthPage.showNeeds()
-        }
+        // The usual meals, naps and the night, in Settings ▸ Hours at their heading (the
+        // Porch's "Set my night", a meal's card, What reaches you ▸ Exceptions, Health's ⚙).
+        else if (item.kind === "needs")
+            window.showParameters("needs")
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
@@ -2356,12 +2354,12 @@ SioulWindow {
                 () => healthPage.showMedicines(),
                 () => {},
                 () => grabber.save("health-medicines"),
-                // Its week, and its settings (the usual meals and night).
+                // Its week, and its settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),
@@ -2395,6 +2393,11 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("settings-hours"),
+                // The usual meals, naps and night, under their heading in the same tab.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
                 // Reachable for an hour (part 3: "Work now" went): the Porch open, every lane and address.
                 () => {
                     window.page = 0
@@ -4780,13 +4783,20 @@ SioulWindow {
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.settingsPanel().showEnd(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings-end"),
                 () => healthPage.closeSettings(),
+                // The usual meals, naps and night, in Settings ▸ Hours at their heading.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
+                () => window.page = 10,
+                () => {},
                 // Dinner's menu, then its times for today only.
                 () => healthPage.showMenu("meal:2"),
                 () => {},
@@ -5151,12 +5161,12 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
-                // The week, then the settings (the usual meals and night).
+                // The week, then the settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),

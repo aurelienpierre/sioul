@@ -282,7 +282,7 @@ The ⚙ at the top of the page:
 - **Your agendas**: what each agenda is: whose, what for, when it reaches you, what you may do with it ([Several agendas](#several-agendas)); new agendas, their names, colours, removal and who sees them ([Your agendas on their servers](#agendas-on-their-servers)).
 - **Conflicts**: which agendas are compared beyond the rule, a box for each pair ([Two events at once](#two-events-at-once)).
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
-- **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
+- **The day starts at**: the hour the day and week views start on when neither your nights (set in [Settings ▸ Hours](settings.md#hours)) nor your hours say otherwise.
 - **A new event lasts**: 30 minutes at first; how long a new event is, made from the timeline's **+** or with **New event**.
 - **Suggest addresses as you type**: on at first; what you type in a place is then also sent to the Base Adresse Nationale (your region France) or to Photon, to suggest addresses ([Addresses as you type](#addresses-as-you-type)).
 

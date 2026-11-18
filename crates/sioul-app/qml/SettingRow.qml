@@ -43,7 +43,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -64,7 +64,7 @@ ColumnLayout {
     }
 
     // Nothing to change here: a sentence, and a button to where it is
-    // changed (the Health page's meals and sleep, from the hours).
+    // changed (the automatic senders' words, from the Porch's Filed lane).
     Loader {
         active: field.setting.kind === "link"
         visible: active
@@ -299,6 +299,22 @@ ColumnLayout {
                 about: field.setting.help
                 title: field.setting.group === "" ? field.sioul.text("unsubscribed-group") : ""
                 onEnded: field.changedElsewhere()
+            }
+        }
+    }
+
+    // Settings ▸ Hours' usual meals, naps and night (NeedsSection.qml), under their own
+    // heading: every page reads the time now. Its sentence said first there.
+    Loader {
+        active: field.setting.kind === "needs"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            NeedsSection {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
             }
         }
     }

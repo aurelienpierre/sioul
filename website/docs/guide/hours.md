@@ -1,5 +1,5 @@
 ---
-description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep from Health; each address, site, budget and task tied to them; what each of your devices is for, and what comes forward on it when; quiet time, Reachable, do not disturb and "Work until tonight".
+description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep set beside them; each address, site, budget and task tied to them; what each of your devices is for, and what comes forward on it when; quiet time, Reachable, do not disturb and "Work until tonight".
 ---
 
 # Hours: work, your admin, leisure, meals, sleep
@@ -35,8 +35,8 @@ Now is always one of five times:
 |---|---|---|
 | **Work** | your working hours, and the work you ask for outside them (**Work half an hour more** and the like, **Work until tonight**) | [Settings ▸ Hours](settings.md#hours) |
 | **Admin** | your hours for your admin | [Settings ▸ Hours](settings.md#hours) |
-| **Meals** | each meal, from getting it ready to its end | [Health](health.md#meals-rest-and-sleep) |
-| **Sleep** | the night, from winding down to waking; each nap, with its minutes to come back | [Health](health.md#meals-rest-and-sleep) |
+| **Meals** | each meal, from getting it ready to its end | [Settings ▸ Hours](settings.md#hours), [Meals, rest and sleep](health.md#meals-rest-and-sleep) |
+| **Sleep** | the night, from winding down to waking; each nap, with its minutes to come back | [Settings ▸ Hours](settings.md#hours), [Meals, rest and sleep](health.md#meals-rest-and-sleep) |
 | **Leisure** | every other time: evenings, days without hours, time off, the rest of a day closed with **Done for today** | nothing to set |
 
 **When they overlap**, sleep comes first, then meals, then the hours: lunch inside your working hours is a meal while it lasts; **Work four hours more** running into the night leaves the night to sleep. Working and admin hours may overlap: then what each brings comes, all together.
@@ -45,7 +45,7 @@ The hour before bed is sleep's: Health keeps it free, and nothing should keep th
 
 ## The hours
 
-In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave. There is no leisure to set: it is every other time, and meals and sleep come from the Health page, a button away.
+In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave. There is no leisure to set: it is every other time. Between the two, **Meals, rest and sleep** sets your usual meals, naps and night ([Health](health.md#meals-rest-and-sleep) says what they do).
 
 Leisure set as hours by an earlier Sioul (its "free time") is left in your settings, untouched, and no longer counts. **Free time** is now a pause you take, whatever the hour: see [Pauses](pauses.md).
 
@@ -72,7 +72,7 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 
 A computer for work, a phone for your admin and your friends, a tablet on the sofa: in **Settings ▸ Devices**, three switches on each device's card say what it is **For**: **Work**, **Your admin**, **Leisure**, any of them together. You can say it of any device, from the one in your hand. Each device then brings forward only what it is for, at the hours for it. With nothing ticked, everything comes there, as before: nothing changes on any device until you say what one is for.
 
-Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each time your week has (no admin column while admin has no hours of its own, no meals column while Health sets none).
+Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each time your week has (no admin column while admin has no hours of its own, no meals column while none is set).
 
 | | Work | Admin | Leisure, meals | Sleep |
 |---|---|---|---|---|
@@ -163,7 +163,7 @@ From winding down to waking, and during a nap, nothing disturbs:
 - every address folds on the Mail page; only the sites for leisure are listed;
 - Tasks, Projects and Time wait behind one sentence and **Show anyway**; on Tasks, a thought can still be noted for later.
 
-Without a night set on the Health page, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
+Without a night set in Settings ▸ Hours, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
 
 ## Reachable, and work until tonight {#work-now}
 

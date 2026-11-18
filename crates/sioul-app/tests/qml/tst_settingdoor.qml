@@ -78,14 +78,15 @@ TestCase {
         compare(fakeWindow.sitesPage.asked[1], [true, ""], "the page's own name: its ⚙ at its top")
     }
 
-    // What Settings holds: Settings, at its tab.
+    // What Settings holds: Settings, at its tab; the usual meals, naps and night
+    // ("needs", every door to them) in Settings ▸ Hours.
     function test_settings_keys_open_settings() {
-        for (const key of ["theme", "window", "time_off", "attention.pause", "words.languages", "files"]) {
+        for (const key of ["theme", "window", "needs", "time_off", "attention.pause", "words.languages", "files"]) {
             fakeWindow.page = 0
             door.open(key)
             compare(fakeWindow.page, 12, key)
         }
-        compare(fakeWindow.parametersPage.asked, ["theme", "window", "time_off", "attention.pause", "words.languages", "files"])
+        compare(fakeWindow.parametersPage.asked, ["theme", "window", "needs", "time_off", "attention.pause", "words.languages", "files"])
         compare(fakeWindow.sitesPage.asked, [])
     }
 

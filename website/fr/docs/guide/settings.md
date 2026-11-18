@@ -31,13 +31,13 @@ La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affi
 
 <figure markdown="span">
   [![L’onglet Heures des Paramètres : « Heures de travail », chaque jour de la semaine coché ou non, avec ses plages horaires, d’un début à une fin, et une phrase sur ce qu’elles font ; puis « Heures pour vos démarches », réglées de la même façon.](../assets/screens/fr/settings-hours.png){ loading=lazy }](../assets/screens/fr/settings-hours.png "Ouvrir l’image en grand")
-  <figcaption>Deux semaines : travail, vos démarches. Puis les congés.</figcaption>
+  <figcaption>Deux semaines : travail, vos démarches. Puis les repas, le repos et le sommeil, et les congés.</figcaption>
 </figure>
 
 - **Heures de travail** : ces jours et à ces heures, le travail peut vous joindre. En dehors, il se repose.
 - **Heures pour vos démarches** : vos démarches viennent alors (organismes, factures, courriers, courses de santé).
-- **Repas et sommeil, sur la page Santé** : une phrase, et un bouton vers eux. Les loisirs, c’est tout le reste du temps, ni travail ni démarches : il n’y a rien à régler pour eux. Les repas et le sommeil se règlent sur la page [Santé](health.md#meals-rest-and-sleep), et pendant le sommeil rien ne dérange.
-- **Congés** : vacances, arrêt maladie, calme du premier jour au dernier, comme un jour sans travail, avec un mot dessus.
+- **Repas, repos et sommeil**, sous leur propre titre : vos repas, siestes et nuit habituels, le réveil au lever, l’avis avant chacun et de combien **Plus tard** en décale un ([Repas, repos et sommeil](health.md#meals-rest-and-sleep)). Toutes les pages les suivent : ce à quoi sert le moment présent, le plan, ce qui vous joint. Un jour qui diffère se change sur la page Santé, ce jour-là seulement. Les loisirs, c’est tout le reste du temps, ni travail ni démarches : il n’y a rien à régler pour eux.
+- **Congés**, sous **Jours sans travail** : vacances, arrêt maladie, calme du premier jour au dernier, comme un jour sans travail, avec un mot dessus.
 
 Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusieurs : **+** en ajoute une, **×** en retire une. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
 
@@ -186,7 +186,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
 | [Notes](notes.md#new-notes) | où vont les nouvelles notes |
 | [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; votre compte Bitwarden |
-| [Santé](health.md#meals-rest-and-sleep) | où vont les démarches, les repas, siestes et nuit habituels, la pause pour bouger, la limite des discussions |
+| [Santé](health.md#prescriptions) | où vont les démarches, la pause pour bouger, la limite des discussions ; un bouton vers les repas, siestes et nuit habituels, dans [Heures](#hours) |
 
 Le ⚙ les ouvre à droite de la page, qui reste à côté : deux cinquièmes de la fenêtre et un peu plus, de 520 à 760 pixels ; dans une fenêtre de moins de 720 pixels de large (celle d’un téléphone, d’une tablette en écran partagé), sur toute la fenêtre. Échap ou un clic à côté les ferme.
 

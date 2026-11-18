@@ -31,13 +31,13 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 
 <figure markdown="span">
   [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, with its ranges of hours (two on weekdays: 09:00–12:00 and 14:00–17:00) and + to add one, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
-  <figcaption>Two weeks: work, your admin. Then time off.</figcaption>
+  <figcaption>Two weeks: work, your admin. Then meals, rest and sleep, and time off.</figcaption>
 </figure>
 
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
-- **Meals and sleep, on the Health page**: one sentence, and a button to them. Leisure is every other time, neither work nor admin: there is nothing to set for it. Meals and sleep are set on the [Health](health.md#meals-rest-and-sleep) page, and while you sleep nothing disturbs.
-- **Time off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
+- **Meals, rest and sleep**, under their own heading: your usual meals, naps and night, the alarm at waking, the notice before each and how far **Later** moves one ([Meals, rest and sleep](health.md#meals-rest-and-sleep)). Every page follows them: what now is for, the plan, what reaches you. A day that differs is changed on the Health page, that day only. Leisure is every other time, neither work nor admin: there is nothing to set for it.
+- **Time off**, under **Days off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
 
 Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
 
@@ -186,7 +186,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
 | [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; your Bitwarden account |
-| [Health](health.md#meals-rest-and-sleep) | where the errands go, the usual meals, naps and night, the pause to move, the limit on chats |
+| [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.
 

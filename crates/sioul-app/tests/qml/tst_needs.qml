@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The usual meals, naps and night in Health's settings (NeedsSection.qml)
+// The usual meals, naps and night in Settings ▸ Hours (NeedsSection.qml)
 // at a phone's 360 points, in English and in French: nothing past the
 // screen's edge, a minutes field's words wrapping beside its box (10
 // November 2026: the French cards reached 399 points). Their words as the
@@ -58,6 +58,8 @@ Item {
             width: root.width - 32
             sioul: words
             theme: testTheme
+            // Its sentence, as the row gives it (`settings::for_view`).
+            about: words.text("needs-help")
         }
     }
 

@@ -7026,8 +7026,11 @@ impl qobject::Sioul {
 
     fn save_needs(self: Pin<&mut Self>, edit: &QString, shown: &QString) -> QString {
         let problem = crate::health::save_needs(&edit.to_string(), &shown.to_string());
-        // The plan goes around them at once.
-        crate::work::show_work(&self.qt_thread(), &self.shared());
+        // The plan goes around them at once; the Health page reads its days again
+        // (they are set in Settings ▸ Hours, away from it).
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        crate::work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
         QString::from(&problem)
     }
 

@@ -11,8 +11,10 @@
 // and the doubt when another device may know: never "not taken". The
 // medicines and the prescriptions are the page's content, after the day:
 // under its list, or in a column of their own on a wide window
-// (MedicinesSection.qml); their forms open from there. What is set once (the
-// usual meals and night, the pauses, where the errands go) is behind the ⚙.
+// (MedicinesSection.qml); their forms open from there. What is set once
+// (where the errands go, the pause to move, the limit on chats) is behind the
+// ⚙; the usual meals, naps and night are in Settings ▸ Hours, and the page
+// reads its days again when they change there (backend.rs, `save_needs`).
 // Nothing counts what was not done.
 
 pragma ComponentBehavior: Bound
@@ -71,12 +73,6 @@ Item {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
 
-    // Where the usual meals, naps and night are set: the settings, opened there
-    // (the Porch's card, Settings ▸ Hours, the window's pictures).
-    function showNeeds() {
-        settings.now().showNeeds()
-    }
-
     // The week: the agenda's Week, where it is drawn in time among the rest (for one
     // release, then the link goes); the day: this page (the window's pictures too).
     function showWeek() {
@@ -87,6 +83,7 @@ Item {
         page.window.page = 10
     }
 
+    // The page's ⚙, made the first time (the window's pictures).
     function settingsPanel() {
         return settings.now()
     }

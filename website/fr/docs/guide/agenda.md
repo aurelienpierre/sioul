@@ -281,7 +281,7 @@ Le ⚙ en haut de la page :
 - **Vos agendas** : ce qu’est chaque agenda : à qui, pour quoi, quand il vous atteint, ce que vous pouvez en faire ([Plusieurs agendas](#several-agendas)) ; les nouveaux agendas, leurs noms, leurs couleurs, leur suppression et qui les voit ([Vos agendas sur leurs serveurs](#agendas-on-their-servers)).
 - **Conflits** : quels agendas sont comparés au-delà de la règle, une case pour chaque paire ([Deux événements en même temps](#two-events-at-once)).
 - **Ce que prend un agenda** : des événements, des tâches ou les deux, comme le dit votre serveur. L’agenda montre ceux qui prennent des événements, la page Tâches les listes qui prennent des tâches ; un agenda qui prend les deux est dans les deux, et dit « événements et tâches » partout où il est proposé.
-- **La journée commence à** : l’heure à laquelle commencent les vues du jour et de la semaine quand ni vos nuits (réglées dans [Santé](health.md)) ni vos heures ne disent autre chose.
+- **La journée commence à** : l’heure à laquelle commencent les vues du jour et de la semaine quand ni vos nuits (réglées dans [Paramètres ▸ Heures](settings.md#hours)) ni vos heures ne disent autre chose.
 - **Un nouvel événement dure** : 30 minutes au début ; la durée d’un nouvel événement, créé avec le **+** de la ligne du temps ou avec **Nouvel événement**.
 - **Suggérer des adresses pendant la saisie** : activé au début ; ce que vous tapez dans un lieu part alors aussi vers la Base Adresse Nationale (votre région en France) ou vers Photon, pour suggérer des adresses ([Des adresses pendant la saisie](#addresses-as-you-type)).
 

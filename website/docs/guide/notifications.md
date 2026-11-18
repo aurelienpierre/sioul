@@ -209,7 +209,7 @@ On a phone, Sioul's notifications are the same two kinds, each in its own channe
 From winding down to waking, and during a nap, doses come unless you change it: you set their times, and a dose at 05:00 is meant to wake you.
 
 - **During sleep and a pause**: the **Doses** row, in Sioul's own: **At once** (unless you change it) or **Later**. Later, each dose's reminder comes when you wake or come back, once, and so does the question on doses due while Sioul was closed. Every other cell is fixed at once: Sioul never holds a dose without that choice.
-- **Without a night set** on the Health page, nothing keeps notifications away at night: the Porch asks for it in a card ([Hours](hours.md#sleep)).
+- **Without a night set** in Settings ▸ Hours, nothing keeps notifications away at night: the Porch asks for it in a card ([Hours](hours.md#sleep)).
 
 ### The gathered times {#the-gathered-times}
 
@@ -472,7 +472,7 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 - **A person's sheet**, from their card or a message: their list, Always through ([above](#a-persons-sheet)).
 - **An event**: **Remind**, in its form and its details ([Agenda](agenda.md#reminders)).
 - **A site**: **Real time**, and its menu ([Sites](sites.md)).
-- **Health ⚙**: the notices of meals, naps and the night, the pause to move ([Health](health.md)).
+- **Settings ▸ Hours**: the notices of meals, naps and the night ([Meals, rest and sleep](health.md#meals-rest-and-sleep)); **Health ⚙**: the pause to move ([Health](health.md#moving)).
 - **Tasks ⚙**: **Time for you** ([Tasks](tasks.md#the-tasks-settings)).
 - **Android's settings**: each of Sioul's channels, its sound included: "Doses" and "Doses during a pause", "Notices" (what is to know), "To act on" and "To act on during a pause" (a code), "New mail from people always let through", "Waking", "Focus timer", "Devices in step". The channels of an older Sioul ("Events", "An event's alarms", "New mail", "End of the day") are gone. A channel "during a pause" passes Sioul's modes while you have not changed it there; the conversations you let through always, **Priority** in each one's page.
 
