@@ -9,10 +9,15 @@
 //! One device tells: the one used last keeps the "notices" lease, as before
 //! devices. It tells what comes forward on it now, by its own cells. What
 //! does not waits, and is told ("The Porch opens") when a device it comes
-//! forward on is the one used. Every other device reads each thing as the
-//! keeper would, from the cells the keeper says of itself: what the keeper
-//! tells now, it claims without a word; what the keeper leaves waiting, it
-//! keeps waiting, to tell once it keeps the notices itself.
+//! forward on is the one used. Every other device judges each thing as the
+//! keeper would (`Known::judge`), and claims it without a word only on
+//! positive knowledge that the keeper tells it: the keeper's own cells, read
+//! from its entry as the folder holds it at that moment, bring it in the
+//! same hours as here; or the keeper narrows nothing; or, for a keeper on an
+//! older Sioul, it arrived while that keeper kept the notices. Otherwise it
+//! keeps the thing, and tells it once it keeps the notices itself, unless
+//! the told log says it was told. Never lost comes before never doubled
+//! (review of phase 2, N1).
 //!
 //! Each device says its own cells in its sealed entry (`devices::Entry::cells`),
 //! as it reads its own line of the settings in its own week: the others read
@@ -40,6 +45,7 @@
 //!
 //! Nothing here reads the doses, and the doses read nothing here.
 
+use crate::devices::Entry;
 use crate::peers::Peers;
 use sioul_core::areas::{Cells, Line, Lines, Other};
 use sioul_core::config::Config;
@@ -53,6 +59,11 @@ use std::path::Path;
 pub struct Seen {
     /// Its cells' words (`devices::Entry::cells`); empty: nothing said of it.
     pub cells: BTreeMap<String, String>,
+    /// The line your settings say of it, when it will follow that line once
+    /// it runs: it shares the part "settings", and the line was said after
+    /// what it last said of itself (`Said::changed` later than
+    /// `Entry::stated`; review of phase 2, N3). None: read by its entry.
+    pub follows: Option<Line>,
     /// The cells it acts on of each other device (`devices::Entry::known`).
     pub known: BTreeMap<String, String>,
     /// A phone: it tells no date reminder (its form, `devices::Entry::form_or_kind`).
@@ -60,9 +71,63 @@ pub struct Seen {
 }
 
 impl Seen {
-    fn other(&self, of: &str) -> Other {
-        Other { cells: Cells::read(&self.cells), acts_on: Some(self.known.get(of).cloned().unwrap_or_default()) }
+    /// What comes forward on it, as the device reading takes it.
+    fn read(&self) -> Cells {
+        self.follows.map(Cells::Line).unwrap_or_else(|| Cells::read(&self.cells))
     }
+
+    fn other(&self, of: &str) -> Other {
+        Other { cells: self.read(), acts_on: Some(self.known.get(of).cloned().unwrap_or_default()) }
+    }
+}
+
+/// Whether a device that does not keep the notices may claim, without a
+/// word, what its reading of the keeper tells now (`Judged::sure`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sure {
+    /// This device keeps the notices: it tells.
+    Mine,
+    /// The keeper tells it: it narrows nothing, or its own cells bring it in
+    /// the hours of this device, which both share.
+    Told,
+    /// What arrived since then (Unix seconds), when the keeper took the
+    /// notices: a keeper on an older Sioul tells everything the hours bring
+    /// while it keeps them, and claimed everything before, without a word.
+    Since(i64),
+    /// Nothing known: the keeper's entry does not read here, or its hours
+    /// may not be this device's (one of the two does not share the part
+    /// "settings"). The thing is kept, and told once this device keeps the
+    /// notices, unless the told log says it was told: at worst twice.
+    Keep,
+}
+
+impl Sure {
+    /// Whether a thing that arrived at `arrived` (Unix seconds; 0 when not
+    /// known) may be claimed when the reading tells it.
+    pub fn holds(self, arrived: i64) -> bool {
+        match self {
+            Sure::Mine | Sure::Told => true,
+            Sure::Since(since) => arrived > 0 && arrived >= since,
+            Sure::Keep => false,
+        }
+    }
+}
+
+/// How this device judges a thing while a device keeps the notices (`Known::judge`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Judged {
+    /// The device read: this device, when it keeps them; else the keeper's
+    /// own cells, nothing widened by what no device holds (what it tells by
+    /// them, it tells whatever it knows of the others), or the hours alone
+    /// for a keeper that narrows nothing, is older, or is not known.
+    pub lines: Lines,
+    pub sure: Sure,
+    /// Whether the keeper is part of the moment (`mailnote::Seen::moment`),
+    /// so that the lease moving judges again what waited: something is said
+    /// of some device, an older Sioul counts, or nothing is known of the
+    /// keeper. With nothing said and every device on this build, it is not,
+    /// as before devices.
+    pub marks: bool,
 }
 
 /// The devices that count, as this device knows them.
@@ -78,10 +143,15 @@ pub struct Known {
     pub older: Vec<String>,
 }
 
+/// Whether an entry says its device shares the part "settings".
+fn shares_settings(entry: &Entry) -> bool {
+    entry.parts.as_ref().is_some_and(|parts| parts.iter().any(|part| part == "settings"))
+}
+
 impl Known {
-    /// From what this device's settings say of it (`said`, by id) and what
-    /// it kept of the others (`kept`; none with sharing off), at `now`
-    /// (this device's clock, Unix seconds).
+    /// From what this device's settings say of the devices (`said`, by id)
+    /// and what it kept of the others (`kept`; none with sharing off), at
+    /// `now` (this device's clock, Unix seconds).
     pub fn of(me: &str, said: &BTreeMap<String, Said>, kept: Option<&Peers>, now: i64) -> Known {
         let mut known = Known { me: me.to_string(), mine: said.get(me).map(Said::line).unwrap_or_default(), ..Known::default() };
         for (id, seen) in kept.iter().flat_map(|kept| kept.peers.iter()) {
@@ -92,7 +162,9 @@ impl Known {
             match seen.entry.as_ref().filter(|entry| entry.areas >= crate::devices::AREAS) {
                 Some(entry) => {
                     let carried = entry.form_or_kind() == crate::devices::PHONE;
-                    known.others.insert(id.clone(), Seen { cells: entry.cells.clone(), known: entry.known.clone(), carried });
+                    // A line said for it after it last said its own, which it will follow once it runs (N3).
+                    let follows = said.get(id).filter(|said| shares_settings(entry) && said.changed.is_some_and(|at| at > entry.stated)).map(Said::line);
+                    known.others.insert(id.clone(), Seen { cells: entry.cells.clone(), follows, known: entry.known.clone(), carried });
                 }
                 None => known.older.push(id.clone()),
             }
@@ -120,20 +192,30 @@ impl Known {
         Lines { others: self.others.values().filter(|seen| !seen.carried).map(|seen| seen.other(&self.me)).collect(), ..self.lines() }
     }
 
-    /// The keeper of the notices (`keeper`, its id) read as it reads
-    /// itself, among the others that act on its cells, this device among
-    /// them with its own line: what it tells now, this device claims
-    /// without a word. This device itself: `lines`. A device whose Sioul is
-    /// older, or that does not count here, or that this device knows
-    /// nothing of: what the hours bring, all of it, as before devices.
-    pub fn as_keeper(&self, keeper: &str) -> Lines {
-        if keeper == self.me || keeper.is_empty() {
-            return self.lines();
+    /// How this device judges a thing while `keeper` keeps the notices
+    /// (its id; this device's, or "" with sharing off: this device tells):
+    /// `since`, when that keeper took them (its claim); `entry`, its entry
+    /// as the folder holds it now (`devices::one`), none when it does not
+    /// read; `settings`, whether this device shares the part "settings"
+    /// (its hours are then the others'). Never lost comes before never
+    /// doubled: what it cannot be sure the keeper tells, it keeps.
+    pub fn judge(&self, keeper: &str, since: i64, entry: Option<&Entry>, settings: bool) -> Judged {
+        let marks = self.some_said() || !self.older.is_empty();
+        if keeper.is_empty() || keeper == self.me {
+            return Judged { lines: self.lines(), sure: Sure::Mine, marks };
         }
-        let Some(seen) = self.others.get(keeper) else { return Lines::default() };
-        let mut others = vec![Other { cells: Cells::Line(self.mine), acts_on: None }];
-        others.extend(self.others.iter().filter(|(id, _)| id.as_str() != keeper).map(|(_, other)| other.other(keeper)));
-        Lines { mine: Cells::read(&seen.cells), key: Some(Cells::key(&seen.cells)), others }
+        let Some(entry) = entry else { return Judged { lines: Lines::default(), sure: Sure::Keep, marks: true } };
+        if entry.areas < crate::devices::AREAS {
+            return Judged { lines: Lines::default(), sure: Sure::Since(since), marks: true };
+        }
+        if entry.cells.is_empty() {
+            // It narrows nothing: it tells what the hours bring, in its own hours, and never waits for another device.
+            return Judged { lines: Lines::default(), sure: Sure::Told, marks };
+        }
+        // Its own cells, nothing widened by what no device holds: an area it brings now, it tells.
+        let lines = Lines { mine: Cells::read(&entry.cells), key: Some(Cells::key(&entry.cells)), others: vec![Other { cells: Cells::default(), acts_on: None }] };
+        let sure = if settings && shares_settings(entry) { Sure::Told } else { Sure::Keep };
+        Judged { lines, sure, marks: true }
     }
 
     /// What this device says in its entry of the others' cells it acts on
@@ -150,20 +232,21 @@ impl Known {
     /// Whether anything is said of any device that counts: this one's line,
     /// or another's cells.
     pub fn some_said(&self) -> bool {
-        !self.mine.says_nothing() || self.others.values().any(|seen| !seen.cells.is_empty())
+        !self.mine.says_nothing() || self.others.values().any(|seen| seen.read().narrows())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devices::Entry;
+    use crate::devices::AREAS;
     use crate::peers::{Mark, PeerSeen};
     use sioul_core::areas::{Area, Time, Week};
     use sioul_core::attention::{Attention, Event, Lane, Now, Source};
-    use sioul_core::reach::Who;
     use sioul_core::health::{Peer, Said as Session};
     use sioul_core::quiet::{Mode, Reason};
+    use sioul_core::reach::Who;
+    use std::collections::BTreeSet;
 
     fn said(pairs: &[(&str, &str)]) -> BTreeMap<String, Said> {
         pairs.iter().map(|(id, area)| (id.to_string(), Said { area: Some(area.to_string()), ..Said::default() })).collect()
@@ -173,6 +256,10 @@ mod tests {
     pub(crate) fn seen(id: &str, heard: i64, areas: u32) -> PeerSeen {
         let session = Session { started: heard - 600, closed: 0, working: true, exported: heard, imported: heard, doses: true, left: false, phone: false };
         PeerSeen { peer: Peer { id: id.into(), name: id.into(), heard, seen: heard, said: Some(session), ..Peer::default() }, entry: Some(Entry { id: id.into(), working: true, exported: heard, areas, ..Entry::default() }), ..PeerSeen::default() }
+    }
+
+    fn hours() -> Week {
+        Week { work_hours: true, admin_hours: true, meals: true, sleep: true }
     }
 
     /// The devices that count: this one, always; another while it is heard
@@ -198,7 +285,7 @@ mod tests {
         assert!(known.follows("phone") && known.follows("desk") && !known.follows("old") && !known.follows("gone"));
         // The phone's entry says nothing of its cells: it brings what the hours bring, whatever the
         // settings say of it here; it holds nothing for later until it says it acts on the desk's cells.
-        let hours = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let hours = hours();
         assert!(!Cells::read(&known.others["phone"].cells).narrows());
         assert_eq!(known.lines().here(hours).unheld, Area::PERSONAL, "it acts on no word of the desk yet");
         let desk_key = Cells::key(&Cells::Line(known.mine).words(hours));
@@ -217,64 +304,135 @@ mod tests {
         assert!(!Known::of("desk", &BTreeMap::new(), Some(&kept), now).some_said() && known.some_said());
     }
 
-    /// Read as the keeper: its own cells, as its entry says them; the others
-    /// that act on them, this device among them. A keeper whose Sioul is
-    /// older, or that this device does not know: what the hours bring.
+    /// How a device that does not keep the notices judges the keeper, from
+    /// the keeper's entry as the folder holds it: its own cells, nothing
+    /// widened, sure only in the same hours (both share the settings); one
+    /// that narrows nothing tells what the hours bring; an older Sioul,
+    /// only what arrived while it kept the notices; an entry that does not
+    /// read, nothing known: keep. Nothing said and every device on this
+    /// build: the keeper is no part of the moment, as before devices.
     #[test]
-    fn the_keeper_is_read_as_its_entry_says() {
+    fn the_keeper_is_judged_as_its_entry_says() {
         let now = 1_800_000_000;
-        let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-        let desk_words = Cells::Line(Line::for_area(Area::WORK)).words(week);
-        let mut kept = Peers::default();
-        let mut on_desk = seen("desk", now - 60, 1);
-        on_desk.entry.as_mut().unwrap().cells = desk_words.clone();
-        kept.peers.insert("desk".into(), on_desk);
-        kept.peers.insert("old".into(), seen("old", now - 60, 0));
+        let week = hours();
         let said: BTreeMap<String, Said> = [("phone".to_string(), Said { area: Some("admin+leisure".into()), ..Said::default() })].into();
-        let known = Known::of("phone", &said, Some(&kept), now);
-        let keeper = known.as_keeper("desk").here(week);
-        assert!(keeper.brings(Area::WORK, Time::Work, week) && !keeper.brings(Area::LEISURE, Time::Leisure, week), "the desk tells work's, leaves leisure waiting for the phone");
-        assert_eq!(keeper.unheld, Area::default());
-        assert_eq!(known.acts_on(), [("desk".to_string(), Cells::key(&desk_words))].into());
-        // Older, or unknown: everything the hours bring.
-        for other in ["old", "nobody"] {
-            assert!(known.as_keeper(other).say_nothing(), "{other}");
-        }
-        // This device keeps them: its own line.
-        assert_eq!(known.as_keeper("phone"), known.lines());
+        let known = Known::of("phone", &said, None, now);
+        let desk = Entry { id: "desk".into(), areas: AREAS, cells: Cells::Line(Line::for_area(Area::WORK)).words(week), parts: Some(vec!["settings".into()]), ..Entry::default() };
+        let judged = known.judge("desk", 100, Some(&desk), true);
+        assert_eq!(judged.sure, Sure::Told);
+        let here = judged.lines.here(week);
+        assert!(here.brings(Area::WORK, Time::Work, week) && !here.brings(Area::LEISURE, Time::Leisure, week) && here.unheld.is_empty(), "its own cells, nothing widened");
+        assert!(judged.marks);
+        // Hours that may differ: keep.
+        assert_eq!(known.judge("desk", 100, Some(&desk), false).sure, Sure::Keep);
+        assert_eq!(known.judge("desk", 100, Some(&Entry { parts: Some(Vec::new()), ..desk.clone() }), true).sure, Sure::Keep);
+        // Nothing said of the keeper: what the hours bring.
+        let plain = known.judge("desk", 100, Some(&Entry { cells: BTreeMap::new(), ..desk.clone() }), false);
+        assert_eq!((plain.sure, plain.lines.say_nothing()), (Sure::Told, true));
+        // An older Sioul: what arrived since it took the notices.
+        assert_eq!(known.judge("desk", 100, Some(&Entry { areas: 0, ..desk.clone() }), true).sure, Sure::Since(100));
+        // Its entry does not read: keep.
+        assert_eq!(known.judge("desk", 100, None, true).sure, Sure::Keep);
+        // This device keeps them.
+        assert_eq!(known.judge("phone", 100, None, true), Judged { lines: known.lines(), sure: Sure::Mine, marks: true });
+        assert_eq!(known.judge("", 100, None, true).sure, Sure::Mine);
+        // What may be claimed.
+        assert!(Sure::Told.holds(0) && Sure::Mine.holds(0) && Sure::Since(100).holds(150) && !Sure::Since(100).holds(50) && !Sure::Since(100).holds(0) && !Sure::Keep.holds(150));
+        // Nothing said of any device, every device on this build: no part of the moment.
+        let nothing = Known::of("phone", &BTreeMap::new(), None, now);
+        assert!(!nothing.judge("desk", 100, Some(&Entry { cells: BTreeMap::new(), ..desk.clone() }), true).marks && !nothing.judge("phone", 100, None, true).marks);
+        assert!(nothing.judge("desk", 100, Some(&Entry { areas: 0, ..desk }), true).marks, "an older keeper is");
     }
 
-    /// One device of the model: its own line (its settings), its week, the
-    /// others' entries as it last read them, its ledger, and what it told.
+    /// A line said for a device that is off (review of phase 2, N3): the
+    /// keeper reads it by the settings once the line was said after the
+    /// device last said its own and the device shares the settings, since it
+    /// will follow it when it runs; by its own entry otherwise.
+    #[test]
+    fn a_line_said_for_an_idle_device_is_read_once_it_will_follow_it() {
+        let now = 1_800_000_000;
+        let week = hours();
+        let tablet = |parts: Vec<String>, stated: i64| {
+            let mut kept = Peers::default();
+            let mut seen = seen("tablet", now - 3 * 86_400, 1);
+            let entry = seen.entry.as_mut().unwrap();
+            entry.cells = Cells::Line(Line::for_area(Area::LEISURE)).words(week);
+            entry.known = [("desk".to_string(), Cells::key(&Cells::Line(Line::for_area(Area::WORK)).words(week)))].into();
+            entry.parts = Some(parts);
+            entry.stated = stated;
+            kept.peers.insert("tablet".into(), seen);
+            kept
+        };
+        let said = |changed: i64| -> BTreeMap<String, Said> {
+            [("desk".to_string(), Said { area: Some("work".into()), ..Said::default() }), ("tablet".to_string(), Said { area: Some("work".into()), changed: Some(changed), ..Said::default() })].into()
+        };
+        let leisure_here = |kept: &Peers, said: &BTreeMap<String, Said>| Known::of("desk", said, Some(kept), now).lines().here(week).brings(Area::LEISURE, Time::Leisure, week);
+        // Said later, and it shares the settings: no longer for leisure, so leisure is for no device and the desk tells it.
+        assert!(leisure_here(&tablet(vec!["settings".into()], now - 3 * 86_400), &said(now - 60)));
+        // It does not share the settings, or the line is older than what it said of itself: its entry, leisure held by it.
+        assert!(!leisure_here(&tablet(Vec::new(), now - 3 * 86_400), &said(now - 60)));
+        assert!(!leisure_here(&tablet(vec!["settings".into()], now - 60), &said(now - 3 * 86_400)));
+    }
+
+    /// One device of the model: its own line (its settings), whether its
+    /// Sioul is older, whether it shares the part "settings", the others'
+    /// entries as it last read them, its ledger, and what it told.
     struct Device {
         id: &'static str,
         line: Line,
         form: &'static str,
-        /// The others' entries as this device last read them, by id.
+        older: bool,
+        settings: bool,
         read: BTreeMap<String, Entry>,
-        waiting: std::collections::BTreeSet<&'static str>,
+        waiting: BTreeSet<&'static str>,
         told: Vec<&'static str>,
     }
 
-    /// Several devices that share (`Model::tells` counts each thing told).
+    /// Several devices that share: the keeper of the notices and since when,
+    /// when each thing arrived, and the told logs written so far.
     struct Model {
         devices: Vec<Device>,
         week: Week,
-        /// The told logs as exchanged so far (`mailnote::told_elsewhere`): by message, who told it.
+        keeper: &'static str,
+        since: i64,
+        clock: i64,
+        arrived: BTreeMap<&'static str, i64>,
+        /// What the address each message came to is for.
+        areas: BTreeMap<&'static str, Area>,
         told_log: BTreeMap<&'static str, &'static str>,
     }
 
+    const NOW: i64 = 1_800_000_000;
+
+    fn said_of(line: Line) -> Said {
+        let at = Time::STATES.into_iter().filter_map(|time| line.changed(time).map(|cell| (time.id().to_string(), Line::cell_id(cell)))).collect();
+        Said { area: line.area.map(Area::id), at, ..Said::default() }
+    }
+
     impl Model {
-        fn new(lines: &[(&'static str, Line, &'static str)], week: Week) -> Model {
-            let devices = lines.iter().map(|(id, line, form)| Device { id, line: *line, form, read: BTreeMap::new(), waiting: Default::default(), told: Vec::new() }).collect();
-            let mut model = Model { devices, week, told_log: BTreeMap::new() };
+        /// The devices, the first keeping the notices, every entry read by every device.
+        fn new(lines: &[(&'static str, Line, &'static str)]) -> Model {
+            let devices = lines.iter().map(|(id, line, form)| Device { id, line: *line, form, older: false, settings: true, read: BTreeMap::new(), waiting: Default::default(), told: Vec::new() }).collect();
+            let mut model = Model { devices, week: hours(), keeper: lines[0].0, since: 1, clock: 10, arrived: BTreeMap::new(), areas: BTreeMap::new(), told_log: BTreeMap::new() };
             model.exchange_all();
             model.exchange_all();
             model
         }
 
+        /// A device changed (older, settings), every entry then read again by every device.
+        fn with(mut self, id: &str, change: impl FnOnce(&mut Device)) -> Model {
+            change(self.devices.iter_mut().find(|d| d.id == id).unwrap());
+            self.exchange_all();
+            self.exchange_all();
+            self
+        }
+
         fn device(&self, id: &str) -> &Device {
             self.devices.iter().find(|d| d.id == id).unwrap()
+        }
+
+        fn device_mut(&mut self, id: &str) -> &mut Device {
+            self.devices.iter_mut().find(|d| d.id == id).unwrap()
         }
 
         fn known(&self, id: &str) -> Known {
@@ -289,16 +447,20 @@ mod tests {
             Known::of(id, &said, Some(&kept), NOW)
         }
 
-        /// The entry a device writes now: its cells, what it acts on of the others.
+        /// The entry a device writes now (an older Sioul's: no word of devices).
         fn entry(&self, id: &str) -> Entry {
             let me = self.device(id);
-            Entry { id: id.into(), working: true, areas: crate::devices::AREAS, form: me.form.into(), cells: Cells::Line(me.line).words(self.week), known: self.known(id).acts_on(), ..Entry::default() }
+            if me.older {
+                return Entry { id: id.into(), working: true, form: me.form.into(), ..Entry::default() };
+            }
+            let parts = if me.settings { vec!["settings".to_string()] } else { Vec::new() };
+            Entry { id: id.into(), working: true, areas: AREAS, form: me.form.into(), parts: Some(parts), cells: Cells::Line(me.line).words(self.week), known: self.known(id).acts_on(), ..Entry::default() }
         }
 
         /// `reader` reads the entry `of` writes now.
         fn exchange(&mut self, reader: &str, of: &str) {
             let entry = self.entry(of);
-            self.devices.iter_mut().find(|d| d.id == reader).unwrap().read.insert(of.to_string(), entry);
+            self.device_mut(reader).read.insert(of.to_string(), entry);
         }
 
         fn exchange_all(&mut self) {
@@ -312,188 +474,320 @@ mod tests {
             }
         }
 
-        /// Whether `id`, reading as the keeper does, finds a safe sender's mail to an address for `area` told now.
-        fn told_now(&self, id: &str, keeper: &str, area: Area, time: Time) -> bool {
-            let known = self.known(id);
-            let lines = if keeper == id { known.lines() } else { known.as_keeper(keeper) };
+        /// The person uses `id`: it keeps the notices from now.
+        fn take(&mut self, id: &'static str) {
+            self.keeper = id;
+            self.since = self.clock;
+            self.clock += 1;
+        }
+
+        /// `message` reaches its server now.
+        fn arrive(&mut self, message: &'static str) {
+            self.arrived.insert(message, self.clock);
+            self.clock += 1;
+        }
+
+        /// Whether `id` finds a safe sender's mail to an address for `area`
+        /// told now (in `time`, its own hours), and whether it may claim it:
+        /// judged as the keeper does, from the keeper's entry as the folder
+        /// holds it now (`Known::judge`). An older Sioul judges by the hours
+        /// and claims whatever they tell (main's rule).
+        fn told_now(&self, id: &str, area: Area, time: Time) -> (bool, Sure) {
+            let me = self.device(id);
+            let (lines, sure) = if me.older {
+                (Lines::default(), if self.keeper == id { Sure::Mine } else { Sure::Told })
+            } else {
+                let judged = self.known(id).judge(self.keeper, self.since, Some(&self.entry(self.keeper)), me.settings);
+                (judged.lines, judged.sure)
+            };
             let reason = match time {
                 Time::Work => Reason::Working,
                 Time::Admin => Reason::AdminTime,
                 _ => Reason::Evening,
             };
             let mode = Mode { quiet: time != Time::Work, time, week: self.week, reason, until: None, back: None, label: String::new(), here: Default::default() }.on(&lines);
-            // A safe sender's: told where it comes forward, shown and kept elsewhere.
             let event = Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Usual }).for_area(Some(area));
-            Attention::usual().decide(&event, &Now::of(&mode)).told
+            (Attention::usual().decide(&event, &Now::of(&mode)).told, sure)
         }
 
-        /// A fetch on `id` of `message`, while `keeper` keeps the notices:
-        /// the keeper tells what it finds told now; the others claim it
-        /// without a word; what is not told now waits in the ledger.
-        fn fetch(&mut self, id: &str, keeper: &str, message: &'static str, area: Area, time: Time) {
-            let told = self.told_now(id, keeper, area, time);
-            let device = self.devices.iter_mut().find(|d| d.id == id).unwrap();
-            match (told, keeper == id) {
-                (true, true) => device.told.push(message),
-                (true, false) => {}
-                (false, _) => {
-                    device.waiting.insert(message);
-                }
-            }
-            if told && keeper == id {
-                self.told_log.insert(message, device.id);
+        /// Whether `id` reads in a told log that another device told `message`:
+        /// the log travels with the part "settings", on both devices.
+        fn in_log(&self, id: &str, message: &str) -> bool {
+            self.told_log.get(message).is_some_and(|by| *by != id && self.device(by).settings && self.device(id).settings)
+        }
+
+        fn tell(&mut self, id: &'static str, message: &'static str) {
+            self.device_mut(id).told.push(message);
+            self.told_log.insert(message, id);
+        }
+
+        /// A fetch on `id` of `message`: the keeper tells what it finds told
+        /// now; another device claims it without a word only when sure; the
+        /// rest waits in its ledger.
+        fn fetch(&mut self, id: &'static str, message: &'static str, area: Area, time: Time) {
+            self.areas.insert(message, area);
+            let (told, sure) = self.told_now(id, area, time);
+            if told && self.keeper == id {
+                self.tell(id, message);
+            } else if !(told && sure.holds(self.arrived[message])) {
+                self.device_mut(id).waiting.insert(message);
             }
         }
 
         /// A moment begins on `id` (a time, the keeper changing): what waited
-        /// and is told now is told by the keeper, claimed by the others; what
-        /// another device told (its log, exchanged) is claimed without a word.
-        fn tick(&mut self, id: &'static str, keeper: &str, area: Area, time: Time) {
+        /// and another device's log says was told is claimed; what is told
+        /// now is told by the keeper, claimed by another device when sure.
+        fn tick(&mut self, id: &'static str, time: Time) {
             let waiting: Vec<&'static str> = self.device(id).waiting.iter().copied().collect();
             for message in waiting {
-                let told = self.told_now(id, keeper, area, time);
-                let elsewhere = self.told_log.get(message).is_some_and(|by| *by != id);
-                if !told {
+                if self.in_log(id, message) {
+                    self.device_mut(id).waiting.remove(message);
                     continue;
                 }
-                let device = self.devices.iter_mut().find(|d| d.id == id).unwrap();
-                device.waiting.remove(message);
-                if keeper == id && !elsewhere {
-                    device.told.push(message);
-                    self.told_log.insert(message, id);
+                let (told, sure) = self.told_now(id, self.areas[message], time);
+                if told && self.keeper == id {
+                    self.device_mut(id).waiting.remove(message);
+                    self.tell(id, message);
+                } else if told && sure.holds(self.arrived[message]) {
+                    self.device_mut(id).waiting.remove(message);
                 }
             }
         }
 
-        /// How many times `message` was told, all devices together.
         fn tells(&self, message: &str) -> usize {
             self.devices.iter().flat_map(|d| &d.told).filter(|m| **m == message).count()
         }
 
-        /// Whether `message` still waits on a device it could yet be told on.
         fn waits(&self, message: &str) -> bool {
             self.devices.iter().any(|d| d.waiting.contains(message))
         }
     }
 
-    const NOW: i64 = 1_800_000_000;
-
-    fn said_of(line: Line) -> Said {
-        let at = Time::STATES.into_iter().filter_map(|time| line.changed(time).map(|cell| (time.id().to_string(), Line::cell_id(cell)))).collect();
-        Said { area: line.area.map(Area::id), at, ..Said::default() }
-    }
-
-    fn hours() -> Week {
-        Week { work_hours: true, admin_hours: true, meals: true, sleep: true }
-    }
-
     /// A desk that does not share the settings (review of phase 2, H1): the
     /// person said on the phone that the desk is for work and the phone for
-    /// admin and leisure; the desk's own settings say nothing of any device,
-    /// and its entry says so. Each device reads the other's entry, never the
-    /// settings: work's mail during work, the phone used last, waits on both,
-    /// and the desk tells it once used; a friend's in the evening, the desk
-    /// used last, is told by the desk alone. Each thing once.
+    /// admin and leisure; the desk's own settings say nothing of any device.
+    /// Work's mail during work, the phone keeping the notices, waits on
+    /// both, and the desk tells it once used; a friend's in the evening, the
+    /// desk keeping them, is told by the desk, which narrows nothing, and
+    /// claimed by the phone. Each once.
     #[test]
     fn a_desk_that_does_not_share_the_settings_and_a_phone_tell_each_thing_once() {
-        let mut m = Model::new(&[("desk", Line::default(), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")], hours());
-        m.fetch("phone", "phone", "work-mail", Area::WORK, Time::Work);
-        m.fetch("desk", "phone", "work-mail", Area::WORK, Time::Work);
-        assert_eq!(m.tells("work-mail"), 0);
-        assert!(m.device("phone").waiting.contains("work-mail") && m.device("desk").waiting.contains("work-mail"), "waits on both");
-        // The person goes to the desk: it keeps the notices, tells it; the phone, read as the desk, claims it.
-        m.tick("desk", "desk", Area::WORK, Time::Work);
-        m.tick("phone", "desk", Area::WORK, Time::Work);
-        assert_eq!(m.tells("work-mail"), 1);
-        assert!(!m.waits("work-mail"));
-        // Evening, the desk used last: a friend's mail, once.
-        m.fetch("desk", "desk", "friend", Area::PERSONAL, Time::Leisure);
-        m.fetch("phone", "desk", "friend", Area::PERSONAL, Time::Leisure);
+        let mut m = Model::new(&[("desk", Line::default(), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]).with("desk", |d| d.settings = false);
+        m.take("phone");
+        m.arrive("work-mail");
+        m.fetch("phone", "work-mail", Area::WORK, Time::Work);
+        m.fetch("desk", "work-mail", Area::WORK, Time::Work);
+        assert!(m.tells("work-mail") == 0 && m.device("phone").waiting.contains("work-mail") && m.device("desk").waiting.contains("work-mail"), "waits on both");
+        m.take("desk");
+        m.tick("desk", Time::Work);
+        m.tick("phone", Time::Work);
+        assert_eq!((m.tells("work-mail"), m.waits("work-mail")), (1, false));
+        m.arrive("friend");
+        m.fetch("desk", "friend", Area::PERSONAL, Time::Leisure);
+        m.fetch("phone", "friend", Area::PERSONAL, Time::Leisure);
         assert_eq!((m.tells("friend"), m.waits("friend")), (1, false));
     }
 
-    /// A line still travelling (H1): the desk's line, said on the phone,
-    /// reaches the desk; until the phone has read the desk's new entry, it
-    /// still acts on the old one, so the desk counts it as holding nothing
-    /// and tells the evening's mail itself, which the phone claims on the
-    /// old word. Once the phone acts on the desk's new cells, the desk
-    /// leaves leisure waiting for it, and the phone tells it once used.
+    /// A line still travelling (H1): the desk's line reaches the desk before
+    /// the phone acts on it. The desk counts the phone as holding nothing
+    /// and tells the evening's mail itself; the phone, reading the desk's
+    /// entry as the folder holds it, is not sure and keeps it, and claims it
+    /// by the desk's told log once it keeps the notices. Once the phone acts
+    /// on the desk's cells, the desk leaves leisure for it, and it tells it.
     #[test]
     fn a_line_still_travelling_never_loses_a_thing() {
-        let mut m = Model::new(&[("desk", Line::default(), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")], hours());
-        // The settings reach the desk: its own line, its entry written; the phone has not read it yet.
-        m.devices[0].line = Line::for_area(Area::WORK);
+        let mut m = Model::new(&[("desk", Line::default(), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]);
+        m.device_mut("desk").line = Line::for_area(Area::WORK);
         m.exchange("desk", "phone");
-        m.fetch("desk", "desk", "friend", Area::PERSONAL, Time::Leisure);
-        m.fetch("phone", "desk", "friend", Area::PERSONAL, Time::Leisure);
-        assert_eq!((m.tells("friend"), m.waits("friend")), (1, false), "told by the desk, claimed by the phone");
-        // The phone reads the desk's entry and says it acts on it; the desk reads that.
-        m.exchange("phone", "desk");
-        m.exchange("desk", "phone");
-        m.fetch("desk", "desk", "later", Area::PERSONAL, Time::Leisure);
-        m.fetch("phone", "desk", "later", Area::PERSONAL, Time::Leisure);
+        m.arrive("friend");
+        m.fetch("desk", "friend", Area::PERSONAL, Time::Leisure);
+        m.fetch("phone", "friend", Area::PERSONAL, Time::Leisure);
+        assert_eq!(m.tells("friend"), 1, "the desk tells it");
+        assert!(m.device("phone").waiting.contains("friend"), "kept, never claimed on a doubt");
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        assert_eq!((m.tells("friend"), m.waits("friend")), (1, false), "its told log: claimed");
+        // The phone acts on the desk's cells, and the desk reads that: leisure waits for it.
+        m.exchange_all();
+        m.exchange_all();
+        m.take("desk");
+        m.arrive("later");
+        m.fetch("desk", "later", Area::PERSONAL, Time::Leisure);
+        m.fetch("phone", "later", Area::PERSONAL, Time::Leisure);
         assert_eq!(m.tells("later"), 0);
-        assert!(m.device("phone").waiting.contains("later"), "left for the phone");
-        m.tick("phone", "phone", Area::PERSONAL, Time::Leisure);
-        m.tick("desk", "phone", Area::PERSONAL, Time::Leisure);
-        assert_eq!(m.tells("later"), 1);
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        m.tick("desk", Time::Leisure);
+        assert_eq!((m.tells("later"), m.waits("later")), (1, false));
     }
 
-    /// Stale peers (M3): the phone still holds the desk's entry from before
-    /// its update, or none at all. The desk keeps the notices; the phone,
-    /// put away, fetches a friend's mail. The phone acts on no cells of the
-    /// desk, so the desk tells it; the phone, the desk an older Sioul or
-    /// unknown by its book, claims it. Once, never lost.
+    /// Stale peers (M3): the phone holds the desk's entry from before its
+    /// update, or none. It reads the keeper's entry as the folder holds it,
+    /// so it keeps the friend's mail; acting on no cells of the desk, it is
+    /// not waited for, and the desk tells it. Once, never lost.
     #[test]
     fn stale_peers_never_lose_a_thing() {
         for stale in [true, false] {
-            let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")], hours());
-            let phone = &mut m.devices[1];
+            let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]);
+            let phone = m.device_mut("phone");
             if stale {
                 phone.read.get_mut("desk").unwrap().areas = 0;
             } else {
                 phone.read.remove("desk");
             }
             m.exchange("desk", "phone");
-            m.fetch("desk", "desk", "friend", Area::PERSONAL, Time::Leisure);
-            m.fetch("phone", "desk", "friend", Area::PERSONAL, Time::Leisure);
+            m.arrive("friend");
+            m.fetch("desk", "friend", Area::PERSONAL, Time::Leisure);
+            m.fetch("phone", "friend", Area::PERSONAL, Time::Leisure);
+            m.take("phone");
+            m.tick("phone", Time::Leisure);
             assert_eq!((m.tells("friend"), m.waits("friend")), (1, false), "stale: {stale}");
         }
     }
 
-    /// Two phones put away (M4): the desk for work keeps the notices; a
-    /// phone and a tablet for leisure both fetch a friend's mail in the
-    /// evening. Neither tells it while the desk keeps the notices; the first
-    /// used tells it, the other and the desk claim it. Once.
+    /// Two devices put away (M4): the desk for work keeps the notices; a
+    /// phone and a tablet for leisure both keep a friend's mail. The first
+    /// used tells it; the other and the desk claim it. Once.
     #[test]
     fn two_devices_put_away_tell_a_thing_once() {
-        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::LEISURE), "phone"), ("tablet", Line::for_area(Area::LEISURE), "tablet")], hours());
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::LEISURE), "phone"), ("tablet", Line::for_area(Area::LEISURE), "tablet")]);
+        m.arrive("friend");
         for id in ["desk", "phone", "tablet"] {
-            m.fetch(id, "desk", "friend", Area::LEISURE, Time::Leisure);
+            m.fetch(id, "friend", Area::LEISURE, Time::Leisure);
         }
-        assert_eq!(m.tells("friend"), 0);
-        assert!(["desk", "phone", "tablet"].iter().all(|id| m.device(id).waiting.contains("friend")));
+        assert!(m.tells("friend") == 0 && ["desk", "phone", "tablet"].iter().all(|id| m.device(id).waiting.contains("friend")));
+        m.take("phone");
         for id in ["phone", "tablet", "desk"] {
-            m.tick(id, "phone", Area::LEISURE, Time::Leisure);
+            m.tick(id, Time::Leisure);
         }
         assert_eq!((m.tells("friend"), m.waits("friend")), (1, false));
     }
 
     /// A time boundary between two fetches (M4): the desk, for work and
-    /// admin, keeps the notices and fetches mail to the personal address in
-    /// admin's last seconds: it tells it. The phone fetches it in leisure's
-    /// first: read as the desk, which brings no leisure, it keeps it. Its
-    /// told log reaching the phone before it keeps the notices, the phone
-    /// does not tell it again, as at any time boundary before devices.
-    /// Never lost either way.
+    /// admin, tells mail to the personal address in admin's last seconds;
+    /// the phone, in leisure's first, keeps it, and claims it by the desk's
+    /// told log once it keeps the notices. Without the log, it tells it
+    /// again: at worst twice, never lost.
     #[test]
-    fn a_time_boundary_between_two_fetches_tells_a_thing_once() {
-        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK.with(Area::ADMIN)), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")], hours());
-        m.fetch("desk", "desk", "boundary", Area::PERSONAL, Time::Admin);
-        m.fetch("phone", "desk", "boundary", Area::PERSONAL, Time::Leisure);
-        assert_eq!(m.tells("boundary"), 1);
-        assert!(m.device("phone").waiting.contains("boundary"), "kept, never lost");
-        m.tick("phone", "phone", Area::PERSONAL, Time::Leisure);
-        assert_eq!((m.tells("boundary"), m.waits("boundary")), (1, false));
+    fn a_time_boundary_between_two_fetches_tells_a_thing_once_with_the_told_log() {
+        for log in [true, false] {
+            let mut m = Model::new(&[("desk", Line::for_area(Area::WORK.with(Area::ADMIN)), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]);
+            m.arrive("boundary");
+            m.fetch("desk", "boundary", Area::PERSONAL, Time::Admin);
+            m.fetch("phone", "boundary", Area::PERSONAL, Time::Leisure);
+            assert!(m.tells("boundary") == 1 && m.device("phone").waiting.contains("boundary"), "kept, never lost");
+            if !log {
+                m.told_log.clear();
+            }
+            m.take("phone");
+            m.tick("phone", Time::Leisure);
+            assert_eq!((m.tells("boundary"), m.waits("boundary")), (if log { 1 } else { 2 }, false), "told log: {log}");
+        }
+    }
+
+    /// An older Sioul takes the notices while a friend's mail waits for the
+    /// phone (review of phase 2, N1): it claimed the mail at its fetch, as an
+    /// older Sioul claims everything while another device tells. The phone
+    /// and the desk are not sure (it arrived before the older laptop took
+    /// the notices) and keep it; the phone tells it once used. What arrives
+    /// while the older laptop keeps the notices, it tells, and the others
+    /// claim. Each once.
+    #[test]
+    fn an_older_keeper_never_loses_what_waited() {
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone"), ("old", Line::default(), "computer")]).with("old", |d| d.older = true);
+        assert!(m.known("desk").older == ["old"] && m.known("phone").older == ["old"]);
+        m.arrive("friend");
+        for id in ["desk", "phone", "old"] {
+            m.fetch(id, "friend", Area::PERSONAL, Time::Leisure);
+        }
+        assert!(m.device("desk").waiting.contains("friend") && m.device("phone").waiting.contains("friend") && !m.device("old").waiting.contains("friend"), "the older laptop claimed it");
+        m.take("old");
+        for id in ["phone", "desk", "old"] {
+            m.tick(id, Time::Leisure);
+        }
+        assert!(m.tells("friend") == 0 && m.device("phone").waiting.contains("friend"), "kept, never claimed on the older keeper's word");
+        // What arrives while it keeps the notices: it tells, the others claim.
+        m.arrive("while-old");
+        for id in ["old", "desk", "phone"] {
+            m.fetch(id, "while-old", Area::PERSONAL, Time::Leisure);
+        }
+        assert_eq!((m.tells("while-old"), m.waits("while-old")), (1, false));
+        // The person picks up the phone: it tells what waited.
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        m.tick("desk", Time::Leisure);
+        assert_eq!((m.tells("friend"), m.waits("friend")), (1, false));
+    }
+
+    /// A laptop on this build with a stale copy of the desk's entry (N1):
+    /// it reads the desk's entry as the folder holds it, so it does not
+    /// claim what the desk leaves for the phone; opened, it keeps the
+    /// notices and tells it, and the others claim it. Once.
+    #[test]
+    fn a_stale_device_that_becomes_keeper_tells_what_waited() {
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone"), ("laptop", Line::default(), "computer")]);
+        m.device_mut("laptop").read.get_mut("desk").unwrap().areas = 0;
+        m.exchange("desk", "laptop");
+        m.exchange("phone", "laptop");
+        m.arrive("friend");
+        for id in ["desk", "phone", "laptop"] {
+            m.fetch(id, "friend", Area::PERSONAL, Time::Leisure);
+        }
+        assert!(["desk", "phone", "laptop"].iter().all(|id| m.device(id).waiting.contains("friend")), "nobody claims it on a doubt");
+        m.take("laptop");
+        for id in ["laptop", "phone", "desk"] {
+            m.tick(id, Time::Leisure);
+        }
+        assert_eq!((m.tells("friend"), m.waits("friend")), (1, false));
+    }
+
+    /// The lease moves to a device that claimed something at its fetch: it
+    /// claimed it only because the keeper told it by its own cells, so
+    /// nothing waits for it, and nothing is told again.
+    #[test]
+    fn the_lease_moving_to_a_device_that_claimed_tells_nothing_twice() {
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::ALL), "phone"), ("tablet", Line::for_area(Area::LEISURE), "tablet")]);
+        m.arrive("work-mail");
+        m.arrive("friend");
+        for id in ["desk", "phone", "tablet"] {
+            m.fetch(id, "work-mail", Area::WORK, Time::Work);
+            m.fetch(id, "friend", Area::LEISURE, Time::Leisure);
+        }
+        assert!(m.tells("work-mail") == 1 && !m.device("phone").waiting.contains("work-mail"), "the desk told it, the phone claimed it");
+        m.take("phone");
+        for id in ["phone", "tablet", "desk"] {
+            m.tick(id, Time::Work);
+            m.tick(id, Time::Leisure);
+        }
+        assert_eq!((m.tells("work-mail"), m.waits("work-mail"), m.tells("friend"), m.waits("friend")), (1, false, 1, false));
+    }
+
+    /// A phone that does not share the settings (review of phase 2, N2):
+    /// its hours run an hour later, and the desk's told log never reaches
+    /// it. The desk tells a friend's mail in its leisure; the phone, not
+    /// sure in hours that may not be the desk's, keeps it and tells it again
+    /// once it keeps the notices: at worst twice, never lost. With the
+    /// desk's work cell changed to bring leisure, the phone, in its own
+    /// working hours, would read the desk as telling what the desk in fact
+    /// leaves for it: it keeps it all the same, and tells it once.
+    #[test]
+    fn hours_that_may_differ_tell_at_worst_twice_and_lose_nothing() {
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK.with(Area::LEISURE)), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]).with("phone", |d| d.settings = false);
+        m.arrive("friend");
+        m.fetch("desk", "friend", Area::LEISURE, Time::Leisure);
+        m.fetch("phone", "friend", Area::LEISURE, Time::Work);
+        assert!(m.tells("friend") == 1 && m.device("phone").waiting.contains("friend"));
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        assert_eq!(m.tells("friend"), 2, "at worst twice");
+        let friends_at_work = Line::for_area(Area::WORK).with_cell(Time::Work, Some(Area::WORK.with(Area::LEISURE)));
+        let mut m = Model::new(&[("desk", friends_at_work, "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]).with("phone", |d| d.settings = false);
+        m.arrive("friend");
+        m.fetch("desk", "friend", Area::LEISURE, Time::Leisure);
+        m.fetch("phone", "friend", Area::LEISURE, Time::Work);
+        assert!(m.tells("friend") == 0 && m.device("phone").waiting.contains("friend"), "left for the phone, kept there");
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        assert_eq!(m.tells("friend"), 1, "never lost");
     }
 }

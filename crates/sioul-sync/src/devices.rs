@@ -431,6 +431,20 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     (entries, unread)
 }
 
+/// One device's entry as the folder holds it now, and the copy fetched
+/// beside it (the later of the two, `chosen`): none when neither reads.
+/// What the keeper of the notices says of itself, read at the moment a
+/// letter is judged, with the claims that name it the keeper
+/// (`dispatch::Known::judge`): never a copy kept from an earlier look.
+pub fn one(folder: &Path, key: &[u8; 32], id: &str) -> Option<Entry> {
+    let fetched = crate::remote::overlay(folder);
+    let read = |dir: &Path| crate::share::read_small(&file_of(dir, id)).and_then(|text| crate::share::open(key, &bound(id), text.trim())).and_then(|plain| serde_json::from_slice::<Entry>(&plain).ok()).filter(|entry| entry.id == id);
+    match (read(folder), fetched.as_deref().and_then(read)) {
+        (Some(here), Some(fetched)) => Some(chosen(here, fetched)),
+        (here, fetched) => here.or(fetched),
+    }
+}
+
 /// Of an entry read in two copies, the folder's and the one fetched beside
 /// it: the later by its own times (`written`), the folder's on a tie, with
 /// its words (`Entry::acked`) only on the computers the other copy names too.

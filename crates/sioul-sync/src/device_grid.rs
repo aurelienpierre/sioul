@@ -69,6 +69,12 @@ pub struct Grid {
     pub unheld: String,
     /// What a device's areas never keep back, in one sentence.
     pub never: String,
+    /// On a device whose settings do not travel (sharing on, the part
+    /// "settings" off here): it reads the others by its own hours and never
+    /// hears what they told, so it may tell again what another device told
+    /// (review of phase 2, N2); "" otherwise. Set by the caller
+    /// (`settings_apart`), which knows this device's parts.
+    pub twice: String,
 }
 
 fn said(words: &Translator, id: &str, pairs: &[(&str, String)]) -> String {
@@ -154,13 +160,19 @@ pub fn grid(rows: &mut [Row], said_of: &BTreeMap<String, Said>, known: &Known, m
     };
     let some_said = known.some_said();
     let unheld = if some_said && !here.unheld.is_empty() { said(words, "devices-unheld", &[("areas", areas_in_words(words, "device-areas", here.unheld))]) } else { String::new() };
-    Grid { times: times(mode).into_iter().map(|time| time_title(time, words)).collect(), now, unheld, never: words.text("devices-never-held", None) }
+    Grid { times: times(mode).into_iter().map(|time| time_title(time, words)).collect(), now, unheld, never: words.text("devices-never-held", None), twice: String::new() }
 }
 
 /// The grid's own lines for the command line, under the table: what now
 /// brings here, what no device is for, what is never kept back.
 pub fn plain(grid: &Grid) -> Vec<String> {
-    [&grid.now, &grid.unheld, &grid.never].into_iter().filter(|line| !line.is_empty()).cloned().collect()
+    [&grid.now, &grid.unheld, &grid.twice, &grid.never].into_iter().filter(|line| !line.is_empty()).cloned().collect()
+}
+
+/// The sentence of a device whose settings do not travel (`Grid::twice`):
+/// `shared`, sharing is on; `settings`, this device shares the part "settings".
+pub fn settings_apart(shared: bool, settings: bool, words: &Translator) -> String {
+    if shared && !settings { words.text("devices-settings-twice", None) } else { String::new() }
 }
 
 #[cfg(test)]
@@ -186,7 +198,7 @@ mod tests {
     /// Another device as its entry says it: its cells in `week`, and that it acts on the cells of `of`.
     fn seen_by(said_of: &BTreeMap<String, Said>, id: &str, of: &str, week: Week) -> Seen {
         let words = |id: &str| Cells::Line(said_of.get(id).map(Said::line).unwrap_or_default()).words(week);
-        Seen { cells: words(id), known: [(of.to_string(), Cells::key(&words(of)))].into(), carried: false }
+        Seen { cells: words(id), known: [(of.to_string(), Cells::key(&words(of)))].into(), ..Seen::default() }
     }
 
     fn said(pairs: &[(&str, &str, &[(&str, &str)])]) -> BTreeMap<String, Said> {
