@@ -109,6 +109,11 @@ pub struct Keeper {
     /// only if it kept the doses at the dose's time (docs/health.md, "What
     /// became of a reminder").
     pub since: i64,
+    /// Since when the keeper says it has kept it, in its claim, by its own
+    /// clock (`Claim::since`): 0 for this computer alone. Never shorter than
+    /// a spell of another keeper this process did not see; read with a
+    /// clock margin (`dispatch::Sure::Since`).
+    pub claimed: i64,
 }
 
 /// When this process began, as the lease first asked (Unix seconds).
@@ -120,7 +125,7 @@ pub fn started() -> i64 {
 impl Keeper {
     /// The only computer: no sharing, or nobody else claims.
     pub fn alone(computer: &str) -> Keeper {
-        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0, since: started() }
+        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0, since: started(), claimed: 0 }
     }
 }
 
@@ -306,7 +311,7 @@ let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(compute
         }
         Err(_) => (false, now),
     };
-    Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since }
+    Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since, claimed: chosen.since }
 }
 
 /// Why invoices may not be numbered on a computer now, as the claims on
