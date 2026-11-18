@@ -57,6 +57,7 @@ fn main() {
         "qml/SpanLine.qml",
         "qml/MailOpener.qml",
         "qml/NoticeOpener.qml",
+        "qml/SettingDoor.qml",
         "qml/WeekPlanning.qml",
         "qml/DayHead.qml",
         "qml/Paths.qml",
@@ -137,6 +138,7 @@ fn main() {
         "qml/InvoiceSettings.qml",
         "qml/ContactMap.qml",
         "qml/SitesPage.qml",
+        "qml/SitesWeb.qml",
         "qml/DoneDialog.qml",
         "qml/DayReview.qml",
         "qml/DayReviewLine.qml",
@@ -176,6 +178,11 @@ fn main() {
         "qml/SitePopup.qml", "qml/PresetPlaceMenu.qml", "qml/PresetGroupMenu.qml", "qml/BankAccountDialog.qml", "qml/BankRulesDialog.qml", "qml/ReserveDialog.qml",
         "qml/LoginChooser.qml",
         "qml/VaultUnlock.qml",
+        // Bitwarden in Accounts: the password manager's card, its form, "From Bitwarden…".
+        "qml/VaultCard.qml",
+        "qml/VaultForm.qml",
+        "qml/VaultFill.qml",
+        "qml/VaultHeld.qml",
         "qml/AccountPassword.qml",
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
@@ -227,8 +234,20 @@ fn main() {
         "qml/KeysHint.qml",
         "qml/TitleBar.qml",
         "qml/WindowEdges.qml",
+        // One tab component for every view switcher; a page's column; a heading and a frame.
+        "qml/Tabs.qml",
+        "qml/PageColumn.qml",
+        "qml/Section.qml",
+        "qml/BareButton.qml",
+        // Sioul's overrides of the Basic style, which cpp/style.cpp gives in place of Basic's own.
+        "qml/style/StyleButton.qml",
+        "qml/style/StyleTextField.qml",
+        "qml/style/StyleTextArea.qml",
+        "qml/style/StyleCheckBox.qml",
+        "qml/style/StyleRadioButton.qml",
+        "qml/style/StyleSpinBox.qml",
     ];
-    let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
     // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
     // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.
@@ -241,8 +260,9 @@ fn main() {
     let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start; whether the palette is dark, for the icons;
-    // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output.
-    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp", "cpp/livesound.cpp"];
+    // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output;
+    // Sioul's overrides of the Basic style (a flat button's outline, a field's fill).
+    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp", "cpp/livesound.cpp", "cpp/style.cpp"];
     if !android {
         cpp.push("cpp/webengine.cpp");
         // SIGTERM and its kin end Sioul as its window's close does.

@@ -4,12 +4,13 @@
 // Bitwarden, opened once for the session: by the master password (dropped
 // once used), with a second step or a new device's code when asked, or by
 // your security key alone. A security key is asked from Bitwarden's own page,
-// held unseen in this dialog, where one can be (the Sites page gives it, with
-// Qt WebEngine): its PIN comes in Sioul's own dialog, above this one. On
-// Android, the steps without a key: an app's code, an e-mail's, a YubiKey's,
-// a recovery code. Bitwarden's server is asked off the window's thread
-// (sites.rs, `bitwarden_later`): the dialog says it waits, and the window
-// stays free meanwhile.
+// held unseen in this dialog, which the window gives on computers to every
+// dialog, from Sites or from Accounts (SitesWeb.qml, with Qt WebEngine): its
+// PIN comes in Sioul's own dialog, above this one. On Android, the steps
+// without a key: an app's code, an e-mail's, a YubiKey's, a recovery code.
+// Bitwarden's server is asked off the window's thread (sites.rs,
+// `bitwarden_later`): the dialog says it waits, and the window stays free
+// meanwhile.
 
 pragma ComponentBehavior: Bound
 
@@ -24,13 +25,15 @@ SafeDialog {
     required property var sioul
     // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
-    // What asks a security key, where one can be asked: Bitwarden's page held
-    // unseen (the Sites page gives one, with Qt WebEngine); none on Android.
-    property Component keyComponent: null
-    // The key's page can be made now (the Sites page's web profile is ready).
-    property bool keyReady: true
+    // Where a security key can be asked: the window's `vaultKeys` (main.qml), a
+    // function that gives the component of Bitwarden's page held unseen
+    // (SitesWeb.qml's `keyPage`), the web profile made the first time; null on
+    // Android, which has no Qt WebEngine, and on a stand-in.
+    property var keys: null
     // A security key can be asked here: something to hold Bitwarden's page was given.
-    readonly property bool keyCapable: unlock.keyComponent !== null
+    readonly property bool keyCapable: unlock.keys !== null
+    // Bitwarden's page, as `keys` gave it once a key was first asked.
+    property Component keyComponent: null
     // Bitwarden's page held unseen while a security key is asked, for the window's
     // tests.
     property alias keyView: keyView
@@ -112,6 +115,8 @@ SafeDialog {
         unlock.problem = ""
         unlock.note = ""
         unlock.keyAsk = null
+        if (unlock.keyComponent === null && unlock.keyCapable)
+            unlock.keyComponent = unlock.keys()
         Qt.callLater(() => unlock.keyAsk = { mode: mode, page: ask.page, script: ask.script })
     }
 
@@ -174,9 +179,10 @@ SafeDialog {
             unlock.offered = unlock.order.filter(p => answer.factor.indexOf(p) >= 0 && can(p))
             if (unlock.offered.length === 0) {
                 unlock.provider = -1
-                // A security key this dialog cannot ask (from Accounts, or on a phone): where it can be, said.
+                // A security key where none can be asked (a phone: every computer's dialog
+                // has the window's key page): what to do instead, said.
                 const keyElsewhere = answer.factor.indexOf(7) >= 0 && !unlock.keyCapable
-                unlock.problem = unlock.sioul.text(!keyElsewhere ? "bitwarden-factor-unsupported" : Qt.platform.os === "android" ? "bitwarden-factor-key-phone" : "bitwarden-factor-key-sites")
+                unlock.problem = unlock.sioul.text(keyElsewhere ? "bitwarden-factor-key-phone" : "bitwarden-factor-unsupported")
             } else if (unlock.offered.indexOf(unlock.provider) < 0) {
                 unlock.choose(unlock.offered[0])
             } else {
@@ -273,13 +279,16 @@ SafeDialog {
         Loader {
             id: keyView
 
-            active: unlock.keyAsk !== null && unlock.keyCapable && unlock.keyReady
+            active: unlock.keyAsk !== null && unlock.keyComponent !== null
             visible: active
             Layout.preferredWidth: 1
             Layout.preferredHeight: 1
             sourceComponent: unlock.keyComponent
-            // A page asks a key only while it has the focus.
-            onLoaded: keyView.item.forceActiveFocus()
+            // What it asks, then the focus: a page asks a key only while it has it.
+            onLoaded: {
+                keyView.item.ask = unlock.keyAsk
+                keyView.item.forceActiveFocus()
+            }
         }
         // The key's answer, taken from the page once given; the first call asks the key.
         Timer {

@@ -209,7 +209,7 @@ Sur un téléphone, les notifications de Sioul sont des deux mêmes types, chacu
 Du coucher au réveil, et pendant une sieste, les prises viennent sauf si vous le changez : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller.
 
 - **Pendant le sommeil et une pause** : la ligne **Prises**, dans Celles de Sioul : **Tout de suite** (sauf si vous le changez) ou **Plus tard**. Plus tard, le rappel de chaque prise vient à votre réveil ou à votre retour, une fois, et la question sur les prises dues pendant que Sioul était fermé aussi. Toutes les autres cases sont fixées à tout de suite : Sioul ne retient jamais une prise sans ce choix.
-- **Sans nuit réglée** sur la page Santé, rien n’écarte les notifications la nuit : le Porche la demande dans une carte ([Les heures](hours.md#sleep)).
+- **Sans nuit réglée** dans Paramètres ▸ Heures, rien n’écarte les notifications la nuit : le Porche la demande dans une carte ([Les heures](hours.md#sleep)).
 
 ### Les heures de regroupement {#the-gathered-times}
 
@@ -467,12 +467,12 @@ Sur un téléphone Android, le filtrage des appels est à part de « Ne pas d�
 ## Où changer chaque chose {#where-to-change-each-thing}
 
 - **Paramètres ▸ Ce qui vous joint** : la matrice, par moment, par personne et celles de Sioul ; **Me dire les nouveaux courriels**, **Avec les infolettres**, **Notifications des sites regroupées**, **Les notifications pour information durent** ; **Rien du tout**, pour le temps libre ; vos listes ; Passent toujours et sa liste ; sur Android, chaque application, conversation et site du navigateur ; ce qui met « Ne pas déranger », et ce que le système de cet appareil laisse faire à Sioul.
-- **Paramètres ▸ Rappels** : **Avant un événement**, **Dates demandées : jours travaillés avant**, **Une attente finie**, **Paiements prévus : jours travaillés avant**, **Fenêtre de Sioul fermée**, **Regroupées à** ([Les paramètres](settings.md#reminders)).
+- **Paramètres ▸ Rappels** : **Dates demandées : jours travaillés avant**, **Fenêtre de Sioul fermée**, **Regroupées à** ([Les paramètres](settings.md#reminders)) ; **Avant un événement** dans le ⚙ de l’Agenda, **Une attente finie** dans celui des Tâches, **Paiements prévus : jours travaillés avant** dans celui de la page Budgets.
 - **Paramètres ▸ Ce téléphone** (**Cette tablette** sur une tablette), sur Android : le filtrage des appels, l’accès aux notifications des autres applications et leur retenue, l’accès « Ne pas déranger », qui est en favori, garder le téléphone à jour en arrière-plan, les alarmes exactes ([Les paramètres](settings.md#this-phone)).
 - **La fiche d’une personne**, depuis sa fiche de contact ou un message : sa liste, Passe toujours ([plus haut](#a-persons-sheet)).
 - **Un événement** : **Rappel**, dans son formulaire et ses détails ([L’agenda](agenda.md#reminders)).
 - **Un site** : **Temps réel**, et son menu ([Les sites](sites.md)).
-- **Le ⚙ de la page Santé** : les avis des repas, des siestes et de la nuit, la pause pour bouger ([La santé](health.md)).
+- **Paramètres ▸ Heures** : les avis des repas, des siestes et de la nuit ([Repas, repos et sommeil](health.md#meals-rest-and-sleep)) ; **le ⚙ de la page Santé** : la pause pour bouger ([La santé](health.md#moving)).
 - **Le ⚙ des tâches** : **Du temps pour vous** ([Les tâches](tasks.md#the-tasks-settings)).
 - **Les paramètres d’Android** : chacun des canaux de Sioul, son son compris : « Doses » et « Prises pendant une pause », « À savoir » (ce qui est à savoir), « À faire » et « À faire pendant une pause » (un code), « Courriels des personnes qui passent toujours », « Réveil », « Minuteur de concentration », « Appareils à jour ». Les canaux d’un Sioul plus ancien (« Événements », « Alarmes des événements », « Nouveaux courriels », « Fin de journée ») ont disparu. Un canal « pendant une pause » passe les modes de Sioul tant que vous ne l’y avez pas changé ; les conversations que vous laissez toujours passer, **Prioritaire** dans la page de chacune.
 

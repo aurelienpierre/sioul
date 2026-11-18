@@ -113,7 +113,7 @@ SafePopup {
         Repeater {
             model: menu.editing ? [] : menu.topics
 
-            delegate: Button {
+            delegate: BareButton {
                 id: choice
 
                 required property var modelData

@@ -934,7 +934,7 @@ ColumnLayout {
         visible: tab.view === "exceptions"
         Layout.bottomMargin: 18
         flat: true
-        text: tab.sioul.text("attention-open-health")
+        text: tab.sioul.text("attention-open-needs")
         icon.name: "go-next"
         icon.color: tab.theme.text
         onClicked: tab.sioul.reminderOpened("needs", "", "")

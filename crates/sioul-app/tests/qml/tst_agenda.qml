@@ -682,7 +682,7 @@ Item {
             const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
             // Laid as a grid once the page has its width: a list (no box) until then.
             tryVerify(() => !planning.listed, 3000, "the Week as a grid")
-            const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0, ""))
+            const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0))
             const thing = planning.thingAt({ x: box.x + box.width / 2, y: box.y + box.height - 2 })
             compare(thing.row.kind + " " + thing.part, "event body")
         }
@@ -700,7 +700,7 @@ Item {
             // whose lead it lies in (review of ab7daa4, later 8).
             const pressedOn = () => {
                 const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
-                const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0, ""))
+                const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0))
                 const thing = planning.thingAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 })
                 return thing ? thing.row.kind : ""
             }

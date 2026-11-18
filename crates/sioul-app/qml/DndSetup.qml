@@ -253,7 +253,7 @@ ColumnLayout {
     Repeater {
         model: setup.listShown ? setup.found : []
 
-        delegate: Button {
+        delegate: BareButton {
             id: contact
 
             required property var modelData
@@ -295,9 +295,10 @@ ColumnLayout {
             Accessible.name: setup.sioul.text("dnd-setup-phones")
             wrapMode: TextArea.Wrap
             background: Rectangle {
-                color: setup.theme.surface
+                color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: phonesField.activeFocus ? setup.theme.focus : setup.theme.line
+                border.color: phonesField.activeFocus ? setup.theme.focusEdge : setup.theme.edge
+                border.width: phonesField.activeFocus ? 2 : 1
             }
         }
         TextArea {
@@ -308,9 +309,10 @@ ColumnLayout {
             Accessible.name: setup.sioul.text("dnd-setup-emails")
             wrapMode: TextArea.Wrap
             background: Rectangle {
-                color: setup.theme.surface
+                color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: emailsField.activeFocus ? setup.theme.focus : setup.theme.line
+                border.color: emailsField.activeFocus ? setup.theme.focusEdge : setup.theme.edge
+                border.width: emailsField.activeFocus ? 2 : 1
             }
         }
         RowLayout {

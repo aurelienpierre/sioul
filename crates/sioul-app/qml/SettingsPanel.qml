@@ -23,20 +23,91 @@ SafePopup {
     property string view: ""
     property var rows: []
     property string problem: ""
+    // The rows, gathered by heading, in their order: one frame each (Section.qml).
+    readonly property var groups: {
+        const groups = []
+        for (const row of panel.rows) {
+            const last = groups.length > 0 ? groups[groups.length - 1] : null
+            if (last !== null && last.group === row.group)
+                last.rows.push(row)
+            else
+                groups.push({ group: row.group, rows: [row] })
+        }
+        return groups
+    }
 
     function reload() {
         panel.rows = panel.view === "" ? [] : JSON.parse(panel.sioul.settings(panel.view))
     }
 
-    // A setting at the top of the panel, its group's title above it (the window's images).
+    // A setting at the top of the panel, its group's title above it (a door by
+    // its key, the window's images). The first time the panel opens its rows are
+    // not laid out yet: the setting asked for is kept in view while they are,
+    // then left to the hand (the first move of the hand ends it at once).
+    property string wanted: ""
+
     function scrollTo(key) {
-        const at = panel.rows.findIndex(row => row.key === key)
-        const row = at < 0 ? null : shownRows.itemAt(at)
+        panel.wanted = key
+        panel.place()
+        settled.restart()
+    }
+
+    // The setting's own row, or, when it is the first of its heading, its frame with the heading.
+    function placeOf(key) {
+        const at = panel.groups.findIndex(group => group.rows.some(row => row.key === key))
+        const section = at < 0 ? null : shownGroups.itemAt(at)
+        if (section === null)
+            return null
+        if (panel.groups[at].rows[0].key === key)
+            return section
+        const find = item => {
+            if (item.objectName === "setting:" + key)
+                return item
+            for (let i = 0; i < item.children.length; i++) {
+                const found = find(item.children[i])
+                if (found)
+                    return found
+            }
+            return null
+        }
+        return find(section)
+    }
+
+    function place() {
+        const row = panel.placeOf(panel.wanted)
         const flick = scroll.contentItem as Flickable
         if (row === null || flick === null)
             return
         const top = row.mapToItem(flick.contentItem, 0, 0).y
         flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
+    }
+
+    Timer {
+        id: settled
+
+        interval: 400
+        onTriggered: panel.wanted = ""
+    }
+
+    // Placed again at each frame of the layout's work, a row's place moving after
+    // the panel's height said it changed; the setting kept a moment once still.
+    Timer {
+        interval: 40
+        repeat: true
+        running: panel.wanted !== "" && panel.opened
+        onTriggered: panel.place()
+    }
+
+    Connections {
+        target: scroll.contentItem as Flickable
+
+        function onContentHeightChanged() {
+            if (panel.wanted !== "")
+                settled.restart()
+        }
+        function onMovementStarted() {
+            panel.wanted = ""
+        }
     }
 
     // An item of the panel (a part's own line) at the top of the panel (the window's images).
@@ -65,6 +136,7 @@ SafePopup {
     modal: false
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     onAboutToShow: panel.reload()
+    onOpened: if (panel.wanted !== "") panel.place()
 
     background: Rectangle {
         color: panel.theme.surface
@@ -111,40 +183,41 @@ SafePopup {
                 color: panel.theme.warm
             }
 
+            // Each heading's rows in a frame of their own (Section.qml), as Settings shows them.
             Repeater {
-                id: shownRows
+                id: shownGroups
 
-                model: panel.rows
+                model: panel.groups
 
-                delegate: ColumnLayout {
-                    id: row
+                delegate: Section {
+                    id: group
 
                     required property var modelData
                     required property int index
-                    readonly property bool newGroup: row.modelData.group !== "" && (row.index === 0 || panel.rows[row.index - 1].group !== row.modelData.group)
 
                     Layout.fillWidth: true
-                    Layout.topMargin: row.newGroup ? 14 : 8
-                    spacing: 3
+                    Layout.topMargin: group.index === 0 ? 6 : 12
+                    theme: panel.theme
+                    title: panel.theme.plain(group.modelData.group)
+                    body.spacing: 12
 
-                    Label {
-                        visible: row.newGroup
-                        Layout.fillWidth: true
-                        text: row.modelData.group
-                        textFormat: Text.PlainText
-                        font.pixelSize: 16
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                        color: panel.theme.accent
-                    }
-                    SettingRow {
-                        Layout.fillWidth: true
-                        setting: row.modelData
-                        sioul: panel.sioul
-                        theme: panel.theme
-                        onSave: (key, value, shown) => panel.save(key, value, shown)
-                        onGoTo: key => panel.scrollTo(key)
-                        onChangedElsewhere: panel.reload()
+                    Repeater {
+                        model: group.modelData.rows
+
+                        delegate: SettingRow {
+                            required property var modelData
+
+                            objectName: "setting:" + modelData.key
+                            Layout.fillWidth: true
+                            setting: modelData
+                            sioul: panel.sioul
+                            theme: panel.theme
+                            onSave: (key, value, shown) => panel.save(key, value, shown)
+                            onGoTo: key => panel.scrollTo(key)
+                            onChangedElsewhere: panel.reload()
+                            // A link followed: its place shows, not this panel over it.
+                            onFollowed: panel.close()
+                        }
                     }
                 }
             }

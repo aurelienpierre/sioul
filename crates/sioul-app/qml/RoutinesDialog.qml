@@ -163,8 +163,9 @@ SafeDialog {
                 wrapMode: TextEdit.Wrap
                 placeholderText: "10 min …\n5 min …"
                 background: Rectangle {
-                    color: routines.theme.surface
-                    border.color: stepsArea.activeFocus ? routines.theme.focus : routines.theme.line
+                    color: routines.theme.field
+                    border.color: stepsArea.activeFocus ? routines.theme.focusEdge : routines.theme.edge
+                    border.width: stepsArea.activeFocus ? 2 : 1
                     radius: 3
                 }
             }

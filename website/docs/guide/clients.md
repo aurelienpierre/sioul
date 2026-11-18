@@ -54,7 +54,7 @@ On a phone or a tablet: Sioul for Android has shipped with each version since 0.
 
 ## And then it rests {#and-then-it-rests}
 
-Outside your working hours, client projects and the Time page rest: "Work projects rest until work comes back." Being paid by the hour is no reason to work every evening. [Hours](hours.md)
+Outside your working hours, the Projects and Time pages show the projects for what the hours bring, client projects one tick away ([Projects](projects.md#in-quiet-time)). Being paid by the hour is no reason to work every evening. [Hours](hours.md)
 
 ## Not there yet {#not-there-yet}
 

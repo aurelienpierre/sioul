@@ -25,6 +25,12 @@ ColumnLayout {
     property var found: null
     // An account signed in again: its id; empty when adding one.
     property string againId: ""
+    // What asks a security key (VaultUnlock.qml's `keys`): the window's, none on a phone.
+    property var keys: null
+    // Bitwarden on this device, as the Accounts page reads it: "missing", "locked" or "unlocked".
+    property string vault: "missing"
+    // The page's keeper of fields holding a vault's password (VaultHeld.qml).
+    property var held: null
     property bool stepsShown: false
     property bool ownKey: false
     readonly property bool keyKept: form.found !== null && form.found.google_key === true
@@ -130,6 +136,18 @@ ColumnLayout {
             placeholderText: "xxxx xxxx xxxx xxxx"
             onAccepted: if (keep.enabled) keep.clicked()
         }
+        // An app password kept in your vault, found by the address.
+        VaultFill {
+            sioul: form.sioul
+            theme: form.theme
+            keys: form.keys
+            vault: form.vault
+            site: "https://myaccount.google.com"
+            user: form.address
+            field: appPassword
+            held: form.held
+            onProblem: text => form.problem = text
+        }
         Label {
             Layout.fillWidth: true
             text: form.sioul.text("ui-password-note")
@@ -181,7 +199,7 @@ ColumnLayout {
             onToggled: form.ownKey = checked
         }
         // Its sentence wraps: on one line, it was wider than a phone.
-        Button {
+        BareButton {
             id: stepsButton
 
             visible: !form.keyKept && (!form.builtIn || form.ownKey)
@@ -232,6 +250,24 @@ ColumnLayout {
 
                 Layout.fillWidth: true
                 sioul: form.sioul
+            }
+            Item {
+                visible: secretVault.visible
+                Layout.preferredWidth: 1
+            }
+            // The key's secret, kept in your vault for Google's console.
+            VaultFill {
+                id: secretVault
+
+                sioul: form.sioul
+                theme: form.theme
+                keys: form.keys
+                vault: form.vault
+                site: "https://console.cloud.google.com"
+                user: clientId.text
+                field: clientSecret
+                held: form.held
+                onProblem: text => form.problem = text
             }
         }
         RowLayout {

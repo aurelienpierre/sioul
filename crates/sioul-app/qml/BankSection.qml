@@ -312,7 +312,7 @@ ColumnLayout {
                     color: section.theme.warm
                 }
                 // Its movements, folded: each where it went and why; changed by hand.
-                Button {
+                BareButton {
                     visible: card.modelData.movements.length > 0
                     flat: true
                     text: (card.open ? "▾  " : "▸  ") + section.sioul.textArgs("bank-movements", JSON.stringify({ count: card.modelData.movements.length }))

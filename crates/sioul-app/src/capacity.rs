@@ -78,6 +78,23 @@ thread_local! {
 pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
     #[cfg(test)]
     DRESSED.with(|n| n.set(n.get() + 1));
+    dress_words(day, tasks);
+    let now = sioul_core::zone::now();
+    let slots = sioul_core::attention::Slots { day: Some(now.date()), slots: day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.start, b.end)).collect() };
+    match slots.save(&sioul_core::attention::Slots::default_path()) {
+        // Calls ring or go to voicemail in them too: the phone's table follows.
+        Ok(true) => {
+            std::thread::spawn(|| crate::calls::refresh(true));
+        }
+        Ok(false) => {}
+        Err(e) => eprintln!("sioul: {e}"),
+    }
+}
+
+/// Today's layout in words alone, nothing written: the slots of time for you
+/// named, with one suggestion from your own items when there is one (G19),
+/// the free time kept named, and why today holds what it holds.
+pub(crate) fn dress_words(day: &mut DayView, tasks: &[Task]) {
     let now = sioul_core::zone::now();
     let record = last();
     let suggestion = record.as_ref().and_then(|r| capacity::suggestion(tasks, &r.index, now.date()));
@@ -92,15 +109,6 @@ pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
         }
     }
     day.said = record.map(|r| r.reasons(now.date(), tr())).unwrap_or_default();
-    let slots = sioul_core::attention::Slots { day: Some(now.date()), slots: day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.start, b.end)).collect() };
-    match slots.save(&sioul_core::attention::Slots::default_path()) {
-        // Calls ring or go to voicemail in them too: the phone's table follows.
-        Ok(true) => {
-            std::thread::spawn(|| crate::calls::refresh(true));
-        }
-        Ok(false) => {}
-        Err(e) => eprintln!("sioul: {e}"),
-    }
 }
 
 /// A day's balance, in words, for the evening's review: each cost and the

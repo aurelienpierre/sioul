@@ -111,6 +111,8 @@ pub mod qobject {
         #[qproperty(QString, places_found)]
         // The groups Sioul noticed, for Mail ▸ ⚙ ▸ Topics (`topics::find_groups`).
         #[qproperty(QString, topic_groups)]
+        // The Time page as last asked (`show_time_page`), made off the window's thread.
+        #[qproperty(QString, time_view)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -1189,7 +1191,7 @@ pub mod qobject {
         #[qinvokable]
         fn fold_task(self: Pin<&mut Sioul>, uid: &QString, open: bool);
 
-        /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
+        /// Asleep, Now chooses among every task all the same ("Show anyway" on its cover), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
 
@@ -2646,6 +2648,19 @@ pub mod qobject {
         #[qinvokable]
         fn project_rows(self: &Sioul) -> QString;
 
+        /// The Projects page's list, by its filter by area: {rows, all, filter}, as JSON.
+        #[qinvokable]
+        fn projects_page(self: &Sioul) -> QString;
+
+        /// The areas ticked in the projects' filter, the Projects and Time pages'
+        /// ("work+leisure", "" for none), kept until the hours change, a day at most.
+        #[qinvokable]
+        fn tick_project_areas(self: Pin<&mut Sioul>, areas: &QString);
+
+        /// "As the hours say": your ticks in the projects' filter forgotten.
+        #[qinvokable]
+        fn project_areas_as_hours(self: Pin<&mut Sioul>);
+
         /// One project's page, as JSON.
         #[qinvokable]
         fn project_page(self: &Sioul, id: &QString) -> QString;
@@ -2654,9 +2669,10 @@ pub mod qobject {
         #[qinvokable]
         fn save_project(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
 
-        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or all.
+        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or
+        /// all, made off the window's thread: `time_view` follows.
         #[qinvokable]
-        fn time_page(self: &Sioul, period: &QString, anchor: &QString, project: &QString) -> QString;
+        fn show_time_page(self: Pin<&mut Sioul>, period: &QString, anchor: &QString, project: &QString);
 
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
@@ -2832,9 +2848,14 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "time", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
+
+        /// Where a setting lives, by its key: the page whose ⚙ holds it
+        /// (`settings::page_of`: "sites"…), or "" for Settings (SettingDoor.qml).
+        #[qinvokable]
+        fn setting_page(self: &Sioul, key: &QString) -> QString;
 
         /// Changes one setting (its value as JSON); returns what went wrong, else "".
         #[qinvokable]
@@ -3151,6 +3172,12 @@ pub mod qobject {
         #[qsignal]
         fn bitwarden_answered(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
 
+        /// The vault was locked: by Lock, or after its time without use. What
+        /// still holds something of it lets it go (VaultHeld.qml, the choosers'
+        /// lists, the password manager's card).
+        #[qsignal]
+        fn bitwarden_locked(self: Pin<&mut Sioul>);
+
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
         #[qsignal]
@@ -3246,6 +3273,7 @@ pub struct SioulRust {
     forecast: QString,
     places_found: QString,
     topic_groups: QString,
+    time_view: QString,
     shared: Arc<Shared>,
 }
 
@@ -3349,6 +3377,9 @@ pub(crate) struct Shared {
     /// from the older plan beside the newer calendars (review of 3a2fbd4, later 4).
     pub(crate) replan_due: AtomicBool,
     pub(crate) health_job: Job,
+    /// The Time page (`projects::show_time`), and what it asked last: period, day, project.
+    pub(crate) time_job: Job,
+    pub(crate) time_asked: Mutex<(String, String, String)>,
     /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
     pub(crate) agenda_job: Job,
     pub(crate) agenda_generation: AtomicU64,
@@ -3603,7 +3634,7 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
 pub(crate) fn reading_json() -> String {
     let config = load_config();
     let reading = config.reading;
-    // colour: and the sites' colours, as Settings ▸ Display has them (SitesPage.qml, docs/colour.md).
+    // colour: and the sites' colours, as the Sites page's ⚙ has them (SitesPage.qml, docs/colour.md).
     serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named, "screen_colours": config.screen_colours.unwrap_or(true), "calmer_colours": config.calmer_colours.unwrap_or_default() }).to_string()
 }
 
@@ -7223,8 +7254,11 @@ impl qobject::Sioul {
 
     fn save_needs(self: Pin<&mut Self>, edit: &QString, shown: &QString) -> QString {
         let problem = crate::health::save_needs(&edit.to_string(), &shown.to_string());
-        // The plan goes around them at once.
-        crate::work::show_work(&self.qt_thread(), &self.shared());
+        // The plan goes around them at once; the Health page reads its days again
+        // (they are set in Settings ▸ Hours, away from it).
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        crate::work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
         QString::from(&problem)
     }
 
@@ -7414,6 +7448,9 @@ impl qobject::Sioul {
         }
         if shared.health_job.deferred.swap(false, Ordering::SeqCst) {
             crate::health::show_health(&qt, &shared);
+        }
+        if shared.time_job.deferred.swap(false, Ordering::SeqCst) {
+            crate::projects::show_time(&qt, &shared);
         }
         crate::share::set_shown(true);
         // Something shared to Sioul, a mailto: link opened with it: its draft (docs/android.md, "Sharing").
@@ -7692,8 +7729,9 @@ impl qobject::Sioul {
         crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_unlock(&shared, &password, provider, &code))
     }
 
-    fn bitwarden_lock(self: Pin<&mut Self>) {
+    fn bitwarden_lock(mut self: Pin<&mut Self>) {
         crate::sites::bitwarden_lock(&self.shared());
+        self.as_mut().bitwarden_locked();
     }
 
     fn bitwarden_send_code(self: Pin<&mut Self>, password: &QString) -> i32 {
@@ -7753,11 +7791,13 @@ impl qobject::Sioul {
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
-        // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
+        // The Bitwarden vault locked once unused as long as you chose, away or not
+        // (Accounts, the password manager's card); what holds something of it lets it go.
         let lock_after = load_config().bitwarden.lock_after.unwrap_or(0);
         if crate::sites::bitwarden_lock_if_idle(&self.shared(), lock_after, jiff::Timestamp::now().as_second()) {
             let words = tr().text("bitwarden-locked", None);
             self.as_mut().set_status(QString::from(&words));
+            self.as_mut().bitwarden_locked();
         }
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
@@ -8187,6 +8227,19 @@ impl qobject::Sioul {
         QString::from(&crate::projects::rows(&self.shared()))
     }
 
+    fn projects_page(&self) -> QString {
+        QString::from(&crate::projects::page_rows(&self.shared()))
+    }
+
+    fn tick_project_areas(self: Pin<&mut Self>, areas: &QString) {
+        let now = sioul_core::zone::now();
+        crate::projects::tick_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
+    }
+
+    fn project_areas_as_hours(self: Pin<&mut Self>) {
+        crate::projects::areas_as_hours();
+    }
+
     fn project_page(&self, id: &QString) -> QString {
         QString::from(&crate::projects::page(&self.shared(), &id.to_string()))
     }
@@ -8195,8 +8248,12 @@ impl qobject::Sioul {
         QString::from(&crate::projects::save(&self.qt_thread(), &self.shared(), &id.to_string(), &edit.to_string()))
     }
 
-    fn time_page(&self, period: &QString, anchor: &QString, project: &QString) -> QString {
-        QString::from(&crate::projects::time(&self.shared(), &period.to_string(), &anchor.to_string(), &project.to_string()))
+    fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {
+        let shared = self.shared();
+        if let Ok(mut asked) = shared.time_asked.lock() {
+            *asked = (period.to_string(), anchor.to_string(), project.to_string());
+        }
+        crate::projects::show_time(&self.qt_thread(), &shared);
     }
 
     fn note_time(self: Pin<&mut Self>, edit: &QString) -> QString {
@@ -8409,8 +8466,8 @@ impl qobject::Sioul {
                 first.label = sioul_core::settings::device_kind_found(tr(), crate::devicekind::guessed());
             }
         }
-        // colour: what this screen gets, said under its switch; neither line on a
-        // phone, whose sites open in the browser (docs/colour.md).
+        // colour: what this screen gets, said under its switch (the Sites page's ⚙);
+        // neither line on a phone, whose sites open in the browser (docs/colour.md).
         if cfg!(target_os = "android") {
             rows.retain(|r| r.key != "screen_colours" && r.key != "calmer_colours");
         }
@@ -8436,6 +8493,10 @@ impl qobject::Sioul {
             rows.insert(at + 1, row);
         }
         QString::from(&json(&rows))
+    }
+
+    fn setting_page(&self, key: &QString) -> QString {
+        QString::from(sioul_core::settings::page_of(&key.to_string(), &load_config(), tr()).unwrap_or_default())
     }
 
     fn set_setting(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
@@ -8704,8 +8765,10 @@ impl qobject::Sioul {
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
         // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
         // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
-        // Invoices (the guide's pictures; docs/projects.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices"].contains(&steps.as_str()) && offline()) {
+        // Invoices (the guide's pictures; docs/projects.md), "shell" Settings' tabs and, on a phone, its
+        // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
+        // (pictures alone; docs/qt-quick.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

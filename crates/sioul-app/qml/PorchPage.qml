@@ -1728,6 +1728,10 @@ Item {
                                         else
                                             page.sioul.status = problem
                                     }
+                                    // A link followed (Filed's, to the automatic senders' words): its place shows, not this over it.
+                                    function onFollowed() {
+                                        help.close()
+                                    }
                                 }
                             }
                         }

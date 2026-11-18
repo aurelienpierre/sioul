@@ -19,15 +19,17 @@ fi
 lint=$(mktemp -d "$repo/target/lint-qml.XXXX")
 trap 'rm -rf "$lint"' EXIT
 module=$lint/com/aurelienpierre/sioul
-mkdir -p "$module/qml" "$module/qml-desktop"
+mkdir -p "$module/qml/style" "$module/qml-desktop"
 cp "$generated/com/aurelienpierre/sioul/qmldir" "$generated/com/aurelienpierre/sioul/plugin.qmltypes" "$module/"
 cp "$repo"/crates/sioul-app/qml/*.qml "$module/qml/"
+# Sioul's overrides of the Basic style (cpp/style.cpp).
+cp "$repo"/crates/sioul-app/qml/style/*.qml "$module/qml/style/"
 # The desktop's own pages (the system tray), apart from what the phone's build reads.
 cp "$repo"/crates/sioul-app/qml-desktop/*.qml "$module/qml-desktop/"
 cd "$module"
 # Fedora names the Qt 6 tool qmllint-qt6; a bare qmllint may be Qt 5's.
 qmllint=$(command -v qmllint-qt6 || command -v qmllint6 || echo /usr/lib64/qt6/bin/qmllint)
 status=0
-"$qmllint" -I "$lint" qml/*.qml qml-desktop/*.qml || status=$?
+"$qmllint" -I "$lint" qml/*.qml qml/style/*.qml qml-desktop/*.qml || status=$?
 python3 "$repo/tools/check-plain-text.py" || status=1
 exit "$status"

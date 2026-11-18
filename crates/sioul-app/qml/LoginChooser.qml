@@ -168,6 +168,16 @@ SafeDialog {
                 chooser.take(0)
             }
         }
+
+        // The vault locked: nothing of its logins kept here, the list and the fields emptied.
+        function onBitwardenLocked() {
+            chooser.close()
+            chooser.waiting = 0
+            chooser.takeWhenFound = false
+            chooser.shown = { found: [], more: 0, error: "", asked: false, both: false }
+            siteField.text = ""
+            userField.text = ""
+        }
     }
 
     // A field with a button at its end that empties it, as PasswordField's eye

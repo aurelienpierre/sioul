@@ -96,8 +96,10 @@ Item {
         contentWidth: availableWidth
         clip: true
 
-        ColumnLayout {
-            width: Math.min(scroll.availableWidth, 760)
+        // A legible column, centred in the page (PageColumn.qml).
+        PageColumn {
+            theme: page.theme
+            room: scroll.availableWidth
             spacing: 8
 
             RowLayout {

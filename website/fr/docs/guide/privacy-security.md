@@ -326,7 +326,7 @@ Chaque colonne est tout un ensemble d’outils : Thunderbird avec Firefox et s
     6. Sioul : avec Autocrypt (clés prises seulement dans les courriels vérifiés) et le Web Key Directory.
     7. Thunderbird : clés trouvées par WKD et keys.openpgp.org ; Autocrypt en partie.
     8. Nextcloud : par l’extension de navigateur Mailvelope.
-    9. Sioul : les clés de sécurité, et les clés d’accès qu’elles gardent, dans les sites que vous gardez et pour ouvrir votre coffre Bitwarden depuis la page Sites ; sur les ordinateurs ; fondé sur le WebAuthn de Chromium et pas encore essayé avec une vraie clé ; les clés d’accès gardées dans un téléphone ou dans le système ne fonctionnent pas sous Linux et macOS.
+    9. Sioul : les clés de sécurité, et les clés d’accès qu’elles gardent, dans les sites que vous gardez et pour ouvrir votre coffre Bitwarden, depuis la page Sites ou depuis Comptes ; sur les ordinateurs ; fondé sur le WebAuthn de Chromium et pas encore essayé avec une vraie clé ; les clés d’accès gardées dans un téléphone ou dans le système ne fonctionnent pas sous Linux et macOS.
     10. Firefox : les clés USB avec leur code PIN, et les clés d’accès ; le compte Mozilla lui-même accepte les codes d’une application d’authentification.
     11. Google : clés d’accès, clés de sécurité, et la Protection avancée.
     12. Proton : les clés de sécurité comme deuxième étape du compte ; les clés d’accès gardées dans Proton Pass.

@@ -95,7 +95,7 @@ When a device cannot be opened, because another program holds it or it is unplug
 
 A screen wider than sRGB, as many photo laptops and some monitors have, makes websites' colours louder than their makers meant: a green comes out more saturated, a red brighter. On a computer, Sioul shows every site in your screen's own colours, read from its colour profile, and can soften loud colours further.
 
-- **Colours for this screen**, in Settings ▸ Display: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
+- **Colours for this screen**, in this page's ⚙: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
 - **Calmer colours on sites**: Off, A little, More. Loud colours are softened, their lightness and hue kept; greys, soft tints and faces barely move. It works on every computer, with or without a profile.
 - Both change every open site at once, its pop-up windows too, without reloading anything. Sioul's own window around the sites keeps its colours.
 
@@ -107,10 +107,10 @@ When a site asks for your security key (a YubiKey or another FIDO2 key, to sign 
 
 Sioul fills logins from your Bitwarden vault, read by Sioul itself: nothing else to install.
 
-1. In the Sites page's ⚙: your Bitwarden account's e-mail, and its server when it is not bitwarden.com (bitwarden.eu, or your own, Vaultwarden too).
+1. In Accounts ▸ Your accounts, under **Password manager** (this page's ⚙ has a button to it): your Bitwarden account's e-mail, and its server when it is not bitwarden.com (bitwarden.eu, or your own, Vaultwarden too).
 2. On a site's login page, **Fill the login**.
 3. The first time in a session, open the vault: with **your security key** alone (when Bitwarden knows it as a passkey used for encryption), or with your master password, then the second step your account asks for (a security key, an authenticator app's code, a code by e-mail, a YubiKey's code, a recovery code). Duo cannot be used here. The vault then stays open until you lock it, until it has gone unused as long as you chose, or until Sioul closes.
-4. To lock it, in the Sites page's ⚙: **Bitwarden on this device** says whether it is open, with **Lock**; **Lock Bitwarden** locks it after a time without use (opening it, a login looked for or filled), from five minutes to four hours, as Bitwarden's own apps do. Until you choose, it stays open until Sioul closes.
+4. To lock it, in the same card: **Bitwarden on this device** says whether it is open, with **Lock**, or locked, with **Unlock**; **Lock Bitwarden** locks it after a time without use (opening it, a login looked for or filled), from five minutes to four hours, as Bitwarden's own apps do. Until you choose, it stays open until Sioul closes.
 
 Sioul fills at once the login made for the site in front of you, when it is the only one. When a site has several logins, or none, the list of your logins opens; **Choose a login…** opens it any time. A login made for another site is filled only when you choose it, and the list says which site it was made for, so that a look-alike site shows. Two fields find logins, each optional, both together when both are filled:
 

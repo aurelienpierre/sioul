@@ -689,7 +689,7 @@ Item {
                 font.weight: Font.DemiBold
                 color: editor.theme.text
             }
-            Button {
+            BareButton {
                 objectName: "invoiceTimeFold"
                 visible: editor.timeLines > 0
                 flat: true
@@ -814,7 +814,7 @@ Item {
                             font.pixelSize: 12
                             color: lineItem.priceRead.ok ? editor.theme.muted : editor.theme.warm
                         }
-                        Button {
+                        BareButton {
                             flat: true
                             text: (lineItem.more ? "▾  " : "▸  ") + editor.sioul.text("invoices-line-more")
                             onClicked: lineItem.more = !lineItem.more
@@ -1003,7 +1003,7 @@ Item {
             }
 
             // Terms, notes, language and currency: folded.
-            Button {
+            BareButton {
                 Layout.topMargin: 4
                 flat: true
                 text: (editor.moreOpen ? "▾  " : "▸  ") + editor.sioul.text("invoices-terms-notes")
@@ -1226,7 +1226,7 @@ Item {
             }
 
             // The preview, as it would print.
-            Button {
+            BareButton {
                 objectName: "invoicePreviewFold"
                 flat: true
                 text: (editor.previewOpen ? "▾  " : "▸  ") + editor.sioul.text("invoices-preview")
