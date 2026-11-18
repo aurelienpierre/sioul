@@ -188,6 +188,15 @@ Item {
             }
         }
 
+        // The state on is said by a mark and to a screen reader, not by colour alone (review W1).
+        function test_the_state_on_is_said() {
+            const usual = find(wide, "state-usual")
+            verify(usual.text.indexOf("✓") === 0, usual.text)
+            compare(usual.Accessible.name, "reach-moment-usual, reach-state-now")
+            const dnd = find(wide, "state-dnd")
+            compare(dnd.Accessible.name, "reach-moment-dnd")
+        }
+
         // What was named as your contacts (review C1): one line, opened to read and remove, never
         // to add to; a group on that list says so, not "No list".
         function test_what_was_named_as_contacts() {

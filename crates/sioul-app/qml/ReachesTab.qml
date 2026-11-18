@@ -269,11 +269,12 @@ ColumnLayout {
                     rightPadding: 10
                     topPadding: 5
                     bottomPadding: 5
-                    text: tab.sioul.text(stateWord.modelData.label)
+                    // The one on said by a mark and to a screen reader, not by its colour alone (review W1).
+                    text: (stateWord.current ? "✓ " : "") + tab.sioul.text(stateWord.modelData.label)
                     textFormat: Text.PlainText
                     font.weight: stateWord.current ? Font.DemiBold : Font.Normal
                     color: stateWord.current ? tab.theme.accentText : tab.theme.muted
-                    Accessible.name: stateWord.text
+                    Accessible.name: tab.sioul.text(stateWord.modelData.label) + (stateWord.current ? ", " + tab.sioul.text("reach-state-now") : "")
                     background: Rectangle {
                         radius: tab.theme.radius
                         color: stateWord.current ? tab.theme.accent : "transparent"
@@ -853,7 +854,8 @@ ColumnLayout {
                 }
             }
             Repeater {
-                model: tab.narrow ? [] : tab.shown.moments.rows.reduce((out, r) => out.concat([{ text: r.label, strong: true }, { text: r.who }, { text: r.by }, { text: r.phone }]), [])
+                // Each cell named with its row and its column for a screen reader (review W2).
+                model: tab.narrow ? [] : tab.shown.moments.rows.reduce((out, r) => out.concat([{ text: r.label, strong: true, said: r.label }, { text: r.who, said: r.label + ", " + (tab.shown.moments.columns[0] || "") + ": " + r.who }, { text: r.by, said: r.label + ", " + (tab.shown.moments.columns[1] || "") + ": " + r.by }, { text: r.phone, said: r.label + ", " + (tab.shown.moments.columns[2] || "") + ": " + r.phone }]), [])
 
                 delegate: Cell {
                     required property var modelData
@@ -861,6 +863,7 @@ ColumnLayout {
                     share: modelData.strong ? 1 : 2
                     strong: modelData.strong === true
                     text: modelData.text
+                    Accessible.name: modelData.said
                 }
             }
         }
@@ -939,13 +942,14 @@ ColumnLayout {
                 }
             }
             Repeater {
-                model: tab.narrow ? [] : tab.shown.moments.holds.reduce((out, h) => out.concat([{ text: h.label, strong: true }, { text: h.sioul }, { text: h.android }]), [])
+                model: tab.narrow ? [] : tab.shown.moments.holds.reduce((out, h) => out.concat([{ text: h.label, strong: true, said: h.label }, { text: h.sioul, said: h.label + ", " + (tab.shown.moments.holds_columns[0] || "") + ": " + h.sioul }, { text: h.android, said: h.label + ", " + (tab.shown.moments.holds_columns[1] || "") + ": " + h.android }]), [])
 
                 delegate: Cell {
                     required property var modelData
 
                     strong: modelData.strong === true
                     text: modelData.text
+                    Accessible.name: modelData.said
                 }
             }
         }
@@ -1200,6 +1204,8 @@ ColumnLayout {
 
                 objectName: behaviourLine.said ? "" : "behaviour-" + behaviourLine.modelData.channel + "-" + behaviourLine.modelData.id
                 enabled: !behaviourLine.said
+                // Each line its own name for a screen reader: its words and their help (review W3).
+                Accessible.name: (behaviourLine.modelData.head !== undefined ? behaviourLine.modelData.head : behaviourLine.modelData.note !== undefined ? behaviourLine.modelData.note : behaviourLine.modelData.label) + ((behaviourLine.modelData.help || "") !== "" ? ". " + behaviourLine.modelData.help : "")
                 Accessible.checkable: !behaviourLine.said
                 Accessible.checked: behaviourLine.modelData.current === true
                 contentItem: ColumnLayout {
@@ -1270,6 +1276,7 @@ ColumnLayout {
                 readonly property bool current: !choiceLine.said && cellChoices.cell !== null && cellChoices.cell.value === choiceLine.modelData.id
 
                 enabled: !choiceLine.said
+                Accessible.name: choiceLine.modelData.head !== undefined ? choiceLine.modelData.head : choiceLine.modelData.note !== undefined ? choiceLine.modelData.note : choiceLine.modelData.label
                 Accessible.checkable: !choiceLine.said
                 Accessible.checked: choiceLine.current
                 contentItem: Label {

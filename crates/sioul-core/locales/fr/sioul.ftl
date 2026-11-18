@@ -6843,6 +6843,7 @@ reach-behaviour-never = Jamais notifié
 reach-behaviour-never-help-mail = Le courriel reste sur le Porche, sans un mot.
 reach-behaviour-never-help-messages = Un message est retenu à tout moment, sur votre téléphone : il reste dans son application, et la fiche Ce qui vous joint maintenant compte ce que le téléphone retient.
 reach-own = À votre façon
+reach-state-now = en cours
 reach-own-help = Réglé case par case, dans Ce qui vient quand.
 reach-own-help-elsewhere = Réglé case par case sur un autre appareil : Ce qui vient quand ne montre pas cette ligne ici.
 reach-people-automatic = Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant.

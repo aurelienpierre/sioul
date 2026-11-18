@@ -6782,6 +6782,7 @@ reach-behaviour-never = Never told
 reach-behaviour-never-help-mail = Mail stays on the Porch, without a word.
 reach-behaviour-never-help-messages = A message is held at every time, on your phone: it stays in its own app, and the card What reaches you now counts what the phone holds.
 reach-own = Your own
+reach-state-now = on now
 reach-own-help = Set cell by cell, in What comes when.
 reach-own-help-elsewhere = Set cell by cell on another device: What comes when does not show that row here.
 reach-people-automatic = A message is told only while what it was written to, an address or an app, is for now.
