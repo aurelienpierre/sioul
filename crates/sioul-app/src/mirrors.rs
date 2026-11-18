@@ -110,6 +110,19 @@ impl Memo {
     }
 }
 
+/// Whether this device said a notice of `key` already (`Memo::said`): the
+/// availabilities' notices, and the first busy stretch's (`everywhere`).
+pub(crate) fn said(key: &str) -> bool {
+    Memo::load().said.contains(key)
+}
+
+/// A notice of `key` said on this device: never said again here.
+pub(crate) fn mark_said(key: &str) {
+    with_memo(|memo| {
+        memo.said.insert(key.to_string());
+    });
+}
+
 /// A memo changed and kept, under one lock across threads.
 fn with_memo<R>(change: impl FnOnce(&mut Memo) -> R) -> R {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

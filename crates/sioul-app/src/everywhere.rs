@@ -423,6 +423,32 @@ fn apply_once() {
     // The calls' table follows the pauses, the times and the switch at once (`calls::refresh`:
     // written again only when what it is made of changed, or every ten minutes).
     crate::calls::refresh(false);
+    // The first time a busy stretch turns do-not-disturb on here, one notice says why (review B8).
+    if look.state.has(Why::Busy) {
+        first_busy_notice();
+    }
+}
+
+/// What this device remembers of the notice saying why do-not-disturb holds
+/// while you are busy (`mirrors::said`, the notices said once).
+const BUSY_TOLD: &str = "busy-turns-dnd-on";
+
+/// The first time a busy event or task turns do-not-disturb on on this
+/// computer, one informative notice says why, opening What reaches you's
+/// Moments, where "While busy" is (review B8): once, marked once posted
+/// (one that waits, held by the very do-not-disturb it explains, comes when
+/// it ends). A phone's notices are Java's: none there.
+fn first_busy_notice() {
+    if cfg!(target_os = "android") || crate::mirrors::said(BUSY_TOLD) {
+        return;
+    }
+    use sioul_core::notice::{Kind, Notice, address};
+    let notice = Notice::new(address::settings("attention.dnd"), Kind::Minor, tr().text("busy-dnd-first-title", None), tr().text("busy-dnd-first-body", None));
+    let claim: crate::tell::Claim = Box::new(|| {
+        crate::mirrors::mark_said(BUSY_TOLD);
+        true
+    });
+    crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
 }
 
 /// What this device asks of its system now, in a few words, and the status
