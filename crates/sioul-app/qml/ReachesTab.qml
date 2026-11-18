@@ -40,7 +40,7 @@ ColumnLayout {
     // A part asked for (a door from elsewhere): the page scrolled to it.
     signal reveal(var item)
 
-    property var shown: ({ now: [], state: "usual", column: "", now_columns: [], presets: [], changed: "", people: { channels: [], rows: [], blocked: { label: "", help: "", word: "" }, notes: [], own_help: "" }, own: [], moments: { columns: [], rows: [], holds_title: "", holds_columns: [], holds: [], principle: "" }, elsewhere: { line: "", links: [] }, calls: "", rows: [], grid: { columns: [], marks: [], rows: [] }, phone: false })
+    property var shown: ({ now: [], state: "usual", column: "", now_columns: [], presets: [], presets_note: "", changed: "", people: { channels: [], rows: [], blocked: { label: "", help: "", word: "" }, notes: [], own_help: "" }, own: [], moments: { columns: [], rows: [], holds_title: "", holds_columns: [], holds: [], principle: "" }, elsewhere: { line: "", links: [] }, calls: "", rows: [], grid: { columns: [], marks: [], rows: [] }, phone: false })
     // "rules" or "table".
     property string view: "rules"
     // On a phone, What comes when: the row whose times are open; "" for the list.
@@ -316,6 +316,12 @@ ColumnLayout {
                 }
             }
         }
+    }
+    // A preset leaves the calls as they are: each phone's (review R3).
+    Note {
+        objectName: "reachesPresetsNote"
+        visible: text !== ""
+        text: tab.shown.presets_note || ""
     }
     RowLayout {
         visible: tab.shown.changed !== ""

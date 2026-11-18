@@ -76,7 +76,7 @@ Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur
 - **Plus calme** : les courriels de vos expéditeurs sûrs affichés, sans notification, aux loisirs et aux repas ; les messages de vos contacts et des groupes retenus aux loisirs et aux repas ; ceux de vos expéditeurs sûrs retenus pendant le temps libre ; sous « Ne pas déranger », tout SMS retenu ; les rappels de dates, et les sites en temps réel, attendent aux loisirs et aux repas.
 - **Plus joignable** : les courriels de vos contacts tout de suite aux loisirs et aux repas ; ceux des inconnus affichés aux loisirs ; les automates des autres applications tout de suite au travail et aux démarches.
 
-En choisir un pendant que vous avez des changements à vous le demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. » Une ligne qu’un préréglage règle case par case se lit **À votre façon**.
+En choisir un pendant que vous avez des changements à vous le demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. » Une ligne qu’un préréglage règle case par case se lit **À votre façon**. Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils, et le compte de vos changements ne compte que ce que montre cette page.
 
 ## Ce qui vient quand {#by-time}
 

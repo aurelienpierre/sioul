@@ -6892,6 +6892,7 @@ reach-hold-modes = Vos propres modes : Coucher, conduite
 reach-hold-modes-sioul = Lus comme un appui sur l’interrupteur
 reach-hold-modes-android = Rien qu’à vous
 reach-principle = Sioul décide de ce qui passe, et quand ; le « Ne pas déranger » d’Android décide seulement si cela fait du bruit.
+reach-presets-calls = Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils.
 reach-calls = Les appels se règlent pour chaque téléphone dans Paramètres ▸ Appareils.
 reach-calls-open = Ouvrir Appareils
 reach-elsewhere = Réglé ailleurs : { $what }.

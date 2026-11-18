@@ -909,10 +909,16 @@ impl Attention {
     }
 
     /// How many cells differ from another matrix's (a preset's); the
-    /// sources' own rows aside, which no preset sets, and the call screening's
-    /// (`screened`).
+    /// sources' own rows aside, which no preset sets, and the calls' rows,
+    /// each phone's (`preset_sets`).
     pub fn changes_from(&self, other: &Attention) -> usize {
-        Row::ALL.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        self.changes_in(other, &Row::ALL)
+    }
+
+    /// `changes_from` over `rows` alone (the rows a page shows), those a
+    /// preset never sets left out.
+    pub fn changes_in(&self, other: &Attention, rows: &[Row]) -> usize {
+        rows.iter().filter(|r| preset_sets(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -1800,6 +1806,13 @@ pub enum Preset {
     Reachable,
 }
 
+/// Whether a preset sets a row: every row but the calls' (each phone's own,
+/// Settings ▸ Devices; the call screening's among them), which a preset
+/// leaves as they are (review R3).
+pub fn preset_sets(row: Row) -> bool {
+    !matches!(row, Row::People(Channel::Calls, _)) && !screened(row)
+}
+
 impl Preset {
     pub const ALL: [Preset; 3] = [Preset::Usual, Preset::Quieter, Preset::Reachable];
 
@@ -1815,7 +1828,8 @@ impl Preset {
         Preset::ALL.into_iter().find(|p| p.id() == text.trim())
     }
 
-    /// Its matrix: the usual, changed as it says.
+    /// Its matrix: the usual, changed as it says; the calls' rows as Sioul
+    /// ships them, since a preset never sets them (`preset_sets`).
     pub fn matrix(self) -> Attention {
         use Column::*;
         use Level::*;
@@ -1824,7 +1838,6 @@ impl Preset {
             Preset::Usual => &[],
             Preset::Quieter => &[
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
-                (Row::People(Channel::Calls, Person::Neutral), &[Admin, Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Groups), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
@@ -1838,7 +1851,6 @@ impl Preset {
             Preset::Reachable => &[
                 (Row::People(Channel::Mail, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::People(Channel::Mail, Person::Stranger), &[Leisure], Quiet),
-                (Row::People(Channel::Calls, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::Own(Kind::AppAutomatons), &[Work, Admin], Now),
             ],
@@ -2258,14 +2270,22 @@ fn screened_refusal(key: &str) -> String {
     format!("{key}: the call screening's own (Settings ▸ This phone ▸ Calls ▸ Call screening: screening.unknown, screening.hidden)")
 }
 
-/// A preset chosen: every row written as it says (the usual taken out),
-/// under the configuration's lock, from the file as it is then; the call
-/// screening's rows left as they are (`screened`).
+/// A preset chosen: every row it sets written as it says (the usual taken
+/// out), under the configuration's lock, from the file as it is then; the
+/// calls' rows left as they are, the call screening's among them
+/// (`preset_sets`).
 pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
-        let matrix = preset.matrix();
-        write(path, &fresh, &matrix, &Row::ALL)
+        let now = Attention::of(&fresh);
+        let mut matrix = preset.matrix();
+        for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {
+            for column in Column::ALL {
+                matrix.cells[row.index()][column.index()] = now.cell(row, column);
+            }
+        }
+        let rows: Vec<Row> = Row::ALL.into_iter().filter(|r| preset_sets(*r)).collect();
+        write(path, &fresh, &matrix, &rows)
     })
 }
 
@@ -3786,6 +3806,33 @@ mod tests {
         // What the new defaults let through, Quieter holds: groups in leisure, texts under do-not-disturb.
         assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Groups), Column::Leisure), Level::Later);
         assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Neutral), Column::Dnd), Level::Later);
+    }
+
+    /// A preset changes only what the page shows (review R3): the calls'
+    /// rows, each phone's, stay as they are set, and are not counted.
+    #[test]
+    fn a_preset_leaves_the_calls_as_they_are() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-preset-calls-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.calls.neutral", &SettingValue::Texts(vec!["admin:later".into(), "meals:later".into()])).unwrap();
+        for preset in [Preset::Reachable, Preset::Quieter, Preset::Usual] {
+            apply_preset(&path, &Config::load(&path).unwrap(), preset).unwrap();
+            let a = Attention::of(&Config::load(&path).unwrap());
+            let calls = Row::People(Channel::Calls, Person::Neutral);
+            assert_eq!((a.cell(calls, Column::Admin), a.cell(calls, Column::Meals), a.cell(calls, Column::Leisure)), (Level::Later, Level::Later, Level::Now), "{preset:?}");
+            assert_eq!(a.changes_from(&preset.matrix()), 0, "{preset:?}: the calls are not counted");
+        }
+        for preset in Preset::ALL {
+            for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {
+                for column in Column::ALL {
+                    assert_eq!(preset.matrix().cell(row, column), usual(row, column), "{preset:?} {row:?} {column:?}");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

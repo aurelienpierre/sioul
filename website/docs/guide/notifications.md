@@ -76,7 +76,7 @@ Outside a line's times, your safe senders' mail waits on the Porch, shown; every
 - **Quieter**: your safe senders' mail shown, not told, in leisure and meals; your contacts' and groups' messages held in leisure and meals; your safe senders' messages held in Free time; under do-not-disturb, every text held; reminders of dates, and sites in real time, wait in leisure and meals.
 - **More reachable**: your contacts' mail at once in leisure and meals; strangers' mail shown in leisure; other apps' automatons at once in work and admin.
 
-Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are." A line a preset sets cell by cell reads **Your own**.
+Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are." A line a preset sets cell by cell reads **Your own**. A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices, and the count of your changes counts only what this page shows.
 
 ## What comes when {#by-time}
 

@@ -325,7 +325,7 @@ fn column_now(now: &Now) -> Column {
 
 /// The tab, as JSON (ReachesTab.qml; design-reach §1): {now: sentences,
 /// state: "usual", "dnd" or "reachable", column: the time now, now_columns: those read now (a layer's too),
-/// presets [{id, label, current, changes}], changed, people {channels
+/// presets [{id, label, current, changes}], presets_note, changed, people {channels
 /// [{id, label, note}], rows [{id, label, help, cells [{channel, value,
 /// label, choices [{id, label}]}]}], blocked {label, help, word}, notes
 /// \[lines\]}, own [{id, label, holds, value, label_value, choices [{id,
@@ -342,18 +342,20 @@ pub(crate) fn view(realtime: bool) -> String {
     let now = crate::hours::attention_now();
     let current = column_now(&now);
     let usual = Attention::usual();
+    let rows = table_rows(reach.phone);
+    // What the page shows, alone, is compared (review R3): a row this device's
+    // table does not show, and the calls' rows, are not counted.
     let presets: Vec<Value> = Preset::ALL
         .iter()
         .map(|p| {
-            let changes = attention.changes_from(&p.matrix());
+            let changes = attention.changes_in(&p.matrix(), &rows);
             json!({ "id": p.id(), "label": text(&format!("attention-preset-{}", p.id())), "current": changes == 0, "changes": changes })
         })
         .collect();
-    let from_usual = attention.changes_from(&usual);
+    let from_usual = attention.changes_in(&usual, &rows);
     let changed = if from_usual == 0 { String::new() } else { tr().text("attention-changes", Some(&tr().counted(from_usual))) };
     let mut now_columns: Vec<&str> = now.times.iter().map(|c| c.id()).collect();
     now_columns.extend([(now.slot, Column::Slot), (now.dnd, Column::Dnd)].iter().filter(|(on, _)| *on).map(|(_, c)| c.id()));
-    let rows = table_rows(reach.phone);
     let grid = attention::grid(&attention, tr(), &rows, Preset::Usual);
     json!({
         "now": now_sentences(&attention, &now, reach),
@@ -362,6 +364,8 @@ pub(crate) fn view(realtime: bool) -> String {
         "column": current.id(),
         "now_columns": now_columns,
         "presets": presets,
+        // A preset leaves the calls as they are: each phone's (review R3).
+        "presets_note": text("reach-presets-calls"),
         "changed": changed,
         "people": people(&attention, reach),
         "own": own_groups(&attention, &config),

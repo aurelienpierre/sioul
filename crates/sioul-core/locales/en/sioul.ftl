@@ -6831,6 +6831,7 @@ reach-hold-modes = Your own modes: Bedtime, driving
 reach-hold-modes-sioul = Read as a press of the switch
 reach-hold-modes-android = Yours alone
 reach-principle = Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound.
+reach-presets-calls = A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices.
 reach-calls = Calls are set for each phone in Settings ▸ Devices.
 reach-calls-open = Open Devices
 reach-elsewhere = Set elsewhere: { $what }.
