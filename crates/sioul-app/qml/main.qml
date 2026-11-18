@@ -3520,6 +3520,54 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("settings-1100"),
+                // The settings moved (A2) on the shell's components: Settings ▸ Hours at the usual
+                // meals and night; the password manager's card in each of its states; Sites ▸ ⚙ at its colours.
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1400
+                    window.showParameters("needs")
+                },
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
+                () => window.showParameters("bitwarden"),
+                () => {},
+                () => grabber.save("vault-card-none"),
+                // An account set (the demo's own fictional address): locked, as with no server reached.
+                () => {
+                    console.warn("vault: account set: " + (sioul.setSetting("bitwarden.email", JSON.stringify("noa@example.com")) || "yes"))
+                    accountsPage.vaultCard.reload()
+                },
+                () => {},
+                () => grabber.save("vault-card-locked"),
+                // Open: stood in for (no Bitwarden server in the demo), the card and its row told so.
+                () => {
+                    const find = item => {
+                        if (item.objectName === "vaultState")
+                            return item
+                        for (let i = 0; i < item.children.length; i++) {
+                            const found = find(item.children[i])
+                            if (found)
+                                return found
+                        }
+                        return null
+                    }
+                    accountsPage.vaultCard.vault = "unlocked"
+                    const state = find(accountsPage.vaultCard)
+                    if (state)
+                        state.parent.open = "unlocked"
+                },
+                () => {},
+                () => grabber.save("vault-card-unlocked"),
+                () => {
+                    sioul.setSetting("bitwarden.email", JSON.stringify(""))
+                    accountsPage.vaultCard.reload()
+                },
+                () => window.showParameters("calmer_colours"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("sites-settings"),
+                () => sitesPage.openSettings(false, ""),
                 () => window.close()
             ]
             // The Budgets page's four tabs (the money ledger's design §6): Overview,
