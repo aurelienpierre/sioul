@@ -2,15 +2,20 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Contacts imported from a file (wave D, contactimport.rs), in one window,
-// three steps: what the file holds (for a CSV file, which column is what:
-// each column offered a field or "leave out", guessed from its heading and
-// shown with its first values, the whole kept under a name if you wish);
-// where the cards go (an address book that can be written, or a new one)
-// with groups added to every card and the title at the start of a name
-// moved into its field; then the count before anything is written ("312
-// new, 41 completed, 3 rows that do not read"), and Import, one batch with
-// its progress, undone as a whole from the status line. The file is read on
-// this device alone; nothing is sent anywhere.
+// three steps: what the file holds and how it was read (its encoding, the
+// separator of a CSV file, which can be changed, each limit reached said in
+// a sentence; for a CSV file, which column is what: each column offered a
+// field or "leave out", guessed from its heading and shown with its first
+// values, the whole kept under a name if you wish, at Import); where the
+// cards go (an address book that can be written, or a new one) with groups
+// added to every new card, the title moved into its field where it cannot
+// be anything but a title, numbers written in their international form;
+// then the count before anything is written: new cards, those already here
+// (the same identifier, or the same name with an address or a number) left
+// as they are, each listed with what the file would add, added only when
+// "Complete them with what the file adds" is ticked (review F14). Import is
+// one batch with its progress, undone as a whole. The file is read on this
+// device alone; nothing is sent anywhere.
 
 pragma ComponentBehavior: Bound
 
@@ -36,9 +41,15 @@ SafeDialog {
     function follow() {
         const step = dialog.state.step
         if (step === "read") {
+            const another = dialog.read.name !== dialog.state.name
             dialog.read = dialog.state
             dialog.fields = (dialog.state.columns || []).map(c => c.field)
             dialog.edited = true
+            if (another) {
+                complete.checked = false
+                groupsHere.checked = false
+                international.checked = dialog.state.region === true && dialog.state.kind === "csv"
+            }
         }
         if (step === "closed") {
             if (dialog.opened)
@@ -47,6 +58,9 @@ SafeDialog {
             dialog.open()
         }
     }
+
+    // The separators a CSV file can be read with.
+    readonly property var separators: [";", ",", "\t"]
 
     // What the import asks, for its plan.
     function asked() {
@@ -59,9 +73,17 @@ SafeDialog {
             new_account: newBook && home ? home.id : "",
             new_name: newBook ? newName.text : "",
             groups: groups.text,
+            groups_here: groupsHere.checked,
+            complete: complete.checked,
             titles: titles.checked,
+            international: international.checked,
             keep_as: keepAs.text
         })
+    }
+
+    function count() {
+        dialog.edited = false
+        dialog.sioul.planContactsImport(dialog.asked())
     }
 
     Connections {
@@ -103,7 +125,7 @@ SafeDialog {
                 color: dialog.state.step === "problem" ? dialog.theme.warm : dialog.theme.text
             }
             Repeater {
-                model: [dialog.read.export || "", dialog.read.kept || "", dialog.read.broken || ""].filter(l => l !== "")
+                model: [dialog.read.export || "", dialog.read.kept || "", dialog.read.broken || ""].concat(dialog.read.reading || []).filter(l => l !== "")
 
                 delegate: Label {
                     required property string modelData
@@ -113,6 +135,29 @@ SafeDialog {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: dialog.theme.muted
+                }
+            }
+
+            // For a CSV file: its separator, read again when another is chosen.
+            RowLayout {
+                visible: dialog.read.kind === "csv"
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    text: dialog.sioul.text("import-separator")
+                    color: dialog.theme.text
+                }
+                PlainComboBox {
+                    objectName: "importSeparator"
+                    Layout.preferredWidth: 220
+                    model: [dialog.sioul.text("import-separator-semicolon"), dialog.sioul.text("import-separator-comma"), dialog.sioul.text("import-separator-tab")]
+                    currentIndex: Math.max(0, dialog.separators.indexOf(dialog.read.separator || ";"))
+                    Accessible.name: dialog.sioul.text("import-separator")
+                    onActivated: index => {
+                        dialog.edited = true
+                        dialog.sioul.separateContactsImport(dialog.separators[index])
+                    }
                 }
             }
 
@@ -229,10 +274,34 @@ SafeDialog {
                 onTextEdited: dialog.edited = true
             }
             CheckBox {
+                id: groupsHere
+
+                objectName: "importGroupsHere"
+                visible: groups.text.trim() !== ""
+                text: dialog.sioul.text("import-groups-here")
+                onToggled: dialog.edited = true
+            }
+            CheckBox {
                 id: titles
 
                 text: dialog.sioul.text("import-titles")
                 onToggled: dialog.edited = true
+            }
+            CheckBox {
+                id: international
+
+                objectName: "importInternational"
+                visible: dialog.read.region === true
+                text: dialog.theme.plain(dialog.read.international || "")
+                onToggled: dialog.edited = true
+            }
+            Label {
+                visible: dialog.read.region === false
+                Layout.fillWidth: true
+                text: dialog.read.international || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
             }
 
             // The count, before anything is written.
@@ -259,6 +328,54 @@ SafeDialog {
                     color: dialog.theme.muted
                 }
             }
+
+            // Those already here, card by card, with what the file would add: added only when ticked.
+            CheckBox {
+                id: complete
+
+                objectName: "importComplete"
+                visible: dialog.state.step === "planned" && (dialog.state.gaining || 0) > 0
+                text: dialog.sioul.text("import-complete")
+                onToggled: dialog.count()
+            }
+            Label {
+                visible: complete.visible
+                Layout.fillWidth: true
+                text: dialog.sioul.text("import-complete-help")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            Label {
+                visible: complete.visible
+                Layout.fillWidth: true
+                text: dialog.sioul.text("import-gains")
+                font.weight: Font.DemiBold
+                color: dialog.theme.text
+            }
+            Repeater {
+                model: dialog.state.step === "planned" ? dialog.state.matches || [] : []
+
+                delegate: Label {
+                    required property var modelData
+
+                    objectName: "importGain"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    text: "•  " + modelData.name + (modelData.in_file ? " " + dialog.sioul.text("import-gain-in-file") : "") + " — " + modelData.adds
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.text
+                }
+            }
+            Label {
+                visible: dialog.state.step === "planned" && (dialog.state.matches_more || "") !== ""
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                text: dialog.state.matches_more || ""
+                textFormat: Text.PlainText
+                color: dialog.theme.muted
+            }
         }
     }
 
@@ -271,10 +388,7 @@ SafeDialog {
             objectName: "importCheck"
             enabled: dialog.state.step === "read" || dialog.state.step === "planned" || dialog.state.step === "problem-plan"
             text: dialog.sioul.text("import-check")
-            onClicked: {
-                dialog.edited = false
-                dialog.sioul.planContactsImport(dialog.asked())
-            }
+            onClicked: dialog.count()
         }
         Button {
             objectName: "importGo"

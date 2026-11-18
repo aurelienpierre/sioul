@@ -5,9 +5,12 @@
 // the 132 shown", none, then what to do with them: move to an address book,
 // add to a group or take out of one, move the title into its field, delete.
 // Each asks first, in its dialog, how many it will change and why some
-// cannot (`contactsBatchPlan`); runs off the window's thread with its
-// progress and a Stop (`contactsBatch`); ends by naming what it could not
-// do, card by card, and is undone as a whole from the status line.
+// cannot (`contactsBatchPlan`): a move says who sees the book it fills; the
+// title's move lists every card with its own box, ticked only where the
+// word cannot be anything but a title (review F18). Runs off the window's
+// thread with its progress and a Stop (`contactsBatch`); ends by naming
+// what it could not do, card by card, and is undone as a whole from the
+// status line, or for thirty days from Contacts ⚙ ▸ Address books.
 
 pragma ComponentBehavior: Bound
 
@@ -178,14 +181,17 @@ ColumnLayout {
                     text: bar.sioul.text("batch-title")
                     onTriggered: bar.act("title")
                 }
+                // A phone's picker gives no file to write: Export is a computer's (review F12).
                 MenuItem {
                     objectName: "batchExport"
+                    visible: Qt.platform.os !== "android"
+                    height: visible ? implicitHeight : 0
                     text: bar.sioul.text("batch-export")
                     onTriggered: exportFile.open()
                 }
                 MenuSeparator {}
                 MenuItem {
-                    text: bar.sioul.text("batch-delete")
+                    text: bar.sioul.text("batch-delete-contacts")
                     onTriggered: bar.act("delete")
                 }
             }
@@ -215,20 +221,40 @@ ColumnLayout {
                 id: ask
 
                 property string action: ""
-                property var plan: ({ count: 0, sentence: "", note: "", losses: "", cannot_line: "", cannot: [], previews: [] })
+                property var plan: ({ count: 0, sentence: "", note: "", losses: "", shared: "", cannot_line: "", cannot: [], previews: [] })
+                // The title's move: each card's box, by its file; ticked at first only when sure.
+                property var ticked: ({})
+                readonly property var tickedKeys: (ask.plan.previews || []).filter(p => ask.ticked[p.key] === true).map(p => p.key)
+                // How many it will change: for the title's move, the cards ticked.
+                readonly property int count: ask.action === "title" ? ask.tickedKeys.length : (ask.plan.count || 0)
 
                 function asked() {
                     const book = ask.action === "move" && bar.books.length > 0 ? bar.books[Math.max(0, bookChoice.currentIndex)].place : ""
                     const group = ask.action === "title" ? (alsoGroup.checked ? groupField.text : "") : groupField.text
-                    return JSON.stringify({ keys: bar.keys, action: ask.action, book: book, group: group })
+                    const asking = { keys: bar.keys, action: ask.action, book: book, group: group }
+                    if (ask.action === "title")
+                        asking.ticked = ask.tickedKeys
+                    return JSON.stringify(asking)
                 }
 
                 function replan() {
                     ask.plan = JSON.parse(bar.sioul.contactsBatchPlan(ask.asked()) || "{}")
+                    // A box ticked or unticked by hand stays so; a card new to the list starts as sure says.
+                    const next = {}
+                    for (const preview of ask.plan.previews || [])
+                        next[preview.key] = ask.ticked[preview.key] !== undefined ? ask.ticked[preview.key] : preview.sure
+                    ask.ticked = next
+                }
+
+                function tick(key, on) {
+                    const next = Object.assign({}, ask.ticked)
+                    next[key] = on
+                    ask.ticked = next
                 }
 
                 function begin(action) {
                     ask.action = action
+                    ask.ticked = {}
                     groupField.text = ""
                     alsoGroup.checked = false
                     bookChoice.currentIndex = 0
@@ -305,7 +331,7 @@ ColumnLayout {
                         Label {
                             objectName: "batchSentence"
                             Layout.fillWidth: true
-                            text: ask.plan.sentence || ""
+                            text: ask.action === "title" && (ask.plan.previews || []).length > 0 ? bar.sioul.textArgs("batch-ask-title", JSON.stringify({ n: ask.count })) : ask.plan.sentence || ""
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             font.weight: Font.DemiBold
@@ -327,19 +353,38 @@ ColumnLayout {
                             wrapMode: Text.Wrap
                             color: bar.theme.warm
                         }
-                        // Before and after, for every card whose title moves.
+                        // Who sees the book a move fills.
+                        Label {
+                            objectName: "batchShared"
+                            visible: (ask.plan.shared || "") !== ""
+                            Layout.fillWidth: true
+                            text: ask.plan.shared || ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: bar.theme.text
+                        }
+                        Label {
+                            visible: ask.action === "title" && (ask.plan.previews || []).length > 0
+                            Layout.fillWidth: true
+                            text: bar.sioul.text("batch-title-sure-help")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: bar.theme.muted
+                        }
+                        // Before and after, for every card whose title may move, each with its box.
                         Repeater {
                             model: ask.action === "title" ? (ask.plan.previews || []) : []
 
-                            delegate: Label {
+                            delegate: CheckBox {
+                                id: preview
+
                                 required property var modelData
 
                                 objectName: "batchPreview"
                                 Layout.fillWidth: true
-                                text: modelData[0] + "  →  " + modelData[1]
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: bar.theme.text
+                                checked: ask.ticked[preview.modelData.key] === true
+                                text: bar.theme.plain(preview.modelData.before + "  →  " + preview.modelData.after + (preview.modelData.note !== "" ? "  (" + preview.modelData.note + ")" : ""))
+                                onToggled: ask.tick(preview.modelData.key, preview.checked)
                             }
                         }
                         Label {
@@ -375,7 +420,7 @@ ColumnLayout {
                     }
                     Button {
                         objectName: "batchGo"
-                        enabled: (ask.plan.count || 0) > 0
+                        enabled: ask.count > 0
                         highlighted: true
                         text: bar.sioul.text(ask.action === "delete" ? "batch-go-delete" : "batch-go")
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole

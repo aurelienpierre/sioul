@@ -66,6 +66,9 @@ pub mod qobject {
         #[qproperty(QString, contacts_batch)]
         // The contacts' import, its step (`contactimport`): JSON {step, line, …}.
         #[qproperty(QString, contacts_import)]
+        // The batches on contacts of the last thirty days (`contactbatch::show_batches`):
+        // JSON [{id, line, partly, why_not, ask}], newest first.
+        #[qproperty(QString, contacts_batches)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
@@ -578,7 +581,7 @@ pub mod qobject {
         fn set_contacts_filter(self: Pin<&mut Sioul>, filter: &QString);
 
         /// What a batch on the cards selected would do, said first (JSON {keys,
-        /// action, book, group}): JSON {count, sentence, note, losses, cannot_line, cannot, previews}.
+        /// action, book, group, ticked}): JSON {count, sentence, note, losses, shared, cannot_line, cannot, previews}.
         #[qinvokable]
         fn contacts_batch_plan(self: Pin<&mut Sioul>, asked: &QString) -> QString;
 
@@ -589,6 +592,22 @@ pub mod qobject {
         /// The batch running stopped before its next card.
         #[qinvokable]
         fn stop_contacts_batch(self: Pin<&mut Sioul>);
+
+        /// The batches of the last thirty days read again, off the window's thread, into `contactsBatches`.
+        #[qinvokable]
+        fn read_contacts_batches(self: Pin<&mut Sioul>);
+
+        /// A batch of the last thirty days undone, by its id; "" once started, else why not.
+        #[qinvokable]
+        fn undo_contacts_batch(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// What merging an address book into another would do, asked first: JSON {sentence, losses, shared, cannot}.
+        #[qinvokable]
+        fn merge_question(self: &Sioul, from: &QString, into: &QString) -> QString;
+
+        /// "Its groups decide who may reach me" set for an address book ("account/id"); "" done, else why not.
+        #[qinvokable]
+        fn set_book_groups(self: Pin<&mut Sioul>, place: &QString, on: bool) -> QString;
 
         /// Contacts ⚙ ▸ Address books, as JSON {books, homes} (`addressbooks::lines`).
         #[qinvokable]
@@ -628,7 +647,12 @@ pub mod qobject {
         #[qinvokable]
         fn import_contacts(self: Pin<&mut Sioul>, path: &QString);
 
-        /// The import planned (JSON {fields, book, new_account, new_name, groups, titles, keep_as}), its count in `contactsImport`.
+        /// The CSV file shown read again with another separator (";", ",", a tab), its columns in `contactsImport`.
+        #[qinvokable]
+        fn separate_contacts_import(self: Pin<&mut Sioul>, separator: &QString);
+
+        /// The import planned (JSON {fields, book, new_account, new_name, groups, groups_here,
+        /// complete, titles, international, keep_as}), its count in `contactsImport`.
         #[qinvokable]
         fn plan_contacts_import(self: Pin<&mut Sioul>, asked: &QString);
 
@@ -3199,6 +3223,7 @@ pub struct SioulRust {
     contacts: QString,
     contacts_batch: QString,
     contacts_import: QString,
+    contacts_batches: QString,
     duplicates: QString,
     agenda: QString,
     overlaps: QString,
@@ -5741,6 +5766,22 @@ impl qobject::Sioul {
         crate::contactbatch::stop();
     }
 
+    fn read_contacts_batches(self: Pin<&mut Self>) {
+        crate::contactbatch::show_batches(&self.qt_thread());
+    }
+
+    fn undo_contacts_batch(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::contactbatch::undo(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn merge_question(&self, from: &QString, into: &QString) -> QString {
+        QString::from(&crate::addressbooks::merge_question(&from.to_string(), &into.to_string()))
+    }
+
+    fn set_book_groups(self: Pin<&mut Self>, place: &QString, on: bool) -> QString {
+        QString::from(&crate::addressbooks::set_groups(&self.qt_thread(), &self.shared(), &place.to_string(), on))
+    }
+
     fn address_books_setup(&self) -> QString {
         QString::from(&crate::addressbooks::setup())
     }
@@ -5779,6 +5820,10 @@ impl qobject::Sioul {
 
     fn import_contacts(self: Pin<&mut Self>, path: &QString) {
         crate::contactimport::read(&self.qt_thread(), &self.shared(), &path.to_string(), false);
+    }
+
+    fn separate_contacts_import(self: Pin<&mut Self>, separator: &QString) {
+        crate::contactimport::separate(&self.qt_thread(), &separator.to_string());
     }
 
     fn plan_contacts_import(self: Pin<&mut Self>, asked: &QString) {

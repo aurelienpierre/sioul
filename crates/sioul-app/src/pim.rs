@@ -316,6 +316,12 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for (kind, title) in &report.moved_changed {
                 tell(qt, shared, moved_changed_line(kind, title));
             }
+            // Contacts moved here that someone changed there first: kept in both books, said in one line
+            // with their names (review F16: one line per card replaced the one before).
+            if !report.kept_both.is_empty() {
+                let names: Vec<String> = report.kept_both.iter().map(|(_, title)| title.clone()).filter(|t| !t.trim().is_empty()).collect();
+                tell(qt, shared, say("dav-kept-both", &[("n", report.kept_both.len().to_string()), ("names", names.join(", "))]));
+            }
             // Moved here, a meeting in both calendars by then: both stay, yours to choose, said once (M7).
             for (kind, title) in &report.moved_both {
                 tell(qt, shared, moved_both_line(kind, title));

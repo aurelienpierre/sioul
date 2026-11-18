@@ -70,6 +70,25 @@ Item {
         page.selected = next
     }
 
+    // The selection follows what is shown: another filter or search leaves
+    // ticked only the cards still in sight, so "With them…" acts on what the
+    // count says and the rows show (review F9).
+    onShownChanged: {
+        const ticked = Object.keys(page.selected)
+        if (ticked.length === 0)
+            return
+        const inSight = {}
+        for (const c of page.shown.contacts)
+            inSight[c.key] = true
+        const kept = ticked.filter(key => inSight[key] === true)
+        if (kept.length === ticked.length)
+            return
+        const next = {}
+        for (const key of kept)
+            next[key] = true
+        page.selected = next
+    }
+
     // The address books a selection can move to: those that can be written.
     readonly property var writableBooks: (page.shown.books || []).filter(b => !b.read_only)
 

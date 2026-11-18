@@ -8,11 +8,21 @@
 // what becomes of its contacts: moved to another book, or deleted with it,
 // the count said), shared with people or groups of its Nextcloud, or, when
 // someone else's, no longer shown; exported as one vCard file, the copy to
-// keep before a large batch. "New address book…" makes one on an
-// account whose server makes them, or on this device alone. A server with
-// one fixed book (Google) offers only what it allows, and says so. Books
-// say where contacts are kept and with whom they are shared; who may reach
-// you is decided by a contact's groups, never by its book.
+// keep before a large batch (on a computer: a phone's picker gives no file
+// to write). "New address book…" makes one on an account whose server makes
+// them, or on this device alone. A server with one fixed book (Google)
+// offers only what it allows, and says so. A merge, or a removal that moves
+// the contacts, asks first: how many go where, what the target would not
+// keep, who sees it. What is chosen or typed in a line is kept by its book
+// while the lines are drawn again at each sync (review F4). Below the
+// books, the changes to many contacts of the last thirty days, each undone
+// as a whole (review F2). Books say where contacts are kept and with whom
+// they are shared; who may reach you is decided by a contact's groups,
+// never by its book, with one switch about trust: "Its groups decide who
+// may reach me", on for a book only you can write, off until you turn it on
+// for one someone else can write (the line says so when its writers
+// change), since they could otherwise add a card in a group a list lets
+// through.
 
 pragma ComponentBehavior: Bound
 
@@ -40,6 +50,15 @@ ColumnLayout {
     property var removal: ({})
     // "Merge into…" open for a book, by place.
     property string merging: ""
+    // The book chosen in each line's "Merge into" and "Move them to", by the line's place.
+    property var chosen: ({})
+    // The name typed in each line's rename field, by place, while it differs.
+    property var typed: ({})
+    // The question before a merge (`mergeQuestion`), with its two places; {} when none.
+    property var question: ({})
+    // The batches of the last thirty days (`contactsBatches`), and the one whose Undo is asked.
+    readonly property var batches: setup.sioul.contactsBatches ? JSON.parse(setup.sioul.contactsBatches) : []
+    property string undoing: ""
     // "New address book…" open.
     property bool making: false
 
@@ -73,7 +92,39 @@ ColumnLayout {
 
     // The other books a book's contacts can go to: [{place, name}].
     function others(place) {
-        return (setup.view.books || []).filter(b => b.place !== place && b.writable)
+        return (setup.view.books || []).filter(b => b.place !== place && b.writable && b.waiting !== setup.sioul.text("book-refused"))
+    }
+
+    // The place chosen in a line's chooser, kept by the line's book across redraws.
+    function choice(place, places) {
+        const kept = setup.chosen[place]
+        return places.indexOf(kept) >= 0 ? kept : (places.length > 0 ? places[0] : "")
+    }
+
+    function choose(place, into) {
+        const next = Object.assign({}, setup.chosen)
+        next[place] = into
+        setup.chosen = next
+    }
+
+    // Asked before a merge: the count and the target, what it would not keep, who sees it.
+    function ask(from, into) {
+        if (into === "")
+            return
+        const asked = JSON.parse(setup.sioul.mergeQuestion(from, into) || "{}")
+        asked.from = from
+        asked.into = into
+        setup.question = asked
+        if (setup.sharing[into] === undefined)
+            setup.sioul.readBookSharing(into)
+    }
+
+    function merge() {
+        setup.problem = setup.sioul.removeAddressBook(setup.question.from, "move:" + setup.question.into)
+        setup.question = {}
+        setup.merging = ""
+        setup.removing = ""
+        setup.read()
     }
 
     Connections {
@@ -87,12 +138,18 @@ ColumnLayout {
             const next = Object.assign({}, setup.sharing)
             next[place] = JSON.parse(answer || "{}")
             setup.sharing = next
+            // Who sees the target, now known: the question asked again with it.
+            if (setup.question.into === place)
+                setup.ask(setup.question.from, setup.question.into)
         }
     }
 
     objectName: "addressBooksSetup"
     spacing: 4
-    Component.onCompleted: setup.read()
+    Component.onCompleted: {
+        setup.read()
+        setup.sioul.readContactsBatches()
+    }
 
     Label {
         visible: setup.about !== ""
@@ -152,6 +209,24 @@ ColumnLayout {
                         font.pixelSize: 13
                         color: setup.theme.muted
                     }
+                    // Made here and waiting, refused by its server, or kept because its server
+                    // holds more; its groups no longer counting: said on the line itself, open or not.
+                    Repeater {
+                        model: [line.modelData.waiting || "", line.modelData.groups_note || ""].filter(l => l !== "")
+
+                        delegate: Label {
+                            required property string modelData
+
+                            objectName: "addressBookWaiting"
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 18
+                            text: modelData
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: setup.theme.text
+                        }
+                    }
                 }
             }
 
@@ -161,11 +236,23 @@ ColumnLayout {
                 Layout.leftMargin: 18
                 spacing: 6
 
-                // A server with one fixed book, made here, waiting: said.
-                Label {
-                    visible: line.modelData.fixed !== "" || line.modelData.waiting !== ""
+                // Whether its groups decide who may reach you: a matter of trust in who can write it.
+                Switch {
+                    objectName: "addressBookGroups"
                     Layout.fillWidth: true
-                    text: line.modelData.fixed !== "" ? line.modelData.fixed : line.modelData.waiting
+                    checked: line.modelData.groups === true
+                    text: setup.sioul.text("book-groups-count")
+                    onToggled: {
+                        setup.problem = setup.sioul.setBookGroups(line.modelData.place, checked)
+                        setup.read()
+                    }
+                }
+
+                // A server with one fixed book: what it allows, said.
+                Label {
+                    visible: line.modelData.fixed !== ""
+                    Layout.fillWidth: true
+                    text: line.modelData.fixed
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: setup.theme.muted
@@ -182,8 +269,13 @@ ColumnLayout {
 
                         objectName: "addressBookName"
                         Layout.fillWidth: true
-                        text: line.modelData.name
+                        text: setup.typed[line.modelData.place] !== undefined ? setup.typed[line.modelData.place] : line.modelData.name
                         Accessible.name: setup.sioul.text("books-rename")
+                        onTextEdited: {
+                            const next = Object.assign({}, setup.typed)
+                            next[line.modelData.place] = newName.text
+                            setup.typed = next
+                        }
                         onAccepted: renameButton.clicked()
                     }
                     Button {
@@ -194,6 +286,11 @@ ColumnLayout {
                         text: setup.sioul.text("books-rename")
                         onClicked: {
                             setup.problem = setup.sioul.renameAddressBook(line.modelData.place, newName.text)
+                            if (setup.problem === "") {
+                                const next = Object.assign({}, setup.typed)
+                                delete next[line.modelData.place]
+                                setup.typed = next
+                            }
                             setup.read()
                         }
                     }
@@ -283,35 +380,91 @@ ColumnLayout {
                     PlainComboBox {
                         id: mergeInto
 
+                        readonly property var places: setup.others(line.modelData.place).map(b => b.place)
+
                         objectName: "addressBookMergeInto"
-                        visible: setup.merging === line.modelData.place
+                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         width: Math.min(260, parent.width)
                         model: setup.others(line.modelData.place).map(b => setup.theme.plain(b.name))
+                        currentIndex: Math.max(0, mergeInto.places.indexOf(setup.choice(line.modelData.place, mergeInto.places)))
                         Accessible.name: setup.sioul.text("books-merge-into")
+                        onActivated: index => setup.choose(line.modelData.place, mergeInto.places[index])
                     }
                     Button {
                         objectName: "addressBookMergeGo"
-                        visible: setup.merging === line.modelData.place
+                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         text: setup.sioul.text("books-merge-go")
-                        onClicked: {
-                            const into = setup.others(line.modelData.place)[Math.max(0, mergeInto.currentIndex)]
-                            setup.problem = setup.sioul.removeAddressBook(line.modelData.place, "move:" + into.place)
-                            setup.merging = ""
-                            setup.read()
-                        }
+                        onClicked: setup.ask(line.modelData.place, setup.choice(line.modelData.place, mergeInto.places))
                     }
                     Button {
-                        visible: setup.merging === line.modelData.place
+                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         flat: true
                         text: setup.sioul.text("ui-cancel")
                         onClicked: setup.merging = ""
                     }
                 }
 
+                // The question before a merge, or a removal that moves the contacts: said, then confirmed.
+                ColumnLayout {
+                    visible: setup.question.from === line.modelData.place
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Repeater {
+                        model: setup.question.from === line.modelData.place ? [setup.question.sentence || "", setup.question.losses || "", setup.question.shared || ""].filter(l => l !== "") : []
+
+                        delegate: Label {
+                            required property string modelData
+                            required property int index
+
+                            objectName: "addressBookMergeQuestion"
+                            Layout.fillWidth: true
+                            text: modelData
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.weight: index === 0 ? Font.DemiBold : Font.Normal
+                            color: setup.theme.text
+                        }
+                    }
+                    Repeater {
+                        model: setup.question.from === line.modelData.place ? setup.question.cannot || [] : []
+
+                        delegate: Label {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            text: setup.sioul.textArgs("batch-left-line", JSON.stringify({ title: modelData.name, why: modelData.why }))
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: setup.theme.warm
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Button {
+                            objectName: "addressBookMergeConfirm"
+                            enabled: (setup.question.cannot || []).length === 0
+                            highlighted: true
+                            text: setup.sioul.text("books-merge-go")
+                            onClicked: setup.merge()
+                        }
+                        Button {
+                            flat: true
+                            text: setup.sioul.text("ui-cancel")
+                            onClicked: {
+                                setup.question = {}
+                                setup.merging = ""
+                            }
+                        }
+                    }
+                }
+
                 // Its cards as one vCard file, where you choose.
                 Button {
                     objectName: "addressBookExport"
-                    visible: line.modelData.count > 0
+                    visible: line.modelData.count > 0 && Qt.platform.os !== "android"
                     flat: true
                     text: setup.sioul.text("books-export")
                     onClicked: {
@@ -343,22 +496,26 @@ ColumnLayout {
                     }
                     // Its contacts: moved to another book, or deleted with it.
                     Flow {
-                        visible: setup.removal.act === "cards" && (setup.removal.into || []).length > 0
+                        visible: setup.removal.act === "cards" && (setup.removal.into || []).length > 0 && setup.question.from !== line.modelData.place
                         Layout.fillWidth: true
                         spacing: 6
 
                         PlainComboBox {
                             id: removeInto
 
+                            readonly property var places: (setup.removal.into || []).map(b => b[0])
+
                             objectName: "addressBookRemoveInto"
                             width: Math.min(260, parent.width)
                             model: (setup.removal.into || []).map(b => setup.theme.plain(b[1]))
+                            currentIndex: Math.max(0, removeInto.places.indexOf(setup.choice(line.modelData.place, removeInto.places)))
                             Accessible.name: setup.sioul.text("books-remove-move")
+                            onActivated: index => setup.choose(line.modelData.place, removeInto.places[index])
                         }
                         Button {
                             objectName: "addressBookRemoveMove"
                             text: setup.sioul.text("books-remove-move-go")
-                            onClicked: setup.remove(line.modelData.place, "move:" + setup.removal.into[Math.max(0, removeInto.currentIndex)][0])
+                            onClicked: setup.ask(line.modelData.place, setup.choice(line.modelData.place, removeInto.places))
                         }
                     }
                     Label {
@@ -375,11 +532,12 @@ ColumnLayout {
 
                         Button {
                             objectName: "addressBookRemoveGo"
-                            visible: setup.removal.act !== "none"
+                            visible: setup.removal.act !== "none" && setup.question.from !== line.modelData.place
                             text: setup.sioul.text(setup.removal.act === "cards" ? "books-remove-delete" : setup.removal.act === "leave" ? "books-leave" : "books-remove-go")
                             onClicked: setup.remove(line.modelData.place, setup.removal.act === "cards" ? "delete" : setup.removal.act)
                         }
                         Button {
+                            visible: setup.question.from !== line.modelData.place
                             flat: true
                             text: setup.sioul.text("ui-cancel")
                             onClicked: setup.removing = ""
@@ -455,6 +613,88 @@ ColumnLayout {
                 flat: true
                 text: setup.sioul.text("ui-cancel")
                 onClicked: setup.making = false
+            }
+        }
+    }
+
+    // The changes to many contacts of the last thirty days, newest first, each undone as a whole.
+    Label {
+        Layout.fillWidth: true
+        Layout.topMargin: 12
+        text: setup.sioul.text("books-batches")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.weight: Font.DemiBold
+        color: setup.theme.text
+    }
+    Label {
+        Layout.fillWidth: true
+        text: setup.sioul.text(setup.batches.length > 0 ? "books-batches-help" : "books-batches-none")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.muted
+    }
+    Repeater {
+        model: setup.batches
+
+        delegate: ColumnLayout {
+            id: batch
+
+            required property var modelData
+
+            objectName: "contactsBatch"
+            Layout.fillWidth: true
+            spacing: 2
+
+            Label {
+                Layout.fillWidth: true
+                text: [batch.modelData.line, batch.modelData.partly].filter(l => l !== "").join(" ")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: setup.theme.text
+            }
+            Label {
+                visible: batch.modelData.why_not !== ""
+                Layout.fillWidth: true
+                text: batch.modelData.why_not
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: setup.theme.muted
+            }
+            Button {
+                objectName: "contactsBatchUndo"
+                visible: batch.modelData.why_not === "" && setup.undoing !== batch.modelData.id
+                flat: true
+                text: setup.sioul.text("batch-undo")
+                onClicked: setup.undoing = batch.modelData.id
+            }
+            Label {
+                visible: setup.undoing === batch.modelData.id
+                Layout.fillWidth: true
+                text: batch.modelData.ask
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: setup.theme.text
+            }
+            Flow {
+                visible: setup.undoing === batch.modelData.id
+                Layout.fillWidth: true
+                spacing: 6
+
+                Button {
+                    objectName: "contactsBatchUndoGo"
+                    text: setup.sioul.text("batch-undo-go")
+                    onClicked: {
+                        setup.problem = setup.sioul.undoContactsBatch(batch.modelData.id)
+                        setup.undoing = ""
+                    }
+                }
+                Button {
+                    flat: true
+                    text: setup.sioul.text("ui-cancel")
+                    onClicked: setup.undoing = ""
+                }
             }
         }
     }
