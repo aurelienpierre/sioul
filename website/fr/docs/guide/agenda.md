@@ -41,7 +41,7 @@ Un voyage, des vacances, une résidence, un événement saisi avec une mauvaise 
 - **Dans les listes** (Ce qui vient, et les listes de la Semaine et du Mois d’un petit écran), c’est une ligne le premier jour, toute sa durée sous son titre : « lun. 2 nov. 10:00 → lun. 30 nov. 10:15 » ; une soirée qui passe minuit, « 22:00 → 02:00 (mar.) ». Un trait fin, à la couleur de son agenda, descend ensuite le long du bord gauche de la liste à travers chaque jour qu’il couvre, et finit son dernier jour par une petite marque et une ligne « jusqu’à 10:15 », même un jour où rien d’autre n’a lieu. Un toucher sur le trait ouvre l’événement. Une liste qui commence après son début dit « En cours depuis le lun. 2 nov., jusqu’au lun. 30 nov. » en haut de son premier jour. Trois traits côte à côte au plus ; au-delà, le titre du jour dit combien d’autres (« +2 »).
 - **Dans la Semaine et le Mois**, un événement de 24 heures ou plus, et un de plusieurs jours entiers, est une barre à travers ses jours : en haut de la semaine, son heure de début à un bout et son heure de fin à l’autre ; dans le mois, une fois sur chaque rangée de semaine, son titre une fois sur chacune. Ses heures ne sont pas remplies sur la frise, si bien que le reste de ces jours reste lisible. Dans le Jour, c’est une ligne en tête : « En cours : Résidence, jusqu’au lun. 30 nov. 10:15 », chacun, quel que soit leur nombre. Trois barres au plus côte à côte ; au-delà, « +2 » sous un jour ouvre ce jour.
 - **Une soirée qui passe minuit**, de moins de 24 heures, garde ses heures dans le Jour et la Semaine, comme les autres agendas la dessinent (une barre les cacherait), et sa ligne ses deux jours dans le mois.
-- **Des congés sur plusieurs jours** ([Paramètres ▸ Heures](settings.md#hours), **Congés**) sont dessinés de même : une ligne le premier jour, « Toute la journée », « mer. 4 nov. → ven. 6 nov. » sous leur mot, un trait gris à travers leurs jours jusqu’à « dernier jour », une barre grise dans la Semaine et le Mois, dont les cases restent grisées. Un seul jour de congé reste en tête de son jour, comme avant.
+- **Des jours sans travail sur plusieurs jours** ([Paramètres ▸ Heures](settings.md#hours), **Vacances et jours fériés** : vos vacances, et les jours fériés qui comptent comme jours sans travail) sont dessinés de même : une ligne le premier jour, « Toute la journée », « mer. 4 nov. → ven. 6 nov. » sous leur mot, un trait gris à travers leurs jours jusqu’à « dernier jour », une barre grise dans la Semaine et le Mois, dont les cases restent grisées. Un seul jour de congé reste en tête de son jour, comme avant.
 - **Sur la carte de l’écran d’accueil**, à partir du lendemain de son premier jour, c’est une ligne sous aujourd’hui : « En cours : Résidence, jusqu’au lun. 30 nov. 10:15 ».
 - `sioul agenda` et l’agenda des agents le listent une fois, avec sa durée ; demandé à partir d’un jour suivant, « En cours depuis ».
 
@@ -61,6 +61,17 @@ Un événement s’ouvre dans sa carte : à côté de la page sur un ordinateu
 - **Pour le supprimer** : **Supprimer**. Il attend dix secondes, avec **Annuler**. Un événement qui se répète demande d’abord : **Cette fois seulement**, ou **Toutes les fois**.
 - **Une réunion qu’une autre personne organise**, un événement avec des personnes invitées où quelqu’un d’autre vous a invité : son heure, son titre, son lieu, ses notes et son agenda sont ceux de son organisateur, car son serveur préviendrait chaque invité d’un changement. Sioul ne la fait ni glisser ni supprimer, et son formulaire ne change que ce qui est à vous : le temps gardé avant et après, ses coûts et ce qu’elle vous rend, votre rappel. Un événement qui ne nomme qu’un organisateur, comme Google l’écrit dans vos propres événements, reste à vous de le changer.
 - **Une réunion que vous organisez**, où vous avez invité des personnes : chaque champ est à vous, ses invités aussi ([Inviter des personnes](#inviting-people)).
+
+### Une série qui finit, et qui fait une pause {#series-that-end-and-pause}
+
+Dans le formulaire de l’événement, sous **Répétition** et **Tous les** :
+
+- **Fin** : **Jamais**, **Un jour donné** (le dernier jour où elle peut venir), ou **Après un nombre de fois**. Tous les logiciels d’agenda le lisent : celui de votre téléphone, votre serveur, ceux avec qui vous partagez l’agenda.
+- **En pause pendant** : **mes vacances**, **les jours fériés**, et chaque agenda de vacances scolaires auquel vous êtes abonné, par son nom ; cochez-en un ou plusieurs. Chaque date qui y tombe est retirée de la série, par le moyen standard, pour que votre téléphone et quiconque voit l’agenda voient les mêmes trous. Quand des vacances sont saisies, déplacées ou retirées, ou qu’un agenda de vacances change, Sioul remet les dates qu’il avait retirées et qui ne tombent plus dans une pause, et retire les nouvelles, pour les dix-huit mois qui viennent. Une date que vous avez retirée vous-même le reste.
+- **Les vacances scolaires commencent après la classe** : pour les agendas officiels français, le jour où commencent les vacances est encore un jour de classe, et le jour de la reprise n’est pas une pause.
+- **La fiche dit** comment elle se répète (« Chaque semaine jusqu’au mercredi 25 juin ») et sa prochaine pause : « En pause à partir du vendredi 19 décembre (les jours fériés), reprend le lundi 5 janvier. »
+
+Les pauses ne sont pas proposées sur une réunion avec d’autres, puisque chaque date retirée serait envoyée à chaque invité, ni sur les tâches répétées. Quand deux de vos appareils connaissent un agenda de vacances à des moments différents, celui dont la copie est la plus fraîche écrit les pauses, et une copie plus ancienne ne défait jamais une plus récente.
 
 ### Un jour et une heure {#a-day-and-an-hour}
 
@@ -207,6 +218,18 @@ Agenda ⚙ ▸ **Vos agendas** crée, renomme, recolore, supprime et partage vos
 
 Un agent d’IA ne crée, ne supprime ni ne partage jamais un agenda : ce sont vos propres gestes.
 
+## Les agendas par leur adresse {#calendars-by-their-address}
+
+Agenda ⚙ ▸ Vos agendas ▸ **S’abonner à un agenda…** prend un agenda publié par son adresse, en lecture seule : l’emploi du temps d’une école ou d’une université, les jours fériés, les vacances scolaires.
+
+- **Son adresse**, qui commence par `https://` ou `webcal://`. Sous le champ, où deux outils scolaires montrent la leur : **Moodle**, dans le calendrier, « Import or export calendars », puis « Export calendar », puis « Get calendar URL », et « Copy URL » (les mots de Moodle en anglais) ; **PRONOTE**, « Communication > Agenda », puis « Exporter l’agenda au format iCal » en haut à droite, là où l’établissement le permet. PRONOTE n’a pas encore été essayé avec une vraie adresse : la façon dont il marque un cours annulé n’est pas connue ; un agenda qui le marque par le moyen standard le montre annulé.
+- **Ou un agenda officiel français** : les jours fériés par territoire (13), les vacances scolaires par zone (14, les académies de chaque zone dites dessous), des données ouvertes d’Etalab et du ministère de l’Éducation nationale.
+- **Son nom, à qui il est** (l’emploi du temps d’un enfant va à cet enfant), **à quoi il sert**, et s’il tient des **jours fériés** ou des **vacances scolaires** : les jours fériés comptent comme jours sans travail sauf si vous dites non, les vacances scolaires non sauf si vous dites oui ([Vacances et jours fériés](hours.md#vacations-and-holidays)).
+
+L’adresse se saisit une fois : elle rejoint vos autres appareils avec vos paramètres, et chaque appareil lit l’agenda lui-même, à l’ouverture de Sioul, toutes les trois heures sur un ordinateur (un agenda de vacances une fois par jour, ou aussi souvent que l’agenda le demande, entre une heure et un jour), et quelques fois par jour depuis le pas en arrière-plan d’un téléphone. Ses événements ne voyagent jamais entre vos appareils. Sa ligne dit quand cet appareil l’a lu la dernière fois, avec **Actualiser**, **Changer l’adresse** et **Arrêter…**.
+
+Ce qui n’est pas un agenda ne remplace rien : une page de connexion, une ligne de texte, une réponse vide laissent en place la dernière bonne copie, et la ligne dit « Cette adresse ne donne plus d’agenda » avec quoi faire. Sioul ne lit que des adresses `https` de l’Internet public, suit trois redirections au plus, et refuse un agenda de plus de dix mégaoctets ou de vingt mille événements. L’adresse n’est jamais écrite dans un journal, une notification, ni ce qu’un agent d’IA reçoit. Jusqu’ici, cela n’a été essayé que contre des doublures, jamais contre une vraie adresse.
+
 ## Vos disponibilités {#your-availability}
 
 Agenda ⚙ ▸ **Vos disponibilités** rassemble ce que vous donnez de votre temps, et à qui : vos heures prises, jamais ce qui les remplit. Rien n’est partagé avant que vous appuyiez sur **Partager**. Jusqu’ici, cela n’a été essayé que sur des serveurs de remplacement, jamais sur les vrais.
@@ -300,11 +323,11 @@ Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de T
 
 ## Pas encore là {#not-there-yet}
 
-Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main) est prévu. Pas encore là non plus : partager un agenda d’un autre serveur que Nextcloud et Google ; exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement.
+Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main) est prévu. Pas encore là non plus : partager un agenda d’un autre serveur que Nextcloud et Google ; exporter des fichiers `.ics` ; plus d’un rappel de Sioul pour un événement ; un jour sans travail occupé dans les disponibilités que vous partagez.
 
 ## Pour aller plus loin {#going-further}
 
-- **Les événements répétés faits ailleurs** gardent leur règle, si riche soit-elle (« un lundi et un mercredi sur deux », « le premier lundi du mois ») : changer leur titre dans Sioul laisse la règle entière. Le formulaire de Sioul fait tous les n jours, toutes les n semaines, tous les n mois ou tous les n ans.
+- **Les événements répétés faits ailleurs** gardent leur règle, si riche soit-elle (« un lundi et un mercredi sur deux », « le premier lundi du mois ») : changer leur titre dans Sioul laisse la règle entière. Le formulaire de Sioul fait tous les n jours, toutes les n semaines, tous les n mois ou tous les n ans, jusqu’à un jour ou un nombre de fois, en pause pendant vos vacances et les jours fériés ([Une série qui finit, et qui fait une pause](#series-that-end-and-pause)).
 - **Les fuseaux horaires** : un événement écrit dans un autre fuseau le garde et s’affiche dans le vôtre, son heure là-bas à côté ; Sioul écrit les nouveaux événements dans le fuseau que montre votre agenda, sauf si le **Fuseau horaire** de son formulaire dit une autre horloge.
 - **Un événement créé après l’heure de son rappel** n’est pas rappelé : vous venez de le voir.
 - **Un fichier d’agenda dans un courriel** : un `.ics` que porte un courriel va dans votre agenda avec **Ajouter à mon agenda**.
@@ -343,6 +366,10 @@ Un repas ou une sieste déjà fait se déplace, et c’est tout ce que Sioul en 
 Un jour choisi au pointeur ne laisse plus une heure à taper, et un jour tapé n’a plus besoin du pointeur pour son heure. Le champ reste pour qui tape, et à un clic de là les heures et les minutes de cinq en cinq sont toutes en vue, sans rien à faire glisser ni à faire défiler sur un ordinateur. Aucune étude ne compare les façons de régler une heure : cette disposition est donc une déduction. Elle s’appuie sur les WCAG 2.2, qui demandent que rien n’exige de glisser (2.5.7) et que les cibles mesurent au moins 24 pixels (2.5.8), et qui sont un plancher, pas une mesure de vitesse. Aucune preuve ne soutient non plus un cadran à aiguilles pour la cécité temporelle : le seul essai proche de la question testait ensemble un entraînement et des appareils, chez des enfants, et n’a jamais opposé l’analogique au numérique (Wennberg et al. 2018).
 
 Une tâche liée à une date d’un événement répété n’écrit rien dans l’événement : un serveur dit à chaque invité tout changement d’une réunion (RFC 6638), et un agenda que vous lisez seulement ne pourrait pas le prendre. Aucune norme ne nomme une date dans un lien (RFC 5545, RFC 9253) : la tâche le porte ([Une tâche avant un événement](tasks.md#a-task-before-an-event)).
+
+Un agenda abonné par son adresse est lu par chaque appareil lui-même, et son adresse voyage avec vos paramètres, en clair dans le partage scellé : ce sont des heures de cours et des vacances, pas des secrets, et ressaisir une longue adresse sur chaque appareil serait le prix (la décision de la propriétaire, 18 novembre 2026). Une adresse collée peut mener n’importe où, alors Sioul ne lit que des adresses `https` publiques et vérifie chaque redirection : la même fonction a eu deux failles publiées dans Nextcloud, où une adresse atteignait le réseau du serveur lui-même (CVE-2020-8118, CVE-2020-8138). Ce qui ne se lit pas comme un agenda ne remplace rien, parce que deux logiciels très répandus vident leur copie quand une page de connexion revient à la place (audit-calendars §6). L’emploi du temps d’une école ou d’une université venant de Moodle n’a été lu que dans le code source de Moodle ; PRONOTE n’a pas été essayé avec une vraie adresse.
+
+Une série fait une pause par le moyen standard, des dates qui en sont retirées, pour que chaque logiciel d’agenda montre les mêmes pauses ; Sioul note à côté quelles dates sont les siennes, pour pouvoir les remettre quand des vacances bougent, et ne jamais remettre une date que vous avez retirée vous-même.
 
 Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54, 66, 71 et 72.
 
@@ -412,7 +439,7 @@ En novembre 2026, d’après la documentation de chaque application.
     | Les agendas Google, en lecture et en écriture | ✓ | — | ✓ | ✓ | ✓ | en partie³ |
     | Répond par courriel aux invitations de tout système (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
     | Ouvre et importe des fichiers `.ics` | ✓⁷ | ✓⁸ | ✓ | ✓ | ✓⁹ | ✓ |
-    | Exporte des fichiers `.ics`, s’abonne à un agenda par son adresse | ✗⁷ | ✓⁸ | ✓ | ✓ | en partie⁹ | ✓ |
+    | Exporte des fichiers `.ics`, s’abonne à un agenda par son adresse | en partie⁷ | ✓⁸ | ✓ | ✓ | en partie⁹ | ✓ |
     | Choisit le fuseau horaire d’un événement | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Événements chiffrés de bout en bout | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | en partie¹⁴ |
     | Logiciel libre | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
@@ -423,7 +450,7 @@ En novembre 2026, d’après la documentation de chaque application.
     4. Vous répondez dans Agenda ou dans Gmail ; les invitations venues d’autres systèmes ne sont pas décrites.
     5. Les applications règlent votre réponse sur les événements déjà présents dans un agenda synchronisé ; une invitation dans un courriel ne peut pas y être répondue.
     6. Depuis Proton Mail ; les invitations d’autres fournisseurs sont ajoutées à votre agenda dès leur arrivée, là où Sioul n’ajoute rien avant votre réponse.
-    7. Un fichier d’agenda ouvert dans Sioul, sur un ordinateur, un téléphone ou une tablette, va dans l’agenda que vous choisissez, avec ses catégories, son fuseau horaire et ses alarmes gardés, et n’est jamais doublé ; celui que porte un courriel entre avec **Ajouter à mon agenda**. Pas d’export, pas d’abonnement par adresse.
+    7. Un fichier d’agenda ouvert dans Sioul, sur un ordinateur, un téléphone ou une tablette, va dans l’agenda que vous choisissez, avec ses catégories, son fuseau horaire et ses alarmes gardés, et n’est jamais doublé ; celui que porte un courriel entre avec **Ajouter à mon agenda**. Un agenda s’abonne par son adresse, en lecture seule, chaque appareil le lisant lui-même ; pas d’export.
     8. Sur un ordinateur seulement.
     9. Les deux applications importent et exportent des fichiers `.ics` ; s’abonner par adresse demande ICSx⁵.
     10. Heure locale, UTC ou n’importe quel fuseau, choisis dans le formulaire de l’événement ; un événement fait ailleurs garde son fuseau horaire ; les deux heures s’affichent là où elles diffèrent.
