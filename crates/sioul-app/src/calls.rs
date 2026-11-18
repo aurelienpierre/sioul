@@ -291,13 +291,12 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     )
 }
 
-/// Whether being busy turns do-not-disturb on (the box "While busy" among
-/// what turns it on, the Busy rule's branch): then a busy stretch is
-/// do-not-disturb on this phone's line, else its column "while busy" holds.
-/// A stand-in until that branch is merged: no such box yet, the column holds.
+/// Whether being busy turns do-not-disturb on: the box "While busy" among
+/// what turns it on (`[dnd] focus`, its key of before, `everywhere::sources_for`):
+/// then a busy stretch is do-not-disturb on this phone's line, else its
+/// column "while busy" holds.
 fn busy_turns_dnd(config: &Config) -> bool {
-    let _ = config;
-    false
+    config.dnd.focus
 }
 
 /// Whether this phone's own line in Settings ▸ Devices says what it lets ring

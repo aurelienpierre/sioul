@@ -6,7 +6,8 @@
 // phone: its calls (CallsLine.qml), set from any device. This phone, on the
 // phone itself: what Android must allow (AllowList.qml), Android's
 // restricted settings for an install from a file (RestrictedCard.qml),
-// other apps' notifications (AppNotesSetup.qml), messages on your computers
+// other apps' notifications and each app, conversation and site by time
+// (AppNotesSetup.qml, its two parts), messages on your computers
 // (PhoneMessagesSetup.qml), texts (TextsSetup.qml), the call screening's own
 // settings and where a declined call goes (CallsSetup.qml), and
 // do-not-disturb on this phone (DndSetup.qml). Another phone's card says that
@@ -114,7 +115,7 @@ ColumnLayout {
 
     // The tab "This phone"'s blocks, each made once shown.
     Repeater {
-        model: card.phoneHere ? ["apps", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd"]) : []
+        model: card.phoneHere ? ["apps", "lists", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd"]) : []
 
         delegate: CardFold {
             id: block
@@ -131,7 +132,7 @@ ColumnLayout {
                 objectName: "block-" + block.modelData
                 active: !block.folds || block.open
                 Layout.fillWidth: true
-                sourceComponent: block.modelData === "apps" ? apps : block.modelData === "messages" ? messages : block.modelData === "texts" ? texts : block.modelData === "screening" ? screening : dnd
+                sourceComponent: block.modelData === "apps" ? apps : block.modelData === "lists" ? lists : block.modelData === "messages" ? messages : block.modelData === "texts" ? texts : block.modelData === "screening" ? screening : dnd
             }
         }
     }
@@ -143,6 +144,16 @@ ColumnLayout {
             sioul: card.sioul
             theme: card.theme
             part: "phone"
+        }
+    }
+    // Each app, conversation and browser site, and each by time (from What reaches you's old Exceptions view).
+    Component {
+        id: lists
+
+        AppNotesSetup {
+            sioul: card.sioul
+            theme: card.theme
+            part: "lists"
         }
     }
     Component {

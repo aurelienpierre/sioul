@@ -997,7 +997,8 @@ ColumnLayout {
         GoButton {
             objectName: "reachesDevices"
             text: tab.sioul.text("reach-calls-open")
-            onClicked: tab.sioul.reminderOpened("settings:devices", "", "")
+            // This phone's card in Devices, on a phone; Devices on a computer (ParametersPage.qml's door).
+            onClicked: tab.sioul.reminderOpened("settings:devices.here", "", "")
         }
     }
 

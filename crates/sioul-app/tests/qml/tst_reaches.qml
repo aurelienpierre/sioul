@@ -229,7 +229,8 @@ Item {
             verify(find(wide, "reachesHolds").text === "Who holds what on a phone")
             verify(find(wide, "reachesElsewhere").text.indexOf("one site") > 0)
             find(wide, "reachesDevices").clicked()
-            compare(mock.opened, ["settings:devices"])
+            // This phone's card in Devices (Devices on a computer): calls are set per phone there.
+            compare(mock.opened, ["settings:devices.here"])
             compare(find(wide, "state-usual").font.weight, Font.DemiBold, "the state now marked")
         }
 
