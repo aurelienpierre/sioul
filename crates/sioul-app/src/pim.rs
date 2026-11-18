@@ -816,6 +816,10 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     let legs = if saved.legs.is_empty() { String::new() } else { format!(" {}", say("legs-moved-with", &[("legs", saved.legs.join(", "))])) };
     let told = if saved.told.is_empty() { String::new() } else { format!(" {}", saved.told) };
     tell(qt, shared, format!("{}{legs}{told}", tr().text("event-saved", None)));
+    // A series that pauses: its pauses settled at once, off the window (`series`).
+    if std::fs::read_to_string(&saved.path).is_ok_and(|t| t.contains("X-SIOUL-PAUSE")) {
+        crate::series::keep_paused(qt, shared, "saved");
+    }
     // The re-plan due before the agenda's job starts (`work::replan_asked`).
     crate::work::show_work(qt, shared);
     show_pim(qt, shared);
@@ -871,7 +875,11 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     // Its guests, as the form's "Invite…" field lists them (decision 7 of the event card):
     // absent from a form that shows no such field (an older window, the tests).
     let guests: Option<Vec<sioul_core::organizer::Guest>> = given.as_ref().and_then(|v| v.get("guests")).and_then(|g| serde_json::from_value(g.clone()).ok());
-    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    let mut edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    // A series with guests never pauses: each time left out would be sent to every one of them.
+    if guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty()) {
+        edit.pauses.clear();
+    }
     let zone = sioul_core::zone::current();
     let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
