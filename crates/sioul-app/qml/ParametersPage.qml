@@ -182,16 +182,24 @@ Item {
             words.show(asked)
     }
 
+    // What reaches you's tab or part asked (ReachesTab.show): Your rules at a
+    // part ("person", a channel, "own", "exceptions", "dnd", "calls"), What
+    // comes when for a time or a layer ("pause", "sleep") and "table".
     function showAsked() {
         const asked = page.reachesAsked
         page.reachesAsked = ""
-        const views = ["time", "person", "own", "exceptions", "dnd"]
-        if (views.includes(asked))
-            reaches.item.show(asked, "")
+        const tab = reaches.item as ReachesTab
+        if (!tab)
+            return
+        const parts = ["rules", "person", "own", "exceptions", "dnd", "table"]
+        if (parts.includes(asked))
+            tab.show(asked, "")
         else if (["mail", "calls", "messages"].includes(asked))
-            reaches.item.show("person", asked)
+            tab.show("rules", asked)
+        else if (asked === "time" || asked === "")
+            tab.show("rules", "")
         else
-            reaches.item.show("time", asked)
+            tab.show("time", asked)
     }
 
     // One setting in view: where the Porch sends you for the hours. Once the
@@ -473,6 +481,12 @@ Item {
                                 reachesTab.reload()
                             }
                             onToTop: scroll.ScrollBar.vertical.position = 0
+                            // A part asked for: its heading at the top of the page.
+                            onReveal: item => {
+                                const flick = scroll.contentItem as Flickable
+                                if (item && flick)
+                                    flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
+                            }
                         }
                     }
                 }

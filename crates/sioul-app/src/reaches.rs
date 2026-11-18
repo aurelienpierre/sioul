@@ -324,7 +324,7 @@ fn column_now(now: &Now) -> Column {
 // ---------------------------------------------------------------- the tab
 
 /// The tab, as JSON (ReachesTab.qml; design-reach §1): {now: sentences,
-/// column: the time now, now_columns: those read now (a layer's too),
+/// state: "usual", "dnd" or "reachable", column: the time now, now_columns: those read now (a layer's too),
 /// presets [{id, label, current, changes}], changed, people {channels
 /// [{id, label, note}], rows [{id, label, help, cells [{channel, value,
 /// label, choices [{id, label}]}]}], blocked {label, help, word}, notes
@@ -357,6 +357,8 @@ pub(crate) fn view(realtime: bool) -> String {
     let grid = attention::grid(&attention, tr(), &rows, Preset::Usual);
     json!({
         "now": now_sentences(&attention, &now, reach),
+        // As usual, Do not disturb or Reachable, as the status line's button says it.
+        "state": crate::everywhere::moment()["state"].as_str().unwrap_or("usual"),
         "column": current.id(),
         "now_columns": now_columns,
         "presets": presets,
@@ -404,7 +406,7 @@ fn people(attention: &Attention, reach: Reach) -> Value {
                 .iter()
                 .map(|channel| {
                     let read = behaviours::reading(attention, *channel, *circle);
-                    let choices: Vec<Value> = behaviours::offered(*channel, *circle).iter().map(|b| json!({ "id": b.id(), "label": behaviour_label(Some(*b)) })).collect();
+                    let choices: Vec<Value> = behaviours::offered(*channel, *circle).iter().map(|b| json!({ "id": b.id(), "label": behaviour_label(Some(*b)), "help": if *b == Behaviour::Never { text(&format!("reach-behaviour-never-help-{}", channel.id())) } else { String::new() } })).collect();
                     json!({
                         "channel": channel.id(),
                         "value": read.map_or("own", Behaviour::id),
@@ -420,7 +422,7 @@ fn people(attention: &Attention, reach: Reach) -> Value {
     json!({
         "channels": channels,
         "rows": rows,
-        "blocked": { "label": text("reach-circle-blocked"), "help": text("reach-circle-blocked-help"), "word": text("reach-behaviour-never") },
+        "blocked": { "label": text("reach-circle-blocked"), "help": text("reach-circle-blocked-help"), "word": text("attention-word-never") },
         "notes": [text("reach-people-automatic"), text("reach-people-mail-off"), text("reach-people-groups-note")],
         "own_help": text("reach-own-help"),
     })
@@ -1256,7 +1258,7 @@ mod tests {
             for id in ["reach-tab-rules", "reach-tab-table", "reach-people", "reach-own-notices", "reach-moments", "reach-circles", "reach-start", "reach-calls-open", "busy", "busy-task"] {
                 worded(&text(id), language);
             }
-            for id in ["reach-circles-help", "busy-help", "busy-task-help"] {
+            for id in ["reach-circles-help", "busy-help", "busy-task-help", "reach-behaviour-never-help-mail", "reach-behaviour-never-help-messages"] {
                 said_well(&text(id), language);
             }
             for key in ["attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
@@ -1307,10 +1309,11 @@ mod tests {
     fn a_choice_names_its_rows() {
         let rows = |what: &str, value: &str| writes_of(what, value).map(|w| w.iter().map(|(r, _)| r.id()).collect::<Vec<_>>());
         assert_eq!(rows("people.messages.contacts", "never"), Ok(vec!["messages.neutral".to_string(), "messages.groups".to_string()]));
-        assert_eq!(rows("people.mail.others", "shown"), Ok(vec!["mail.stranger".to_string()]));
+        assert_eq!(rows("people.mail.others", "never"), Ok(vec!["mail.stranger".to_string()]));
         assert_eq!(rows("group.reminders", "off"), Ok(vec!["before".to_string(), "day-before".to_string(), "dates".to_string()]));
         assert_eq!(rows("care.move", "off"), Ok(vec!["move".to_string()]));
-        assert!(writes_of("people.messages.contacts", "shown").is_err(), "a message is never shown");
+        assert!(writes_of("people.messages.contacts", "gathered").is_err(), "no gathered times for people");
+        assert!(writes_of("people.messages.always", "never").is_err(), "Always through is never held");
         assert!(writes_of("people.calls.safe", "always").is_err(), "calls are set per phone");
         assert!(writes_of("group.care", "off").is_err(), "care is switch by switch");
         assert!(writes_of("care.doses", "off").is_err(), "doses are no care switch");

@@ -355,6 +355,10 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // One person in two places, said once on the card (research on several agendas, §5.3).
         "conflicts": pim::conflicts_known(&o.key, o.start),
         "busy": o.busy,
+        // Busy or free (the mark of `busy`, its TRANSP read as Google reads it), changed here
+        // but on a meeting with others, a calendar you only read, or a task's block (its task's own).
+        "marked_busy": sioul_core::busy::event_marked(&o),
+        "busy_writable": !o.read_only && !o.with_others && o.task.is_empty() && !o.busy,
         // A child's event: who takes it, its kind, what you may answer (part 3).
         "child": crate::children::card(&path, if o.recurring { o.start } else { 0 }),
         "status": agenda::status_of(&text),

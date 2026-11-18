@@ -878,6 +878,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
 
+        /// An event marked busy or free from its card (`pim::set_event_busy`):
+        /// what went wrong, else "".
+        #[qinvokable]
+        fn set_event_busy(self: Pin<&mut Sioul>, key: &QString, busy: bool) -> QString;
+
         /// Deletes an event, or only the occurrence starting at `start`, after ten
         /// seconds to undo; never a meeting with others nor one of a calendar
         /// you only read. Returns what went wrong, else "".
@@ -6001,6 +6006,10 @@ impl qobject::Sioul {
     fn set_event_reminder(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
         let result = crate::remind::set_event(&self.qt_thread(), &self.shared(), &key.to_string(), &value.to_string());
         QString::from(&result.err().unwrap_or_default())
+    }
+
+    fn set_event_busy(self: Pin<&mut Self>, key: &QString, busy: bool) -> QString {
+        QString::from(&pim::set_event_busy(&self.qt_thread(), &self.shared(), &key.to_string(), busy))
     }
 
     fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
