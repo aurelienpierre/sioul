@@ -935,7 +935,7 @@ Panel {
                 }
             }
             // How long things like it take you, against the first guess: on request only.
-            Button {
+            BareButton {
                 id: ratioAsk
 
                 property bool shown: false
@@ -1502,7 +1502,7 @@ Panel {
             }
             // Done: how it was, if you want to say. Filled in with what was
             // foreseen; nothing is kept until one changes, or "As expected".
-            Button {
+            BareButton {
                 visible: panel.done && !panel.form && panel.canEdit
                 flat: true
                 text: (panel.feltShown ? "▾  " : "▸  ") + panel.sioul.text("felt-ask")
@@ -1519,7 +1519,7 @@ Panel {
             }
 
             // The rest, folded, in the form.
-            Button {
+            BareButton {
                 visible: panel.form
                 flat: true
                 text: (panel.moreShown ? "▾  " : "▸  ") + panel.sioul.text("ui-more-details")

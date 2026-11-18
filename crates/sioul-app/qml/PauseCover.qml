@@ -148,7 +148,7 @@ Rectangle {
             }
 
             // What helps you, your list, folded until you open it.
-            Button {
+            BareButton {
                 visible: cover.back === null && cover.screen.helps.length > 0
                 flat: true
                 text: cover.sioul.text("pause-helps") + (cover.listOpen ? "  ▴" : "  ▾")
@@ -272,7 +272,7 @@ Rectangle {
                 Repeater {
                     model: cover.screen.numbers
 
-                    delegate: Button {
+                    delegate: BareButton {
                         id: number
 
                         required property var modelData
@@ -296,7 +296,7 @@ Rectangle {
                 }
             }
             // The others (medical emergency, in writing, urgent care), unfolded on demand.
-            Button {
+            BareButton {
                 visible: cover.back === null && cover.screen.more.length > 0
                 flat: true
                 text: cover.sioul.text("pause-numbers-more") + (cover.numbersOpen ? "  ▴" : "  ▾")
@@ -306,7 +306,7 @@ Rectangle {
             Repeater {
                 model: cover.back === null && cover.numbersOpen ? cover.screen.more : []
 
-                delegate: Button {
+                delegate: BareButton {
                     id: other
 
                     required property var modelData

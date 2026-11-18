@@ -2062,12 +2062,17 @@ ColumnLayout {
             }
 
             // Tentative events (`STATUS:TENTATIVE`, to be confirmed): their outlines dashed,
-            // one shape for the whole timeline, so that a week of cards stays light.
+            // one shape for the whole timeline, so that a week of cards stays light. Qt's
+            // software renderer (no GPU, some remote desktops, the documentation's pictures)
+            // does not clip a Shape to the grid that clips it: an outline scrolled out of view
+            // was drawn over the header. There, and there only, the Shape is drawn in a layer of
+            // its own, an image the grid clips; a window drawn by the GPU is drawn as before.
             Shape {
                 objectName: "tentativeOutlines"
                 visible: planning.tentativeOutlines.length > 0
                 anchors.fill: parent
                 z: 2
+                layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
 
                 ShapePath {
                     strokeColor: planning.theme.text

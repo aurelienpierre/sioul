@@ -288,6 +288,7 @@ Item {
             // The ways to see tasks: tabs across the page (Tabs.qml).
             Tabs {
                 objectName: "taskModes"
+                name: page.sioul.text("ui-tasks")
                 Layout.fillWidth: true
                 theme: page.theme
                 model: ["now", "day", "list", "board", "timeline", "search"].map(m => ({ id: m, text: page.sioul.text("task-mode-" + m) }))
@@ -607,7 +608,7 @@ Item {
                                     Repeater {
                                         model: page.shown ? page.shown.free : []
 
-                                        delegate: Button {
+                                        delegate: BareButton {
                                             id: offer
 
                                             required property var modelData
@@ -901,7 +902,7 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 2
 
-                                        Button {
+                                        BareButton {
                                             flat: true
                                             text: (fold.open ? "▾  " : "▸  ") + page.sioul.text(fold.modelData.label)
                                             onClicked: {

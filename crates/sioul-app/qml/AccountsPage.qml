@@ -243,6 +243,7 @@ Item {
             }
 
             objectName: "accountTabs"
+            name: page.sioul.text("ui-accounts")
             Layout.fillWidth: true
             theme: page.theme
             model: [{ id: "yours", text: page.sioul.text("accounts-tab-yours") }, { id: "add", text: page.sioul.text("accounts-tab-add") }, { id: "keys", text: page.sioul.text("accounts-tab-keys") }]
@@ -268,10 +269,19 @@ Item {
                 // Cards made once are kept (made again at each pass, they cost a stutter).
                 cacheBuffer: 4000
                 ScrollBar.vertical: ScrollBar {}
+                // Scrolled by hand: the list stays where it was put.
+                property bool moved: false
+                onMovementStarted: yoursScroll.moved = true
 
                 header: ColumnLayout {
                     width: yoursScroll.width
                     spacing: page.theme.gap
+                    // Grown once laid out (the history's line wraps on a phone): a ListView keeps its
+                    // first card where it was, which put the header's top above the view; the top again.
+                    onHeightChanged: {
+                        if (!yoursScroll.moved)
+                            Qt.callLater(yoursScroll.positionViewAtBeginning)
+                    }
 
                     Label {
                         visible: page.accounts.length === 0
@@ -775,7 +785,7 @@ Item {
                                         }
                                         // The sending server, when it is not the one Sioul would find:
                                         // folded; empty, it is found at the first message sent.
-                                        Button {
+                                        BareButton {
                                             visible: !page.oauthFound
                                             flat: true
                                             text: (page.smtpServerShown ? "▾  " : "▸  ") + page.sioul.text("ui-smtp-server")
@@ -933,7 +943,7 @@ Item {
                                         }
                                     }
                                     // Where the server is, when it cannot be found from the address.
-                                    Button {
+                                    BareButton {
                                         flat: true
                                         text: (page.davServerShown ? "▾  " : "▸  ") + page.sioul.text("ui-dav-server")
                                         onClicked: page.davServerShown = !page.davServerShown
@@ -1020,7 +1030,7 @@ Item {
                                         onToggled: page.ownGoogleKey = checked
                                     }
                                     // Its sentence wraps: on one line, it was wider than a phone.
-                                    Button {
+                                    BareButton {
                                         id: googleStepsButton
 
                                         visible: !page.googleBuiltIn || page.ownGoogleKey
@@ -1588,7 +1598,7 @@ Item {
                                         wrapMode: Text.Wrap
                                         color: page.theme.forged
                                     }
-                                    Button {
+                                    BareButton {
                                         visible: page.keys.keys.some(k => !k.own)
                                         flat: true
                                         text: (page.othersShown ? "▾  " : "▸  ") + page.sioul.text("ui-others-keys")
@@ -1761,7 +1771,7 @@ Item {
         }
         // Mail: what it is for, its shield, how far back, how often: folded, made
         // when unfolded (a card with them all took half a second on a phone).
-        Button {
+        BareButton {
             visible: service.hasSettings
             Layout.leftMargin: 20
             flat: true
@@ -1887,7 +1897,7 @@ Item {
             }
         }
         // Server, sender checks, where things are kept: folded.
-        Button {
+        BareButton {
             visible: service.modelData.rows.length > 0
             Layout.leftMargin: 20
             flat: true

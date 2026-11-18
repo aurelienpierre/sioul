@@ -1030,7 +1030,7 @@ SafeDialog {
                 }
             }
 
-            Button {
+            BareButton {
                 flat: true
                 text: (dialog.moreShown ? "▾  " : "▸  ") + dialog.sioul.text("ui-more-details")
                 onClicked: dialog.moreShown = !dialog.moreShown

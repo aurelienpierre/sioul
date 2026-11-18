@@ -831,7 +831,7 @@ Panel {
                 }
 
                 // Why it is where it is, on the Porch: folded, on request.
-                Button {
+                BareButton {
                     visible: reader.item !== null && !!reader.item.reasons
                     flat: true
                     text: (reader.reasonsShown ? "▾  " : "▸  ") + reader.sioul.text("ui-reasons")
@@ -871,7 +871,7 @@ Panel {
                         anchors.margins: 10
                         spacing: 6
 
-                        Button {
+                        BareButton {
                             id: attachmentsTitle
 
                             Layout.fillWidth: true
@@ -1078,7 +1078,7 @@ Panel {
                         font.pixelSize: 13
                     }
                 }
-                Button {
+                BareButton {
                     visible: reader.reading !== null && reader.reading.html !== null && !!reader.reading.html.quoted
                     flat: true
                     text: (reader.historyShown ? "▾  " : "▸  ") + (reader.historyShown ? reader.sioul.text("ui-quote-hide") : reader.sioul.text("ui-quote-history"))
@@ -1192,7 +1192,7 @@ Panel {
                                     onLinkActivated: link => reader.follow(link)
                                     onLinkHovered: link => reader.hoveredLink = link
                                 }
-                                Button {
+                                BareButton {
                                     visible: part.lines > 8
                                     flat: true
                                     text: reader.theme.plain(part.unfolded ? reader.sioul.text("ui-quote-hide") : reader.sioul.textWith("ui-quote-show", "n", String(part.lines)))

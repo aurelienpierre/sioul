@@ -56,12 +56,44 @@ Item {
         const kind = page.sioul.deviceKind
         return kind === "tablet" ? "settings-tab-tablet" : kind === "computer" ? "settings-tab-device" : "settings-tab-phone"
     }
+    // What a section holds, in one line, for the phone's list: each key written out, so that the
+    // messages' check finds every one in each language.
+    function about(section) {
+        switch (section) {
+        case "look":
+            return page.sioul.text("settings-about-look")
+        case "hours":
+            return page.sioul.text("settings-about-hours")
+        case "attention":
+            return page.sioul.text("settings-about-attention")
+        case "words":
+            return page.sioul.text("settings-about-words")
+        case "reminders":
+            return page.sioul.text("settings-about-reminders")
+        case "pauses":
+            return page.sioul.text("settings-about-pauses")
+        case "phone":
+            return page.sioul.text("settings-about-phone")
+        case "texts":
+            return page.sioul.text("settings-about-texts")
+        case "files":
+            return page.sioul.text("settings-about-files")
+        case "devices":
+            return page.sioul.text("settings-about-devices")
+        case "invoices":
+            return page.sioul.text("settings-about-invoices")
+        case "ai":
+            return page.sioul.text("settings-about-ai")
+        }
+        return ""
+    }
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
     // What reaches you and the words draw their own rows (ReachesTab.qml,
     // WordsTab.qml): none listed here.
-    readonly property var shown: page.section === "attention" || page.section === "words" ? [] : page.rows.filter(r => r.section === page.section)
+    // On a phone's list, none: the section's rows are made when it is opened.
+    readonly property var shown: page.listed || page.section === "attention" || page.section === "words" ? [] : page.rows.filter(r => r.section === page.section)
     // A view of What reaches you asked for before its tab was made: shown once it is.
     property string reachesAsked: ""
     // A list of the words asked for ("words.voicemail.operators") before its tab was made: its line opened once it is.
@@ -71,10 +103,14 @@ Item {
     // On a phone, the list of sections shows, rather than the one open.
     property bool listShown: true
     readonly property bool listed: page.phone && page.listShown
-    // On a phone, a section open: Back returns to the list (main.qml's `goBack`).
-    readonly property bool canGoBack: page.phone && !page.listShown
+    // On a phone, the section open came from a link elsewhere (a notice, the Porch, another
+    // page): Back returns where the link was, as from any page, not to the list.
+    property bool linked: false
+    // On a phone, a section opened from the list: Back returns to it (main.qml's `goBack`).
+    readonly property bool canGoBack: page.phone && !page.listShown && !page.linked
     function back() {
         page.listShown = true
+        page.linked = false
     }
     // The rows shown, gathered by heading, in their order: one frame each (Section.qml).
     readonly property var groups: {
@@ -93,6 +129,7 @@ Item {
     function open(section) {
         page.section = section
         page.listShown = false
+        page.linked = false
         scroll.ScrollBar.vertical.position = 0
     }
 
@@ -107,7 +144,13 @@ Item {
             page.reload()
     }
 
-    onVisibleChanged: if (visible) page.reload()
+    // Left, on a phone: the list again at the next visit.
+    onVisibleChanged: {
+        if (visible)
+            page.reload()
+        else if (page.phone)
+            page.back()
+    }
 
     // Further down by a part of the page.
     function scrollBy(part) {
@@ -121,6 +164,7 @@ Item {
     function showReaches(key) {
         page.section = "attention"
         page.listShown = false
+        page.linked = true
         scroll.ScrollBar.vertical.position = 0
         page.reachesAsked = key.startsWith("attention.") ? key.slice("attention.".length) : "time"
         if (reaches.item)
@@ -162,6 +206,7 @@ Item {
         if (key.startsWith("words.")) {
             page.section = "words"
             page.listShown = false
+            page.linked = true
             scroll.ScrollBar.vertical.position = 0
             page.wordsAsked = key
             if (wordsLoader.item)
@@ -175,6 +220,7 @@ Item {
         else if (page.sections.includes(key))
             page.section = key
         page.listShown = false
+        page.linked = true
         toSetting.key = key
         toSetting.restart()
     }
@@ -209,6 +255,7 @@ Item {
     function toEnd() {
         page.section = "files"
         page.listShown = false
+        page.linked = true
         Qt.callLater(() => scroll.ScrollBar.vertical.position = 1 - scroll.ScrollBar.vertical.size)
     }
 
@@ -231,7 +278,9 @@ Item {
             visible: !page.phone
             Layout.fillWidth: true
             theme: page.theme
-            model: page.sections.map(s => ({ id: s, text: page.sioul.text(page.tabKey(s)) }))
+            name: page.sioul.text("ui-parameters")
+            // On a phone, none made: the list stands for them.
+            model: page.phone ? [] : page.sections.map(s => ({ id: s, text: page.sioul.text(page.tabKey(s)) }))
             current: page.section
             onChosen: id => page.open(id)
         }
@@ -267,7 +316,7 @@ Item {
                         text: page.sioul.text(page.tabKey(entry.modelData))
                         Accessible.role: Accessible.Button
                         Accessible.name: entry.text
-                        Accessible.description: page.sioul.text("settings-about-" + entry.modelData)
+                        Accessible.description: page.about(entry.modelData)
                         onClicked: page.open(entry.modelData)
 
                         contentItem: RowLayout {
@@ -289,7 +338,7 @@ Item {
                                 }
                                 Label {
                                     Layout.fillWidth: true
-                                    text: page.sioul.text("settings-about-" + entry.modelData)
+                                    text: page.about(entry.modelData)
                                     textFormat: Text.PlainText
                                     font.pixelSize: 13
                                     wrapMode: Text.Wrap
@@ -303,6 +352,10 @@ Item {
                         }
                         background: Rectangle {
                             color: entry.down ? page.theme.hover : "transparent"
+                            // The keyboard's focus (a narrow window on a computer): a ring.
+                            radius: page.theme.radius
+                            border.width: entry.visualFocus ? 2 : 0
+                            border.color: page.theme.focus
 
                             Rectangle {
                                 anchors.left: parent.left

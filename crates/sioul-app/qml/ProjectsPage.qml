@@ -438,7 +438,7 @@ Item {
                 }
 
                 // The mail that comes here by itself: by sender, words, attachments; replies follow.
-                Button {
+                BareButton {
                     visible: page.shown !== null && page.routes.length > 0
                     flat: true
                     text: (page.routesShown ? "▾  " : "▸  ") + page.sioul.text("project-routes")

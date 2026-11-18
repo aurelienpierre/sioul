@@ -556,7 +556,7 @@ CardFrame {
                 card.sioul.status = problem
         }
     }
-    Button {
+    BareButton {
         readonly property bool any: card.there && (card.event.notes || "") !== ""
 
         visible: any

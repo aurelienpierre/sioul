@@ -253,7 +253,7 @@ ColumnLayout {
     Repeater {
         model: setup.listShown ? setup.found : []
 
-        delegate: Button {
+        delegate: BareButton {
             id: contact
 
             required property var modelData

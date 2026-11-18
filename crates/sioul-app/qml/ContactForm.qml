@@ -269,7 +269,7 @@ ColumnLayout {
         }
     }
 
-    Button {
+    BareButton {
         flat: true
         text: (form.moreShown ? "▾  " : "▸  ") + form.sioul.text("ui-more-details")
         onClicked: form.moreShown = !form.moreShown

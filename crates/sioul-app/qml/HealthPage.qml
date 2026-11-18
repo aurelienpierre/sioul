@@ -656,16 +656,22 @@ Item {
                                     elide: Text.ElideRight
                                     color: row.ink
                                 }
-                                // Taken: when, said plainly; one click takes it back. More than
-                                // half an hour late, when it was taken is asked (DoseTaken.qml).
-                                Button {
-                                    visible: row.isDose && scroll.day.today
-                                    flat: row.modelData.taken !== ""
+                                // Taken: when, said plainly, as words (BareButton.qml); one click takes it back.
+                                BareButton {
+                                    visible: row.isDose && scroll.day.today && row.modelData.taken !== ""
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                                    text: page.theme.plain(row.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", row.modelData.taken) : page.sioul.text(row.modelData.late && !row.modelData.choose ? "health-taken-when" : "health-taken"))
-                                    icon.name: row.modelData.taken !== "" ? "task-complete" : ""
+                                    text: page.theme.plain(page.sioul.textWith("health-taken-at", "time", row.modelData.taken))
+                                    icon.name: "task-complete"
                                     icon.color: page.theme.text
-                                    onClicked: {
+                                    onClicked: doseButton.press()
+                                }
+                                // Not taken yet: the button to say it. More than half an hour
+                                // late, when it was taken is asked (DoseTaken.qml).
+                                Button {
+                                    id: doseButton
+
+                                    // Taken, or taken back; asked when, or which of two answers.
+                                    function press() {
                                         // Answers that differ on your devices: you choose.
                                         if (row.modelData.choose) {
                                             page.said(page.sioul.doseChoose(row.modelData.key, true))
@@ -679,6 +685,11 @@ Item {
                                         page.said(page.sioul.setDoseTaken(row.modelData.key, row.modelData.taken === ""))
                                         page.reload()
                                     }
+
+                                    visible: row.isDose && scroll.day.today && row.modelData.taken === ""
+                                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                                    text: page.theme.plain(page.sioul.text(row.modelData.late && !row.modelData.choose ? "health-taken-when" : "health-taken"))
+                                    onClicked: doseButton.press()
                                 }
                                 Button {
                                     visible: row.isDose && scroll.day.today && row.modelData.choose === true

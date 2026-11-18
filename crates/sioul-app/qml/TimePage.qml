@@ -134,11 +134,28 @@ Item {
         }
     }
 
+    // The week, the month or the year: tabs across the page (Tabs.qml), which stay as the page scrolls.
+    Tabs {
+        id: periods
+
+        objectName: "timePeriods"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: page.theme.gap
+        theme: page.theme
+        name: page.sioul.text("ui-time")
+        model: page.periods.map(p => ({ id: p, text: page.sioul.text("time-period-" + p) }))
+        current: page.period
+        onChosen: id => page.period = id
+    }
+
     ScrollView {
         id: scroll
 
         anchors.fill: parent
         anchors.margins: page.theme.gap
+        anchors.topMargin: periods.y + periods.height + 12
         contentWidth: availableWidth
         clip: true
 
@@ -146,15 +163,6 @@ Item {
             width: scroll.availableWidth
             spacing: 12
 
-            // The week, the month or the year: tabs across the page (Tabs.qml).
-            Tabs {
-                objectName: "timePeriods"
-                Layout.fillWidth: true
-                theme: page.theme
-                model: page.periods.map(p => ({ id: p, text: page.sioul.text("time-period-" + p) }))
-                current: page.period
-                onChosen: id => page.period = id
-            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6

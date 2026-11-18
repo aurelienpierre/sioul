@@ -814,7 +814,7 @@ Item {
                                 }
 
                                 // The rest, folded.
-                                Button {
+                                BareButton {
                                     readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0)
 
                                     visible: any

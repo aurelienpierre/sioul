@@ -694,6 +694,7 @@ Item {
             // the page (Tabs.qml). Tasks ▸ The day gives the Day alone, without them.
             Tabs {
                 objectName: "agendaModes"
+                name: page.sioul.text("ui-agenda")
                 visible: page.modes.length > 1
                 Layout.fillWidth: true
                 theme: page.theme

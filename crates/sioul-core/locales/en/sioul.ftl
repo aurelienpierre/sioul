@@ -3715,13 +3715,13 @@ settings-tab-texts = Texts
 settings-tab-invoices = Invoices
 settings-tab-ai = AI agents
 # Settings on a phone: the list of sections, each with one line saying what it holds.
-settings-about-look = Language, colours, the places' names, passwords as you type, what this device is.
+settings-about-look = Language, colours, the places' names, passwords as you type.
 settings-about-hours = Working hours, hours for your admin, meals and the night, time off.
 settings-about-attention = Who and what may reach you, on which channel and at what time; the exceptions, Do not disturb.
 settings-about-words = The words Sioul looks for in mail, papers, calls and tasks, in your languages.
 settings-about-reminders = Reminders of dates asked, with Sioul's window closed, and notifications gathered.
 settings-about-pauses = Free time and the pause: when work ends, what helps you, the pause's screen.
-settings-about-phone = What this device's system lets Sioul do: calls, other apps' notifications, texts, Do not disturb, alarms.
+settings-about-phone = What this device is, and what its system lets Sioul do: calls, other apps' notifications, texts, Do not disturb, alarms.
 settings-about-texts = The multimedia messages sent from here through your phone.
 settings-about-files = Your notes folder, and sharing with your other devices.
 settings-about-devices = Your devices: what each is, what it is for, what comes forward on each.

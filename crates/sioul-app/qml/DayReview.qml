@@ -275,7 +275,7 @@ SafeDialog {
             }
 
             // The notes of the last days, as they were said: folded, read only.
-            Button {
+            BareButton {
                 visible: sheet.view !== null && sheet.view.back.length > 0
                 Layout.topMargin: 4
                 flat: true

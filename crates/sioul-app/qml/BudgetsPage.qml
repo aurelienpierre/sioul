@@ -286,6 +286,7 @@ Item {
             readonly property var ids: ["overview", "budgets", "movements", "mail", "invoices"]
 
             objectName: "moneyTabs"
+            name: page.sioul.text("ui-budgets")
             Layout.fillWidth: true
             theme: page.theme
             model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]

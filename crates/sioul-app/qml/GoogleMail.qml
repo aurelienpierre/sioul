@@ -181,7 +181,7 @@ ColumnLayout {
             onToggled: form.ownKey = checked
         }
         // Its sentence wraps: on one line, it was wider than a phone.
-        Button {
+        BareButton {
             id: stepsButton
 
             visible: !form.keyKept && (!form.builtIn || form.ownKey)
