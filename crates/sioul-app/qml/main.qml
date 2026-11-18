@@ -3424,8 +3424,20 @@ SioulWindow {
             // sections in their centred column and, on a phone, its list of sections;
             // fields and buttons that stand out. Settings ▸ Display and ▸ Hours, Tasks ▸
             // List, the Agenda's Week, Money's Overview, Accounts and the new movement's
-            // form; on a computer at 1400 by 900 (pictures alone).
+            // form; on a computer at 1400 by 900, then Settings at the window's first 1100, its
+            // tabs scrolling (pictures alone). First, in the log, whether Sioul's overrides of the
+            // Basic style are in place (cpp/style.cpp): a flat button with words drawn with its
+            // outline, a text area with its ground; the release's Flatpak job reads that line.
             readonly property var shellSteps: [
+                () => {
+                    const button = Qt.createQmlObject("import QtQuick.Controls.Basic; Button { opacity: 0; flat: true; text: \"Probe\" }", window.contentItem)
+                    const area = Qt.createQmlObject("import QtQuick.Controls.Basic; TextArea { opacity: 0 }", window.contentItem)
+                    // Out of sight by their opacity: an item hidden would say its background hidden too.
+                    const ours = button.background.visible && area.background !== null && area.background.visible
+                    console.warn("style: " + (ours ? "Sioul's overrides in place" : "Basic's own controls, the overrides not loaded"))
+                    button.destroy()
+                    area.destroy()
+                },
                 () => {
                     if (!window.phoneGrab) {
                         window.width = 1400
@@ -3476,6 +3488,14 @@ SioulWindow {
                 () => {},
                 () => grabber.saveWindow("movement-form"),
                 () => budgetsPage.movements.closeForms(),
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1100
+                    window.page = 12
+                    parametersPage.open("look")
+                },
+                () => {},
+                () => grabber.save("settings-1100"),
                 () => window.close()
             ]
             // The Budgets page's four tabs (the money ledger's design §6): Overview,
@@ -4084,7 +4104,8 @@ SioulWindow {
                 () => {},
                 () => grabber.save("pauses-back"),
                 () => pauseCover.item.done(),
-                () => window.showParameters("link.notify.pauses"),
+                // Settings ▸ Pauses, by its section's key.
+                () => window.showParameters("pauses"),
                 () => {},
                 () => {},
                 () => grabber.save("pauses-setup"),

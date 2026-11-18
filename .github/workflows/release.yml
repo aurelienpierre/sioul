@@ -353,6 +353,32 @@ jobs:
           bundle: Sioul-${{ needs.version.outputs.version }}.flatpak
           cache-key: flatpak-builder-${{ hashFiles('Cargo.lock', 'packaging/flatpak/*') }}
           upload-artifact: false
+          # Kept for the start below.
+          build-dir: flatpak_app
+      # The program started once on the Flatpak's own Qt (the KDE runtime's, 6.10), offscreen,
+      # in the build's sandbox, through its `shell` picture steps (main.qml): Settings, Tasks,
+      # the Agenda, Money, Accounts and a form with fields, then the window closed. A QML file
+      # that this Qt refuses (a property newer than it) leaves no window, and the steps never
+      # end; overrides of the Basic style that do not load (cpp/style.cpp) leave Basic's controls,
+      # which the log's "style:" line says. Either stops the release here.
+      - name: Start the built program
+        run: |
+          set -o pipefail
+          status=0
+          timeout 300 flatpak-builder --run flatpak_app packaging/flatpak/com.aurelienpierre.Sioul.yml sh -c '
+              mkdir -p /tmp/start/home /tmp/start/shots && mkdir -m 700 -p /tmp/start/run
+              exec env HOME=/tmp/start/home XDG_RUNTIME_DIR=/tmp/start/run QT_QPA_PLATFORM=offscreen \
+                  QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 SIOUL_DEMO=1 SIOUL_GRAB=/tmp/start/shots \
+                  SIOUL_GRAB_STEPS=shell dbus-run-session -- sioul-app' 2>&1 | tee start.log || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "The program did not end its steps (status $status): its window did not load on this Qt." >&2
+            exit 1
+          fi
+          if grep -E "failed to load component|Cannot assign to non-existent property|is not a type" start.log; then
+            echo "A QML file was refused on this Qt." >&2
+            exit 1
+          fi
+          grep -q "style: Sioul's overrides in place" start.log || { echo "Sioul's overrides of the Basic style did not load." >&2; exit 1; }
       - uses: actions/upload-artifact@v7
         with:
           name: package-flatpak
