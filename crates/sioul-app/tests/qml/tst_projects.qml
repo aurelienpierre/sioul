@@ -6,7 +6,7 @@
 // projects Rust says the ticks show, the filter's button says what shows; a
 // tick, or "As the hours say", goes to Rust and the list is read again; the
 // time changing reads it again; asleep, no cover and no "Show anyway": the
-// filter says what shows. The project's form says what it is for by the
+// filter says what shows, and one sentence when it shows none. The project's form says what it is for by the
 // three switches (AreaSwitches.qml), nothing ticked saying it counts as work.
 // The Time page has the same filter, its ticks the same, in place of its
 // cover; one project chosen shows whatever the ticks, the filter put away.
@@ -201,11 +201,13 @@ Item {
             const page = createTemporaryObject(pageComponent, root)
             waitForRendering(page)
             compare(listed(page), [], "nothing ticked")
+            verify(named(page, "projectsNoneTicked").visible, "said: no project for what is ticked")
             compare(all(page, i => i.objectName === "" && i.text === "ui-show-anyway").length, 0, "no Show anyway")
             verify(all(page, i => i.text === "project-resting").length === 0, "no resting line")
             verify(named(page, "projectAreas").visible, "the filter, everything one tick away")
             named(page, "projectAreas").tick("admin", true)
             compare(listed(page), ["Community garden", "Tax return"])
+            verify(!named(page, "projectsNoneTicked").visible)
         }
 
         function test_the_time_page_has_the_same_filter_and_no_cover() {

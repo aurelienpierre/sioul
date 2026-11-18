@@ -11304,9 +11304,9 @@ mod tests {
     /// What a project is for (docs/areas.md) travels with its record: the
     /// areas' words written on one device are read on the other, a change
     /// back the same way, the record's other fields kept; the field stays a
-    /// plain string, which a Sioul from before the three switches still reads
-    /// (as unsaid when its words are new to it), and an older "personal" read
-    /// on a new one as admin and leisure.
+    /// plain string, admin and leisure written `personal`, the word a Sioul
+    /// from before the three switches reads, and read on a new one as admin
+    /// and leisure.
     #[test]
     fn a_project_s_area_travels_with_its_record() {
         use sioul_core::areas::Area;
@@ -11321,21 +11321,27 @@ mod tests {
         desk.exchange_notes(&folder, &key, NOW, &desk_notes);
         phone.exchange_notes(&folder, &key, NOW + MINUTE, &phone_notes);
         let area_on = |notes: &Path| ProjectStore::load(notes).unwrap().get("garden").map(|p| (p.area.clone(), p.area_of(), p.routes.len())).unwrap();
-        assert_eq!(area_on(&phone_notes), (Some("personal".into()), Area::PERSONAL, 1), "an older word, read as admin and leisure");
+        assert_eq!(area_on(&phone_notes), (Some("personal".into()), Some(Area::PERSONAL), 1), "an older word, read as admin and leisure");
         // Leisure alone, said on the phone: on the desk at the next exchange, its route kept.
         let garden = ProjectStore::load(&phone_notes).unwrap().get("garden").cloned().unwrap();
         save_project(&file_in(&phone_notes), "garden", &ProjectEdit { area: "leisure".into(), ..ProjectEdit::of(&garden) }).unwrap();
         phone.exchange_notes(&folder, &key, NOW + 2 * MINUTE, &phone_notes);
         desk.exchange_notes(&folder, &key, NOW + 3 * MINUTE, &desk_notes);
-        assert_eq!(area_on(&desk_notes), (Some("leisure".into()), Area::LEISURE, 1));
+        assert_eq!(area_on(&desk_notes), (Some("leisure".into()), Some(Area::LEISURE), 1));
         // Work and leisure, said on the desk: back on the phone, in the files' words.
         save_project(&file_in(&desk_notes), "garden", &ProjectEdit { area: "leisure+work".into(), ..ProjectEdit::of(&garden) }).unwrap();
         desk.exchange_notes(&folder, &key, NOW + 4 * MINUTE, &desk_notes);
         phone.exchange_notes(&folder, &key, NOW + 5 * MINUTE, &phone_notes);
-        assert_eq!(area_on(&phone_notes), (Some("work+leisure".into()), Area::WORK.with(Area::LEISURE), 1));
+        assert_eq!(area_on(&phone_notes), (Some("work+leisure".into()), Some(Area::WORK.with(Area::LEISURE)), 1));
+        // Admin and leisure again, said on the phone: the word every Sioul reads, on the desk too.
+        let garden = ProjectStore::load(&phone_notes).unwrap().get("garden").cloned().unwrap();
+        save_project(&file_in(&phone_notes), "garden", &ProjectEdit { area: "admin+leisure".into(), ..ProjectEdit::of(&garden) }).unwrap();
+        phone.exchange_notes(&folder, &key, NOW + 6 * MINUTE, &phone_notes);
+        desk.exchange_notes(&folder, &key, NOW + 7 * MINUTE, &desk_notes);
+        assert_eq!(area_on(&desk_notes), (Some("personal".into()), Some(Area::PERSONAL), 1));
         // A plain string, as every Sioul's projects read it.
         let record: toml::Table = std::fs::read_to_string(file_in(&phone_notes)).unwrap().parse().unwrap();
-        assert_eq!(record["project"][0]["area"].as_str(), Some("work+leisure"));
+        assert_eq!(record["project"][0]["area"].as_str(), Some("personal"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
