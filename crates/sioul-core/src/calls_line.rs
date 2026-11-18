@@ -397,6 +397,75 @@ fn cell_text(rings: bool) -> &'static str {
     if rings { "rings" } else { "voicemail" }
 }
 
+// ---------------------------------------------------------------- today, for a line that says nothing
+
+/// One cell of what a phone does today while its line says nothing: rings
+/// or voicemail through its whole column, or varies within it (`rings`
+/// none), with the moments it rings in and those it does not (their ids:
+/// "admin", "leisure", "meals", "free"; "time": as the time says).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TodayCell {
+    pub rings: Option<bool>,
+    pub ringing: Vec<&'static str>,
+    pub quiet: Vec<&'static str>,
+}
+
+/// What a phone whose line says nothing does today (review of `reach`, R3):
+/// the matrix's Calls rows and the shared call screening read into the
+/// line's four columns, so that its card hides nothing that decides
+/// whether it rings. Work hours: the Work column; the rest of the day:
+/// admin, leisure, meals and Free time; the night: Sleep; while busy: the
+/// Do not disturb layer when being busy turns it on, else as the time says.
+/// Numbers nobody knows and hidden numbers by the screening, never where
+/// your contacts' row declines (`calls::decide`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Today {
+    /// The fixed rows, in `Row::FIXED`'s order.
+    pub fixed: [[TodayCell; 4]; 5],
+    pub switches: Switches,
+}
+
+impl Today {
+    pub fn of(attention: &crate::attention::Attention, screening: &crate::screening::Screening, busy_dnd: bool) -> Today {
+        use crate::attention::{Column, Level, Person, Row as MatrixRow};
+        use crate::reach::Channel;
+        let rings_at = |person: Person, column: Column| attention.cell(MatrixRow::People(Channel::Calls, person), column) == Level::Now;
+        let hours = |column: Column| matches!(column, Column::Work | Column::Admin);
+        let fixed_rings = |row: usize, column: Column| match row {
+            0 => rings_at(Person::Safe, column),
+            1 => rings_at(Person::Neutral, column),
+            2 => rings_at(Person::Restricted, column),
+            // Numbers nobody knows and hidden numbers: the screening's, never beyond your contacts.
+            r => screening.rings(r == 4, hours(column)) && rings_at(Person::Neutral, column),
+        };
+        let day: [(Column, &'static str); 4] = [(Column::Admin, "admin"), (Column::Leisure, "leisure"), (Column::Meals, "meals"), (Column::Free, "free")];
+        let cell = |row: usize, moments: &[(Column, &'static str)]| {
+            let (ringing, quiet): (Vec<_>, Vec<_>) = moments.iter().partition(|(c, _)| fixed_rings(row, *c));
+            let rings = if quiet.is_empty() { Some(true) } else if ringing.is_empty() { Some(false) } else { None };
+            TodayCell { rings, ringing: ringing.iter().map(|(_, id)| *id).collect(), quiet: quiet.iter().map(|(_, id)| *id).collect() }
+        };
+        let busy = |row: usize| if busy_dnd { cell(row, &[(Column::Dnd, "dnd")]) } else { TodayCell { rings: None, ringing: vec!["time"], quiet: Vec::new() } };
+        let fixed = std::array::from_fn(|row| [cell(row, &[(Column::Work, "work")]), cell(row, &day), cell(row, &[(Column::Sleep, "sleep")]), busy(row)]);
+        Today { fixed, switches: Switches { commercial: screening.automated == crate::screening::Spam::Voicemail, twice: true, called: screening.called } }
+    }
+
+    /// As the cells a line written from it starts with: a cell that varies
+    /// within the rest of the day rings (whatever cannot be told rings, as
+    /// the calls' table's rule); while busy "as usual" rings only where both
+    /// work hours and the rest of the day ring, so that being busy never lets
+    /// more ring than the day does.
+    pub fn cells(&self) -> [Cells; 5] {
+        self.fixed.clone().map(|row| {
+            let usual = row[0].rings == Some(true) && row[1].rings == Some(true);
+            [0, 1, 2, 3].map(|w| match (w, row[w].rings) {
+                (_, Some(rings)) => rings,
+                (3, None) => usual,
+                (_, None) => true,
+            })
+        })
+    }
+}
+
 // ---------------------------------------------------------------- in words
 
 /// What a phone's card needs to say beside its line.
@@ -409,19 +478,28 @@ pub struct Card<'a> {
     pub screens: Option<bool>,
     /// Every category of your contacts' cards, as first written: the groups a row may be given to.
     pub categories: &'a [String],
+    /// What the phone does today while its line says nothing (`Today::of`).
+    pub today: Option<&'a Today>,
 }
 
 /// One phone's section Calls, in words, for its card in Settings ▸ Devices:
 /// {set, profile, offered, profiles: [{id, label, said, chosen}], said, columns:
 /// [{id, label}], rows: [{id, label, fixed, group, cells: [{when, rings,
 /// word}]}], switches: [{key, label, on}], groups (categories with no row
-/// yet), screens, sims, always}. A line that says nothing shows the profile
-/// offered, its table as a start, nothing chosen.
+/// yet), screens, sims, always, here, today, details}. A line that says
+/// nothing shows what the phone does today (`Card::today`; a cell that
+/// varies within its column says so, and `details` when it rings), nothing
+/// chosen; without it, the profile offered.
 pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> serde_json::Value {
     use serde_json::json;
     let set = said.is_some_and(Said::says);
     let offered = Profile::offered(card.area);
-    let grid = said.filter(|s| s.says()).map_or_else(|| offered.grid(), Said::grid);
+    let today = if set { None } else { card.today };
+    let grid = match (said.filter(|s| s.says()), today) {
+        (Some(said), _) => said.grid(),
+        (None, Some(today)) => Grid { profile: Profile::Own, fixed: today.cells(), groups: Vec::new(), switches: today.switches },
+        (None, None) => offered.grid(),
+    };
     let chosen = set.then_some(grid.profile);
     // Each profile with what it does in a line; Professional's says that a second call does not ring outside work hours.
     let profile = |p: Profile, chosen: bool| json!({ "id": p.id(), "label": tr.text(&format!("phone-calls-profile-{}", p.id()), None), "said": tr.text(&format!("phone-calls-profile-{}-said", p.id()), None), "chosen": chosen });
@@ -430,6 +508,7 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
         profiles.push(profile(Profile::Own, true));
     }
     let said_words = match chosen {
+        None if today.is_some() => tr.text("phone-calls-today", None),
         None => tr.text("phone-calls-unsaid", None),
         Some(Profile::AsAndroid) => tr.text("phone-calls-android", None),
         Some(_) => String::new(),
@@ -437,14 +516,41 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
     let word = |rings: bool| tr.text(if rings { "phone-calls-rings" } else { "phone-calls-voicemail" }, None);
     let cells = |cells: Cells| -> Vec<serde_json::Value> { When::ALL.iter().map(|w| json!({ "when": w.id(), "rings": cells[w.index()], "word": word(cells[w.index()]) })).collect() };
     let row = |id: String, label: String, fixed: bool, group: bool, c: Cells| json!({ "id": id, "label": label, "fixed": fixed, "group": group, "cells": cells(c) });
-    let fixed_row = |r: Row| {
+    // A cell of today that varies within its column: "Varies", and in a line
+    // under the table, when it rings; "As the time" while busy, said once.
+    let moments = |ids: &[&str]| ids.iter().map(|id| tr.text(&format!("attention-column-{id}"), None)).collect::<Vec<_>>().join(", ");
+    let mut details: Vec<String> = Vec::new();
+    let mut fixed_row = |r: Row| {
         let id = r.id();
+        let label = tr.text(&format!("phone-calls-row-{id}"), None);
         let c = grid.cells(&r).unwrap_or([true; 4]);
-        row(id.clone(), tr.text(&format!("phone-calls-row-{id}"), None), false, false, c)
+        let mut shown = row(id.clone(), label.clone(), false, false, c);
+        let Some((today, i)) = today.zip(Row::FIXED.iter().position(|f| *f == r)) else {
+            return shown;
+        };
+        for (w, cell) in today.fixed[i].iter().enumerate().filter(|(_, cell)| cell.rings.is_none()) {
+            let (word, detail) = if cell.ringing == ["time"] {
+                (tr.text("phone-calls-as-time", None), tr.text("phone-calls-as-time-detail", None))
+            } else {
+                let mut args = crate::i18n::args();
+                args.set("row", label.clone());
+                args.set("when", tr.text(&format!("phone-calls-when-{}", When::ALL[w].id()), None));
+                args.set("rings", moments(&cell.ringing));
+                args.set("voicemail", moments(&cell.quiet));
+                (tr.text("phone-calls-varies", None), tr.text("phone-calls-varies-detail", Some(&args)))
+            };
+            shown["cells"][w]["word"] = json!(word);
+            shown["cells"][w]["varies"] = json!(true);
+            if !details.contains(&detail) {
+                details.push(detail);
+            }
+        }
+        shown
     };
     let mut rows = vec![row("always".into(), tr.text("phone-calls-row-always", None), true, false, [true; 4]), fixed_row(Row::Safe), fixed_row(Row::Contacts)];
     rows.extend(grid.groups.iter().map(|(name, c)| row(Row::Group(name.clone()).id(), name.clone(), false, true, *c)));
     rows.extend([fixed_row(Row::Restricted), fixed_row(Row::Unknown), fixed_row(Row::Hidden)]);
+    let today_shown = today.is_some();
     let switches: Vec<serde_json::Value> = SWITCHES.iter().map(|key| json!({ "key": key, "label": tr.text(&format!("phone-calls-{key}"), None), "on": match *key { "commercial" => grid.switches.commercial, "twice" => grid.switches.twice, _ => grid.switches.called } })).collect();
     let taken: Vec<String> = grid.groups.iter().map(|(n, _)| crate::porch::category_key(n)).collect();
     let groups: Vec<&String> = card.categories.iter().filter(|c| !taken.contains(&crate::porch::category_key(c))).collect();
@@ -456,12 +562,48 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
         "said": said_words,
         "columns": When::ALL.iter().map(|w| json!({ "id": w.id(), "label": tr.text(&format!("phone-calls-when-{}", w.id()), None) })).collect::<Vec<_>>(),
         "rows": rows,
+        // Shown from what the phone does today: each cell that varies, when it rings.
+        "today": today_shown,
+        "details": details,
         "switches": switches,
         "groups": groups,
         "screens": card.screens,
         "not_screening": if card.screens == Some(true) { String::new() } else { tr.text("phone-calls-not-screening", None) },
         "sims": tr.text("phone-calls-sims", None),
         "always": tr.text("phone-calls-always", None),
+        // What reaches you's presets leave calls as they are: they are set here.
+        "here": tr.text("phone-calls-here", None),
+    })
+}
+
+/// The phone `id`'s line written from what it does today (`Today`), before
+/// a first change made on its table: every fixed cell and switch as today
+/// gives them, a cell that varies ringing; the profile "none" with no base,
+/// so that the change starts from what the phone did, never from a profile.
+pub fn start_from_today(path: &Path, id: &str, today: &Today) -> Result<(), String> {
+    let cells = today.cells();
+    edit(path, id, |now, calls| {
+        if now.as_ref().is_some_and(Said::says) {
+            return Ok(());
+        }
+        put(calls, "profile", toml_edit::value(Profile::Own.id()));
+        for key in SWITCHES {
+            let on = match key {
+                "commercial" => today.switches.commercial,
+                "twice" => today.switches.twice,
+                _ => today.switches.called,
+            };
+            put(calls, key, toml_edit::value(on));
+        }
+        let rows = rows_of(calls)?;
+        for (i, row) in Row::FIXED.iter().enumerate() {
+            let mut table = toml_edit::Table::new();
+            for w in When::ALL {
+                table.insert(w.id(), toml_edit::value(cell_text(cells[i][w.index()])));
+            }
+            rows.insert(&row.id(), toml_edit::Item::Table(table));
+        }
+        Ok(())
     })
 }
 
@@ -732,7 +874,7 @@ mod tests {
         for language in ["en", "fr"] {
             let tr = crate::i18n::Translator::new(language);
             let categories = ["School".to_string(), "Clients".to_string()];
-            let card = Card { area: Some(Area::WORK), screens: Some(false), categories: &categories };
+            let card = Card { area: Some(Area::WORK), screens: Some(false), categories: &categories, today: None };
             let unsaid = view(None, &card, &tr);
             assert_eq!((unsaid["set"].as_bool(), unsaid["profile"].as_str(), unsaid["offered"].as_str()), (Some(false), Some(""), Some("professional")));
             assert!(unsaid["profiles"].as_array().unwrap().iter().all(|p| p["chosen"] == false));
@@ -771,6 +913,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A phone whose line says nothing shows what it does today, from the
+    /// usual matrix and the shared screening (review of `reach`, R3): the
+    /// safe ring at work and in the day, to voicemail at night; your
+    /// contacts' rest of the day varies (Free time holds them), said with
+    /// when they ring; while busy, as the time says, or do-not-disturb's
+    /// cells when being busy turns it on. A first change starts from it.
+    #[test]
+    fn an_unsaid_line_shows_what_the_phone_does_today() {
+        let attention = crate::attention::Attention::usual();
+        let screening = crate::screening::Screening::default();
+        let today = Today::of(&attention, &screening, false);
+        assert_eq!(today.fixed[0][0].rings, Some(true), "safe at work");
+        assert_eq!(today.fixed[0][2].rings, Some(false), "safe at night");
+        assert_eq!(today.fixed[1][1].rings, None, "your contacts in the rest of the day: {:?}", today.fixed[1][1]);
+        assert!(today.fixed[1][1].quiet.contains(&"free") && today.fixed[1][1].ringing.contains(&"leisure"));
+        assert_eq!(today.fixed[3][2].rings, Some(false), "nobody known at night");
+        assert_eq!(today.fixed[0][3].ringing, ["time"], "while busy: as the time says");
+        let held = Today::of(&attention, &screening, true);
+        assert_eq!(held.fixed[1][3].rings, Some(false), "busy turning do-not-disturb on: your contacts to voicemail");
+        let off = crate::screening::Screening { on: false, ..screening };
+        assert_eq!(Today::of(&attention, &off, false).fixed[3][0].rings, Some(true), "the screening off: where your contacts ring");
+        for language in ["en", "fr"] {
+            let tr = crate::i18n::Translator::new(language);
+            let categories: Vec<String> = Vec::new();
+            let view = view(None, &Card { area: None, screens: Some(true), categories: &categories, today: Some(&today) }, &tr);
+            assert!(view["profiles"].as_array().unwrap().iter().all(|p| p["chosen"] == false));
+            let contacts = view["rows"].as_array().unwrap().iter().find(|r| r["id"] == "contacts").unwrap().clone();
+            assert_eq!(contacts["cells"][1]["varies"], true);
+            assert_eq!(view["today"], true);
+            let details: Vec<&str> = view["details"].as_array().unwrap().iter().filter_map(serde_json::Value::as_str).collect();
+            assert!(details.len() >= 2, "{language}: {details:?}");
+            for detail in details {
+                assert!(!detail.contains("phone-calls-") && !detail.contains("attention-column-") && !detail.contains('{'), "{language}: {detail}");
+            }
+            assert!(!view["said"].as_str().unwrap().starts_with("phone-calls-") && !view["here"].as_str().unwrap().starts_with("phone-calls-"));
+        }
+        let path = scratch("today");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        start_from_today(&path, PHONE, &today).unwrap();
+        set_cell(&path, PHONE, &Row::Safe, When::Night, true, Profile::Professional).unwrap();
+        let grid = said_in(&path).unwrap().grid();
+        assert!(grid.rings(&Row::Safe, When::Night) && grid.rings(&Row::Contacts, When::Day) && !grid.rings(&Row::Unknown, When::Night), "from today, never from the profile offered: {grid:?}");
+        // While busy, "as usual" written as no more than the day lets ring.
+        assert!(grid.rings(&Row::Safe, When::Busy) && !grid.rings(&Row::Contacts, When::Busy) && !grid.rings(&Row::Unknown, When::Busy), "{grid:?}");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     /// The owner's three examples, and the other profiles.
