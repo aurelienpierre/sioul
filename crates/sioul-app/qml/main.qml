@@ -2332,10 +2332,10 @@ SioulWindow {
                 () => {},
                 () => grabber.save("projects"),
                 // Time: last week, a whole one, whatever the day (and the hour:
-                // shown anyway in quiet time).
+                // every area ticked in its filter).
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                     timePage.move(-1)
                 },
                 () => {},
@@ -4746,7 +4746,7 @@ SioulWindow {
                 () => sioul.status = sioul.exportTimeCsv("studio", "2026-10-01", "2026-10-31", "file://" + grabber.folder + "/studio%20octobre.csv"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
                 () => window.close()
@@ -5127,7 +5127,7 @@ SioulWindow {
                 () => grabber.save("projects"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
                 // Last week's, which has some: the first stretch changed.

@@ -2,8 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A project: its name, and for work done for someone, who it is for, what
-// an hour costs and which budget its invoices are expected in; whether AI
-// agents may read it and add to it (closed until opened, docs/ai.md).
+// an hour costs and which budget its invoices are expected in; what it is
+// for, by the three switches used everywhere (AreaSwitches.qml: work, your
+// admin, leisure; nothing ticked, work's, docs/areas.md); whether AI agents
+// may read it and add to it (closed until opened, docs/ai.md).
 
 pragma ComponentBehavior: Bound
 
@@ -18,6 +20,8 @@ SafeDialog {
     required property var theme
     property string projectId: ""
     property string problem: ""
+    // What it is for, as the files write it ("admin+leisure"); "" for unsaid, work's.
+    property string area: ""
     readonly property var budgets: dialog.sioul.budgets ? JSON.parse(dialog.sioul.budgets).choices || [] : []
     readonly property var statuses: ["open", "waiting", "closed"]
 
@@ -34,7 +38,7 @@ SafeDialog {
         rate.text = page && page.rate > 0 ? String(page.rate).replace(".", Qt.locale(dialog.sioul.text("qt-locale")).decimalPoint) : ""
         budget.currentIndex = page ? Math.max(0, dialog.budgets.findIndex(b => b.id === page.budget) + 1) : 0
         status.currentIndex = page ? Math.max(0, dialog.statuses.indexOf(page.status)) : 0
-        personal.checked = page ? page.area === "personal" : false
+        dialog.area = page ? page.area || "" : ""
         openToAi.checked = page ? page.ai === true : false
         dialog.open()
         title.forceActiveFocus()
@@ -60,7 +64,7 @@ SafeDialog {
             client: isProject.checked ? client.text : "",
             rate: hourly,
             budget: isProject.checked && budget.currentIndex > 0 ? dialog.budgets[budget.currentIndex - 1].id : "",
-            area: personal.checked ? "personal" : "",
+            area: dialog.area,
             ai: openToAi.checked
         }
         const answer = JSON.parse(dialog.sioul.saveProject(dialog.projectId, JSON.stringify(edit)))
@@ -151,17 +155,31 @@ SafeDialog {
             Layout.fillWidth: true
             model: dialog.statuses.map(s => dialog.sioul.text("project-status-" + s))
         }
-        Item {
-            Layout.preferredHeight: 1
+        // What it is for: the Projects and Time pages' filter, and its tasks' hours unless they say theirs.
+        Label {
+            Layout.alignment: Qt.AlignTop
+            text: dialog.sioul.text("project-field-area")
+            color: dialog.theme.muted
         }
-        // Yours outside work: its tasks stay in view in quiet time.
-        CheckBox {
-            id: personal
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
 
-            text: dialog.sioul.text("project-field-personal")
-            ToolTip.visible: hovered
-            ToolTip.text: dialog.sioul.text("project-field-personal-help")
-            ToolTip.delay: 500
+            AreaSwitches {
+                objectName: "projectArea"
+                Layout.fillWidth: true
+                sioul: dialog.sioul
+                value: dialog.area
+                onPicked: value => dialog.area = value
+            }
+            Label {
+                Layout.fillWidth: true
+                text: dialog.area === "" ? dialog.sioul.text("project-area-unsaid") : dialog.sioul.text("project-area-help")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: dialog.theme.muted
+            }
         }
         // Closed to AI agents until opened; what opening means, in one sentence.
         Switch {

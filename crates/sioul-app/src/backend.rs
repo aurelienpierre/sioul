@@ -1093,7 +1093,7 @@ pub mod qobject {
         #[qinvokable]
         fn fold_task(self: Pin<&mut Sioul>, uid: &QString, open: bool);
 
-        /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
+        /// Asleep, Now chooses among every task all the same ("Show anyway" on its cover), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
 
@@ -2549,6 +2549,19 @@ pub mod qobject {
         /// The projects, for their list, as JSON.
         #[qinvokable]
         fn project_rows(self: &Sioul) -> QString;
+
+        /// The Projects page's list, by its filter by area: {rows, all, filter}, as JSON.
+        #[qinvokable]
+        fn projects_page(self: &Sioul) -> QString;
+
+        /// The areas ticked in the projects' filter, the Projects and Time pages'
+        /// ("work+leisure", "" for none), kept until the hours change, a day at most.
+        #[qinvokable]
+        fn tick_project_areas(self: Pin<&mut Sioul>, areas: &QString);
+
+        /// "As the hours say": your ticks in the projects' filter forgotten.
+        #[qinvokable]
+        fn project_areas_as_hours(self: Pin<&mut Sioul>);
 
         /// One project's page, as JSON.
         #[qinvokable]
@@ -7983,6 +7996,19 @@ impl qobject::Sioul {
 
     fn project_rows(&self) -> QString {
         QString::from(&crate::projects::rows(&self.shared()))
+    }
+
+    fn projects_page(&self) -> QString {
+        QString::from(&crate::projects::page_rows(&self.shared()))
+    }
+
+    fn tick_project_areas(self: Pin<&mut Self>, areas: &QString) {
+        let now = sioul_core::zone::now();
+        crate::projects::tick_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
+    }
+
+    fn project_areas_as_hours(self: Pin<&mut Self>) {
+        crate::projects::areas_as_hours();
     }
 
     fn project_page(&self, id: &QString) -> QString {

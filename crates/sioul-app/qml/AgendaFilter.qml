@@ -4,11 +4,13 @@
 // The agenda filter (several agendas): one button that opens the list of the
 // agendas, grouped by whose they are (yours, each child, another parent,
 // partners, shared), each group foldable, with a box for the group and one
-// for each agenda. Unless you say, it shows what the hours admit (a work
-// agenda in work hours only); your word holds until work's hours change, and
-// "As the hours say" gives them back. One filter for every view: the
-// agenda's Day, Week, Month and What comes, and the Tasks page's lists, which
-// show the same list of their own agendas. On a computer under its button;
+// for each agenda. In the calm views (the Agenda's What comes, Tasks ▸ Now),
+// unless you say, it shows what the hours admit (a work agenda in work hours
+// only); your word holds until work's hours change, and "As the hours say"
+// gives them back. In the full views (the Agenda's Day, Week and Month, the
+// Tasks page's other tabs) it is by hand alone (`byHand`). One filter for
+// every view: the Tasks page's lists show the same list of their own
+// agendas. On a computer under its button;
 // on a phone a sheet from the bottom, as wide as the screen. Named sets of
 // agendas come first (part 4): chosen by hand, or brought by Sioul's own
 // times, never by a place; "Keep these as a set" names what shows. Beside
@@ -30,8 +32,9 @@ Button {
     property var shown: ({ chosen: false, groups: [] })
     // A phone: the list a sheet from the bottom, the button its icon alone.
     property bool narrow: false
-    // A full list's filter (the task list, board, timeline): the hours shape
-    // nothing there, so a tick is your word against "shown unless kept hidden".
+    // A full view's filter (the Agenda's Day, Week and Month; the Tasks page's
+    // day, list, board and timeline): the hours shape nothing there, so a tick
+    // is your word against "shown unless kept hidden".
     property bool byHand: false
     // The button its icon alone, its name in a tip (a narrow window, a crowded line).
     property bool iconOnly: filter.narrow

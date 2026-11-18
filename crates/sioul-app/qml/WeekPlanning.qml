@@ -13,8 +13,8 @@
 // outlined (the next one filled, the one under way marked), tasks done
 // dimmed, meals, naps and the night tinted and named, what is kept around each thing (getting there and back,
 // getting ready, coming back, winding down) lighter, time for you and the
-// time kept free as quiet words; in quiet time, a coming day's steps hidden
-// now as one band per stretch, "Show anyway" drawing them. A dose's mark
+// time kept free as quiet words; every step, whatever the hour (a full view
+// hides nothing: docs/areas.md). A dose's mark
 // says what is known of it by the window's clock (the Health job's rows:
 // `doseMarks`), never "not taken"; a day to come's are ticks, a day gone by
 // has none. What falls inside the night shows at the edge with its time.
@@ -61,8 +61,6 @@ ColumnLayout {
     property var marks: null
     property real readAt: 0
     property real backAt: 0
-    // "Show anyway": quiet time's bands drawn as the steps they hold.
-    property bool showAnyway: false
     // What Show leaves out on this device: {steps, needs, doses, calendars: [places, "account/id"]}.
     property var hide: ({})
     // The thing open beside the timeline, by its item's id: shown chosen (on each day it covers).
@@ -224,7 +222,7 @@ ColumnLayout {
     }
 
     // A placed item of `day` (its index `index`) as a flat row: what a card draws and a drag moves.
-    function rowOf(placed, day, index, fold) {
+    function rowOf(placed, day, index) {
         const item = placed.item
         const src = item.source || {}
         const time = item.time || {}
@@ -234,12 +232,11 @@ ColumnLayout {
         const at = span ? time.at : (time.at || day.start)
         const minute = t => Math.round((t - day.start) / 60)
         return {
-            key: item.id + "|" + day.date + (fold ? "|" + fold : ""),
+            key: item.id + "|" + day.date,
             itemId: item.id,
             day: index,
             date: day.date,
             kind: item.kind,
-            fold: fold || "",
             title: item.title || "",
             line: item.line || "",
             when: placed.when || "",
@@ -330,7 +327,7 @@ ColumnLayout {
         const index = days.findIndex(d => d.date === date)
         const placed = planning.spanEvents[id]
         if (placed && index >= 0)
-            planning.open(planning.rowOf(placed, days[index], index, ""))
+            planning.open(planning.rowOf(placed, days[index], index))
     }
 
     // A list's row of an event over several days on day `i` (`ongoing::SpanRow`): its first
@@ -339,7 +336,7 @@ ColumnLayout {
         const placed = planning.spanEvents[r.id]
         if (!placed)
             return null
-        return Object.assign(planning.rowOf(placed, day, i, ""), { key: r.id + "|" + day.date + "|" + r.mark, when: r.when, line: r.line, from: r.minute, mark: r.mark })
+        return Object.assign(planning.rowOf(placed, day, i), { key: r.id + "|" + day.date + "|" + r.mark, when: r.when, line: r.line, from: r.minute, mark: r.mark })
     }
 
     // The lines passing through a day's rows of the list (`out`, from `first`): for each
@@ -435,7 +432,7 @@ ColumnLayout {
                 model.setProperty(i, role, row[role])
     }
 
-    // The days read again (a publish, Show, Show anyway): every model changed in place.
+    // The days read again (a publish, Show): every model changed in place.
     function apply() {
         const days = planning.days || []
         planning.listed = planning.listsDays(days.length)
@@ -449,7 +446,7 @@ ColumnLayout {
             const day = days[i]
             // The night's parts: the shading at both ends.
             for (const placed of day.edges || []) {
-                const row = planning.rowOf(placed, day, i, "")
+                const row = planning.rowOf(placed, day, i)
                 if (planning.shown(row))
                     rows.push(row)
             }
@@ -460,25 +457,19 @@ ColumnLayout {
                 today: day.today === true,
                 start: day.start,
                 hours: JSON.stringify(day.hours || []),
-                chips: JSON.stringify((day.head || []).filter(p => planning.shown(planning.rowOf(p, day, i, "")))),
+                chips: JSON.stringify((day.head || []).filter(p => planning.shown(planning.rowOf(p, day, i)))),
                 plan: day.plan || "",
                 more: day.more || "",
                 said: (day.said || []).join(" ")
             })
             for (const placed of day.timed || []) {
-                const row = planning.rowOf(placed, day, i, "")
-                if (planning.shown(row))
-                    rows.push(row)
-            }
-            // Quiet time: a coming day's hidden steps as bands, or, shown anyway, as themselves.
-            for (const placed of (planning.showAnyway ? day.hidden : day.bands) || []) {
-                const row = planning.rowOf(placed, day, i, planning.showAnyway ? "hidden" : "band")
+                const row = planning.rowOf(placed, day, i)
                 if (planning.shown(row))
                     rows.push(row)
             }
             if (!(planning.hide || {}).doses)
                 for (const placed of day.doses || [])
-                    doses.push(planning.rowOf(placed, day, i, ""))
+                    doses.push(planning.rowOf(placed, day, i))
         }
         const marks = planning.marksOf(doses)
         // Conflicts (several agendas): two things of a day joined by a thin bracket, both drawn.
@@ -528,8 +519,8 @@ ColumnLayout {
         const out = []
         for (let i = 0; i < days.length; i++) {
             const day = days[i]
-            const line = (kind, title, more) => Object.assign(planning.rowOf({ item: { id: kind, kind: kind, title: title, time: { type: "at", at: day.start }, can: {}, source: {} }, when: "", from_minute: 0, to_minute: 0 }, day, i, ""), { key: kind + "|" + day.date }, more || {})
-            const heads = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(r => planning.shown(r) && !r.spans)
+            const line = (kind, title, more) => Object.assign(planning.rowOf({ item: { id: kind, kind: kind, title: title, time: { type: "at", at: day.start }, can: {}, source: {} }, when: "", from_minute: 0, to_minute: 0 }, day, i), { key: kind + "|" + day.date }, more || {})
+            const heads = (day.head || []).map(p => planning.rowOf(p, day, i)).filter(r => planning.shown(r) && !r.spans)
             const through = day.through || { lines: [], more: 0, rows: [] }
             const first = out.length
             // Whole days under the day's title; a date asked on a line of its own, its diamond and its words (review of part 4, later 2).
@@ -571,7 +562,6 @@ ColumnLayout {
     onSpansChanged: if (planning.listed)
         Qt.callLater(planning.apply)
     onHideChanged: planning.apply()
-    onShowAnywayChanged: planning.apply()
     onMarksChanged: planning.diff(marksModel, planning.marksOf(planning.doseRows()))
     onNowChanged: planning.follow()
 
@@ -585,7 +575,7 @@ ColumnLayout {
             return rows
         for (let i = 0; i < days.length; i++)
             for (const placed of days[i].doses || [])
-                rows.push(planning.rowOf(placed, days[i], i, ""))
+                rows.push(planning.rowOf(placed, days[i], i))
         return rows
     }
 
@@ -675,7 +665,7 @@ ColumnLayout {
         let nextAt = Infinity
         for (let i = 0; i < things.count; i++) {
             const row = things.get(i)
-            if (row.date !== planning.today || row.kind !== "step" || row.fold === "band")
+            if (row.date !== planning.today || row.kind !== "step")
                 continue
             if (row.at <= planning.now && planning.now < row.until)
                 under = row.key
@@ -803,7 +793,7 @@ ColumnLayout {
 
     // What the hand may move: what its item says, never over, never a thing at the edge.
     function movable(row) {
-        return row.mover !== "none" && row.edge === "" && row.fold !== "band"
+        return row.mover !== "none" && row.edge === ""
     }
 
     // What lies at `p` (the hours' content): {row, index, part: "body", "top"
@@ -928,7 +918,7 @@ ColumnLayout {
     // (a drag under way, a question on a repeating event waiting for its answer).
     function copyOf(row) {
         const out = {}
-        for (const role in planning.rowOf({ item: { id: "", kind: "", time: {}, can: {}, source: {} } }, { date: "", start: 0 }, 0, ""))
+        for (const role in planning.rowOf({ item: { id: "", kind: "", time: {}, can: {}, source: {} } }, { date: "", start: 0 }, 0))
             out[role] = row[role]
         return out
     }
@@ -1062,7 +1052,7 @@ ColumnLayout {
             return null
         let first = null
         for (const placed of days[index].timed || []) {
-            const row = planning.rowOf(placed, days[index], index, "")
+            const row = planning.rowOf(placed, days[index], index)
             if (row.kind === kind && (!ahead || row.at > planning.now) && (first === null || row.at < first.at))
                 first = row
         }
@@ -1149,7 +1139,7 @@ ColumnLayout {
         for (const day of planning.days || []) {
             if (day.date !== date)
                 continue
-            for (const placed of (day.timed || []).concat(day.hidden || [])) {
+            for (const placed of day.timed || []) {
                 const item = placed.item || {}
                 if (item.kind !== "step" || !item.owner || item.owner === except)
                     continue
@@ -1244,7 +1234,7 @@ ColumnLayout {
         const out = []
         for (let i = 0; i < things.count; i++) {
             const row = things.get(i)
-            if (row.kind !== "night" && row.fold !== "band")
+            if (row.kind !== "night")
                 out.push(row)
         }
         out.sort((a, b) => a.day - b.day || a.from - b.from || a.column - b.column)
@@ -1679,13 +1669,13 @@ ColumnLayout {
                             color: planning.theme.text
                         }
                         TapHandler {
-                            onTapped: planning.open(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index, ""))
+                            onTapped: planning.open(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index))
                         }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
                             // A touch has no buttons: on a touch screen, the long press below.
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            onTapped: planning.menu(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index, ""))
+                            onTapped: planning.menu(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index))
                         }
                         // On a touch screen, the menu at a long press.
                         TapHandler {
@@ -1694,7 +1684,7 @@ ColumnLayout {
                             acceptedDevices: PointerDevice.TouchScreen
                             onLongPressed: {
                                 chip.Window.window.menuAt = chipHold.point.scenePosition
-                                planning.menu(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index, ""))
+                                planning.menu(planning.rowOf(chip.modelData, { date: band.date, start: planning.dayStart(band.index) }, band.index))
                             }
                         }
                     }
@@ -1894,7 +1884,6 @@ ColumnLayout {
                     required property string key
                     required property string itemId
                     required property string kind
-                    required property string fold
                     required property string title
                     required property string when
                     required property int day
@@ -1925,8 +1914,7 @@ ColumnLayout {
                     readonly property var box: planning.boxOf(card.row)
                     readonly property bool isNight: card.kind === "night"
                     readonly property bool isNeed: card.kind === "meal" || card.kind === "nap"
-                    readonly property bool isStep: card.kind === "step" && card.fold !== "band"
-                    readonly property bool isBand: card.fold === "band"
+                    readonly property bool isStep: card.kind === "step"
                     readonly property bool isQuiet: card.kind === "gain" || card.kind === "slack"
                     // A ride or a walk around an appointment (part E): a quiet line in its lead, never a card.
                     readonly property bool isLeg: card.kind === "leg"
@@ -1966,7 +1954,7 @@ ColumnLayout {
                         border.color: card.chosen || card.focused || card.taken ? planning.theme.accent : planning.tint(card.hue, 0.45)
                     }
                     // ... and the thing itself: an appointment, a block, a step, a task
-                    // done, a band as a card; a meal's or a nap's stronger tint; the
+                    // done as a card; a meal's or a nap's stronger tint; the
                     // night's sleep, from bedtime on (its morning part: all of it).
                     // A leg: a thin line down its time, its calendar's colour; fainter while its
                     // timetable was not checked (moved with its appointment).
@@ -1990,10 +1978,10 @@ ColumnLayout {
                         height: card.isNight ? parent.height - y : Math.max(card.isNeed ? 0 : planning.cardLeast, Math.min(parent.height, card.properBottom) - y)
                         radius: asCard ? 4 : 0
                         // The plan's proposal outlined, never a promise; the next one filled; a busy time a quiet fill.
-                        color: card.busy ? planning.tint(card.hue, 0.16) : card.isNight ? planning.tint(card.hue, 0.12) : card.isNeed ? planning.tint(card.hue, card.tone === "quiet" ? 0.14 : 0.28) : card.isBand ? "transparent" : card.isStep && !card.pinned ? (card.comingNext ? planning.tint(planning.theme.accent, 0.16) : planning.theme.background) : card.chosen ? planning.theme.line : planning.theme.background
+                        color: card.busy ? planning.tint(card.hue, 0.16) : card.isNight ? planning.tint(card.hue, 0.12) : card.isNeed ? planning.tint(card.hue, card.tone === "quiet" ? 0.14 : 0.28) : card.isStep && !card.pinned ? (card.comingNext ? planning.tint(planning.theme.accent, 0.16) : planning.theme.background) : card.chosen ? planning.theme.line : planning.theme.background
                         // A tentative event's outline is dashed (`tentativeOutlines`), drawn over it.
                         border.width: !asCard || (card.tentative && !card.chosen && !card.taken && !card.focused) ? 0 : card.chosen || card.taken || card.underWay || card.focused ? 2 : 1
-                        border.color: card.taken || card.chosen || card.underWay || card.comingNext ? planning.theme.accent : card.focused ? planning.theme.focus : card.isBand || card.done || card.busy ? planning.theme.line : card.kind === "event" || card.kind === "block" ? card.hue : planning.theme.accent
+                        border.color: card.taken || card.chosen || card.underWay || card.comingNext ? planning.theme.accent : card.focused ? planning.theme.focus : card.done || card.busy ? planning.theme.line : card.kind === "event" || card.kind === "block" ? card.hue : planning.theme.accent
                     }
                     // Its calendar's colour, as a bar: an appointment, a block (a busy time's fill says it).
                     Rectangle {
@@ -2040,16 +2028,16 @@ ColumnLayout {
                             wrapMode: Text.Wrap
                             maximumLineCount: Math.max(1, Math.floor((card.height - planning.cardPadding) / planning.titleLine))
                             font.pixelSize: card.isLeg ? 11 : 12
-                            font.italic: card.isQuiet || card.isBand || (card.isLeg && card.certainty === "unconfirmed")
+                            font.italic: card.isQuiet || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled
                             font.weight: card.underWay ? Font.DemiBold : Font.Normal
-                            color: card.isQuiet || card.isBand || card.done || card.isLeg || card.busy ? planning.theme.muted : card.isNight ? planning.theme.muted : planning.theme.text
+                            color: card.isQuiet || card.done || card.isLeg || card.busy ? planning.theme.muted : card.isNight ? planning.theme.muted : planning.theme.text
                         }
                         // Its place, or its task's list, when it fits whole; never its times.
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
 
-                            visible: beside !== "" && card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && !!timeFont.font && timeFont.advanceWidth(beside) <= card.width - 8
+                            visible: beside !== "" && card.edge === "" && !card.isQuiet && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && !!timeFont.font && timeFont.advanceWidth(beside) <= card.width - 8
                             Layout.fillWidth: true
                             text: beside
                             textFormat: Text.PlainText
@@ -2223,7 +2211,7 @@ ColumnLayout {
                 readonly property bool above: ghost.y - tag.height - 4 >= hours.contentY + 2
 
                 objectName: "timelineTimes"
-                visible: tag.moving || (tag.chosen !== null && tag.chosen.fold !== "band")
+                visible: tag.moving || tag.chosen !== null
                 // Over the chosen card's top right corner: its title stays to read.
                 x: Math.max(planning.gutter, Math.min(canvas.width - tag.width - 2, tag.moving ? ghost.x : tag.chosenBox ? Math.max(tag.chosenBox.x + 3, tag.chosenBox.x + tag.chosenBox.width - tag.width - 3) : 0))
                 y: tag.moving ? (tag.above ? ghost.y - tag.height - 4 : ghost.y + ghost.height + 4) : tag.chosenBox ? Math.max(0, tag.chosenBox.y + 2) : 0
@@ -2321,8 +2309,6 @@ ColumnLayout {
                         planning.open(dose)
                     } else if (planning.plus !== null && planning.inPlus(position)) {
                         planning.makePlus()
-                    } else if (thing && thing.row.fold === "band") {
-                        planning.open(thing.row)
                     } else if (thing && !planning.empty(thing.row)) {
                         planning.choose(thing.row)
                     } else {
@@ -2352,7 +2338,7 @@ ColumnLayout {
                     const thing = planning.thingAt(position)
                     if (!thing)
                         return
-                    if (!planning.empty(thing.row) && thing.row.fold !== "band")
+                    if (!planning.empty(thing.row))
                         planning.choose(thing.row)
                     if (planning.movable(thing.row)) {
                         planning.take(thing, position)
@@ -2449,7 +2435,6 @@ ColumnLayout {
             required property string certainty
             required property string location
             required property string list
-            required property string fold
             required property string tone
             // An event over several days: its row's mark ("first", "since", "end"), the
             // lines through the row (JSON), "+2" on a day's title.
@@ -2458,7 +2443,7 @@ ColumnLayout {
             required property string beyond
             readonly property bool isTitle: line.kind === "day-title"
             readonly property bool isLine: line.kind === "doses-line" || line.kind === "plan-line" || line.kind === "more-line" || line.kind === "free"
-            readonly property bool quiet: line.isLine || line.kind === "gain" || line.kind === "slack" || line.kind === "night" || line.fold === "band" || line.kind === "done" || line.mark === "end"
+            readonly property bool quiet: line.isLine || line.kind === "gain" || line.kind === "slack" || line.kind === "night" || line.kind === "done" || line.mark === "end"
             // The middle of what the row shows: where a line starts, or ends at its mark.
             readonly property real middle: line.height - 4 - shown.implicitHeight / 2
             // The lines of the events over several days through the row, down the list's left
@@ -2599,7 +2584,7 @@ ColumnLayout {
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 14
-                        font.italic: line.kind === "gain" || line.kind === "slack" || line.fold === "band"
+                        font.italic: line.kind === "gain" || line.kind === "slack"
                         color: line.quiet ? planning.theme.muted : planning.theme.text
                     }
                 }

@@ -108,7 +108,8 @@ Item {
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
     readonly property string categoryFilter: page.shown && page.shown.view ? page.shown.view.filter.category : ""
     property bool restored: false
-    // Asleep: no tasks, unless you ask; the next visit asks again.
+    // Asleep: Now behind its cover, unless you ask; the next visit asks again.
+    // The other tabs show everything (a full view hides nothing).
     property bool anyway: false
     readonly property bool rest: page.window.moment.sleep === true && !page.anyway
 
@@ -148,11 +149,11 @@ Item {
     }
 
     // A new task: the panel's full form, its title first; from `source` (a
-    // card's Add ▾ ▸ A task), its title and its tie given. Asleep, the page
+    // card's Add ▾ ▸ A task), its title and its tie given. Asleep on Now, Now
     // shows anyway, as its own button does.
     function startNew(source) {
         page.leaveForm()
-        if (page.rest) {
+        if (page.rest && page.mode === "now") {
             page.anyway = true
             page.sioul.showTasksAnyway(true)
         }
@@ -470,6 +471,8 @@ Item {
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
                 Loader {
+                    id: nowView
+
                     active: page.nowMade
 
                     sourceComponent: Component {
@@ -1460,8 +1463,11 @@ Item {
         }
     }
 
-    // Asleep: one line, a thought noted for later, and the tasks if you ask.
+    // Asleep: over Now alone, one line, a thought noted for later, and Now's
+    // tasks if you ask; the tabs stay in reach, and the other tabs show everything.
     RestCover {
+        parent: nowView
+        z: 1
         visible: page.rest
         sioul: page.sioul
         theme: page.theme
