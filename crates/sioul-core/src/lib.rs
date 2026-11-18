@@ -309,6 +309,8 @@ pub mod rules;
 pub mod screening;
 pub mod securitykey;
 pub mod settings;
+// A series that ends, and pauses during your vacations and holidays (docs/client.md).
+pub mod series;
 pub mod shield;
 pub mod sounds;
 pub mod spam;

@@ -1517,6 +1517,21 @@ pub struct EventEdit {
     /// and 1 are each time.
     #[serde(default)]
     pub every: u32,
+    /// How its repeat ends (18 November 2026): "" never, "until" on a day
+    /// (`until`), "count" after a number of times (`count`); written as the
+    /// rule's UNTIL or COUNT (`rule_line`).
+    #[serde(default)]
+    pub ends: String,
+    /// The last day it may come, for "until": "2027-06-26".
+    #[serde(default)]
+    pub until: String,
+    /// How many times in all, its first included, for "count".
+    #[serde(default)]
+    pub count: u32,
+    /// What it pauses during (`series::Source`): "vacations", "public",
+    /// `school/<id>`; none, it pauses for nothing. Sorted, once each.
+    #[serde(default)]
+    pub pauses: Vec<String>,
     /// Minutes kept before and after it.
     #[serde(default)]
     pub margins: crate::demands::Margins,
@@ -1688,7 +1703,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         TimeOrDelta::Time(end) => end.timestamp(),
         TimeOrDelta::Delta(delta) => first.start.timestamp() + delta.num_seconds(),
     };
-    let end = Timestamp::from_second(end_seconds).ok()?.to_zoned(zone);
+    let end = Timestamp::from_second(end_seconds).ok()?.to_zoned(zone.clone());
     let all_day = is_all_day(master);
     let rule = master
         .property(&ICalendarProperty::Rrule)
@@ -1701,6 +1716,9 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         .to_ascii_uppercase();
     let repeat = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].into_iter().find(|f| rule.contains(&format!("FREQ={f}"))).map(str::to_lowercase).unwrap_or_default();
     let every = if repeat.is_empty() { 1 } else { interval_of(&rule) };
+    // Its end, as its own RRULE line writes it (calcard's text of a rule may write UNTIL otherwise).
+    let (ends, until, count) = if repeat.is_empty() { (String::new(), String::new(), 0) } else { end_of_rule(text, &zone) };
+    let pauses = if repeat.is_empty() { Vec::new() } else { pause_ids(text) };
     let (margins, demands) = demands_of(master);
     Some(EventEdit {
         title: lines::unescape(&text_of(master, &ICalendarProperty::Summary)),
@@ -1712,6 +1730,10 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         all_day,
         repeat,
         every,
+        ends,
+        until,
+        count,
+        pauses,
         margins,
         demands,
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
@@ -1968,6 +1990,88 @@ fn interval_of(rule: &str) -> u32 {
     rule.split(';').find_map(|part| part.trim().to_ascii_uppercase().strip_prefix("INTERVAL=").and_then(|n| n.parse::<u32>().ok())).filter(|n| *n > 0).unwrap_or(1)
 }
 
+/// A series' end as its RRULE line writes it: ("until", the last day, on
+/// `zone` for an instant), ("count", 0, n), or ("", "", 0) for none.
+fn end_of_rule(text: &str, zone: &TimeZone) -> (String, String, u32) {
+    let source = lines::unfold(text);
+    let Some(rule) = master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_ascii_uppercase())) else {
+        return (String::new(), String::new(), 0);
+    };
+    let part = |name: &str| rule.split(';').find_map(|p| p.trim().strip_prefix(name).map(str::to_string));
+    if let Some(count) = part("COUNT=").and_then(|n| n.parse::<u32>().ok()).filter(|n| *n > 0) {
+        return ("count".into(), String::new(), count);
+    }
+    let Some(until) = part("UNTIL=") else { return (String::new(), String::new(), 0) };
+    let day = if until.len() == 8 {
+        Date::strptime("%Y%m%d", &until).ok()
+    } else if let Some(utc) = until.strip_suffix('Z') {
+        DateTime::strptime("%Y%m%dT%H%M%S", utc).ok().and_then(|d| d.to_zoned(TimeZone::UTC).ok()).map(|z| z.with_time_zone(zone.clone()).date())
+    } else {
+        DateTime::strptime("%Y%m%dT%H%M%S", &until).ok().map(|d| d.date())
+    };
+    match day {
+        Some(day) => ("until".into(), day.to_string(), 0),
+        None => (String::new(), String::new(), 0),
+    }
+}
+
+/// What a series pauses during, as the form says it (`series::sources_of`), sorted.
+fn pause_ids(text: &str) -> Vec<String> {
+    let mut ids: Vec<String> = crate::series::sources_of(text).iter().map(crate::series::Source::id).collect();
+    ids.sort();
+    ids
+}
+
+/// A rule's end replaced by the form's (`EventEdit::ends`): its UNTIL and
+/// COUNT taken out, then the day or the number of times written. A day ends
+/// at its last second on the series' clock, written as RFC 5545 §3.3.10 asks
+/// for its DTSTART: a day for a whole-day series, local for a floating one,
+/// else in UTC.
+fn with_end(rule: &str, edit: &EventEdit, start: Option<&str>, zone: &TimeZone) -> String {
+    let mut parts: Vec<String> = rule.trim_start_matches("RRULE:").split(';').map(str::trim).filter(|p| !p.is_empty() && !p.to_ascii_uppercase().starts_with("UNTIL=") && !p.to_ascii_uppercase().starts_with("COUNT=")).map(str::to_string).collect();
+    match edit.ends.as_str() {
+        "count" if edit.count > 0 => parts.push(format!("COUNT={}", edit.count.min(9999))),
+        "until" => {
+            if let Ok(day) = edit.until.trim().parse::<Date>() {
+                let value = if edit.all_day {
+                    day.strftime("%Y%m%d").to_string()
+                } else if start.is_some_and(|line| !lines::value(line).trim().ends_with(['Z', 'z']) && lines::param(line, "TZID").is_none() && lines::value(line).trim().len() > 8) {
+                    day.at(23, 59, 59, 0).strftime("%Y%m%dT%H%M%S").to_string()
+                } else {
+                    let clock = clock_zone(&edit.clock).unwrap_or_else(|| zone.clone());
+                    day.at(23, 59, 59, 0).to_zoned(clock).map(|z| z.timestamp().strftime("%Y%m%dT%H%M%SZ").to_string()).unwrap_or_default()
+                };
+                if !value.is_empty() {
+                    parts.push(format!("UNTIL={value}"));
+                }
+            }
+        }
+        _ => {}
+    }
+    format!("RRULE:{}", parts.join(";"))
+}
+
+/// The form's repeat as it is compared and written: no end nor pause for
+/// what does not repeat, an end only with what it needs, pauses sorted once each.
+fn settled_repeat(edit: &EventEdit) -> EventEdit {
+    let repeats = !edit.repeat.is_empty();
+    let ends = match edit.ends.as_str() {
+        "until" if repeats && edit.until.trim().parse::<Date>().is_ok() => "until",
+        "count" if repeats && edit.count > 0 => "count",
+        _ => "",
+    };
+    let mut pauses: Vec<String> = if repeats { edit.pauses.iter().filter_map(|p| crate::series::Source::parse(p)).map(|s| s.id()).collect() } else { Vec::new() };
+    pauses.sort();
+    pauses.dedup();
+    EventEdit {
+        ends: ends.into(),
+        until: if ends == "until" { edit.until.trim().to_string() } else { String::new() },
+        count: if ends == "count" { edit.count } else { 0 },
+        pauses,
+        ..edit.clone()
+    }
+}
+
 /// The RRULE line of the form's repeat, every `every` time. `old`, the rule
 /// the event had: when it repeats at the same frequency, only its INTERVAL
 /// changes, its days, count and end kept ("every other Monday and Wednesday,
@@ -2052,7 +2156,9 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&crate::zone::now()))]);
     out.extend(times);
-    out.extend(content_lines(edit, Changed::ALL, None));
+    let edit = &settled_repeat(edit);
+    let start = out.iter().find(|l| lines::name(l) == "DTSTART").cloned();
+    out.extend(content_lines(edit, Changed::ALL, None, start.as_deref(), &zone));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
 }
@@ -2060,6 +2166,7 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
 /// What the form changed, field by field: a field unchanged keeps its line.
 #[derive(Clone, Copy)]
 struct Changed {
+    pauses: bool,
     title: bool,
     location: bool,
     notes: bool,
@@ -2071,11 +2178,11 @@ struct Changed {
 }
 
 impl Changed {
-    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true };
+    const ALL: Changed = Changed { pauses: true, title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
-fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> Vec<String> {
+fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>, start: Option<&str>, zone: &TimeZone) -> Vec<String> {
     let mut out = Vec::new();
     if changed.title {
         out.push(format!("SUMMARY:{}", lines::escape(edit.title.trim())));
@@ -2092,7 +2199,10 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> 
         out.push(format!("GEO:{}", geo_value(lat, lon)));
     }
     if changed.rule {
-        out.extend(rule_line(&edit.repeat, edit.every, old_rule));
+        out.extend(rule_line(&edit.repeat, edit.every, old_rule).map(|rule| with_end(&rule, edit, start, zone)));
+    }
+    if changed.pauses {
+        out.extend(edit.pauses.iter().map(|p| format!("{}:{p}", crate::series::PAUSE_DURING)));
     }
     if changed.margins {
         if edit.margins.before > 0 {
@@ -2152,14 +2262,15 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     let zone = zone.clone();
     // Each time is 1, whether said 0 (unsaid, from an agent) or 1; one that
     // does not repeat has none.
-    let edit = &EventEdit { every: if edit.repeat.is_empty() { 1 } else { edit.every.max(1) }, ..edit.clone() };
+    let edit = &settled_repeat(&EventEdit { every: if edit.repeat.is_empty() { 1 } else { edit.every.max(1) }, ..edit.clone() });
     let before = edit_of_text(text, &zone);
     // Nothing changed: nothing is written, not even the stamps.
     if before.as_ref() == Some(edit) {
         return Ok(text.to_string());
     }
     let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day, b.clock.trim()) != (&edit.start, &edit.end, edit.all_day, edit.clock.trim()));
-    let rule_changed = before.as_ref().is_none_or(|b| (&b.repeat, b.every) != (&edit.repeat, edit.every));
+    let rule_changed = before.as_ref().is_none_or(|b| (&b.repeat, b.every, &b.ends, &b.until, b.count) != (&edit.repeat, edit.every, &edit.ends, &edit.until, edit.count));
+    let pauses_changed = before.as_ref().is_none_or(|b| b.pauses != edit.pauses);
     let old_rule = {
         let source = lines::unfold(text);
         master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_string()))
@@ -2172,12 +2283,12 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             // A title, a place or notes as the form gives them back (a no-break space as a
             // space, a line separator as a line end): the file's own kept, byte for byte,
             // when the person changed nothing of them (second review of the organizer's door, N2).
-            Changed { title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo }
+            Changed { pauses: pauses_changed, title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo }
         }
         None => Changed::ALL,
     };
     // Nothing changed but how the form gives text back: nothing is written, not even the stamps (N2).
-    if before.is_some() && !times_changed && !rule_changed && !(changed.title || changed.location || changed.notes || changed.margins || changed.demands || changed.remind || changed.geo) {
+    if before.is_some() && !times_changed && !rule_changed && !(changed.pauses || changed.title || changed.location || changed.notes || changed.margins || changed.demands || changed.remind || changed.geo) {
         return Ok(text.to_string());
     }
     // Its place changed without a point: written with none.
@@ -2201,6 +2312,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             || (changed.demands && (name == crate::demands::COST || name == crate::demands::GAIN))
             || (changed.remind && name == crate::reminders::REMIND)
             || (changed.geo && name == "GEO")
+            || (changed.pauses && name == crate::series::PAUSE_DURING)
     };
     let source = lines::unfold(text);
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 8);
@@ -2250,7 +2362,9 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
                 added.push(format!("SEQUENCE:{}", sequence.saturating_add(1)));
             }
             added.extend(times.clone());
-            added.extend(content_lines(edit, changed, old_rule.as_deref()));
+            // The series' start as it is written now: its end is written to match it.
+            let start = times.iter().chain(kept.iter()).find(|l| lines::name(l) == "DTSTART").cloned();
+            added.extend(content_lines(edit, changed, old_rule.as_deref(), start.as_deref(), &zone));
             kept.splice(at..at, added);
             kept.push(line);
             out.append(&mut kept);
@@ -2275,7 +2389,12 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
 /// application) goes with its change: its own VEVENT is taken out, and the time it
 /// replaced in the series is left out.
 pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
-    let zone = crate::zone::current();
+    skip_occurrence_in(text, start, &crate::zone::current())
+}
+
+/// `skip_occurrence`, times without a zone in `zone`.
+pub fn skip_occurrence_in(text: &str, start: i64, zone: &TimeZone) -> Option<String> {
+    let zone = zone.clone();
     let mut source = lines::unfold(text);
     if let Some((place, true)) = occurrence_at(text, start, &zone) {
         let range = event_ranges(&source).get(place)?.clone();
@@ -2293,6 +2412,79 @@ pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
     let dtstart = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART")?.clone();
     let end = master.end - 1;
     source.insert(end, written_like(&dtstart, "EXDATE", at, &zone));
+    Some(lines::fold(&source))
+}
+
+/// The times a series' rule gives between `from` and `to` (Unix seconds),
+/// its left-out times (EXDATE) given too: each with whether that time has a
+/// changed occurrence of its own (RECURRENCE-ID), which a pause leaves as it
+/// is (`series::keep`). Times without a zone in `zone`. None for an event
+/// that does not repeat, or does not read.
+pub fn rule_times(text: &str, from: i64, to: i64, zone: &TimeZone) -> Option<Vec<(i64, bool)>> {
+    let cut = cut(text);
+    let master = cut.events.iter().find(|e| !own_lines(e).any(|l| lines::name(l) == "RECURRENCE-ID"))?;
+    if !own_lines(master).any(|l| matches!(lines::name(l).as_str(), "RRULE" | "RDATE")) {
+        return None;
+    }
+    let changed: BTreeSet<i64> = cut.events.iter().flat_map(|e| own_lines(e).filter(|l| lines::name(l) == "RECURRENCE-ID").filter_map(|l| instant_in(l, zone)).collect::<Vec<_>>()).collect();
+    let mut alone: Vec<String> = Vec::with_capacity(master.len());
+    let mut nested = 0usize;
+    for (i, line) in master.iter().enumerate() {
+        let name = lines::name(line);
+        if i > 0 && name == "BEGIN" {
+            nested += 1;
+        } else if name == "END" && nested > 0 {
+            nested -= 1;
+        } else if nested == 0 && name == "EXDATE" {
+            continue;
+        }
+        alone.push(line.clone());
+    }
+    let only = Cut { head: cut.head.clone(), events: vec![alone] }.text();
+    let ical = parse(&for_expansion(&from_window(&only, from)))?;
+    let index = ical.components.iter().position(|c| c.component_type == ICalendarComponentType::VEvent)?;
+    let mut out: Vec<(i64, bool)> = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT).events.into_iter().filter(|e| e.comp_id as usize == index).map(|e| e.start.timestamp()).filter(|at| *at >= from && *at < to).map(|at| (at, changed.contains(&at))).collect();
+    out.sort_unstable();
+    out.dedup();
+    Some(out)
+}
+
+/// A series with the times `add` left out (EXDATE, written as its DTSTART is)
+/// and the times `back` put back (their values taken out of its EXDATE lines,
+/// a line left empty taken out); everything else as it was. None when the text
+/// holds no event; the text as it was when nothing changes.
+pub fn leave_out(text: &str, add: &[i64], back: &[i64], zone: &TimeZone) -> Option<String> {
+    let mut source = lines::unfold(text);
+    let master = master_range(&source)?;
+    let dtstart = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART")?.clone();
+    let back: BTreeSet<i64> = back.iter().copied().collect();
+    let mut kept: Vec<String> = Vec::with_capacity(master.len() + add.len());
+    let mut nested = 0usize;
+    for (i, line) in source[master.clone()].iter().enumerate() {
+        let name = lines::name(line);
+        if i > 0 && name == "BEGIN" {
+            nested += 1;
+        } else if name == "END" && nested > 0 {
+            nested -= 1;
+        } else if nested == 0 && name == "EXDATE" && !back.is_empty() {
+            let values: Vec<&str> = lines::value(line).split(',').map(str::trim).filter(|v| !v.is_empty()).collect();
+            let left: Vec<&str> = values.iter().copied().filter(|v| moment_in(line, v, zone).is_none_or(|z| !back.contains(&z.timestamp().as_second()))).collect();
+            if left.len() == values.len() {
+                kept.push(line.clone());
+            } else if !left.is_empty() {
+                kept.push(format!("{}:{}", head_of(line), left.join(",")));
+            }
+            continue;
+        }
+        kept.push(line.clone());
+    }
+    let end = kept.len() - 1;
+    let added: Vec<String> = add.iter().filter_map(|at| Timestamp::from_second(*at).ok()).map(|at| written_like(&dtstart, "EXDATE", at, zone)).collect();
+    kept.splice(end..end, added);
+    if kept.len() == master.len() && kept.iter().zip(&source[master.clone()]).all(|(a, b)| a == b) {
+        return Some(text.to_string());
+    }
+    source.splice(master, kept);
     Some(lines::fold(&source))
 }
 
