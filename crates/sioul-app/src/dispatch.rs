@@ -4,8 +4,8 @@
 //! What each device is for, on this device (docs/areas.md, "Which device
 //! tells"): the devices that count as every process of this device reads
 //! them (`known`: the window, a phone's background step and its listener of
-//! other apps), this device among them (`lines`), and the keeper of the
-//! notices read as it reads itself (`as_keeper`).
+//! other apps), this device among them (`lines`), and how it judges a
+//! letter while another device keeps the notices (`judge`).
 //!
 //! What now is for on this device is `hours::mode_at`, which gives every
 //! time these lines (`quiet::Mode::on`): the pages and the notifications
@@ -13,8 +13,8 @@
 //! and stay as they were while nothing is said of this device. One device
 //! tells, the keeper of the notices (`share::keeper`, as before devices): it
 //! tells what comes forward on it now; the others read each thing as it
-//! would (`as_keeper`), claim what it tells, and keep what it leaves waiting
-//! (`mailnote`). The plan and agents read the hours alone; the doses, Health,
+//! would (`judge`), claim only what they are sure it tells, and keep the
+//! rest (`mailnote`). The plan and agents read the hours alone; the doses, Health,
 //! calls and texts too (`hours::hours_mode_at`), and nothing here.
 
 use crate::backend::load_config;
@@ -65,11 +65,13 @@ pub(crate) fn lines_for_dates() -> Lines {
     known().lines_for_dates()
 }
 
-/// The keeper of the notices (`keeper`: its id; this device's own, or ""
-/// with sharing off) read as it reads itself (`Known::as_keeper`): what it
-/// tells now, this device claims without a word.
-pub(crate) fn as_keeper(keeper: &str) -> Lines {
-    known().as_keeper(keeper)
+/// How this device judges a letter while `keeper` keeps the notices (its
+/// id; this device's own, or "" with sharing off), since `since`, its
+/// entry as the folder holds it now (`share::keeper_and_entry`): the lines
+/// to read it by, and whether what they tell may be claimed without a word
+/// (`Known::judge`; never lost comes before never doubled).
+pub(crate) fn judge(keeper: &str, since: i64, entry: Option<&sioul_sync::devices::Entry>) -> sioul_sync::dispatch::Judged {
+    known().judge(keeper, since, entry, crate::share::shares("settings"))
 }
 
 /// What this device says in its entry: its own cells, in its week now, and
@@ -87,13 +89,14 @@ mod tests {
 
     /// With nothing said and no sharing (a test's own folders): this device
     /// alone, its line saying nothing, read as itself when it keeps the
-    /// notices, and its entry says no cells.
+    /// notices, keeping what another keeper whose entry does not read would
+    /// tell, and its entry says no cells.
     #[test]
     fn alone_with_nothing_said_this_device_narrows_nothing() {
         let known = known();
         assert!(known.lines().say_nothing() && known.older.is_empty() && known.others.is_empty());
-        assert_eq!((as_keeper(&known.me), as_keeper("")), (lines(), lines()));
-        assert!(as_keeper("another").say_nothing(), "a keeper this device knows nothing of: the hours");
+        assert_eq!((judge(&known.me, 0, None).lines, judge("", 0, None).lines), (lines(), lines()));
+        assert_eq!(judge("another", 0, None).sure, sioul_sync::dispatch::Sure::Keep, "a keeper whose entry does not read: keep");
         assert_eq!(said_in_entry(), (Default::default(), Default::default()));
     }
 }

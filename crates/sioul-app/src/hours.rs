@@ -136,9 +136,16 @@ pub(crate) fn attention_at(mode: &Mode, now: &Zoned) -> Now {
     let mut moment = Now::of(mode).layers(in_slot(now), crate::everywhere::holds_others());
     moment.nothing = mode.free() && sioul_core::pause::nothing_now(&overrides, &config.free_time);
     // Reachable (part 3 of "What reaches you"): everyone not blocked at once, whatever the time.
-    moment.reachable = crate::everywhere::reachable().is_some_and(|r| r.until.is_none_or(|u| now.timestamp().as_second() < u));
+    moment.reachable = reachable_at(now);
     moment.holds.porch_rests = overrides.porch_rests(now.timestamp().as_second());
     moment
+}
+
+/// Whether you are Reachable at `now`: everyone not blocked comes at once,
+/// and no device keeps anything back (docs/areas.md, "What a device's areas
+/// never keep back").
+pub(crate) fn reachable_at(now: &Zoned) -> bool {
+    crate::everywhere::reachable().is_some_and(|r| r.until.is_none_or(|u| now.timestamp().as_second() < u))
 }
 
 /// The moment now, by the hours alone (`hours_mode_at`): what the doses,

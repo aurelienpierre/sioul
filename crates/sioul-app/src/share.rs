@@ -668,7 +668,9 @@ pub(crate) fn devices() -> String {
     let mut rows = crate::health::device_table(&holders);
     // Each device's five cells, and now on this one: as the rule reads them (`dispatch::known`, `hours::mode_at`).
     let now = sioul_core::zone::now();
-    let grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
+    let mut grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
+    // Settings that do not travel from here: what this device tells may come twice.
+    grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
     json(&Devices { on: vault.is_some(), why, stays, rows, grid })
 }
 
@@ -1618,6 +1620,17 @@ pub(crate) fn looked(part: &str, rule: sioul_sync::lease::Rule) -> sioul_sync::l
     let here = share::Here::load(&state_dir());
     let Some((folder, key)) = sealed(attached(&here)) else { return sioul_sync::lease::Keeper::alone(&here.id) };
     sioul_sync::lease::look(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), rule)
+}
+
+/// The keeper of a part as its claims read now (`looked`), with its entry
+/// as the folder holds it at the same moment (`devices::one`): what a device
+/// that does not keep the notices judges each letter by (`dispatch::judge`).
+/// None for the entry when it does not read, or with sharing off.
+pub(crate) fn keeper_and_entry(part: &str) -> (sioul_sync::lease::Keeper, Option<sioul_sync::devices::Entry>) {
+    let keeper = looked(part, sioul_sync::lease::Rule::FollowsYou);
+    let here = share::Here::load(&state_dir());
+    let entry = if keeper.mine { None } else { sealed(attached(&here)).and_then(|(folder, key)| sioul_sync::devices::one(&folder, &key, &keeper.computer)) };
+    (keeper, entry)
 }
 
 /// Claims renewed or closed one at a time: a phone put away and back at once

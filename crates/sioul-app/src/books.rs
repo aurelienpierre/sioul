@@ -153,7 +153,9 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
         // bring work and this computer is not for it, they wait for the one used that is
         // (docs/areas.md, "Which device tells").
         let keeper = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
-        if !keeper.mine || !keeper.settled || crate::hours::mode_now().keeps_back(sioul_core::areas::Area::WORK) {
+        // While you are Reachable, no device keeps them back.
+        let reachable = crate::hours::reachable_at(&sioul_core::zone::now());
+        if !keeper.mine || !keeper.settled || (!reachable && crate::hours::mode_now().keeps_back(sioul_core::areas::Area::WORK)) {
             return;
         }
         let today = sioul_core::zone::now().date();

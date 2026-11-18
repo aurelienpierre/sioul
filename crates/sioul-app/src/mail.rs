@@ -1584,16 +1584,22 @@ pub(crate) fn opened(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> bool {
     if maildir::flags_of(&file).contains('S') {
         return false;
     }
-    // What the address is for, said; an address nobody classified is never another device's.
-    if let Some(area) = sioul_core::mailbox::said_area(&account)
-        && crate::hours::mode_now().for_another(area)
-    {
+    if read_here_only(&account, &crate::hours::mode_now()) {
         mark_read_here(&file);
         show_mail(qt, shared);
         return true;
     }
     act_now(qt, shared, account, file, Action::Read(true));
     false
+}
+
+/// Whether a message to `account`, opened now (`mode`, this device's
+/// time), is read here only: its address is another device's
+/// (`Mode::for_another`), what it is for read as the fold reads it
+/// (`mailbox::area_of`: an address nobody classified is work's; review of
+/// phase 2, N4).
+pub(crate) fn read_here_only(account: &Account, mode: &sioul_core::quiet::Mode) -> bool {
+    mode.for_another(sioul_core::mailbox::area_of(account))
 }
 
 /// This device's own list of the messages read here only, never shared.
@@ -3363,5 +3369,33 @@ mod tests {
         assert!(hidden_parts(&config, &only_areas).is_empty(), "an area left out by the hours or by you: nothing said");
         let head: serde_json::Value = serde_json::from_str(&page_texts(&page, &ask, &shown, &parts)[0]).unwrap();
         assert!(head.get("end").is_none() && head.get("earlier").is_none() && head.get("windows").is_none(), "no line at the list's end: {head}");
+    }
+
+    /// A message opened through a door on a phone not for work is read
+    /// there only, whether its address says it is work's or says nothing
+    /// (the fold reads that as work's too; review of phase 2, N4). On the
+    /// computer for work, or on a phone nothing is said of, it is read as
+    /// before; a personal address on the phone, as before too.
+    #[test]
+    fn an_address_nobody_classified_is_read_here_only_on_a_device_not_for_work() {
+        use sioul_core::areas::{Area, Line, Lines, Time, Week};
+        use sioul_core::quiet::{Mode, Reason};
+        let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let at = |time: Time, lines: &Lines| Mode { quiet: time != Time::Work, time, week, reason: if time == Time::Work { Reason::Working } else { Reason::Evening }, until: None, back: None, label: String::new(), here: Default::default() }.on(lines);
+        let (desk, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
+        let account = |area: Option<&str>| {
+            let said = area.map(|area| format!("area = \"{area}\"\n")).unwrap_or_default();
+            let config: Config = toml::from_str(&format!("[[account]]\nid = \"office\"\nkind = \"imap\"\naddress = \"ana@work.example\"\nhost = \"imap.example.org\"\n{said}")).unwrap();
+            config.accounts[0].clone()
+        };
+        let (unsaid, work, home) = (account(None), account(Some("work")), account(Some("admin+leisure")));
+        for time in [Time::Work, Time::Leisure] {
+            let on_phone = at(time, &Lines::of(phone, &[desk]));
+            assert!(read_here_only(&unsaid, &on_phone) && read_here_only(&work, &on_phone), "{time:?}: read on the phone only");
+            assert!(!read_here_only(&home, &on_phone), "{time:?}");
+            let on_desk = at(time, &Lines::of(desk, &[phone]));
+            assert!(!read_here_only(&unsaid, &on_desk) && !read_here_only(&work, &on_desk), "{time:?}: the desk is for it");
+            assert!(!read_here_only(&unsaid, &at(time, &Lines::default())), "{time:?}: nothing said, as before");
+        }
     }
 }

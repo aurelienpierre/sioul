@@ -18,14 +18,17 @@
 //!
 //! Where the person said what each device is for (docs/areas.md, "Which
 //! device tells"), the device used last still tells alone, what comes
-//! forward on it now (step 8 of `attention`). Every device judges each
-//! letter as that device does, from the cells it says of itself
-//! (`dispatch::as_keeper`): what it tells now, the others claim without a
-//! word, as before; what it leaves waiting for a device the letter comes
-//! forward on, the others keep waiting too, and the one it waited for tells
-//! it, "The Porch opens", once it is the device used (the keeper changing
-//! begins a moment: `Seen::moment`). With nothing said of any device, every
-//! device judges as before.
+//! forward on it now (step 8 of `attention`). Every other device judges each
+//! letter as that device does (`dispatch::judge`), and claims it without a
+//! word only when it is sure the keeper tells it: the keeper's own cells,
+//! read from its entry as the folder holds it now, bring it in the same
+//! hours; or the keeper narrows nothing; or, a keeper on an older Sioul, it
+//! arrived while that keeper kept the notices (`Sure::holds`). Otherwise it
+//! keeps the letter, and tells it, "The Porch opens", once it keeps the
+//! notices itself, unless the told log says it was told: never lost comes
+//! before never doubled. The keeper changing begins a moment
+//! (`Seen::moment`). With nothing said of any device and every device on
+//! this build, every device judges as before.
 //!
 //! Mail that reached its server before this process watched the moment it is
 //! in (a time that began since, a computer off all night, a phone that
@@ -44,6 +47,7 @@ use sioul_core::config::Config;
 use sioul_core::everywhere::People;
 use sioul_core::mailnote::{self, Fate, Ledger, Letter, Watch};
 use sioul_core::porch::{self, Triaged};
+use sioul_sync::lease::Keeper;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -134,7 +138,7 @@ pub(crate) fn look() {
         return;
     }
     let now = sioul_core::zone::now();
-    let seen = Seen::now(config, &now, &teller().computer);
+    let seen = Seen::now(config, &now, &teller());
     watched(&seen.moment(), now.timestamp().as_second());
 }
 
@@ -155,19 +159,25 @@ struct Seen {
     may: bool,
     /// The device whose cells it judges by: the keeper of the notices.
     keeper: String,
+    /// What may be claimed without a word of what the reading tells now
+    /// (`Sure::Mine` on the keeper).
+    sure: sioul_sync::dispatch::Sure,
+    /// The keeper is part of the moment (`Judged::marks`).
+    marks: bool,
 }
 
 impl Seen {
-    /// As the keeper of the notices judges now (`keeper`, its id: this
-    /// device's own, another's, "" with sharing off): this device's cells
-    /// when it keeps them, else the cells the keeper says of itself
-    /// (`dispatch::as_keeper`).
-    fn now(config: Config, now: &Zoned, keeper: &str) -> Seen {
-        let mode = crate::hours::hours_mode_at(now).on(&crate::dispatch::as_keeper(keeper));
+    /// As the keeper of the notices judges now (`teller`: its claim, and its
+    /// entry as the folder holds it): this device's cells when it keeps
+    /// them, else as `dispatch::judge` reads the keeper, with what may be
+    /// claimed without a word (`sure`).
+    fn now(config: Config, now: &Zoned, (keeper, entry): &(Keeper, Option<sioul_sync::devices::Entry>)) -> Seen {
+        let judged = crate::dispatch::judge(if keeper.mine { "" } else { &keeper.computer }, keeper.since, entry.as_ref());
+        let mode = crate::hours::hours_mode_at(now).on(&judged.lines);
         let moment = crate::hours::attention_at(&mode, now);
         // Reachable lifts the Porch's rest after a pause: new mail told (part 3).
         let may = config.reminders.mail && (!moment.holds.porch_rests || moment.reachable);
-        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may, keeper: keeper.to_string() }
+        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may, keeper: keeper.computer.clone(), sure: judged.sure, marks: judged.marks }
     }
 
     fn senders(&self) -> &porch::Senders {
@@ -183,11 +193,20 @@ impl Seen {
         self.attention.mail(t, self.senders(), &self.always, area, &self.now)
     }
 
-    /// Told now, through the system's do-not-disturb, later, or never.
+    /// Whether what the reading tells of `t` is sure: on the keeper always;
+    /// elsewhere as `Sure::holds` says by when it reached its server.
+    fn sure(&self, t: &Triaged) -> bool {
+        self.sure.holds(t.card.path.as_deref().map_or(0, mailnote::arrived_at))
+    }
+
+    /// Told now, through the system's do-not-disturb, later, or never. On a
+    /// device that does not keep the notices, what it is not sure the keeper
+    /// tells waits: never claimed on a doubt.
     fn fate(&self, t: &Triaged) -> Fate {
         let out = self.decided(t);
         match out {
             _ if !self.may => Fate::Later,
+            out if out.told && !self.sure(t) => Fate::Later,
             out if out.told && out.pierce => Fate::Through,
             out if out.told => Fate::Now,
             out if out.level == Level::Never => Fate::Never,
@@ -195,18 +214,20 @@ impl Seen {
         }
     }
 
-    /// Whether this message may be told now.
+    /// Whether this message may be told now: by the keeper, or claimed
+    /// elsewhere when sure the keeper tells it.
     fn tells(&self, t: &Triaged) -> bool {
-        self.may && self.decided(t).told
+        self.may && self.decided(t).told && self.sure(t)
     }
 
-    /// The moment (`mailnote::moment`); where a device narrows what comes,
-    /// with the keeper of the notices: the lease moving begins a moment, so
-    /// that what waited for the device now used is told there, and claimed
-    /// where the new keeper tells it.
+    /// The moment (`mailnote::moment`); where something is said of a device,
+    /// or an older Sioul counts (`Judged::marks`), with the keeper of the
+    /// notices: the lease moving begins a moment, so that what this device
+    /// kept is told here once it keeps them, and claimed where the new
+    /// keeper is sure to tell it.
     fn moment(&self) -> String {
         let moment = mailnote::moment(&self.now, self.may);
-        if self.now.here.narrows() { format!("{moment}:{}", self.keeper) } else { moment }
+        if self.marks { format!("{moment}:{}", self.keeper) } else { moment }
     }
 
     /// Messages judged as the Porch judges them: with the projects and their
@@ -277,7 +298,7 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
-    let seen = Seen::now(config, &now, &teller().computer);
+    let seen = Seen::now(config, &now, &teller());
     let since = watched(&seen.moment(), stamp);
     let judged = seen.judge(files, stamp);
     // What your mail filters would move out of the inbox or mark read waits for them: told after, if they could not.
@@ -363,7 +384,7 @@ fn close_batch() {
 fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
-    if !Seen::now(load_config(), &now, &teller().computer).may {
+    if !Seen::now(load_config(), &now, &teller()).may {
         return;
     }
     let mine = claim(letters, &[], stamp);
@@ -399,7 +420,7 @@ fn tick_from(window: Option<Window>) {
     let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
-    let seen = Seen::now(config, &now, &teller().computer);
+    let seen = Seen::now(config, &now, &teller());
     let moment = seen.moment();
     watched(&moment, stamp);
     let changed = MOMENT.lock().is_ok_and(|mut last| last.replace(moment.clone()).as_ref() != Some(&moment));
@@ -486,15 +507,16 @@ fn claim_in(path: &std::path::Path, elsewhere: &std::collections::BTreeSet<Strin
 fn ours(window: Option<&Window>) -> bool {
     match window {
         Some(w) => crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, w.active, false).0.mine,
-        None => teller().mine,
+        None => crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou).mine,
     }
 }
 
 /// The keeper of the notices as the claims read now, never renewed here
-/// (`ours` renews the window's): whose cells each letter is judged by
-/// (`Seen::now`). Sharing off: this device.
-fn teller() -> sioul_sync::lease::Keeper {
-    crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou)
+/// (`ours` renews the window's), with its entry as the folder holds it at
+/// the same moment: whose cells each letter is judged by (`Seen::now`).
+/// Sharing off: this device.
+fn teller() -> (Keeper, Option<sioul_sync::devices::Entry>) {
+    crate::share::keeper_and_entry("notices")
 }
 
 /// The notification: on a computer, a notice to know (`tell`,

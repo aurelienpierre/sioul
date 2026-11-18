@@ -609,6 +609,16 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: tab.theme.text
     }
+    // Settings that do not travel from here: what this device tells may come twice.
+    Label {
+        objectName: "devicesTwice"
+        visible: (tab.grid.twice || "") !== ""
+        Layout.fillWidth: true
+        text: tab.grid.twice || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
+    }
     Label {
         objectName: "devicesNever"
         visible: tab.grid.times.length > 0

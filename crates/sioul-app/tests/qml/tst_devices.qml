@@ -43,6 +43,7 @@ Item {
         property string why: ""
         // The sentence said while the part "settings" does not travel from here.
         property string stays: ""
+        property string twice: ""
         property var asked: []
         // What you said of each device, as the settings hold it: id → { name, area }.
         property var said: ({ "desk": { name: "Work desk", area: "work" } })
@@ -83,7 +84,7 @@ Item {
                 const follows = mock.usual[row.id] !== undefined
                 return Object.assign({}, row, { given: word.name || "", name: name, area: word.area || "", area_words: word.area || "Everything comes here", follows: follows, cells: follows ? mock.cells(row.id, name, word) : [], cells_older: follows ? "" : "Its Sioul is older: everything still comes there." })
             })
-            const grid = { times: mock.times, now: "Now, leisure until 22:00: nothing comes here.", unheld: mock.on ? "" : "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.", never: "Whatever a device is for, these always come: doses and everything of Health." }
+            const grid = { times: mock.times, now: "Now, leisure until 22:00: nothing comes here.", unheld: mock.on ? "" : "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.", twice: mock.twice, never: "Whatever a device is for, these always come: doses and everything of Health." }
             return JSON.stringify({ on: mock.on, why: mock.why, stays: mock.stays, rows: rows, grid: grid })
         }
         function deviceSay(id, field, value) {
@@ -194,6 +195,7 @@ Item {
             mock.on = true
             mock.why = ""
             mock.stays = ""
+            mock.twice = ""
             mock.asked = []
             mock.said = { "desk": { name: "Work desk", area: "work" } }
             root.saved = []
@@ -342,6 +344,15 @@ Item {
             wait(50)
             verify(showing(named(tab, "devicesStay")))
             compare(named(tab, "devicesStay").text, mock.stays)
+            // Under the grid, that this device may tell again what another told (review of phase 2, N2).
+            verify(!showing(named(tab, "devicesTwice")))
+            mock.twice = "This device does not share your settings: it reads the others by its own hours and does not hear what they told, so it may tell again something another device already told."
+            tab.reload()
+            wait(50)
+            verify(showing(named(tab, "devicesTwice")))
+            compare(named(tab, "devicesTwice").text, mock.twice)
+            mock.stays = ""
+            mock.twice = ""
         }
 
         // What can be done about another device: count it again, forget it,

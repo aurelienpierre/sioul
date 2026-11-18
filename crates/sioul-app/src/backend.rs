@@ -3743,7 +3743,7 @@ fn compute(shared: &Shared) -> Views {
     // device is for: an address that is another device's, shown here through a door ("Show all
     // mail now"), stays open on the device it is for (docs/areas.md, "Opened elsewhere"; review of
     // phase 2, M5). Nothing said of this device: every address, as before.
-    let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(sioul_core::mailbox::said_area).is_some_and(|area| mode.for_another(area));
+    let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).is_some_and(|account| crate::mail::read_here_only(account, &mode));
     let ours: Vec<Triaged> = items.iter().filter(|t| !another(t)).cloned().collect();
     let shown = if porch.open { PorchState::newest_shown(&ours) } else { BTreeMap::new() };
     let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {

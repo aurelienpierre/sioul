@@ -89,7 +89,7 @@ pub(crate) fn own(kind: Row) -> Output {
 /// The moment, as a notice sees it on this computer.
 pub(crate) fn moment() -> Moment {
     let now = sioul_core::zone::now();
-    Moment { present: crate::devices::someone_here(), paused: crate::hours::mode_now().paused(), silenced: crate::everywhere::now().on(), day_ends: Moment::end_of_day(&now) }
+    Moment { present: crate::devices::someone_here(), paused: crate::hours::hours_mode_at(&now).paused(), silenced: crate::everywhere::now().on(), day_ends: Moment::end_of_day(&now) }
 }
 
 /// What became of a notice told (`tell_with`).

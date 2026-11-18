@@ -298,7 +298,9 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let path = Notices::default_path();
     let notices = Notices::load(&path);
     let mode = crate::backend::mode_now();
-    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && mode.brings(s.area)).map(|s| (s.id.clone(), s.name.clone())).collect();
+    // While you are Reachable, no device keeps a site back: the hours alone.
+    let reachable = crate::hours::reachable_at(&sioul_core::zone::now());
+    let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && if reachable { sioul_core::areas::in_view(s.area, mode.time, mode.week) } else { mode.brings(s.area) }).map(|s| (s.id.clone(), s.name.clone())).collect();
     // What is new since the last time it rang: each notification named once (the Porch keeps them all).
     let lines: Vec<String> = named
         .iter()
