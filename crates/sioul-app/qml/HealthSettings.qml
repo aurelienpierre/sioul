@@ -134,141 +134,142 @@ SafePopup {
             }
 
             // The usual meals, naps and night: in Settings ▸ Hours, where every page's time is set.
-            Label {
-                Layout.topMargin: 12
-                text: panel.sioul.text("needs-title")
-                font.pixelSize: 16
-                font.weight: Font.DemiBold
-                color: panel.theme.accent
-            }
-            Label {
+            Section {
                 Layout.fillWidth: true
-                text: panel.sioul.text("health-needs-elsewhere")
-                wrapMode: Text.Wrap
-                color: panel.theme.text
-            }
-            Button {
-                objectName: "healthNeedsLink"
-                implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                flat: true
-                text: panel.sioul.text("health-needs-open")
-                icon.name: "go-next"
-                icon.color: panel.theme.text
-                onClicked: {
-                    panel.close()
-                    panel.sioul.reminderOpened("needs", "", "")
+                Layout.topMargin: 12
+                theme: panel.theme
+                title: panel.sioul.text("needs-title")
+
+                Label {
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("health-needs-elsewhere")
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+                }
+                Button {
+                    objectName: "healthNeedsLink"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    flat: true
+                    text: panel.sioul.text("health-needs-open")
+                    icon.name: "go-next"
+                    icon.color: panel.theme.text
+                    onClicked: {
+                        panel.close()
+                        panel.sioul.reminderOpened("needs", "", "")
+                    }
                 }
             }
 
             // A pause to move, while focusing.
-            Label {
-                Layout.topMargin: 12
-                text: panel.sioul.text("health-moving")
-                font.pixelSize: 16
-                font.weight: Font.DemiBold
-                color: panel.theme.accent
-            }
-            // The minutes under the sentence when the screen is narrow (a phone).
-            Flow {
-                id: movingRow
-
+            Section {
                 Layout.fillWidth: true
-                spacing: 8
+                Layout.topMargin: 12
+                theme: panel.theme
+                title: panel.sioul.text("health-moving")
 
-                // A sentence longer than the row wraps in it, rather than run past the screen.
-                WrapCheckBox {
-                    width: Math.min(implicitWidth, movingRow.width)
-                    text: panel.sioul.text("health-moving-every")
-                    checked: panel.shown.movement.enabled
-                    onToggled: panel.setting("movement.enabled", checked)
-                }
-                SpinBox {
-                    id: movingMinutes
+                // The minutes under the sentence when the screen is narrow (a phone).
+                Flow {
+                    id: movingRow
 
-                    from: 10
-                    to: 240
-                    stepSize: 5
-                    editable: true
-                    value: panel.shown.movement.minutes
-                    enabled: panel.shown.movement.enabled
-                    Accessible.name: panel.sioul.text("health-moving-every")
-                    onValueModified: panel.setting("movement.minutes", value)
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // A sentence longer than the row wraps in it, rather than run past the screen.
+                    WrapCheckBox {
+                        width: Math.min(implicitWidth, movingRow.width)
+                        text: panel.sioul.text("health-moving-every")
+                        checked: panel.shown.movement.enabled
+                        onToggled: panel.setting("movement.enabled", checked)
+                    }
+                    SpinBox {
+                        id: movingMinutes
+
+                        from: 10
+                        to: 240
+                        stepSize: 5
+                        editable: true
+                        value: panel.shown.movement.minutes
+                        enabled: panel.shown.movement.enabled
+                        Accessible.name: panel.sioul.text("health-moving-every")
+                        onValueModified: panel.setting("movement.minutes", value)
+                    }
+                    Label {
+                        height: movingMinutes.height
+                        verticalAlignment: Text.AlignVCenter
+                        text: panel.sioul.text("health-minutes")
+                        color: panel.theme.muted
+                    }
                 }
                 Label {
-                    height: movingMinutes.height
-                    verticalAlignment: Text.AlignVCenter
-                    text: panel.sioul.text("health-minutes")
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("health-moving-help")
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
                     color: panel.theme.muted
                 }
-            }
-            Label {
-                Layout.fillWidth: true
-                text: panel.sioul.text("health-moving-help")
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: panel.theme.muted
             }
 
             // Chats, a limit a day.
-            Label {
+            Section {
+                Layout.fillWidth: true
                 Layout.topMargin: 12
-                text: panel.sioul.text("health-chats")
-                font.pixelSize: 16
-                font.weight: Font.DemiBold
-                color: panel.theme.accent
-            }
-            WrapCheckBox {
-                Layout.fillWidth: true
-                text: panel.sioul.text("health-chats-limit")
-                checked: panel.shown.chats.enabled
-                onToggled: panel.setting("chats.enabled", checked)
-            }
-            GridLayout {
-                enabled: panel.shown.chats.enabled
-                columns: 3
-                columnSpacing: 8
-                rowSpacing: 4
+                theme: panel.theme
+                title: panel.sioul.text("health-chats")
 
+                WrapCheckBox {
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("health-chats-limit")
+                    checked: panel.shown.chats.enabled
+                    onToggled: panel.setting("chats.enabled", checked)
+                }
+                GridLayout {
+                    enabled: panel.shown.chats.enabled
+                    columns: 3
+                    columnSpacing: 8
+                    rowSpacing: 4
+
+                    Label {
+                        text: panel.sioul.text("health-chats-after")
+                        color: panel.theme.muted
+                    }
+                    SpinBox {
+                        from: 5
+                        to: 600
+                        stepSize: 5
+                        editable: true
+                        value: panel.shown.chats.minutes || 60
+                        onValueModified: panel.setting("chats.minutes", value)
+                    }
+                    Label {
+                        text: panel.sioul.text("health-minutes-a-day")
+                        color: panel.theme.muted
+                    }
+                    Label {
+                        text: panel.sioul.text("health-chats-for")
+                        color: panel.theme.muted
+                    }
+                    SpinBox {
+                        from: 5
+                        to: 600
+                        stepSize: 5
+                        editable: true
+                        value: panel.shown.chats.locked_minutes || 30
+                        onValueModified: panel.setting("chats.locked_minutes", value)
+                    }
+                    Label {
+                        text: panel.sioul.text("health-minutes")
+                        color: panel.theme.muted
+                    }
+                }
                 Label {
-                    text: panel.sioul.text("health-chats-after")
-                    color: panel.theme.muted
-                }
-                SpinBox {
-                    from: 5
-                    to: 600
-                    stepSize: 5
-                    editable: true
-                    value: panel.shown.chats.minutes || 60
-                    onValueModified: panel.setting("chats.minutes", value)
-                }
-                Label {
-                    text: panel.sioul.text("health-minutes-a-day")
-                    color: panel.theme.muted
-                }
-                Label {
-                    text: panel.sioul.text("health-chats-for")
-                    color: panel.theme.muted
-                }
-                SpinBox {
-                    from: 5
-                    to: 600
-                    stepSize: 5
-                    editable: true
-                    value: panel.shown.chats.locked_minutes || 30
-                    onValueModified: panel.setting("chats.locked_minutes", value)
-                }
-                Label {
-                    text: panel.sioul.text("health-minutes")
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("health-chats-help")
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
                     color: panel.theme.muted
                 }
             }
-            Label {
-                Layout.fillWidth: true
-                text: panel.sioul.text("health-chats-help")
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: panel.theme.muted
-            }
+
             Item {
                 Layout.preferredHeight: panel.theme.gap
             }

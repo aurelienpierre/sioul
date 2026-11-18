@@ -20,7 +20,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Panel {
+Section {
     id: card
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
@@ -60,7 +60,6 @@ Panel {
         card.changed()
     }
 
-    objectName: "vaultCard"
     Component.onCompleted: card.reload()
 
     // Locked, by Lock or after its time without use: said at once, the page told.
@@ -75,74 +74,57 @@ Panel {
     // Read again each time it shows: the vault locks by itself after its time without use.
     onVisibleChanged: if (card.visible) card.reload()
 
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 8
+    objectName: "vaultCard"
+    title: card.sioul.text("vault-card-title")
+    iconName: "dialog-password"
+    body.spacing: 8
 
-        RowLayout {
+    // No account set: one line, and a button to add one.
+    Label {
+        objectName: "vaultCardNone"
+        visible: card.vault === "missing"
+        Layout.fillWidth: true
+        text: card.sioul.text("vault-card-none")
+        wrapMode: Text.Wrap
+        color: card.theme.text
+    }
+    Button {
+        objectName: "vaultCardAdd"
+        visible: card.vault === "missing"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        icon.name: "list-add"
+        icon.color: card.theme.text
+        text: card.sioul.text("vault-card-add")
+        onClicked: card.addAsked()
+    }
+
+    // Its account, its server, open or locked with Unlock and Lock, the lock after a time.
+    Repeater {
+        model: card.rows
+
+        delegate: SettingRow {
+            required property var modelData
+
             Layout.fillWidth: true
-            spacing: card.theme.gap
-
-            Icon {
-                iconName: "dialog-password"
-            }
-            Label {
-                Layout.fillWidth: true
-                text: card.sioul.text("vault-card-title")
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-                wrapMode: Text.Wrap
-                color: card.theme.text
-            }
-        }
-
-        // No account set: one line, and a button to add one.
-        Label {
-            objectName: "vaultCardNone"
-            visible: card.vault === "missing"
-            Layout.fillWidth: true
-            text: card.sioul.text("vault-card-none")
-            wrapMode: Text.Wrap
-            color: card.theme.text
-        }
-        Button {
-            objectName: "vaultCardAdd"
-            visible: card.vault === "missing"
-            implicitWidth: implicitContentWidth + leftPadding + rightPadding
-            icon.name: "list-add"
-            icon.color: card.theme.text
-            text: card.sioul.text("vault-card-add")
-            onClicked: card.addAsked()
-        }
-
-        // Its account, its server, open or locked with Unlock and Lock, the lock after a time.
-        Repeater {
-            model: card.rows
-
-            delegate: SettingRow {
-                required property var modelData
-
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                setting: modelData
-                sioul: card.sioul
-                theme: card.theme
-                onSave: (key, value, shown) => card.save(key, value, shown)
-                onUnlockAsked: card.unlock()
-                onChangedElsewhere: {
-                    card.reload()
-                    card.changed()
-                }
+            Layout.topMargin: 4
+            setting: modelData
+            sioul: card.sioul
+            theme: card.theme
+            onSave: (key, value, shown) => card.save(key, value, shown)
+            onUnlockAsked: card.unlock()
+            onChangedElsewhere: {
+                card.reload()
+                card.changed()
             }
         }
-        Label {
-            visible: card.problem !== ""
-            Layout.fillWidth: true
-            text: card.problem
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            color: card.theme.warm
-        }
+    }
+    Label {
+        visible: card.problem !== ""
+        Layout.fillWidth: true
+        text: card.problem
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: card.theme.warm
     }
 
     // Bitwarden, opened here for the session, as from the Sites page.

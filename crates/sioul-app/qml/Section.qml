@@ -20,6 +20,8 @@ ColumnLayout {
     required property var theme
     // The heading's words, fixed (a translation) or made plain; none: the frame alone.
     property string title: ""
+    // An icon before the heading, by its freedesktop name (a card's: the password manager's); none by default.
+    property string iconName: ""
     // What the frame holds, in a column.
     default property alias content: body.data
     // The column inside the frame, for its spacing.
@@ -27,17 +29,32 @@ ColumnLayout {
 
     spacing: 6
 
-    Label {
+    RowLayout {
         visible: section.title !== ""
         Layout.fillWidth: true
-        text: section.title
-        textFormat: Text.PlainText
-        font.pixelSize: 17
-        font.weight: Font.DemiBold
-        wrapMode: Text.Wrap
-        color: section.theme.accent
-        Accessible.role: Accessible.Heading
-        Accessible.name: section.title
+        spacing: 8
+
+        Loader {
+            active: section.iconName !== ""
+            visible: active
+
+            sourceComponent: Component {
+                Icon {
+                    iconName: section.iconName
+                }
+            }
+        }
+        Label {
+            Layout.fillWidth: true
+            text: section.title
+            textFormat: Text.PlainText
+            font.pixelSize: 17
+            font.weight: Font.DemiBold
+            wrapMode: Text.Wrap
+            color: section.theme.accent
+            Accessible.role: Accessible.Heading
+            Accessible.name: section.title
+        }
     }
     Pane {
         id: frame
