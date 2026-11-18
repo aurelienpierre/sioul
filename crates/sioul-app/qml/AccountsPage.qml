@@ -227,10 +227,11 @@ Item {
             font.pixelSize: 22
             color: page.theme.text
         }
-        // The tabs, as the task page's views: the one shown filled.
-        Flow {
+        // The tabs, across the page (Tabs.qml).
+        Tabs {
             id: tabs
 
+            readonly property var ids: ["yours", "add", "keys"]
             property int currentIndex: 0
             // The tabs made so far: each the first time it is shown.
             property var made: ({ 0: true })
@@ -241,29 +242,12 @@ Item {
                 tabs.made = made
             }
 
+            objectName: "accountTabs"
             Layout.fillWidth: true
-            spacing: 6
-
-            Repeater {
-                model: ["accounts-tab-yours", "accounts-tab-add", "accounts-tab-keys"]
-
-                delegate: Button {
-                    id: tab
-
-                    required property string modelData
-                    required property int index
-
-                    text: page.sioul.text(modelData)
-                    checkable: true
-                    checked: tabs.currentIndex === index
-                    flat: tabs.currentIndex !== index
-                    onClicked: {
-                        tabs.currentIndex = index
-                        // A click on the tab shown would untick it: it stays the one shown.
-                        tab.checked = Qt.binding(() => tabs.currentIndex === tab.index)
-                    }
-                }
-            }
+            theme: page.theme
+            model: [{ id: "yours", text: page.sioul.text("accounts-tab-yours") }, { id: "add", text: page.sioul.text("accounts-tab-add") }, { id: "keys", text: page.sioul.text("accounts-tab-keys") }]
+            current: tabs.ids[tabs.currentIndex]
+            onChosen: id => tabs.currentIndex = tabs.ids.indexOf(id)
         }
 
         StackLayout {

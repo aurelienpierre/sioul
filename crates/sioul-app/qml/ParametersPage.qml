@@ -8,6 +8,14 @@
 // (PhoneSetup.qml), on a computer the multimedia messages sent from it
 // (TextsSending.qml), your folder and sharing, your devices (DevicesTab.qml),
 // invoices. Each setting says in a sentence what it changes and is saved at once.
+//
+// On a computer, the sections are tabs across the page (Tabs.qml), and each
+// section's rows sit in a centred column of legible width (PageColumn.qml),
+// grouped under their headings in frames (Section.qml); What reaches you and
+// Devices, tables and grids, take the whole width. On a phone, the page
+// opens on the list of its sections, each with a line saying what it holds;
+// a tap opens one, and Back (the system's, or the arrow in the page's bar)
+// returns to the list. A link to a setting opens its section, there as here.
 
 pragma ComponentBehavior: Bound
 
@@ -31,6 +39,8 @@ Item {
     onSectionChanged: {
         if (page.section === "files")
             page.shareMade = true
+        // A section asked for (a link, a step of the pictures) opens, on a phone too.
+        page.listShown = false
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
     // reminders, the pauses; on Android, what sets it up (its system's); where
@@ -56,6 +66,35 @@ Item {
     property string reachesAsked: ""
     // A list of the words asked for ("words.voicemail.operators") before its tab was made: its line opened once it is.
     property string wordsAsked: ""
+    // A phone: the sections as a list, one open at a time.
+    readonly property bool phone: page.theme.compact
+    // On a phone, the list of sections shows, rather than the one open.
+    property bool listShown: true
+    readonly property bool listed: page.phone && page.listShown
+    // On a phone, a section open: Back returns to the list (main.qml's `goBack`).
+    readonly property bool canGoBack: page.phone && !page.listShown
+    function back() {
+        page.listShown = true
+    }
+    // The rows shown, gathered by heading, in their order: one frame each (Section.qml).
+    readonly property var groups: {
+        const groups = []
+        for (const row of page.shown) {
+            const last = groups.length > 0 ? groups[groups.length - 1] : null
+            if (last !== null && last.group === row.group)
+                last.rows.push(row)
+            else
+                groups.push({ group: row.group, rows: [row] })
+        }
+        return groups
+    }
+
+    // A section shown, from its tab or the phone's list: from its top.
+    function open(section) {
+        page.section = section
+        page.listShown = false
+        scroll.ScrollBar.vertical.position = 0
+    }
 
     function reload() {
         page.rows = JSON.parse(page.sioul.settings("parameters"))
@@ -81,6 +120,7 @@ Item {
     // keys lead there too ("notify", "dnd.people", "calls").
     function showReaches(key) {
         page.section = "attention"
+        page.listShown = false
         scroll.ScrollBar.vertical.position = 0
         page.reachesAsked = key.startsWith("attention.") ? key.slice("attention.".length) : "time"
         if (reaches.item)
@@ -121,6 +161,7 @@ Item {
         }
         if (key.startsWith("words.")) {
             page.section = "words"
+            page.listShown = false
             scroll.ScrollBar.vertical.position = 0
             page.wordsAsked = key
             if (wordsLoader.item)
@@ -133,6 +174,7 @@ Item {
         // A tab without settings of its own (Calls): the tab itself.
         else if (page.sections.includes(key))
             page.section = key
+        page.listShown = false
         toSetting.key = key
         toSetting.restart()
     }
@@ -144,237 +186,325 @@ Item {
 
         interval: 150
         onTriggered: {
-            const index = page.shown.findIndex(r => r.key === toSetting.key)
-            const item = index >= 0 ? rowsRepeater.itemAt(index) : null
+            const item = page.rowItem(column, toSetting.key)
             const flick = scroll.contentItem as Flickable
             if (item && flick)
-                flick.contentY = Math.max(0, Math.min(item.y - 12, flick.contentHeight - flick.height))
+                flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
         }
+    }
+
+    // A setting's row, by its key, among the frames (`setting:<key>`).
+    function rowItem(item, key) {
+        if (item.objectName === "setting:" + key)
+            return item
+        for (let i = 0; i < item.children.length; i++) {
+            const found = page.rowItem(item.children[i], key)
+            if (found)
+                return found
+        }
+        return null
     }
 
     // Sharing, at the end of the files' tab.
     function toEnd() {
         page.section = "files"
+        page.listShown = false
         Qt.callLater(() => scroll.ScrollBar.vertical.position = 1 - scroll.ScrollBar.vertical.size)
     }
 
-    ScrollView {
-        id: scroll
-
+    ColumnLayout {
         anchors.fill: parent
         anchors.margins: page.theme.gap
-        contentWidth: availableWidth
-        clip: true
+        spacing: 6
 
-        ColumnLayout {
-            // What reaches you's cards sit three in a row where they can; the devices' fields line up as a table.
-            width: Math.min(scroll.availableWidth, page.section === "attention" || page.section === "devices" ? 1100 : 720)
-            spacing: 6
+        // "Settings"; on a phone, the section open, under the bar's "Settings".
+        Label {
+            Layout.fillWidth: true
+            text: page.phone && !page.listShown ? page.sioul.text(page.tabKey(page.section)) : page.sioul.text("ui-parameters")
+            font.pixelSize: 22
+            wrapMode: Text.Wrap
+            color: page.theme.text
+        }
+        // The sections, across the page (a computer's).
+        Tabs {
+            objectName: "settingsTabs"
+            visible: !page.phone
+            Layout.fillWidth: true
+            theme: page.theme
+            model: page.sections.map(s => ({ id: s, text: page.sioul.text(page.tabKey(s)) }))
+            current: page.section
+            onChosen: id => page.open(id)
+        }
 
-            Label {
-                Layout.fillWidth: true
-                text: page.sioul.text("ui-parameters")
-                font.pixelSize: 22
-                color: page.theme.text
-            }
-            // The tabs, as the task page's views: the one shown filled.
-            Flow {
-                Layout.fillWidth: true
-                spacing: 6
+        // A phone's list of the sections: each its name and what it holds.
+        ScrollView {
+            id: list
+
+            visible: page.listed
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                width: list.availableWidth
+                spacing: 0
 
                 Repeater {
-                    model: page.sections
+                    model: page.listed ? page.sections : []
 
-                    delegate: Button {
-                        id: tab
+                    delegate: AbstractButton {
+                        id: entry
 
                         required property string modelData
 
-                        text: page.sioul.text(page.tabKey(modelData))
-                        checkable: true
-                        checked: page.section === modelData
-                        flat: page.section !== modelData
-                        onClicked: {
-                            page.section = modelData
-                            // A click on the tab shown would untick it: it stays the one shown.
-                            tab.checked = Qt.binding(() => page.section === tab.modelData)
+                        objectName: "settingsSection:" + entry.modelData
+                        Layout.fillWidth: true
+                        hoverEnabled: true
+                        padding: 12
+                        leftPadding: 4
+                        rightPadding: 4
+                        text: page.sioul.text(page.tabKey(entry.modelData))
+                        Accessible.role: Accessible.Button
+                        Accessible.name: entry.text
+                        Accessible.description: page.sioul.text("settings-about-" + entry.modelData)
+                        onClicked: page.open(entry.modelData)
+
+                        contentItem: RowLayout {
+                            spacing: 10
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: entry.text
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 17
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.text
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: page.sioul.text("settings-about-" + entry.modelData)
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 13
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.muted
+                                }
+                            }
+                            Icon {
+                                iconName: "go-next"
+                                size: 16
+                            }
+                        }
+                        background: Rectangle {
+                            color: entry.down ? page.theme.hover : "transparent"
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 1
+                                color: page.theme.line
+                            }
                         }
                     }
                 }
             }
-            Label {
-                visible: page.problem !== ""
-                Layout.fillWidth: true
-                text: page.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
+        }
 
-            Repeater {
-                id: rowsRepeater
+        ScrollView {
+            id: scroll
 
-                model: page.shown
+            visible: !page.listed
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.topMargin: page.phone ? 0 : 6
+            contentWidth: availableWidth
+            clip: true
 
-                delegate: ColumnLayout {
-                    id: row
+            // The section's rows in a legible column, centred; What reaches you and Devices, the whole width.
+            PageColumn {
+                id: column
 
-                    required property var modelData
-                    required property int index
-                    readonly property bool newGroup: row.modelData.group !== "" && (row.index === 0 || page.shown[row.index - 1].group !== row.modelData.group)
+                theme: page.theme
+                room: scroll.availableWidth
+                wide: page.section === "attention" || page.section === "devices"
+                spacing: 6
 
+                Label {
+                    visible: page.problem !== ""
                     Layout.fillWidth: true
-                    Layout.topMargin: row.newGroup ? 18 : 8
-                    spacing: 3
+                    text: page.problem
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.warm
+                }
 
-                    Label {
-                        visible: row.newGroup
+                // Each heading's rows in a frame of their own.
+                Repeater {
+                    model: page.groups
+
+                    delegate: Section {
+                        id: group
+
+                        required property var modelData
+                        required property int index
+
                         Layout.fillWidth: true
-                        text: row.modelData.group
-                        textFormat: Text.PlainText
-                        font.pixelSize: 17
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                        color: page.theme.accent
-                    }
-                    SettingRow {
-                        Layout.fillWidth: true
-                        setting: row.modelData
-                        sioul: page.sioul
+                        Layout.topMargin: group.index === 0 ? 6 : 14
                         theme: page.theme
-                        onSave: (key, value, shown) => page.save(key, value, shown)
-                    }
-                }
-            }
+                        title: page.theme.plain(group.modelData.group)
+                        body.spacing: 14
 
-            // The pauses' do-not-disturb, a try-out of the screen, the last pause forgotten (docs/pauses.md).
-            Loader {
-                active: page.section === "pauses"
-                visible: active
-                Layout.fillWidth: true
+                        Repeater {
+                            model: group.modelData.rows
 
-                sourceComponent: Component {
-                    PauseSetup {
-                        sioul: page.sioul
-                        theme: page.theme
-                        deviceShown: false
-                        onTried: page.tryPause()
-                    }
-                }
-            }
+                            delegate: SettingRow {
+                                required property var modelData
 
-            // What reaches you, and when: one place (docs/attention.md).
-            Loader {
-                id: reaches
-
-                active: page.section === "attention"
-                visible: active
-                Layout.fillWidth: true
-                onLoaded: {
-                    if (page.reachesAsked !== "")
-                        page.showAsked()
-                }
-
-                sourceComponent: Component {
-                    ReachesTab {
-                        id: reachesTab
-
-                        sioul: page.sioul
-                        theme: page.theme
-                        rows: page.rows.filter(r => r.section === "attention")
-                        onSave: (key, value, shown) => {
-                            page.save(key, value, shown)
-                            reachesTab.reload()
+                                objectName: "setting:" + modelData.key
+                                Layout.fillWidth: true
+                                setting: modelData
+                                sioul: page.sioul
+                                theme: page.theme
+                                onSave: (key, value, shown) => page.save(key, value, shown)
+                            }
                         }
-                        onToTop: scroll.ScrollBar.vertical.position = 0
                     }
                 }
-            }
 
-            // The words Sioul looks for (docs/words.md): the languages, then a line per thing recognised.
-            Loader {
-                id: wordsLoader
+                // The pauses' do-not-disturb, a try-out of the screen, the last pause forgotten (docs/pauses.md).
+                Loader {
+                    active: page.section === "pauses"
+                    visible: active
+                    Layout.fillWidth: true
 
-                active: page.section === "words"
-                visible: active
-                Layout.fillWidth: true
-                onLoaded: {
-                    if (page.wordsAsked !== "")
-                        page.showWords()
-                }
-
-                sourceComponent: Component {
-                    WordsTab {
-                        sioul: page.sioul
-                        theme: page.theme
-                        rows: page.rows.filter(r => r.section === "words")
-                        onSave: (key, value, shown) => page.save(key, value, shown)
-                        onToTop: scroll.ScrollBar.vertical.position = 0
+                    sourceComponent: Component {
+                        PauseSetup {
+                            sioul: page.sioul
+                            theme: page.theme
+                            deviceShown: false
+                            onTried: page.tryPause()
+                        }
                     }
                 }
-            }
 
-            // This phone: what sets it up, nothing that decides when (docs/android.md).
-            Loader {
-                active: page.section === "phone"
-                visible: active
-                Layout.fillWidth: true
+                // What reaches you, and when: one place (docs/attention.md).
+                Loader {
+                    id: reaches
 
-                sourceComponent: Component {
-                    PhoneSetup {
-                        sioul: page.sioul
-                        theme: page.theme
+                    active: page.section === "attention"
+                    visible: active
+                    Layout.fillWidth: true
+                    onLoaded: {
+                        if (page.reachesAsked !== "")
+                            page.showAsked()
+                    }
+
+                    sourceComponent: Component {
+                        ReachesTab {
+                            id: reachesTab
+
+                            sioul: page.sioul
+                            theme: page.theme
+                            rows: page.rows.filter(r => r.section === "attention")
+                            onSave: (key, value, shown) => {
+                                page.save(key, value, shown)
+                                reachesTab.reload()
+                            }
+                            onToTop: scroll.ScrollBar.vertical.position = 0
+                        }
                     }
                 }
-            }
 
-            // The multimedia messages sent from this computer (docs/texts.md).
-            Loader {
-                active: page.section === "texts"
-                visible: active
-                Layout.fillWidth: true
+                // The words Sioul looks for (docs/words.md): the languages, then a line per thing recognised.
+                Loader {
+                    id: wordsLoader
 
-                sourceComponent: Component {
-                    TextsSending {
-                        sioul: page.sioul
-                        theme: page.theme
+                    active: page.section === "words"
+                    visible: active
+                    Layout.fillWidth: true
+                    onLoaded: {
+                        if (page.wordsAsked !== "")
+                            page.showWords()
+                    }
+
+                    sourceComponent: Component {
+                        WordsTab {
+                            sioul: page.sioul
+                            theme: page.theme
+                            rows: page.rows.filter(r => r.section === "words")
+                            onSave: (key, value, shown) => page.save(key, value, shown)
+                            onToTop: scroll.ScrollBar.vertical.position = 0
+                        }
                     }
                 }
-            }
 
-            Loader {
-                id: shareLoader
+                // This phone: what sets it up, nothing that decides when (docs/android.md).
+                Loader {
+                    active: page.section === "phone"
+                    visible: active
+                    Layout.fillWidth: true
 
-                active: page.shareMade
-                visible: page.section === "files"
-                Layout.fillWidth: true
-                Layout.bottomMargin: 24
-
-                sourceComponent: Component {
-                    SharePanel {
-                        sioul: page.sioul
-                        theme: page.theme
-                        onDevicesAsked: page.showSetting("devices")
+                    sourceComponent: Component {
+                        PhoneSetup {
+                            sioul: page.sioul
+                            theme: page.theme
+                        }
                     }
                 }
-            }
 
-            // Your devices: what each is, when it last opened and shared, what you
-            // say it is for (docs/database.md, "Devices").
-            Loader {
-                id: devicesLoader
+                // The multimedia messages sent from this computer (docs/texts.md).
+                Loader {
+                    active: page.section === "texts"
+                    visible: active
+                    Layout.fillWidth: true
 
-                active: page.section === "devices"
-                visible: active
-                Layout.fillWidth: true
+                    sourceComponent: Component {
+                        TextsSending {
+                            sioul: page.sioul
+                            theme: page.theme
+                        }
+                    }
+                }
 
-                sourceComponent: Component {
-                    DevicesTab {
-                        sioul: page.sioul
-                        theme: page.theme
-                        kindRow: page.rows.find(r => r.key === "device_kind") || null
-                        onSave: (key, value, shown) => page.save(key, value, shown)
-                        onSharingAsked: page.showSetting("files")
+                Loader {
+                    id: shareLoader
+
+                    active: page.shareMade
+                    visible: page.section === "files"
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 24
+
+                    sourceComponent: Component {
+                        SharePanel {
+                            sioul: page.sioul
+                            theme: page.theme
+                            onDevicesAsked: page.showSetting("devices")
+                        }
+                    }
+                }
+
+                // Your devices: what each is, when it last opened and shared, what you
+                // say it is for (docs/database.md, "Devices").
+                Loader {
+                    id: devicesLoader
+
+                    active: page.section === "devices"
+                    visible: active
+                    Layout.fillWidth: true
+
+                    sourceComponent: Component {
+                        DevicesTab {
+                            sioul: page.sioul
+                            theme: page.theme
+                            kindRow: page.rows.find(r => r.key === "device_kind") || null
+                            onSave: (key, value, shown) => page.save(key, value, shown)
+                            onSharingAsked: page.showSetting("files")
+                        }
                     }
                 }
             }

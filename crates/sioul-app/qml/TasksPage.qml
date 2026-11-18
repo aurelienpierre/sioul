@@ -285,7 +285,16 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 10
 
-            // The ways to see tasks, then the filters: on a second line when the
+            // The ways to see tasks: tabs across the page (Tabs.qml).
+            Tabs {
+                objectName: "taskModes"
+                Layout.fillWidth: true
+                theme: page.theme
+                model: ["now", "day", "list", "board", "timeline", "search"].map(m => ({ id: m, text: page.sioul.text("task-mode-" + m) }))
+                current: page.mode
+                onChosen: id => page.mode = id
+            }
+            // Under them, Routines and the filters: on a second line when the
             // window is too narrow for one, never past its edge.
             Flow {
                 id: viewsFlow
@@ -293,25 +302,6 @@ Item {
                 Layout.fillWidth: true
                 spacing: 6
 
-                Repeater {
-                    model: ["now", "day", "list", "board", "timeline", "search"]
-
-                    delegate: Button {
-                        id: modeButton
-
-                        required property string modelData
-
-                        text: page.sioul.text("task-mode-" + modeButton.modelData)
-                        checkable: true
-                        checked: page.mode === modeButton.modelData
-                        flat: page.mode !== modeButton.modelData
-                        // A click on the way shown unticks it: its binding ticks it again.
-                        onClicked: {
-                            page.mode = modeButton.modelData
-                            modeButton.checked = Qt.binding(() => page.mode === modeButton.modelData)
-                        }
-                    }
-                }
                 // Routines: steps played one at a time; what they are, in its tip.
                 Button {
                     flat: true
@@ -479,9 +469,10 @@ Item {
                             contentWidth: availableWidth
                             clip: true
 
-                            ColumnLayout {
-                                width: Math.min(nowScroll.availableWidth, 680)
-                                x: Math.max(0, (nowScroll.availableWidth - width) / 2)
+                            // A legible column, centred (PageColumn.qml).
+                            PageColumn {
+                                theme: page.theme
+                                room: nowScroll.availableWidth
                                 spacing: 12
 
                                 // Quiet time: the rest of the day, and when work comes back.

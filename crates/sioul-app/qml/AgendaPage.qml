@@ -690,6 +690,17 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 8
 
+            // What comes, the day, the week, the month and the search: tabs across
+            // the page (Tabs.qml). Tasks ▸ The day gives the Day alone, without them.
+            Tabs {
+                objectName: "agendaModes"
+                visible: page.modes.length > 1
+                Layout.fillWidth: true
+                theme: page.theme
+                model: page.modes.map(m => ({ id: m, text: page.sioul.text("agenda-mode-" + m) }))
+                current: page.mode
+                onChosen: id => page.mode = id
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -727,17 +738,6 @@ Item {
                     font.pixelSize: 19
                     elide: Text.ElideRight
                     color: page.theme.text
-                }
-                // The day, the week and the month, one switch away; on a phone,
-                // in the title's room.
-                PlainComboBox {
-                    objectName: "agendaModes"
-                    visible: page.modes.length > 1
-                    Layout.fillWidth: page.narrow
-                    Layout.preferredWidth: page.narrow ? -1 : 150
-                    model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
-                    currentIndex: page.modes.indexOf(page.mode)
-                    onActivated: index => page.mode = page.modes[index]
                 }
                 // Which agendas every view draws (several agendas): the one filter, on a phone on the title's line.
                 AgendaFilter {

@@ -278,64 +278,19 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // The five tabs, as Sioul's other tabs: the one shown pressed, the others flat; in one
-        // row on a phone too, which scrolls sideways when the names are wider than the screen.
-        Flickable {
-            id: tabStrip
+        // The five tabs, across the page (Tabs.qml); on a phone, a row that scrolls
+        // sideways when the names are wider than the screen.
+        Tabs {
+            id: moneyTabs
 
+            readonly property var ids: ["overview", "budgets", "movements", "mail", "invoices"]
+
+            objectName: "moneyTabs"
             Layout.fillWidth: true
-            Layout.preferredHeight: tabs.implicitHeight
-            contentWidth: Math.max(tabStrip.width, tabs.implicitWidth)
-            contentHeight: tabs.implicitHeight
-            interactive: tabs.implicitWidth > tabStrip.width
-            boundsBehavior: Flickable.StopAtBounds
-            clip: true
-
-            RowLayout {
-                id: tabs
-
-                objectName: "moneyTabs"
-                width: tabStrip.contentWidth
-                spacing: 6
-
-                Repeater {
-                    model: ["money-tab-overview", "money-tab-budgets", "money-tab-movements", "money-tab-mail", "money-tab-invoices"]
-
-                    delegate: Button {
-                        id: tabButton
-
-                        required property string modelData
-                        required property int index
-
-                        objectName: "moneyTab" + index
-                        // As wide as their names; on a phone the row's room shared out while it holds them, their paddings narrower.
-                        Layout.fillWidth: page.window.compact && !tabStrip.interactive
-                        Layout.preferredWidth: implicitWidth
-                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                        leftPadding: page.window.compact ? 6 : 12
-                        rightPadding: page.window.compact ? 6 : 12
-                        text: page.sioul.text(modelData)
-                        checkable: true
-                        checked: page.tab === index
-                        flat: page.tab !== index
-                        onClicked: {
-                            page.tab = index
-                            // A click on the tab shown would untick it: it stays the one shown.
-                            tabButton.checked = Qt.binding(() => page.tab === tabButton.index)
-                        }
-                        // The tab shown kept in sight when the row scrolls.
-                        onCheckedChanged: {
-                            if (tabButton.checked && tabStrip.interactive)
-                                tabStrip.contentX = Math.max(0, Math.min(tabButton.x - 12, tabStrip.contentWidth - tabStrip.width))
-                        }
-                    }
-                }
-                // On a computer the tabs keep to the left, as wide as their names.
-                Item {
-                    visible: !page.window.compact
-                    Layout.fillWidth: true
-                }
-            }
+            theme: page.theme
+            model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]
+            current: moneyTabs.ids[page.tab] || "overview"
+            onChosen: id => page.showTab(moneyTabs.ids.indexOf(id))
         }
 
         StackLayout {

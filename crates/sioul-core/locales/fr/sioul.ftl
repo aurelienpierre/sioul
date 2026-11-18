@@ -3750,6 +3750,19 @@ settings-tab-files = Votre dossier et le partage
 settings-tab-texts = SMS
 settings-tab-invoices = Factures
 settings-tab-ai = Agents d’IA
+# Les paramètres sur un téléphone : la liste des sections, chacune avec une ligne qui dit ce qu’elle contient.
+settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la saisie, ce qu’est cet appareil.
+settings-about-hours = Heures de travail, heures pour vos démarches, repas et nuit, congés.
+settings-about-attention = Qui et ce qui peut vous joindre, par quel canal et à quelle heure ; les exceptions, « Ne pas déranger ».
+settings-about-words = Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.
+settings-about-reminders = Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.
+settings-about-pauses = Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.
+settings-about-phone = Ce que le système de cet appareil laisse faire à Sioul : appels, notifications des autres applications, SMS, « Ne pas déranger », alarmes.
+settings-about-texts = Les messages multimédias envoyés d’ici par votre téléphone.
+settings-about-files = Votre dossier de notes, et le partage avec vos autres appareils.
+settings-about-devices = Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun.
+settings-about-invoices = Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.
+settings-about-ai = Ce que les agents d’IA peuvent utiliser, projet par projet.
 ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.

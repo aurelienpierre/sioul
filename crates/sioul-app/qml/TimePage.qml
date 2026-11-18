@@ -146,6 +146,15 @@ Item {
             width: scroll.availableWidth
             spacing: 12
 
+            // The week, the month or the year: tabs across the page (Tabs.qml).
+            Tabs {
+                objectName: "timePeriods"
+                Layout.fillWidth: true
+                theme: page.theme
+                model: page.periods.map(p => ({ id: p, text: page.sioul.text("time-period-" + p) }))
+                current: page.period
+                onChosen: id => page.period = id
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -182,10 +191,6 @@ Item {
                     visible: page.narrow
                     Layout.fillWidth: true
                 }
-                PeriodChoice {
-                    visible: !page.narrow
-                    Layout.preferredWidth: 120
-                }
                 ProjectChoice {
                     visible: !page.narrow
                     Layout.preferredWidth: 180
@@ -219,17 +224,9 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.theme.text
             }
-            RowLayout {
+            ProjectChoice {
                 visible: page.narrow
                 Layout.fillWidth: true
-                spacing: 6
-
-                PeriodChoice {
-                    Layout.preferredWidth: 120
-                }
-                ProjectChoice {
-                    Layout.fillWidth: true
-                }
             }
 
             Label {
@@ -476,12 +473,7 @@ Item {
         }
     }
 
-    // The period and the project shown: beside the title, or under it on a phone.
-    component PeriodChoice: PlainComboBox {
-        model: page.periods.map(p => page.sioul.text("time-period-" + p))
-        currentIndex: page.periods.indexOf(page.period)
-        onActivated: index => page.period = page.periods[index]
-    }
+    // The project shown: beside the title, or under it on a phone.
     component ProjectChoice: PlainComboBox {
         readonly property var choices: [{ id: "", title: page.sioul.text("time-all-projects") }].concat(page.projects)
 
