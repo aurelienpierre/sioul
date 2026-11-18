@@ -5,11 +5,10 @@
 // Sioul, in English and French: with Devices among them, every tab shows
 // whole within the page, none past its edge nor over another, each tall
 // enough for a finger, in a few rows that leave the page room under them;
-// pressing one shows it. A phone lists "This phone", which only Android
-// does: the stand-in names the tab a computer lists in its place (Texts)
-// with the phone's words, so that the row holds as many words as on a
-// phone. Run by tools/qml-test.sh. To see the tabs, set `pictures` below to
-// a folder (a change of your own, not to commit).
+// pressing one shows it. A phone also lists "This phone", which only
+// Android does: the row here holds one tab fewer than a phone's. Run by
+// tools/qml-test.sh. To see the tabs, set `pictures` below to a folder (a
+// change of your own, not to commit).
 
 import QtQuick
 import QtQuick.Controls.Basic

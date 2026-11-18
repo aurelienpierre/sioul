@@ -27,8 +27,9 @@
 // one at a time, as Mail: the list, then the conversation, and Back. Read
 // again at once whenever the sharing brings texts, while the page is open:
 // the conversation open, the draft, the row chosen and the place read back
-// to all stay (tests/qml/tst_texts.qml). A phone has its own SMS app: no
-// page there (main.qml).
+// to all stay (tests/qml/tst_texts.qml). Its ⚙, at the end of the
+// list's first row, holds the multimedia messages sent from here
+// (TextsSending.qml). A phone has its own SMS app: no page there (main.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -68,6 +69,13 @@ Item {
     readonly property alias deleteAsk: deleteChoice
     // The conversation open, by its id ("+33199001234"), and texts.rs's
     // `conversation` for it: {id, title, messages, drafts, can_write, group}.
+    // The page's ⚙, open at one of its settings (from a link by key: SettingDoor.qml), or closed.
+    function openSettings(open, key) {
+        textsSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => textsSettings.scrollTo(key))
+    }
+
     property string openId: ""
     property string talkText: ""
     readonly property var talk: page.talkText ? JSON.parse(page.talkText) : null
@@ -461,6 +469,14 @@ Item {
                     Layout.preferredWidth: 200
                     Layout.maximumWidth: 200
                     Layout.minimumWidth: 90
+                }
+                // The page's ⚙: the multimedia messages sent from here (`settings::for_view("texts")`).
+                SettingsButton {
+                    id: textsSettings
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    view: "texts"
                 }
             }
 

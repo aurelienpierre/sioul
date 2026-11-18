@@ -47,7 +47,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -334,6 +334,17 @@ ColumnLayout {
                 theme: field.theme
                 about: field.setting.help
             }
+        }
+    }
+
+    // The Texts page's ⚙: the multimedia messages sent from here (TextsSending.qml), its own
+    // title. Made by its file, not its type: it draws a SettingRow of its own.
+    Loader {
+        visible: field.setting.kind === "textssending"
+        Layout.fillWidth: true
+        Component.onCompleted: {
+            if (field.setting.kind === "textssending")
+                setSource("TextsSending.qml", { sioul: field.sioul, theme: field.theme })
         }
     }
 

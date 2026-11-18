@@ -31,7 +31,9 @@ TestCase {
             "bitwarden_vault": "bitwarden",
             "reminders.before_event": "agenda",
             "reminders.waits": "tasks",
-            "reminders.payment_days": "money"
+            "reminders.payment_days": "money",
+            "texts": "texts",
+            "texts.sending": "texts"
         })
 
         function settingPage(key) {
@@ -64,6 +66,7 @@ TestCase {
         property var agendaPage: FakePage {}
         property var tasksPage: FakePage {}
         property var budgetsPage: FakePage {}
+        property var textsPage: FakePage {}
     }
 
     SettingDoor {
@@ -121,6 +124,17 @@ TestCase {
             compare(fakeWindow.page, 12, key)
         }
         compare(fakeWindow.parametersPage.asked, ["reminders.asked_days", "reminders_closed", "reminders.gathered", "reminders"])
+    }
+
+    // The multimedia messages sent from here: the Texts page's ⚙, for the tab that was
+    // Settings ▸ Texts too.
+    function test_texts_open_the_texts_page_settings() {
+        fakeWindow.textsPage = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
+        door.open("texts")
+        compare(fakeWindow.page, 14)
+        door.open("texts.sending")
+        compare(fakeWindow.textsPage.asked, [[true, ""], [true, "texts.sending"]])
+        compare(fakeWindow.parametersPage.asked, [])
     }
 
     // What Settings holds: Settings, at its tab; the usual meals, naps and night

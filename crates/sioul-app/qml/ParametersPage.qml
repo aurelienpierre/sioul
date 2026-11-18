@@ -2,12 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What belongs to Sioul as a whole rather than to one page: language and
-// colours, working hours and days off, what reaches you and when
-// (ReachesTab.qml), the words Sioul looks for (WordsTab.qml), reminders,
-// the pauses, on a phone what sets it up
-// (PhoneSetup.qml), on a computer the multimedia messages sent from it
-// (TextsSending.qml), your folder and sharing, your devices (DevicesTab.qml),
-// invoices. Each setting says in a sentence what it changes and is saved at once.
+// colours, working hours, the usual meals and sleep and days off, what
+// reaches you and when (ReachesTab.qml), the words Sioul looks for
+// (WordsTab.qml), reminders, the pauses, on a phone what sets it up
+// (PhoneSetup.qml), your folder and sharing, your devices (DevicesTab.qml),
+// invoices. What one page alone reads is behind that page's ⚙ (SettingDoor.qml
+// opens it by its key). Each setting says in a sentence what it changes and
+// is saved at once.
 
 pragma ComponentBehavior: Bound
 
@@ -33,11 +34,11 @@ Item {
             page.shareMade = true
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
-    // reminders, the pauses; on Android, what sets it up (its system's); where
-    // there is no telephony (a computer, a tablet without a SIM), the texts it
-    // sends through the phone; your folder and sharing, your devices,
-    // invoices; what AI agents may use (each project closed to them until opened).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "devices", "invoices", "ai"])
+    // reminders, the pauses; on Android, what sets it up (its system's); your
+    // folder and sharing, your devices, invoices; what AI agents may use (each
+    // project closed to them until opened). The texts a device without
+    // telephony sends through the phone are the Texts page's ⚙.
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
     // A tab's name's key: Android's own tab named by what the device is ("This
     // phone", "This tablet", else "This device"), never by its system.
     function tabKey(section) {
@@ -322,20 +323,6 @@ Item {
 
                 sourceComponent: Component {
                     PhoneSetup {
-                        sioul: page.sioul
-                        theme: page.theme
-                    }
-                }
-            }
-
-            // The multimedia messages sent from this computer (docs/texts.md).
-            Loader {
-                active: page.section === "texts"
-                visible: active
-                Layout.fillWidth: true
-
-                sourceComponent: Component {
-                    TextsSending {
                         sioul: page.sioul
                         theme: page.theme
                     }

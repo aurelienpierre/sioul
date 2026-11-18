@@ -3724,7 +3724,6 @@ settings-tab-look = Display
 settings-tab-hours = Hours
 settings-tab-reminders = Reminders
 settings-tab-files = Your folder and sharing
-settings-tab-texts = Texts
 settings-tab-invoices = Invoices
 settings-tab-ai = AI agents
 ui-refresh-all = Refresh everything: mail, agenda, tasks, contacts (F5)

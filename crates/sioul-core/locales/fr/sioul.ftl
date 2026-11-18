@@ -3760,7 +3760,6 @@ settings-tab-look = Affichage
 settings-tab-hours = Heures
 settings-tab-reminders = Rappels
 settings-tab-files = Votre dossier et le partage
-settings-tab-texts = SMS
 settings-tab-invoices = Factures
 settings-tab-ai = Agents d’IA
 ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)

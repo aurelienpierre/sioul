@@ -8,7 +8,7 @@ description: Les paramètres de Sioul – un seul endroit pour ce qui concerne S
 
 **Paramètres** est l’icône à curseurs en bas de la colonne de gauche. On y trouve ce qui concerne Sioul tout entier ; ce qui concerne une seule page est sur cette page, derrière son ⚙ ([plus bas](#each-pages-own-settings)). Chaque réglage dit en une phrase ce qu’il change, et s’enregistre dès que vous le changez : rien à confirmer, rien à appliquer. Vos réglages vous suivent sur vos autres appareils quand vous partagez entre eux ; vos mots de passe, jamais.
 
-La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Factures** ; Android ajoute **Ce téléphone** (**Cette tablette** sur une tablette), et un appareil sans téléphonie à lui (un ordinateur, une tablette sans carte SIM) **SMS**. **Mots**, après **Ce qui vous joint**, garde les mots auxquels Sioul reconnaît les choses ([plus bas](#words)).
+La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Factures** ; Android ajoute **Ce téléphone** (**Cette tablette** sur une tablette). **Mots**, après **Ce qui vous joint**, garde les mots auxquels Sioul reconnaît les choses ([plus bas](#words)).
 
 ## Protégé par défaut {#what-is-protected}
 
@@ -79,10 +79,6 @@ Sur Android, ce qui le règle, rien de ce qui décide quand (c’est [Ce qui vou
 - **SMS** : ce que Sioul fait de vos SMS une fois que vous l’autorisez, chaque autorisation avec ce à quoi elle sert, **Autoriser dans Android…**, et, quand Android ne les a pas donnés après votre demande, les étapes qu’il peut vouloir pour une application installée depuis un fichier, avec **Infos de l’application Sioul** ([Installer](install.md#on-android)), la partie **SMS**, combien de SMS et de médias a votre téléphone et combien sont partis vers vos ordinateurs, le plus gros fichier envoyé là-bas, et ce que prend son opérateur pour un message multimédia, en lecture seule. Voir [Les SMS](texts.md).
 - **« Ne pas déranger » sur ce téléphone** : l’accès « Ne pas déranger » d’Android, dont les modes de Sioul ont besoin, et ce que chaque mode laisse passer ; **En favori sur ce téléphone**, qui, parmi les personnes qui passent toujours, n’y est pas en favori ; **Garder ce téléphone à jour en arrière-plan**, et **Autoriser en arrière-plan**. Voir [Ce que fait chaque système](notifications.md#what-each-system-does).
 - **Alarmes et notifications** : les pages d’Android pour les alarmes exactes, dont les rappels, les prises et le réveil ont besoin pour venir à l’heure, et pour les notifications de Sioul.
-
-## SMS {#texts}
-
-Sur un ordinateur, ou une tablette sans carte SIM, les messages multimédias qui en partent par votre téléphone : **Messages multimédias envoyés d’ici**, jusqu’à la limite de votre opérateur (600 Ko chez les opérateurs français) ou 300 Ko, pour les téléphones plus anciens et certains réseaux à l’étranger ; dessous, ce que votre téléphone a dit que prend son opérateur, une ligne par carte SIM. Voir [Les SMS](texts.md#pictures-and-files).
 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 
@@ -184,6 +180,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Budgets](budgets.md#the-bank-watch) | le rappel avant un paiement prévu |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
 | [Notes](notes.md#new-notes) | où vont les nouvelles notes |
+| [SMS](texts.md#pictures-and-files) | les messages multimédias envoyés d’ici, sur un appareil sans téléphonie |
 | [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; un bouton vers votre compte Bitwarden, dans [Comptes](accounts.md#your-password-manager) |
 | [Santé](health.md#prescriptions) | où vont les démarches, la pause pour bouger, la limite des discussions ; un bouton vers les repas, siestes et nuit habituels, dans [Heures](#hours) |
 

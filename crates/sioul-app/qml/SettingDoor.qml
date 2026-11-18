@@ -29,7 +29,8 @@ QtObject {
         "bitwarden": [11, "accountsPage"],
         "agenda": [4, "agendaPage"],
         "tasks": [1, "tasksPage"],
-        "money": [9, "budgetsPage"]
+        "money": [9, "budgetsPage"],
+        "texts": [14, "textsPage"]
     })
 
     function open(key) {

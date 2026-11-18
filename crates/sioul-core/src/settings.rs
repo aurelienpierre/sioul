@@ -115,6 +115,13 @@ pub enum Kind {
     /// of the sharing), read and written by the window itself (`needs`,
     /// `save_needs`). Nothing in `value`.
     Needs,
+    /// The multimedia messages sent from this device, the window's own block
+    /// (`TextsSending.qml`) behind the Texts page's ⚙, where a device
+    /// without telephony shows your phone's texts: how much one may weigh,
+    /// kept in this device's `texts.toml`, and what your phone said its
+    /// carrier takes. Nothing in `value`.
+    #[serde(rename = "textssending")]
+    TextsSending,
     /// Leaving the lists of the mail you called spam, the window's own block
     /// (`LeaveSpam.qml`): a row when there are some, found off the window's
     /// thread (`leave_spam_look`), and its sheet (docs/client.md,
@@ -261,7 +268,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The pages whose ⚙ holds settings that only they read, and that a link
 /// by key opens there rather than in Settings (the settings rework of 18
 /// November 2026: a setting one page reads lives behind that page's ⚙).
-pub const PAGES: &[&str] = &["sites", "bitwarden", "agenda", "tasks", "money"];
+pub const PAGES: &[&str] = &["sites", "bitwarden", "agenda", "tasks", "money", "texts"];
 
 /// Where a setting lives, by its key or by its page's own name: the page of
 /// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
@@ -272,7 +279,7 @@ pub fn page_of(key: &str, config: &Config, tr: &Translator) -> Option<&'static s
 }
 
 /// The settings of one page: "porch", "mail", "agenda", "tasks", "notes",
-/// "reading", "contacts", "sites", "bitwarden", "money", "general". `lists` names the task lists
+/// "reading", "contacts", "sites", "bitwarden", "money", "texts", "general". `lists` names the task lists
 /// a new task can go into, as ("account/id", name).
 pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::projects::ProjectStore>) -> Vec<Setting> {
     let mut b = Builder { tr, out: Vec::new(), group: String::new(), section: String::new() };
@@ -658,6 +665,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 args.set("minutes", *m);
                 tr.text("set-bitwarden-lock-time", Some(&args))
             } }).collect();
+        }
+        // The Texts page's own, on a device without telephony (docs/texts.md): the
+        // multimedia messages sent from here, this device's own (`texts.toml`).
+        "texts" => {
+            b.said("texts.sending", Kind::TextsSending, tr.text("texts-sending-title", None), String::new(), SettingValue::Text(String::new()));
         }
         // The Money page's own: the reminder before a planned payment (docs/reminders.md).
         "money" => {
@@ -1699,9 +1711,11 @@ mod tests {
         let agenda = keys("agenda");
         assert_eq!(agenda[agenda.iter().position(|k| k == "agenda.new_event").unwrap() + 1], "reminders.before_event", "{agenda:?}");
         assert_eq!(keys("money"), vec!["reminders.payment_days"]);
+        // The multimedia messages sent from here: the Texts page's own block.
+        assert_eq!(for_view("texts", &config, &tr, &[], None).iter().map(|s| (s.key.as_str(), s.kind)).collect::<Vec<_>>(), [("texts.sending", Kind::TextsSending)]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");
-        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "money", "contacts", "parameters"] {
+        for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "bitwarden", "money", "texts", "contacts", "parameters"] {
             for key in keys(view) {
                 if let Some(other) = seen.insert(key.clone(), view) {
                     panic!("{key} is set in {other} and in {view}");
@@ -1720,7 +1734,7 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("texts", Some("texts")), ("texts.sending", Some("texts")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.
