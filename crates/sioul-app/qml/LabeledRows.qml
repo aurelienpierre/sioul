@@ -63,7 +63,8 @@ ColumnLayout {
                 background: Rectangle {
                     color: rows.theme.field
                     radius: rows.theme.radius
-                    border.color: area.activeFocus ? rows.theme.focus : rows.theme.edge
+                    border.color: area.activeFocus ? rows.theme.focusEdge : rows.theme.edge
+                    border.width: area.activeFocus ? 2 : 1
                 }
             }
             ToolButton {

@@ -1976,7 +1976,8 @@ Item {
                         background: Rectangle {
                             color: page.theme.field
                             radius: page.theme.radius
-                            border.color: writingSignature.activeFocus ? page.theme.focus : page.theme.edge
+                            border.color: writingSignature.activeFocus ? page.theme.focusEdge : page.theme.edge
+                            border.width: writingSignature.activeFocus ? 2 : 1
                         }
                         Layout.fillWidth: true
                         Layout.preferredHeight: 110

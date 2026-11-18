@@ -312,7 +312,8 @@ ColumnLayout {
             background: Rectangle {
                 color: form.theme.field
                 radius: form.theme.radius
-                border.color: notes.activeFocus ? form.theme.focus : form.theme.edge
+                border.color: notes.activeFocus ? form.theme.focusEdge : form.theme.edge
+                border.width: notes.activeFocus ? 2 : 1
             }
             Layout.fillWidth: true
             Layout.preferredHeight: 90
@@ -329,7 +330,8 @@ ColumnLayout {
             background: Rectangle {
                 color: form.theme.field
                 radius: form.theme.radius
-                border.color: urls.activeFocus ? form.theme.focus : form.theme.edge
+                border.color: urls.activeFocus ? form.theme.focusEdge : form.theme.edge
+                border.width: urls.activeFocus ? 2 : 1
             }
             Layout.fillWidth: true
             Layout.preferredHeight: 60

@@ -594,7 +594,8 @@ Panel {
                     background: Rectangle {
                         color: panel.theme.field
                         radius: panel.theme.radius
-                        border.color: title.activeFocus ? panel.theme.focus : panel.theme.edge
+                        border.color: title.activeFocus ? panel.theme.focusEdge : panel.theme.edge
+                        border.width: title.activeFocus ? 2 : 1
                     }
                     Accessible.name: panel.making ? panel.sioul.text("task-new-title") : panel.sioul.text("task-title")
                     // A new task is made as its title is given; a task's title changed is saved.
@@ -2033,7 +2034,8 @@ Panel {
                 background: Rectangle {
                     color: panel.theme.field
                     radius: panel.theme.radius
-                    border.color: taskNotes.activeFocus ? panel.theme.focus : panel.theme.edge
+                    border.color: taskNotes.activeFocus ? panel.theme.focusEdge : panel.theme.edge
+                    border.width: taskNotes.activeFocus ? 2 : 1
                 }
                 visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true

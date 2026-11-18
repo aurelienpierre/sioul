@@ -4,10 +4,15 @@
 
 // Every TextField of Sioul's windows: cpp/style.cpp gives this file wherever
 // Qt would load the Basic style's own TextField.qml (docs/qt-quick.md, "Sioul's
-// overrides of the Basic style"). Basic's field, line for line, but for its
-// border: the theme's firmer `edge` rather than the palette's mid tone. Its
-// fill is the palette's `base`, which SioulWindow.qml gives the theme's
-// `field`; every size is Basic's.
+// overrides of the Basic style"). Basic's field as Qt 6.9 to 6.11 write it,
+// with nothing newer than 6.9, but for its border and its menu. The border is
+// the theme's firmer `edge` at rest; with the focus, 2 points of its
+// `focusEdge`, the accent's hue at 3:1 or more against the border at rest and
+// the fill. The fill is the palette's `base`, which SioulWindow.qml gives the
+// theme's `field`. Cut, copy and paste come on a right click or a long press
+// where Qt has the menu for them (TextEditingContextMenu, Qt 6.11): made at the
+// first request, then kept; with an older Qt, as with Basic's own there, none,
+// and the click goes on to what is under the field. Every size is Basic's.
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -15,6 +20,10 @@ import QtQuick.Templates as T
 
 T.TextField {
     id: control
+
+    // The window's theme (SioulWindow.qml); a window of Qt's own has none: the palette's colours then.
+    readonly property var shownIn: control.Window.window
+    readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
 
     implicitWidth: implicitBackgroundWidth + leftInset + rightInset
                    || Math.max(contentWidth, placeholder.implicitWidth) + leftPadding + rightPadding
@@ -31,15 +40,15 @@ T.TextField {
     placeholderTextColor: control.palette.placeholderText
     verticalAlignment: TextInput.AlignVCenter
 
-    // Cut, copy and paste on a right click or a long press, as Basic's own has
-    // them since Qt 6.11 (its TextEditingContextMenu): made at the first
-    // request, then kept; none with an older Qt, as none in Basic's own there.
-    T.ContextMenu.onRequested: {
-        if (T.ContextMenu.menu !== null)
-            return
-        const made = Qt.createComponent("QtQuick.Controls.Basic.impl", "TextEditingContextMenu")
-        if (made.status === Component.Ready)
-            T.ContextMenu.menu = made.createObject(control, { editor: control })
+    // Connected only where the menu exists: a request heard and left without a menu
+    // would take the click from what is under the field (Qt 6.10).
+    Connections {
+        target: control.sioulTheme && control.sioulTheme.fieldMenu ? control.T.ContextMenu : null
+
+        function onRequested() {
+            if (control.T.ContextMenu.menu === null)
+                control.T.ContextMenu.menu = control.sioulTheme.fieldMenuFor(control)
+        }
     }
 
     PlaceholderText {
@@ -60,13 +69,11 @@ T.TextField {
     }
 
     background: Rectangle {
-        // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette's border then.
-        readonly property var shownIn: control.Window.window
-        readonly property var theme: shownIn ? shownIn.theme : undefined
+        readonly property color edge: control.sioulTheme ? control.sioulTheme.edge : control.palette.mid
+        readonly property color focusEdge: control.sioulTheme ? control.sioulTheme.focusEdge : control.palette.highlight
         // High contrast, as the system asks it (Qt 6.10's style hints; never with an older Qt).
         readonly property var hints: Qt.styleHints
         readonly property bool highContrast: hints.accessibility ? hints.accessibility.contrastPreference === Qt.HighContrast : false
-        readonly property color edge: theme ? theme.edge : control.palette.mid
 
         implicitWidth: 200
         implicitHeight: 40
@@ -74,7 +81,7 @@ T.TextField {
         color: control.palette.base
         border.color: {
             if (control.activeFocus)
-                return control.palette.highlight
+                return focusEdge
             else if (!highContrast)
                 return control.enabled ? edge : Color.blend(edge, control.palette.base, 0.6)
             else

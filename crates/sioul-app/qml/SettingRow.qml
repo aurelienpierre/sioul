@@ -580,7 +580,8 @@ ColumnLayout {
                     background: Rectangle {
                         color: field.theme.field
                         radius: field.theme.radius
-                        border.color: longText.activeFocus ? field.theme.focus : field.theme.edge
+                        border.color: longText.activeFocus ? field.theme.focusEdge : field.theme.edge
+                        border.width: longText.activeFocus ? 2 : 1
                     }
                     onEditingFinished: {
                         if (text !== field.setting.value)

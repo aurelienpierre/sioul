@@ -237,7 +237,8 @@ SafeDialog {
                 // A field while you write in it (the theme's `field` and `edge`), a card while previewed.
                 color: sheet.previewing ? sheet.theme.surface : sheet.theme.field
                 radius: sheet.theme.radius
-                border.color: memo.activeFocus ? sheet.theme.focus : sheet.previewing ? sheet.theme.line : sheet.theme.edge
+                border.color: memo.activeFocus ? sheet.theme.focusEdge : sheet.previewing ? sheet.theme.line : sheet.theme.edge
+                border.width: memo.activeFocus ? 2 : 1
 
                 TextArea {
                     id: memo

@@ -1173,7 +1173,8 @@ Item {
                         background: Rectangle {
                             color: page.theme.field
                             radius: page.theme.radius
-                            border.color: draft.activeFocus ? page.theme.focus : page.theme.edge
+                            border.color: draft.activeFocus ? page.theme.focusEdge : page.theme.edge
+                            border.width: draft.activeFocus ? 2 : 1
                         }
                     }
                 }

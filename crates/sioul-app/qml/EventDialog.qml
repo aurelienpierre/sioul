@@ -1056,7 +1056,8 @@ SafeDialog {
                     background: Rectangle {
                         color: dialog.theme.field
                         radius: dialog.theme.radius
-                        border.color: notes.activeFocus ? dialog.theme.focus : dialog.theme.edge
+                        border.color: notes.activeFocus ? dialog.theme.focusEdge : dialog.theme.edge
+                        border.width: notes.activeFocus ? 2 : 1
                     }
                     Layout.fillWidth: true
                     Layout.preferredHeight: 80

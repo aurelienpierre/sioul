@@ -231,6 +231,9 @@ fn main() {
         "qml/style/StyleButton.qml",
         "qml/style/StyleTextField.qml",
         "qml/style/StyleTextArea.qml",
+        "qml/style/StyleCheckBox.qml",
+        "qml/style/StyleRadioButton.qml",
+        "qml/style/StyleSpinBox.qml",
     ];
     let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the

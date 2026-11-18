@@ -297,7 +297,8 @@ ColumnLayout {
             background: Rectangle {
                 color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: phonesField.activeFocus ? setup.theme.focus : setup.theme.edge
+                border.color: phonesField.activeFocus ? setup.theme.focusEdge : setup.theme.edge
+                border.width: phonesField.activeFocus ? 2 : 1
             }
         }
         TextArea {
@@ -310,7 +311,8 @@ ColumnLayout {
             background: Rectangle {
                 color: setup.theme.field
                 radius: setup.theme.radius
-                border.color: emailsField.activeFocus ? setup.theme.focus : setup.theme.edge
+                border.color: emailsField.activeFocus ? setup.theme.focusEdge : setup.theme.edge
+                border.width: emailsField.activeFocus ? 2 : 1
             }
         }
         RowLayout {

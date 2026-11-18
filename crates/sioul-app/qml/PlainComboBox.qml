@@ -29,7 +29,8 @@ ComboBox {
     popup.rightMargin: box.safeArea ? box.safeArea.right : 0
 
     // Basic's background, as a field: the palette's base (the theme's `field`,
-    // SioulWindow.qml) and the window's theme's `edge`; pressed, Basic's mid tone.
+    // SioulWindow.qml) and the window's theme's `edge`, its `focusEdge` with the
+    // focus; pressed, Basic's mid tone.
     background: Rectangle {
         // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette's border then.
         readonly property var shownIn: box.Window.window
@@ -39,8 +40,9 @@ ComboBox {
         implicitHeight: 40
         visible: !box.flat || box.down
         color: box.down ? box.palette.mid : box.palette.base
-        border.color: box.visualFocus ? box.palette.highlight : theme ? theme.edge : box.palette.mid
-        border.width: box.visualFocus ? 2 : 1
+        // With the focus, 2 points of the theme's `focusEdge`, as a text field.
+        border.color: box.activeFocus ? (theme ? theme.focusEdge : box.palette.highlight) : theme ? theme.edge : box.palette.mid
+        border.width: box.activeFocus ? 2 : 1
     }
 
     // Basic's delegate, but for the "&" doubled.

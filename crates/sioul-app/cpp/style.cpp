@@ -3,10 +3,13 @@
 
 // Sioul's overrides of the Basic style (docs/qt-quick.md, "Sioul's overrides
 // of the Basic style"). Wherever the QML engine would load the Basic style's
-// own Button.qml, TextField.qml or TextArea.qml, it loads Sioul's from
-// qml/style/ instead: a flat button keeps an outline, a field its own fill
-// and a firmer border, in every window and dialog of Sioul's, Qt's own
-// included. Every page imports QtQuick.Controls.Basic, chosen as the program
+// own Button.qml, TextField.qml, TextArea.qml, CheckBox.qml, RadioButton.qml
+// or SpinBox.qml, it loads Sioul's from qml/style/ instead (StyleButton.qml…):
+// a flat button that holds words keeps an outline, what you type in or tick
+// its own fill and a firmer border, in every window and dialog of Sioul's,
+// Qt's own included. Each is written as Qt 6.9 and 6.10 write Basic's, which
+// Qt 6.11 loads too: a property newer than the Qt that runs stops the file,
+// and with it every window (the Flatpak runs Qt 6.10). Every page imports QtQuick.Controls.Basic, chosen as the program
 // is built; a style of Sioul's own would need each page to import it, and
 // every new page to remember. Given to the engine once, before the window's
 // first file is read.
@@ -14,6 +17,7 @@
 #include <QQmlAbstractUrlInterceptor>
 #include <QQmlApplicationEngine>
 #include <QString>
+#include <QStringList>
 #include <QStringView>
 #include <QUrl>
 
@@ -34,13 +38,11 @@ public:
         if (at < 0)
             return url;
         const QStringView name = QStringView(path).mid(at + basic.size());
-        if (name == u"Button.qml")
-            return QUrl(QStringLiteral("qrc:/qt/qml/com/aurelienpierre/sioul/qml/style/StyleButton.qml"));
-        if (name == u"TextField.qml")
-            return QUrl(QStringLiteral("qrc:/qt/qml/com/aurelienpierre/sioul/qml/style/StyleTextField.qml"));
-        if (name == u"TextArea.qml")
-            return QUrl(QStringLiteral("qrc:/qt/qml/com/aurelienpierre/sioul/qml/style/StyleTextArea.qml"));
-        return url;
+        static const QStringList overridden = { QStringLiteral("Button.qml"), QStringLiteral("TextField.qml"), QStringLiteral("TextArea.qml"),
+                                                QStringLiteral("CheckBox.qml"), QStringLiteral("RadioButton.qml"), QStringLiteral("SpinBox.qml") };
+        if (!overridden.contains(name))
+            return url;
+        return QUrl(QStringLiteral("qrc:/qt/qml/com/aurelienpierre/sioul/qml/style/Style") + name.toString());
     }
 };
 

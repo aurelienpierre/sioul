@@ -223,7 +223,8 @@ SafeDialog {
                 placeholderText: form.sioul.text("contracts-covers-hint")
                 background: Rectangle {
                     color: form.theme.field
-                    border.color: coversArea.activeFocus ? form.theme.focus : form.theme.edge
+                    border.color: coversArea.activeFocus ? form.theme.focusEdge : form.theme.edge
+                    border.width: coversArea.activeFocus ? 2 : 1
                     radius: 3
                 }
             }
@@ -240,7 +241,8 @@ SafeDialog {
                 wrapMode: TextEdit.Wrap
                 background: Rectangle {
                     color: form.theme.field
-                    border.color: notesArea.activeFocus ? form.theme.focus : form.theme.edge
+                    border.color: notesArea.activeFocus ? form.theme.focusEdge : form.theme.edge
+                    border.width: notesArea.activeFocus ? 2 : 1
                     radius: 3
                 }
             }

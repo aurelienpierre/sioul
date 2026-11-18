@@ -60,6 +60,10 @@ QtObject {
     // 3:1 or more against the field, the cards, the page and a filled button,
     // in both themes (WCAG's contrast for what tells a control apart).
     readonly property color edge: dark ? "#807d73" : "#857d71"
+    // The border of a field with the focus, 2 points: the accent's hue, darker
+    // on light pages and lighter on dark ones, so as to stand 3:1 or more
+    // against the border at rest (3.1:1 both) and 10:1 or more against the fill.
+    readonly property color focusEdge: dark ? "#d4e1da" : "#27372f"
     readonly property color warm: dark ? "#d4a56c" : "#8f6330"
     readonly property color forged: dark ? "#d38e70" : "#97573a"
     readonly property color focus: dark ? "#c9d9cf" : "#2f4a3d"
@@ -77,6 +81,20 @@ QtObject {
     readonly property int radius: 6
     // A page's column of text and forms (PageColumn.qml): a legible width, centred.
     readonly property int readable: 720
+
+    // Qt 6.11's menu for what you type in (cut, copy, paste: TextEditingContextMenu),
+    // which Sioul's fields make at the first right click (qml/style/); none with a
+    // Qt that has it not (6.10: Basic's own fields have none there either). Looked
+    // for once, off the window's start.
+    readonly property Component fieldMenuMaker: Qt.createComponent("QtQuick.Controls.Basic.impl", "TextEditingContextMenu", Component.Asynchronous)
+    readonly property bool fieldMenu: theme.fieldMenuMaker !== null && theme.fieldMenuMaker.status === Component.Ready
+
+    // That menu for one field: its `editor` (Qt 6.11), or its `control` (the first Qt that had it).
+    function fieldMenuFor(field) {
+        if (!theme.fieldMenu)
+            return null
+        return theme.fieldMenuMaker.createObject(field, { editor: field }) ?? theme.fieldMenuMaker.createObject(field, { control: field })
+    }
 
     // A side panel's width (a page's settings, Health's): all of a phone's; on
     // a computer, two fifths of the window and a little more, from 520 to 760

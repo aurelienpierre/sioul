@@ -364,13 +364,15 @@ SioulWindow {
                 }
             }
 
-            // The text, in Markdown, or what it becomes.
+            // The text, in Markdown, or what it becomes: a field while you write it (the theme's
+            // `field`, its `edge`, 2 points of its `focusEdge` with the focus), a card while previewed.
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: compose.theme.surface
+                color: compose.previewing ? compose.theme.surface : compose.theme.field
                 radius: compose.theme.radius
-                border.color: body.activeFocus ? compose.theme.focus : compose.theme.line
+                border.color: body.activeFocus ? compose.theme.focusEdge : compose.previewing ? compose.theme.line : compose.theme.edge
+                border.width: body.activeFocus ? 2 : 1
 
                 ScrollView {
                     id: editor
