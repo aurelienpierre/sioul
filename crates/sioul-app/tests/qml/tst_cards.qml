@@ -1074,6 +1074,13 @@ Item {
             compare(saved.length, 1, JSON.stringify(mock.calls))
             compare(saved[0].uid + " " + saved[0].edit.busy, "t1 true")
             verify(busy.checked)
+            // What the availability holds for it, under the switch (review B4); nothing to say, no line.
+            const none = root.find(panel, "taskBusyLine")
+            verify(none === null || !none.visible, "no line when there is nothing to say")
+            panel.detail = Object.assign({}, panel.detail, { busy_line: "Its time is not known yet." })
+            wait(10)
+            const line = root.find(panel, "taskBusyLine")
+            verify(line !== null && line.visible && line.text === "Its time is not known yet.")
         }
 
         function test_the_task_s_card() {

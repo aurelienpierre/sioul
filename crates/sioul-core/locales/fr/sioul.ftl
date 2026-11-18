@@ -6936,6 +6936,11 @@ busy = Indisponible
 busy-help = Compte dans la disponibilité que vous partagez, et tant qu’il dure vos règles pour les moments indisponibles s’appliquent.
 busy-task = Indisponible pendant que j’y travaille
 busy-task-help = Son temps compte dans la disponibilité que vous partagez là où il est connu (un créneau, une heure de début, le temps que le plan lui donne avant sa date), et tant que son minuteur tourne vos règles pour les moments indisponibles s’appliquent.
+busy-time-holds = { $more ->
+    [0] Dans la disponibilité que vous partagez : { $spans }.
+   *[other] Dans la disponibilité que vous partagez : { $spans }, et { $more } autres.
+}
+busy-time-not-known = Son temps n’est pas encore connu : la disponibilité que vous partagez ne contient rien pour elle tant qu’elle n’a ni créneau, ni heure de début, ni date demandée avant laquelle le plan la place.
 busy-with-others = Une réunion avec d’autres garde l’indisponibilité que son organisateur a dite : Sioul ne l’écrit jamais.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = Tout de suite

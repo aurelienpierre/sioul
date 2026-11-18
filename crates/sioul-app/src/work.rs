@@ -935,10 +935,11 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
-        // The plan's time for busy tasks with a date asked and no time of their own, kept when a
-        // block's times changed (`availability::plan_spans`); then your availabilities: their mirrors
-        // from the freshest view, what waits on their servers (design-availability-sharing §3).
-        crate::mirrors::keep_planned(&sioul_core::availability::plan_spans(&desk.plan, &desk.settings, &desk.loaded.tasks, &desk.read, &now));
+        // The plan's time for busy tasks with a date asked and no time of their own, as this
+        // window's plan lays it (`availability::plan_spans`), for the busy tasks' shared record
+        // (`mirrors::plan_seen`); then your availabilities: their mirrors from the freshest view,
+        // what waits on their servers (design-availability-sharing §3).
+        crate::mirrors::plan_seen(sioul_core::availability::plan_spans(&desk.plan, &desk.settings, &desk.loaded.tasks, &desk.read, &now));
         crate::servers::availability_upkeep(&qt, &shared);
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
@@ -1560,6 +1561,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         appointment: serde_json::Value,
         /// Its list keeps ties to appointments (not Google Tasks, `pairs::links_kept`): "Its appointment…" offered.
         keeps_ties: bool,
+        /// What the availability you share holds for it, under its Busy switch (`mirrors::busy_line`); "" for nothing to say.
+        busy_line: String,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -1605,7 +1608,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         None => serde_json::Value::Null,
     };
     let keeps_ties = sioul_core::pairs::links_kept(&config)(&task.list_id);
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties })
+    let busy_line = crate::mirrors::busy_line(&config, &loaded.tasks, uid);
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties, busy_line })
 }
 
 /// A task read again from its own file, its list's marks kept from `known`
