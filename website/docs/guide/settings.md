@@ -8,9 +8,9 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**, across the top of the page; Android adds **This phone** (**This tablet** on a tablet), and a device without telephony of its own (a computer, a tablet without a SIM) **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus.
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**, across the top of the page; Android adds **This phone** (**This tablet** on a tablet), and a device without telephony of its own (a computer, a tablet without a SIM) **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
 
-On a phone, Settings opens on the list of its sections instead, each with one line saying what it holds. Tap one to open it; Back, or the arrow at the top left, brings you back to the list. A link to a setting, from a notice or another page, opens its section directly.
+On a phone, Settings opens on the list of its sections instead, each with one line saying what it holds. Tap one to open it; Back, or the arrow at the top left, brings you back to the list. A link to a setting, from a notice or another page, opens its section directly, and Back then returns where you were. Settings opens on the list again at your next visit.
 
 ## Protected by default {#what-is-protected}
 
