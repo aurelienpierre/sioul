@@ -117,9 +117,15 @@ public final class ShareActivity extends Activity
                 finish();
                 return;
             }
+            // A file of contacts (a vCard, a CSV) for the contacts' import
+            // (contactimport.rs), by its type or its name; anything else as a calendar.
+            final String contacts = contactsKind(intent.getType() != null ? intent.getType() : typeOf(app, file), String.valueOf(file.getLastPathSegment()));
             new Thread(() -> {
                 try {
-                    write(new File(handed, "calendar/" + id + ".ics"), read(app, file));
+                    if (contacts != null)
+                        write(new File(handed, "contacts/" + id + "." + contacts), read(app, file, CONTACTS_MOST));
+                    else
+                        write(new File(handed, "calendar/" + id + ".ics"), read(app, file, CALENDAR_MOST));
                     runOnUiThread(this::open);
                     tell();
                 } catch (IOException | RuntimeException e) {
@@ -491,6 +497,35 @@ public final class ShareActivity extends Activity
     /** The most of a calendar file read: a megabyte, and one byte to tell a larger one (calendarfile.rs). */
     private static final int CALENDAR_MOST = 1024 * 1024 + 1;
 
+    /** The most of a file of contacts read: 32 MB (cards may carry photos), and one byte to tell a larger one (contactimport.rs). */
+    private static final int CONTACTS_MOST = 32 * 1024 * 1024 + 1;
+
+    /**
+     * What a file opened holds for the contacts' import: "vcf" (a vCard),
+     * "csv" (a table), or null (a calendar file, as before), by its type, else
+     * by its name's extension.
+     */
+    static String contactsKind(String type, String name)
+    {
+        String t = type == null ? "" : type.toLowerCase(Locale.ROOT).split(";")[0].trim();
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        if (t.equals("text/vcard") || t.equals("text/x-vcard") || t.equals("text/directory") || n.endsWith(".vcf") || n.endsWith(".vcard"))
+            return "vcf";
+        if (t.equals("text/csv") || t.equals("text/comma-separated-values") || n.endsWith(".csv"))
+            return "csv";
+        return null;
+    }
+
+    /** The type the system says of an address, or null. */
+    private static String typeOf(Context app, Uri uri)
+    {
+        try {
+            return app.getContentResolver().getType(uri);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Opened as a calendar file (VIEW of a content: or file: address, never mailto:). */
     private static boolean calendarFile(Intent intent)
     {
@@ -570,8 +605,8 @@ public final class ShareActivity extends Activity
         return uri.getPath() == null || insideOwn(uri.getPath(), ownFolders(app));
     }
 
-    /** What the address holds, {@link #CALENDAR_MOST} bytes at most, through the system's resolver: nothing else is followed. */
-    private static byte[] read(Context app, Uri uri) throws IOException
+    /** What the address holds, {@code most} bytes at most, through the system's resolver: nothing else is followed. */
+    private static byte[] read(Context app, Uri uri, int most) throws IOException
     {
         // A file: path, opened where the system resolves it, then checked again by
         // what was opened: a link put in its place meanwhile reaches nothing of Sioul's.
@@ -587,21 +622,21 @@ public final class ShareActivity extends Activity
                 if (insideOwn(opened, ownFolders(app)))
                     throw new IOException(ownFileRefused());
                 try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(file.dup())) {
-                    return upTo(in);
+                    return upTo(in, most);
                 }
             }
         }
         try (InputStream in = app.getContentResolver().openInputStream(uri)) {
             if (in == null)
                 throw new FileNotFoundException(String.valueOf(uri.getLastPathSegment()));
-            return upTo(in);
+            return upTo(in, most);
         }
     }
 
-    /** At most {@link #CALENDAR_MOST} bytes of {@code in}. */
-    private static byte[] upTo(InputStream in) throws IOException
+    /** At most {@code most} bytes of {@code in}. */
+    private static byte[] upTo(InputStream in, int most) throws IOException
     {
-        byte[] buffer = new byte[CALENDAR_MOST];
+        byte[] buffer = new byte[most];
         int length = 0;
         while (length < buffer.length) {
             int read = in.read(buffer, length, buffer.length - length);

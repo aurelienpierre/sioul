@@ -1276,6 +1276,27 @@ SioulWindow {
             calendarFile.now().show(view)
             window.bringBack()
         }
+
+        // A file of contacts read (contactimport.rs: "Import…", or opened with Sioul): its window.
+        function onContactsImportChanged() {
+            const step = sioul.contactsImport ? JSON.parse(sioul.contactsImport).step : "closed"
+            if (step !== "closed" && !contactImport.active) {
+                contactImport.now().follow()
+                window.bringBack()
+            }
+        }
+    }
+
+    // Contacts imported from a vCard or a CSV file (ContactImport.qml): made the first time one is read.
+    Later {
+        id: contactImport
+
+        sourceComponent: Component {
+            ContactImport {
+                sioul: sioul
+                theme: theme
+            }
+        }
     }
 
     // The end of the work day ("Done for today") or of the day before sleep

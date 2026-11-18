@@ -10,6 +10,11 @@
 // head, the household (« Proches », docs/persons.md): a person's page opens
 // in the place of a card too. A contact you bill shows its client profile
 // (what its invoices print, ClientProfileDialog.qml) and "Bill this client".
+// Above the list, the filters combined (ContactFilters.qml: books, group, has
+// or lacks, how many show); "Select" gives each row a box, and the selection
+// bar acts on many at once (ContactSelection.qml); "Import…" reads a vCard or
+// a CSV file (ContactImport.qml, in the window). A card of an address book
+// you only read says so wherever it would be written (wave D).
 
 pragma ComponentBehavior: Bound
 
@@ -29,12 +34,44 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string contactsText: ""
-    readonly property var shown: page.contactsText ? JSON.parse(page.contactsText) : ({ contacts: [], sentence: "", can_add: false, categories: [], category: "" })
+    readonly property var shown: page.contactsText ? JSON.parse(page.contactsText) : ({ contacts: [], sentence: "", can_add: false, categories: [], category: "", filter: {}, books: [], counted: "", shown: 0, total: 0 })
 
     function takeShown() {
-        if (page.visible)
+        if (page.visible) {
             page.contactsText = page.sioul.contacts
+            // The search as this device kept it, once, while it is not being typed.
+            if (!page.searchTaken && page.shown.filter && search.text === "" && !search.activeFocus) {
+                search.text = page.shown.filter.name || ""
+                page.searchTaken = true
+            }
+        }
     }
+    property bool searchTaken: false
+
+    // "Select": each row a box; the keys ticked, by file.
+    property bool selecting: false
+    property var selected: ({})
+    readonly property var selectedKeys: Object.keys(page.selected)
+
+    function select(key, on) {
+        const next = Object.assign({}, page.selected)
+        if (on)
+            next[key] = true
+        else
+            delete next[key]
+        page.selected = next
+    }
+
+    // Every contact the filters show, ticked.
+    function selectShown() {
+        const next = {}
+        for (const c of page.shown.contacts)
+            next[c.key] = true
+        page.selected = next
+    }
+
+    // The address books a selection can move to: those that can be written.
+    readonly property var writableBooks: (page.shown.books || []).filter(b => !b.read_only)
 
     Connections {
         target: page.sioul
@@ -91,7 +128,7 @@ Item {
 
     // Into another address book: asked first when it would not keep everything.
     function moveTo(book, confirmed) {
-        if (!page.person || book.name === page.person.book)
+        if (!page.person || book.id === page.person.place)
             return
         const answer = JSON.parse(page.sioul.moveContact(page.openKey, book.id, confirmed))
         if (answer.losses) {
@@ -381,6 +418,38 @@ Item {
                             page.showDuplicates()
                     }
                 }
+                // Many at once: each row a box (ContactSelection.qml).
+                Button {
+                    objectName: "contactsSelect"
+                    visible: !page.mapShown && page.shown.contacts.length > 0
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: page.sioul.text("contacts-select")
+                    icon.name: "edit-select-all"
+                    icon.color: page.theme.text
+                    highlighted: page.selecting
+                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    Accessible.name: text
+                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
+                    ToolTip.text: page.theme.plain(text)
+                    onClicked: {
+                        page.selecting = !page.selecting
+                        if (!page.selecting)
+                            page.selected = {}
+                    }
+                }
+                // A vCard or a CSV file read, its contacts imported (ContactImport.qml).
+                Button {
+                    objectName: "contactsImport"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: page.sioul.text("books-import")
+                    icon.name: "document-import"
+                    icon.color: page.theme.text
+                    display: AbstractButton.IconOnly
+                    Accessible.name: text
+                    ToolTip.visible: hovered
+                    ToolTip.text: page.theme.plain(text)
+                    onClicked: importFile.open()
+                }
                 SettingsButton {
                     sioul: page.sioul
                     theme: page.theme
@@ -388,17 +457,33 @@ Item {
                 }
             }
 
-            // One category only, or all of them: what Nextcloud Contacts shows as groups.
-            PlainComboBox {
-                readonly property var names: page.shown.categories || []
-
-                visible: names.length > 0 && !page.mapShown
+            // The filters, combined: books, a group or none, has or lacks, how many show.
+            ContactFilters {
+                visible: !page.mapShown && page.shown.total > 0
                 Layout.fillWidth: true
-                Layout.maximumWidth: 320
-                model: [page.sioul.text("contacts-category-all")].concat(names.map(n => page.theme.plain(n)))
-                currentIndex: page.shown.category ? Math.max(0, names.indexOf(page.shown.category) + 1) : 0
-                Accessible.name: page.sioul.text("contact-categories")
-                onActivated: index => page.sioul.showContactsCategory(index === 0 ? "" : names[index - 1])
+                sioul: page.sioul
+                theme: page.theme
+                view: page.shown
+                onAsked: filter => page.sioul.setContactsFilter(JSON.stringify(Object.assign({}, filter, { name: search.text })))
+            }
+
+            // The selection: how many, all shown, what to do with them.
+            ContactSelection {
+                visible: page.selecting && !page.mapShown
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
+                keys: page.selectedKeys
+                shownCount: page.shown.contacts.length
+                books: page.writableBooks
+                groups: page.shown.categories || []
+                onSelectShown: page.selectShown()
+                onSelectNone: page.selected = {}
+                onEnded: page.selected = {}
+                onFinished: {
+                    page.selecting = false
+                    page.selected = {}
+                }
             }
 
             Label {
@@ -488,8 +573,13 @@ Item {
 
                     width: list.width - 12
                     padding: 10
-                    highlighted: page.openKey === row.modelData.key
-                    onClicked: page.open(row.modelData.key)
+                    highlighted: page.openKey === row.modelData.key || (page.selecting && page.selected[row.modelData.key] === true)
+                    onClicked: {
+                        if (page.selecting)
+                            page.select(row.modelData.key, page.selected[row.modelData.key] !== true)
+                        else
+                            page.open(row.modelData.key)
+                    }
                     Keys.onReturnPressed: page.open(row.modelData.key)
 
                     background: Rectangle {
@@ -519,6 +609,14 @@ Item {
                     contentItem: RowLayout {
                         spacing: 10
 
+                        // Selecting: its box.
+                        CheckBox {
+                            objectName: "contactRowBox"
+                            visible: page.selecting
+                            checked: page.selected[row.modelData.key] === true
+                            Accessible.name: page.theme.plain(row.modelData.name)
+                            onToggled: page.select(row.modelData.key, checked)
+                        }
                         Avatar {
                             theme: page.theme
                             source: row.modelData.photo
@@ -529,12 +627,25 @@ Item {
                             Layout.fillWidth: true
                             spacing: 2
 
-                            Label {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: row.modelData.name
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: page.theme.text
+                                spacing: 5
+
+                                // Its title, greyed, before the name (its field, `N`'s prefix).
+                                Label {
+                                    objectName: "contactRowTitle"
+                                    visible: (row.modelData.title || "") !== ""
+                                    text: row.modelData.title || ""
+                                    textFormat: Text.PlainText
+                                    color: page.theme.muted
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: row.modelData.name
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: page.theme.text
+                                }
                             }
                             Label {
                                 visible: row.modelData.detail !== ""
@@ -912,9 +1023,19 @@ Item {
                                         Layout.fillWidth: true
                                         enabled: page.person !== null && !page.person.read_only
                                         model: bookChoice.books.map(b => page.theme.plain(b.name))
-                                        currentIndex: page.person ? Math.max(0, bookChoice.books.findIndex(b => b.name === page.person.book)) : 0
+                                        // The card's own book, by its place ("account/id"), never by a name two books may share.
+                                        currentIndex: page.person ? Math.max(0, bookChoice.books.findIndex(b => b.id === page.person.place)) : 0
                                         Component.onCompleted: bookChoice.books = JSON.parse(page.sioul.addressBooks() || "[]")
                                         onActivated: index => page.moveTo(bookChoice.books[index], false)
+
+                                        // Read again for each card opened: a book made or removed since shows.
+                                        Connections {
+                                            target: page
+
+                                            function onPersonChanged() {
+                                                bookChoice.books = JSON.parse(page.sioul.addressBooks() || "[]")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1154,7 +1275,17 @@ Item {
                 property var target: null
                 readonly property var source: rowMenuForm.target ? { uri: rowMenuForm.target.uri, kind: "contact", key: rowMenuForm.target.key, title: rowMenuForm.target.name, name: rowMenuForm.target.name, address: rowMenuForm.target.email } : null
 
+                // A card of a book you only read: said, and neither Edit nor Delete offered.
                 MenuItem {
+                    objectName: "contactRowReadOnly"
+                    visible: rowMenuForm.target !== null && rowMenuForm.target.read_only === true
+                    height: visible ? implicitHeight : 0
+                    enabled: false
+                    text: page.sioul.text("contact-read-only")
+                }
+                MenuItem {
+                    objectName: "contactRowEdit"
+                    enabled: rowMenuForm.target !== null && rowMenuForm.target.read_only !== true
                     text: page.sioul.text("ui-edit")
                     onTriggered: {
                         page.open(rowMenuForm.target.key)
@@ -1163,6 +1294,8 @@ Item {
                     }
                 }
                 MenuItem {
+                    objectName: "contactRowDelete"
+                    enabled: rowMenuForm.target !== null && rowMenuForm.target.read_only !== true
                     text: page.sioul.text("ui-delete")
                     onTriggered: {
                         if (page.openKey === rowMenuForm.target.key)
@@ -1386,6 +1519,16 @@ Item {
             text: page.sioul.text("person-card-new")
             onTriggered: page.personFormNow().begin(cardLink.target.name, cardLink.target.uid, "")
         }
+    }
+
+    // "Import…": a vCard or a CSV file, read on this device (contactimport.rs).
+    FileDialog {
+        id: importFile
+
+        nameFilters: [page.sioul.text("import-file-kinds") + " (*.vcf *.vcard *.csv)"]
+        // Its address as chosen: Rust reads a file's (file:///C:/… on Windows too), and says
+        // how a phone hands one over when the picker gives a content: address.
+        onAccepted: page.sioul.importContacts(importFile.selectedFile.toString())
     }
 
     ConfirmDialog {

@@ -123,6 +123,7 @@
 
 // What Android withholds from Sioul on a phone, said in the join's result and on the Porch (docs/android.md).
 mod access;
+mod addressbooks;
 mod agenda;
 mod agents;
 mod alarms;
@@ -146,6 +147,8 @@ mod children;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
 mod colour;
+mod contactbatch;
+mod contactimport;
 mod contracts;
 mod crypto;
 mod dated;

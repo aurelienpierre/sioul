@@ -37,6 +37,10 @@ sioul-app/src/backend.rs	checked_attachment	4	sioul_core::filelock::remove_wipin
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::copy(&file, &target)
 sioul-app/src/backend.rs	set_weather_place	1	std::fs::remove_file(weather_cache())
 
+# sioul-app/src/contactimport.rs: a file of contacts handed, kept for the window until it reads it (handed/contacts/), then taken out: no item (what it holds is written through vdir::write_item, by contactbatch::run).
+sioul-app/src/contactimport.rs	keep_all	1	sioul_core::filelock::replace(&dir.join(format!("{}.{extension}", sioul_core::vdir::new_name())), &bytes)
+sioul-app/src/contactimport.rs	read	1	std::fs::remove_file(&path)
+
 # sioul-app/src/calendarfile.rs: a calendar file handed, kept for the window until it shows it (handed/calendar/), then taken out: no item (what it holds is written through vdir::write_item).
 sioul-app/src/calendarfile.rs	keep	1	sioul_core::filelock::replace(&dir.join(format!("{}.ics", vdir::new_name())), bytes)
 sioul-app/src/calendarfile.rs	take	1	std::fs::remove_file(&next)

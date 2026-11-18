@@ -349,6 +349,20 @@ ColumnLayout {
             }
         }
     }
+    // The address books (AddressBooksSetup.qml), Contacts ⚙'s own block (wave D): its sentence said first there, once.
+    Loader {
+        active: field.setting.kind === "addressbooks"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            AddressBooksSetup {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
     // Your availability (AvailabilitySetup.qml), below your agendas: its sentence said first there, once.
     Loader {
         active: field.setting.kind === "availability"
@@ -1296,7 +1310,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

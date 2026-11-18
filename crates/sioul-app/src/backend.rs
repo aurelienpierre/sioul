@@ -61,6 +61,11 @@ pub mod qobject {
         // The Budgets page's From mail tab: the page last asked (`ledger::ask_mail`).
         #[qproperty(QString, money_mail)]
         #[qproperty(QString, contacts)]
+        // The batch running on contacts, or the last one's end (`contactbatch::start`):
+        // JSON {running, done, total, line, failed: [{name, why}]}.
+        #[qproperty(QString, contacts_batch)]
+        // The contacts' import, its step (`contactimport`): JSON {step, line, …}.
+        #[qproperty(QString, contacts_import)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
@@ -567,6 +572,69 @@ pub mod qobject {
         /// Shows the contacts of one category only; empty: all of them.
         #[qinvokable]
         fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
+
+        /// The Contacts page's filters (JSON, `contactfilter::Filter`): kept on this device, the list shown again.
+        #[qinvokable]
+        fn set_contacts_filter(self: Pin<&mut Sioul>, filter: &QString);
+
+        /// What a batch on the cards selected would do, said first (JSON {keys,
+        /// action, book, group}): JSON {count, sentence, note, losses, cannot_line, cannot, previews}.
+        #[qinvokable]
+        fn contacts_batch_plan(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// Runs that batch off the window's thread, its progress in `contactsBatch`; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_batch(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// The batch running stopped before its next card.
+        #[qinvokable]
+        fn stop_contacts_batch(self: Pin<&mut Sioul>);
+
+        /// Contacts ⚙ ▸ Address books, as JSON {books, homes} (`addressbooks::lines`).
+        #[qinvokable]
+        fn address_books_setup(self: &Sioul) -> QString;
+
+        /// A new address book (JSON {account, name}); "" done, else why not.
+        #[qinvokable]
+        fn make_address_book(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// An address book renamed ("account/id"), with Undo; "" done, else why not.
+        #[qinvokable]
+        fn rename_address_book(self: Pin<&mut Sioul>, place: &QString, name: &QString) -> QString;
+
+        /// What removing an address book would do, asked first: JSON {act, sentence, count, into, note}.
+        #[qinvokable]
+        fn address_book_removal(self: &Sioul, place: &QString) -> QString;
+
+        /// An address book removed as `how` says ("empty", "delete", "leave", "move:<place>"); "" done or started, else why not.
+        #[qinvokable]
+        fn remove_address_book(self: Pin<&mut Sioul>, place: &QString, how: &QString) -> QString;
+
+        /// An address book's sharing read, or changed, the answer `bookShared`.
+        #[qinvokable]
+        fn read_book_sharing(self: Pin<&mut Sioul>, place: &QString);
+
+        #[qinvokable]
+        fn share_book(self: Pin<&mut Sioul>, place: &QString, who: &QString, write: bool);
+
+        #[qinvokable]
+        fn unshare_book(self: Pin<&mut Sioul>, place: &QString, sharee: &QString);
+
+        /// A file of contacts (a path) read off the window's thread, its first step in `contactsImport`.
+        #[qinvokable]
+        fn import_contacts(self: Pin<&mut Sioul>, path: &QString);
+
+        /// The import planned (JSON {fields, book, new_account, new_name, groups, titles, keep_as}), its count in `contactsImport`.
+        #[qinvokable]
+        fn plan_contacts_import(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// The import planned, run as one batch; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_import(self: Pin<&mut Sioul>) -> QString;
+
+        /// The import shown set aside, nothing written.
+        #[qinvokable]
+        fn close_contacts_import(self: Pin<&mut Sioul>);
 
         /// Looks for duplicates in the contacts, off the window's thread: they come in `duplicates`.
         #[qinvokable]
@@ -2930,6 +2998,11 @@ pub mod qobject {
         #[qsignal]
         fn agenda_shared(self: Pin<&mut Sioul>, id: QString, answer: QString);
 
+        /// An address book's sharing as its server answered (`addressbooks::sharing`): its
+        /// place, JSON {line, sharer, people, problem}.
+        #[qsignal]
+        fn book_shared(self: Pin<&mut Sioul>, place: QString, answer: QString);
+
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
         fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
@@ -3120,6 +3193,8 @@ pub struct SioulRust {
     undo_line: QString,
     money_mail: QString,
     contacts: QString,
+    contacts_batch: QString,
+    contacts_import: QString,
     duplicates: QString,
     agenda: QString,
     overlaps: QString,
@@ -5603,7 +5678,8 @@ impl qobject::Sioul {
     fn search_contacts(self: Pin<&mut Self>, query: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.query = query.to_string();
+            state.filter.name = query.to_string();
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
     }
@@ -5631,9 +5707,82 @@ impl qobject::Sioul {
     fn show_contacts_category(self: Pin<&mut Self>, category: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.category = category.to_string();
+            state.filter.group = category.to_string();
+            state.filter.ungrouped = false;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn set_contacts_filter(self: Pin<&mut Self>, filter: &QString) {
+        let shared = self.shared();
+        if let Ok(asked) = serde_json::from_str::<sioul_core::contactfilter::Filter>(&filter.to_string())
+            && let Ok(mut state) = shared.pim.lock()
+        {
+            state.filter = asked;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
+        }
+        pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn contacts_batch_plan(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::plan(&self.shared(), &asked.to_string()))
+    }
+
+    fn run_contacts_batch(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::run(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn stop_contacts_batch(self: Pin<&mut Self>) {
+        crate::contactbatch::stop();
+    }
+
+    fn address_books_setup(&self) -> QString {
+        QString::from(&crate::addressbooks::setup())
+    }
+
+    fn make_address_book(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::addressbooks::make(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn rename_address_book(self: Pin<&mut Self>, place: &QString, name: &QString) -> QString {
+        QString::from(&crate::addressbooks::rename(&self.qt_thread(), &self.shared(), &place.to_string(), &name.to_string()))
+    }
+
+    fn address_book_removal(&self, place: &QString) -> QString {
+        QString::from(&crate::addressbooks::removal(&place.to_string()))
+    }
+
+    fn remove_address_book(self: Pin<&mut Self>, place: &QString, how: &QString) -> QString {
+        QString::from(&crate::addressbooks::remove(&self.qt_thread(), &self.shared(), &place.to_string(), &how.to_string()))
+    }
+
+    fn read_book_sharing(self: Pin<&mut Self>, place: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Read);
+    }
+
+    fn share_book(self: Pin<&mut Self>, place: &QString, who: &QString, write: bool) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Share { who: who.to_string(), write });
+    }
+
+    fn unshare_book(self: Pin<&mut Self>, place: &QString, sharee: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Unshare(sharee.to_string()));
+    }
+
+    fn import_contacts(self: Pin<&mut Self>, path: &QString) {
+        crate::contactimport::read(&self.qt_thread(), &self.shared(), &path.to_string(), false);
+    }
+
+    fn plan_contacts_import(self: Pin<&mut Self>, asked: &QString) {
+        crate::contactimport::plan(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn run_contacts_import(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::contactimport::run(&self.qt_thread(), &self.shared()))
+    }
+
+    fn close_contacts_import(self: Pin<&mut Self>) {
+        crate::contactimport::close(&self.qt_thread());
     }
 
     fn find_duplicates(self: Pin<&mut Self>) {
