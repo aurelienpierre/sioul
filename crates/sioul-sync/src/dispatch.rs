@@ -93,6 +93,8 @@ pub enum Sure {
     /// What arrived since then (Unix seconds), when the keeper took the
     /// notices: a keeper on an older Sioul tells everything the hours bring
     /// while it keeps them, and claimed everything before, without a word.
+    /// The arrival is the server's clock, the time the keeper's: what
+    /// arrived within the margin of two clocks after it (`CLOCKS`) is kept.
     Since(i64),
     /// Nothing known: the keeper's entry does not read here, or its hours
     /// may not be this device's (one of the two does not share the part
@@ -101,13 +103,19 @@ pub enum Sure {
     Keep,
 }
 
+/// The margin within which two clocks are not told apart, as the sharing
+/// sets aside a device whose clock runs more than ten minutes ahead.
+pub const CLOCKS: i64 = 10 * 60;
+
 impl Sure {
     /// Whether a thing that arrived at `arrived` (Unix seconds; 0 when not
-    /// known) may be claimed when the reading tells it.
+    /// known) may be claimed when the reading tells it. After an older
+    /// keeper took the notices, only by more than `CLOCKS`: a server's clock
+    /// ahead of the keeper's never turns a thing kept into one claimed.
     pub fn holds(self, arrived: i64) -> bool {
         match self {
             Sure::Mine | Sure::Told => true,
-            Sure::Since(since) => arrived > 0 && arrived >= since,
+            Sure::Since(since) => arrived > 0 && arrived >= since.saturating_add(CLOCKS),
             Sure::Keep => false,
         }
     }
@@ -194,11 +202,16 @@ impl Known {
 
     /// How this device judges a thing while `keeper` keeps the notices
     /// (its id; this device's, or "" with sharing off: this device tells):
-    /// `since`, when that keeper took them (its claim); `entry`, its entry
-    /// as the folder holds it now (`devices::one`), none when it does not
-    /// read; `settings`, whether this device shares the part "settings"
-    /// (its hours are then the others'). Never lost comes before never
-    /// doubled: what it cannot be sure the keeper tells, it keeps.
+    /// `since`, when that keeper took them (the later of its claim's and
+    /// this process's word); `entry`, its entry as the folder holds it now
+    /// (`devices::one`), none when it does not read; `settings`, whether
+    /// this device shares the part "settings" (its hours are then the
+    /// others'). Never lost comes before never doubled: what it cannot be
+    /// sure the keeper tells, it keeps. Sure only by the very copy this
+    /// device acts on (`acts_on`, kept from `peers.json`): a copy put back
+    /// older in the folder, or a newer one not yet read here, is no
+    /// knowledge, since the keeper waits for this device by the copy this
+    /// device says it acts on (review of phase 2, N7).
     pub fn judge(&self, keeper: &str, since: i64, entry: Option<&Entry>, settings: bool) -> Judged {
         let marks = self.some_said() || !self.older.is_empty();
         if keeper.is_empty() || keeper == self.me {
@@ -206,15 +219,19 @@ impl Known {
         }
         let Some(entry) = entry else { return Judged { lines: Lines::default(), sure: Sure::Keep, marks: true } };
         if entry.areas < crate::devices::AREAS {
-            return Judged { lines: Lines::default(), sure: Sure::Since(since), marks: true };
+            // An older Sioul, as this device knows it too; else no knowledge.
+            let sure = if self.older.iter().any(|id| id == keeper) { Sure::Since(since) } else { Sure::Keep };
+            return Judged { lines: Lines::default(), sure, marks: true };
         }
+        // The copy read is the one this device acts on, or nothing is sure.
+        let acknowledged = self.others.get(keeper).is_some_and(|seen| Cells::key(&seen.cells) == Cells::key(&entry.cells));
         if entry.cells.is_empty() {
             // It narrows nothing: it tells what the hours bring, in its own hours, and never waits for another device.
-            return Judged { lines: Lines::default(), sure: Sure::Told, marks };
+            return Judged { lines: Lines::default(), sure: if acknowledged { Sure::Told } else { Sure::Keep }, marks };
         }
         // Its own cells, nothing widened by what no device holds: an area it brings now, it tells.
         let lines = Lines { mine: Cells::read(&entry.cells), key: Some(Cells::key(&entry.cells)), others: vec![Other { cells: Cells::default(), acts_on: None }] };
-        let sure = if settings && shares_settings(entry) { Sure::Told } else { Sure::Keep };
+        let sure = if acknowledged && settings && shares_settings(entry) { Sure::Told } else { Sure::Keep };
         Judged { lines, sure, marks: true }
     }
 
@@ -306,9 +323,10 @@ mod tests {
 
     /// How a device that does not keep the notices judges the keeper, from
     /// the keeper's entry as the folder holds it: its own cells, nothing
-    /// widened, sure only in the same hours (both share the settings); one
-    /// that narrows nothing tells what the hours bring; an older Sioul,
-    /// only what arrived while it kept the notices; an entry that does not
+    /// widened, sure only in the same hours (both share the settings) and
+    /// only by the very copy this device acts on (review of phase 2, N7); one
+    /// that narrows nothing tells what the hours bring; an older Sioul, only
+    /// what arrived well after it took the notices; an entry that does not
     /// read, nothing known: keep. Nothing said and every device on this
     /// build: the keeper is no part of the moment, as before devices.
     #[test]
@@ -316,8 +334,16 @@ mod tests {
         let now = 1_800_000_000;
         let week = hours();
         let said: BTreeMap<String, Said> = [("phone".to_string(), Said { area: Some("admin+leisure".into()), ..Said::default() })].into();
-        let known = Known::of("phone", &said, None, now);
-        let desk = Entry { id: "desk".into(), areas: AREAS, cells: Cells::Line(Line::for_area(Area::WORK)).words(week), parts: Some(vec!["settings".into()]), ..Entry::default() };
+        let desk = Entry { id: "desk".into(), working: true, areas: AREAS, cells: Cells::Line(Line::for_area(Area::WORK)).words(week), parts: Some(vec!["settings".into()]), ..Entry::default() };
+        // What the phone kept of the desk (`peers.json`): the copy it acts on.
+        let knowing = |entry: &Entry| {
+            let mut kept = Peers::default();
+            let mut peer = seen("desk", now - 60, entry.areas);
+            peer.entry = Some(entry.clone());
+            kept.peers.insert("desk".into(), peer);
+            Known::of("phone", &said, Some(&kept), now)
+        };
+        let known = knowing(&desk);
         let judged = known.judge("desk", 100, Some(&desk), true);
         assert_eq!(judged.sure, Sure::Told);
         let here = judged.lines.here(week);
@@ -326,22 +352,29 @@ mod tests {
         // Hours that may differ: keep.
         assert_eq!(known.judge("desk", 100, Some(&desk), false).sure, Sure::Keep);
         assert_eq!(known.judge("desk", 100, Some(&Entry { parts: Some(Vec::new()), ..desk.clone() }), true).sure, Sure::Keep);
-        // Nothing said of the keeper: what the hours bring.
-        let plain = known.judge("desk", 100, Some(&Entry { cells: BTreeMap::new(), ..desk.clone() }), false);
+        // A copy other than the one acted on (an older one put back, a newer one not read here yet): keep.
+        let wider = Entry { cells: Cells::Line(Line::for_area(Area::WORK.with(Area::LEISURE))).words(week), ..desk.clone() };
+        let bare = Entry { cells: BTreeMap::new(), ..desk.clone() };
+        assert_eq!((known.judge("desk", 100, Some(&wider), true).sure, known.judge("desk", 100, Some(&bare), true).sure), (Sure::Keep, Sure::Keep));
+        assert_eq!(Known::of("phone", &said, None, now).judge("desk", 100, Some(&desk), true).sure, Sure::Keep, "a keeper not known here");
+        // Nothing said of the keeper, as this device knows it too: what the hours bring.
+        let plain = knowing(&bare).judge("desk", 100, Some(&bare), false);
         assert_eq!((plain.sure, plain.lines.say_nothing()), (Sure::Told, true));
-        // An older Sioul: what arrived since it took the notices.
-        assert_eq!(known.judge("desk", 100, Some(&Entry { areas: 0, ..desk.clone() }), true).sure, Sure::Since(100));
+        // An older Sioul, as this device knows it too: what arrived well after it took the notices.
+        let older = Entry { areas: 0, cells: BTreeMap::new(), ..desk.clone() };
+        assert_eq!(knowing(&older).judge("desk", 100, Some(&older), true).sure, Sure::Since(100));
+        assert_eq!(known.judge("desk", 100, Some(&older), true).sure, Sure::Keep, "an older copy put back: no knowledge");
         // Its entry does not read: keep.
         assert_eq!(known.judge("desk", 100, None, true).sure, Sure::Keep);
         // This device keeps them.
         assert_eq!(known.judge("phone", 100, None, true), Judged { lines: known.lines(), sure: Sure::Mine, marks: true });
         assert_eq!(known.judge("", 100, None, true).sure, Sure::Mine);
-        // What may be claimed.
-        assert!(Sure::Told.holds(0) && Sure::Mine.holds(0) && Sure::Since(100).holds(150) && !Sure::Since(100).holds(50) && !Sure::Since(100).holds(0) && !Sure::Keep.holds(150));
+        // What may be claimed: after an older keeper took the notices, only by more than the two clocks' margin.
+        assert!(Sure::Told.holds(0) && Sure::Mine.holds(0) && Sure::Since(100).holds(100 + CLOCKS) && !Sure::Since(100).holds(100 + CLOCKS - 1) && !Sure::Since(100).holds(50) && !Sure::Since(100).holds(0) && !Sure::Keep.holds(150));
         // Nothing said of any device, every device on this build: no part of the moment.
         let nothing = Known::of("phone", &BTreeMap::new(), None, now);
-        assert!(!nothing.judge("desk", 100, Some(&Entry { cells: BTreeMap::new(), ..desk.clone() }), true).marks && !nothing.judge("phone", 100, None, true).marks);
-        assert!(nothing.judge("desk", 100, Some(&Entry { areas: 0, ..desk }), true).marks, "an older keeper is");
+        assert!(!nothing.judge("desk", 100, Some(&bare), true).marks && !nothing.judge("phone", 100, None, true).marks);
+        assert!(nothing.judge("desk", 100, Some(&older), true).marks, "an older keeper is");
     }
 
     /// A line said for a device that is off (review of phase 2, N3): the
@@ -400,6 +433,8 @@ mod tests {
         /// What the address each message came to is for.
         areas: BTreeMap<&'static str, Area>,
         told_log: BTreeMap<&'static str, &'static str>,
+        /// A copy of an entry the folder holds in place of the one its device writes (a sync app put an older one back).
+        folder: BTreeMap<&'static str, Entry>,
     }
 
     const NOW: i64 = 1_800_000_000;
@@ -413,7 +448,7 @@ mod tests {
         /// The devices, the first keeping the notices, every entry read by every device.
         fn new(lines: &[(&'static str, Line, &'static str)]) -> Model {
             let devices = lines.iter().map(|(id, line, form)| Device { id, line: *line, form, older: false, settings: true, read: BTreeMap::new(), waiting: Default::default(), told: Vec::new() }).collect();
-            let mut model = Model { devices, week: hours(), keeper: lines[0].0, since: 1, clock: 10, arrived: BTreeMap::new(), areas: BTreeMap::new(), told_log: BTreeMap::new() };
+            let mut model = Model { devices, week: hours(), keeper: lines[0].0, since: 1, clock: 10, arrived: BTreeMap::new(), areas: BTreeMap::new(), told_log: BTreeMap::new(), folder: BTreeMap::new() };
             model.exchange_all();
             model.exchange_all();
             model
@@ -487,6 +522,22 @@ mod tests {
             self.clock += 1;
         }
 
+        /// `message` reaches its server now, its time set by a server clock `ahead` of the devices'.
+        fn arrive_ahead(&mut self, message: &'static str, ahead: i64) {
+            self.arrived.insert(message, self.clock + ahead);
+            self.clock += 1;
+        }
+
+        /// Time passes.
+        fn later(&mut self, seconds: i64) {
+            self.clock += seconds;
+        }
+
+        /// The keeper's entry as the folder holds it: the one it writes, or a copy put back.
+        fn in_folder(&self, id: &'static str) -> Entry {
+            self.folder.get(id).cloned().unwrap_or_else(|| self.entry(id))
+        }
+
         /// Whether `id` finds a safe sender's mail to an address for `area`
         /// told now (in `time`, its own hours), and whether it may claim it:
         /// judged as the keeper does, from the keeper's entry as the folder
@@ -497,7 +548,7 @@ mod tests {
             let (lines, sure) = if me.older {
                 (Lines::default(), if self.keeper == id { Sure::Mine } else { Sure::Told })
             } else {
-                let judged = self.known(id).judge(self.keeper, self.since, Some(&self.entry(self.keeper)), me.settings);
+                let judged = self.known(id).judge(self.keeper, self.since, Some(&self.in_folder(self.keeper)), me.settings);
                 (judged.lines, judged.sure)
             };
             let reason = match time {
@@ -706,7 +757,8 @@ mod tests {
             m.tick(id, Time::Leisure);
         }
         assert!(m.tells("friend") == 0 && m.device("phone").waiting.contains("friend"), "kept, never claimed on the older keeper's word");
-        // What arrives while it keeps the notices: it tells, the others claim.
+        // What arrives while it keeps the notices, well past the clocks' margin: it tells, the others claim.
+        m.later(CLOCKS + 60);
         m.arrive("while-old");
         for id in ["old", "desk", "phone"] {
             m.fetch(id, "while-old", Area::PERSONAL, Time::Leisure);
@@ -789,5 +841,54 @@ mod tests {
         m.take("phone");
         m.tick("phone", Time::Leisure);
         assert_eq!(m.tells("friend"), 1, "never lost");
+    }
+
+    /// An older copy of the keeper's entry put back in the folder by a sync
+    /// app (review of phase 2, N7): the phone acts on the desk's current
+    /// cells, so the desk leaves a friend's mail for it; judged by the copy
+    /// put back (no cells, or work and leisure), the phone would be sure the
+    /// desk tells it. That copy is not the one the phone acts on: it keeps
+    /// the mail, and tells it once it keeps the notices. Once.
+    #[test]
+    fn an_older_keeper_entry_put_back_is_never_taken_as_sure() {
+        let week = hours();
+        let olders = [BTreeMap::new(), Cells::Line(Line::for_area(Area::WORK.with(Area::LEISURE))).words(week)];
+        for cells in olders {
+            let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone")]);
+            let put_back = Entry { cells: cells.clone(), ..m.entry("desk") };
+            m.folder.insert("desk", put_back);
+            m.arrive("friend");
+            m.fetch("desk", "friend", Area::PERSONAL, Time::Leisure);
+            m.fetch("phone", "friend", Area::PERSONAL, Time::Leisure);
+            assert!(m.tells("friend") == 0 && m.device("phone").waiting.contains("friend"), "{cells:?}: kept on the phone");
+            m.take("phone");
+            m.tick("phone", Time::Leisure);
+            m.tick("desk", Time::Leisure);
+            assert_eq!((m.tells("friend"), m.waits("friend")), (1, false), "{cells:?}");
+        }
+    }
+
+    /// A server's clock ahead of the devices' (the low note on `Since`): a
+    /// friend's mail reaches its server just before an older laptop takes
+    /// the notices, stamped five minutes later than it was. The older laptop
+    /// claimed it at its fetch; the phone and the desk, within the clocks'
+    /// margin of its taking the notices, keep it, and the phone tells it once
+    /// used. Once.
+    #[test]
+    fn a_server_clock_ahead_never_turns_a_kept_thing_into_a_claimed_one() {
+        let mut m = Model::new(&[("desk", Line::for_area(Area::WORK), "computer"), ("phone", Line::for_area(Area::PERSONAL), "phone"), ("old", Line::default(), "computer")]).with("old", |d| d.older = true);
+        m.arrive_ahead("friend", 5 * 60);
+        for id in ["desk", "phone", "old"] {
+            m.fetch(id, "friend", Area::PERSONAL, Time::Leisure);
+        }
+        m.take("old");
+        for id in ["phone", "desk"] {
+            m.tick(id, Time::Leisure);
+        }
+        assert!(m.tells("friend") == 0 && m.device("phone").waiting.contains("friend"), "kept, its time within the margin");
+        m.take("phone");
+        m.tick("phone", Time::Leisure);
+        m.tick("desk", Time::Leisure);
+        assert_eq!((m.tells("friend"), m.waits("friend")), (1, false));
     }
 }

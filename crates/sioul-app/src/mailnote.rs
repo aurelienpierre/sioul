@@ -172,7 +172,8 @@ impl Seen {
     /// them, else as `dispatch::judge` reads the keeper, with what may be
     /// claimed without a word (`sure`).
     fn now(config: Config, now: &Zoned, (keeper, entry): &(Keeper, Option<sioul_sync::devices::Entry>)) -> Seen {
-        let judged = crate::dispatch::judge(if keeper.mine { "" } else { &keeper.computer }, keeper.since, entry.as_ref());
+        // Since when it keeps them: the later of this process's word and the keeper's own claim, never earlier than a spell this process missed.
+        let judged = crate::dispatch::judge(if keeper.mine { "" } else { &keeper.computer }, keeper.since.max(keeper.claimed), entry.as_ref());
         let mode = crate::hours::hours_mode_at(now).on(&judged.lines);
         let moment = crate::hours::attention_at(&mode, now);
         // Reachable lifts the Porch's rest after a pause: new mail told (part 3).
