@@ -1,0 +1,268 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+//! The calendars subscribed by their web address, on this device (sioul-core's
+//! `subscribed`, sioul-sync's `feeds`; docs/client.md, "Calendars by their
+//! address"): each device reads them by itself, never on the window's thread,
+//! one round at a time:
+//!
+//! - **when Sioul opens** (the window's first minute), each calendar not read
+//!   in the last ten minutes;
+//! - **every minute after, on a computer**, those whose time has come
+//!   (`subscribed::due`: three hours, a day for holidays, the calendar's own
+//!   wish between an hour and a day);
+//! - **from a phone's background step** (`background_step`), at most every
+//!   six hours while you are awake, beside the mail, so that the radio wakes
+//!   once (`steps`);
+//! - **Refresh now**, on its line (`refresh_now`).
+//!
+//! Before each round the folders follow the settings (`subscribed::settle`):
+//! a subscription made on another device gets its folder here, one stopped
+//! there loses it. A calendar of holidays changed, the series that pause for
+//! it are kept up to date (`series`), and the plan made again.
+
+use crate::backend::{QtThread, Shared, json, load_config, tell, tr};
+use sioul_core::subscribed::{self, Taken};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// A round running: one at a time, whoever asks.
+static RUNNING: AtomicBool = AtomicBool::new(false);
+/// The window's first minute passed: Sioul opened.
+static OPENED: AtomicBool = AtomicBool::new(false);
+
+/// What a round read: each calendar asked, and what became of it.
+type Round = Vec<(String, Taken)>;
+
+/// One round: the folders made to follow the settings, then each calendar
+/// due (or `only` that one, whatever its time) asked and taken in.
+fn round(opening: bool, only: Option<&str>) -> Round {
+    let config = load_config();
+    subscribed::settle(&config);
+    let mut out = Vec::new();
+    for (id, subscription) in &config.agenda.subscriptions {
+        let now = jiff::Timestamp::now().as_second();
+        if only.is_some_and(|o| o != id) || (only.is_none() && !subscribed::due(id, subscription, now, opening)) {
+            continue;
+        }
+        let answer = sioul_sync::feeds::fetch(&subscription.url, subscribed::validators(id, subscription));
+        // Said by its id alone: its address never goes to a log.
+        match subscribed::take(id, subscription, answer, now) {
+            Ok(taken) => out.push((id.clone(), taken)),
+            Err(e) => eprintln!("subscribed calendar {id}: {e}"),
+        }
+    }
+    if !out.is_empty() {
+        // Each line says when it was read, or why not: the agendas' block reads again.
+        sioul_core::changes::said(sioul_core::changes::Kind::Agendas);
+    }
+    out
+}
+
+/// After a round: a calendar of holidays changed, the series that pause for
+/// it kept up to date, and the plan, the hours and the agenda made again
+/// (their days off may have moved).
+fn after(qt: &QtThread, shared: &Arc<Shared>, round: &Round) {
+    let config = load_config();
+    let holidays_changed = round.iter().any(|(id, taken)| *taken == Taken::Changed && config.agenda.subscriptions.get(id).is_some_and(|s| s.holidays().is_some()));
+    if holidays_changed {
+        crate::series::keep_paused(qt, shared, "holidays");
+        crate::work::show_work(qt, shared);
+        crate::homecard::now();
+    }
+}
+
+/// The window's minute: the first one reads what Sioul opening asks; each
+/// one after, what is due; on a thread of its own, never while another
+/// round runs.
+pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
+    let opening = !OPENED.swap(true, Ordering::Relaxed);
+    // Nothing subscribed, nothing left here to take out: no round.
+    let left = std::fs::read_dir(sioul_core::vdir::Kind::Calendars.root().join(subscribed::ACCOUNT)).is_ok_and(|mut d| d.next().is_some());
+    if load_config().agenda.subscriptions.is_empty() && !left {
+        return;
+    }
+    if RUNNING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let done = round(opening, None);
+        RUNNING.store(false, Ordering::Relaxed);
+        after(&qt, &shared, &done);
+    });
+}
+
+/// "Refresh now" on a calendar's line: read at once, whatever its time,
+/// and said in the status line. Returns "" (the round runs apart).
+pub(crate) fn refresh_now(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
+    if RUNNING.swap(true, Ordering::Relaxed) {
+        return tr().text("subscribe-reading", None);
+    }
+    let (qt, shared, id) = (qt.clone(), Arc::clone(shared), id.to_string());
+    std::thread::spawn(move || {
+        let done = round(false, Some(&id));
+        RUNNING.store(false, Ordering::Relaxed);
+        let said = match done.first().map(|(_, taken)| taken) {
+            Some(Taken::Changed) => tr().text("subscribe-refreshed", None),
+            Some(Taken::Unchanged) => tr().text("subscribe-unchanged", None),
+            Some(Taken::Kept(problem)) => problem.said(tr()),
+            None => String::new(),
+        };
+        if !said.is_empty() {
+            tell(&qt, &shared, said);
+        }
+        after(&qt, &shared, &done);
+    });
+    String::new()
+}
+
+/// A phone's background step (`steps`): the calendars due read, those of
+/// holidays changed then kept as on a computer (the series that pause for
+/// them); no window to tell.
+pub(crate) fn background_step() {
+    if RUNNING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let done = round(false, None);
+    RUNNING.store(false, Ordering::Relaxed);
+    let config = load_config();
+    if done.iter().any(|(id, taken)| *taken == Taken::Changed && config.agenda.subscriptions.get(id).is_some_and(|s| s.holidays().is_some())) {
+        crate::series::keep_paused_here("holidays");
+    }
+}
+
+/// What a subscribed agenda's row adds in Agenda ⚙ ▸ Your agendas: its
+/// address (yours to see and change, here alone), what it holds, and its
+/// line on this device; none for another agenda.
+pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_json::Value {
+    let Some(id) = subscribed::id_of(place) else { return serde_json::Value::Null };
+    let Some(subscription) = config.agenda.subscriptions.get(id) else { return serde_json::Value::Null };
+    serde_json::json!({
+        "id": id,
+        "url": subscription.url,
+        "name": subscription.name,
+        "holidays": subscription.holidays().map_or("", |h| h.id()),
+        "days_off": subscription.days_off(),
+        "after_class": subscription.after_class(),
+        "line": subscribed::line(id, &sioul_core::zone::now(), tr()),
+    })
+}
+
+/// The official French calendars offered, with their words (Agenda ⚙ ▸
+/// Subscribe to a calendar…): public holidays by territory, school holidays by zone.
+pub(crate) fn officials() -> String {
+    let config = load_config();
+    let list: Vec<serde_json::Value> = subscribed::officials()
+        .into_iter()
+        .map(|o| {
+            let kind = o.holidays.id();
+            let mut args = sioul_core::i18n::args();
+            args.set("name", o.name);
+            serde_json::json!({
+                "id": o.id,
+                "holidays": kind,
+                "name": tr().text(&format!("subscribe-official-{kind}"), Some(&args)),
+                "hint": o.hint,
+                "url": o.url,
+                // Subscribed already: offered, said so.
+                "taken": config.agenda.subscriptions.values().any(|s| s.url == o.url),
+            })
+        })
+        .collect();
+    json(&serde_json::json!({ "officials": list }))
+}
+
+/// A new subscription from the window ({url, name, holidays, days_off,
+/// after_class, id, whose, person, area}): written into the settings, its
+/// agenda's role with it, then read at once. Its id and what went wrong, as JSON.
+pub(crate) fn subscribe(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> String {
+    #[derive(serde::Deserialize)]
+    struct Asked {
+        #[serde(flatten)]
+        new: subscribed::New,
+        #[serde(default)]
+        whose: String,
+        #[serde(default)]
+        person: String,
+        #[serde(default)]
+        area: String,
+    }
+    let answer = |id: &str, problem: &str| json(&serde_json::json!({ "id": id, "problem": problem }));
+    let Ok(asked) = serde_json::from_str::<Asked>(text) else { return answer("", &tr().text("subscribe-not-address", None)) };
+    let config = load_config();
+    let path = crate::backend::config_path();
+    let id = match subscribed::subscribe(&path, &config, &asked.new, tr()) {
+        Ok(id) => id,
+        Err(problem) => return answer("", &problem),
+    };
+    let place = subscribed::place(&id);
+    for (field, value) in [("whose", asked.whose.as_str()), ("name", asked.person.as_str()), ("area", asked.area.as_str())] {
+        if !value.trim().is_empty() && !(field == "whose" && value == "yours") {
+            let _ = sioul_core::agendas::set_field(&path, &place, field, value);
+        }
+    }
+    // A child's timetable goes to that child: their person found, or made (docs/persons.md).
+    let problem = crate::persons::tie_role(&place);
+    subscribed::settle(&load_config());
+    let busy = refresh_now(qt, shared, &id);
+    answer(&id, if problem.is_empty() { &busy } else { &problem })
+}
+
+/// One field of a subscription written (`subscribed::set`); an address
+/// changed, read again at once. Returns what went wrong, else "".
+pub(crate) fn set_field(qt: &QtThread, shared: &Arc<Shared>, id: &str, field: &str, value: &str) -> String {
+    if let Err(problem) = subscribed::set(&crate::backend::config_path(), id, field, value, tr()) {
+        return problem;
+    }
+    subscribed::settle(&load_config());
+    match field {
+        "url" => refresh_now(qt, shared, id),
+        // What counts as your days off, or when holidays begin, changed: the series, the plan, the hours.
+        "days_off" | "after_class" | "holidays" => {
+            crate::work::show_work(qt, shared);
+            crate::homecard::now();
+            String::new()
+        }
+        _ => String::new(),
+    }
+}
+
+/// A subscription stopped (`subscribed::stop`), here and, at their next
+/// look, on your other devices. Returns what went wrong, else "".
+pub(crate) fn stop(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
+    match subscribed::stop(&crate::backend::config_path(), id) {
+        Ok(()) => {
+            crate::work::show_work(qt, shared);
+            String::new()
+        }
+        Err(e) => e,
+    }
+}
+
+/// Settings ▸ Hours ▸ Vacations and holidays: each calendar of holidays,
+/// whether it counts as your days off, and whether this device knows its
+/// days yet, as JSON.
+pub(crate) fn holidays() -> String {
+    let config = load_config();
+    let now = sioul_core::zone::now();
+    let list: Vec<serde_json::Value> = config
+        .agenda
+        .subscriptions
+        .iter()
+        .filter_map(|(id, s)| s.holidays().map(|kind| (id, s, kind)))
+        .map(|(id, s, kind)| {
+            let known = subscribed::Fetched::load(id).as_of().is_some();
+            serde_json::json!({
+                "id": id,
+                "name": subscribed::display_name(s, &subscribed::Fetched::load(id).name),
+                "holidays": kind.id(),
+                "days_off": s.days_off(),
+                "after_class": s.after_class(),
+                "known": known,
+                "line": if known { subscribed::line(id, &now, tr()) } else { tr().text("vacations-not-read-here", None) },
+            })
+        })
+        .collect();
+    json(&serde_json::json!({ "calendars": list }))
+}

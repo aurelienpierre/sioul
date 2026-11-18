@@ -850,6 +850,39 @@ pub mod qobject {
         #[qinvokable]
         fn agendas_setup(self: &Sioul) -> QString;
 
+        /// The official French calendars offered (Agenda ⚙ ▸ Subscribe to a
+        /// calendar…), as JSON (`subscriptions::officials`).
+        #[qinvokable]
+        fn subscribe_officials(self: &Sioul) -> QString;
+
+        /// A calendar subscribed by its web address ({url, name, holidays,
+        /// days_off, after_class, id, whose, person, area}), then read at
+        /// once: {id, problem} as JSON (`subscriptions::subscribe`).
+        #[qinvokable]
+        fn subscribe_calendar(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// One field of a subscribed calendar ("url", "name", "holidays",
+        /// "days_off", "after_class", "colour"); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_subscription_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// "Refresh now" on a subscribed calendar's line: read apart, said in the status line.
+        #[qinvokable]
+        fn refresh_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A subscribed calendar stopped, on every device; returns what went wrong, else "".
+        #[qinvokable]
+        fn stop_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Settings ▸ Hours ▸ Vacations and holidays: the calendars of holidays, as JSON.
+        #[qinvokable]
+        fn holidays_calendars(self: &Sioul) -> QString;
+
+        /// What a series may pause during, for the event form: my vacations,
+        /// public holidays, each school-holidays calendar, as JSON (`series::sources`).
+        #[qinvokable]
+        fn pause_sources(self: &Sioul) -> QString;
+
         /// One field of an agenda's settings ("whose", "name", "area",
         /// "reaches", "access"; "" back to the default); returns what went
         /// wrong, else "".
@@ -5840,6 +5873,34 @@ impl qobject::Sioul {
         QString::from(&crate::agenda::setup())
     }
 
+    fn subscribe_officials(&self) -> QString {
+        QString::from(&crate::subscriptions::officials())
+    }
+
+    fn subscribe_calendar(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::subscriptions::subscribe(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn set_subscription_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        QString::from(&crate::subscriptions::set_field(&self.qt_thread(), &self.shared(), &id.to_string(), &field.to_string(), &value.to_string()))
+    }
+
+    fn refresh_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::refresh_now(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn stop_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::stop(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn holidays_calendars(&self) -> QString {
+        QString::from(&crate::subscriptions::holidays())
+    }
+
+    fn pause_sources(&self) -> QString {
+        QString::from(&crate::series::sources())
+    }
+
     fn take_child(self: Pin<&mut Self>, key: &QString, start: f64, who: &QString) -> QString {
         // A time of Unix seconds, as the card holds it (a whole number in a double).
         #[allow(clippy::cast_possible_truncation)]
@@ -7666,6 +7727,10 @@ impl qobject::Sioul {
         crate::sites::gather_tick(&self.qt_thread(), &self.shared());
         // Your sites' own icons, when missing or a week old.
         crate::sites::favicon_tick(&self.qt_thread());
+        // The calendars subscribed by their address: when Sioul opens, then each at its time.
+        crate::subscriptions::tick(&self.qt_thread(), &self.shared());
+        // The series that pause: kept up to date when your vacations or holidays change, and each day.
+        crate::series::tick(&self.qt_thread(), &self.shared());
         // Dates coming: told once each.
         crate::remind::tick();
         // What waited (nobody at the computer, a pause, do-not-disturb), told now if it may come.

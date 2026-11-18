@@ -797,7 +797,10 @@ pub(crate) fn setup() -> String {
                 // For availability: what its events say shown (part 4).
                 "titles": a.titles,
                 // Its server, and whether it is yours to rename and remove (part 5).
-                "server": collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default(),
+                // None for a calendar subscribed by its address: no server to rename it on, nothing shared from here.
+                "server": if a.account == sioul_core::vdir::SUBSCRIBED { serde_json::Value::Null } else { collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default() },
+                // A calendar subscribed by its address: its address, what it holds, its line on this device; null for another.
+                "subscription": crate::subscriptions::row(&config, &a.id),
                 // A calendar of busy blocks Sioul keeps for your availability (Agenda ⚙ ▸ Your availability), and for which.
                 "mirror": a.mirror,
                 "kept_for": if a.mirror { config.agenda.availabilities.iter().find(|x| x.mirrors.iter().any(|m| format!("{}/{}", m.account, m.calendar) == a.id)).map(|x| x.name.clone()).unwrap_or_default() } else { String::new() },
@@ -990,7 +993,11 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let read = started.elapsed();
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
-    let mut items = agenda::items(&occurrences, &zone, &errand);
+    // A calendar of holidays that counts as your days off: its whole days are
+    // drawn as days off (`timeline::days_off`), never twice.
+    let counted = sioul_core::subscribed::counted_folders(&load_config());
+    let shown: Vec<Occurrence> = occurrences.iter().filter(|o| !(o.all_day && counted.iter().any(|f| std::path::Path::new(&o.key).starts_with(f)))).cloned().collect();
+    let mut items = agenda::items(&shown, &zone, &errand);
     // Legs as events of their own when Show says so (D25); else quiet lines in their appointment's lead.
     if read_view().legs {
         for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Leg) {
