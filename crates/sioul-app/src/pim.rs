@@ -1742,10 +1742,7 @@ pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, bus
     let saved = || -> Result<(), String> {
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
         let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
-        if with_others(&text) {
-            return Err(tr().text("busy-with-others", None));
-        }
-        if let Some(changed) = agenda::set_busy_of_time(&text, rid, busy) {
+        if let Some(changed) = busy_of_time(&text, busy, rid)? {
             vdir::write_item(&path, &changed)?;
             if let Some(calendar) = collection_of(&path) {
                 nudge(shared, &calendar.account);
@@ -1761,6 +1758,16 @@ pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, bus
         save_event(qt, shared, key, &json, "")
     };
     saved().err().unwrap_or_default()
+}
+
+/// The text an event's file takes when its card marks one changed time busy
+/// or free (`rid`), that time alone; none for the event as a whole, which
+/// goes through the event's form; refused for a meeting with others.
+fn busy_of_time(text: &str, busy: bool, rid: &str) -> Result<Option<String>, String> {
+    if with_others(text) {
+        return Err(tr().text("busy-with-others", None));
+    }
+    Ok(agenda::set_busy_of_time(text, rid, busy))
 }
 
 /// The form's fields of an event, yours about a meeting with others read
@@ -2067,6 +2074,19 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card's Busy (review T2, B7): one changed time of a series takes the
+    /// mark alone; the event as a whole goes through its form; a meeting with
+    /// others is refused, its file never written.
+    #[test]
+    fn the_card_s_busy_writes_what_it_names() {
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly\r\nDTSTART:20991102T090000Z\r\nDTEND:20991102T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly\r\nRECURRENCE-ID:20991109T090000Z\r\nDTSTART:20991109T110000Z\r\nDTEND:20991109T120000Z\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let changed = busy_of_time(series, false, "20991109T090000Z").unwrap().unwrap();
+        assert_eq!(changed.matches("TRANSP:TRANSPARENT").count(), 1, "{changed}");
+        assert!(busy_of_time(series, false, "").unwrap().is_none(), "the series: through its form");
+        let meeting = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:board\r\nDTSTART:20991104T130000Z\r\nDTEND:20991104T140000Z\r\nSUMMARY:Board\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:someone@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(busy_of_time(meeting, true, "").is_err(), "a meeting with others: never written");
+    }
 
     /// An appointment and a bus 25 minutes before it, on 29 October 2099 (UTC).
     fn doctor_and_bus(name: &str) -> (Collection, PathBuf, PathBuf) {

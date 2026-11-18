@@ -491,6 +491,15 @@ mod tests {
         }
         never.set(Row::People(Channel::Messages, Person::Stranger), Column::Slot, Level::Now).unwrap();
         assert_eq!(reading(&never, Channel::Messages, Circle::Others), Some(Behaviour::Never));
+        // A mail row out of sight everywhere (○) or shown always, the address's hours not read
+        // (–): neither is Never told (◑ everywhere), each reads "Your own" (review T2).
+        for level in [Level::Later, Level::Never] {
+            let mut hidden = Attention::usual();
+            for column in Column::ALL {
+                let _ = hidden.set(Row::People(Channel::Mail, Person::Stranger), column, level);
+            }
+            assert_eq!(reading(&hidden, Channel::Mail, Circle::Others), None, "{level:?}");
+        }
         // Doses held in a pause: the group's choice reads the doses' sleep cell alone, still theirs.
         let mut doses = Attention::usual();
         doses.set(Row::Own(Kind::Doses), Column::Pause, Level::Later).unwrap();

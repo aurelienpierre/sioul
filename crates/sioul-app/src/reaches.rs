@@ -2,12 +2,15 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Settings ▸ What reaches you (« Ce qui vous joint », ReachesTab.qml), as
-//! the window reads it: the moment now in sentences, where you started from
-//! (the presets), a card per time and per layer saying in words what comes
-//! at once, what is shown without a notification, what waits and until
-//! when, the matrix's grid, the exceptions; and a person's sheet
-//! (PersonSheet.qml): their list and why, Always through, and what each
-//! channel does with them at each time. The matrix is
+//! the window reads it (`view`): the moment now in sentences, the three
+//! states, where you started from (the presets); Your rules, the matrix read
+//! as a few choices (`sioul_core::behaviours`): the people's table, Sioul's
+//! own notices in four groups, the moments and who holds what on a phone,
+//! what is set elsewhere, the calls' line; What comes when, the matrix's grid
+//! a word per cell. A choice is written as the cells it names (`choose`), a
+//! cell of the grid as its row (`set_row`), a preset whole (`preset`). And a
+//! person's sheet (PersonSheet.qml): their list and why, Always through, and
+//! what each channel does with them at each time. The matrix is
 //! `sioul_core::attention` (docs/attention.md); this file says it in words,
 //! and writes what is changed here.
 
