@@ -275,6 +275,8 @@ Item {
 
                             ColumnLayout {
                                 Layout.fillWidth: true
+                                // What the row leaves it, its words wrapping: it never widens the row.
+                                Layout.preferredWidth: 0
                                 spacing: 2
 
                                 Label {
