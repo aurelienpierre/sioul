@@ -96,8 +96,9 @@ sioul-app/src/mail.rs	mark_read_here	1	sioul_core::filelock::replace(&path, text
 
 # sioul-app/src/organized.rs: the mark of the once-only pass over meetings you organize (state): no item.
 sioul-app/src/organized.rs	tidy_once	1	std::fs::write(&mark, VERSION)
-# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities (state): no item.
+# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities, and of the plan's time for busy tasks (state): no item.
 sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
+sioul-app/src/mirrors.rs	keep_planned	1	toml::to_string(&file).is_ok_and(|text| sioul_sync::share::write_atomically(&planned_path(), text.as_bytes()).is_ok())
 
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
