@@ -8,10 +8,10 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 
 ## Setting it up {#setting-it-up}
 
-1. **Settings ▸ This phone** (on the phone) says what Sioul does with calls, what it never does, and what always rings.
-2. **Let Sioul screen calls**: Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, **Android's default apps** on the same page, then "None".
-3. **Allow reading contacts**, if Android has not been asked yet: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
-4. **Who may call you, and when**: Settings ▸ What reaches you ▸ By person ▸ **Calls** ([What reaches you, and when](notifications.md#by-person)). Each row of the people you know (your safe, neutral and restricted contacts) rings at the times its row says, across work, admin, leisure, meals, sleep, the pause, Free time, and the two layers, time for you and do-not-disturb; while you are [Reachable](hours.md#work-now), every one of these rows rings. The others go to voicemail. Numbers not in your contacts and hidden numbers have left that grid: they are the call screening's, apart ([The call screening](#the-call-screening)).
+1. **Settings ▸ Devices**, this phone's card (on the phone): its section **The call screening on this phone** says what Sioul does with calls, what it never does, and what always rings.
+2. **Let Sioul screen calls**: in **What Android must allow** on the same card, the line **Caller ID & spam app**; Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, **Android's default apps**, then "None".
+3. **Allow reading contacts**, the line **Contacts** there, if Android has not been asked yet: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
+4. **Who may call you, and when**: the card's section **Calls**, which you can set from any of your devices ([Each phone its own calls](#calls-per-phone)). Until you choose there, a phone keeps What reaches you's Calls rows and the call screening below.
 5. **The people who must always get through** (a carer, your doctor's office): put them on your Always through list, in What reaches you ▸ Exceptions, or from their card, **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). Their calls ring at any time, sleep and pauses included, unless you blocked them.
 6. **Where declined calls go**: **Check \*#67#** and **Check \*#61#** open the phone app with the code typed in; you press call. Most operators send declined calls to voicemail.
 
@@ -29,9 +29,21 @@ Android 9 lets no app screen calls, and Sioul cannot silence it either: that tak
 
 Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, its switch), the calls Sioul lets ring ring through it, your contacts' while this phone screens calls, and a second call within 15 minutes. Numbers nobody knows never ring through it, unless you expect a call. Your own do-not-disturb, set in Android, lets through whom you set there ([What each system does](notifications.md#what-each-system-does)).
 
+## Each phone its own calls {#calls-per-phone}
+
+A work phone and a phone of your own need not screen alike. In **Settings ▸ Devices**, each phone's card has a section **Calls**, which you can set from any of your devices:
+
+- **Start from**: **Professional** (numbers nobody knows ring in your work hours; commercial callers never; outside work hours, everything but Always through goes to voicemail, and a second call within 15 minutes does not ring there either), **Personal** (your contacts ring; numbers nobody knows go to voicemail unless they call twice), **Both** (work's rows in work hours, the personal ones outside), or **As Android does** (Sioul screens nothing on that phone; your blocked numbers still go to voicemail). A phone you said is for work alone is offered Professional; one for admin and leisure, Personal.
+- **One small table**: who rings in your work hours, the rest of the day, the night, and while you are busy (an event or a task marked busy). Each cell is **Rings** or **Voicemail**. **Give a group its row…** adds a group of your contacts (School, Clients…).
+- **Three switches**: commercial and automated callers never ring; a second call within 15 minutes rings; numbers you called in the last 14 days ring as your contacts do.
+
+Until you choose here, a phone screens as before, with the settings of What reaches you. In a pause and under do-not-disturb, only your Always through people ring; while you are Reachable, everyone you know rings. Whatever the table says, emergency numbers ring, and every call for a day after you call one.
+
+**Two SIMs**: Android does not tell a screening app which SIM a call comes on, so Sioul cannot screen by SIM. To keep one SIM quiet, turn it off in Android (the card opens that page).
+
 ## The call screening {#the-call-screening}
 
-Calls from numbers nobody knows (in none of your address books, Sioul's or the phone's) and from hidden numbers are the call screening's, apart from do-not-disturb: neither do-not-disturb nor any state of yours switches it off. On the phone, Settings ▸ This phone ▸ Calls ▸ **Call screening**:
+Calls from numbers nobody knows (in none of your address books, Sioul's or the phone's) and from hidden numbers are the call screening's, apart from do-not-disturb: neither do-not-disturb nor any state of yours switches it off. On the phone, Settings ▸ Devices ▸ this phone's card ▸ Calls ▸ **Call screening**:
 
 - **Screen calls from numbers nobody knows**: on, at all hours as usual. Off, such numbers ring when your contacts may: while you are [Reachable](hours.md#work-now), at every hour.
 - **When**: at all hours, or only outside your work and admin hours.
@@ -53,7 +65,7 @@ If your operator can mail you each message with its sound (Free can: your subscr
 
 ### Calls you missed, and yours that did not reach them {#calls-missed}
 
-Once you let Sioul read the phone's call history (Settings ▸ This phone ▸ Calls ▸ **Let Sioul read the call history**), the Porch also lists, on each of your devices, the calls you missed and those of yours that did not reach them: "Noa Linden · Missed call at 09:30, also at 09:41", "Your call at 14:10 was not answered", "Your call at 14:10 lasted 0:40: their voicemail, perhaps". Each waits while its caller may reach you, never counted, and goes by itself once you spoke with them, either way. **Text back** (or **Text them**) comes first, then **Call back** (or **Call again**) in its **⋮**, and **Dismiss**. Sioul reads the history from the day you allow it, never the months before.
+Once you let Sioul read the phone's call history (Settings ▸ Devices ▸ this phone's card ▸ What Android must allow ▸ **Call log**), the Porch also lists, on each of your devices, the calls you missed and those of yours that did not reach them: "Noa Linden · Missed call at 09:30, also at 09:41", "Your call at 14:10 was not answered", "Your call at 14:10 lasted 0:40: their voicemail, perhaps". Each waits while its caller may reach you, never counted, and goes by itself once you spoke with them, either way. **Text back** (or **Text them**) comes first, then **Call back** (or **Call again**) in its **⋮**, and **Dismiss**. Sioul reads the history from the day you allow it, never the months before.
 
 A missed call from someone in your address books also makes a task, "Call back Noa Linden", and a call of yours to them that did not reach them, "Call Noa Linden again": in your usual list, for that day, tied to their card, without a reminder. One task per person: another such call adds its time to it, "Missed call at 09:30, also at 09:41.". The task is done by itself once you spoke with them: a call of theirs you answered, or one of yours long enough; open it again and it stays yours to close. In the Porch's ⚙ ▸ Calls: **A task to call back**, **A task to call again** (both on unless you turn them off), and **A call that reached their voicemail**: a call of yours shorter than 90 seconds (or 60, or 120) likely reached their voicemail, not them; a call of yours that long or longer, or any call of theirs you answered, is one in which you spoke.
 
@@ -71,6 +83,7 @@ It never answers a call, never records one, never listens, and sends no number a
 
 - 78 % of autistic adults avoid the phone where they can, and 61 % avoid voicemail too (Doherty et al. 2022); people anxious about admin find it the hardest channel (Holkar, Evans & Langston 2018). So a call can wait for its time, and the Porch says afterwards who called, with **Text back**.
 - Not knowing what comes weighs: intolerance of uncertainty and anxiety go together in autism (Jenkinson, Milne & Thompson 2020). So the rules are yours, and each call that did not ring is said.
+- One phone is often both a work tool and a personal one: rules that differ by phone keep a work number from ringing at dinner without silencing your family. Each column is a moment you already set (your hours, the night, busy), so nothing new has to be kept in mind.
 - No study tests call screening itself: this rests on what people say they prefer, and on a plausible mechanism.
 
 More in [what the research says](../dev/research.md), finding 34, and in [Screening phone calls](../dev/research/call-screening.md).

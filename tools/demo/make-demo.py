@@ -39,6 +39,8 @@ notifications brought, as the sharing brings its log to a computer, with the
 part "Messages from your phone" on here: the Porch's "From your phone" says
 them, and the doctor's sheet her messages of the week (docs/porch.md, "From
 your phone").
+--stars (or SIOUL_DEMO_STARS=1) turns starred people both ways on, with three
+people on the Always through list saying where each is starred (`phones`).
 --texts (or SIOUL_DEMO_TEXTS=1) adds the texts a phone read and those written
 here for it to send, as the sharing's part "Texts" brings them, written plain
 and marked as the demo's stand-ins (crates/sioul-app/src/texts.rs, `Seal`):
@@ -1207,6 +1209,28 @@ def write_calls(p: Profile):
         logged(c.at(c.today, "11:05"), sophie, "outgoing", out=True, seconds=38),
     ]
     p.write(p.state / "calls" / "log" / "history" / "demo-phone.jsonl", "".join(history))
+
+
+def write_stars(p: Profile):
+    """Starred people both ways (crates/sioul-core/src/stars.rs), on: three
+    people on the Always through list, each saying where it is starred, as
+    the phone "Moss" (the stand-in id `phone-id`, the steps' own) left them at
+    its last look: the doctor starred, Maud not starred yet, Priya in none
+    of its contacts; the demo's address book looked at, no card marked
+    favourite there, so its favourites cannot be kept in step yet (the
+    list's block says it). Its pictures: SIOUL_GRAB_STEPS=phones."""
+    config = p.config / "config.toml"
+    p.write(config, config.read_text(encoding="utf-8") + '\n[dnd]\nstars = true\n\n[device."phone-id"]\nname = "Moss"\n')
+    people = [
+        ("demo-always-varga", "Dr Elena Varga", "+33 4 65 71 47 70", "", "starred"),
+        ("demo-always-maud", "Maud Ferrand", "+262 6 39 98 12 30", "maud.ferrand@example.org", "not-starred"),
+        ("demo-always-priya", "Priya Nair", "+262 6 39 98 90 46", "", "absent"),
+    ]
+    lines = []
+    for pid, name, phone, email, state in people:
+        lines.append(f'[[person]]\nid = "{pid}"\nname = {toml_string(name)}\nphones = ["{phone}"]\n' + (f'emails = ["{email}"]\n' if email else "") + f'\n[person.starred]\nphone-id = "{state}"\n')
+    p.write(p.config / "dnd-people.toml", "\n".join(lines))
+    p.write(p.state / "stars" / DAV / "contacts.json", json.dumps({"starred": [], "looked": unix(p.clock.now)}))
 
 
 def write_phone_messages(p: Profile):
@@ -3111,6 +3135,8 @@ def main():
                         help="the calls a phone of yours screened, as the sharing brings them: the Porch lists those it declined (SIOUL_DEMO_CALLS=1 too)")
     parser.add_argument("--phone-messages", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_PHONE_MESSAGES")),
                         help="the messages a phone's notifications brought, as the sharing brings them, and their part on here (SIOUL_DEMO_PHONE_MESSAGES=1 too)")
+    parser.add_argument("--stars", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_STARS")),
+                        help="starred people both ways on, three people on Always through saying where each is starred (SIOUL_DEMO_STARS=1 too)")
     parser.add_argument("--texts", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_TEXTS")),
                         help="texts: the texts a phone read and those written here for it, as the part Texts brings them (SIOUL_DEMO_TEXTS=1 too)")
     parser.add_argument("--leave-spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_LEAVE_SPAM")),
@@ -3164,6 +3190,8 @@ def main():
         write_phone_messages(profile)
     if args.texts:
         write_texts(profile)
+    if args.stars:
+        write_stars(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)
     if args.old_projects:
