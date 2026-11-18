@@ -105,7 +105,8 @@ pub(crate) fn view() -> String {
     }
 }
 
-/// A line's button: Android's question, or its page for that access. The card again.
+/// A line's button: Android's question, or its page for that access; "sims":
+/// Android's page of the SIMs. The card again.
 pub(crate) fn ask(what: &str) -> String {
     match what {
         "role" => {
@@ -128,6 +129,10 @@ pub(crate) fn ask(what: &str) -> String {
         }
         "stars" => {
             crate::steps::java("calls-ask-stars", "{}");
+        }
+        // Android's page of the SIMs, from the section Calls (Sioul cannot screen by SIM).
+        "sims" => {
+            crate::steps::java("calls-open-sims", "{}");
         }
         _ => {}
     }

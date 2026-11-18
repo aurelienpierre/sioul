@@ -1187,6 +1187,9 @@ final class Calls
         case "calls-ask-history":
             // Android's question for reading the call history, from a hidden activity.
             return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.HISTORY)) ? "true" : "false";
+        case "calls-open-sims":
+            // Android's page of the SIMs (calls per phone: Sioul cannot screen by SIM; a SIM is turned off there).
+            return openSims(context) ? "true" : "false";
         case "calls-ask-stars":
             // Android's questions for reading contacts and writing their stars (starred people both ways).
             return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.STARS)) ? "true" : "false";
@@ -1298,6 +1301,19 @@ final class Calls
         TelecomManager telecom = context.getSystemService(TelecomManager.class);
         Intent page = telecom == null ? null : telecom.createManageBlockedNumbersIntent();
         return page != null && start(context, page);
+    }
+
+    /**
+     * Android's page of the SIMs, where one is turned off: the page of every
+     * SIM (Android 12 and later), else the mobile network's, else the
+     * wireless settings. A screening service is never told which SIM a call
+     * comes on (docs/research/call-screening.md), so Sioul screens by phone.
+     */
+    private static boolean openSims(Context context)
+    {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && start(context, new Intent(Settings.ACTION_MANAGE_ALL_SIM_PROFILES_SETTINGS)))
+            return true;
+        return start(context, new Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS)) || start(context, new Intent(Settings.ACTION_WIRELESS_SETTINGS));
     }
 
     private static boolean start(Context context, Intent intent)
