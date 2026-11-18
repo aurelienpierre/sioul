@@ -77,7 +77,10 @@ fn list(s: &Session, json: bool) -> Result<(), String> {
     let at = sioul_core::zone::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let mode = sioul_core::quiet::mode(&s.config.week_hours(), &s.config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&at), &at).on(&known.lines());
-    let grid = device_grid::grid(&mut rows, &s.config.devices, &known, &mode, &at, &s.tr);
+    let mut grid = device_grid::grid(&mut rows, &s.config.devices, &known, &mode, &at, &s.tr);
+    // Settings that do not travel from here: what this device tells may come twice.
+    let here = sioul_sync::share::Here::load(&sioul_core::config::state_dir());
+    grid.twice = device_grid::settings_apart(here.folder_path().is_some(), here.shares("settings", &s.config), &s.tr);
     if json {
         println!("{}", serde_json::json!({ "sharing": read.sharing, "looked": read.looked, "devices": rows, "grid": grid }));
         return Ok(());
