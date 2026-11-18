@@ -6856,7 +6856,12 @@ reach-elsewhere-persons = { $n ->
     [one] one person's own times
    *[other] { $n } people's own times
 }
+reach-elsewhere-sources = { $n ->
+    [one] one app's or conversation's own times
+   *[other] { $n } apps' and conversations' own times
+}
 reach-elsewhere-open-sites = Sites
+reach-elsewhere-open-devices = Devices
 reach-elsewhere-open-agenda = Agenda
 reach-elsewhere-open-health = Health
 reach-elsewhere-open-contacts = Contacts

@@ -6917,7 +6917,12 @@ reach-elsewhere-persons = { $n ->
     [one] les moments propres d’une personne
    *[other] les moments propres de { $n } personnes
 }
+reach-elsewhere-sources = { $n ->
+    [one] les moments propres d’une application ou d’une conversation
+   *[other] les moments propres de { $n } applications et conversations
+}
 reach-elsewhere-open-sites = Sites
+reach-elsewhere-open-devices = Appareils
 reach-elsewhere-open-agenda = Agenda
 reach-elsewhere-open-health = Santé
 reach-elsewhere-open-contacts = Contacts

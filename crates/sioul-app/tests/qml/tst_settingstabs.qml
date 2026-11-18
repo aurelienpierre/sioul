@@ -317,7 +317,7 @@ Item {
                 { tag: "the sharing, by its id", key: "files", section: "files" },
                 { tag: "a list of words", key: "words.voicemail.operators", section: "words" },
                 { tag: "an older key, calls (a phone: This phone)", key: "calls", section: "phone" },
-                { tag: "an older key, apps (Android: This phone)", key: "apps", section: "phone" },
+                { tag: "an older key, apps (its phone's card in Devices, review R4)", key: "apps", section: "devices" },
                 { tag: "an older key, dnd", key: "dnd", section: "attention" },
                 { tag: "What reaches you's view", key: "attention.dnd", section: "attention" }
             ]

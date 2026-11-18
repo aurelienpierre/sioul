@@ -205,9 +205,9 @@ Item {
     // One setting in view: where the Porch sends you for the hours. Once the
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
-        // Calls are set up where they are screened (telephony); other apps' notifications on Android.
-        const android = page.android
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
+        // Calls are set up where they are screened (telephony); an app's and a conversation's
+        // own times in its phone's card, in Devices, from every device (review R4).
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": "devices" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)

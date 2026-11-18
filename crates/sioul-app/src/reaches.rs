@@ -507,6 +507,8 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
     let events = sioul_core::agenda::occurrences(stamp, stamp + 60 * 86_400).iter().filter(|e| !e.remind.trim().is_empty()).map(|e| e.uid.clone()).collect::<std::collections::BTreeSet<_>>().len();
     let health = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path()).0.keys().filter(|d| **d >= now.date()).count();
     let persons = attention.sources().keys().filter(|id| attention::is_person(id)).count();
+    // An app's or a conversation's own times (a phone's): listed in that phone's card in Settings ▸ Devices (review R4).
+    let sources = attention.sources().keys().filter(|id| !attention::is_person(id)).count();
     let counted = |id: &str, n: usize| {
         let mut args = sioul_core::i18n::args();
         args.set("n", n);
@@ -514,15 +516,23 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
     };
     let mut parts: Vec<String> = Vec::new();
     let mut links: Vec<Value> = Vec::new();
-    let mut link = |id: &str| {
+    // Each place by the id the window opens (`reminderOpened`) and its button's word.
+    let mut link = |id: &str, word: &str| {
         if !links.iter().any(|l| l["id"] == id) {
-            links.push(json!({ "id": id, "label": text(&format!("reach-elsewhere-open-{id}")) }));
+            links.push(json!({ "id": id, "label": text(&format!("reach-elsewhere-open-{word}")) }));
         }
     };
-    for (n, id, place) in [(live, "reach-elsewhere-sites-live", "sites"), (muted, "reach-elsewhere-sites-muted", "sites"), (events, "reach-elsewhere-events", "agenda"), (health, "reach-elsewhere-health", "health"), (persons, "reach-elsewhere-persons", "contacts")] {
+    for (n, id, place, word) in [
+        (live, "reach-elsewhere-sites-live", "sites", "sites"),
+        (muted, "reach-elsewhere-sites-muted", "sites", "sites"),
+        (events, "reach-elsewhere-events", "agenda", "agenda"),
+        (health, "reach-elsewhere-health", "health", "health"),
+        (persons, "reach-elsewhere-persons", "contacts", "contacts"),
+        (sources, "reach-elsewhere-sources", "settings:devices", "devices"),
+    ] {
         if n > 0 {
             parts.push(counted(id, n));
-            link(place);
+            link(place, word);
         }
     }
     let line = if parts.is_empty() { text("reach-elsewhere-none") } else { say("reach-elsewhere", &[("what", listed(&parts, false))]) };

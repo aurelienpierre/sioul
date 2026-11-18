@@ -194,7 +194,7 @@ Ce qui vous joint ▸ Les avis de Sioul ▸ Sites et applications ▸ **Regroup�
 
 ## Ce qui est propre à chaque personne et à chaque source {#exceptions}
 
-Certaines personnes et certaines sources ont des choix à elles, à côté de vos cercles : les personnes qui passent toujours, les propres moments d’une personne (sur sa fiche), chaque autre application et conversation sur un téléphone, le temps réel d’un site, le rappel d’un événement, le jour d’un repas. Ce qui vous joint compte ceux réglés ailleurs en une ligne, « Réglé ailleurs : un site en temps réel, les rappels propres de 2 événements. », avec un bouton vers chaque endroit.
+Certaines personnes et certaines sources ont des choix à elles, à côté de vos cercles : les personnes qui passent toujours, les propres moments d’une personne (sur sa fiche), chaque autre application et conversation sur un téléphone, le temps réel d’un site, le rappel d’un événement, le jour d’un repas. Ce qui vous joint compte ceux réglés ailleurs en une ligne, « Réglé ailleurs : un site en temps réel, les rappels propres de 2 événements. », avec un bouton vers chaque endroit ; les moments propres d’une application ou d’une conversation ouvrent Paramètres ▸ Appareils, où la fiche de chaque téléphone les liste, sur un ordinateur aussi.
 
 ### Passent toujours {#always-through}
 
@@ -233,7 +233,7 @@ Dans Paramètres ▸ Ce téléphone, à mesure que chaque application, conversat
 
 #### Les autres applications, selon le moment {#other-apps-by-time}
 
-**Autres applications, selon le moment**, dans Paramètres ▸ Ce téléphone, est un tableau : en ligne, chaque application vue dans le dernier mois, puis les conversations pour lesquelles vous avez choisi et les dix vues en dernier ; en colonne, les sept moments et les deux couches, comme dans les grilles de [Par personne](#by-person). Chaque case dit **Comme d’habitude** (=), **Tout de suite** (●), **Aux heures de regroupement** (◎) ou **Retenues** (○) ; un appui ouvre ses choix en mots. Pour laisser passer Discord pendant le travail et le retenir sinon : **Tout de suite** sous Travail, **Retenues** sous tous les autres moments.
+**Autres applications, selon le moment**, dans Paramètres ▸ Ce téléphone (et dans la fiche de ce téléphone dans Paramètres ▸ Appareils, depuis chaque appareil), est un tableau : en ligne, chaque application vue dans le dernier mois, puis les conversations pour lesquelles vous avez choisi et les dix vues en dernier ; en colonne, les sept moments et les deux couches, comme dans les grilles de [Par personne](#by-person). Chaque case dit **Comme d’habitude** (=), **Tout de suite** (●), **Aux heures de regroupement** (◎) ou **Retenues** (○) ; un appui ouvre ses choix en mots. Pour laisser passer Discord pendant le travail et le retenir sinon : **Tout de suite** sous Travail, **Retenues** sous tous les autres moments.
 
 - **Comme d’habitude** suit ce qu’est la notification : un message selon qui l’écrit, un automate aux heures de regroupement, une application réglée sur **Tout de suite** tout de suite. Rien ne change pour une application tant que vous n’avez réglé aucune de ses cases.
 - **La case d’une conversation**, si elle est réglée, l’emporte sur celle de son application ; si elle dit **Comme d’habitude**, celle de l’application compte.

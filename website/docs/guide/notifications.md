@@ -194,7 +194,7 @@ What reaches you ▸ Sioul's own notices ▸ Sites and apps ▸ **Gathered at**:
 
 ## Each person's and each source's own {#exceptions}
 
-Some people and some sources have choices of their own, beside your circles: your Always through people, a person's own times (on their sheet), each other app and conversation on a phone, a site's Real time, an event's reminder, a meal's day. What reaches you counts those set elsewhere in one line, "Set elsewhere: one site in real time, 2 events' own reminders.", with a button to each place.
+Some people and some sources have choices of their own, beside your circles: your Always through people, a person's own times (on their sheet), each other app and conversation on a phone, a site's Real time, an event's reminder, a meal's day. What reaches you counts those set elsewhere in one line, "Set elsewhere: one site in real time, 2 events' own reminders.", with a button to each place; an app's or a conversation's own times open Settings ▸ Devices, where each phone's card lists them, on a computer too.
 
 ### Always through {#always-through}
 
@@ -233,7 +233,7 @@ In Settings ▸ This phone, as each app, conversation and site shows up:
 
 #### Other apps, by time {#other-apps-by-time}
 
-**Other apps, by time**, in Settings ▸ This phone, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in [What comes when](#by-time). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time.
+**Other apps, by time**, in Settings ▸ This phone (and in that phone's card in Settings ▸ Devices, from every device), is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in [What comes when](#by-time). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time.
 
 - **As usual** follows what the notification is: a message by who wrote it, an automaton at the gathered times, an app set to **At once** at once. Nothing changes for an app until you set one of its cells.
 - **A conversation's** cell, where set, wins over its app's; where it says **As usual**, the app's counts.
