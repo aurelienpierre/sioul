@@ -1808,6 +1808,8 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         {
             notes_fit(&task, &edit.notes)?;
         }
+        // The task's Busy as written (review B15): the file's, unless the form changed it since it read the task.
+        let mut written_busy = edit.busy;
         change(qt, shared, uid, |text| {
             let zone = sioul_core::zone::current();
             // Over the file as it is now: the fields the form changed since it read the task, the rest as the file has them (§5.2).
@@ -1816,6 +1818,7 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
                 (Some(read), Some(now)) => TaskEdit::of(now).changed_over(read, &edit),
                 _ => edit.clone(),
             };
+            written_busy = edit.busy;
             // Its dates changed, a date asked its start would make refused: said, nothing written.
             if was.as_ref().is_none_or(|w| w.start != edit.start || w.due != edit.due)
                 && let Some(word) = tasks::dates_refusal(&edit.start, &edit.due)
@@ -1827,23 +1830,50 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         write_gaps(qt, shared, uid, &edit);
         // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
         crate::blocks::follow(qt, shared, uid);
-        // Its timer running: its Busy noted with it, so that you are busy, or no longer, at once (`busy::timer`).
-        busy_follows(uid, &edit);
+        // Its timer running, or a step's of it: its Busy noted with it, so that you are busy, or no longer, at once (`busy::timer`).
+        busy_follows(shared, uid, written_busy);
         Ok(uid.to_string())
     });
     answer(result)
 }
 
-/// The running timer of `uid`, when one runs, takes its task's Busy as the
-/// form says it now (`Running::busy`), under the timer's lock.
-fn busy_follows(uid: &str, edit: &TaskEdit) {
-    if timelog::running().is_some_and(|r| r.task == uid && r.busy != edit.busy) {
+/// The running timer, when one runs on `uid` or a step of it, takes the Busy
+/// it now reads (`Running::busy`): its task's, or its nearest bigger task's,
+/// `uid`'s as written (`busy`, review B15), under the timer's lock.
+fn busy_follows(shared: &Shared, uid: &str, busy: bool) {
+    let Some(running) = timelog::running() else { return };
+    let loaded = loaded(shared);
+    if let Some(now) = timer_busy(&loaded.tasks, &running.task, uid, busy).filter(|now| *now != running.busy) {
+        let task = running.task.clone();
         let _ = timelog::change_running(|r| {
-            if r.task == uid {
-                r.busy = edit.busy;
+            if r.task == task {
+                r.busy = now;
             }
         });
     }
+}
+
+/// What a timer on `running` reads once `uid` is written with `busy`
+/// (`availability::busy_for_timer` over the tasks with that one changed);
+/// none when `uid` is neither it nor a bigger task of it.
+fn timer_busy(tasks: &[Task], running: &str, uid: &str, busy: bool) -> Option<bool> {
+    let mut changed: Vec<Task> = tasks.to_vec();
+    let Some(task) = changed.iter_mut().find(|t| t.uid == uid) else { return (running == uid).then_some(busy) };
+    task.busy = busy;
+    let concerned = running == uid || {
+        let mut at = changed.iter().find(|t| t.uid == running).and_then(|t| t.parent().map(str::to_string));
+        let mut seen = BTreeSet::new();
+        let mut found = false;
+        while let Some(up) = at.filter(|u| seen.insert(u.clone())) {
+            if up == uid {
+                found = true;
+                break;
+            }
+            at = changed.iter().find(|t| t.uid == up).and_then(|t| t.parent().map(str::to_string));
+        }
+        found
+    };
+    concerned.then(|| sioul_core::availability::busy_for_timer(&changed, running))
 }
 
 fn answer(result: Result<String, String>) -> String {
@@ -2140,8 +2170,9 @@ pub(crate) fn set_stopped(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> St
 pub(crate) fn focus_start(qt: &QtThread, shared: &Arc<Shared>, uid: &str, minutes: i32) {
     let now = Timestamp::now().as_second();
     let _ = timelog::finish(now, false);
-    // 0: open-ended, counting up. Its task's Busy noted with it: while it runs, you are busy (`busy::timer`).
-    let busy = find(shared, uid).is_ok_and(|t| t.busy);
+    // 0: open-ended, counting up. Its task's Busy noted with it, or its nearest bigger task's
+    // (review B10): while it runs, you are busy (`busy::timer`).
+    let busy = sioul_core::availability::busy_for_timer(&loaded(shared).tasks, uid);
     let running = Running { task: uid.to_string(), start: now, planned: u32::try_from(minutes.max(0)).unwrap_or(25), busy, ..Running::default() };
     if let Err(e) = timelog::keep_running(Some(&running)) {
         tell(qt, shared, e);
@@ -3073,6 +3104,27 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A running timer follows the Busy of its task as written, and of its
+    /// bigger tasks (reviews B10 and B15): marking the bigger task busy makes
+    /// its step's timer busy; a task that is neither changes nothing.
+    #[test]
+    fn a_timer_follows_the_busy_it_reads() {
+        let task = |uid: &str, parent: &str, busy: bool| Task {
+            uid: uid.into(),
+            busy,
+            relations: if parent.is_empty() { Vec::new() } else { vec![sioul_core::tasks::Relation { kind: "PARENT".into(), uid: parent.into(), gap: 0 }] },
+            ..Task::default()
+        };
+        let tasks = vec![task("audit", "", false), task("gather", "audit", false), task("other", "", true)];
+        assert_eq!(timer_busy(&tasks, "gather", "audit", true), Some(true), "its bigger task marked: busy");
+        assert_eq!(timer_busy(&tasks, "gather", "gather", true), Some(true));
+        assert_eq!(timer_busy(&tasks, "gather", "other", false), None, "another task: nothing to follow");
+        let marked = vec![task("audit", "", true), task("gather", "audit", false)];
+        assert_eq!(timer_busy(&marked, "gather", "gather", false), Some(true), "its bigger task still busy");
+        assert_eq!(timer_busy(&marked, "gather", "audit", false), Some(false));
+        assert_eq!(timer_busy(&[], "gone", "gone", true), Some(true), "a task not read yet: as written");
+    }
 
     /// The slots of time for you are written from the layout of the tasks
     /// kept, never from the one drawn (the review of the branch `views`, V2):
