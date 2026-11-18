@@ -408,7 +408,10 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str,
     }
     let _ = qt.queue(|mut sioul| sioul.as_mut().sites_changed());
     // A phone makes no notification of its own for a site yet (docs/android.md, "Notifications").
-    if !(site.realtime || everywhere || call) || !out.told || cfg!(target_os = "android") {
+    // A site's news comes at once in real time, for a call, or where its row says so (What reaches
+    // you ▸ Sites and apps ▸ At once: `behaviours::Group::Sites`); else it waits for the gathering.
+    let at_once = site.realtime || everywhere || call || out.level == Level::Now;
+    if !at_once || !out.told || cfg!(target_os = "android") {
         return false;
     }
     use sioul_core::notice::{Kind, Notice as Told, address};

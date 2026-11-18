@@ -2533,6 +2533,12 @@ pub mod qobject {
         #[qinvokable]
         fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// A choice of Settings ▸ What reaches you (`reaches::choose`; `what`:
+        /// "people.mail.safe", "group.reminders", "care.move"; `value`: a
+        /// behaviour's or a choice's id), its rows written whole: what went wrong, else "".
+        #[qinvokable]
+        fn reaches_choose(self: Pin<&mut Sioul>, what: &QString, value: &QString) -> QString;
+
         /// How someone reaches you, as JSON (`reaches::person`): a card's file or
         /// UID, or a sender's addresses (a JSON array, or one).
         #[qinvokable]
@@ -7920,6 +7926,14 @@ impl qobject::Sioul {
 
     fn reaches_preset(self: Pin<&mut Self>, id: &QString) -> QString {
         let problem = crate::reaches::preset(&id.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
+    fn reaches_choose(self: Pin<&mut Self>, what: &QString, value: &QString) -> QString {
+        let problem = crate::reaches::choose(&what.to_string(), &value.to_string());
         if problem.is_empty() {
             self.attention_changed();
         }

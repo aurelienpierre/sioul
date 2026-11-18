@@ -876,7 +876,10 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
-        // Your availabilities: their mirrors from the freshest view, what waits on their servers (design-availability-sharing §3).
+        // The plan's time for busy tasks with a date asked and no time of their own, kept when a
+        // block's times changed (`availability::plan_spans`); then your availabilities: their mirrors
+        // from the freshest view, what waits on their servers (design-availability-sharing §3).
+        crate::mirrors::keep_planned(&sioul_core::availability::plan_spans(&desk.plan, &desk.settings, &desk.loaded.tasks, &desk.read, &now));
         crate::servers::availability_upkeep(&qt, &shared);
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
@@ -1759,9 +1762,23 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         write_gaps(qt, shared, uid, &edit);
         // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
         crate::blocks::follow(qt, shared, uid);
+        // Its timer running: its Busy noted with it, so that you are busy, or no longer, at once (`busy::timer`).
+        busy_follows(uid, &edit);
         Ok(uid.to_string())
     });
     answer(result)
+}
+
+/// The running timer of `uid`, when one runs, takes its task's Busy as the
+/// form says it now (`Running::busy`), under the timer's lock.
+fn busy_follows(uid: &str, edit: &TaskEdit) {
+    if timelog::running().is_some_and(|r| r.task == uid && r.busy != edit.busy) {
+        let _ = timelog::change_running(|r| {
+            if r.task == uid {
+                r.busy = edit.busy;
+            }
+        });
+    }
 }
 
 fn answer(result: Result<String, String>) -> String {
@@ -2058,8 +2075,9 @@ pub(crate) fn set_stopped(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> St
 pub(crate) fn focus_start(qt: &QtThread, shared: &Arc<Shared>, uid: &str, minutes: i32) {
     let now = Timestamp::now().as_second();
     let _ = timelog::finish(now, false);
-    // 0: open-ended, counting up.
-    let running = Running { task: uid.to_string(), start: now, planned: u32::try_from(minutes.max(0)).unwrap_or(25), ..Running::default() };
+    // 0: open-ended, counting up. Its task's Busy noted with it: while it runs, you are busy (`busy::timer`).
+    let busy = find(shared, uid).is_ok_and(|t| t.busy);
+    let running = Running { task: uid.to_string(), start: now, planned: u32::try_from(minutes.max(0)).unwrap_or(25), busy, ..Running::default() };
     if let Err(e) = timelog::keep_running(Some(&running)) {
         tell(qt, shared, e);
     }

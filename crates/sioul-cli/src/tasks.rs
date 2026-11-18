@@ -1226,7 +1226,7 @@ pub(crate) fn focus(s: &Session, command: FocusCommand) -> Result<(), String> {
             if let Some(running) = timelog::running() {
                 return Err(s.say("focus-already", &[("title", desk.find(s, &running.task).map(|t| t.title.clone()).unwrap_or(running.task))]));
             }
-            timelog::keep_running(Some(&timelog::Running { task: task.uid.clone(), start: now, planned: minutes.max(1), ..timelog::Running::default() }))?;
+            timelog::keep_running(Some(&timelog::Running { task: task.uid.clone(), start: now, planned: minutes.max(1), busy: task.busy, ..timelog::Running::default() }))?;
             println!("{}", s.say("focus-started", &[("title", one_line(&task.title)), ("minutes", minutes.to_string())]));
             Ok(())
         }
