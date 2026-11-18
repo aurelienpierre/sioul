@@ -23,7 +23,11 @@
 //! event declined or cancelled, nor a task's time block, which is its
 //! task's time) and a busy task's timer: what turns do-not-disturb on "While
 //! busy" (`everywhere::Sources::busy`) and what each phone's calls table
-//! reads for its column "While busy".
+//! reads for its column "While busy". **An invitation counts there only once
+//! accepted, or accepted as tentative** (`Occurrence::needs_you`, review
+//! B2): nobody can hold the person's messages and calls by sending one. The
+//! availability shared with others keeps Google's reading, where an
+//! invitation not answered is busy (`availability::blocks`, `event_marked`).
 
 use crate::agenda::Occurrence;
 
@@ -50,6 +54,12 @@ pub fn own_event(event: &Occurrence) -> bool {
     !event.theirs && !event.busy && event.task.is_empty()
 }
 
+/// Whether an event holds the person busy for do-not-disturb: their own,
+/// marked busy, and, for an invitation, accepted or accepted as tentative.
+pub fn holds_you(event: &Occurrence) -> bool {
+    own_event(event) && event_marked(event) && event.needs_you()
+}
+
 /// A running timer as a busy stretch: from its start until it stops holding
 /// (`everywhere::focus`), when its task is marked busy; none otherwise, or paused.
 pub fn timer(running: &crate::timelog::Running, now: i64) -> Option<(i64, i64)> {
@@ -62,7 +72,7 @@ pub fn timer(running: &crate::timelog::Running, now: i64) -> Option<(i64, i64)> 
 /// task's timer, when one runs; each cut to the window, sorted, and those
 /// that touch or overlap made one.
 pub fn stretches_of(events: &[Occurrence], timer: Option<(i64, i64)>, from: i64, to: i64) -> Vec<(i64, i64)> {
-    let mut spans: Vec<(i64, i64)> = events.iter().filter(|e| own_event(e) && event_marked(e)).map(|e| (e.start, e.end)).collect();
+    let mut spans: Vec<(i64, i64)> = events.iter().filter(|e| holds_you(e)).map(|e| (e.start, e.end)).collect();
     spans.extend(timer);
     merged(spans, from, to)
 }
@@ -149,6 +159,20 @@ mod tests {
             Occurrence { task: "t1".into(), ..event("block", 14_000, 15_000) },
         ];
         assert_eq!(stretches_of(&events, None, 0, 400_000), vec![(1_000, 2_000), (200_000, 200_000 + DAY)]);
+    }
+
+    /// An invitation holds you only once accepted or accepted as tentative
+    /// (review B2); unanswered, it is still busy for the availability shared.
+    #[test]
+    fn an_invitation_holds_you_once_accepted() {
+        let invited = |uid: &str, answer: &str, accepted: bool| Occurrence { invited: true, accepted, answer: answer.into(), ..event(uid, 1_000, 2_000) };
+        let unanswered = invited("asked", "needs-action", false);
+        assert!(!holds_you(&unanswered) && event_marked(&unanswered), "busy for the availability, not for do-not-disturb");
+        assert!(stretches_of(std::slice::from_ref(&unanswered), None, 0, 10_000).is_empty());
+        assert!(holds_you(&invited("yes", "accepted", true)));
+        assert!(holds_you(&invited("maybe", "tentative", true)));
+        assert_eq!(holding_of(&[invited("yes", "accepted", true)], None, 1_500), Some((1_000, 2_000)));
+        assert_eq!(holding_of(&[unanswered], None, 1_500), None);
     }
 
     /// A busy task's timer counts from its start until it stops holding, as

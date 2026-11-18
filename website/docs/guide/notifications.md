@@ -336,7 +336,7 @@ Do not disturb is one of the button's three states ([above](#the-button-and-its-
 In What reaches you ▸ Your rules ▸ **Moments**:
 
 - **The switch in the status line** (on): kept from the switch before version 0.0.7; the button of what reaches you shows whatever it says.
-- **While busy** (off): during an event marked **Busy**, and while a task marked **Busy while I work on it** has its timer running ([below](#busy)). A timer left running lets go half an hour past the time you chose, three hours for a timer without one. A timer on a task not marked busy no longer turns it on, as **While I focus on a task** did before 18 November 2026: mark the tasks you want to be left alone for.
+- **While busy** (off): during an event marked **Busy**, and while a task marked **Busy while I work on it** has its timer running ([below](#busy)). A timer left running lets go half an hour past the time you chose, three hours for a timer without one. A timer on a task not marked busy no longer turns it on, as **While I focus on a task** did before 18 November 2026: mark the tasks you want to be left alone for. An invitation counts there only once you accepted it, or accepted it as tentative: nobody holds your messages and calls by sending you one. In the availability you share, an invitation you have not answered is busy, as Google reads it.
 - **During the pauses** (on): Free time and the pause silence your devices too ([Pauses](pauses.md)). Unticked, they hold Sioul's own notifications only.
 - **While I sleep** (off): from winding down to waking, and during naps ([Health](health.md#meals-rest-and-sleep)).
 
