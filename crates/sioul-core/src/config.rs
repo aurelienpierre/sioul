@@ -644,6 +644,14 @@ pub struct AgendaSettings {
     /// The hour the day planning opens on.
     #[serde(default)]
     pub day_start: Option<u32>,
+    /// The calendars subscribed by their web address (18 November 2026,
+    /// `subscribed`): `[agenda.subscriptions."<id>"]`, the address and what
+    /// the calendar is, typed once and carried with the settings, one entry
+    /// per field; each device fetches it by itself into
+    /// `calendars/subscribed/<id>/`, which the sharing never carries. An
+    /// entry that does not read is passed over (`subscribed::entries`).
+    #[serde(default, deserialize_with = "crate::subscribed::entries")]
+    pub subscriptions: std::collections::BTreeMap<String, crate::subscribed::Subscription>,
     /// Where a new event goes ("account/id"), Settings ▸ Agenda; unset: the
     /// first calendar that takes events, as before (`agenda::default_calendar`).
     #[serde(default)]

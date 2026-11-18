@@ -265,10 +265,14 @@ impl Agenda {
     /// everything else is yours, personal, all day, read and write. Read and
     /// write is never more than the server allows.
     pub fn of(collection: &Collection, said: &Said, config: &Config, server_read_only: bool, details: &dyn Fn() -> bool) -> Agenda {
-        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only { Whose::Shared } else { Whose::Yours });
+        // A calendar subscribed by its address (`subscribed`): yours unless said, read only, never written.
+        let subscribed = collection.account == vdir::SUBSCRIBED;
+        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
         let area = said.area.as_deref().and_then(Area::parse).unwrap_or_else(|| if work_account(config, &collection.account) { Area::WORK } else { Area::PERSONAL });
         let reaches = said.reaches.as_deref().and_then(Reaches::parse).unwrap_or_default();
         let access = match said.access.as_deref().and_then(Access::parse) {
+            Some(Access::Availability) if subscribed => Access::Availability,
+            _ if subscribed => Access::Read,
             Some(Access::Write) | None if server_read_only => {
                 if said.access.is_none() && !details() {
                     Access::Availability
@@ -1107,7 +1111,7 @@ pub fn set_warns(path: &Path, a: &str, b: &str, warns: Option<bool>) -> Result<(
 
 /// `[agenda.<name>]` changed by `change`, under the file's lock, which the
 /// sharing takes too; an empty table taken out.
-fn edit_agenda_table(path: &Path, name: &str, change: impl FnOnce(&mut toml_edit::Table) -> Result<(), String>) -> Result<(), String> {
+pub(crate) fn edit_agenda_table(path: &Path, name: &str, change: impl FnOnce(&mut toml_edit::Table) -> Result<(), String>) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let mut doc = crate::config::read_document(path)?;
         if !doc.contains_key("agenda") {

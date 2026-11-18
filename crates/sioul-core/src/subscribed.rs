@@ -1,0 +1,920 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+//! Calendars subscribed by their web address (docs/client.md, "Calendars by
+//! their address"; 18 November 2026): a school's timetable from Moodle or
+//! PRONOTE, public holidays, school holidays, any calendar published as an
+//! `.ics` file.
+//!
+//! - **The address is an ordinary shared setting**: `[agenda.subscriptions."<id>"]`
+//!   in the configuration, typed once and carried to every device with the
+//!   settings. It is never written in a log, a notice or what an agent is
+//!   given: Sioul says the address's domain alone (`vdir::Collection::place`).
+//! - **Each device fetches by itself** (sioul-sync's `feeds`) and keeps its own
+//!   copy, `calendars/subscribed/<id>/`, which the sharing never carries; what
+//!   this device last read of it is its own state, `state/subscribed/<id>.toml`.
+//! - **The whole copy is replaced at once**, never half
+//!   (`vdir::replace_subscribed`), and only by what reads as a calendar: a web
+//!   page, a line of text, an empty answer replace nothing (`read`).
+//! - **Unchanged means nothing is written**: the server's own word first
+//!   (304, by the ETag or the date it gave), else what the calendar says once
+//!   the stamps that change at each answer are left aside (`steady`: Moodle
+//!   and Google stamp every event at each answer, OpenHolidays its creation
+//!   and change too).
+//! - **How often** (`due`): when Sioul opens, every three hours on a computer,
+//!   a few times a day from a phone's background step; a calendar of holidays
+//!   once a day; the calendar's own wish (`REFRESH-INTERVAL`, `X-PUBLISHED-TTL`)
+//!   obeyed between one hour and one day.
+//!
+//! A calendar of holidays says which kind it is (`Holidays`): its whole days
+//! count as your days off when you say so, by default for public holidays and
+//! not for school holidays (`vacations`); school holidays begin after class
+//! when the calendar says so (`Subscription::after_class`), as the official
+//! French files do.
+
+use crate::config::Config;
+use crate::vdir::{self, Kind};
+use jiff::civil::Date;
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+/// The account of the subscribed calendars' folders.
+pub const ACCOUNT: &str = vdir::SUBSCRIBED;
+/// The most a calendar may weigh, once unpacked: ten megabytes.
+pub const MOST_BYTES: u64 = 10_000_000;
+/// The most events a calendar may hold (each series counted once; its
+/// times are capped as every agenda's are, `agenda::EXPANSION_LIMIT`).
+pub const MOST_EVENTS: usize = 20_000;
+/// The most redirects followed, each checked as the first address is.
+pub const MOST_REDIRECTS: usize = 3;
+/// How often a calendar is read on a computer, unless it says otherwise.
+pub const EVERY: i64 = 3 * 3600;
+/// How often a calendar of holidays is read.
+pub const HOLIDAYS_EVERY: i64 = 86_400;
+/// The bounds of a calendar's own wish: one hour, one day.
+pub const SOONEST: i64 = 3600;
+pub const LATEST: i64 = 86_400;
+/// Sioul opened again within this time of the last read: not read again.
+pub const OPENED_AGAIN: i64 = 10 * 60;
+
+// ---------------------------------------------------------------- the setting
+
+/// One calendar subscribed by its address, as the settings say it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Subscription {
+    /// "https://…": a `webcal://` address is kept as `https://` (`address`).
+    #[serde(default)]
+    pub url: String,
+    /// Its name as you gave it; "" the calendar's own, else its domain.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// "public" or "school": a calendar of holidays (`Holidays`); unsaid, none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holidays: Option<String>,
+    /// Its whole days count as your days off; unsaid, yes for public
+    /// holidays and no for school holidays (`days_off`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub days_off: Option<bool>,
+    /// School holidays that begin after class: the day an event starts is
+    /// still a class day, the day it ends is the morning classes resume
+    /// (the official French files). Unsaid, no.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_class: Option<bool>,
+    /// "#rrggbb", its colour in the agenda; unsaid, the agenda's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+}
+
+/// The kinds of calendars of holidays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Holidays {
+    Public,
+    School,
+}
+
+impl Holidays {
+    pub fn id(self) -> &'static str {
+        match self {
+            Holidays::Public => "public",
+            Holidays::School => "school",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Holidays> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "public" => Some(Holidays::Public),
+            "school" => Some(Holidays::School),
+            _ => None,
+        }
+    }
+}
+
+impl Subscription {
+    /// Which holidays it holds, when it holds holidays.
+    pub fn holidays(&self) -> Option<Holidays> {
+        self.holidays.as_deref().and_then(Holidays::parse)
+    }
+
+    /// Whether its whole days count as your days off: a calendar of
+    /// holidays alone, by your word, else public holidays do and school
+    /// holidays do not.
+    pub fn days_off(&self) -> bool {
+        match self.holidays() {
+            Some(kind) => self.days_off.unwrap_or(kind == Holidays::Public),
+            None => false,
+        }
+    }
+
+    /// Whether its holidays begin after class (school holidays alone).
+    pub fn after_class(&self) -> bool {
+        self.holidays() == Some(Holidays::School) && self.after_class.unwrap_or(false)
+    }
+}
+
+/// Whether an id names a subscribed calendar's folder: letters, digits, `-`, `_`.
+pub fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// The subscriptions that read: an entry with another shape, without an
+/// address or with an id that names no folder of its own is passed over,
+/// never the whole configuration.
+pub fn entries<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Subscription>, D::Error> {
+    let value = toml::Value::deserialize(d)?;
+    let toml::Value::Table(table) = value else { return Ok(BTreeMap::new()) };
+    Ok(table.into_iter().filter(|(id, _)| valid_id(id)).filter_map(|(id, value)| value.try_into::<Subscription>().ok().filter(|s| !s.url.trim().is_empty()).map(|s| (id, s))).collect())
+}
+
+/// A subscribed calendar's place among the agendas, `subscribed/<id>`.
+pub fn place(id: &str) -> String {
+    format!("{ACCOUNT}/{id}")
+}
+
+/// The id of a subscribed calendar from its place; none for another agenda.
+pub fn id_of(place: &str) -> Option<&str> {
+    place.strip_prefix(ACCOUNT).and_then(|rest| rest.strip_prefix('/')).filter(|id| valid_id(id))
+}
+
+// ---------------------------------------------------------------- the official French calendars
+
+/// One of the official French calendars offered ready-made (audit-calendars §10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Official {
+    /// Its id, the folder it is kept in: "fr-public-metropole".
+    pub id: String,
+    pub holidays: Holidays,
+    /// The territory's or the zone's name ("Métropole", "Zone A").
+    pub name: &'static str,
+    /// The académies of a zone, said under its name; "" elsewhere.
+    pub hint: &'static str,
+    pub url: String,
+}
+
+/// The public holidays' thirteen territories (Etalab's files, Licence Ouverte):
+/// the file's name, the territory's.
+pub const PUBLIC_TERRITORIES: [(&str, &str); 13] = [
+    ("metropole", "Métropole"),
+    ("alsace-moselle", "Alsace-Moselle"),
+    ("guadeloupe", "Guadeloupe"),
+    ("guyane", "Guyane"),
+    ("martinique", "Martinique"),
+    ("mayotte", "Mayotte"),
+    ("la-reunion", "La Réunion"),
+    ("nouvelle-caledonie", "Nouvelle-Calédonie"),
+    ("polynesie-francaise", "Polynésie française"),
+    ("saint-barthelemy", "Saint-Barthélemy"),
+    ("saint-martin", "Saint-Martin"),
+    ("saint-pierre-et-miquelon", "Saint-Pierre-et-Miquelon"),
+    ("wallis-et-futuna", "Wallis-et-Futuna"),
+];
+
+/// The school holidays' fourteen files (the Ministry of Education's, Licence
+/// Ouverte): the file's name, the zone's, its académies.
+pub const SCHOOL_ZONES: [(&str, &str, &str); 14] = [
+    ("Zone-A", "Zone A", "Besançon, Bordeaux, Clermont-Ferrand, Dijon, Grenoble, Limoges, Lyon, Poitiers"),
+    ("Zone-B", "Zone B", "Aix-Marseille, Amiens, Lille, Nancy-Metz, Nantes, Nice, Normandie, Orléans-Tours, Reims, Rennes, Strasbourg"),
+    ("Zone-C", "Zone C", "Créteil, Montpellier, Paris, Toulouse, Versailles"),
+    ("Corse", "Corse", ""),
+    ("Zone-A-B-C-Corse", "Zones A, B, C et Corse", ""),
+    ("Guadeloupe", "Guadeloupe", ""),
+    ("Guyane", "Guyane", ""),
+    ("Martinique", "Martinique", ""),
+    ("Mayotte", "Mayotte", ""),
+    ("Reunion", "La Réunion", ""),
+    ("Polynesie", "Polynésie française", ""),
+    ("NouvelleCaledonie", "Nouvelle-Calédonie", ""),
+    ("SaintPierreEtMiquelon", "Saint-Pierre-et-Miquelon", ""),
+    ("WallisEtFutuna", "Wallis-et-Futuna", ""),
+];
+
+/// Where the public holidays' files are (Etalab, stable addresses).
+const PUBLIC_BASE: &str = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_";
+/// Where the school holidays' files are (the Ministry's, at its portal's host).
+const SCHOOL_BASE: &str = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/";
+
+/// The official French calendars, public holidays by territory then school holidays by zone.
+pub fn officials() -> Vec<Official> {
+    let public = PUBLIC_TERRITORIES.iter().map(|(file, name)| Official { id: format!("fr-public-{file}"), holidays: Holidays::Public, name, hint: "", url: format!("{PUBLIC_BASE}{file}.ics") });
+    let school = SCHOOL_ZONES.iter().map(|(file, name, hint)| Official { id: format!("fr-school-{}", file.to_ascii_lowercase()), holidays: Holidays::School, name, hint, url: format!("{SCHOOL_BASE}{file}.ics") });
+    public.chain(school).collect()
+}
+
+/// Whether an address is one of the Ministry's school holidays' files,
+/// whose events begin after class and end the morning classes resume.
+pub fn official_school(url: &str) -> bool {
+    url.trim().starts_with(SCHOOL_BASE)
+}
+
+// ---------------------------------------------------------------- the address
+
+/// Why a calendar was not read, or not taken: each with its sentence (`said`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Problem {
+    /// Not `https://` nor `webcal://`.
+    NotHttps,
+    /// Not an address: no host, spaces, a name and password in it.
+    NotAddress,
+    /// On a private network, or a name pointing there.
+    NotPublic,
+    /// Sent elsewhere more than three times.
+    Redirects,
+    /// More than ten megabytes once unpacked.
+    TooLarge,
+    /// More than twenty thousand events.
+    TooMany,
+    /// A web page, not a calendar: a sign-in page, an error page.
+    Page,
+    /// A line of text, not a calendar: a refusal ("Invalid authentication").
+    Text(String),
+    /// Nothing at all.
+    Empty,
+    /// Something else that does not read as a calendar.
+    NotCalendar,
+    /// Not found, or gone (404, 410).
+    Gone,
+    /// The server refused or failed (another status).
+    Status(u16),
+    /// The server could not be reached, or too slowly.
+    Network,
+}
+
+impl Problem {
+    /// Its message's id, kept in this device's state.
+    pub fn id(&self) -> &'static str {
+        match self {
+            Problem::NotHttps => "subscribe-not-https",
+            Problem::NotAddress => "subscribe-not-address",
+            Problem::NotPublic => "subscribe-not-public",
+            Problem::Redirects => "subscribe-redirects",
+            Problem::TooLarge => "subscribe-too-large",
+            Problem::TooMany => "subscribe-too-many",
+            Problem::Page => "subscribe-page",
+            Problem::Text(_) => "subscribe-text",
+            Problem::Empty => "subscribe-empty",
+            Problem::NotCalendar => "subscribe-not-calendar",
+            Problem::Gone => "subscribe-gone",
+            Problem::Status(_) => "subscribe-status",
+            Problem::Network => "subscribe-network",
+        }
+    }
+
+    /// Whether the address no longer gives a calendar (rather than not
+    /// being reached): the agenda's line says so, with what to do.
+    pub fn no_calendar(&self) -> bool {
+        !matches!(self, Problem::Network | Problem::Status(500..=599))
+    }
+
+    /// Its sentence.
+    pub fn said(&self, tr: &crate::i18n::Translator) -> String {
+        let mut args = crate::i18n::args();
+        match self {
+            Problem::Text(said) => args.set("said", said.clone()),
+            Problem::Status(status) => args.set("status", *status),
+            _ => {}
+        }
+        tr.text(self.id(), Some(&args))
+    }
+}
+
+/// An address as Sioul reads it: `webcal://` and `webcals://` as `https://`
+/// (the scheme only says "subscribe", RFC 7986 has none), `https://` as it
+/// is; anything else refused, an address with a name and password in it too.
+pub fn address(text: &str) -> Result<String, Problem> {
+    let text = text.trim().trim_start_matches('<').trim_end_matches('>').trim();
+    let rest = ["webcals://", "webcal://", "https://"].iter().find_map(|scheme| text.get(..scheme.len()).filter(|head| head.eq_ignore_ascii_case(scheme)).map(|_| &text[scheme.len()..]));
+    let Some(rest) = rest else {
+        return Err(if text.contains("://") || text.contains('.') { Problem::NotHttps } else { Problem::NotAddress });
+    };
+    if rest.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(Problem::NotAddress);
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') || authority.starts_with(':') {
+        return Err(Problem::NotAddress);
+    }
+    Ok(format!("https://{rest}"))
+}
+
+// ---------------------------------------------------------------- what an answer holds
+
+/// A calendar read from an answer: its events as Sioul keeps them, a file
+/// each, and what it says of itself.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Feed {
+    /// Each event's file name and text (`calendar_objects`): the same name at
+    /// each fetch, made from its UID.
+    pub items: Vec<(String, String)>,
+    /// Its own name (RFC 7986 `NAME`, else `X-WR-CALNAME`); "" none.
+    pub name: String,
+    /// How often it asks to be read, seconds (RFC 7986 `REFRESH-INTERVAL`,
+    /// else Microsoft's `X-PUBLISHED-TTL`); none when it says nothing that reads.
+    pub refresh: Option<i64>,
+    /// What it says, its stamps aside (`steady`).
+    pub hash: String,
+}
+
+/// The lines of an event that change at each answer, whatever changed:
+/// Moodle and Google stamp each event with the time of the request
+/// (`DTSTAMP`), OpenHolidays its creation and change too.
+const STAMPS: [&str; 3] = ["DTSTAMP", "LAST-MODIFIED", "CREATED"];
+
+/// What an answer's bytes hold, read as a calendar: refused (`Problem`)
+/// when they are no calendar (a page, a line of text, nothing), too large,
+/// or hold too many events. A calendar without any event is a calendar: an
+/// address whose events all passed (Moodle's coming weeks) gives one.
+pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
+    if bytes.len() as u64 > MOST_BYTES {
+        return Err(Problem::TooLarge);
+    }
+    let text = String::from_utf8_lossy(bytes);
+    let text = text.trim_start_matches('\u{feff}');
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(Problem::Empty);
+    }
+    let head: String = trimmed.chars().take(2048).collect::<String>().to_ascii_lowercase();
+    if head.starts_with('<') || head.contains("<html") || head.contains("<!doctype") || head.contains("<body") {
+        return Err(Problem::Page);
+    }
+    let opens = text.lines().any(|l| l.trim().eq_ignore_ascii_case("BEGIN:VCALENDAR"));
+    if !opens {
+        // A short answer of words: what the server said (Moodle's "Invalid authentication").
+        if trimmed.len() <= 300 && !trimmed.contains(['<', '{']) {
+            let said: String = trimmed.lines().next().unwrap_or_default().trim().chars().filter(|c| !c.is_control()).take(120).collect();
+            return Err(Problem::Text(said));
+        }
+        return Err(Problem::NotCalendar);
+    }
+    if text.lines().filter(|l| l.trim().eq_ignore_ascii_case("BEGIN:VEVENT")).count() > MOST_EVENTS {
+        return Err(Problem::TooMany);
+    }
+    let objects = match crate::agenda::calendar_objects(text, &|lines: &[String]| stable_uid(lines)) {
+        Ok(objects) => objects,
+        Err(crate::agenda::FileProblem::NoEvent) => Vec::new(),
+        Err(_) => return Err(Problem::NotCalendar),
+    };
+    // The calendar's own lines, outside its components.
+    let (mut name, mut refresh) = (String::new(), None);
+    let (mut depth, mut alt_name, mut ttl) = (0usize, String::new(), None);
+    for line in crate::lines::unfold(text) {
+        let field = crate::lines::name(&line);
+        let value = crate::lines::value(&line).trim();
+        match field.as_str() {
+            "BEGIN" if !value.eq_ignore_ascii_case("VCALENDAR") => depth += 1,
+            "END" if !value.eq_ignore_ascii_case("VCALENDAR") => depth = depth.saturating_sub(1),
+            "BEGIN" | "END" => {}
+            // The first VCALENDAR's own, as a stream of several is read as one.
+            "NAME" if depth == 0 && name.is_empty() => name = crate::lines::unescape(value),
+            "X-WR-CALNAME" if depth == 0 && alt_name.is_empty() => alt_name = crate::lines::unescape(value),
+            "REFRESH-INTERVAL" if depth == 0 && refresh.is_none() => refresh = duration(value),
+            "X-PUBLISHED-TTL" if depth == 0 && ttl.is_none() => ttl = duration(value),
+            _ => {}
+        }
+    }
+    if name.is_empty() {
+        name = alt_name;
+    }
+    let name: String = name.chars().filter(|c| !c.is_control()).take(120).collect::<String>().trim().to_string();
+    let mut items: Vec<(String, String)> = objects.into_iter().map(|(uid, text)| (format!("{}.ics", vdir::content_hash(uid.as_bytes())), text)).collect();
+    items.sort();
+    items.dedup_by(|a, b| a.0 == b.0);
+    let hash = steady(&items);
+    Ok(Feed { items, name, refresh: refresh.or(ttl), hash })
+}
+
+/// A UID for an event written without one: made from what it says, its
+/// stamps aside, so that each answer gives it the same.
+fn stable_uid(lines: &[String]) -> String {
+    let said: String = lines.iter().filter(|l| !STAMPS.contains(&crate::lines::name(l).as_str())).map(|l| format!("{l}\n")).collect();
+    format!("{}@subscribed.sioul", vdir::content_hash(said.as_bytes()))
+}
+
+/// What a calendar's events say, their stamps aside (`STAMPS`), in the
+/// order of their files: the same for two answers that differ by their
+/// stamps alone.
+pub fn steady(items: &[(String, String)]) -> String {
+    let mut said = String::new();
+    for (file, text) in items {
+        said.push_str(file);
+        said.push('\n');
+        for line in crate::lines::unfold(text) {
+            if !STAMPS.contains(&crate::lines::name(&line).as_str()) {
+                said.push_str(&line);
+                said.push('\n');
+            }
+        }
+    }
+    vdir::content_hash(said.as_bytes())
+}
+
+/// An iCalendar duration in seconds ("P1D", "PT48H", "P1W", "PT6H30M");
+/// none for one that does not read, or that is not forward.
+pub fn duration(text: &str) -> Option<i64> {
+    let text = text.trim().to_ascii_uppercase();
+    let rest = text.strip_prefix('+').unwrap_or(&text).strip_prefix('P')?;
+    let (mut seconds, mut number, mut timed, mut any) = (0i64, String::new(), false, false);
+    for c in rest.chars() {
+        match c {
+            '0'..='9' => number.push(c),
+            'T' if number.is_empty() => timed = true,
+            unit => {
+                let n: i64 = number.parse().ok()?;
+                number.clear();
+                any = true;
+                seconds += n * match (unit, timed) {
+                    ('W', false) => 7 * 86_400,
+                    ('D', false) => 86_400,
+                    ('H', true) => 3600,
+                    ('M', true) => 60,
+                    ('S', true) => 1,
+                    _ => return None,
+                };
+            }
+        }
+    }
+    (any && number.is_empty() && seconds > 0).then_some(seconds)
+}
+
+// ---------------------------------------------------------------- what this device read
+
+/// What this device last read of a subscribed calendar
+/// (`state/subscribed/<id>.toml`): its own, never shared.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fetched {
+    /// The address its copy came from: another one now, it is read again whole.
+    #[serde(default)]
+    pub url: String,
+    /// When it was last asked (Unix seconds); 0 never.
+    #[serde(default)]
+    pub tried: i64,
+    /// When its copy was last found current, written or unchanged; 0 never.
+    #[serde(default)]
+    pub checked: i64,
+    /// When its copy last changed here.
+    #[serde(default)]
+    pub changed: i64,
+    /// The server's validators of the copy kept (RFC 9110 §13.1).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub etag: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub last_modified: String,
+    /// What it said, its stamps aside (`steady`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hash: String,
+    /// Why the last asking gave nothing (`Problem::id`), "" when it did;
+    /// what the server said with it, and since when.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub problem: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub status: u16,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub since: i64,
+    /// How often it asks to be read, seconds; 0 when it says nothing.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub refresh: i64,
+    /// Its own name, as it last said it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// How many events its copy holds.
+    #[serde(default)]
+    pub events: usize,
+}
+
+fn is_zero(n: &u16) -> bool {
+    *n == 0
+}
+
+fn is_zero_i64(n: &i64) -> bool {
+    *n == 0
+}
+
+impl Fetched {
+    pub fn path(id: &str) -> PathBuf {
+        crate::config::state_dir().join("subscribed").join(format!("{id}.toml"))
+    }
+
+    pub fn load(id: &str) -> Fetched {
+        std::fs::read_to_string(Fetched::path(id)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    pub fn save(&self, id: &str) -> Result<(), String> {
+        let path = Fetched::path(id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        crate::filelock::replace(&path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// The problem it holds, as a `Problem`; none when the last asking gave a calendar.
+    pub fn problem(&self) -> Option<Problem> {
+        Some(match self.problem.as_str() {
+            "" => return None,
+            "subscribe-not-https" => Problem::NotHttps,
+            "subscribe-not-address" => Problem::NotAddress,
+            "subscribe-not-public" => Problem::NotPublic,
+            "subscribe-redirects" => Problem::Redirects,
+            "subscribe-too-large" => Problem::TooLarge,
+            "subscribe-too-many" => Problem::TooMany,
+            "subscribe-page" => Problem::Page,
+            "subscribe-text" => Problem::Text(self.said.clone()),
+            "subscribe-empty" => Problem::Empty,
+            "subscribe-gone" => Problem::Gone,
+            "subscribe-status" => Problem::Status(self.status),
+            "subscribe-network" => Problem::Network,
+            _ => Problem::NotCalendar,
+        })
+    }
+
+    /// When its copy was last found current, if it ever was (`checked`).
+    pub fn as_of(&self) -> Option<i64> {
+        (self.checked > 0).then_some(self.checked)
+    }
+}
+
+/// The copy's folder of a subscribed calendar.
+pub fn folder(id: &str) -> PathBuf {
+    Kind::Calendars.root().join(ACCOUNT).join(id)
+}
+
+/// The server's validators to send (ETag, date), when the copy kept here came from this address.
+pub fn validators(id: &str, subscription: &Subscription) -> Option<(String, String)> {
+    let state = Fetched::load(id);
+    (state.url == subscription.url && state.checked > 0 && folder(id).is_dir() && !(state.etag.is_empty() && state.last_modified.is_empty())).then_some((state.etag, state.last_modified))
+}
+
+/// How often a calendar is read on a computer: its own wish, between one
+/// hour and one day; else once a day for holidays, every three hours for
+/// the rest. After a problem, within the hour.
+pub fn every(subscription: &Subscription, state: &Fetched) -> i64 {
+    let usual = if state.refresh > 0 {
+        state.refresh.clamp(SOONEST, LATEST)
+    } else if subscription.holidays().is_some() {
+        HOLIDAYS_EVERY
+    } else {
+        EVERY
+    };
+    if state.problem.is_empty() { usual } else { usual.min(SOONEST) }
+}
+
+/// Whether a calendar is to be read now: never read from this address
+/// here; when Sioul opens (`opening`), unless read in the last ten minutes;
+/// else once its time has come (`every`).
+pub fn due(id: &str, subscription: &Subscription, now: i64, opening: bool) -> bool {
+    let state = Fetched::load(id);
+    if state.url != subscription.url || state.tried == 0 {
+        return true;
+    }
+    let since = now - state.tried;
+    since < 0 || since >= if opening { OPENED_AGAIN } else { every(subscription, &state) }
+}
+
+/// What the network gave for a calendar (sioul-sync's `feeds`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Answer {
+    /// Its bytes (ten megabytes at most once unpacked), with the server's validators.
+    Calendar { bytes: Vec<u8>, etag: String, last_modified: String },
+    /// The server said the copy kept is current (304).
+    Unchanged,
+    /// Nothing that may be read.
+    Refused(Problem),
+}
+
+/// What became of an answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Taken {
+    /// The copy replaced, whole.
+    Changed,
+    /// The copy is current: nothing written.
+    Unchanged,
+    /// The copy kept as it was, and why.
+    Kept(Problem),
+}
+
+/// An answer taken in (18 November 2026): a calendar replaces the copy
+/// whole when it says something else (`steady`) or came from another
+/// address; one that says the same, or the server's 304, writes nothing;
+/// anything else keeps the last good copy and says why, since when. Each
+/// outcome noted in this device's state. `now`, Unix seconds.
+pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> Result<Taken, String> {
+    if !valid_id(id) {
+        return Err(format!("{id}: not a subscribed calendar"));
+    }
+    vdir::finish_subscribed(id);
+    let mut state = Fetched::load(id);
+    let same_address = state.url == subscription.url && folder(id).is_dir() && state.checked > 0;
+    state.tried = now;
+    let refused = |mut state: Fetched, problem: Problem| -> Result<Taken, String> {
+        if state.problem != problem.id() || state.since == 0 {
+            state.since = now;
+        }
+        state.problem = problem.id().to_string();
+        state.said = if let Problem::Text(said) = &problem { said.clone() } else { String::new() };
+        state.status = if let Problem::Status(status) = problem { status } else { 0 };
+        state.save(id)?;
+        Ok(Taken::Kept(problem))
+    };
+    let clear = |state: &mut Fetched| {
+        state.problem.clear();
+        state.said.clear();
+        state.status = 0;
+        state.since = 0;
+    };
+    match answer {
+        Answer::Refused(problem) => refused(state, problem),
+        Answer::Unchanged if same_address => {
+            state.checked = now;
+            clear(&mut state);
+            state.save(id)?;
+            Ok(Taken::Unchanged)
+        }
+        // A 304 for a copy that is not this address's: never asked so; read again next time.
+        Answer::Unchanged => refused(state, Problem::NotCalendar),
+        Answer::Calendar { bytes, etag, last_modified } => {
+            let feed = match read(&bytes) {
+                Ok(feed) => feed,
+                Err(problem) => return refused(state, problem),
+            };
+            (state.etag, state.last_modified, state.refresh, state.name) = (etag, last_modified, feed.refresh.unwrap_or(0), feed.name.clone());
+            clear(&mut state);
+            if same_address && feed.hash == state.hash {
+                state.checked = now;
+                state.save(id)?;
+                return Ok(Taken::Unchanged);
+            }
+            let name = display_name(subscription, &feed.name);
+            vdir::replace_subscribed(id, &name, subscription.colour.as_deref(), &feed.items)?;
+            (state.url, state.hash, state.changed, state.checked, state.events) = (subscription.url.clone(), feed.hash, now, now, feed.items.len());
+            state.save(id)?;
+            Ok(Taken::Changed)
+        }
+    }
+}
+
+/// A subscribed calendar's name: yours, else its own, else its address's domain.
+pub fn display_name(subscription: &Subscription, own: &str) -> String {
+    [subscription.name.trim(), own.trim()].into_iter().find(|n| !n.is_empty()).map_or_else(|| crate::sites::domain_of(&crate::sites::host_of(&subscription.url)), str::to_string)
+}
+
+// ---------------------------------------------------------------- each device's copies, as the settings say
+
+/// Each device's folders made to follow the settings: a subscription's
+/// folder made, read only, its name and colour kept as said (an empty copy
+/// until it is first read here); a folder whose subscription was stopped,
+/// here or on another device, taken out with its state. Whether anything changed.
+pub fn settle(config: &Config) -> bool {
+    let mut changed = false;
+    for (id, subscription) in &config.agenda.subscriptions {
+        let name = display_name(subscription, &Fetched::load(id).name);
+        match vdir::prepare_subscribed(id, &name, subscription.colour.as_deref()) {
+            Ok(made) => changed |= made,
+            Err(e) => eprintln!("subscribed: {id}: {e}"),
+        }
+    }
+    let here: Vec<String> = std::fs::read_dir(Kind::Calendars.root().join(ACCOUNT)).into_iter().flatten().filter_map(Result::ok).filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    for id in here.iter().filter(|id| valid_id(id) && !config.agenda.subscriptions.contains_key(*id)) {
+        if vdir::remove_subscribed(id).is_ok() {
+            let _ = std::fs::remove_file(Fetched::path(id));
+            changed = true;
+        }
+    }
+    changed
+}
+
+// ---------------------------------------------------------------- written into the settings
+
+/// A new subscription, as the window gives it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct New {
+    pub url: String,
+    #[serde(default)]
+    pub name: String,
+    /// "public", "school" or "".
+    #[serde(default)]
+    pub holidays: String,
+    #[serde(default)]
+    pub days_off: Option<bool>,
+    #[serde(default)]
+    pub after_class: Option<bool>,
+    /// The id to keep it under (an official calendar's), else one made from its name.
+    #[serde(default)]
+    pub id: String,
+}
+
+/// A subscription written into the settings (`[agenda.subscriptions."<id>"]`),
+/// its address checked first; its id, made from its name (or its domain),
+/// one not taken. Fetched by each device by itself.
+pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Translator) -> Result<String, String> {
+    let url = address(&new.url).map_err(|p| p.said(tr))?;
+    let host = crate::sites::host_of(&url);
+    let base = if valid_id(new.id.trim()) { new.id.trim().to_string() } else { crate::config::slug(if new.name.trim().is_empty() { &host } else { new.name.trim() }) };
+    let base: String = if base.is_empty() { "calendar".to_string() } else { base.chars().take(60).collect() };
+    let taken = |id: &str| config.agenda.subscriptions.contains_key(id) || folder(id).exists();
+    let id = std::iter::once(base.clone()).chain((2..100).map(|n| format!("{base}-{n}"))).find(|id| !taken(id)).ok_or_else(|| format!("{base}: no free name"))?;
+    let holidays = Holidays::parse(&new.holidays);
+    // The Ministry's files begin after class: said so, unless said otherwise.
+    let after_class = match holidays {
+        Some(Holidays::School) => new.after_class.or(official_school(&url).then_some(true)),
+        _ => None,
+    };
+    crate::agendas::edit_agenda_table(path, "subscriptions", |table| {
+        let mut entry = toml_edit::Table::new();
+        entry.insert("url", toml_edit::value(url.as_str()));
+        if !new.name.trim().is_empty() {
+            entry.insert("name", toml_edit::value(new.name.trim()));
+        }
+        if let Some(kind) = holidays {
+            entry.insert("holidays", toml_edit::value(kind.id()));
+            if let Some(days_off) = new.days_off {
+                entry.insert("days_off", toml_edit::value(days_off));
+            }
+            if let Some(after) = after_class {
+                entry.insert("after_class", toml_edit::value(after));
+            }
+        }
+        table.insert(&id, toml_edit::Item::Table(entry));
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// The fields of a subscription the window writes.
+pub const FIELDS: [&str; 6] = ["url", "name", "holidays", "days_off", "after_class", "colour"];
+
+/// One field of a subscription written: its address (checked first), its
+/// name, which holidays it holds, whether they count as your days off,
+/// whether they begin after class, its colour; "" takes it back to unsaid
+/// (never the address).
+pub fn set(path: &Path, id: &str, field: &str, value: &str, tr: &crate::i18n::Translator) -> Result<(), String> {
+    let value = value.trim();
+    let written: Option<toml_edit::Item> = match field {
+        "url" => Some(toml_edit::value(address(value).map_err(|p| p.said(tr))?)),
+        _ if value.is_empty() => None,
+        "name" => Some(toml_edit::value(value)),
+        "holidays" => Some(toml_edit::value(Holidays::parse(value).ok_or_else(|| format!("{value}: public or school"))?.id())),
+        "days_off" | "after_class" => Some(toml_edit::value(matches!(value, "true" | "yes" | "on" | "1"))),
+        "colour" if value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit()) => Some(toml_edit::value(value.to_ascii_lowercase())),
+        "colour" => return Err(format!("{value}: a colour as #rrggbb")),
+        _ => return Err(format!("{field}: not a field of a subscribed calendar")),
+    };
+    crate::agendas::edit_agenda_table(path, "subscriptions", |table| {
+        let entry = table.get_mut(id).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: no such subscription"))?;
+        match written {
+            Some(item) => {
+                entry.insert(field, item);
+            }
+            None => {
+                entry.remove(field);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// A subscription stopped: taken out of the settings with what was said of
+/// its agenda, then its copy here; every other device takes its own out
+/// at its next look (`settle`).
+pub fn stop(path: &Path, id: &str) -> Result<(), String> {
+    crate::agendas::edit_agenda_table(path, "subscriptions", |table| {
+        table.remove(id);
+        Ok(())
+    })?;
+    crate::agendas::edit_agenda_table(path, "calendars", |table| {
+        table.remove(&place(id));
+        Ok(())
+    })?;
+    vdir::remove_subscribed(id)?;
+    let _ = std::fs::remove_file(Fetched::path(id));
+    Ok(())
+}
+
+// ---------------------------------------------------------------- the agenda's line
+
+/// What a subscribed calendar's line says on this device: when it was last
+/// read; never yet; or why the last asking gave nothing, since when, what
+/// to do, the last copy kept.
+pub fn line(id: &str, now: &jiff::Zoned, tr: &crate::i18n::Translator) -> String {
+    let state = Fetched::load(id);
+    let when = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(now.time_zone().clone())).map(|z| tr.date(&z, true)).unwrap_or_default();
+    let mut args = crate::i18n::args();
+    match state.problem() {
+        None if state.checked > 0 => {
+            args.set("when", when(state.checked));
+            tr.text("subscribe-line-read", Some(&args))
+        }
+        None => tr.text("subscribe-line-never", None),
+        Some(problem) => {
+            args.set("why", problem.said(tr));
+            args.set("since", when(state.since.max(state.tried)));
+            args.set("kept", if state.checked > 0 { "yes" } else { "no" });
+            tr.text(if problem.no_calendar() { "subscribe-line-no-calendar" } else { "subscribe-line-unreached" }, Some(&args))
+        }
+    }
+}
+
+// ---------------------------------------------------------------- the days of a calendar of holidays
+
+/// The folders of the calendars of holidays that count as your days off:
+/// their whole days are drawn as days off (`timeline::days_off`), in place
+/// of their own events.
+pub fn counted_folders(config: &Config) -> Vec<PathBuf> {
+    config.agenda.subscriptions.iter().filter(|(_, s)| s.days_off()).map(|(id, _)| folder(id)).collect()
+}
+
+/// A calendar of holidays' days, as this device's copy holds them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HolidayDays {
+    /// Its id, and its place among the agendas.
+    pub id: String,
+    pub name: String,
+    pub holidays: Holidays,
+    /// Its days count as your days off (`Subscription::days_off`).
+    pub days_off: bool,
+    /// Each holiday: its first and last day, both included, and its name.
+    /// School holidays that begin after class start the day after their
+    /// event's first day and end before the morning classes resume; an event
+    /// of no day (the Ministry's zero-length ones) gives none.
+    pub periods: Vec<(Date, Date, String)>,
+    /// When this device last found its copy current; none before its first read here.
+    pub as_of: Option<i64>,
+}
+
+/// Every calendar of holidays subscribed, with its days around `today`
+/// (a year before to two after), from this device's copy, in `zone`; read
+/// again only when its folder changed, or the day.
+pub fn holidays(config: &Config, zone: &jiff::tz::TimeZone, today: Date) -> Vec<HolidayDays> {
+    type Seen = BTreeMap<String, ((Option<std::time::SystemTime>, usize, bool, Date, String), Vec<(Date, Date, String)>)>;
+    static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(BTreeMap::new());
+    let mut out = Vec::new();
+    for (id, subscription) in &config.agenda.subscriptions {
+        let Some(kind) = subscription.holidays() else { continue };
+        let dir = folder(id);
+        let state = Fetched::load(id);
+        let files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
+        let stamp = (std::fs::metadata(&dir).and_then(|m| m.modified()).ok(), files.len(), subscription.after_class(), today, crate::zone::name_of(zone, jiff::Timestamp::now()));
+        let known = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).filter(|(s, _)| *s == stamp).map(|(_, p)| p.clone());
+        let periods = known.unwrap_or_else(|| {
+            let periods = holiday_periods(&dir, &files, subscription.after_class(), zone, today);
+            SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.clone(), (stamp, periods.clone()));
+            periods
+        });
+        out.push(HolidayDays { id: id.clone(), name: display_name(subscription, &state.name), holidays: kind, days_off: subscription.days_off(), periods, as_of: state.as_of() });
+    }
+    out
+}
+
+/// The holidays a copy holds: each event's whole days (a timed one, the
+/// days it covers whole), cancelled ones aside.
+fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff::tz::TimeZone, today: Date) -> Vec<(Date, Date, String)> {
+    let Some(collection) = vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir) else { return Vec::new() };
+    let at = |date: Date| date.to_zoned(zone.clone()).map(|z| z.timestamp().as_second()).unwrap_or(0);
+    let from = at(today.checked_sub(jiff::Span::new().days(400)).unwrap_or(today));
+    let to = at(today.checked_add(jiff::Span::new().days(800)).unwrap_or(today));
+    let mut out = Vec::new();
+    for file in files {
+        for event in crate::agenda::file_occurrences(file, &collection, from, to, zone) {
+            if event.cancelled {
+                continue;
+            }
+            let day = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
+            let (Some(start), Some(end)) = (day(event.start), day(event.end)) else { continue };
+            // Its first whole day and the day after its last (exclusive).
+            let first = if start.time() == jiff::civil::Time::midnight() { start.date() } else { start.date().tomorrow().unwrap_or(start.date()) };
+            let after = end.date();
+            let (first, after) = if after_class { (first.tomorrow().unwrap_or(first), after) } else { (first, after) };
+            let Ok(last) = after.yesterday() else { continue };
+            if last >= first {
+                out.push((first, last, event.summary.trim().to_string()));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+#[cfg(test)]
+mod tests;

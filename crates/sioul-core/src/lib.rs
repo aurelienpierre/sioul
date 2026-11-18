@@ -315,6 +315,8 @@ pub mod spam;
 pub mod sites;
 pub mod state;
 pub mod stopped;
+// Calendars subscribed by their web address (docs/client.md, "Calendars by their address").
+pub mod subscribed;
 pub mod taskview;
 pub mod thingsearch;
 // texts: SMS phase (b), read and sent through the phone (docs/texts.md).

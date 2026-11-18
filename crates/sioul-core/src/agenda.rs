@@ -3609,7 +3609,45 @@ pub fn calendar_file(bytes: &[u8], zone: &TimeZone) -> Result<CalendarFile, File
     if bytes.len() > FILE_MOST {
         return Err(FileProblem::TooLarge);
     }
-    let text = String::from_utf8_lossy(bytes).replace("\r\n", "\n").replace('\n', "\r\n");
+    let text = String::from_utf8_lossy(bytes);
+    // An event without UID gets one, new at each read.
+    let objects = calendar_objects(&text, &|_: &[String]| format!("{}@sioul", vdir::new_name()))?;
+    let mut out = CalendarFile::default();
+    for (uid, object) in objects {
+        let Some(edit) = edit_of_text(&object, zone) else { continue };
+        let asked = invitation(&object, zone);
+        let (at, until) = asked.as_ref().map_or((0, 0), |a| (a.start, a.end));
+        out.events.push(FileEvent {
+            uid: uid.clone(),
+            title: edit.title,
+            location: edit.location,
+            notes: edit.notes,
+            organizer: asked.map(|a| if a.organizer.is_empty() { a.organizer_address } else { a.organizer }).unwrap_or_default(),
+            start: edit.start,
+            end: edit.end,
+            all_day: edit.all_day,
+            clock: edit.clock,
+            at,
+            until,
+        });
+        out.objects.push((uid, object));
+    }
+    if out.events.is_empty() {
+        return Err(FileProblem::NoEvent);
+    }
+    Ok(out)
+}
+
+/// A calendar's events as calendar objects, as Sioul keeps them, one file
+/// each (RFC 4791 §4.1): one per UID, a series with its changed times, the
+/// time zones and the calendar's own lines with it, METHOD taken out, any
+/// other component (a task, a journal) left out. A calendar published or
+/// asked alone (METHOD PUBLISH, REQUEST or none). `uid_of`: the UID of an
+/// event written without one, from its lines (a calendar file opened: a new
+/// one; a subscribed calendar: one made from what it says, the same at each
+/// fetch). What a calendar file opened and a subscribed calendar read.
+pub fn calendar_objects(text: &str, uid_of: &dyn Fn(&[String]) -> String) -> Result<Vec<(String, String)>, FileProblem> {
+    let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
     let unfolded = lines::unfold(&text);
     if !unfolded.iter().any(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VCALENDAR")) || parse(&utc_series(&text)).is_none() {
         return Err(FileProblem::Unreadable);
@@ -3647,47 +3685,31 @@ pub fn calendar_file(bytes: &[u8], zone: &TimeZone) -> Result<CalendarFile, File
     }
     // One object per UID (a series and its overrides together); an event without one gets one.
     let mut by_uid: Vec<(String, Vec<Vec<String>>)> = Vec::new();
+    let mut place: BTreeMap<String, usize> = BTreeMap::new();
     for event in cut.events {
         let uid = own_lines(&event).find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string()).filter(|u| !u.is_empty());
         let (uid, event) = match uid {
             Some(uid) => (uid, event),
             None => {
-                let uid = format!("{}@sioul", vdir::new_name());
+                let uid = uid_of(&event);
                 let mut with = event;
                 with.insert(1, format!("UID:{uid}"));
                 (uid, with)
             }
         };
-        match by_uid.iter_mut().find(|(u, _)| *u == uid) {
-            Some((_, events)) => events.push(event),
-            None => by_uid.push((uid, vec![event])),
+        match place.get(&uid) {
+            Some(&at) => by_uid[at].1.push(event),
+            None => {
+                place.insert(uid.clone(), by_uid.len());
+                by_uid.push((uid, vec![event]));
+            }
         }
     }
-    let mut out = CalendarFile::default();
-    for (uid, events) in by_uid {
-        let object = stored(&Cut { head: head.clone(), events }.text());
-        let Some(edit) = edit_of_text(&object, zone) else { continue };
-        let asked = invitation(&object, zone);
-        let (at, until) = asked.as_ref().map_or((0, 0), |a| (a.start, a.end));
-        out.events.push(FileEvent {
-            uid: uid.clone(),
-            title: edit.title,
-            location: edit.location,
-            notes: edit.notes,
-            organizer: asked.map(|a| if a.organizer.is_empty() { a.organizer_address } else { a.organizer }).unwrap_or_default(),
-            start: edit.start,
-            end: edit.end,
-            all_day: edit.all_day,
-            clock: edit.clock,
-            at,
-            until,
-        });
-        out.objects.push((uid, object));
-    }
-    if out.events.is_empty() {
+    let objects: Vec<(String, String)> = by_uid.into_iter().map(|(uid, events)| (uid, stored(&Cut { head: head.clone(), events }.text()))).collect();
+    if objects.is_empty() {
         return Err(FileProblem::NoEvent);
     }
-    Ok(out)
+    Ok(objects)
 }
 
 impl CalendarFile {
@@ -4361,7 +4383,7 @@ mod tests {
         let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let vdir_source = std::fs::read_to_string(crates.join("sioul-core/src/vdir.rs")).unwrap();
         // Each door: its guard calls, with the change each makes and the `?` that stops it, before what it lets through.
-        let doors: [(&str, &[&str], &str); 8] = [
+        let doors: [(&str, &[&str], &str); 9] = [
             ("pub fn write_item(", &["guarded(path, crate::agenda::Change::Write(text))?;"], "store_item(path, text)"),
             ("pub fn remove_item(", &["guarded(path, crate::agenda::Change::Delete)?;"], "std::fs::remove_file(path)"),
             // The organizer's door, its own rule first (`guard_organized`).
@@ -4376,6 +4398,8 @@ mod tests {
             ),
             // The rule's refusal given back, never dropped.
             ("fn guarded(", &["crate::agenda::guard(path, change).map_err(|refusal| crate::agenda::said(refusal, &change))\n"], ""),
+            // A subscribed calendar's one door (18 November 2026): a subscribed calendar's id alone, its whole copy at once.
+            ("pub fn replace_subscribed(", &["subscribed_only(id)?;"], "replace_whole(id, name, colour, items)"),
         ];
         for (door, guards, write) in doors {
             let body = vdir_source.split(door).nth(1).and_then(|rest| rest.split("\n}\n").next()).map(|b| format!("{b}\n")).unwrap_or_default();
