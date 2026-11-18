@@ -285,7 +285,7 @@ ColumnLayout {
     }
 
     // The rest, folded.
-    Button {
+    BareButton {
         objectName: "invoiceSettingsMore"
         flat: true
         text: (block.more ? "▾  " : "▸  ") + block.sioul.text("invoices-settings-more")
@@ -668,7 +668,7 @@ ColumnLayout {
     }
 
     // The books: what is declared, how often, and the rates of your own.
-    Button {
+    BareButton {
         objectName: "invoiceSettingsBooks"
         visible: block.view !== null && block.view.declares
         flat: true

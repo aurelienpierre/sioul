@@ -110,10 +110,12 @@ Item {
         contentWidth: availableWidth
         clip: true
 
-        ColumnLayout {
+        // A legible column, centred in the page (PageColumn.qml).
+        PageColumn {
             id: column
 
-            width: Math.min(scroll.availableWidth, 760)
+            theme: page.theme
+            room: scroll.availableWidth
             spacing: 8
 
             RowLayout {

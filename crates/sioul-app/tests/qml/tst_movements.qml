@@ -281,9 +281,9 @@ Item {
         // Invoices made when a draft is opened there.
         function test_the_page_opens_on_overview() {
             const page = createTemporaryObject(pageComponent, root)
-            tryVerify(() => named(page, "moneyTab4").length === 1, 5000)
+            tryVerify(() => named(page, "moneyTabs:invoices").length === 1, 5000)
             compare(page.tab, 0)
-            named(page, "moneyTab2")[0].clicked()
+            named(page, "moneyTabs:movements")[0].clicked()
             compare(page.tab, 2)
             tryVerify(() => named(page, "movementRow").length === 2, 5000, "made at first show")
             page.visible = false

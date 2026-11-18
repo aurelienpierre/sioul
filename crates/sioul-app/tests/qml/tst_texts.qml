@@ -528,7 +528,7 @@ Item {
             compare(page.attached.length, 0, "a late answer for the other conversation let go")
         }
 
-        // A limit changed since they were made (Settings ▸ Texts): made again, once.
+        // A limit changed since they were made (the Texts page's ⚙): made again, once.
         function test_a_changed_limit_makes_them_again_once() {
             page.attachFiles(["file:///stand-in/a.jpg"])
             made(mock.attachAsked[0].round, [medium(1, "picture")], [], 614400)

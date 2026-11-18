@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The Sites page's settings: the Bitwarden vault as it is now on this device
-// (SettingRow.qml's "vault" kind, decided 3 November 2026), on a stand-in for
-// Sioul that holds no vault: open, it says so with Lock, which locks it;
-// locked, no Lock. Nothing asks Bitwarden. Run by tools/qml-test.sh.
+// The password manager's card in Accounts (VaultCard.qml): the Bitwarden
+// vault as it is now on this device (SettingRow.qml's "vault" kind, decided
+// 3 November 2026), on a stand-in for Sioul that holds no vault: open, it
+// says so with Lock, which locks it and tells the card; locked, Unlock,
+// which asks the card to open it, and no Lock. Nothing asks Bitwarden. Run
+// by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -37,6 +39,17 @@ Item {
             mock.locks += 1
             mock.vault = "locked"
         }
+    }
+
+    SignalSpy {
+        id: unlockSpy
+
+        signalName: "unlockAsked"
+    }
+    SignalSpy {
+        id: changedSpy
+
+        signalName: "changedElsewhere"
     }
 
     Component {
@@ -72,22 +85,32 @@ Item {
             mock.vault = "unlocked"
             mock.locks = 0
             const row = createTemporaryObject(rowComponent, root)
+            changedSpy.target = row
+            changedSpy.clear()
             tryVerify(() => find(row, "vaultState") !== null)
             compare(find(row, "vaultState").text, "set-bitwarden-vault-open")
+            verify(!find(row, "vaultUnlock").visible, "open: no Unlock")
             const lock = find(row, "vaultLock")
             verify(lock.visible, "Lock while it is open")
             mouseClick(lock)
             compare(mock.locks, 1)
             compare(find(row, "vaultState").text, "set-bitwarden-vault-locked")
             verify(!lock.visible, "locked: no Lock")
+            compare(changedSpy.count, 1, "the card told")
         }
 
-        function test_a_locked_vault_offers_no_lock() {
+        function test_a_locked_vault_offers_unlock_and_no_lock() {
             mock.vault = "locked"
             const row = createTemporaryObject(rowComponent, root)
+            unlockSpy.target = row
+            unlockSpy.clear()
             tryVerify(() => find(row, "vaultState") !== null)
             compare(find(row, "vaultState").text, "set-bitwarden-vault-locked")
             verify(!find(row, "vaultLock").visible)
+            const unlock = find(row, "vaultUnlock")
+            verify(unlock.visible, "Unlock while it is locked")
+            mouseClick(unlock)
+            compare(unlockSpy.count, 1, "the card opens its dialog")
         }
     }
 }

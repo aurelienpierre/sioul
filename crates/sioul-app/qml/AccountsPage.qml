@@ -10,9 +10,13 @@
 // (address, then the server found, then the password, tested before
 // anything is kept), contacts and calendars on a CalDAV/CardDAV server, or
 // Google (signed in on Google's page); Microsoft's mail signs in on
-// Microsoft's page (MicrosoftMail.qml). Encryption: your keys. Who may reach
-// you, and when, is Settings ▸ What reaches you's (ReachesTab.qml). Sites are
-// not accounts: they are on the Sites page.
+// Microsoft's page (MicrosoftMail.qml), or Bitwarden, your password manager
+// (VaultForm.qml). Encryption: your keys. At the top of Yours, the password
+// manager's card (VaultCard.qml): Bitwarden's account, open or locked, the
+// lock after a time; every password field of the forms takes a password
+// from it (VaultFill.qml). Who may reach you, and when, is Settings ▸ What
+// reaches you's (ReachesTab.qml). Sites are not accounts: they are on the
+// Sites page.
 
 pragma ComponentBehavior: Bound
 
@@ -26,6 +30,63 @@ Item {
 
     required property var sioul
     required property var theme
+    // The window (main.qml), for what it holds for every page: Bitwarden's page that asks a security key.
+    property var window: null
+    // What asks a security key for the vault's dialogs (VaultUnlock.qml's `keys`): the window's, none on a phone.
+    readonly property var vaultKeys: page.window ? page.window.vaultKeys : null
+    // Bitwarden on this device, "missing", "locked" or "unlocked": read again as the page
+    // shows and when the card changes it, for the forms' "From Bitwarden…".
+    property string vault: "missing"
+
+    function readVault() {
+        page.vault = page.sioul.bitwardenState()
+        vaultHeld.follow(page.vault)
+    }
+
+    // The forms' fields holding a password taken from the vault (VaultHeld.qml):
+    // emptied as the vault locks, as the page or Add an account is left, and once
+    // the account is added.
+    VaultHeld {
+        id: vaultHeld
+
+        sioul: page.sioul
+    }
+    Connections {
+        target: tabs
+
+        function onCurrentIndexChanged() {
+            if (tabs.currentIndex !== 1)
+                vaultHeld.release()
+        }
+    }
+    // The password manager's card, once Your accounts made it.
+    property VaultCard vaultCard: null
+
+    onVisibleChanged: {
+        if (page.visible)
+            page.readVault()
+        else
+            vaultHeld.release()
+    }
+    Component.onCompleted: page.readVault()
+
+    // The password manager's card in view, at the top of Your accounts (a link by key:
+    // SettingDoor.qml); with the vault's own key, its vault opened when it is locked.
+    function openSettings(open, key) {
+        tabs.currentIndex = 0
+        yoursScroll.positionViewAtBeginning()
+        if (open && key === "bitwarden_vault" && page.vaultCard !== null)
+            page.vaultCard.unlock()
+    }
+
+    // Add an account ▸ Bitwarden, in view.
+    function addVault() {
+        tabs.currentIndex = 1
+        Qt.callLater(() => {
+            if (addTab.item)
+                addTab.item.showVault()
+        })
+    }
 
     readonly property var accounts: page.sioul.accounts ? JSON.parse(page.sioul.accounts) : []
     readonly property var found: page.sioul.found ? JSON.parse(page.sioul.found) : null
@@ -115,7 +176,7 @@ Item {
     // An account's password, given on this device (AccountPassword.qml): made the first time.
     function askPassword(account) {
         if (passwordDialog.item === null)
-            passwordDialog.setSource("AccountPassword.qml", { sioul: page.sioul, theme: page.theme })
+            passwordDialog.setSource("AccountPassword.qml", { sioul: page.sioul, theme: page.theme, keys: page.vaultKeys, held: vaultHeld })
         passwordDialog.item.ask(account)
     }
 
@@ -210,6 +271,7 @@ Item {
         }
 
         function onAccountAdded() {
+            vaultHeld.release()
             if (addTab.item)
                 addTab.item.clear()
             tabs.currentIndex = 0
@@ -227,10 +289,11 @@ Item {
             font.pixelSize: 22
             color: page.theme.text
         }
-        // The tabs, as the task page's views: the one shown filled.
-        Flow {
+        // The tabs, across the page (Tabs.qml).
+        Tabs {
             id: tabs
 
+            readonly property var ids: ["yours", "add", "keys"]
             property int currentIndex: 0
             // The tabs made so far: each the first time it is shown.
             property var made: ({ 0: true })
@@ -241,29 +304,13 @@ Item {
                 tabs.made = made
             }
 
+            objectName: "accountTabs"
+            name: page.sioul.text("ui-accounts")
             Layout.fillWidth: true
-            spacing: 6
-
-            Repeater {
-                model: ["accounts-tab-yours", "accounts-tab-add", "accounts-tab-keys"]
-
-                delegate: Button {
-                    id: tab
-
-                    required property string modelData
-                    required property int index
-
-                    text: page.sioul.text(modelData)
-                    checkable: true
-                    checked: tabs.currentIndex === index
-                    flat: tabs.currentIndex !== index
-                    onClicked: {
-                        tabs.currentIndex = index
-                        // A click on the tab shown would untick it: it stays the one shown.
-                        tab.checked = Qt.binding(() => tabs.currentIndex === tab.index)
-                    }
-                }
-            }
+            theme: page.theme
+            model: [{ id: "yours", text: page.sioul.text("accounts-tab-yours") }, { id: "add", text: page.sioul.text("accounts-tab-add") }, { id: "keys", text: page.sioul.text("accounts-tab-keys") }]
+            current: tabs.ids[tabs.currentIndex]
+            onChosen: id => tabs.currentIndex = tabs.ids.indexOf(id)
         }
 
         StackLayout {
@@ -284,10 +331,33 @@ Item {
                 // Cards made once are kept (made again at each pass, they cost a stutter).
                 cacheBuffer: 4000
                 ScrollBar.vertical: ScrollBar {}
+                // Scrolled by hand: the list stays where it was put.
+                property bool moved: false
+                onMovementStarted: yoursScroll.moved = true
 
                 header: ColumnLayout {
                     width: yoursScroll.width
                     spacing: page.theme.gap
+                    // Grown once laid out (the history's line wraps on a phone): a ListView keeps its
+                    // first card where it was, which put the header's top above the view; the top again.
+                    onHeightChanged: {
+                        if (!yoursScroll.moved)
+                            Qt.callLater(yoursScroll.positionViewAtBeginning)
+                    }
+
+                    // Your password manager first: one vault for the whole app (VaultCard.qml).
+                    VaultCard {
+                        id: vaultCard
+
+                        Layout.fillWidth: true
+                        sioul: page.sioul
+                        theme: page.theme
+                        keys: page.vaultKeys
+                        onAddAsked: page.addVault()
+                        onChanged: page.readVault()
+                        // For the page's doors (`openSettings`).
+                        Component.onCompleted: page.vaultCard = vaultCard
+                    }
 
                     Label {
                         visible: page.accounts.length === 0
@@ -602,6 +672,10 @@ Item {
                             function showGoogle() {
                                 Qt.callLater(() => addScroll.contentItem.contentY = Math.max(0, googlePanel.y - page.theme.gap))
                             }
+                            function showVault() {
+                                const flick = addScroll.contentItem as Flickable
+                                Qt.callLater(() => flick.contentY = Math.max(0, Math.min(vaultForm.y - page.theme.gap, flick.contentHeight - flick.height)))
+                            }
 
                         ColumnLayout {
                             width: addScroll.availableWidth
@@ -703,6 +777,9 @@ Item {
                                             sourceComponent: GoogleMail {
                                                 sioul: page.sioul
                                                 theme: page.theme
+                                                keys: page.vaultKeys
+                                                vault: page.vault
+                                                held: vaultHeld
                                                 address: addressField.text
                                                 found: page.found
                                                 againId: page.againId
@@ -788,10 +865,29 @@ Item {
                                                 sioul: page.sioul
                                                 onAccepted: if (connect.enabled) connect.clicked()
                                             }
+                                            Item {
+                                                visible: mailVault.visible
+                                                Layout.preferredWidth: 1
+                                            }
+                                            // Its password taken from your vault, found by the name it logs in with.
+                                            VaultFill {
+                                                id: mailVault
+
+                                                sioul: page.sioul
+                                                theme: page.theme
+                                                keys: page.vaultKeys
+                                                vault: page.vault
+                                                site: host.text !== "" ? "https://" + host.text : ""
+                                                user: login.text !== "" ? login.text : addressField.text
+                                                field: password
+                                                held: vaultHeld
+                                                onProblem: text => page.sioul.status = text
+                                                onOpened: page.readVault()
+                                            }
                                         }
                                         // The sending server, when it is not the one Sioul would find:
                                         // folded; empty, it is found at the first message sent.
-                                        Button {
+                                        BareButton {
                                             visible: !page.oauthFound
                                             flat: true
                                             text: (page.smtpServerShown ? "▾  " : "▸  ") + page.sioul.text("ui-smtp-server")
@@ -947,9 +1043,27 @@ Item {
                                             Layout.fillWidth: true
                                             sioul: page.sioul
                                         }
+                                        Item {
+                                            visible: davVault.visible
+                                            Layout.preferredWidth: 1
+                                        }
+                                        VaultFill {
+                                            id: davVault
+
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            keys: page.vaultKeys
+                                            vault: page.vault
+                                            site: davUrl.text
+                                            user: davLogin.text !== "" ? davLogin.text : davAddress.text
+                                            field: davPassword
+                                            held: vaultHeld
+                                            onProblem: text => page.sioul.status = text
+                                            onOpened: page.readVault()
+                                        }
                                     }
                                     // Where the server is, when it cannot be found from the address.
-                                    Button {
+                                    BareButton {
                                         flat: true
                                         text: (page.davServerShown ? "▾  " : "▸  ") + page.sioul.text("ui-dav-server")
                                         onClicked: page.davServerShown = !page.davServerShown
@@ -1036,7 +1150,7 @@ Item {
                                         onToggled: page.ownGoogleKey = checked
                                     }
                                     // Its sentence wraps: on one line, it was wider than a phone.
-                                    Button {
+                                    BareButton {
                                         id: googleStepsButton
 
                                         visible: !page.googleBuiltIn || page.ownGoogleKey
@@ -1102,6 +1216,26 @@ Item {
                                             Layout.fillWidth: true
                                             sioul: page.sioul
                                         }
+                                        Item {
+                                            visible: googleVault.visible
+                                            Layout.preferredWidth: 1
+                                        }
+                                        // The key's secret, kept in your vault for Google's console.
+                                        VaultFill {
+                                            id: googleVault
+
+                                            visible: page.vault !== "missing" && googleSecret.visible
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            keys: page.vaultKeys
+                                            vault: page.vault
+                                            site: "https://console.cloud.google.com"
+                                            user: googleId.text
+                                            field: googleSecret
+                                            held: vaultHeld
+                                            onProblem: text => page.sioul.status = text
+                                            onOpened: page.readVault()
+                                        }
                                     }
                                     RowLayout {
                                         spacing: 8
@@ -1137,6 +1271,21 @@ Item {
                                         color: page.theme.forged
                                     }
                                 }
+                            }
+
+                            // Bitwarden, your password manager: one account for the whole app.
+                            VaultForm {
+                                id: vaultForm
+
+                                Layout.fillWidth: true
+                                sioul: page.sioul
+                                theme: page.theme
+                                vault: page.vault
+                                onAdded: {
+                                    page.readVault()
+                                    page.openSettings(true, "bitwarden_vault")
+                                }
+                                onCardAsked: page.openSettings(true, "")
                             }
 
                             Item {
@@ -1604,7 +1753,7 @@ Item {
                                         wrapMode: Text.Wrap
                                         color: page.theme.forged
                                     }
-                                    Button {
+                                    BareButton {
                                         visible: page.keys.keys.some(k => !k.own)
                                         flat: true
                                         text: (page.othersShown ? "▾  " : "▸  ") + page.sioul.text("ui-others-keys")
@@ -1777,7 +1926,7 @@ Item {
         }
         // Mail: what it is for, its shield, how far back, how often: folded, made
         // when unfolded (a card with them all took half a second on a phone).
-        Button {
+        BareButton {
             visible: service.hasSettings
             Layout.leftMargin: 20
             flat: true
@@ -1903,7 +2052,7 @@ Item {
             }
         }
         // Server, sender checks, where things are kept: folded.
-        Button {
+        BareButton {
             visible: service.modelData.rows.length > 0
             Layout.leftMargin: 20
             flat: true
@@ -1990,9 +2139,10 @@ Item {
 
                         // A field shows where it is: a border, darker when it has the focus.
                         background: Rectangle {
-                            color: page.theme.surface
+                            color: page.theme.field
                             radius: page.theme.radius
-                            border.color: writingSignature.activeFocus ? page.theme.focus : page.theme.line
+                            border.color: writingSignature.activeFocus ? page.theme.focusEdge : page.theme.edge
+                            border.width: writingSignature.activeFocus ? 2 : 1
                         }
                         Layout.fillWidth: true
                         Layout.preferredHeight: 110

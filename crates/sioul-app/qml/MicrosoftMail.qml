@@ -132,7 +132,7 @@ ColumnLayout {
             color: form.theme.text
         }
         // Its sentence wraps: on one line, it was wider than a phone.
-        Button {
+        BareButton {
             id: adminButton
 
             Layout.fillWidth: true
@@ -202,7 +202,7 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: form.theme.text
     }
-    Button {
+    BareButton {
         id: stepsButton
 
         visible: form.asksApp

@@ -1047,7 +1047,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 0
 
-                        Button {
+                        BareButton {
                             id: accountTitle
 
                             Layout.fillWidth: true
@@ -1181,7 +1181,7 @@ Item {
                             }
                         }
 
-                        Button {
+                        BareButton {
                             visible: accountBlock.open && accountBlock.modelData.more.length > 0
                             Layout.fillWidth: true
                             leftPadding: 22

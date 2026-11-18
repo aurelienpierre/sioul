@@ -951,7 +951,7 @@ mod tests {
         assert!(personal_task(&task(&["famille"], &[]), &personal, &[]));
         assert!(personal_task(&task(&[], &["garden"]), &personal, &["garden".into()]));
         assert!(!personal_task(&task(&["you"], &["taxes"]), &personal, &["garden".into()]));
-        let areas = TaskAreas { work_categories: vec!["travail".into()], work_projects: vec!["client-x".into()], ..TaskAreas::usual() };
+        let areas = TaskAreas { work_categories: vec!["travail".into()], projects: vec![("client-x".into(), Area::WORK)], ..TaskAreas::usual() };
         let week = Week { work_hours: true, ..Week::default() };
         // Asleep: no task at all, yours neither.
         let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone(), no_movement: false, here: Here::default() };

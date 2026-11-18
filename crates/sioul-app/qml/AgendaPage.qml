@@ -207,12 +207,12 @@ Item {
         if (row.kind === "dose")
             page.window.openCard({ kind: "dose", date: day.date, srcKey: row.keys[0] || "" })
         else
-            page.openRow(timeline.rowOf(row.placed, day, 0, ""))
+            page.openRow(timeline.rowOf(row.placed, day, 0))
     }
 
     function menuListed(row, day) {
         if (row.kind !== "dose")
-            page.menuRow(timeline.rowOf(row.placed, day, 0, ""))
+            page.menuRow(timeline.rowOf(row.placed, day, 0))
     }
 
     // A Month's line, as the lists' rows are.
@@ -290,8 +290,6 @@ Item {
     readonly property real cardRoom: page.mode === "week" ? 830 : 480
     // The step whose menu is open (a row of the timeline).
     property var stepTarget: null
-    // "Show anyway": the steps quiet time folds on coming days, drawn.
-    property bool showAnyway: false
     // What every view shows on this device ("Show", agenda-view.toml):
     // {steps, needs, doses, legs}; all shown until you say.
     property var view: JSON.parse(page.sioul.agendaView() || "{}")
@@ -299,8 +297,9 @@ Item {
     // place ("account/id", the agenda's `hidden`: what the hours admit, or your word until
     // work's hours change; AgendaFilter.qml).
     readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.shown.hidden || [] })
-    // Whether a day shown has steps quiet time folds: "Show anyway" offered.
-    readonly property bool anyFolded: page.shown.days.some(d => (d.bands || []).length > 0)
+    // The agenda filter by hand in the full views, the Day, the Week and the Month, which
+    // hide nothing by the hour; by the hours in What comes, the calm tab (the agenda's `filter`).
+    readonly property bool filterByHand: page.shown.comes !== true
 
     // Show changed: `part` ("steps", "needs", "doses") on or off, kept on this device.
     function showPart(part, on) {
@@ -569,11 +568,6 @@ Item {
 
     // A thing of the timeline tapped (a row: WeekPlanning.qml): its card, where you are.
     function openRow(row) {
-        // A band of steps quiet time folds: those steps, drawn ("Show anyway").
-        if (row.fold === "band") {
-            page.showAnyway = true
-            return
-        }
         page.window.openCard(row)
     }
 
@@ -634,7 +628,7 @@ Item {
             const day = page.shown.days[i]
             for (const placed of day.timed || [])
                 if ((placed.item.title || "").indexOf(words) === 0) {
-                    page.openRow(timeline.rowOf(placed, day, i, ""))
+                    page.openRow(timeline.rowOf(placed, day, i))
                     return
                 }
         }
@@ -690,6 +684,18 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 8
 
+            // What comes, the day, the week, the month and the search: tabs across
+            // the page (Tabs.qml). Tasks ▸ The day gives the Day alone, without them.
+            Tabs {
+                objectName: "agendaModes"
+                name: page.sioul.text("ui-agenda")
+                visible: page.modes.length > 1
+                Layout.fillWidth: true
+                theme: page.theme
+                model: page.modes.map(m => ({ id: m, text: page.sioul.text("agenda-mode-" + m) }))
+                current: page.mode
+                onChosen: id => page.mode = id
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -728,17 +734,6 @@ Item {
                     elide: Text.ElideRight
                     color: page.theme.text
                 }
-                // The day, the week and the month, one switch away; on a phone,
-                // in the title's room.
-                PlainComboBox {
-                    objectName: "agendaModes"
-                    visible: page.modes.length > 1
-                    Layout.fillWidth: page.narrow
-                    Layout.preferredWidth: page.narrow ? -1 : 150
-                    model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
-                    currentIndex: page.modes.indexOf(page.mode)
-                    onActivated: index => page.mode = page.modes[index]
-                }
                 // Which agendas every view draws (several agendas): the one filter, on a phone on the title's line.
                 AgendaFilter {
                     id: filterButton
@@ -747,6 +742,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    byHand: page.filterByHand
                     window: page.window
                     iconOnly: page.width < 1000
                     Layout.preferredWidth: page.width < 1000 ? 40 : -1
@@ -810,6 +806,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    byHand: page.filterByHand
                     window: page.window
                     narrow: true
                 }
@@ -859,7 +856,7 @@ Item {
                     // by default, and a width read from the line rearranged the line again and again.
                     Layout.fillWidth: page.headNow === null
                     Layout.maximumWidth: Math.max(0, (page.width - 2 * page.theme.gap) * (page.headNow !== null ? 0.4 : 1))
-                    onOpened: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0, ""))
+                    onOpened: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0))
                 }
                 Label {
                     objectName: "agendaHeadLine"
@@ -1117,7 +1114,6 @@ Item {
                 marks: page.sioul.doseMarks ? JSON.parse(page.sioul.doseMarks) : null
                 readAt: page.sioul.doseReadAt
                 backAt: page.window.backAt
-                showAnyway: page.showAnyway
                 hide: page.hide
                 // A phone's Day says its whole days on its head line.
                 chipsHere: !(page.narrow && page.mode === "day")
@@ -1293,7 +1289,7 @@ Item {
                                                 color: page.theme.text
                                             }
                                             TapHandler {
-                                                onTapped: page.openRow(timeline.rowOf(monthLine.modelData, cell.modelData, 0, ""))
+                                                onTapped: page.openRow(timeline.rowOf(monthLine.modelData, cell.modelData, 0))
                                             }
                                         }
                                     }
@@ -1509,15 +1505,6 @@ Item {
                         page.showPart("legs", checked)
                         page.readAgain()
                     }
-                }
-                // Quiet time's bands on coming days, drawn as the steps they hold: for now, not kept.
-                MenuItem {
-                    visible: page.anyFolded
-                    height: visible ? implicitHeight : 0
-                    text: page.sioul.text("agenda-show-quiet")
-                    checkable: true
-                    checked: page.showAnyway
-                    onTriggered: page.showAnyway = checked
                 }
             }
         }

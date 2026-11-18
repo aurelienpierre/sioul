@@ -218,8 +218,8 @@ SioulWindow {
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
-            // Accounts and Settings take no window.
-            const given = i === 11 || i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
+            // Settings takes no window; Accounts takes it for Bitwarden's key page (`vaultKeys`).
+            const given = i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
             const began = Date.now()
             loaders[i].setSource(window.pageFiles[i], given)
             // How long each page takes to make, in the log (a phone's: adb logcat).
@@ -874,12 +874,10 @@ SioulWindow {
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
         else if (item.kind === "health")
             window.page = 10
-        // Meals, naps and the night, where Health sets them (the Porch's card, Settings ▸ Hours).
-        else if (item.kind === "needs") {
-            window.page = 10
-            if (window.healthPage)
-                window.healthPage.showNeeds()
-        }
+        // The usual meals, naps and the night, in Settings ▸ Hours at their heading (the
+        // Porch's "Set my night", a meal's card, What reaches you ▸ Exceptions, Health's ⚙).
+        else if (item.kind === "needs")
+            window.showParameters("needs")
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
@@ -1104,11 +1102,32 @@ SioulWindow {
             window.textsPage.select(id)
     }
 
-    // Settings, at one of them: the hours, from the Porch.
+    // A setting, by its key, where it lives (SettingDoor.qml): Settings at its
+    // tab (the hours, from the Porch), or the ⚙ of the page that reads it.
     function showParameters(key) {
-        window.page = 12
-        parametersPage.showSetting(key)
+        settingDoor.open(key)
     }
+    SettingDoor {
+        id: settingDoor
+
+        window: window
+        sioul: sioul
+    }
+
+    // The sites' one web profile and Bitwarden's page that asks a security key
+    // (SitesWeb.qml, held by `sitesWebLoader`, at the end of this file): on
+    // computers only, made the first time a site's view or a vault's dialog
+    // wants it, from Sites or from Accounts.
+    function sitesWeb() {
+        if (Qt.platform.os === "android")
+            return null
+        if (sitesWebLoader.status === Loader.Null)
+            sitesWebLoader.setSource("SitesWeb.qml", { sioul: sioul, theme: theme })
+        return sitesWebLoader.item
+    }
+    // What asks a security key for a vault's dialog (VaultUnlock.qml's `keys`):
+    // Bitwarden's page, held unseen; none on a phone, which has no Qt WebEngine.
+    readonly property var vaultKeys: Qt.platform.os === "android" ? null : (() => window.sitesWeb().keyPage())
 
     // The Porch's card "Join your other devices": Settings ▸ Your folder and
     // sharing, where the join begins (SharePanel.qml, JoinPanel.qml): "murena",
@@ -1367,7 +1386,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2242,7 +2261,10 @@ SioulWindow {
                 () => grabber.save("phone-agenda"),
                 () => window.page = 5,
                 () => grabber.save("phone-contacts"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => grabber.save("phone-projects"),
                 () => window.page = 9,
                 () => grabber.save("phone-budgets"),
@@ -2327,15 +2349,16 @@ SioulWindow {
                 () => grabber.save("notes"),
                 () => {
                     window.page = 7
+                    projectsPage.showAll()
                     projectsPage.open("fernhill")
                 },
                 () => {},
                 () => grabber.save("projects"),
                 // Time: last week, a whole one, whatever the day (and the hour:
-                // shown anyway in quiet time).
+                // every area ticked in its filter).
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                     timePage.move(-1)
                 },
                 () => {},
@@ -2350,12 +2373,12 @@ SioulWindow {
                 () => healthPage.showMedicines(),
                 () => {},
                 () => grabber.save("health-medicines"),
-                // Its week, and its settings (the usual meals and night).
+                // Its week, and its settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),
@@ -2389,6 +2412,11 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("settings-hours"),
+                // The usual meals, naps and night, under their heading in the same tab.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
                 // Reachable for an hour (part 3: "Work now" went): the Porch open, every lane and address.
                 () => {
                     window.page = 0
@@ -2666,7 +2694,10 @@ SioulWindow {
             ]
             // Projects, time and invoices, on invented data: a project's page, its invoice made, the Time page.
             readonly property var projects: [
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => grabber.save("projects"),
                 () => projectsPage.routesShown = true,
@@ -3420,6 +3451,156 @@ SioulWindow {
                 () => grabber.save("budgets-4"),
                 () => window.close()
             ]
+            // The shell (the settings rework's A1): tabs across the pages, Settings'
+            // sections in their centred column and, on a phone, its list of sections;
+            // fields and buttons that stand out. Settings ▸ Display and ▸ Hours, Tasks ▸
+            // List, the Agenda's Week, Money's Overview, Accounts and the new movement's
+            // form; on a computer at 1400 by 900, then Settings at the window's first 1100, its
+            // tabs scrolling (pictures alone). First, in the log, whether Sioul's overrides of the
+            // Basic style are in place (cpp/style.cpp): a flat button with words drawn with its
+            // outline, a text area with its ground; the release's Flatpak job reads that line.
+            readonly property var shellSteps: [
+                () => {
+                    const button = Qt.createQmlObject("import QtQuick.Controls.Basic; Button { opacity: 0; flat: true; text: \"Probe\" }", window.contentItem)
+                    const area = Qt.createQmlObject("import QtQuick.Controls.Basic; TextArea { opacity: 0 }", window.contentItem)
+                    // Out of sight by their opacity: an item hidden would say its background hidden too.
+                    const ours = button.background.visible && area.background !== null && area.background.visible
+                    console.warn("style: " + (ours ? "Sioul's overrides in place" : "Basic's own controls, the overrides not loaded"))
+                    button.destroy()
+                    area.destroy()
+                },
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.page = 12
+                },
+                () => parametersPage.back(),
+                () => {},
+                () => grabber.save("settings-list"),
+                () => parametersPage.open("look"),
+                () => {},
+                () => grabber.save("settings-display"),
+                () => parametersPage.open("hours"),
+                () => {},
+                () => grabber.save("settings-hours"),
+                () => {
+                    window.page = 1
+                    tasksPage.mode = "list"
+                },
+                () => {},
+                () => {},
+                () => grabber.save("tasks-list"),
+                () => {
+                    window.page = 4
+                    agendaPage.mode = "week"
+                },
+                () => {},
+                () => {},
+                () => grabber.save("agenda-week"),
+                // The full views (A3): the Day draws every planned step, whatever the hour.
+                () => agendaPage.mode = "day",
+                () => {},
+                () => {},
+                () => grabber.save("agenda-day"),
+                // Now, with its cover when the run is at night (RUN_HOUR), the tabs in reach.
+                () => {
+                    window.page = 1
+                    tasksPage.mode = "now"
+                },
+                () => {},
+                () => grabber.save("tasks-now"),
+                // Projects and Time by their filter of areas, as the hours say: what folds, said.
+                () => window.page = 7,
+                () => {},
+                () => {},
+                () => grabber.save("projects"),
+                () => {
+                    window.page = 8
+                    timePage.move(-1)
+                },
+                () => {},
+                () => {},
+                () => grabber.save("time"),
+                () => {
+                    window.page = 9
+                    budgetsPage.showTab(0)
+                },
+                () => {},
+                () => {},
+                () => grabber.save("money-overview"),
+                () => window.page = 11,
+                () => {},
+                () => grabber.save("accounts"),
+                () => {
+                    window.page = 9
+                    budgetsPage.showTab(2)
+                },
+                () => {},
+                () => budgetsPage.movements.startNew(),
+                () => budgetsPage.movements.moreNew(),
+                () => {},
+                () => grabber.saveWindow("movement-form"),
+                () => budgetsPage.movements.closeForms(),
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1100
+                    window.page = 12
+                    parametersPage.open("look")
+                },
+                () => {},
+                () => grabber.save("settings-1100"),
+                // The settings moved (A2) on the shell's components: Settings ▸ Hours at the usual
+                // meals and night; the password manager's card in each of its states; Sites ▸ ⚙ at its colours.
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1400
+                    window.showParameters("needs")
+                },
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
+                () => window.showParameters("bitwarden"),
+                () => {},
+                () => grabber.save("vault-card-none"),
+                // An account set (the demo's own fictional address): locked, as with no server reached.
+                () => {
+                    console.warn("vault: account set: " + (sioul.setSetting("bitwarden.email", JSON.stringify("noa@example.com")) || "yes"))
+                    accountsPage.vaultCard.reload()
+                },
+                () => {},
+                () => grabber.save("vault-card-locked"),
+                // Open: stood in for (no Bitwarden server in the demo), the card and its row told so.
+                () => {
+                    const find = item => {
+                        if (item.objectName === "vaultState")
+                            return item
+                        for (let i = 0; i < item.children.length; i++) {
+                            const found = find(item.children[i])
+                            if (found)
+                                return found
+                        }
+                        return null
+                    }
+                    accountsPage.vaultCard.vault = "unlocked"
+                    const state = find(accountsPage.vaultCard)
+                    if (state)
+                        state.parent.open = "unlocked"
+                },
+                () => {},
+                () => grabber.save("vault-card-unlocked"),
+                () => {
+                    sioul.setSetting("bitwarden.email", JSON.stringify(""))
+                    accountsPage.vaultCard.reload()
+                },
+                () => window.showParameters("calmer_colours"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("sites-settings"),
+                () => sitesPage.openSettings(false, ""),
+                () => window.close()
+            ]
             // The Budgets page's four tabs (the money ledger's design §6): Overview,
             // Budgets, Movements with a payout opened and its menu, New movement
             // with More, the declaration, From mail and a row's menu (pictures alone).
@@ -3470,7 +3651,10 @@ SioulWindow {
             // the editor, its time unfolded and its preview; issued, its pane; Paid…; the
             // list; Settings ▸ Invoices. A phone's layout with "phone" (run.sh).
             readonly property var invoicesSteps: [
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("project-client"),
@@ -3622,6 +3806,16 @@ SioulWindow {
                 () => {},
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
+                () => sitesPage.bitwardenUnlock.close(),
+                // Where Bitwarden is set: the password manager's card at the top of Accounts
+                // (none set on a demo profile), then its form in Add an account.
+                () => window.showParameters("bitwarden"),
+                () => {},
+                () => grabber.save("vault-card-none"),
+                () => accountsPage.addVault(),
+                () => {},
+                () => {},
+                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no
@@ -4026,7 +4220,8 @@ SioulWindow {
                 () => {},
                 () => grabber.save("pauses-back"),
                 () => pauseCover.item.done(),
-                () => window.showParameters("link.notify.pauses"),
+                // Settings ▸ Pauses, by its section's key.
+                () => window.showParameters("pauses"),
                 () => {},
                 () => {},
                 () => grabber.save("pauses-setup"),
@@ -4599,7 +4794,10 @@ SioulWindow {
                 () => window.parametersPage.save("projects.rename", true),
                 () => {},
                 () => grabber.save("projects-file-renamed"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("projects-file-page"),
@@ -4615,7 +4813,10 @@ SioulWindow {
                 () => window.showParameters("ai"),
                 () => {},
                 () => grabber.save("ai-settings"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("ai-project-closed"),
@@ -4746,7 +4947,7 @@ SioulWindow {
                 () => sioul.status = sioul.exportTimeCsv("studio", "2026-10-01", "2026-10-31", "file://" + grabber.folder + "/studio%20octobre.csv"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
                 () => window.close()
@@ -4774,13 +4975,20 @@ SioulWindow {
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.settingsPanel().showEnd(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings-end"),
                 () => healthPage.closeSettings(),
+                // The usual meals, naps and night, in Settings ▸ Hours at their heading.
+                () => window.showParameters("needs"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-needs"),
+                () => window.page = 10,
+                () => {},
                 // Dinner's menu, then its times for today only.
                 () => healthPage.showMenu("meal:2"),
                 () => {},
@@ -5122,16 +5330,21 @@ SioulWindow {
                 () => grabber.save("notes"),
                 () => notesPage.openFirst(),
                 () => grabber.save("note"),
-                () => window.page = 7,
+                () => {
+                    window.page = 7
+                    projectsPage.showAll()
+                },
                 () => projectsPage.openFirst(),
                 () => grabber.save("projects"),
                 () => {
                     window.page = 8
-                    timePage.anyway = true
+                    timePage.showAll()
                 },
                 () => grabber.save("time"),
-                // Last week's, which has some: the first stretch changed.
+                // Last week's, which has some: the first stretch changed, once the week's view has come
+                // (it is made off the window's thread: `timeView`).
                 () => timePage.move(-1),
+                () => {},
                 () => timePage.changeFirst(),
                 () => {
                     if (timePage.changing.item && timePage.changing.item.opened)
@@ -5145,12 +5358,12 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
-                // The week, then the settings (the usual meals and night).
+                // The week, then the settings (the errands, the pause to move, the limit on chats).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
                 () => healthPage.showDay(),
-                () => healthPage.showNeeds(),
+                () => healthPage.settingsPanel().open(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
                 () => healthPage.closeSettings(),
@@ -5708,6 +5921,18 @@ SioulWindow {
                             color: theme.text
                             elide: Text.ElideRight
                         }
+                        // The page's ⚙, where the page gives its rows' whole width to its tabs (Money: `barSettings`).
+                        ToolButton {
+                            objectName: "barSettings"
+                            visible: !window.canGoBack && window.shownPage !== null && window.shownPage.barSettings === true
+                            Layout.preferredWidth: 48
+                            Layout.fillHeight: true
+                            icon.name: "settings-configure"
+                            icon.color: theme.text
+                            display: AbstractButton.IconOnly
+                            Accessible.name: sioul.text("ui-settings")
+                            onClicked: window.shownPage.openSettings(true, "")
+                        }
                     }
                 }
 
@@ -5901,5 +6126,15 @@ SioulWindow {
             border.width: 1
             border.color: theme.line
         }
+    }
+
+    // The holder of the sites' web profile (SitesWeb.qml), declared last of the
+    // window's items on purpose: Qt makes them in this order and destroys them in
+    // the same order, so it goes after every page and every view that uses its
+    // profile (the Sites page's sites and pop-ups, the vault's key page in the
+    // dialogs of Sites and Accounts), as Qt asks of a WebEngineProfile. Keep it
+    // last (tests/web_profile.rs).
+    Loader {
+        id: sitesWebLoader
     }
 }

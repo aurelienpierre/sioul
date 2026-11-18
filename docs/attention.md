@@ -392,7 +392,7 @@ The design as first proposed on 7 October 2026, before it was built, kept for th
 | An event's Remind; a block's Not today | reminders, `needs::Days` | exceptions |
 | Tasks ⚙ ▸ Time for you | the window's capacity.rs | the Time for you layer |
 | Mail ⚙ ▸ Your own spam filter | settings.rs:278-288 | the spam filter's classes |
-| Health ⚙: the chat limit, moving, each block's notices | | named holds and master switches |
+| Health ⚙: the chat limit, moving; Settings ▸ Hours: each block's notices | | named holds and master switches |
 | Android: Sioul's channels, its modes, stars | Java | the outputs |
 
 ### A.2 The inconsistencies of the older code

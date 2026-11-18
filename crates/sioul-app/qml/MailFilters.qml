@@ -938,7 +938,7 @@ ColumnLayout {
                 }
 
                 // Folded: on which addresses, and whether the filters below are still asked.
-                Button {
+                BareButton {
                     id: more
 
                     property bool unfolded: filters.draft.stop || filters.draft.accounts.length > 0

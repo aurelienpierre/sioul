@@ -2,7 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A window of Sioul: the theme's colours given to Qt's controls, the same in
-// every window (the main one, writing, focus, portals).
+// every window (the main one, writing, focus, portals). What you type in has
+// a fill of its own, the theme's `field` (Qt's `base`: text fields, boxes to
+// tick, spin boxes); its border and a flat button's outline, the theme's
+// `edge`, are drawn by Sioul's overrides of the Basic style, which read the
+// window's `theme` (qml/style/, cpp/style.cpp).
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -19,7 +23,7 @@ ApplicationWindow {
 
     palette.window: root.theme.background
     palette.windowText: root.theme.text
-    palette.base: root.theme.surface
+    palette.base: root.theme.field
     palette.alternateBase: root.theme.background
     palette.text: root.theme.text
     palette.button: root.theme.button

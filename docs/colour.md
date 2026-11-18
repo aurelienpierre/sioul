@@ -3,7 +3,7 @@
 A screen wider than sRGB, an Adobe RGB laptop panel or a P3 monitor, shows sRGB numbers as its own, wider primaries: every colour comes out more saturated than its page meant. Nothing between a site and such a screen converts today on X11: Chromium inside Qt WebEngine paints sRGB numbers, believing every screen is sRGB, and Qt Quick hands them to the screen unchanged. Sioul converts each site's picture to the screen's colour profile once, on the graphics card, and can soften loud colours further: "Calmer colours". The research behind this note, with its sources and measurements, is [research/colour.md](research/colour.md).
 
 ## What the person sees
-Settings ▸ Display holds two lines, under the colours of the theme:
+The Sites page's ⚙ holds two lines, under **Colours**, since only the Sites page reads them; they are kept in the configuration and shared with the other settings:
 - **Colours for this screen**, a switch, on unless turned off (`screen_colours = false` in the configuration). Under it, one sentence says what this screen gets: its profile's own name ("This screen's profile is used: “…”."), or that the desktop adapts colours itself (Wayland, macOS), or that the screen has no profile and colours are shown as they are. Before the Sites page has been made in this session, the sentence is not there yet.
 - **Calmer colours on sites**: Off, A little, More (`calmer_colours = "little"` or `"more"`). Loud colours on websites are softened; greys and soft tints stay as they are.
 
@@ -62,7 +62,7 @@ Each colour's chroma in OKLCh (Björn Ottosson's OKLab, 2020) is limited softly,
 - `tools/check-colour.py`, and the grab steps "site-colour" in `main.qml`.
 - `SitesPage.qml` and `SitePopup.qml`: the layer on each web view, and the two settings given to `ScreenColours` (from `sioul.reading`).
 - `cpp/webengine.cpp`: on macOS, Sioul's windows are tagged sRGB (`QSurfaceFormat::setDefaultFormat` with `QColorSpace::SRgb`), so that macOS converts them, sites included.
-- `sioul-core`: `screen_colours` and `calmer_colours` in the configuration (`config.rs`), their two lines in Settings ▸ Display (`settings.rs`); the sentence under the first is added by `backend.rs`.
+- `sioul-core`: `screen_colours` and `calmer_colours` in the configuration (`config.rs`), their two lines in the Sites page's ⚙ (`settings.rs`, view "sites"); the sentence under the first is added by `backend.rs`.
 - Little CMS (`lcms2` 6.2, its sources built in with its `static` feature, on Linux only), so that no build needs the system's library.
 
 ## Limits

@@ -1361,7 +1361,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     let consent = access::of(s, &loaded);
     let Some(id) = id else {
         // Only the projects open to agents; the others counted, never named.
-        let mut rows = projectview::rows(&loaded, &entries, &loaded.projects);
+        let mut rows = projectview::rows(&loaded, &entries, &loaded.projects, &sioul_core::areas::TaskAreas::of_config(&s.config, &loaded.projects));
         let before = rows.len();
         rows.retain(|r| consent.is_open(&r.id));
         let closed = before - rows.len();

@@ -520,7 +520,7 @@ fn remembered(email: &str) -> String {
     format!("Bitwarden device token for {}", email.trim().to_lowercase())
 }
 
-/// "missing" (no account set in Sites ⚙), "locked", "unlocked".
+/// "missing" (no account set: Accounts' password manager card), "locked", "unlocked".
 pub(crate) fn bitwarden_state(shared: &Shared) -> String {
     // A made-up vault for the window's tests, from a JSON list of logins (never in Sioul's builds).
     #[cfg(feature = "insecure-test-tls")]
@@ -648,7 +648,7 @@ pub(crate) fn bitwarden_passkey(shared: &Shared, answer: &str) -> String {
     let server = bitwarden::Server::of(config.bitwarden.server.as_deref().unwrap_or(""));
     let secret = answer.get("secret").and_then(|s| s.as_str()).unwrap_or("");
     let opened = bitwarden::unlock_with_passkey(&server, &device(), &token, &response.to_string(), secret).and_then(|unlocked| {
-        // A passkey says whose vault it opens: only the account set in Sites ⚙.
+        // A passkey says whose vault it opens: only the account set in Accounts (the password manager's card).
         if bitwarden::account(&unlocked).is_some_and(|account| account != email.trim().to_lowercase()) {
             return Err(bitwarden::Problem::Refused(tr().text("bitwarden-passkey-other", None)));
         }

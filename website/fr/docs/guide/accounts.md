@@ -23,11 +23,13 @@ Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](no
 ## Vos comptes {#your-accounts}
 
 <figure markdown="span">
-  [![L’onglet « Vos comptes » : en haut, « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courriel avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, « Nom et signature… », et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
+  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courriel avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, « Nom et signature… », et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
   <figcaption>Une fiche par adresse, chacun de ses services avec un interrupteur.</figcaption>
 </figure>
 
-En haut, **Jusqu’où remontent les courriels et l’agenda** : d’une semaine à un an, ou tout. Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps, et de la place sur le disque.
+En haut, **Gestionnaire de mots de passe** : votre compte Bitwarden, un seul pour toute l’application ([plus bas](#your-password-manager)).
+
+Puis **Jusqu’où remontent les courriels et l’agenda** : d’une semaine à un an, ou tout. Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps, et de la place sur le disque.
 
 Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **Agendas, tâches et contacts** ; **Google : agendas, contacts et tâches**. Chacun a :
 
@@ -36,6 +38,16 @@ Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **
 - **Retirer**.
 
 **Ce que ce serveur offre**, en haut de la fiche, demande au serveur ce qu’il a d’autre : des agendas et des contacts à côté des courriels, et pour un Nextcloud, sa version et ses applications. Ce dont Sioul peut se servir s’ajoute en un clic.
+
+### Votre gestionnaire de mots de passe {#your-password-manager}
+
+Sioul remplit les identifiants des sites et les mots de passe des comptes depuis votre coffre Bitwarden, lu par Sioul lui-même : rien d’autre à installer. Sa fiche, en haut de **Vos comptes**, tient :
+
+- **Compte Bitwarden** : son adresse ; **Serveur Bitwarden** : vide pour bitwarden.com, ou bitwarden.eu, ou l’adresse de votre propre serveur (Vaultwarden aussi).
+- **Bitwarden sur cet appareil** : « Bitwarden est ouvert. » avec **Verrouiller**, ou « Bitwarden est verrouillé. » avec **Déverrouiller**. Déverrouiller ouvre le coffre pour la session : avec votre seule clé de sécurité, ou avec votre mot de passe principal et la deuxième étape que demande votre compte ([Sites](sites.md#logins-from-bitwarden) dit chacune). Sur un téléphone, par le mot de passe principal et un code : celui d’une application d’authentification, d’un courriel, d’une YubiKey, un code de récupération.
+- **Verrouiller Bitwarden** : après un temps sans usage, de cinq minutes à quatre heures, comme les applications de Bitwarden ; tant que vous n’avez pas choisi, il reste ouvert jusqu’à la fermeture de Sioul.
+
+Sans compte, la fiche tient une ligne et **Ajouter votre compte Bitwarden**, qui ouvre son formulaire dans [Ajouter un compte](#add-an-account). Le compte suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md) ; le coffre lui-même ne quitte jamais l’appareil qui l’a ouvert. La page Sites remplit ses identifiants depuis le même coffre, et son ⚙ a un bouton vers cette fiche.
 
 ### Une adresse électronique {#a-mail-address}
 
@@ -62,9 +74,9 @@ Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, util
 
 ### Un compte venu de votre autre appareil {#an-account-from-your-other-device}
 
-[Le partage entre vos appareils](sharing.md) apporte vos comptes, jamais leurs mots de passe. Un tel compte dit qu’il n’a pas encore de mot de passe ici, avec **Mot de passe…** sur sa fiche : tapez-le, ou choisissez **Depuis Bitwarden…**. Les identifiants dont le nom d’utilisateur est cette adresse sont listés, puis ceux faits pour son domaine sous un autre nom d’utilisateur (un numéro de client, une autre adresse), ceux du serveur en premier ; choisissez-en un, ou tapez un site pour les restreindre ([Sites](sites.md#logins-from-bitwarden)). Le mot de passe est essayé auprès du serveur, puis gardé dans le trousseau de cet appareil. **Mot de passe…** revient si le serveur refuse un jour celui qui est gardé.
+[Le partage entre vos appareils](sharing.md) apporte vos comptes, jamais leurs mots de passe. Un tel compte dit qu’il n’a pas encore de mot de passe ici, avec **Mot de passe…** sur sa fiche : tapez-le, ou choisissez **Depuis Bitwarden…** (montré une fois votre [gestionnaire de mots de passe](#your-password-manager) réglé). Les identifiants dont le nom d’utilisateur est cette adresse sont listés, puis ceux faits pour son domaine sous un autre nom d’utilisateur (un numéro de client, une autre adresse), ceux du serveur en premier ; choisissez-en un, ou tapez un site pour les restreindre ([Sites](sites.md#logins-from-bitwarden)). Le mot de passe est essayé auprès du serveur, puis gardé dans le trousseau de cet appareil. **Mot de passe…** revient si le serveur refuse un jour celui qui est gardé.
 
-Depuis cette page, votre coffre Bitwarden s’ouvre avec son mot de passe principal et une deuxième étape autre qu’une clé de sécurité : le code d’une application, celui d’un courriel, celui d’une YubiKey, un code de récupération. Pour l’ouvrir avec votre clé de sécurité, ouvrez-le d’abord depuis la page Sites (**Remplir l’identifiant**, ou ⋮ ▸ **Choisir un identifiant…**) : il reste ensuite ouvert jusqu’à la fermeture de Sioul, ici aussi. Sur Android, une clé de sécurité ne peut pas encore ouvrir le coffre : prenez une autre deuxième étape de votre compte Bitwarden.
+Depuis cette page, votre coffre Bitwarden s’ouvre comme depuis la page Sites : avec votre clé de sécurité, seule ou en deuxième étape, ou avec votre mot de passe principal et le code d’une application, celui d’un courriel, celui d’une YubiKey, un code de récupération. Il reste ensuite ouvert pour toutes les pages jusqu’à ce que vous le verrouilliez ou jusqu’à la fermeture de Sioul. Sur Android, une clé de sécurité ne peut pas encore ouvrir le coffre : prenez une autre deuxième étape de votre compte Bitwarden.
 
 ### Les courriels de Google {#googles-mail}
 
@@ -76,11 +88,14 @@ Le compte de courriel Outlook.com, Hotmail, Live, MSN ou Microsoft 365 connecté
 
 ## Ajouter un compte {#add-an-account}
 
-Trois formulaires, l’un après l’autre :
+Quatre formulaires, l’un après l’autre :
 
 - **Ajouter un compte de courriel** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe (pour Workspace, la connexion est la façon fiable : Google peut ne pas lui proposer de mot de passe d’application) ; pour Yahoo Mail, un mot de passe d’application comme mot de passe (**Créer un mot de passe d’application** ouvre la page de sécurité de votre compte Yahoo) ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**. Pour un domaine à vous gardé chez un hébergeur, Sioul cherche le serveur de l’hébergeur ; s’il n’en trouve pas, le formulaire s’ouvre vide pour le nom de serveur que donne votre hébergeur, et **Serveur d’envoi, s’il ne se trouve pas** prend un autre serveur pour l’envoi ([Votre propre domaine chez un hébergeur](first-steps.md#your-own-domain-at-a-host)).
 - **Ajouter des contacts et agendas** : depuis un serveur CalDAV et CardDAV, comme Nextcloud, Fastmail, iCloud ou votre hébergeur.
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
+- **Bitwarden** : l’adresse de votre gestionnaire de mots de passe, et son serveur quand ce n’est pas bitwarden.com ; **Ajouter** le montre en haut de **Vos comptes** et y ouvre le coffre. Un seul compte pour toute l’application : une fois réglé, ce formulaire dit lequel.
+
+Chaque champ de mot de passe de ces formulaires a **Depuis Bitwarden…** en dessous, une fois votre gestionnaire de mots de passe réglé : le coffre s’ouvre s’il est verrouillé, puis ses identifiants sont listés par le nom avec lequel le compte se connecte, et celui que vous choisissez donne son mot de passe ; le bouton dit alors de quel identifiant il vient. Ce mot de passe ne reste dans le champ que tant que le coffre est ouvert et le formulaire à l’écran : verrouiller le coffre (ou son temps sans usage), quitter Ajouter un compte, ou ajouter le compte vide le champ, et Annuler comme Rétablir n’en ramènent rien, même après que vous l’avez vidé à la main. Si vous avez tapé votre propre mot de passe par-dessus, le vôtre reste, sans celui du coffre derrière lui. Un champ que le coffre n’a jamais rempli garde ce que vous y avez tapé.
 
 Sur Android, **Depuis les comptes du téléphone…** (de la tablette, sur une tablette), au-dessus d’eux, ouvre la liste d’Android des comptes que l’appareil connaît. Une adresse Google remplit le formulaire de Google et celui des courriels, avec les deux façons de Google ; toute autre remplit le formulaire des courriels, dont Sioul cherche alors le serveur, et celui des contacts et agendas. Android ne prête aucun mot de passe : Sioul le demande une fois.
 
@@ -248,4 +263,4 @@ En octobre 2026, d’après la documentation de chaque application.
 - **OpenPGP** : RFC 9580, avec Sequoia-PGP et sa cryptographie en Rust pur. Une clé créée ici est Ed25519 pour signer et Curve25519 pour chiffrer, valable trois ans, ses parties secrètes chiffrées par une phrase secrète tirée au hasard et gardée dans le trousseau. Autocrypt niveau 1 : vos courriels portent votre clé ; une clé trouvée dans l’en-tête d’un expéditeur n’est gardée que si elle nomme cet expéditeur, parties publiques seulement. Les clés des autres ne sont cherchées que quand vous le demandez : dans le Web Key Directory de leur domaine, puis sur keys.openpgp.org, en HTTPS seulement. Pas de S/MIME.
 - **La clé de sécurité** : la spécification de carte OpenPGP 3.4, par le service des cartes à puce du système, PC/SC (pcscd sous Linux, que la plupart des systèmes démarrent quand un programme le demande ; le service Carte à puce sous Windows ; CryptoTokenKit sous macOS). La clé est ouverte pour une seule opération, puis remise à zéro, pour que son code PIN ne reste pas donné à un autre programme ; les lecteurs sont joints en mode partagé. Le code PIN est gardé en mémoire, chiffré, pendant quinze minutes sans usage, jamais écrit. Une signature que fait la clé est vérifiée d’après sa partie publique avant que le courriel parte. Les journaux des bibliothèques sont bridés, pour qu’aucun code PIN ni aucune clé de session ne puisse atteindre un journal.
 - **GnuPG** : son service de cartes à puce garde la clé pour lui après s’en être servi, sauf si `scdaemon.conf` dit `pcsc-shared`. **Laisser GnuPG la libérer** lance `gpgconf --kill scdaemon`, à ce clic seulement, et Sioul aussi à la fin de son propre renouvellement par GnuPG, pour nettoyer derrière lui ; gpg le redémarre quand il a besoin de la clé, et redemande alors son code PIN. Sioul ne change jamais les réglages de GnuPG.
-- **Bitwarden depuis cette page** : le coffre s’ouvre avec son mot de passe principal et une deuxième étape que cette boîte de dialogue sait demander : le code d’une application d’authentification, un code par courriel, le code à usage unique d’une YubiKey, un code de récupération. Une clé de sécurité, en deuxième étape ou seule, n’est demandée que par la boîte de dialogue de la page Sites, sur un ordinateur ; le coffre reste alors ouvert pour toutes les pages jusqu’à la fermeture de Sioul. Comment le coffre est lu : [Sites, côté technique](sites.md#for-technical-readers).
+- **Bitwarden depuis cette page** : le coffre s’ouvre comme depuis la page Sites. Sur un ordinateur, la fenêtre tient le profil web des sites et la page de Bitwarden elle-même qui demande une clé de sécurité, invisible, faits la première fois qu’il en faut un, pour les boîtes de dialogue des deux pages ; sur Android, qui n’a pas de moteur web pour cela, le mot de passe principal et une deuxième étape autre qu’une clé. Comment le coffre est lu : [Sites, côté technique](sites.md#for-technical-readers).

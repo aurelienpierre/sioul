@@ -14,7 +14,8 @@
 // computer, the first time it shows on a phone, where each object counts
 // (tst_coming.qml), and there only what is in sight (MoneyBudgets.qml); the
 // other two the first time they show. A budget opened shows its ledger and
-// its balance in place of the tabs.
+// its balance in place of the tabs. Its ⚙, at the end of the tabs' row,
+// holds the reminder before a planned payment (`settings::for_view("money")`).
 
 pragma ComponentBehavior: Bound
 
@@ -241,6 +242,22 @@ Item {
             page.openId = page.view.budgets[0].id
     }
 
+    // On a phone, the page's ⚙ is in the window's bar (main.qml), so that the tabs keep the
+    // row's whole width; it opens `openSettings` below.
+    readonly property bool barSettings: page.window.compact && page.openId === ""
+
+    // The page's ⚙, open at one of its settings ("reminders.payment_days", from a link by
+    // key: SettingDoor.qml), or closed.
+    function openSettings(open, key) {
+        page.settingsMade = true
+        const button = moneySettingsHolder.item as SettingsButton
+        if (button === null)
+            return
+        button.show(open)
+        if (open && key)
+            Qt.callLater(() => button.scrollTo(key))
+    }
+
     // An act on a movement said: its effect, and whether the payee's next ones go there too, asked once.
     function acted(text, ask) {
         overview.said = text
@@ -278,64 +295,23 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // The five tabs, as Sioul's other tabs: the one shown pressed, the others flat; in one
-        // row on a phone too, which scrolls sideways when the names are wider than the screen.
-        Flickable {
-            id: tabStrip
+        // The five tabs, across the page (Tabs.qml); on a phone, a row that scrolls
+        // sideways when the names are wider than the screen.
+        Tabs {
+            id: moneyTabs
 
+            readonly property var ids: ["overview", "budgets", "movements", "mail", "invoices"]
+
+            objectName: "moneyTabs"
+            name: page.sioul.text("ui-budgets")
             Layout.fillWidth: true
-            Layout.preferredHeight: tabs.implicitHeight
-            contentWidth: Math.max(tabStrip.width, tabs.implicitWidth)
-            contentHeight: tabs.implicitHeight
-            interactive: tabs.implicitWidth > tabStrip.width
-            boundsBehavior: Flickable.StopAtBounds
-            clip: true
-
-            RowLayout {
-                id: tabs
-
-                objectName: "moneyTabs"
-                width: tabStrip.contentWidth
-                spacing: 6
-
-                Repeater {
-                    model: ["money-tab-overview", "money-tab-budgets", "money-tab-movements", "money-tab-mail", "money-tab-invoices"]
-
-                    delegate: Button {
-                        id: tabButton
-
-                        required property string modelData
-                        required property int index
-
-                        objectName: "moneyTab" + index
-                        // As wide as their names; on a phone the row's room shared out while it holds them, their paddings narrower.
-                        Layout.fillWidth: page.window.compact && !tabStrip.interactive
-                        Layout.preferredWidth: implicitWidth
-                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                        leftPadding: page.window.compact ? 6 : 12
-                        rightPadding: page.window.compact ? 6 : 12
-                        text: page.sioul.text(modelData)
-                        checkable: true
-                        checked: page.tab === index
-                        flat: page.tab !== index
-                        onClicked: {
-                            page.tab = index
-                            // A click on the tab shown would untick it: it stays the one shown.
-                            tabButton.checked = Qt.binding(() => page.tab === tabButton.index)
-                        }
-                        // The tab shown kept in sight when the row scrolls.
-                        onCheckedChanged: {
-                            if (tabButton.checked && tabStrip.interactive)
-                                tabStrip.contentX = Math.max(0, Math.min(tabButton.x - 12, tabStrip.contentWidth - tabStrip.width))
-                        }
-                    }
-                }
-                // On a computer the tabs keep to the left, as wide as their names.
-                Item {
-                    visible: !page.window.compact
-                    Layout.fillWidth: true
-                }
-            }
+            // On a computer, room at its end for the page's ⚙ (`moneySettingsHolder`, below), outside the
+            // part that scrolls; on a phone the ⚙ is in the page's bar (`barSettings`): the row keeps its width.
+            rightPadding: page.window.compact ? 0 : moneySettingsHolder.width + 6
+            theme: page.theme
+            model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]
+            current: moneyTabs.ids[page.tab] || "overview"
+            onChosen: id => page.showTab(moneyTabs.ids.indexOf(id))
         }
 
         StackLayout {
@@ -445,6 +421,28 @@ Item {
                 theme: page.theme
                 budgets: page.view ? page.view.choices : []
                 accounts: page.newAccounts
+            }
+        }
+    }
+
+    // The page's ⚙, at the end of the tabs' row on a computer, while no budget is open: the
+    // reminder before a planned payment (`settings::for_view("money")`). On a phone it is
+    // made only when the bar's ⚙ asks for it (`barSettings`): a phone counts its items.
+    property bool settingsMade: !page.window.compact
+
+    Loader {
+        id: moneySettingsHolder
+
+        active: page.settingsMade
+        visible: page.openId === "" && !page.window.compact
+        x: page.width - page.theme.gap - width
+        y: page.theme.gap + (moneyTabs.height - height) / 2
+
+        sourceComponent: Component {
+            SettingsButton {
+                sioul: page.sioul
+                theme: page.theme
+                view: "money"
             }
         }
     }
