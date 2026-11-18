@@ -8,7 +8,7 @@
 //! server's own MOVE and by a copy, its UID kept, and who may reach you
 //! unchanged by the move.
 
-use super::stand_in::{Dav, home};
+use super::stand_in::{Dav, Fault, home, nth};
 use super::*;
 use sioul_core::contactbatch;
 use sioul_core::contacts;
@@ -97,7 +97,7 @@ fn a_book_made_renamed_removed_and_merged_on_its_server() {
     let into = book("books-life", "contacts").unwrap();
     let everyone = cards_of("books-life", "merged");
     let plan = contactbatch::plan_move(&everyone.iter().collect::<Vec<_>>(), &into, sioul_core::capabilities::Provider::Dav, &tr());
-    let done = contactbatch::run(&sioul_core::config::state_dir().join("books-life-records"), "merge", plan.steps, Some("books-life/merged".into()), 1_790_000_200, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+    let done = contactbatch::run(&sioul_core::config::state_dir().join("books-life-records"), "merge", plan.steps, Some(contactbatch::Removed { place: "books-life/merged".into(), name: "Merged".into(), here_only: false }), 1_790_000_200, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
     assert_eq!(done.done, 2);
     vdir::delete_collection(&from).unwrap();
     sync_with(&client(), &account).unwrap();
@@ -135,7 +135,7 @@ fn a_card_moved_by_move_and_by_copy_keeps_its_uid() {
     // By MOVE.
     let jeanne = cards_of("books-move", "contacts");
     let plan = contactbatch::plan_move(&jeanne.iter().collect::<Vec<_>>(), &book("books-move", "pro").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
-    contactbatch::run(&sioul_core::config::state_dir().join("books-move-records"), "move", plan.steps, None, 1_790_000_300, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+    contactbatch::run(&sioul_core::config::state_dir().join("books-move-records"), "move", plan.steps, None, 1_790_000_300, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
     sync_with(&client(), &account).unwrap();
     assert_eq!((uids(&dav, "contacts"), uids(&dav, "pro")), (vec![], vec!["jeanne-1".to_string()]), "{:?}", dav.seen());
     assert!(dav.seen().iter().any(|s| s.starts_with("MOVE /cal/contacts/jeanne.vcf 201")));
@@ -149,7 +149,7 @@ fn a_card_moved_by_move_and_by_copy_keeps_its_uid() {
     dav.refuse_moves();
     let jeanne = cards_of("books-move", "pro");
     let plan = contactbatch::plan_move(&jeanne.iter().collect::<Vec<_>>(), &book("books-move", "contacts").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
-    contactbatch::run(&sioul_core::config::state_dir().join("books-move-records"), "move", plan.steps, None, 1_790_000_301, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+    contactbatch::run(&sioul_core::config::state_dir().join("books-move-records"), "move", plan.steps, None, 1_790_000_301, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
     for _ in 0..2 {
         sync_with(&client(), &account).unwrap();
     }
@@ -167,7 +167,7 @@ fn a_card_moved_by_move_and_by_copy_keeps_its_uid() {
 #[test]
 fn a_book_shared_and_unshared() {
     let (dav, home_url) = Dav::start_books(&["pro"]);
-    let _ = account("books-share", &home_url);
+    let account = account("books-share", &home_url);
     let url = format!("{home_url}pro/");
     let client = client();
     let read = || crate::calendars::dav_sharing(&client, &url).unwrap();
@@ -176,7 +176,188 @@ fn a_book_shared_and_unshared() {
     crate::calendars::dav_share(&client, &url, &crate::calendars::principal("office", true).unwrap(), false).unwrap();
     let shared = read();
     assert_eq!(shared.people.iter().map(|p| (p.name.as_str(), p.access, p.group)).collect::<Vec<_>>(), [("sam", crate::calendars::Access::Write, false), ("office", crate::calendars::Access::Read, true)]);
+    // The listing says who else may write it (the owner's answer of 18 November 2026): its groups
+    // count for who may reach you only once you say so for them.
+    sync_with(&client, &account).unwrap();
+    let writers = || State::load(&vdir::state_path("books-share", Kind::Contacts, "pro")).writers;
+    assert_eq!(writers(), ["sam"], "the group that reads it is no writer");
+    let config: sioul_core::config::Config = toml::from_str("[[account]]\nid = \"books-share\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n").unwrap();
+    assert!(!sioul_core::addressbooks::groups_count(&book("books-share", "pro").unwrap(), &config).count);
     crate::calendars::dav_unshare(&client, &url, "principal:principals/users/sam").unwrap();
     assert_eq!(dav.shares("pro"), [("principal:principals/groups/office".to_string(), false)]);
     assert_eq!(read().people.len(), 1);
+    sync_with(&client, &account).unwrap();
+    assert!(writers().is_empty() && sioul_core::addressbooks::groups_count(&book("books-share", "pro").unwrap(), &config).count, "yours alone again: its groups count");
+}
+
+/// A book of two cards on the stand-in, merged here into "contacts": its
+/// cards moved, the book marked deleted; then another person adds a card to it.
+fn merged_while_someone_adds(id: &str) -> (std::sync::Arc<Dav>, Account) {
+    let (dav, home_url) = Dav::start_books(&["contacts", "merged"]);
+    let account = account(id, &home_url);
+    dav.put("merged", "a.vcf", &card("a-1", "Alex Exemple", ""));
+    dav.put("merged", "b.vcf", &card("b-1", "Noa Exemple", ""));
+    sync_with(&client(), &account).unwrap();
+    let from = book(id, "merged").unwrap();
+    let everyone = cards_of(id, "merged");
+    let plan = contactbatch::plan_move(&everyone.iter().collect::<Vec<_>>(), &book(id, "contacts").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
+    let removed = contactbatch::Removed { place: format!("{id}/merged"), name: "merged".into(), here_only: false };
+    contactbatch::run(&sioul_core::config::state_dir().join(format!("{id}-records")), "merge", plan.steps, Some(removed), 1_790_200_000, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
+    vdir::delete_collection(&from).unwrap();
+    dav.put("merged", "theirs.vcf", &card("theirs-1", "Sam Exemple", ""));
+    (dav, account)
+}
+
+/// Review F1: the listing before a merged book's deletion answered 503: the
+/// book is kept, asked again; once a whole listing shows a card this device
+/// never had, the book stays, shown again here with that card, and says why.
+#[test]
+fn a_merged_book_is_deleted_only_after_a_whole_listing_shows_it_empty() {
+    let (dav, account) = merged_while_someone_adds("books-f1");
+    dav.fault(|r: &super::stand_in::Request| (r.method == "PROPFIND" && r.path.trim_end_matches('/') == "/cal/merged").then_some(Fault::Status(503)));
+    for _ in 0..3 {
+        let _ = sync_with(&client(), &account);
+    }
+    assert!(dav.books().contains_key("merged") && uids(&dav, "merged") == ["theirs-1"], "kept, with the other person's card: {:?}", dav.seen());
+    assert!(!dav.seen().iter().any(|s| s.starts_with("DELETE /cal/merged/ ")), "never deleted on a failed listing");
+    assert!(book("books-f1", "merged").is_none(), "still hidden here, asked again");
+}
+
+/// Review F1, the reviewer's own case: once with the first listing of the
+/// book answered 503, once without; both keep the card added there.
+#[test]
+fn a_merged_book_holding_a_card_added_there_stays_and_says_why() {
+    for (id, once) in [("books-f1-held", false), ("books-f1-once", true)] {
+        let (dav, account) = merged_while_someone_adds(id);
+        if once {
+            dav.fault(nth(1, |r: &super::stand_in::Request| r.method == "PROPFIND" && r.path.trim_end_matches('/') == "/cal/merged", Fault::Status(503)));
+        }
+        for _ in 0..3 {
+            let _ = sync_with(&client(), &account);
+        }
+        assert_eq!((uids(&dav, "merged"), uids(&dav, "contacts")), (vec!["theirs-1".to_string()], vec!["a-1".to_string(), "b-1".to_string()]), "{id}: {:?}", dav.seen());
+        let shown = book(id, "merged").unwrap_or_else(|| panic!("{id}: shown again here"));
+        assert_eq!(cards_of(id, "merged").len(), 1);
+        assert_eq!(State::load(&shown.state_path()).kept, "held");
+        let config: sioul_core::config::Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n")).unwrap();
+        assert_eq!(sioul_core::addressbooks::line(&shown, &config, &tr()).waiting, tr().text("book-kept-held", None));
+    }
+}
+
+/// Review F5: a book removed with its cards, while another person added one
+/// there: the book stays on its server and comes back here, said.
+#[test]
+fn a_book_removed_with_its_cards_stays_when_its_server_holds_more() {
+    let (dav, home_url) = Dav::start_books(&["contacts", "pro"]);
+    let account = account("books-f5", &home_url);
+    dav.put("pro", "a.vcf", &card("a-1", "Alex Exemple", ""));
+    sync_with(&client(), &account).unwrap();
+    State { owned: Some(true), ..State::load(&vdir::state_path("books-f5", Kind::Contacts, "pro")) }.save(&vdir::state_path("books-f5", Kind::Contacts, "pro")).unwrap();
+    vdir::remove_collection(&book("books-f5", "pro").unwrap()).unwrap();
+    dav.put("pro", "theirs.vcf", &card("theirs-1", "Sam Exemple", ""));
+    for _ in 0..2 {
+        let _ = sync_with(&client(), &account);
+    }
+    assert_eq!(uids(&dav, "pro"), ["a-1", "theirs-1"], "{:?}", dav.seen());
+    assert!(book("books-f5", "pro").is_some_and(|b| State::load(&b.state_path()).kept == "held"));
+}
+
+/// Review F15, the design's own steps: the title moved into its field with a
+/// group (step 1), then, before that change was sent, the same card moved to
+/// another book (step 2). By the server's MOVE and by a copy alike, the card
+/// arrives as changed, there and here.
+#[test]
+fn a_change_not_yet_sent_reaches_the_new_book() {
+    for (id, by_move) in [("books-f15-move", true), ("books-f15-copy", false)] {
+        let (dav, home_url) = Dav::start_books(&["contacts", "pro"]);
+        let account = account(id, &home_url);
+        if !by_move {
+            dav.refuse_moves();
+        }
+        dav.put("contacts", "jeanne.vcf", &card("jeanne-1", "Mme Jeanne Martin", "EMAIL:jeanne@example.org\r\n"));
+        sync_with(&client(), &account).unwrap();
+        let records = sioul_core::config::state_dir().join(format!("{id}-records"));
+        let all = cards_of(id, "contacts");
+        let plan = contactbatch::plan_title(&all.iter().collect::<Vec<_>>(), Some("Professional"), &tr());
+        contactbatch::run(&records, "title", plan.steps, None, 1_790_300_000, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
+        let all = cards_of(id, "contacts");
+        let plan = contactbatch::plan_move(&all.iter().collect::<Vec<_>>(), &book(id, "pro").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
+        contactbatch::run(&records, "move", plan.steps, None, 1_790_300_001, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
+        let mut conflicts = 0;
+        for _ in 0..3 {
+            conflicts += sync_with(&client(), &account).map(|r| r.conflicts.len()).unwrap_or(0);
+        }
+        let there: String = dav.items("pro").values().cloned().collect();
+        let here: String = book(id, "pro").map(|b| b.items().iter().filter_map(|p| std::fs::read_to_string(p).ok()).collect()).unwrap_or_default();
+        for (side, text) in [("there", &there), ("here", &here)] {
+            assert!(text.contains("FN:Jeanne Martin") && text.contains("N:Martin;Jeanne;;Mme;") && text.contains("CATEGORIES:Professional"), "{id}, {side}: {text}\n{:?}", dav.seen());
+        }
+        assert!(dav.items("contacts").is_empty() && conflicts == 0, "{id}");
+        if by_move {
+            assert!(dav.seen().iter().any(|s| s.starts_with("MOVE /cal/contacts/jeanne.vcf 201")), "{:?}", dav.seen());
+        }
+    }
+}
+
+/// Review F16: a card someone changed on the server before this device's
+/// move reached it is kept in both books, never taken off the server; said.
+#[test]
+fn a_card_changed_elsewhere_then_moved_here_is_kept_in_both_books() {
+    let (dav, home_url) = Dav::start_books(&["contacts", "pro"]);
+    let account = account("books-f16", &home_url);
+    dav.put("contacts", "jeanne.vcf", &card("jeanne-1", "Jeanne Martin", "EMAIL:jeanne@example.org\r\n"));
+    sync_with(&client(), &account).unwrap();
+    dav.put("contacts", "jeanne.vcf", &card("jeanne-1", "Jeanne Martin", "EMAIL:jeanne@example.org\r\nTEL:+33465710042\r\n"));
+    let jeanne = cards_of("books-f16", "contacts");
+    let plan = contactbatch::plan_move(&jeanne.iter().collect::<Vec<_>>(), &book("books-f16", "pro").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
+    contactbatch::run(&sioul_core::config::state_dir().join("books-f16-records"), "move", plan.steps, None, 1_790_200_100, &AtomicBool::new(false), &tr(), &mut |_, _| {}).unwrap();
+    let mut said = Vec::new();
+    for _ in 0..4 {
+        if let Ok(report) = sync_with(&client(), &account) {
+            said.extend(report.kept_both);
+        }
+    }
+    let theirs: String = dav.items("contacts").values().cloned().collect();
+    assert!(theirs.contains("+33465710042"), "the other person's number still on the server: {:?}", dav.seen());
+    assert_eq!(uids(&dav, "pro"), ["jeanne-1"]);
+    assert_eq!(said, [("contact".to_string(), "Jeanne Martin".to_string())]);
+    assert!(cards_of("books-f16", "contacts").iter().any(|c| c.phones.len() == 1), "back here in its old book as its server holds it");
+}
+
+/// Review F6: a new book its server answers 405 for, with no address book
+/// there after it, is said refused, never taken for made; nothing moves into it.
+#[test]
+fn a_new_book_its_server_does_not_make_is_said_refused() {
+    let (dav, home_url) = Dav::start_books(&["contacts"]);
+    let account = account("books-f6", &home_url);
+    let config: sioul_core::config::Config = toml::from_str("[[account]]\nid = \"books-f6\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n").unwrap();
+    dav.put("contacts", "a.vcf", &card("a-1", "Alex Exemple", ""));
+    sync_with(&client(), &account).unwrap();
+    dav.fault(|r: &super::stand_in::Request| (r.method == "MKCOL").then_some(Fault::Status(405)));
+    let made = sioul_core::addressbooks::make(&config, "books-f6", "Professional", &tr()).unwrap();
+    let report = sync_with(&client(), &account).unwrap();
+    let state = State::load(&made.state_path());
+    assert!(state.refused && !report.problems.is_empty(), "{state:?}");
+    assert_eq!(sioul_core::addressbooks::line(&made, &config, &tr()).waiting, tr().text("book-refused", None));
+    let everyone = cards_of("books-f6", "contacts");
+    let plan = contactbatch::plan_move(&everyone.iter().collect::<Vec<_>>(), &book("books-f6", "professional").unwrap(), sioul_core::capabilities::Provider::Dav, &tr());
+    assert!(plan.steps.is_empty() && plan.cannot.len() == 1);
+    let before = dav.seen().iter().filter(|s| s.starts_with("MKCOL")).count();
+    sync_with(&client(), &account).unwrap();
+    assert_eq!(dav.seen().iter().filter(|s| s.starts_with("MKCOL")).count(), before, "never asked again");
+}
+
+/// Review F13 on a server: the same card imported again is that card, never written a second time.
+#[test]
+fn a_card_imported_twice_is_written_once() {
+    let (dav, home_url) = Dav::start_books(&["contacts"]);
+    let account = account("books-f13", &home_url);
+    dav.one_uid_each(409, true);
+    let atelier = card("u-1", "Atelier Exemple", "ADR:;;3 rue de l'Exemple;Lyon;;69000;France\r\n");
+    dav.put("contacts", "atelier.vcf", &atelier);
+    sync_with(&client(), &account).unwrap();
+    let here = book("books-f13", "contacts").unwrap();
+    let cards = sioul_core::contactimport::read_vcf(&atelier);
+    let imported = sioul_core::contactimport::plan(&cards, &cards_of("books-f13", "contacts"), &here, &sioul_core::contactimport::Options::default(), None);
+    assert_eq!((imported.new, imported.here, imported.plan.steps.len()), (0, 1, 0));
 }

@@ -229,7 +229,21 @@ impl Client {
         Ok(Answer { status, etag, location, dav, body })
     }
 
-    fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
+    /// A PROPFIND, its answer whole: a multistatus (207) read, its responses;
+    /// any other answer an error with its status (review F1: a 503 read as an
+    /// empty listing let a merged book be deleted with its cards). A body that
+    /// does not read is an error too.
+    fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<Vec<Response>, SyncError> {
+        let (status, responses) = self.propfind_answer(url, depth, props)?;
+        if status != 207 {
+            return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
+        }
+        Ok(responses)
+    }
+
+    /// A PROPFIND and its status, for a caller that tells "not here" (404,
+    /// 403…) from a failure; the responses of a 207 only.
+    fn propfind_answer(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
         let body = format!(
             r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="{CALDAV}" xmlns:a="{CARDDAV}" xmlns:cs="{CALSERVER}" xmlns:ic="{APPLE}" xmlns:oc="{OWNCLOUD}"><d:prop>{props}</d:prop></d:propfind>"#
         );
@@ -279,6 +293,9 @@ pub(crate) struct Prop {
     children: Vec<(String, String)>,
     /// `name` attributes of `comp` children (supported-calendar-component-set).
     comps: Vec<String>,
+    /// For Nextcloud's `oc:invite`: those it is shared with to write, by the
+    /// last segment of their principal, "group:<name>" for a group.
+    writers: Vec<String>,
 }
 
 impl Response {
@@ -331,6 +348,16 @@ pub(crate) fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), 
                         hrefs: elements.iter().filter(|d| d.has_tag_name((DAV, "href"))).filter_map(|d| d.text()).map(|t| t.trim().to_string()).collect(),
                         children: elements.iter().map(|d| (d.tag_name().namespace().unwrap_or("").to_string(), d.tag_name().name().to_string())).collect(),
                         comps: elements.iter().filter(|d| d.tag_name().name() == "comp").filter_map(|d| d.attribute("name")).map(str::to_string).collect(),
+                        writers: elements
+                            .iter()
+                            .filter(|d| d.has_tag_name((OWNCLOUD, "user")) && d.descendants().any(|a| a.has_tag_name((OWNCLOUD, "read-write"))))
+                            .filter_map(|u| u.children().find(|c| c.has_tag_name((DAV, "href"))).and_then(|h| h.text()))
+                            .map(|href| {
+                                let href = href.trim().trim_end_matches('/');
+                                let name = href.rsplit('/').next().unwrap_or(href).to_string();
+                                if href.contains("/groups/") { format!("group:{name}") } else { name }
+                            })
+                            .collect(),
                     });
                 }
             }
@@ -579,7 +606,11 @@ fn home(client: &Client, kind: Kind, start: &str) -> Result<Option<String>, Sync
                     Kind::Calendars => "<c:calendar-home-set/>",
                     Kind::Contacts => "<a:addressbook-home-set/>",
                 };
-                let (_, responses) = client.propfind(&principal, "0", prop)?;
+                // No home there (404, 403, 405, 501): none; a passing failure (5xx, 429): an error, never "none".
+                let (status, responses) = client.propfind_answer(&principal, "0", prop)?;
+                if status != 207 && !matches!(status, 403 | 404 | 405 | 501) {
+                    return Err(SyncError::Server(format!("PROPFIND {principal}: {status}")));
+                }
                 let home = responses.iter().find_map(|r| r.prop(ns, name).and_then(|p| p.hrefs.first().cloned())).map(|href| absolute(&principal, &href));
                 if let Some(home) = &home {
                     ours(home)?;
@@ -612,6 +643,9 @@ pub struct Listed {
     pub transparent: bool,
     /// Whose it is, as the server says (`owned_by_you`); none when it does not.
     pub owned: Option<bool>,
+    /// For address books: those it is shared with to write (Nextcloud's
+    /// `oc:invite`); none when it says nothing.
+    pub writers: Vec<String>,
 }
 
 /// Whether the server says a collection is yours: its owner (Nextcloud's
@@ -666,10 +700,12 @@ fn percent_decoded(text: &str) -> String {
 /// The collections in a home.
 pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed>, SyncError> {
     let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/><c:schedule-calendar-transp/><d:owner/><d:current-user-principal/><oc:owner-principal/>";
-    let (status, responses) = client.propfind(home, "1", props)?;
-    if status != 207 {
-        return Err(SyncError::Server(format!("PROPFIND {home}: {status}")));
-    }
+    // An address book's writers (`oc:invite`): whether its groups count for who may reach you.
+    let props = match kind {
+        Kind::Contacts => format!("{props}<oc:invite/>"),
+        Kind::Calendars => props.to_string(),
+    };
+    let responses = client.propfind(home, "1", &props)?;
     let (ns, wanted) = match kind {
         Kind::Calendars => (CALDAV, "calendar"),
         Kind::Contacts => (CARDDAV, "addressbook"),
@@ -701,6 +737,7 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             components: response.prop(CALDAV, "supported-calendar-component-set").map(|p| p.comps.clone()).unwrap_or_default(),
             transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
             owned: owned_by_you(response, me.as_deref()),
+            writers: response.prop(OWNCLOUD, "invite").map(|p| p.writers.clone()).unwrap_or_default(),
             url,
             id,
         });
@@ -729,6 +766,10 @@ pub struct Report {
     /// holds, and what changed there is kept among the earlier versions, said
     /// once (review of round 4, R4-F).
     pub moved_changed: Vec<(String, String)>,
+    /// Contacts moved to another book here whose old copy someone changed on
+    /// its server before the move reached it: kept in both books, never one
+    /// taken off the server (review F16); each one's kind and name, said once.
+    pub kept_both: Vec<(String, String)>,
     /// Moved to another calendar here, its old copy a meeting with others on
     /// its server by then, and its new copy one too: neither can go without
     /// telling its guests, so both stay, each its calendar's, and the person
@@ -982,6 +1023,7 @@ fn listed_here(account: &str, id: &str) -> Option<Listed> {
         components: state.components.clone(),
         transparent: state.transparent,
         owned: state.owned,
+        writers: state.writers.clone(),
     })
 }
 
@@ -1080,6 +1122,10 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             if collection.owned.is_some() {
                 state.owned = collection.owned;
             }
+            // Who else writes an address book, as listed now: its groups count once you say so for them.
+            if collection.kind == Kind::Contacts {
+                state.writers = collection.writers.clone();
+            }
             state.save(&path).map_err(SyncError::Disk)
         });
         if let Err(e) = made {
@@ -1177,6 +1223,22 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
             continue;
         }
+        // An address book removed with its cards (review F5): deleted there only after a whole
+        // listing (207) shows that its server holds nothing this device has not; a card added
+        // or changed there since keeps the book, shown again, and its line says why. Any other
+        // answer keeps it hidden, asked again at the next sync.
+        if state.removed && kind == Kind::Contacts && !state.leave {
+            match client.propfind(&state.url, "1", "<d:getetag/>") {
+                Ok(found) if holds_unknown(&state, &found) => {
+                    state.removed = false;
+                    state.kept = "held".into();
+                    go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+                    continue;
+                }
+                Ok(_) => {}
+                Err(_) => continue,
+            }
+        }
         if state.removed {
             let answer = client.send("DELETE", &state.url, &[], None)?;
             if (200..300).contains(&answer.status) || answer.status == 404 {
@@ -1204,16 +1266,23 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
         }
         if state.deleted {
-            let (_, found) = client.propfind(&state.url, "1", "<d:getetag/>")?;
-            let held = found.iter().filter(|r| path_key(&r.href) != path_key(&state.url)).count();
+            // Deleted there only after a whole listing (207) shows it empty, taken right
+            // before the DELETE (review F1): any other answer (429, 503, 504, a timeout, a
+            // body that does not read) keeps it, asked again at the next sync.
+            let Ok(found) = client.propfind(&state.url, "1", "<d:getetag/>") else { continue };
+            let held = found.iter().filter(|r| path_key(&absolute(&state.url, &r.href)) != path_key(&state.url) && r.status.is_none_or(|s| s / 100 == 2)).count();
             // An address book emptied here by a merge or a removal (wave D): its cards
             // still wait for their old copies' deletion there, after their new copies;
             // it is deleted once they are gone, never shown again meanwhile.
-            if held > 0 && vdir::moving_out_of(&collection.dir) {
+            if held > 0 && cards_leaving(&collection.dir, &state) {
                 continue;
             }
             if held > 0 {
+                // Something added there since (another person, another device): the book stays, said on its line.
                 state.deleted = false;
+                if kind == Kind::Contacts {
+                    state.kept = "held".into();
+                }
             } else {
                 let answer = client.send("DELETE", &state.url, &[], None)?;
                 if !(200..300).contains(&answer.status) && answer.status != 404 {
@@ -1228,6 +1297,28 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         }
     }
     refused.map_or(Ok(()), Err)
+}
+
+/// Whether a listing of a collection holds an item this device does not
+/// know as it is there: one it never had, or one changed there since.
+fn holds_unknown(state: &State, found: &[Response]) -> bool {
+    let known: BTreeMap<String, &str> = state.items.iter().map(|i| (path_key(&absolute(&state.url, &i.href)), i.etag.as_str())).collect();
+    found.iter().filter(|r| path_key(&absolute(&state.url, &r.href)) != path_key(&state.url) && r.status.is_none_or(|s| s / 100 == 2)).any(|r| {
+        let key = path_key(&absolute(&state.url, &r.href));
+        match (known.get(&key), r.text(DAV, "getetag")) {
+            (None, _) => true,
+            (Some(mine), Some(theirs)) => !mine.is_empty() && *mine != theirs,
+            (Some(_), None) => false,
+        }
+    })
+}
+
+/// Whether cards moved out of the collection at `dir` still wait for their
+/// old copies' deletion on its server: those it still holds a row for. A
+/// move whose old copy was never there (made here, moved before its first
+/// sync) waits for nothing (review F23).
+fn cards_leaving(dir: &Path, state: &State) -> bool {
+    vdir::moves_waiting().iter().any(|(old, _)| old.parent() == Some(dir) && old.file_name().and_then(|n| n.to_str()).is_some_and(|file| state.items.iter().any(|i| i.file == file)))
 }
 
 /// Each listed collection known here by its address keeps its folder's id,
@@ -1353,7 +1444,7 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
     for collection in vdir::collections(kind).into_iter().filter(|c| c.account == account) {
         let path = collection.state_path();
         let mut state = State::load(&path);
-        if !state.pending {
+        if !state.pending || state.refused {
             continue;
         }
         let url = format!("{}/{}/", home.trim_end_matches('/'), url_segment(&collection.id));
@@ -1374,8 +1465,23 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
             ),
         };
         let answer = client.send(method, &url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+        // An address book answered 405 is made only when an address book is there now (review F6):
+        // 405 is also the answer of a server that makes none. Else refused, kept here, said.
+        let made = match (kind, answer.status) {
+            (_, 200..=299) => true,
+            (Kind::Calendars, 405) => true,
+            (Kind::Contacts, 405) => client.propfind(&url, "0", "<d:resourcetype/>").is_ok_and(|found| found.iter().any(|r| r.is(CARDDAV, "addressbook"))),
+            _ => false,
+        };
+        // Refused for good (4xx but 429): never asked again; a passing error (5xx, 429): asked at the next sync.
+        if kind == Kind::Contacts && !made && (400..500).contains(&answer.status) && answer.status != 429 {
+            state.refused = true;
+            go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+            refused.get_or_insert(SyncError::Server(format!("{method} {url}: {}", answer.status)));
+            continue;
+        }
         match answer.status {
-            200..=299 | 405 => {
+            _ if made => {
                 state.pending = false;
                 state.url = url;
                 // Made by you: yours, until the listing says otherwise.
@@ -1430,22 +1536,45 @@ fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
         if from.url.is_empty() || to.url.is_empty() || from.pending || to.pending || from.read_only || to.read_only || from.removed || to.removed {
             continue;
         }
-        // Never on the server (made here since its last sync): its PUT makes it in its new book.
-        let Some(at) = from.items.iter().position(|i| i.file == old_file) else { continue };
+        // Never on the server (made here since its last sync): its PUT makes it in its new book,
+        // and nothing waits for a deletion there (review F23).
+        let Some(at) = from.items.iter().position(|i| i.file == old_file) else {
+            if !from.url.is_empty() {
+                vdir::deletion_done(&old);
+            }
+            continue;
+        };
         if to.items.iter().any(|i| i.file == new_file) || from.items[at].etag.is_empty() {
             continue;
         }
         let source = absolute(&from.url, &from.items[at].href);
         let target = format!("{}/{}", to.url.trim_end_matches('/'), url_segment(&new_file));
-        let etag = from.items[at].etag.clone();
+        let (size, mtime) = std::fs::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
+        let text = read_text(&new)?;
+        let (mut etag, mut agreed) = (from.items[at].etag.clone(), from.items[at].hash.clone());
+        // Changed here and not sent yet (review F15): sent first, at its old place, then moved;
+        // its server's word on it (an ETag) needed, else the copy's way, which sends it too.
+        if vdir::content_hash(text.as_bytes()) != agreed {
+            let put = client.send("PUT", &source, &[("If-Match", etag.as_str()), ("Content-Type", Kind::Contacts.media_type())], Some(&text))?;
+            match put.etag.filter(|e| !e.is_empty()) {
+                Some(new_etag) if (200..300).contains(&put.status) => {
+                    etag = new_etag;
+                    agreed = vdir::content_hash(text.as_bytes());
+                    from.items[at].etag = etag.clone();
+                    from.items[at].hash = agreed.clone();
+                    from.save(&from_path).map_err(SyncError::Disk)?;
+                }
+                _ => continue,
+            }
+        }
         let answer = client.send("MOVE", &source, &[("Destination", target.as_str()), ("Overwrite", "F"), ("If-Match", etag.as_str())], None)?;
         match answer.status {
             201 | 204 => {
-                let (size, mtime) = std::fs::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
-                let text = read_text(&new)?;
+                // What is agreed is what the server holds: the copy it moved, as last agreed (or as
+                // just sent); its new ETag when said, else at the next pull (`ItemState::sent`).
                 let etag = answer.etag.unwrap_or_default();
                 let sent = if etag.is_empty() { sent_hash(&text) } else { String::new() };
-                to.items.push(ItemState { href: path_key(&target), file: new_file, etag, hash: vdir::content_hash(text.as_bytes()), size, mtime, sent, ..ItemState::default() });
+                to.items.push(ItemState { href: path_key(&target), file: new_file, etag, hash: agreed, size, mtime, sent, ..ItemState::default() });
                 to.save(&to_path).map_err(SyncError::Disk)?;
                 from.items.remove(at);
                 from.save(&from_path).map_err(SyncError::Disk)?;
@@ -2271,10 +2400,7 @@ fn changes_since(client: &Client, url: &str, token: &str) -> Result<Option<(Vec<
 /// Every item's ETag, compared with what is known: (changed, gone, no token).
 #[allow(clippy::type_complexity)]
 fn everything(client: &Client, url: &str, state: &State, known: &BTreeMap<String, usize>) -> Result<(Vec<(String, Option<String>)>, Vec<String>, Option<String>), SyncError> {
-    let (status, responses) = client.propfind(url, "1", "<d:getetag/><d:resourcetype/>")?;
-    if status != 207 {
-        return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
-    }
+    let responses = client.propfind(url, "1", "<d:getetag/><d:resourcetype/>")?;
     let collection = path_key(url);
     let items: Vec<&Response> = responses.iter().filter(|r| path_key(&absolute(url, &r.href)) != collection && !r.is(DAV, "collection")).collect();
     let present: BTreeSet<String> = items.iter().map(|r| path_key(&absolute(url, &r.href))).collect();
@@ -2380,6 +2506,18 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         let meeting = kind == Kind::Calendars && sioul_core::agenda::meeting_with_others(data, &own());
         if !meeting {
             let changed = hash != state.items[i].hash && !read_item(&new).is_ok_and(|mine| same_text(&mine, data));
+            // A card someone changed there before its move reached its server (review F16):
+            // both kept, never one taken off the server. Its old copy back in its old book as
+            // its server holds it, the moved one in its new book; said once.
+            if changed && kind == Kind::Contacts {
+                vdir::store_item(&path, &crlf(data)).map_err(SyncError::Disk)?;
+                vdir::deletion_done(&path);
+                report.kept_both.push((kind_word(kind, data).to_string(), title_of(kind, data)));
+                state.items[i] = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash, ..ItemState::default() };
+                report.received += 1;
+                report.brought.insert(path.clone());
+                return Ok(());
+            }
             if changed {
                 set_aside(&path, data.as_bytes())?;
                 report.moved_changed.push((kind_word(kind, data).to_string(), title_of(kind, data)));
@@ -3111,11 +3249,25 @@ pub(crate) mod stand_in {
             self.changes.iter().filter(|(_, c, _)| c == calendar).map(|(v, _, _)| *v).max().unwrap_or(0)
         }
 
+        /// An address book's shares, as `oc:invite` lists them.
+        fn invite(&self, book: &str) -> String {
+            self.shares
+                .get(book)
+                .into_iter()
+                .flatten()
+                .map(|(who, write)| {
+                    let href = who.trim_start_matches("principal:");
+                    let access = if *write { "<oc:read-write/>" } else { "<oc:read/>" };
+                    format!("<oc:user><d:href>{href}</d:href><oc:access>{access}</oc:access></oc:user>")
+                })
+                .collect()
+        }
+
         fn calendar_props(&self, calendar: &str) -> String {
             let last = self.last(calendar);
             if self.books {
                 let name = self.names.get(calendar).map_or(calendar, String::as_str);
-                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token><oc:owner-principal>principals/users/jane</oc:owner-principal><d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal>", super::xml_escape(name));
+                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token><oc:owner-principal>principals/users/jane</oc:owner-principal><d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal><oc:invite>{}</oc:invite>", super::xml_escape(name), self.invite(calendar));
             }
             let set = self.components.get(calendar).map(|comps| format!("<c:supported-calendar-component-set>{}</c:supported-calendar-component-set>", comps.iter().map(|c| format!(r#"<c:comp name="{c}"/>"#)).collect::<String>())).unwrap_or_default();
             format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{set}")
@@ -3147,20 +3299,7 @@ pub(crate) mod stand_in {
                     multistatus(&out)
                 }
                 (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
-                ("PROPFIND", ["cal", book]) if self.books && request.body.contains("invite") => {
-                    let users: String = self
-                        .shares
-                        .get(*book)
-                        .into_iter()
-                        .flatten()
-                        .map(|(who, write)| {
-                            let href = who.trim_start_matches("principal:");
-                            let access = if *write { "<oc:read-write/>" } else { "<oc:read/>" };
-                            format!("<oc:user><d:href>{href}</d:href><oc:access>{access}</oc:access></oc:user>")
-                        })
-                        .collect();
-                    multistatus(&found(&format!("/cal/{book}/"), &format!("<oc:invite>{users}</oc:invite>")))
-                }
+                ("PROPFIND", ["cal", book]) if self.books && request.body.contains("invite") => multistatus(&found(&format!("/cal/{book}/"), &format!("<oc:invite>{}</oc:invite>", self.invite(book)))),
                 ("PROPFIND", ["cal", calendar]) => {
                     let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
                     for (item, (etag, _)) in &self.calendars[*calendar] {
@@ -3441,7 +3580,7 @@ mod tests {
         let state = State::load(&club.state_path());
         assert!(!state.renamed && !state.recoloured);
         // A listing names it otherwise: it keeps its folder's id by its address.
-        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true) }];
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true), writers: Vec::new() }];
         keep_ids("p5-sync", Kind::Calendars, &mut listed);
         assert_eq!(listed[0].id, club.id);
         // Whose it is, from the listing: its owner against your principal; else unknown.
