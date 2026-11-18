@@ -11163,6 +11163,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A phone's calls (`[device."<id>".calls]`, `sioul_core::calls_line`)
+    /// travel with the settings, one entry per cell and per switch: a cell
+    /// changed on the desk and a switch on the phone, both from one profile,
+    /// both stay, the base with them; a group's row added on one goes to the
+    /// other; a field this Sioul does not read travels and is kept; the line
+    /// taken out whole on one goes on the other, the device's name staying.
+    #[test]
+    fn a_phone_s_calls_travel_cell_by_cell() {
+        use sioul_core::calls_line::{Profile, Row, When, add_group, clear, set_cell, set_profile, set_switch};
+        let base = scratch("devices-calls");
+        let folder = base.join("Nextcloud").join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_config, phone_config) = (desk.path("config/config.toml"), phone.path("config/config.toml"));
+        let said = |computer: &Computer| Config::load(&computer.path("config/config.toml")).unwrap().devices.get(&phone.id).and_then(|s| s.calls.clone());
+        desk.write("config/config.toml", "language = \"en\"\n");
+        phone.write("config/config.toml", "language = \"en\"\n");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+        sioul_core::device_said::set_name(&phone_config, &phone.id, "Pocket").unwrap();
+        set_profile(&phone_config, &phone.id, Profile::Personal).unwrap();
+        phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 4 * MINUTE);
+        assert_eq!(said(&desk).map(|s| s.grid()), Some(Profile::Personal.grid()), "{}", desk.read("config/config.toml"));
+
+        // Changed apart, before either hears the other: a cell on the desk, a switch on the phone.
+        set_cell(&desk_config, &phone.id, &Row::Contacts, When::Night, true, Profile::Both).unwrap();
+        set_switch(&phone_config, &phone.id, "twice", false, Profile::Both).unwrap();
+        desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 6 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+        for computer in [&desk, &phone] {
+            let said = said(computer).unwrap();
+            let grid = said.grid();
+            assert_eq!((said.profile, said.base), (Some(Profile::Own), Some(Profile::Personal)), "{}", computer.read("config/config.toml"));
+            assert!(grid.rings(&Row::Contacts, When::Night) && !grid.switches.twice, "both stay: {grid:?}");
+            assert!(grid.rings(&Row::Contacts, When::Day) && !grid.rings(&Row::Unknown, When::Work), "the rest as the base");
+        }
+        // A group's row added on the desk, a newer Sioul's field written by hand on the phone.
+        add_group(&desk_config, &phone.id, "School", Profile::Both).unwrap();
+        desk.exchange(&folder, &key, NOW + 8 * MINUTE);
+        let newer = phone.read("config/config.toml").replace("twice = false", "twice = false\nlater = \"word\"");
+        phone.write("config/config.toml", &newer);
+        phone.exchange(&folder, &key, NOW + 9 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 10 * MINUTE);
+        for computer in [&desk, &phone] {
+            assert_eq!(said(computer).unwrap().grid().groups.len(), 1, "{}", computer.read("config/config.toml"));
+            assert!(computer.read("config/config.toml").contains("later = \"word\""));
+        }
+        assert_eq!(desk.exchange(&folder, &key, NOW + 11 * MINUTE).sent, 0, "nothing changed: nothing goes out");
+        // Taken out whole on the desk: the phone keeps the shared screening again, its name staying.
+        clear(&desk_config, &phone.id).unwrap();
+        desk.exchange(&folder, &key, NOW + 12 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 13 * MINUTE);
+        for computer in [&desk, &phone] {
+            assert_eq!(said(computer), None, "{}", computer.read("config/config.toml"));
+            assert_eq!(sioul_core::device_said::name_of(&Config::load(&computer.path("config/config.toml")).unwrap(), &phone.id), Some("Pocket"));
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn two_computers_agree() {
         let base = scratch("agree");
