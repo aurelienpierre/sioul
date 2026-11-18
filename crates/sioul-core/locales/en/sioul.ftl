@@ -7983,6 +7983,7 @@ agenda-open-task = Open the task
 appointment-made = Now an appointment, in { $calendar }.
 appointment-has-steps = This task has steps of its own: it stays a task.
 task-made-from-event = Now a task, in { $list }.
+task-made-from-event-busy = Now a task, in { $list }, busy while you work on it, as the event was.
 task-made-already = This is a task's time already.
 task-from-invitation = An invitation stays an event: others expect you there.
 task-from-odd-repeat = Its repeat cannot be a task's: it stays an event.

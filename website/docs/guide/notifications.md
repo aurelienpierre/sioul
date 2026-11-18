@@ -351,7 +351,7 @@ An event's card and form, and a task's panel, have a switch **Busy** (« Indispo
 - it counts in the availability you share ([Agenda](agenda.md#your-availability));
 - with **While busy** ticked, do-not-disturb holds, on every device.
 
-An event with a time is busy unless you say otherwise, a whole-day event free unless you say busy, as Google and every calendar app keep it: the mark is the event's own, so it travels to your server and back. Ticking **All day** in the form makes a new event free, unless you pressed the switch. A meeting with others keeps its organizer's mark: shown, never written. A task is never busy unless you say so; on a list Google keeps, the switch is greyed, as Google keeps no such mark.
+An event with a time is busy unless you say otherwise, a whole-day event free unless you say busy, as Google and every calendar app keep it: the mark is the event's own, so it travels to your server and back. Ticking **All day** in the form moves the mark to the new kind's own (a time busy, a whole day free) only while nobody set it: once you pressed the switch, or when the event's file says busy or free, it stays as said; an agent that changes an event's times without saying Busy sets no mark either. A meeting with others keeps its organizer's mark: shown, never written. A task is never busy unless you say so, or unless it was made from an event that was busy, which the sentence saying the change says too; on a list Google keeps, the switch is greyed, as Google keeps no such mark.
 
 ### What each system does {#what-each-system-does}
 

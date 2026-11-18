@@ -1539,24 +1539,26 @@ pub struct EventEdit {
     /// without a point drops it, since it no longer holds.
     #[serde(default)]
     pub geo: String,
-    /// Busy (`TRANSP:OPAQUE`) or free (`TRANSP:TRANSPARENT`): the mark of
-    /// `busy`, read as Google reads it (a time busy unless said free, a
-    /// whole day free unless said busy). None from a caller that does not
-    /// say it (an agent, an older window): the file's kept as it is.
+    /// Busy (`TRANSP:OPAQUE`) or free (`TRANSP:TRANSPARENT`), as its file
+    /// says it; none when its file says neither, so that its kind's own
+    /// holds (a time busy, a whole day free, as Google reads it), and from a
+    /// caller that does not say it (an agent, an older window, a form whose
+    /// switch was not pressed): the file's kept as it is, said or unsaid, so
+    /// that no mark is frozen when the event's kind changes (review B6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy: Option<bool>,
 }
 
-/// Whether an event's main VEVENT marks you busy, as its TRANSP says, else
-/// by its kind: a time busy, a whole day free (Google's defaults).
-fn busy_of(component: &ICalendarComponent, all_day: bool) -> bool {
+/// Busy or free as an event's main VEVENT says it (its TRANSP); none when it
+/// says neither, its kind's own then holding (a time busy, a whole day free).
+fn busy_said(component: &ICalendarComponent) -> Option<bool> {
     let transp = text_of(component, &ICalendarProperty::Transp);
     if transp.eq_ignore_ascii_case("TRANSPARENT") {
-        false
+        Some(false)
     } else if transp.eq_ignore_ascii_case("OPAQUE") {
-        true
+        Some(true)
     } else {
-        !all_day
+        None
     }
 }
 
@@ -1736,7 +1738,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
         clock: if all_day { String::new() } else { clock },
         geo: geo_of(text).map(|(lat, lon)| geo_value(lat, lon)).unwrap_or_default(),
-        busy: Some(busy_of(master, all_day)),
+        busy: busy_said(master),
     })
 }
 
@@ -2202,9 +2204,10 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             // A title, a place or notes as the form gives them back (a no-break space as a
             // space, a line separator as a line end): the file's own kept, byte for byte,
             // when the person changed nothing of them (second review of the organizer's door, N2).
-            // Busy or free said again when it changed, or when the event became a time or a whole
-            // day, whose own default differs: written then, so that it stays what the form says.
-            let transp = b.busy != edit.busy || b.all_day != edit.all_day;
+            // Busy or free said again when it changed, or, said, when the event became a time or a
+            // whole day, whose own default differs: written then, so that it stays what was said.
+            // Unsaid, it stays unsaid: the new kind's own holds (review B6).
+            let transp = b.busy != edit.busy || (b.all_day != edit.all_day && edit.busy.is_some());
             Changed { title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo, transp }
         }
         None => Changed::ALL,
@@ -5355,20 +5358,31 @@ mod tests {
         let busy = apply(theirs, &EventEdit { busy: Some(true), ..edit.clone() }, &zone).unwrap();
         assert!(busy.contains("TRANSP:OPAQUE") && !busy.contains("TRANSPARENT") && !busy.contains("SEQUENCE"), "{busy}");
         assert_eq!(edit_of_text(&busy, &zone).unwrap().busy, Some(true));
-        // Unsaid by its file: a time is busy, a whole day free.
+        // Unsaid by its file: none, its kind's own holding (a time busy, a whole day free).
         let timed = new_event(&EventEdit { title: "Dentist".into(), start: "2026-11-20T09:00".into(), end: "2026-11-20T09:30".into(), ..EventEdit::default() }, &zone).unwrap();
         assert!(!timed.contains("TRANSP"), "{timed}");
-        assert_eq!(edit_of_text(&timed, &zone).unwrap().busy, Some(true));
+        assert_eq!(edit_of_text(&timed, &zone).unwrap().busy, None);
         let free = new_event(&EventEdit { title: "Lunch".into(), start: "2026-11-20T12:00".into(), end: "2026-11-20T13:00".into(), busy: Some(false), ..EventEdit::default() }, &zone).unwrap();
         assert!(free.contains("TRANSP:TRANSPARENT"), "{free}");
         let day = EventEdit { title: "Away".into(), start: "2026-11-24".into(), end: "2026-11-24".into(), all_day: true, ..EventEdit::default() };
         let unsaid = new_event(&day, &zone).unwrap();
-        assert!(!unsaid.contains("TRANSP") && edit_of_text(&unsaid, &zone).unwrap().busy == Some(false), "{unsaid}");
+        assert!(!unsaid.contains("TRANSP") && edit_of_text(&unsaid, &zone).unwrap().busy.is_none(), "{unsaid}");
         let away = new_event(&EventEdit { busy: Some(true), ..day }, &zone).unwrap();
         assert!(away.contains("TRANSP:OPAQUE") && edit_of_text(&away, &zone).unwrap().busy == Some(true), "{away}");
-        // A time made a whole day, busy kept: said, since a whole day's own is free.
-        let whole = apply(&timed, &EventEdit { start: "2026-11-20".into(), end: "2026-11-20".into(), all_day: true, ..edit_of_text(&timed, &zone).unwrap() }, &zone).unwrap();
+        // A time made a whole day, busy said: kept said, since a whole day's own is free.
+        let whole = apply(&timed, &EventEdit { start: "2026-11-20".into(), end: "2026-11-20".into(), all_day: true, busy: Some(true), ..edit_of_text(&timed, &zone).unwrap() }, &zone).unwrap();
         assert!(whole.contains("TRANSP:OPAQUE") && edit_of_text(&whole, &zone).unwrap().busy == Some(true), "{whole}");
+        // A caller that says nothing of Busy freezes no mark when the kind changes (review B6):
+        // a whole day with none, given a time, is busy by a time's own; a time with none, made
+        // whole days, is free by a whole day's own; a mark said stays said.
+        let dinner = new_event(&EventEdit { title: "Birthday dinner".into(), start: "2026-11-21".into(), end: "2026-11-21".into(), all_day: true, ..EventEdit::default() }, &zone).unwrap();
+        let timed_dinner = apply(&dinner, &EventEdit { start: "2026-11-21T19:00".into(), end: "2026-11-21T22:00".into(), all_day: false, ..edit_of_text(&dinner, &zone).unwrap() }, &zone).unwrap();
+        assert!(!timed_dinner.contains("TRANSP"), "{timed_dinner}");
+        let conference = new_event(&EventEdit { title: "Conference".into(), start: "2026-11-23T09:00".into(), end: "2026-11-25T18:00".into(), ..EventEdit::default() }, &zone).unwrap();
+        let days = apply(&conference, &EventEdit { start: "2026-11-23".into(), end: "2026-11-25".into(), all_day: true, ..edit_of_text(&conference, &zone).unwrap() }, &zone).unwrap();
+        assert!(!days.contains("TRANSP"), "{days}");
+        let timed_away = apply(&away, &EventEdit { start: "2026-11-24T09:00".into(), end: "2026-11-24T17:00".into(), all_day: false, ..edit_of_text(&away, &zone).unwrap() }, &zone).unwrap();
+        assert!(timed_away.contains("TRANSP:OPAQUE"), "said busy, kept: {timed_away}");
     }
 
     /// A phone whose system zone has no name writes the same lines, on the

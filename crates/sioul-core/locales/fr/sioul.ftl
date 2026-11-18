@@ -8051,6 +8051,7 @@ agenda-open-task = Ouvrir la tâche
 appointment-made = C’est maintenant un rendez-vous, dans { $calendar }.
 appointment-has-steps = Cette tâche a ses propres étapes : elle reste une tâche.
 task-made-from-event = C’est maintenant une tâche, dans { $list }.
+task-made-from-event-busy = C’est maintenant une tâche, dans { $list }, indisponible pendant que vous y travaillez, comme l’était l’événement.
 task-made-already = C’est déjà le temps d’une tâche.
 task-from-invitation = Une invitation reste un événement : d’autres vous y attendent.
 task-from-odd-repeat = Sa répétition ne peut pas être celle d’une tâche : il reste un événement.
