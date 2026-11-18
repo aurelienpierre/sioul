@@ -3627,7 +3627,7 @@ rule-public-ai = An AI reads it too, as you allowed, and says its tone and topic
 rule-hostile = Insults aimed at you, harassment and threats come here. The sender's name, the subject and the text stay hidden until you choose to read them.
 rule-where-shield = An address’s shield is set on its card in Accounts.
 rule-where-rank = An address’s rank is set on its card in Accounts.
-rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ By person.
+rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ Who is in which circle.
 rule-where-routes = Its routes are set on its page in Projects.
 hostile-someone = Someone
 hostile-someone-at = Someone at { $domain }
@@ -6251,10 +6251,10 @@ appnotes-why-answered = A conversation you answered from a computer in the last 
 appnotes-why-times = As you chose for this time: let through.
 appnotes-why-times-held = As you chose for this time: held until { $when }.
 appnotes-title = Notifications from other apps
-appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their rows in Settings ▸ What reaches you ▸ By person (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
+appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their circle's choice in Settings ▸ What reaches you ▸ People (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
 appnotes-never = Sioul never keeps or sends what they say, never answers, never marks anything as read, and never touches read receipts or typing: the apps and the people in them see nothing of it. A held notification comes back whole, with its own tap and actions; none is ever deleted.
 appnotes-access-on = Notification access: given.
-appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and focus sessions when What reaches you ▸ Do not disturb says so).
+appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and your busy stretches when What reaches you ▸ Moments says so).
 appnotes-steps = Sioul installed from a file (an APK) takes two steps in Android's settings:
 appnotes-step-restricted = 1. Notification access (Device and app notifications) ▸ Sioul: tap it once; Android may answer "Restricted setting". Then Android ▸ Apps ▸ Sioul ▸ ⋮ (at the top) ▸ Allow restricted settings, and confirm with your PIN: until then, Sioul's switch there stays grey (Android 13 and later).
 appnotes-step-access = 2. Notification access (Device and app notifications) ▸ Sioul ▸ on, and confirm.
@@ -6265,7 +6265,7 @@ appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
-appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and focus sessions too when What reaches you ▸ Do not disturb says so), Sioul's own mode lets through only what their rows let come then.
+appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
 appnotes-rang = These rang before Sioul held them:
 appnotes-rang-line = { $app }: { $channel }
 appnotes-make-silent = Make it silent
@@ -6315,7 +6315,7 @@ appnotes-privacy = Sioul reads the words of every notification of the apps you l
 appnotes-contacts-off = To know who wrote when an app gives a number or a contact, Sioul reads your contacts (it never writes them).
 appnotes-contacts-ask = Read contacts
 appnotes-heard = Android last handed Sioul a notification { $when }.
-appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own.
+appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own notices.
 
 ## Calls screened on a phone (docs/android.md, "Calls"; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = a hidden number
@@ -7646,7 +7646,7 @@ attention-site-muted = silenced, its notifications never come
 attention-site-gathered = its notifications come at the gathered times
 attention-own-help-list = Each kind of notification Sioul sends. Press one to see what it does at each time, and to change it.
 attention-person-list-help = Each list of people on this channel. Press one to see what it does at each time, and to change it.
-attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through row says, in What reaches you ▸ Exceptions.
+attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through line says, in What reaches you ▸ People.
 
 ## The words Sioul looks for: Settings ▸ Words (docs/words.md)
 

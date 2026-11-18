@@ -3663,7 +3663,7 @@ rule-public-ai = Une IA le lit aussi, comme vous l’avez permis, et en dit le t
 rule-hostile = Les insultes qui vous visent, le harcèlement et les menaces arrivent ici. Le nom de l’expéditeur, le sujet et le texte restent cachés jusqu’à ce que vous choisissiez de les lire.
 rule-where-shield = Le bouclier d’une adresse se règle sur sa fiche dans Comptes.
 rule-where-rank = Le rang d’une adresse se règle sur sa fiche dans Comptes.
-rule-where-blocked = Les expéditeurs bloqués sont dans Paramètres, sous Ce qui vous joint ▸ Par personne.
+rule-where-blocked = Les expéditeurs bloqués sont dans Paramètres, sous Ce qui vous joint ▸ Qui est dans quel cercle.
 rule-where-routes = Ses règles se choisissent sur sa page dans Projets.
 hostile-someone = Quelqu’un
 hostile-someone-at = Quelqu’un chez { $domain }
@@ -6312,10 +6312,10 @@ appnotes-why-answered = Une conversation à laquelle vous avez répondu depuis u
 appnotes-why-times = Comme vous l’avez choisi pour ce moment : laissée passer.
 appnotes-why-times-held = Comme vous l’avez choisi pour ce moment : retenue jusqu’à { $when }.
 appnotes-title = Notifications des autres applications
-appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courriels) suivent leurs lignes dans Paramètres ▸ Ce qui vous joint ▸ Par personne (Messages ; Courriels pour une application de courriel), comme vos courriels ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
+appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courriels) suivent le choix de leur cercle dans Paramètres ▸ Ce qui vous joint ▸ Personnes (Messages ; Courriels pour une application de courriel), comme vos courriels ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
 appnotes-never = Sioul ne garde ni n’envoie jamais ce qu’elles disent, ne répond jamais, ne marque rien comme lu, et ne touche jamais aux accusés de lecture ni à « en train d’écrire » : les applications et les personnes qui y sont n’en voient rien. Une notification retenue revient entière, avec son propre toucher et ses actions ; aucune n’est jamais supprimée.
 appnotes-access-on = Accès aux notifications : donné.
-appnotes-access-off = Accès aux notifications : pas donné. Sans lui, les notifications des autres applications viennent comme elles sont envoyées, et seul « Ne pas déranger » les retient : le vôtre, et celui de Sioul (son interrupteur, les pauses ; votre sommeil et vos séances de concentration quand Ce qui vous joint ▸ Ne pas déranger le dit).
+appnotes-access-off = Accès aux notifications : pas donné. Sans lui, les notifications des autres applications viennent comme elles sont envoyées, et seul « Ne pas déranger » les retient : le vôtre, et celui de Sioul (son interrupteur, les pauses ; votre sommeil et vos indisponibilités quand Ce qui vous joint ▸ Moments le dit).
 appnotes-steps = Sioul installé depuis un fichier (un APK) demande deux étapes dans les paramètres d’Android :
 appnotes-step-restricted = 1. Accès aux notifications (Notifications des appareils et des applications) ▸ Sioul : touchez-le une fois ; Android peut répondre « Paramètre restreint ». Puis Android ▸ Applications ▸ Sioul ▸ ⋮ (en haut) ▸ Autoriser les paramètres restreints, et confirmez avec votre code : jusque-là, l’interrupteur de Sioul y reste grisé (Android 13 et après).
 appnotes-step-access = 2. Accès aux notifications (Notifications des appareils et des applications) ▸ Sioul ▸ activé, et confirmez.
@@ -6326,7 +6326,7 @@ appnotes-hold = Retenir les notifications des autres applications jusqu’à leu
 appnotes-hold-help = Décoché, tout vient comme les applications l’envoient ; l’accès reste tel que vous l’avez réglé.
 appnotes-times = Les notifications des automates reviennent à { $times }, jamais pendant le sommeil, une pause, le temps libre ou « Ne pas déranger ».
 appnotes-times-change = Changer les heures
-appnotes-sound = Android joue le son d’une notification avant que Sioul la voie : Sioul peut retenir une notification, pas son premier son. Ce que Sioul regroupe revient sans son. Rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont sonné), ou laissez Sioul le faire. Les discussions et les SMS peuvent garder leur son, pour que sonnent les personnes laissées passer : un message retenu sonne alors une fois, puis attend hors de vue. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos séances de concentration aussi quand Ce qui vous joint ▸ Ne pas déranger le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.
+appnotes-sound = Android joue le son d’une notification avant que Sioul la voie : Sioul peut retenir une notification, pas son premier son. Ce que Sioul regroupe revient sans son. Rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont sonné), ou laissez Sioul le faire. Les discussions et les SMS peuvent garder leur son, pour que sonnent les personnes laissées passer : un message retenu sonne alors une fois, puis attend hors de vue. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos indisponibilités aussi quand Ce qui vous joint ▸ Moments le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.
 appnotes-rang = Ont sonné avant que Sioul les retienne :
 appnotes-rang-line = { $app } : { $channel }
 appnotes-make-silent = Rendre silencieux
@@ -6376,7 +6376,7 @@ appnotes-privacy = Sioul lit les mots de chaque notification des applications qu
 appnotes-contacts-off = Pour savoir qui a écrit quand une application donne un numéro ou un contact, Sioul lit vos contacts (il ne les modifie jamais).
 appnotes-contacts-ask = Lire les contacts
 appnotes-heard = Android a passé une notification à Sioul pour la dernière fois { $when }.
-appnotes-computer = Sur Android, un téléphone ou une tablette, Sioul retient les notifications des autres applications jusqu’à leur moment (l’accès aux notifications d’Android). Sur un ordinateur, ce sont les notifications de vos sites qui sont regroupées : Paramètres ▸ Ce qui vous joint ▸ Celles de Sioul.
+appnotes-computer = Sur Android, un téléphone ou une tablette, Sioul retient les notifications des autres applications jusqu’à leur moment (l’accès aux notifications d’Android). Sur un ordinateur, ce sont les notifications de vos sites qui sont regroupées : Paramètres ▸ Ce qui vous joint ▸ Les avis de Sioul.
 
 ## Les appels filtrés sur un téléphone (docs/android.md, « Calls » ; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = un numéro masqué
@@ -7708,7 +7708,7 @@ attention-site-muted = en silence, ses notifications ne viennent jamais
 attention-site-gathered = ses notifications arrivent aux heures de regroupement
 attention-own-help-list = Chaque type de notification que Sioul envoie. Appuyez sur l’un pour voir ce qu’il fait à chaque moment, et le changer.
 attention-person-list-help = Chaque liste de personnes sur ce canal. Appuyez sur l’une pour voir ce qu’elle fait à chaque moment, et la changer.
-attention-sheet-always-off-help = Cochée, cette personne passe plus que sa liste ne le permet, sur tous vos appareils : comme le dit la ligne Passent toujours de chaque canal, dans Ce qui vous joint ▸ Exceptions.
+attention-sheet-always-off-help = Cochée, cette personne passe plus que sa liste ne le permet, sur tous vos appareils : comme le dit la ligne Passent toujours de chaque canal, dans Ce qui vous joint ▸ Personnes.
 
 ## Les mots que Sioul repère : Paramètres ▸ Mots (docs/words.md)
 
