@@ -1,0 +1,20 @@
+# Titles a contact's name may begin with (civilities: Mr, Mme…), for the
+# Contacts page: the filter "has a title", the action "Move the title into
+# its field", and the guess of a name's parts when none were given
+# (crates/sioul-core/src/titles.rs). Each is found as the name's first word,
+# whatever its case, a full stop after it or not ("Mme", "mme.", "MME"), and
+# only when a name follows it: "Mme" alone, "Meredith" or "Drake" hold none.
+# `cargo test -p sioul-core titles` checks that this file is well formed.
+#
+# words: the titles, as written without their full stop
+# about: who says them, for whoever reads this file
+
+[[language]]
+code = "fr"
+about = "Monsieur, Madame, Mademoiselle, Docteur, Maître, Professeur, and the English Mr many French cards carry"
+words = ["M", "Mr", "Mme", "Mlle", "Dr", "Me", "Pr"]
+
+[[language]]
+code = "en"
+about = "Mister, Missus, Ms, Miss, Doctor, Professor"
+words = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"]

@@ -102,6 +102,7 @@ fn check() -> Result<(), String> {
                 notes: contact.notes.clone(),
                 urls: contact.urls.clone(),
                 categories: Some(contact.categories.clone()),
+                parts: None,
             };
             let before: std::collections::BTreeSet<String> = lines::unfold(&text).into_iter().filter(|l| lines::name(l) != "REV").collect();
             let after: std::collections::BTreeSet<String> = lines::unfold(&contacts::apply(&text, &edit)).into_iter().filter(|l| lines::name(l) != "REV").collect();

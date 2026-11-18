@@ -40,9 +40,20 @@ pub struct Contact {
     pub birthday: String,
     pub notes: String,
     pub urls: Vec<String>,
-    /// The address book it is in.
+    /// The address book it is in, by its name.
     pub book: String,
+    /// Its address book's place, "account/id": what the filters, the book
+    /// chooser and the batch moves name it by (two books may share a name).
+    pub place: String,
     pub read_only: bool,
+    /// The name's parts as `N` holds them (RFC 6350 §6.2.2): the title
+    /// (honorific prefix: "Mme", "Dr"), given names, additional names, family
+    /// name and suffix; empty when the card says none. `title` is the job.
+    pub prefix: String,
+    pub given: String,
+    pub additional: String,
+    pub family: String,
+    pub suffix: String,
     /// Its CATEGORIES ("Famille", "Amis"…), what Nextcloud Contacts shows as
     /// groups: every CATEGORIES line of the card, each name once
     /// (`category_key`), as the card writes it. The page shows them and
@@ -84,6 +95,49 @@ pub struct ContactEdit {
     /// leaves the card's as they are.
     #[serde(default)]
     pub categories: Option<Vec<String>>,
+    /// The name's parts as the form shows them under the name (wave D, 18
+    /// November 2026): kept as given. None (an import, a sender added), or
+    /// all empty: the card's own parts kept, or guessed from the name when it
+    /// has none (`wanted_n`).
+    #[serde(default)]
+    pub parts: Option<NameParts>,
+}
+
+/// The parts of a name the form gives, as `N` writes them: the title
+/// ("Mme", "Dr"), given names, family name and suffix. Additional names stay
+/// as the card holds them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameParts {
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub given: String,
+    #[serde(default)]
+    pub family: String,
+    #[serde(default)]
+    pub suffix: String,
+}
+
+impl NameParts {
+    /// Whether none is given.
+    pub fn is_empty(&self) -> bool {
+        [&self.prefix, &self.given, &self.family, &self.suffix].iter().all(|p| p.trim().is_empty())
+    }
+
+    /// The name they make, without the title (what `FN` shows, so that other
+    /// programs sort by the name): "Jeanne Martin".
+    pub fn name(&self) -> String {
+        [&self.given, &self.family, &self.suffix].iter().map(|p| p.trim()).filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" ")
+    }
+}
+
+impl ContactEdit {
+    /// The name to save: the one typed, else the one its parts make (a new
+    /// card given its parts alone).
+    pub fn name_or_parts(&self) -> String {
+        let typed = self.name.trim();
+        if typed.is_empty() { self.parts.as_ref().map(NameParts::name).unwrap_or_default() } else { typed.to_string() }
+    }
 }
 
 /// Reads one card with calcard, to tell whether it is valid vCard.
@@ -251,6 +305,8 @@ pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contac
     let emails = labeled("EMAIL");
     let org = first("ORG");
     let photo = photo_of(card);
+    let parts = n_parts(card).unwrap_or_default();
+    let [family, given, additional, prefix, suffix] = parts.map(|p| p.trim().to_string());
     Contact {
         key: path.display().to_string(),
         uid: first("UID"),
@@ -265,10 +321,38 @@ pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contac
         urls: all("URL").map(|l| shown(l)).filter(|u| !u.is_empty()).collect(),
         categories: categories_of(card),
         book: book.name.clone(),
+        place: format!("{}/{}", book.account, book.id),
         read_only: book.read_only,
+        prefix,
+        given,
+        additional,
+        family,
+        suffix,
         photo: photo.0,
         photo_web: photo.1,
     }
+}
+
+/// `N`'s five parts as the card holds them, unescaped: family, given,
+/// additional, prefixes, suffixes (RFC 6350 §6.2.2); none without `N`.
+pub(crate) fn n_parts(card: &[String]) -> Option<[String; 5]> {
+    let line = card.iter().find(|l| lines::name(l) == "N")?;
+    let parts = components(split_line(line).value);
+    Some(std::array::from_fn(|i| parts.get(i).cloned().unwrap_or_default()))
+}
+
+/// Whether a contact has a title: in its title field (`N`'s prefix), or at the
+/// start of its name ("Mme Jeanne Martin", `titles::split`).
+pub fn has_title(contact: &Contact) -> bool {
+    !contact.prefix.trim().is_empty() || crate::titles::split(&contact.name).is_some()
+}
+
+/// The title Sioul's list shows greyed before a contact's name: its title
+/// field, unless the name already begins with it.
+pub fn title_before_name(contact: &Contact) -> String {
+    let prefix = contact.prefix.trim();
+    let first = contact.name.split_whitespace().next().unwrap_or("");
+    if prefix.is_empty() || crate::titles::same(first, prefix) { String::new() } else { prefix.to_string() }
 }
 
 /// Where the pictures shown are kept: the cache's `photos/`.
@@ -407,7 +491,22 @@ pub fn apply(text: &str, edit: &ContactEdit) -> String {
     let mut out: Vec<Option<String>> = original.iter().cloned().map(Some).collect();
     let mut added: Vec<String> = Vec::new();
     let mut changed = false;
-    let name = edit.name.trim();
+    let typed = edit.name_or_parts();
+    let name = typed.as_str();
+    // The name's parts first, from the name as the card shows it now (`wanted_n`).
+    let old_name = original.iter().filter(|l| lines::name(l) == "FN").map(|l| shown(l)).filter(|v| !v.is_empty()).collect::<Vec<_>>().join("\n");
+    if let Some(parts) = wanted_n(&original, edit, &old_name, name) {
+        changed = true;
+        let line = format!("N:{}", lines::structured(&parts));
+        let present: Vec<usize> = original.iter().enumerate().filter(|(_, l)| lines::name(l) == "N").map(|(i, _)| i).collect();
+        for &i in &present {
+            out[i] = None;
+        }
+        match present.first() {
+            Some(&i) => out[i] = Some(line),
+            None => added.push(line),
+        }
+    }
     // Single values: kept when they read the same.
     for (property, wanted, write) in [
         ("FN", name.to_string(), format!("FN:{}", lines::escape(name))),
@@ -424,15 +523,6 @@ pub fn apply(text: &str, edit: &ContactEdit) -> String {
         changed = true;
         for &i in &present {
             out[i] = None;
-        }
-        if property == "FN" {
-            // The structured name follows a new name.
-            for (i, line) in original.iter().enumerate() {
-                if lines::name(line) == "N" {
-                    out[i] = None;
-                }
-            }
-            added.push(format!("N:{}", lines::structured(&structured_name(name))));
         }
         if !wanted.is_empty() {
             match present.first() {
@@ -489,6 +579,102 @@ fn set_categories(original: &[String], out: &mut [Option<String>], added: &mut V
         }
     }
     true
+}
+
+/// A card with groups added and others taken out (the Contacts page's batch
+/// actions, wave D), each compared as the sender lists compare them
+/// (`category_key`); its other lines byte for byte, its CATEGORIES lines as
+/// `set_categories` writes them, `REV` renewed. None when nothing changes: it
+/// has them all already, or none of those to take out.
+pub fn with_categories(text: &str, add: &[String], remove: &[String]) -> Option<String> {
+    let original = lines::unfold(text);
+    let gone: Vec<String> = remove.iter().map(|r| category_key(r)).filter(|k| !k.is_empty()).collect();
+    let mut wanted: Vec<String> = categories_of(&original).into_iter().filter(|c| !gone.contains(&category_key(c))).collect();
+    for name in add.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
+        if !wanted.iter().any(|c| category_key(c) == category_key(name)) {
+            wanted.push(name.to_string());
+        }
+    }
+    let mut out: Vec<Option<String>> = original.iter().cloned().map(Some).collect();
+    let mut added: Vec<String> = Vec::new();
+    if !set_categories(&original, &mut out, &mut added, &wanted) {
+        return None;
+    }
+    Some(rewritten(out, added))
+}
+
+/// What "Move the title into its field" does to one card (wave D).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TitleMove {
+    /// Its name begins with a title: the card with the title in `N`'s prefix
+    /// and its displayed name (`FN`) without it. `after` the name it shows then;
+    /// `kept` when `N` held that title already, and only the name is cleaned.
+    Moves { title: String, before: String, after: String, kept: bool, text: String },
+    /// Its name begins with no title (or it has no `FN` to clean).
+    None,
+    /// Its title field holds another title already (this one): left as it is.
+    Differs(String),
+}
+
+/// A card's title moved from its displayed name into its title field: `FN`
+/// "Mme Jeanne Martin" becomes "Jeanne Martin", `N`'s prefix "Mme" (its given
+/// names lose the title too when Sioul's former guess put it there); a card
+/// without `N` gets one guessed from the name left, with the title. `TITLE`
+/// (the job) and every other line stay byte for byte; `REV` renewed.
+pub fn move_title(text: &str) -> TitleMove {
+    let card = lines::unfold(text);
+    let Some(fn_at) = card.iter().position(|l| lines::name(l) == "FN") else { return TitleMove::None };
+    let before = shown(&card[fn_at]);
+    let Some((title, rest)) = crate::titles::split(&before) else { return TitleMove::None };
+    let current = n_parts(&card);
+    let held = current.as_ref().map(|p| p[3].trim().to_string()).unwrap_or_default();
+    if !held.is_empty() && !crate::titles::same(&held, &title) {
+        return TitleMove::Differs(held);
+    }
+    let kept = !held.is_empty();
+    let parts = match current {
+        Some(mut p) => {
+            if p[3].trim().is_empty() {
+                p[3] = title.clone();
+            }
+            // Sioul's former guess put the title among the given names: taken out there too.
+            if crate::titles::same(&p[1], &title) {
+                p[1] = String::new();
+            } else if let Some((t, given)) = crate::titles::split(&p[1])
+                && crate::titles::same(&t, &title)
+            {
+                p[1] = given;
+            }
+            p
+        }
+        None => {
+            let mut p = structured_name(&rest);
+            p[3] = title.clone();
+            p
+        }
+    };
+    let mut out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    out[fn_at] = Some(format!("FN:{}", lines::escape(&rest)));
+    let mut added = Vec::new();
+    let n_line = format!("N:{}", lines::structured(&parts));
+    match card.iter().position(|l| lines::name(l) == "N") {
+        Some(i) => {
+            if !kept || lines::value(&card[i]) != lines::value(&n_line) {
+                out[i] = Some(n_line);
+            }
+        }
+        None => added.push(n_line),
+    }
+    TitleMove::Moves { title, before, after: rest, kept, text: rewritten(out, added) }
+}
+
+/// A card's lines as changed, `REV` renewed, what was added before `END:VCARD`.
+fn rewritten(out: Vec<Option<String>>, mut added: Vec<String>) -> String {
+    let mut kept: Vec<String> = out.into_iter().flatten().filter(|l| lines::name(l) != "REV").collect();
+    added.push(format!("REV:{}", now_stamp()));
+    let end = kept.iter().rposition(|l| lines::name(l) == "END").unwrap_or(kept.len());
+    kept.splice(end..end, added);
+    lines::fold(&kept)
 }
 
 /// One property of several values: an unchanged value keeps its line; a new
@@ -573,13 +759,57 @@ fn known_type(label: &str) -> Option<&'static str> {
     }
 }
 
-/// "Jane van Exemple" → N: family "van Exemple"? Names do not split by rule;
-/// the last word is taken as the family name, the rest as given names.
-fn structured_name(name: &str) -> Vec<String> {
+/// "Jane van Exemple" → N: family "van Exemple"? Names do not split by rule:
+/// the guess for a card that gives no parts. A title at the start goes to the
+/// title part ("Mme Jeanne Martin": `Martin;Jeanne;;Mme;`); then the last word
+/// is taken as the family name, the rest as given names.
+fn structured_name(name: &str) -> [String; 5] {
+    let (prefix, rest) = crate::titles::split(name).unwrap_or_else(|| (String::new(), name.trim().to_string()));
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    match words.split_last() {
+        Some((family, given)) if !given.is_empty() => [family.to_string(), given.join(" "), String::new(), prefix, String::new()],
+        _ => [rest, String::new(), String::new(), prefix, String::new()],
+    }
+}
+
+/// Sioul's guess before titles were known (until 18 November 2026): the last
+/// word the family name, the rest given names, "Mme" among them.
+fn guessed_before(name: &str) -> [String; 5] {
     let words: Vec<&str> = name.split_whitespace().collect();
     match words.split_last() {
-        Some((family, given)) if !given.is_empty() => vec![family.to_string(), given.join(" "), String::new(), String::new(), String::new()],
-        _ => vec![name.to_string(), String::new(), String::new(), String::new(), String::new()],
+        Some((family, given)) if !given.is_empty() => [family.to_string(), given.join(" "), String::new(), String::new(), String::new()],
+        _ => [name.to_string(), String::new(), String::new(), String::new(), String::new()],
+    }
+}
+
+/// What `N` becomes after an edit: None, kept byte for byte. Parts typed in
+/// the form are written as typed (additional names kept as the card holds
+/// them); parts the card holds are kept, whatever the name becomes. Only a
+/// card with no parts of its own (no `N`, an empty one, or one that is
+/// Sioul's guess of its former name) gets them guessed again, when its name
+/// changes (wave D: before it, every new name rebuilt `N` from its last word,
+/// and a title kept there was lost).
+fn wanted_n(card: &[String], edit: &ContactEdit, old_name: &str, new_name: &str) -> Option<[String; 5]> {
+    let current = n_parts(card);
+    let renamed = old_name.trim() != new_name;
+    let four = |p: &[String; 5]| [p[0].trim().to_string(), p[1].trim().to_string(), p[3].trim().to_string(), p[4].trim().to_string()];
+    // No parts of its own: none at all, or Sioul's guess of the name it had.
+    let guessed = |p: &[String; 5]| four(p).iter().all(String::is_empty) || four(p) == four(&structured_name(old_name)) || four(p) == four(&guessed_before(old_name));
+    let typed = edit.parts.as_ref().filter(|p| !p.is_empty());
+    match (typed, current) {
+        (Some(typed), Some(current)) => {
+            let wanted = [typed.family.trim().to_string(), typed.given.trim().to_string(), current[2].clone(), typed.prefix.trim().to_string(), typed.suffix.trim().to_string()];
+            if four(&wanted) != four(&current) {
+                Some(wanted)
+            } else if renamed && guessed(&current) {
+                Some(structured_name(new_name))
+            } else {
+                None
+            }
+        }
+        (Some(typed), None) => Some([typed.family.trim().to_string(), typed.given.trim().to_string(), String::new(), typed.prefix.trim().to_string(), typed.suffix.trim().to_string()]),
+        (None, Some(current)) => (renamed && guessed(&current)).then(|| structured_name(new_name)),
+        (None, None) => renamed.then(|| structured_name(new_name)),
     }
 }
 
@@ -845,6 +1075,7 @@ mod tests {
             notes: c.notes.clone(),
             urls: c.urls.clone(),
             categories: Some(c.categories.clone()),
+            parts: Some(NameParts { prefix: c.prefix.clone(), given: c.given.clone(), family: c.family.clone(), suffix: c.suffix.clone() }),
         };
         assert_eq!(apply(MIXED, &same), MIXED);
         let compact = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nBDAY;VALUE=DATE:19840512\r\nEND:VCARD\r\n";
@@ -904,6 +1135,7 @@ mod tests {
             notes: c.notes.clone(),
             urls: c.urls.clone(),
             categories: Some(c.categories.clone()),
+            parts: Some(NameParts { prefix: c.prefix.clone(), given: c.given.clone(), family: c.family.clone(), suffix: c.suffix.clone() }),
         }
     }
 
@@ -937,5 +1169,86 @@ mod tests {
         assert_eq!(categories_in_use(&everyone), ["Famille", "Équipe", "Club"]);
         assert_eq!(everyone.iter().filter(|c| in_category(c, "FAMILLE")).count(), 3);
         assert!(in_category(&everyone[3], "Équipe") && !in_category(&everyone[1], "Club"));
+    }
+
+    /// A card of the parts given (wave D): `N` written from them, the name
+    /// shown its own; a name changed leaves typed parts as they are, and
+    /// guesses again only the parts of a card that had none of its own.
+    #[test]
+    fn name_parts_typed_are_kept() {
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:p-1\r\nFN:Jeanne Martin\r\nN:Martin-Exemple;Jeanne;Marie;Dr;PhD\r\nEND:VCARD\r\n";
+        let c = contact(&lines::unfold(card), Path::new("/tmp/p.vcf"), &book());
+        assert_eq!((c.prefix.as_str(), c.given.as_str(), c.additional.as_str(), c.family.as_str(), c.suffix.as_str()), ("Dr", "Jeanne", "Marie", "Martin-Exemple", "PhD"));
+        assert_eq!(c.place, "a/contacts");
+        // Renamed, parts as they were: kept byte for byte, never rebuilt from the last word.
+        let mut edit = edit_of(&c);
+        edit.name = "Jeanne M.".into();
+        let text = apply(card, &edit);
+        assert!(text.contains("\r\nN:Martin-Exemple;Jeanne;Marie;Dr;PhD\r\n") && text.contains("FN:Jeanne M."), "{text}");
+        // Left out (an import): the same.
+        edit.parts = None;
+        assert!(apply(card, &edit).contains("\r\nN:Martin-Exemple;Jeanne;Marie;Dr;PhD\r\n"));
+        // Typed: written as typed, additional names kept where they were.
+        edit.parts = Some(NameParts { prefix: "Mme".into(), given: "Jeanne".into(), family: "Martin".into(), suffix: String::new() });
+        let text = apply(card, &edit);
+        assert!(text.contains("\r\nN:Martin;Jeanne;Marie;Mme;\r\n") && text.matches("\nN:").count() == 1, "{text}");
+        // A card of no parts: guessed from its name, a title at the start in the title part.
+        let bare = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:p-2\r\nFN:Lou\r\nEND:VCARD\r\n";
+        let edit = ContactEdit { name: "Mme Jeanne Martin".into(), parts: Some(NameParts::default()), ..ContactEdit::default() };
+        assert!(apply(bare, &edit).contains("\r\nN:Martin;Jeanne;;Mme;\r\n"));
+        // Sioul's own guess of the former name follows the new one, its former way too.
+        let guessed = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:p-3\r\nFN:Mme Lou Exemple\r\nN:Exemple;Mme Lou;;;\r\nEND:VCARD\r\n";
+        let c = contact(&lines::unfold(guessed), Path::new("/tmp/g.vcf"), &book());
+        let mut edit = edit_of(&c);
+        edit.name = "Lou Martin".into();
+        assert!(apply(guessed, &edit).contains("\r\nN:Martin;Lou;;;\r\n"), "{}", apply(guessed, &edit));
+        // A new card of its parts alone: its name is theirs, without the title.
+        let parts = NameParts { prefix: "Mme".into(), given: "Jeanne".into(), family: "Martin".into(), suffix: String::new() };
+        let new = new_card(&ContactEdit { parts: Some(parts), ..ContactEdit::default() });
+        assert!(new.contains("FN:Jeanne Martin\r\n") && new.contains("N:Martin;Jeanne;;Mme;\r\n"), "{new}");
+        let shown = contact(&lines::unfold(&new), Path::new("/tmp/n.vcf"), &book());
+        assert_eq!((title_before_name(&shown).as_str(), has_title(&shown)), ("Mme", true));
+    }
+
+    /// "Move the title into its field" (wave D): the title found at the start
+    /// of the name goes into `N`'s prefix, the name shown loses it; `TITLE`,
+    /// the job, and every other line stay.
+    #[test]
+    fn the_title_moves_into_its_field() {
+        let card = |fn_line: &str, n: &str| format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:t-1\r\n{fn_line}\r\n{n}TITLE:Accountant\r\nX-OTHER:keep\r\nEND:VCARD\r\n");
+        // Sioul's former guess: the title among the given names, taken out there too.
+        let TitleMove::Moves { title, before, after, kept, text } = move_title(&card("FN:Mme Jeanne Martin", "N:Martin;Mme Jeanne;;;\r\n")) else { panic!("found") };
+        assert_eq!((title.as_str(), before.as_str(), after.as_str(), kept), ("Mme", "Mme Jeanne Martin", "Jeanne Martin", false));
+        assert!(text.contains("FN:Jeanne Martin\r\n") && text.contains("N:Martin;Jeanne;;Mme;\r\n") && text.contains("TITLE:Accountant\r\nX-OTHER:keep\r\n") && text.contains("REV:"), "{text}");
+        let c = contact(&lines::unfold(&text), Path::new("/tmp/t.vcf"), &book());
+        assert_eq!((c.name.as_str(), c.prefix.as_str(), c.title.as_str(), title_before_name(&c).as_str()), ("Jeanne Martin", "Mme", "Accountant", "Mme"));
+        // No N: one guessed from the name left, with the title.
+        let TitleMove::Moves { text, .. } = move_title(&card("FN:Mr. John Example", "")) else { panic!("found") };
+        assert!(text.contains("FN:John Example\r\n") && text.contains("N:Example;John;;Mr.;\r\n"), "{text}");
+        // N holds that title already: only the name cleaned, N byte for byte.
+        let TitleMove::Moves { kept, text, .. } = move_title(&card("FN:Dr Paul Exemple", "N:Exemple;Paul;;dr.;\r\n")) else { panic!("found") };
+        assert!(kept && text.contains("FN:Paul Exemple\r\n") && text.contains("N:Exemple;Paul;;dr.;\r\n"), "{text}");
+        // Another title held there: left as it is. No title, or none to clean: nothing.
+        assert_eq!(move_title(&card("FN:Mme Lou Exemple", "N:Exemple;Lou;;Dr;\r\n")), TitleMove::Differs("Dr".into()));
+        assert_eq!(move_title(&card("FN:Meredith Example", "")), TitleMove::None);
+        assert_eq!(move_title(&card("FN:Drake Example", "")), TitleMove::None);
+        assert_eq!(move_title(&card("FN:Mme", "")), TitleMove::None);
+        assert_eq!(move_title("BEGIN:VCARD\r\nVERSION:3.0\r\nN:Martin;Jeanne;;Mme;\r\nEND:VCARD\r\n"), TitleMove::None);
+        // The filter's "has a title": in its field, or at the start of its name.
+        let with = |name: &str, prefix: &str| Contact { name: name.into(), prefix: prefix.into(), ..Contact::default() };
+        assert!(has_title(&with("Mme Jeanne Martin", "")) && has_title(&with("Jeanne Martin", "Mme")) && !has_title(&with("Meredith Example", "")));
+        assert_eq!(title_before_name(&with("Mme Jeanne Martin", "Mme")), "", "never twice");
+    }
+
+    /// Groups added and taken out by the batch actions: one CATEGORIES line,
+    /// the rest of the card as it was; nothing when nothing changes.
+    #[test]
+    fn groups_added_and_taken_out() {
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:g-1\r\nFN:Lou\r\nCATEGORIES:Amis,Clients\r\nX-OTHER:keep\r\nEND:VCARD\r\n";
+        let text = with_categories(card, &["Professional".into()], &["amis".into()]).expect("changed");
+        assert!(text.contains("CATEGORIES:Clients,Professional\r\nX-OTHER:keep\r\n"), "{text}");
+        assert_eq!(with_categories(card, &["CLIENTS".into()], &["Famille".into()]), None, "has it, lacks the other: nothing");
+        let none = with_categories(card, &[], &["Amis".into(), "clients".into()]).expect("changed");
+        assert!(!none.contains("CATEGORIES"), "{none}");
     }
 }

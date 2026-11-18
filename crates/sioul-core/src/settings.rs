@@ -94,6 +94,12 @@ pub enum Kind {
     /// reads and writes them itself (`availability`, `share_availability`).
     /// Nothing in `value`.
     Availability,
+    /// The address books, the window's own block (`AddressBooksSetup.qml`,
+    /// wave D): each book's line, whose it is, shared with whom, written or
+    /// read only; made, renamed, merged, removed, shared, imported into and
+    /// exported (`addressbooks`). The window reads and writes them itself
+    /// (`address_books_setup`…). Nothing in `value`.
+    AddressBooks,
     /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
@@ -603,7 +609,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             } }).collect();
         }
         "contacts" => {
-            b.collections(config, "address-books", crate::vdir::Kind::Contacts, "");
+            // The address books' own block (wave D): their lines, made, renamed, merged, removed, shared.
+            b.push("addressbooks", "address-books", Kind::AddressBooks, SettingValue::Text(String::new()));
             b.push("map.geocode", "map-geocode", Kind::Bool, SettingValue::Bool(config.map.geocode));
             b.push("map.tiles", "map-tiles", Kind::Text, SettingValue::Text(config.map.tiles.clone().unwrap_or_default()));
             // The country of numbers written without one: "04 65…" found as "+33 4 65…" (phones.rs).
@@ -1628,7 +1635,8 @@ mod tests {
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
         assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
-        assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
+        // The address books' own block first (wave D), whatever this computer holds.
+        assert_eq!(keys("contacts"), vec!["addressbooks", "map.geocode", "map.tiles", "contacts.region"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");
         for view in ["porch", "mail", "accounts", "account:a", "senders", "agenda", "tasks", "notes", "reading", "sites", "contacts", "parameters"] {

@@ -1,0 +1,21 @@
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Example//Phone//EN
+UID:card-three-1
+FN:Paul Exemple
+N:Exemple;Paul;;;
+TEL;TYPE=CELL:06 39 98 00 03
+EMAIL;TYPE=INTERNET,WORK:paul@example.org
+CATEGORIES:Clients
+NOTE:Une note qui tient sur une ligne trop longue pour une seule ligne de c
+ arte\, pliée en deux
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Kim Exemple
+EMAIL:kim@example.org
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Broken
+END:VCAR

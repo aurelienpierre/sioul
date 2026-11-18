@@ -269,6 +269,18 @@ sioul-core/src/config.rs	write_document	1	std::fs::write(&temporary, text)
 sioul-core/src/config.rs	write_document	1	std::fs::rename(&temporary, path)
 sioul-core/src/config.rs	mark_stand_in	1	std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 
+# sioul-core/src/contactbatch.rs: a batch's record (the cards as they were, to undo it), a version changed since set aside beside it, records older than thirty days: no item (the cards themselves go through vdir::write_item, remove_item, move_item).
+sioul-core/src/contactbatch.rs	run	1	crate::filelock::replace(&dir.join(format!("{id}.json")), text.as_bytes())
+sioul-core/src/contactbatch.rs	undo	1	std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default())
+sioul-core/src/contactbatch.rs	undo	1	std::fs::remove_file(dir.join(format!("{id}.json")))
+sioul-core/src/contactbatch.rs	forget_old	1	std::fs::remove_file(&path)
+
+# sioul-core/src/contactfilter.rs: the Contacts page's filters, as this device keeps them (state): no item.
+sioul-core/src/contactfilter.rs	save	1	crate::filelock::replace(path, text.as_bytes())
+
+# sioul-core/src/contactimport.rs: the import's mappings of columns kept under a name (state): no item.
+sioul-core/src/contactimport.rs	keep	1	crate::filelock::replace(path, text.as_bytes())
+
 # sioul-core/src/contacts.rs: a contact's photo, in a cache of its own beside the contact: no item written.
 sioul-core/src/contacts.rs	photo_shown	1	std::fs::write(&path, &bytes)
 
@@ -614,7 +626,7 @@ sioul-core/src/vdir.rs	delete_collection	1	std::fs::remove_file(&path)
 sioul-core/src/vdir.rs	recolour_collection	1	crate::filelock::replace(&collection.dir.join("color"), colour.to_ascii_lowercase().as_bytes())
 sioul-core/src/vdir.rs	recolour_collection	1	std::fs::remove_file(collection.dir.join("color"))
 #   remove_collection: a collection removed by your press, a dated .ics copy of it kept first (copies).
-sioul-core/src/vdir.rs	remove_collection	1	crate::filelock::replace(&copy, collection_as_ics(collection).as_bytes())
+sioul-core/src/vdir.rs	remove_collection	1	crate::filelock::replace(&copy, copied.as_bytes())
 sioul-core/src/vdir.rs	remove_collection	1	std::fs::remove_dir_all(&collection.dir)
 sioul-core/src/vdir.rs	remove_collection	1	std::fs::remove_file(&path)
 #   prepare: a collection's name and colour (no item).

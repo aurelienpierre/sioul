@@ -3241,7 +3241,7 @@ set-task-lists-help = Renommées ici, et sur le serveur à la prochaine synchron
 set-calendars = Agendas
 set-calendars-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste.
 set-address-books = Carnets d’adresses
-set-address-books-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un carnet vide peut être supprimé ; un carnet qui contient des contacts reste.
+set-address-books-help = Où vos contacts sont gardés, et avec qui chaque carnet est partagé. Qui peut vous joindre dépend des groupes d’un contact, jamais de son carnet d’adresses.
 set-collections-remove = Le supprimer, ici et sur le serveur
 word-and = et
 health-every-days = { $days ->
@@ -9176,3 +9176,271 @@ devices-plain-here-system = { $name } (cet appareil, appelé { $system } par son
 devices-plain-line = { $label } : { $value }
 share-devices-moved = Vos appareils sont listés dans Paramètres ▸ Appareils, avec ce à quoi sert chacun.
 share-devices-open = Ouvrir Appareils
+
+## Carnets d’adresses et contacts par lots (vague D) : Contacts ⚙ ▸ Carnets d’adresses, les filtres, la sélection, les parties du nom, l’import.
+
+contact-name-parts = Civilité, prénoms, nom de famille
+contact-name-prefix = Civilité (M., Mme…)
+contact-name-given = Prénoms
+contact-name-family = Nom de famille
+contact-name-suffix = Suffixe
+contacts-none-filtered = Aucun contact ne répond à ces filtres.
+contacts-counted-all = { $total ->
+    [one] Un contact
+   *[other] { $total } contacts
+}
+contacts-counted-some = { $shown } sur { $total }
+contacts-filter-books = Carnets d’adresses
+contacts-filter-books-all = Tous les carnets d’adresses
+contacts-filter-books-some = { $n ->
+    [one] Un carnet d’adresses
+   *[other] { $n } carnets d’adresses
+}
+contacts-filter-group = Groupe
+contacts-filter-group-any = Tous les groupes
+contacts-filter-group-none = Dans aucun groupe
+contacts-filter-phone = Numéro de téléphone
+contacts-filter-phone-any = Numéro ou non
+contacts-filter-phone-has = A un numéro
+contacts-filter-phone-lacks = N’a pas de numéro
+contacts-filter-email = Adresse électronique
+contacts-filter-email-any = Adresse électronique ou non
+contacts-filter-email-has = A une adresse électronique
+contacts-filter-email-lacks = N’a pas d’adresse électronique
+contacts-filter-address = Adresse postale
+contacts-filter-address-any = Adresse postale ou non
+contacts-filter-address-has = A une adresse postale
+contacts-filter-address-lacks = N’a pas d’adresse postale
+contacts-filter-title = Civilité (M., Mme…)
+contacts-filter-title-any = Civilité ou non
+contacts-filter-title-has = A une civilité (M., Mme…)
+contacts-filter-title-lacks = N’a pas de civilité
+contacts-filter-clear = Tout montrer
+contacts-select = Sélectionner
+contacts-select-done = Terminé
+contacts-select-none = Ne rien sélectionner
+contacts-select-shown = { $n ->
+    [one] Sélectionner le seul montré
+   *[other] Sélectionner les { $n } montrés
+}
+contacts-selected = { $n ->
+    [0] Aucun sélectionné
+    [one] Un sélectionné
+   *[other] { $n } sélectionnés
+}
+batch-actions = Avec eux…
+batch-move = Déplacer vers un carnet d’adresses…
+batch-group-add = Ajouter à un groupe…
+batch-group-remove = Retirer d’un groupe…
+batch-title = Mettre la civilité dans son champ…
+batch-delete = Supprimer…
+batch-book = Carnet d’adresses
+batch-group-name = Groupe
+batch-also-group = Les ajouter aussi à un groupe
+batch-needs-group = Quel groupe ? Tapez son nom, ou choisissez-en un déjà utilisé.
+batch-ask-none = Rien à changer parmi eux.
+batch-ask-move = { $n ->
+    [one] Déplacer un contact vers « { $book } » ?
+   *[other] Déplacer { $n } contacts vers « { $book } » ?
+}
+batch-ask-move-note = Chacun garde son identifiant : rien de ce qui le désigne ne change. Qui peut vous joindre reste ce que disent ses groupes.
+batch-ask-losses = « { $book } » ne garderait pas : { $list }.
+batch-ask-group-add = { $n ->
+    [one] Ajouter un contact au groupe « { $group } » ?
+   *[other] Ajouter { $n } contacts au groupe « { $group } » ?
+}
+batch-ask-group-remove = { $n ->
+    [one] Retirer un contact du groupe « { $group } » ?
+   *[other] Retirer { $n } contacts du groupe « { $group } » ?
+}
+batch-ask-title = { $n ->
+    [one] Mettre la civilité d’un contact dans son champ ?
+   *[other] Mettre la civilité de { $n } contacts dans leur champ ?
+}
+batch-ask-delete = { $n ->
+    [one] Supprimer un contact ?
+   *[other] Supprimer { $n } contacts ?
+}
+batch-ask-delete-note = Annuler, dans la ligne d’état, les fait revenir.
+batch-cannot = { $n ->
+    [one] Un reste tel quel :
+   *[other] { $n } restent tels quels :
+}
+batch-why-gone = il n’existe plus
+batch-why-read-only = son carnet d’adresses est en lecture seule
+batch-why-target-read-only = ce carnet d’adresses est en lecture seule
+batch-why-there-already = il est déjà dans ce carnet d’adresses
+batch-why-same-uid = ce carnet d’adresses contient déjà une fiche du même identifiant
+batch-why-other-title = son champ de civilité contient déjà { $title }
+batch-go = Valider
+batch-go-delete = Les supprimer
+batch-stop = Arrêter
+batch-busy = Un autre changement de nombreux contacts est en cours : il se termine d’abord.
+batch-running = { $done } sur { $total }…
+batch-undoing = Retour de { $done } sur { $total }…
+batch-done-move = { $n ->
+    [one] Un contact déplacé.
+   *[other] { $n } contacts déplacés.
+}
+batch-done-groups = { $n ->
+    [one] Les groupes d’un contact ont changé.
+   *[other] Les groupes de { $n } contacts ont changé.
+}
+batch-done-title = { $n ->
+    [one] Une civilité mise dans son champ.
+   *[other] { $n } civilités mises dans leur champ.
+}
+batch-done-delete = { $n ->
+    [one] Un contact supprimé.
+   *[other] { $n } contacts supprimés.
+}
+batch-done-merge = { $n ->
+    [one] Un contact déplacé.
+   *[other] { $n } contacts déplacés.
+}
+batch-done-import = { $n ->
+    [one] Un contact importé.
+   *[other] { $n } contacts importés.
+}
+batch-done-failed = { $n ->
+    [one] Un n’a pas pu l’être : { $why }.
+   *[other] { $n } n’ont pas pu l’être : { $why }.
+}
+batch-stopped = Arrêté : les autres sont restés tels quels.
+batch-undone = { $n ->
+    [0] Rien à remettre.
+    [one] Un contact remis.
+   *[other] { $n } contacts remis.
+}
+batch-undone-aside = { $n ->
+    [one] Un avait changé depuis : cette version est gardée dans { $path }.
+   *[other] { $n } avaient changé depuis : ces versions sont gardées dans { $path }.
+}
+book-whose-yours = À vous
+book-whose-shared-by = Partagé avec vous par { $owner }
+book-whose-shared = Partagé avec vous
+book-whose-unknown = Son serveur ne dit pas à qui il est
+book-kept-here = sur cet appareil seulement
+book-count = { $n ->
+    [one] 1 contact
+   *[other] { $n } contacts
+}
+book-writable = Modifiable
+book-read-only = En lecture seule
+book-waiting = Créé ici ; sur son serveur à la prochaine synchronisation.
+book-google-fixed = Google garde un seul carnet d’adresses : il se renomme et se partage sur les pages de Google. Les contacts y entrent et en sortent d’ici.
+book-needs-name = Un carnet d’adresses a besoin d’un nom.
+book-no-home = Ce compte ne peut pas recevoir de nouveau carnet d’adresses.
+book-leave-question = Ne plus montrer « { $name } » ? Il reste à son propriétaire.
+book-leave-note = Le carnet d’adresses de son propriétaire n’est pas touché.
+book-not-yours-to-remove = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas modifié d’ici.
+book-remove-empty = Supprimer « { $name } » ? Il ne contient aucun contact.
+book-remove-cards = { $n ->
+    [one] « { $name } » contient un contact. Où va-t-il ?
+   *[other] « { $name } » contient { $n } contacts. Où vont-ils ?
+}
+book-remove-copy = Supprimés avec lui, ils sont d’abord copiés sur cet appareil.
+books-new = Nouveau carnet d’adresses…
+books-new-where = Où
+books-new-name = Son nom
+books-make = Le créer
+books-made = Carnet d’adresses créé : { $name }.
+books-rename = Renommer
+books-renamed = Carnet d’adresses renommé : { $name }.
+books-merge = Fusionner avec…
+books-merge-into = Fusionner avec
+books-merge-go = Fusionner
+books-merge-cannot = { $n ->
+    [one] Un contact ne peut pas y aller : { $why }. Rien n’a été fusionné.
+   *[other] { $n } contacts ne peuvent pas y aller : { $why }. Rien n’a été fusionné.
+}
+books-merge-kept = « { $name } » reste : tous ses contacts n’ont pas été déplacés.
+books-remove = Supprimer…
+books-remove-go = Le supprimer
+books-remove-move = Les déplacer vers
+books-remove-move-go = Les déplacer, puis le supprimer
+books-remove-delete = Les supprimer avec lui
+books-removed = Carnet d’adresses supprimé : { $name }. Une copie de ses contacts : { $copy }
+books-removed-empty = Carnet d’adresses supprimé : { $name }.
+books-leave = Ne plus montrer
+books-left = N’est plus montré : { $name }.
+books-gone = Ce carnet d’adresses n’existe plus.
+books-share-asking = Son serveur dit qui le voit…
+books-share-who = Un utilisateur ou un groupe de ce serveur (son identifiant)
+books-share-group = C’est un groupe
+books-share-write = Peut modifier les contacts
+books-share-go = Partager
+books-share-stop = Arrêter
+books-shared-none = Vous seulement.
+books-shared-read = { $who } peut le lire.
+books-shared-write = { $who } peut le modifier.
+books-unshared = N’est plus partagé avec { $who }.
+books-share-elsewhere = Seulement un utilisateur ou un groupe du même serveur : son identifiant.
+books-share-not-here = Ce serveur ne partage pas de carnet d’adresses depuis Sioul.
+books-share-not-yet = Sur son serveur à la prochaine synchronisation ; il pourra être partagé ensuite.
+books-import = Importer…
+import-title = Importer des contacts
+import-file-kinds = Fichiers vCard ou CSV
+import-reading = Lecture du fichier…
+import-too-big = Ce fichier dépasse { $mb } Mo : il n’est pas lu.
+import-unreadable = Ce fichier ne peut pas être lu : { $error }
+import-kind-not = Seul un fichier vCard (.vcf) ou CSV (.csv) est lu.
+import-on-a-phone = Sur un téléphone, ouvrez le fichier avec Sioul depuis l’endroit où il est (Fichiers, un message) : Android le transmet.
+import-gone = Ce fichier n’est plus ouvert ici.
+import-found-vcf = { $n ->
+    [one] Une fiche dans ce fichier.
+   *[other] { $n } fiches dans ce fichier.
+}
+import-found-csv = { $n ->
+    [one] Une ligne dans ce fichier.
+   *[other] { $n } lignes dans ce fichier.
+}
+import-broken = { $n ->
+    [one] La ligne { $lines } ne se lit pas.
+   *[other] Les lignes { $lines } ne se lisent pas.
+}
+import-export-of = Reconnu : un export de { $name }.
+import-mapping-kept = Les colonnes comme vous les avez gardées : { $name }.
+import-columns = Quelle colonne est quoi
+import-keep-as = Garder ces colonnes sous un nom (facultatif)
+import-into = Dans le carnet d’adresses
+import-into-new = Un nouveau carnet d’adresses…
+import-groups = Ajouter chaque contact à ces groupes (facultatif, séparés par des virgules)
+import-titles = Mettre dans son champ une civilité trouvée au début d’un nom
+import-summary = { $new } nouveaux, { $completed } complétés.
+import-same = { $n ->
+    [one] Un déjà là, le fichier n’y ajoute rien.
+   *[other] { $n } déjà là, le fichier n’y ajoute rien.
+}
+import-read-only = { $n ->
+    [one] Un déjà là dans un carnet d’adresses en lecture seule : laissé tel quel.
+   *[other] { $n } déjà là dans un carnet d’adresses en lecture seule : laissés tels quels.
+}
+import-titled = { $n ->
+    [one] Un nom commence par une civilité : la case ci-dessus la met dans son champ.
+   *[other] { $n } noms commencent par une civilité : la case ci-dessus les met dans leur champ.
+}
+import-check = Les compter
+import-go = Importer
+import-field-skip = Laisser de côté
+import-field-title = Civilité (M., Mme…)
+import-field-given = Prénoms
+import-field-additional = Autres prénoms
+import-field-family = Nom de famille
+import-field-name = Le nom entier
+import-field-suffix = Suffixe
+import-field-company = Organisation
+import-field-role = Fonction
+import-field-mobile = Portable
+import-field-phone = Téléphone
+import-field-email = Adresse électronique
+import-field-street = Rue
+import-field-postcode = Code postal
+import-field-town = Ville
+import-field-region = Région
+import-field-country = Pays
+import-field-address = Adresse postale entière
+import-field-birthday = Anniversaire
+import-field-note = Note
+import-field-groups = Groupes
+import-field-web = Site web
