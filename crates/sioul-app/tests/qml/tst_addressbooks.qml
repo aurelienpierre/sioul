@@ -130,6 +130,12 @@ Item {
             name.text = "Personal"
             mouseClick(root.named(contacts, "addressBookRename")[0])
             compare(JSON.stringify(mock.calls[1]), JSON.stringify(["rename", "cloud/contacts", "Personal"]))
+            // Its contacts as one vCard file; an empty book has nothing to export.
+            verify(root.named(contacts, "addressBookExport")[0].visible)
+            setup.toggle("cloud/pro")
+            wait(30)
+            verify(!root.named(book(setup, 1), "addressBookExport")[0].visible)
+            mock.calls = mock.calls.filter(c => c[1] !== "cloud/pro")
             mock.bookShared("cloud/contacts", JSON.stringify({ line: "Only you.", sharer: "nextcloud", people: [], problem: "" }))
             wait(30)
             root.named(contacts, "addressBookShareWho")[0].text = "office"

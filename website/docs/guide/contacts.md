@@ -102,6 +102,7 @@ An address book is where cards are kept, and with whom they are shared: one on y
 - **New address book…**: on an account whose server makes them, or on this device alone. It is made on the server at the next sync.
 - **Rename**: here, and on the server at the next sync, with **Undo**.
 - **Merge into…**: every contact moves into the other book, then the emptied book is removed, here and on its server once its contacts have left it there. **Undo** in the status line moves them all back.
+- **Export…**: its contacts as one vCard file, where you choose: the copy to keep before a large change, or for another program. **With them… ▸ Export…** does the same for a selection.
 - **Remove…**: an empty book goes at once. A book holding contacts asks where they go: moved to another book, or deleted with it, a copy of them kept on this device first, the count said.
 - **Share**, on a Nextcloud: a user or a group of that server, to read or to change contacts; the line says who has it, and **Stop** takes it back.
 - **Stop showing**, for a book someone else shares with you: it leaves this device, and stays theirs.
@@ -174,7 +175,7 @@ Google contacts work the same way, with less kept: Sioul writes them as Google r
 
 ## Not there yet
 
-Changing a contact's photo in Sioul is planned. vCard files cannot be exported from a button yet: your cards are plain `.vcf` files in Sioul's data folder, which other programs read. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond the ten seconds of **Undo**.
+Changing a contact's photo in Sioul is planned. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond the ten seconds of **Undo**.
 
 ## Going further {#going-further}
 
@@ -225,7 +226,7 @@ As of October 2026, from each app's own documentation.
     | Lists the tasks, events and notes tied to the person | ✓ | partly²⁷ | ? | partly²⁸ | ✗²⁹ | ✗ |
     | Lists the mail you exchanged with them | partly³⁰ | partly²⁷ | ? | ✓ | partly²⁹ | ✗ |
     | Gets a deleted contact back | partly³¹ | ✓ | partly⁹ | ✓ | ✗ | ✗ |
-    | Imports and exports vCard files | partly³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
+    | Imports and exports vCard files | ✓³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
     | Puts your contacts' birthdays in your calendar | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
     | For other people: the people your admin is done for | ✓³⁶ | partly³⁷ | partly³⁸ | ? | ? | ? |
 
@@ -260,7 +261,7 @@ As of October 2026, from each app's own documentation.
     29. A button searches the contact's mail, another makes an event with them; the card lists nothing.
     30. The messages they sent you that Sioul proved are theirs, and those you tied to them; what you sent them, through the mail search.
     31. **Undo** for ten seconds after **Delete**; no bin after that.
-    32. vCard and CSV files are imported, those already here completed; no export button yet, but your cards are plain `.vcf` files that other programs read.
+    32. vCard and CSV files are imported, those already here completed; a book or a selection is exported as one vCard file.
     33. Classic Outlook opens and saves single vCards; new Outlook and the web import and export CSV only.
     34. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
     35. In Fossify Calendar; Etar has none.

@@ -13,6 +13,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ColumnLayout {
@@ -177,12 +178,31 @@ ColumnLayout {
                     text: bar.sioul.text("batch-title")
                     onTriggered: bar.act("title")
                 }
+                MenuItem {
+                    objectName: "batchExport"
+                    text: bar.sioul.text("batch-export")
+                    onTriggered: exportFile.open()
+                }
                 MenuSeparator {}
                 MenuItem {
                     text: bar.sioul.text("batch-delete")
                     onTriggered: bar.act("delete")
                 }
             }
+        }
+    }
+
+    // The cards selected as one vCard file, where you choose.
+    FileDialog {
+        id: exportFile
+
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "vcf"
+        nameFilters: [bar.sioul.text("books-export-kind") + " (*.vcf)"]
+        onAccepted: {
+            const problem = bar.sioul.exportContacts(JSON.stringify({ keys: bar.keys }), exportFile.selectedFile.toString())
+            if (problem !== "")
+                bar.sioul.status = problem
         }
     }
 

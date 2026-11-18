@@ -620,6 +620,10 @@ pub mod qobject {
         #[qinvokable]
         fn unshare_book(self: Pin<&mut Sioul>, place: &QString, sharee: &QString);
 
+        /// A book's cards ({book}) or the cards selected ({keys}) written as one vCard file at `url`; "" done, else why not.
+        #[qinvokable]
+        fn export_contacts(self: Pin<&mut Sioul>, asked: &QString, url: &QString) -> QString;
+
         /// A file of contacts (a path) read off the window's thread, its first step in `contactsImport`.
         #[qinvokable]
         fn import_contacts(self: Pin<&mut Sioul>, path: &QString);
@@ -5767,6 +5771,10 @@ impl qobject::Sioul {
 
     fn unshare_book(self: Pin<&mut Self>, place: &QString, sharee: &QString) {
         crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Unshare(sharee.to_string()));
+    }
+
+    fn export_contacts(self: Pin<&mut Self>, asked: &QString, url: &QString) -> QString {
+        QString::from(&crate::contactexport::export(&self.qt_thread(), &self.shared(), &asked.to_string(), &url.to_string()))
     }
 
     fn import_contacts(self: Pin<&mut Self>, path: &QString) {

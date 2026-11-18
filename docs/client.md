@@ -306,6 +306,7 @@ The unified mailbox's parts 4 and 5 (2 November 2026): every address's mail in o
 | Delete | one step | right click |
 | Duplicates: on one card, between two cards | one step | "Duplicates" above the list, in the place of a card: cards cleaned with one click, pairs merged one at a time, every change undone with one click for thirty days |
 | Address books (several per account) | one step | named on each card; a contact moved to another in one choice, asked first when it would lose something there; Contacts ⚙ ▸ Address books: each one's place, count, owner and access; made, renamed, merged, removed, shared on a Nextcloud |
+| Export as one vCard file | one step | a book (Contacts ⚙ ▸ Address books) or a selection (With them… ▸ Export…), where you choose: the copy to keep before a large batch |
 | Import from vCard and CSV | one step | "Import…", or a file opened with Sioul: CSV columns mapped (guessed, kept by name), those here completed, counted first, undone as a whole |
 | Photos changed here | later | |
 

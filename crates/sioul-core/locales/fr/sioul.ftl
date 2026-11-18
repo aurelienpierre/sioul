@@ -9444,3 +9444,15 @@ import-field-birthday = Anniversaire
 import-field-note = Note
 import-field-groups = Groupes
 import-field-web = Site web
+
+## Export (vague D, son propre commit).
+
+books-export = Exporter…
+books-export-kind = Fichiers vCard
+books-export-where = Choisissez un fichier hors des carnets d’adresses de Sioul.
+books-export-on-a-phone = Sur un téléphone, choisissez un dossier de la mémoire du téléphone (Téléchargements, Documents).
+books-exported = { $n ->
+    [one] Un contact enregistré en fichier vCard : { $path }
+   *[other] { $n } contacts enregistrés en un fichier vCard : { $path }
+}
+batch-export = Exporter…

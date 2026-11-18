@@ -102,6 +102,7 @@ Un carnet d’adresses est l’endroit où des fiches sont gardées, et avec qui
 - **Nouveau carnet d’adresses…** : sur un compte dont le serveur en crée, ou sur cet appareil seulement. Il est créé sur le serveur à la prochaine synchronisation.
 - **Renommer** : ici, et sur le serveur à la prochaine synchronisation, avec **Annuler**.
 - **Fusionner avec…** : tous les contacts vont dans l’autre carnet, puis le carnet vidé est supprimé, ici et sur son serveur une fois que ses contacts l’y ont quitté. **Annuler**, dans la ligne d’état, les ramène tous.
+- **Exporter…** : ses contacts en un fichier vCard, là où vous le choisissez : la copie à garder avant un grand changement, ou pour un autre programme. **Avec eux… ▸ Exporter…** fait de même pour une sélection.
 - **Supprimer…** : un carnet vide part tout de suite. Un carnet qui contient des contacts demande où ils vont : déplacés vers un autre carnet, ou supprimés avec lui, après une copie gardée sur cet appareil, leur nombre dit.
 - **Partager**, sur un Nextcloud : un utilisateur ou un groupe de ce serveur, pour lire ou pour modifier les contacts ; la ligne dit qui l’a, et **Arrêter** le reprend.
 - **Ne plus montrer**, pour un carnet que quelqu’un d’autre partage avec vous : il quitte cet appareil, et reste le sien.
@@ -174,7 +175,7 @@ Les contacts Google marchent de la même façon, en gardant moins : Sioul les 
 
 ## Pas encore là {#not-there-yet}
 
-Changer la photo d’un contact dans Sioul est prévu. Les fichiers vCard ne s’exportent pas encore d’un bouton : vos fiches sont de simples fichiers `.vcf` dans le dossier de données de Sioul, que les autres programmes lisent. Sioul ne fait pas d’agenda des anniversaires de vos contacts, et ne garde pas de corbeille pour les contacts supprimés au-delà des dix secondes d’**Annuler**.
+Changer la photo d’un contact dans Sioul est prévu. Sioul ne fait pas d’agenda des anniversaires de vos contacts, et ne garde pas de corbeille pour les contacts supprimés au-delà des dix secondes d’**Annuler**.
 
 ## Pour aller plus loin {#going-further}
 
@@ -225,7 +226,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Liste les tâches, les événements et les notes liés à la personne | ✓ | en partie²⁷ | ? | en partie²⁸ | ✗²⁹ | ✗ |
     | Liste les courriels échangés avec elle | en partie³⁰ | en partie²⁷ | ? | ✓ | en partie²⁹ | ✗ |
     | Retrouve un contact supprimé | en partie³¹ | ✓ | en partie⁹ | ✓ | ✗ | ✗ |
-    | Importe et exporte des fichiers vCard | en partie³² | ✓ | ✓ | en partie³³ | ✓ | ✓ |
+    | Importe et exporte des fichiers vCard | ✓³² | ✓ | ✓ | en partie³³ | ✓ | ✓ |
     | Met les anniversaires de vos contacts dans votre agenda | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
     | Pour d’autres personnes : celles pour qui vous faites des démarches | ✓³⁶ | en partie³⁷ | en partie³⁸ | ? | ? | ? |
 
@@ -260,7 +261,7 @@ En octobre 2026, d’après la documentation de chaque application.
     29. Un bouton cherche les courriels du contact, un autre crée un événement avec lui ; la fiche ne liste rien.
     30. Les courriels qu’elle vous a envoyés et dont Sioul a prouvé qu’ils viennent d’elle, et ceux que vous lui avez liés ; ce que vous lui avez envoyé, par la recherche des courriels.
     31. **Annuler** pendant dix secondes après **Supprimer** ; pas de corbeille ensuite.
-    32. Les fichiers vCard et CSV s’importent, ceux déjà là complétés ; pas encore de bouton d’export, mais vos fiches sont de simples fichiers `.vcf` que les autres programmes lisent.
+    32. Les fichiers vCard et CSV s’importent, ceux déjà là complétés ; un carnet ou une sélection s’exporte en un fichier vCard.
     33. Outlook classique ouvre et enregistre des vCard une par une ; le nouvel Outlook et le web importent et exportent du CSV seulement.
     34. Sioul ne fait pas d’agenda des anniversaires ; celui que garde votre serveur (Nextcloud en garde un) s’affiche comme tout agenda que vous ne pouvez que lire.
     35. Dans Fossify Calendar ; Etar n’en a pas.

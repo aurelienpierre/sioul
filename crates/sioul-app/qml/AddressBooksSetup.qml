@@ -7,7 +7,8 @@
 // what may be done with it: renamed, merged into another, removed (asked
 // what becomes of its contacts: moved to another book, or deleted with it,
 // the count said), shared with people or groups of its Nextcloud, or, when
-// someone else's, no longer shown. "New address book…" makes one on an
+// someone else's, no longer shown; exported as one vCard file, the copy to
+// keep before a large batch. "New address book…" makes one on an
 // account whose server makes them, or on this device alone. A server with
 // one fixed book (Google) offers only what it allows, and says so. Books
 // say where contacts are kept and with whom they are shared; who may reach
@@ -17,6 +18,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ColumnLayout {
@@ -306,6 +308,18 @@ ColumnLayout {
                     }
                 }
 
+                // Its cards as one vCard file, where you choose.
+                Button {
+                    objectName: "addressBookExport"
+                    visible: line.modelData.count > 0
+                    flat: true
+                    text: setup.sioul.text("books-export")
+                    onClicked: {
+                        exportFile.place = line.modelData.place
+                        exportFile.open()
+                    }
+                }
+
                 // Removed, asked first; someone else's, no longer shown.
                 Button {
                     objectName: "addressBookRemove"
@@ -374,6 +388,18 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    // Where an export goes.
+    FileDialog {
+        id: exportFile
+
+        property string place: ""
+
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "vcf"
+        nameFilters: [setup.sioul.text("books-export-kind") + " (*.vcf)"]
+        onAccepted: setup.problem = setup.sioul.exportContacts(JSON.stringify({ book: exportFile.place }), exportFile.selectedFile.toString())
     }
 
     // A new address book: on an account whose server makes them, or on this device alone.

@@ -148,6 +148,7 @@ mod children;
 #[cfg(not(target_os = "android"))]
 mod colour;
 mod contactbatch;
+mod contactexport;
 mod contactimport;
 mod contracts;
 mod crypto;
