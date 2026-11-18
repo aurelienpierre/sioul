@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ Texts (« SMS »), on a computer (docs/texts.md, "Multimedia
-// messages sent from a computer"): how much a multimedia message written
+// The Texts page's ⚙ (« SMS »), on a device without telephony (docs/texts.md,
+// "Multimedia messages sent from a computer"): how much a multimedia message written
 // here may weigh, up to your carrier's limit or 300 kB (for older phones and
 // some networks abroad), saved at once; and what your phone said its
 // carrier takes, read only, a line for each SIM. The files attached on the

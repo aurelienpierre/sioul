@@ -234,9 +234,11 @@ SafeDialog {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(96, sheet.previewing ? preview.implicitHeight + 24 : memo.implicitHeight + 2)
-                color: sheet.theme.surface
+                // A field while you write in it (the theme's `field` and `edge`), a card while previewed.
+                color: sheet.previewing ? sheet.theme.surface : sheet.theme.field
                 radius: sheet.theme.radius
-                border.color: memo.activeFocus ? sheet.theme.focus : sheet.theme.line
+                border.color: memo.activeFocus ? sheet.theme.focusEdge : sheet.previewing ? sheet.theme.line : sheet.theme.edge
+                border.width: memo.activeFocus ? 2 : 1
 
                 TextArea {
                     id: memo
@@ -273,7 +275,7 @@ SafeDialog {
             }
 
             // The notes of the last days, as they were said: folded, read only.
-            Button {
+            BareButton {
                 visible: sheet.view !== null && sheet.view.back.length > 0
                 Layout.topMargin: 4
                 flat: true

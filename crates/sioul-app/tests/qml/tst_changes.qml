@@ -67,8 +67,10 @@ Item {
             mock.read("projects")
             return "[]"
         }
-        function timePage(period, anchor, project) {
-            return JSON.stringify({ title: "", sentence: "", total: "", most: "", bars: [], entries: [], projects: [] })
+        // The Time page asks; its view comes as the window's job gives it (`timeView`).
+        property string timeView: ""
+        function showTimePage(period, anchor, project) {
+            mock.timeView = JSON.stringify({ title: period + " " + anchor, sentence: "", total: "", most: "", bars: [], entries: [], projects: [] })
         }
         function viewFlag(key) { return false }
     }

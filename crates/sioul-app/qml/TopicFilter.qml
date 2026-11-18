@@ -102,7 +102,7 @@ Item {
             Repeater {
                 model: filter.topics
 
-                delegate: Button {
+                delegate: BareButton {
                     id: one
 
                     required property var modelData

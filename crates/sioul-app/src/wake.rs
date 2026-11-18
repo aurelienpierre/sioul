@@ -3,7 +3,7 @@
 
 //! The alarm at waking, on a phone (docs/health.md, "The alarm at waking";
 //! docs/android.md, "Waking"): it rings when the night ends, on the mornings
-//! ticked with the night in the Health page's settings, each night as that
+//! ticked with the usual night in Settings ▸ Hours, each night as that
 //! day has it (`needs::Needs::alarm_of`), or that night alone when asked for
 //! it; and at the end of a nap whose alarm is on, every day it is kept or
 //! that day alone (`needs::Needs::waking_of`): one list of wakings, rung
@@ -195,7 +195,7 @@ fn allowed() -> i32 {
     7
 }
 
-/// The option as the Health page's settings show it (`health::needs_page`):
+/// The option as Settings ▸ Hours shows it (`health::needs_page`):
 /// the weekdays' names and short names, Monday first; the nights' next ring
 /// (a nap's is the nap's own, never said under the night); on a phone, what
 /// Android refuses it.
@@ -279,7 +279,7 @@ fn tried(answer: i32, tr: &Translator) -> serde_json::Value {
     serde_json::json!({ "rings": rings, "line": tr.text(line, None), "fix": fix, "button": button })
 }
 
-/// "Try the alarm" (the Health page's settings, on a phone): the alarm rung
+/// "Try the alarm" (Settings ▸ Hours, on a phone): the alarm rung
 /// ten seconds on, through the path a waking takes, over the lock screen.
 /// Nothing written, the next waking left as it is. JSON, as `tried` says it.
 pub(crate) fn try_now() -> String {

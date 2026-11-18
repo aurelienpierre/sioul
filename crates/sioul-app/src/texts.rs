@@ -145,7 +145,7 @@ struct Choice {
     media_cap_mb: Option<u64>,
     /// On a computer, the most a multimedia message from here may weigh,
     /// below the carrier's (kB: 300, for older phones and some networks
-    /// abroad); none, the carrier's own (Settings ▸ Texts).
+    /// abroad); none, the carrier's own (the Texts page's ⚙).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mms_kb: Option<u64>,
 }
@@ -2499,7 +2499,7 @@ enum Weigh {
     Up { max: u64, side: u32 },
 }
 
-/// The smaller choice of Settings ▸ Texts (kB).
+/// The smaller choice of the Texts page's ⚙ (kB).
 const LOW_KB: u64 = 300;
 
 /// What one multimedia message from here to a conversation (`id`, its
@@ -2516,7 +2516,7 @@ fn weigh(phone: &str, id: &str) -> Weigh {
 /// it said): its carrier's for `sim` (the conversation's last; when it is
 /// unknown, -1, or the phone did not name it, the smallest of those that
 /// take multimedia messages), and no more than chosen here (`chosen_kb`,
-/// Settings ▸ Texts: 300 kB); with the carrier's largest picture's long side.
+/// the Texts page's ⚙: 300 kB); with the carrier's largest picture's long side.
 fn weighed(limits: Option<&[rules::Limits]>, sim: i32, chosen_kb: Option<u64>) -> Weigh {
     let Some(limits) = limits else { return Weigh::Unknown };
     let carrier = limits.iter().find(|l| sim >= 0 && l.sub == sim).or_else(|| limits.iter().filter(|l| l.mms).min_by_key(|l| l.max)).or_else(|| limits.first());
@@ -2672,7 +2672,7 @@ fn parts_mms(body: &str, media: &[Value], id: &str, from: &str) -> Value {
     json!({ "parts": 1, "said": tr().text("texts-parts-mms", Some(&args)), "over": max > 0 && size > max, "max": max })
 }
 
-/// Settings ▸ Texts, on a computer: how much a multimedia message from here
+/// The Texts page's ⚙, on a computer: how much a multimedia message from here
 /// may weigh, the carrier's or less (300 kB), and what the phone said its
 /// carrier takes, read only. {limit: a setting's row, phone: its lines}.
 fn sending() -> Value {
@@ -2909,7 +2909,7 @@ fn set_cap(value: &str) -> Result<(), String> {
 /// multimedia message, its media made fit already by `attach`: a file
 /// elsewhere is refused), "again" {key}, "parts"
 /// {body, media: [{ct, size}], id, phone} (with media, how much the message
-/// takes), "sending" and "limit" {value} (Settings ▸ Texts on a computer), "media" {hash, ct} (its
+/// takes), "sending" and "limit" {value} (the Texts page's ⚙ on a computer), "media" {hash, ct} (its
 /// address, to show or open it), "save-media" {hash, ct, path}, "close" (the
 /// page closed: the media opened for it and the files attached deleted),
 /// "unattach" (the files attached let go), "setup", "ask" (Android's

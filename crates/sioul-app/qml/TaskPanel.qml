@@ -592,9 +592,10 @@ Panel {
                     wrapMode: TextInput.Wrap
                     // Like every field, a border: light, darker when it has the focus.
                     background: Rectangle {
-                        color: "transparent"
+                        color: panel.theme.field
                         radius: panel.theme.radius
-                        border.color: title.activeFocus ? panel.theme.focus : panel.theme.line
+                        border.color: title.activeFocus ? panel.theme.focusEdge : panel.theme.edge
+                        border.width: title.activeFocus ? 2 : 1
                     }
                     Accessible.name: panel.making ? panel.sioul.text("task-new-title") : panel.sioul.text("task-title")
                     // A new task is made as its title is given; a task's title changed is saved.
@@ -934,7 +935,7 @@ Panel {
                 }
             }
             // How long things like it take you, against the first guess: on request only.
-            Button {
+            BareButton {
                 id: ratioAsk
 
                 property bool shown: false
@@ -1501,7 +1502,7 @@ Panel {
             }
             // Done: how it was, if you want to say. Filled in with what was
             // foreseen; nothing is kept until one changes, or "As expected".
-            Button {
+            BareButton {
                 visible: panel.done && !panel.form && panel.canEdit
                 flat: true
                 text: (panel.feltShown ? "▾  " : "▸  ") + panel.sioul.text("felt-ask")
@@ -1518,7 +1519,7 @@ Panel {
             }
 
             // The rest, folded, in the form.
-            Button {
+            BareButton {
                 visible: panel.form
                 flat: true
                 text: (panel.moreShown ? "▾  " : "▸  ") + panel.sioul.text("ui-more-details")
@@ -2031,9 +2032,10 @@ Panel {
 
                 // A field shows where it is: a border, darker when it has the focus.
                 background: Rectangle {
-                    color: panel.theme.surface
+                    color: panel.theme.field
                     radius: panel.theme.radius
-                    border.color: taskNotes.activeFocus ? panel.theme.focus : panel.theme.line
+                    border.color: taskNotes.activeFocus ? panel.theme.focusEdge : panel.theme.edge
+                    border.width: taskNotes.activeFocus ? 2 : 1
                 }
                 visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true

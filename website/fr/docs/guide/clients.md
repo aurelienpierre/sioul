@@ -54,7 +54,7 @@ Sur un téléphone ou une tablette : Sioul pour Android sort avec chaque versi
 
 ## Et puis le travail se repose {#and-then-it-rests}
 
-En dehors de vos heures de travail, les projets des clients et la page Temps se reposent : « Les projets de travail se reposent jusqu’au retour du travail. » Être payé à l’heure n’oblige pas à travailler tous les soirs. [Les heures](hours.md)
+En dehors de vos heures de travail, les pages Projets et Temps montrent les projets de ce que les heures apportent, ceux des clients à une case près ([Projets](projects.md#in-quiet-time)). Être payé à l’heure n’oblige pas à travailler tous les soirs. [Les heures](hours.md)
 
 ## Pas encore là {#not-there-yet}
 

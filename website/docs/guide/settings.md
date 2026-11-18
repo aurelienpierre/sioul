@@ -8,7 +8,9 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; Android adds **This phone** (**This tablet** on a tablet), and a device without telephony of its own (a computer, a tablet without a SIM) **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**, across the top of the page; Android adds **This phone** (**This tablet** on a tablet). **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
+
+On a phone, Settings opens on the list of its sections instead, each with one line saying what it holds. Tap one to open it; Back, or the arrow at the top left, brings you back to the list. A link to a setting, from a notice or another page, opens its section directly, and Back then returns where you were. Settings opens on the list again at your next visit.
 
 ## Protected by default {#what-is-protected}
 
@@ -23,9 +25,7 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 - **Colours**: light, dark, or as the system has them. As the system's, Sioul turns dark or light with it, at once, its icons too (Windows 10's dark mode included); with high contrast on, by the lightness of the system's own colours.
 - **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the left end of the title bar, over the places, or ++f9++, changes it too.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
-<!-- colour: the sites' colours (docs/colour.md). -->
-- **Colours for this screen** (on a computer): sites are shown in your screen's own colours, read from its colour profile, so that a wide-gamut screen does not make them louder than they are. A sentence under it says what this screen gets: its profile's name, or that your desktop already adapts colours (on Wayland, on macOS), or that the screen has no profile. On unless you turn it off. [Sites](sites.md#colours) says more.
-- **Calmer colours on sites** (on a computer): Off, A little, More. Loud colours on websites are softened, greys and soft tints stay as they are. Every site follows it at once.
+- The sites' colours, **Colours for this screen** and **Calmer colours on sites**, are the Sites page's own, behind its ⚙: only the sites follow them ([Sites](sites.md#colours)).
 - **What this device is** (on a computer; on Android, at the top of **This phone** or **This tablet**): a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer. This device only.
 - **Details on the home screen** (on Android): Sioul's cards on the home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events of your calendars, with their titles, and the dates asked of you ([First steps](first-steps.md#on-a-phone)). Turned off, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, each date by its kind alone, and that a next step waits: for a device whose home screen others see. This device only.
 
@@ -33,13 +33,13 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 
 <figure markdown="span">
   [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, with its ranges of hours (two on weekdays: 09:00–12:00 and 14:00–17:00) and + to add one, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
-  <figcaption>Two weeks: work, your admin. Then time off.</figcaption>
+  <figcaption>Two weeks: work, your admin.</figcaption>
 </figure>
 
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
-- **Meals and sleep, on the Health page**: one sentence, and a button to them. Leisure is every other time, neither work nor admin: there is nothing to set for it. Meals and sleep are set on the [Health](health.md#meals-rest-and-sleep) page, and while you sleep nothing disturbs.
-- **Time off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
+- **Meals, rest and sleep**, under their own heading: your usual meals, naps and night, the alarm at waking, the notice before each and how far **Later** moves one ([Meals, rest and sleep](health.md#meals-rest-and-sleep)). Every page follows them: what now is for, the plan, what reaches you. A day that differs is changed on the Health page, that day only. Leisure is every other time, neither work nor admin: there is nothing to set for it.
+- **Time off**, under **Days off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
 
 Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
 
@@ -59,11 +59,9 @@ Free time's **Nothing at all** is on its card. See [What reaches you, and when](
 
 Each reminder comes once, as a quiet notification, without sound, never repeated. Remembering "on the 30th" is what fails most, with autism and with ADHD (Landsiedel, Williams & Abbot-Smith 2017; Altgassen, Kretschmer & Kliegel 2014), and reminders help where memory is the bottleneck (Jamieson et al. 2014).
 
-- **Before an event**: a quiet reminder this long before each event: none, 5, 10, 15 (unless you change it) or 30 minutes, 1 or 2 hours. It is counted before the event's time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own: **Remind**, in its form and in its details ([Agenda](agenda.md#reminders)). Not for whole days, nor for calendars you only read. On Android, the setting says whether the system lets these reminders come on time.
-- **An event's own alarms** are told at their time; one within five minutes of Sioul's reminder is told once. The evening before an event, nothing: the Porch and the agenda show tomorrow.
+Three reminders are set with the things they remind you of: **Before an event** in the [Agenda's ⚙](agenda.md#the-agenda-settings), **A wait over** in the [Tasks' ⚙](tasks.md#the-tasks-settings), **Payments planned: working days before** in the [Budgets page's ⚙](budgets.md#the-bank-watch) ([below](#each-pages-own-settings)). Here, the others:
+
 - **Dates asked: working days before**: when work starts, so many working days before a task's date asked (2 unless you change it); 0 for none.
-- **A wait over**: when a wait after a step done is over (an answer due), once, when work is there.
-- **Payments planned: working days before**: when work starts, so many working days before a planned payment (a bill, a tax); 0 for none. The reminder says whether the account will hold it.
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). It goes on after an update, and starts again if it was stopped otherwise than by this setting (on Linux and macOS, and each time the window starts). Not on Windows yet.
 - **Gathered at**: what your sites notify waits, then comes in one notification at these times: 09:00, 13:00 and 18:00 unless you set others. On Android, other apps' notifications from automatons come back then. See [The gathered times](notifications.md#the-gathered-times).
 
@@ -83,10 +81,6 @@ On Android, what sets it up, nothing that decides when (that is [What reaches yo
 - **Texts**: what Sioul does with your texts once you allow it, each permission with what it is for, **Allow in Android…**, and, once Android has not given them after you asked, the steps it may want for an app installed from a file, with **Sioul's app info** ([Install](install.md#on-android)), the part **Texts**, how many texts and how much media your phone holds and how much has gone to your computers, the largest media file brought there, and what its carrier takes for a multimedia message, read only. See [Texts](texts.md).
 - **Do not disturb on this phone**: Android's Do Not Disturb access, which Sioul's modes need, and what each mode lets through; **Starred on this phone**, who of your Always through people is not starred there; **Keep this phone in step in the background**, and **Allow in the background**. See [What each system does](notifications.md#what-each-system-does).
 - **Alarms and notifications**: Android's pages for exact alarms, which reminders, doses and the alarm at waking need to come on time, and for Sioul's own notifications.
-
-## Texts {#texts}
-
-On a computer, or a tablet without a SIM, the multimedia messages sent from it through your phone: **Multimedia messages sent from here**, up to your carrier's limit (600 kB with French carriers) or 300 kB, for older phones and some networks abroad; under it, what your phone said its carrier takes, a line for each SIM. See [Texts](texts.md#pictures-and-files).
 
 ## Your folder and sharing
 
@@ -183,12 +177,14 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 |---|---|
 | [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, the calls your phones declined, how a message reads, how mail is sorted |
 | [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, whether saying Spam also leaves a list, how a message reads, the lists you left |
-| [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
-| [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the time zone shown |
+| [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, the reminder when a wait is over, what is work and what is yours, GitHub |
+| [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the reminder before an event, the time zone shown |
+| [Budgets](budgets.md#the-bank-watch) | the reminder before a planned payment |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
-| [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
-| [Health](health.md#meals-rest-and-sleep) | where the errands go, the usual meals, naps and night, the pause to move, the limit on chats |
+| [Texts](texts.md#pictures-and-files) | the multimedia messages sent from here, on a device without telephony |
+| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager) |
+| [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.
 
@@ -240,5 +236,5 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **What you said of each device** (`[device."<id>"]`, `<id>` being the device's id in the sharing, as `sioul devices` prints it): `name`, and `area` (`work`, `admin`, `leisure`, joined by `+`); each one entry, so a name given on one device and an area set on another both stay. Under it, `[device."<id>".at]` holds the cells you changed, a key per time (`work`, `admin`, `leisure`, `meals`, `sleep`): areas joined by `+`, or `none` for nothing; each cell one entry too. A device without a table is for everything, under its system's name.
 - **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
-- **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone, a narrow window: the window's size decides, never the system), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards and for Devices, whose fields line up as a table from 900 pixels.
+- **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone, a narrow window: the window's size decides, never the system), the whole width. Settings' tabs span the page; each section reads 720 pixels wide at most, centred, while What reaches you's cards and Devices take the whole width, the devices' fields lining up as a table from 900 pixels.
 - **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).

@@ -70,7 +70,7 @@ Sioul n’atteint pas les agendas et les contacts de Microsoft : Microsoft ne 
 
 ### 4. Régler vos heures {#set-your-hours}
 
-Dans **Paramètres ▸ Heures**, deux semaines sont à remplir : **Heures de travail** et **Heures pour vos démarches**. Chaque jour est actif ou non, avec une plage d’heures ou plusieurs. Tout le reste du temps est aux loisirs, sans rien à régler ; les repas et le sommeil se règlent sur la page Santé.
+Dans **Paramètres ▸ Heures**, deux semaines sont à remplir : **Heures de travail** et **Heures pour vos démarches**. Chaque jour est actif ou non, avec une plage d’heures ou plusieurs. Tout le reste du temps est aux loisirs, sans rien à régler ; vos repas et votre sommeil habituels se règlent dans le même onglet, sous **Repas, repos et sommeil**.
 
 C’est cette étape qui rend Sioul calme. Sans heures, tout arrive à toute heure, comme dans les autres logiciels de courriel. Tant qu’elles ne sont pas réglées, le Porche le demande une fois, avec **Régler mes heures** et **Laisser ainsi**.
 

@@ -255,6 +255,10 @@ unsafe extern "C" {
     /// Sioul's symbols font, and the system's fonts and image formats read on
     /// a thread of their own (cpp/warmup.cpp); once the application is made.
     fn sioul_warm_up();
+    /// Sioul's overrides of the Basic style (cpp/style.cpp): Sioul's own
+    /// Button, TextField and TextArea (qml/style/) wherever the engine would load
+    /// the Basic style's. `engine` is the QQmlApplicationEngine; before its first load.
+    fn sioul_style_overrides(engine: *mut std::ffi::c_void);
     /// CXX-Qt's registration of the window's QML module, resources and types
     /// (cxx-qt-build); runs once however often it is called.
     fn cxx_qt_init_crate_sioul_app() -> bool;
@@ -462,6 +466,8 @@ pub fn run() -> i32 {
     };
     desktop::icons();
     let mut engine = QQmlApplicationEngine::new();
+    // SAFETY: the engine exists and outlives the call, which gives it an interceptor that lives as long as the program.
+    unsafe { sioul_style_overrides(engine.as_mut_ptr().cast()) };
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from("qrc:/qt/qml/com/aurelienpierre/sioul/qml/main.qml"));
     }

@@ -17,8 +17,11 @@ TextField {
     // What is typed shown as it is; hidden by default, unless Paramètres says to show
     // passwords.
     property bool shown: field.sioul.viewFlag("passwords-shown")
+    // Kept hidden whatever the eye and Paramètres say: a password taken from the
+    // Bitwarden vault while the vault is not open (VaultHeld.qml).
+    property bool veiled: false
 
-    echoMode: field.shown ? TextInput.Normal : TextInput.Password
+    echoMode: field.shown && !field.veiled ? TextInput.Normal : TextInput.Password
     rightPadding: eye.width + 6
     inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData | Qt.ImhNoAutoUppercase
 
@@ -32,6 +35,7 @@ TextField {
         height: parent.height - 6
         flat: true
         padding: 4
+        visible: !field.veiled
         icon.name: field.shown ? "view-hidden" : "view-visible"
         display: AbstractButton.IconOnly
         text: field.sioul.text(field.shown ? "password-hide" : "password-show")

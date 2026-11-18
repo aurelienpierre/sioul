@@ -24,6 +24,13 @@
 # 127.0.0.1:18731 while it runs (tst_plaintext.qml asks it whether Qt
 # fetched a picture); it fails at once when the port is taken.
 #
+# A test that names "qml-test: accessibility" runs with an assistive tool
+# listening, as a screen reader would: offscreen has no accessibility at all,
+# so it runs on a headless Weston (Wayland), where Qt's AT-SPI bridge is told
+# to stay on (QT_LINUX_ACCESSIBILITY_ALWAYS_ON) and the address of a bus
+# (AT_SPI_BUS_ADDRESS): a D-Bus session of its own, which starts nothing,
+# in a runtime folder of its own; Weston reads no configuration. Needs weston.
+#
 # Qt 6's runner: Fedora names it qmltestrunner-qt6, and its bare qmltestrunner
 # is Qt 5's, which cannot read these files ("Library import requires a
 # version"). QMLTESTRUNNER names another. Its messages on the terminal (Fedora's Qt sends them to the
@@ -87,6 +94,46 @@ start_stand_in() {
     return 1
 }
 
+# One test file with an assistive tool listening (above); its runner's status.
+with_accessibility() {
+    local file=$1
+    if ! command -v weston > /dev/null; then
+        echo "qml-test.sh: $(basename "$file") needs weston (Fedora, Debian: weston): it runs with an assistive tool listening." >&2
+        return 1
+    fi
+    local run status
+    run=$(mktemp -d /tmp/sioul-qml-a11y.XXXXXX) || return 1
+    chmod 700 "$run"
+    cat > "$run/bus.conf" <<CONF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=$run</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+CONF
+    env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$run" XDG_CONFIG_HOME="$run" \
+        QT_FORCE_STDERR_LOGGING=1 TZ=Europe/Paris RUNNER="$runner" STAND_INS="$tests/stand-ins" FILE="$file" \
+        dbus-run-session --config-file="$run/bus.conf" -- sh -c '
+            weston --no-config --backend=headless --socket=qml-test --idle-time=0 > "$XDG_RUNTIME_DIR/weston.log" 2>&1 &
+            weston=$!
+            for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/qml-test" ] && break; sleep 0.1; done
+            AT_SPI_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 QT_LOGGING_RULES=qt.accessibility.atspi=false QT_QPA_PLATFORM=wayland \
+                WAYLAND_DISPLAY=qml-test QT_QUICK_BACKEND=software "$RUNNER" -import "$STAND_INS" -input "$FILE" "$@"
+            status=$?
+            kill "$weston" 2> /dev/null
+            exit $status' sh "${@:2}"
+    status=$?
+    rm -rf "$run"
+    return $status
+}
+
 failed=()
 for name in "${names[@]}"; do
     if [[ ! -f "$tests/$name" ]]; then
@@ -99,7 +146,9 @@ for name in "${names[@]}"; do
         failed+=("$name")
         continue
     fi
-    if ! env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 \
+    if grep -q "qml-test: accessibility" "$tests/$name"; then
+        with_accessibility "$tests/$name" "$@" || failed+=("$name")
+    elif ! env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 \
             TZ=Europe/Paris "$runner" -import "$tests/stand-ins" -input "$tests/$name" "$@"; then
         failed+=("$name")
     fi

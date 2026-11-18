@@ -226,6 +226,46 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     lay_on(now.date(), now, events, plan, tasks, settings, Drawn::ALL)
 }
 
+/// Today laid twice (the settings rework, 18 November 2026).
+pub struct Today {
+    /// From every task, for the Day, the Week and Tasks ▸ The day, which
+    /// hide nothing; its slots of time for you are `kept`'s once the caller
+    /// gives them (`with_slots_of`).
+    pub drawn: DayView,
+    /// From the tasks the calm views keep now on this device (`keeps`), as
+    /// today was always laid: its slots of time for you are the ones in
+    /// force (written for every process of this device: they hold
+    /// notifications and, where a cell says so, calls).
+    pub kept: DayView,
+}
+
+/// Today laid from every task and from those `keeps` keeps (`Today`); with no
+/// filter, the same layout twice.
+pub fn today(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], keeps: Option<&crate::quiet::QuietTasks>, settings: &Settings) -> Today {
+    let drawn = day(now, events, plan, tasks, settings);
+    let kept = match keeps {
+        Some(quiet) => day(now, events, plan, &tasks.iter().filter(|t| quiet.keeps(t)).cloned().collect::<Vec<_>>(), settings),
+        None => drawn.clone(),
+    };
+    Today { drawn, kept }
+}
+
+/// `drawn` given `kept`'s slots of time for you (its "gain" blocks, as
+/// dressed) in place of its own, side by side again where they meet a step:
+/// what the Day shows of them is what holds.
+pub fn with_slots_of(drawn: &mut DayView, kept: &DayView) {
+    drawn.blocks.retain(|b| b.kind != "gain");
+    drawn.blocks.extend(kept.blocks.iter().filter(|b| b.kind == "gain").cloned());
+    drawn.blocks.sort_by_key(|b| b.start);
+    let spans: Vec<(i64, i64)> = drawn.blocks.iter().map(|b| (b.start, b.end)).collect();
+    for (block, (column, columns)) in drawn.blocks.iter_mut().zip(side_by_side(&spans)) {
+        block.column = column;
+        block.columns = columns;
+    }
+    drawn.from = drawn.from.min(kept.from);
+    drawn.to = drawn.to.max(kept.to);
+}
+
 /// `date` laid out, as of `now`: today from now on (`day`); a day to come
 /// from its first hour, its steps those the plan gives it (`Plan::days`,
 /// each with its minutes there), its pinned blocks first, its meals where
@@ -998,6 +1038,89 @@ mod tests {
         old.at = "2026-10-04T15:00".into();
         let view = laid_out(&now, &hours, &[], &[old]);
         assert!(view.blocks.iter().all(|b| !b.pinned));
+    }
+
+    /// The slots of time for you stay those of the layout made from the
+    /// tasks the hours keep on this device, as today was always laid (the
+    /// review of the branch `views`, finding 7): the Day draws every step and
+    /// those slots, never slots of its own. Four cases where the two layouts
+    /// differ: a week with admin hours of its own (at work, an admin step
+    /// hidden; the review's numbers); a phone narrowed by its cells; a task
+    /// pinned at an hour that hides it; a phone that does not lay the day
+    /// again when the hours change, its slots those of the time it was laid.
+    #[test]
+    fn the_slots_of_time_for_you_are_those_of_the_tasks_kept() {
+        use crate::areas::{Area, Here, Line, Lines, Time, Week};
+        use crate::quiet::QuietTasks;
+        let midnight = at("2026-10-05T00:00").timestamp().as_second();
+        let gains = |view: &DayView| view.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.key.clone(), (b.start - midnight) / 60, (b.end - midnight) / 60)).collect::<Vec<_>>();
+        let steps = |view: &DayView| view.blocks.iter().filter(|b| b.kind == "task").map(|b| b.key.clone()).collect::<Vec<_>>();
+        // Main's layout: from the tasks kept alone; the two layouts, the drawn one given the kept one's slots.
+        let main = |now: &Zoned, events: &[Occurrence], made: &Plan, tasks: &[Task], quiet: &QuietTasks, settings: &Settings| day(now, events, made, &tasks.iter().filter(|t| quiet.keeps(t)).cloned().collect::<Vec<_>>(), settings);
+        let both = |now: &Zoned, events: &[Occurrence], made: &Plan, tasks: &[Task], quiet: &QuietTasks, settings: &Settings| {
+            let mut two = today(now, events, made, tasks, Some(quiet), settings);
+            with_slots_of(&mut two.drawn, &two.kept);
+            two
+        };
+        let quiet = |time: Time, week: Week, here: Here| QuietTasks { time, week, areas: TaskAreas::usual(), no_movement: false, here };
+        let report = Task { categories: vec!["work".into()], ..rated("report", 60, 2, 2) };
+        let tax = Task { categories: vec!["admin".into()], ..rated("tax", 45, 9, 8) };
+        let tasks = vec![report, tax];
+
+        // 1. Work 09:00–17:00, admin 17:00–18:00; at 09:00 the admin step is hidden.
+        let now = at("2026-10-05T09:00");
+        let hours = vec![window("monday", "09:00", "17:00", "work"), window("monday", "17:00", "18:00", "admin")];
+        let mut settings = Settings::of_hours(&hours, TaskAreas::usual()).with_events(&now, &[]);
+        settings.capacity.gain_slot = 30;
+        let made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let at_work = quiet(Time::Work, Week { work_hours: true, admin_hours: true, ..Week::default() }, Here::default());
+        let two = both(&now, &[], &made, &tasks, &at_work, &settings);
+        assert_eq!(gains(&two.kept), [("gain:after".to_string(), 605, 635), ("gain:evening".to_string(), 1080, 1110)], "main's slots");
+        assert_eq!(gains(&two.kept), gains(&main(&now, &[], &made, &tasks, &at_work, &settings)));
+        assert_eq!((gains(&two.drawn), steps(&two.drawn)), (gains(&two.kept), vec!["report".to_string(), "tax".to_string()]), "the Day: every step, main's slots");
+
+        // 2. A phone said to be for admin and leisure, the computer for work: at work, the phone keeps the admin step alone.
+        let week = Week { work_hours: true, ..Week::default() };
+        let phone = Lines::of(Line::for_area(Area::PERSONAL), &[Line::for_area(Area::WORK)]).here(week);
+        let narrowed = quiet(Time::Work, week, phone);
+        let hours = vec![window("monday", "09:00", "17:00", "work")];
+        let mut settings = Settings::of_hours(&hours, TaskAreas::usual()).with_events(&now, &[]);
+        settings.capacity.gain_slot = 30;
+        let made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(tasks.iter().filter(|t| narrowed.keeps(t)).map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["tax"], "the phone keeps admin's");
+        let two = both(&now, &[], &made, &tasks, &narrowed, &settings);
+        assert_eq!(gains(&two.kept), gains(&main(&now, &[], &made, &tasks, &narrowed, &settings)));
+        assert_eq!(gains(&two.drawn), gains(&two.kept));
+        assert!(!steps(&two.drawn).is_empty(), "the Day draws the steps all the same");
+
+        // 3. A work task pinned at 20:00, laid at 18:00, in leisure: hidden now, drawn at its time.
+        let now = at("2026-10-05T18:00");
+        let late = Task { categories: vec!["work".into()], ..task("late", 30, "") };
+        let pinned = vec![late];
+        let events = vec![block_of("late", "2026-10-05T20:00", "2026-10-05T20:30")];
+        let blocks = crate::blocks::Blocks::of(&events, &pinned, now.timestamp().as_second(), now.time_zone());
+        let own = crate::blocks::without_blocks(events.clone(), &pinned);
+        let mut settings = Settings::of_hours(&hours, TaskAreas::usual()).with_pins(blocks).with_events(&now, &own);
+        settings.capacity.gain_slot = 30;
+        let made = plan(&pinned, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let evening = quiet(Time::Leisure, week, Here::default());
+        let two = both(&now, &events, &made, &pinned, &evening, &settings);
+        assert_eq!(gains(&two.kept), gains(&main(&now, &events, &made, &pinned, &evening, &settings)));
+        assert_eq!((gains(&two.drawn), steps(&two.drawn)), (gains(&two.kept), vec!["late".to_string()]));
+
+        // 4. Laid at 07:00, before work, and not laid again when work begins (a phone in the background):
+        // the slots of 07:00's layout, from the tasks kept then, as main wrote them.
+        let now = at("2026-10-05T07:00");
+        let mut settings = Settings::of_hours(&hours, TaskAreas::usual()).with_events(&now, &[]);
+        settings.capacity.gain_slot = 30;
+        let made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let before_work = quiet(Time::Leisure, week, Here::default());
+        let two = both(&now, &[], &made, &tasks, &before_work, &settings);
+        assert_eq!(gains(&two.kept), gains(&main(&now, &[], &made, &tasks, &before_work, &settings)));
+        assert_eq!(gains(&two.drawn), gains(&two.kept));
+        // With no filter, one layout: the same twice.
+        let plain = today(&now, &[], &made, &tasks, None, &settings);
+        assert_eq!(plain.drawn, plain.kept);
     }
 
     /// A task's time block, as the calendar has it (an event naming its task).

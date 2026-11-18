@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "crates" / "sioul-app"
-FOLDERS = [APP / "qml", APP / "qml" / "android", APP / "qml-desktop"]
+FOLDERS = [APP / "qml", APP / "qml" / "android", APP / "qml" / "style", APP / "qml-desktop"]
 NOTES = ROOT / "docs"
 OUT = ROOT / "website" / "docs" / "dev" / "qml.md"
 GITHUB = "https://github.com/aurelienpierre/sioul/blob/main"
@@ -64,11 +64,14 @@ NAMED = {
     "StatusLine": "status", "LineButton": "status", "NoisePlayer": "status", "HowWasIt": "status",
     "SettingsPanel": "settings", "SettingRow": "settings", "SettingsButton": "settings",
     "HealthSettings": "settings", "SharePanel": "settings", "NeedsSection": "settings",
+    "SettingDoor": "settings", "SitesWeb": "window", "VaultCard": "settings", "VaultForm": "settings", "VaultHeld": "settings",
     "ActionButton": "controls", "AddressField": "controls", "AudioPlayer": "controls",
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",
     "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls", "Paths": "parts",
-    "WrapCheckBox": "controls", "PlainComboBox": "controls",
+    "WrapCheckBox": "controls", "PlainComboBox": "controls", "Tabs": "controls", "PageColumn": "controls",
+    "Section": "controls", "StyleButton": "controls", "StyleTextField": "controls", "StyleTextArea": "controls",
+    "StyleCheckBox": "controls", "StyleRadioButton": "controls", "StyleSpinBox": "controls", "BareButton": "controls",
 }
 
 # Qt's page for each root type the files are based on (Qt 6).

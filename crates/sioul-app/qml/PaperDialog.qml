@@ -228,8 +228,9 @@ SafeDialog {
                 Layout.preferredHeight: 70
                 wrapMode: TextEdit.Wrap
                 background: Rectangle {
-                    color: form.theme.surface
-                    border.color: notesArea.activeFocus ? form.theme.focus : form.theme.line
+                    color: form.theme.field
+                    border.color: notesArea.activeFocus ? form.theme.focusEdge : form.theme.edge
+                    border.width: notesArea.activeFocus ? 2 : 1
                     radius: 3
                 }
             }

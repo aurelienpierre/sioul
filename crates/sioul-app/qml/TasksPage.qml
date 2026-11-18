@@ -99,6 +99,11 @@ Item {
     readonly property bool choosing: page.selecting || page.pickedList.length > 0
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
+    // On a phone, the project, kind and category filters folded behind one Filters button,
+    // which says how many are set: the first task comes rows sooner. Unfolded by it.
+    property bool filtersShown: false
+    readonly property bool filtersFolded: page.window.compact && !page.filtersShown
+    readonly property int filtersSet: (page.projectFilter !== "" ? 1 : 0) + (page.kindFilter !== "" ? 1 : 0) + (page.categoryFilter !== "" ? 1 : 0)
     // What the list keeps beside an open card: `listLeast` pixels, where its
     // rows still hold on one line (the day's weather and its three choices, in
     // French); narrower, the card covers its right part (main.qml).
@@ -108,7 +113,8 @@ Item {
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
     readonly property string categoryFilter: page.shown && page.shown.view ? page.shown.view.filter.category : ""
     property bool restored: false
-    // Asleep: no tasks, unless you ask; the next visit asks again.
+    // Asleep: Now behind its cover, unless you ask; the next visit asks again.
+    // The other tabs show everything (a full view hides nothing).
     property bool anyway: false
     readonly property bool rest: page.window.moment.sleep === true && !page.anyway
 
@@ -148,11 +154,11 @@ Item {
     }
 
     // A new task: the panel's full form, its title first; from `source` (a
-    // card's Add ▾ ▸ A task), its title and its tie given. Asleep, the page
+    // card's Add ▾ ▸ A task), its title and its tie given. Asleep on Now, Now
     // shows anyway, as its own button does.
     function startNew(source) {
         page.leaveForm()
-        if (page.rest) {
+        if (page.rest && page.mode === "now") {
             page.anyway = true
             page.sioul.showTasksAnyway(true)
         }
@@ -231,9 +237,12 @@ Item {
         doneDialog.now().grab(path)
     }
 
-    // For the window's tests: the settings, open or closed, and as an image.
-    function openSettings(open) {
+    // The page's ⚙, open or closed, and as an image (the window's tests); open at one of
+    // its settings ("reminders.waits", from a link by key: SettingDoor.qml).
+    function openSettings(open, key) {
         tasksSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => tasksSettings.scrollTo(key))
     }
 
     function grabSettings(path) {
@@ -285,7 +294,17 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 10
 
-            // The ways to see tasks, then the filters: on a second line when the
+            // The ways to see tasks: tabs across the page (Tabs.qml).
+            Tabs {
+                objectName: "taskModes"
+                name: page.sioul.text("ui-tasks")
+                Layout.fillWidth: true
+                theme: page.theme
+                model: ["now", "day", "list", "board", "timeline", "search"].map(m => ({ id: m, text: page.sioul.text("task-mode-" + m) }))
+                current: page.mode
+                onChosen: id => page.mode = id
+            }
+            // Under them, Routines and the filters: on a second line when the
             // window is too narrow for one, never past its edge.
             Flow {
                 id: viewsFlow
@@ -293,25 +312,6 @@ Item {
                 Layout.fillWidth: true
                 spacing: 6
 
-                Repeater {
-                    model: ["now", "day", "list", "board", "timeline", "search"]
-
-                    delegate: Button {
-                        id: modeButton
-
-                        required property string modelData
-
-                        text: page.sioul.text("task-mode-" + modeButton.modelData)
-                        checkable: true
-                        checked: page.mode === modeButton.modelData
-                        flat: page.mode !== modeButton.modelData
-                        // A click on the way shown unticks it: its binding ticks it again.
-                        onClicked: {
-                            page.mode = modeButton.modelData
-                            modeButton.checked = Qt.binding(() => page.mode === modeButton.modelData)
-                        }
-                    }
-                }
                 // Routines: steps played one at a time; what they are, in its tip.
                 Button {
                     flat: true
@@ -323,10 +323,30 @@ Item {
                     Accessible.description: page.sioul.text("routines-tip")
                     onClicked: routinesDialog.now().show()
                 }
+                // On a phone: the three filters below, folded; how many are set, in its words.
+                Button {
+                    id: filtersButton
+
+                    objectName: "taskFilters"
+                    visible: page.window.compact
+                    checkable: true
+                    checked: page.filtersShown
+                    flat: true
+                    text: page.sioul.textCounted("task-filters", page.filtersSet)
+                    icon.name: "view-filter"
+                    icon.color: page.filtersShown ? page.theme.accentText : page.theme.text
+                    onClicked: {
+                        page.filtersShown = !page.filtersShown
+                        // A click on it flips its own tick: it stays the fold's.
+                        filtersButton.checked = Qt.binding(() => page.filtersShown)
+                    }
+                }
                 // The board and the timeline: one project, or all.
                 PlainComboBox {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
 
+                    objectName: "taskProjectFilter"
+                    visible: !page.filtersFolded
                     // On a phone, two choices a line.
                     width: page.narrow ? page.halfFlow : 200
                     model: choices.map(c => page.theme.plain(c.title))
@@ -342,6 +362,8 @@ Item {
 
                     readonly property var choices: [{ id: "", label: page.sioul.text("task-filter-all") }].concat(page.shown ? page.shown.kinds : [])
 
+                    objectName: "taskKindFilter"
+                    visible: !page.filtersFolded
                     width: page.narrow ? page.halfFlow : 190
                     model: choices.map(c => page.theme.plain(c.label))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === page.kindFilter))
@@ -354,7 +376,8 @@ Item {
                 PlainComboBox {
                     readonly property var choices: [""].concat(page.shown ? page.shown.categories : [])
 
-                    visible: choices.length > 1
+                    objectName: "taskCategoryFilter"
+                    visible: choices.length > 1 && !page.filtersFolded
                     // As wide as its longest choice ("Toutes les catégories" was cut),
                     // within its line: on a phone, the line but the settings' button.
                     implicitContentWidthPolicy: ComboBox.WidestText
@@ -470,6 +493,8 @@ Item {
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
                 Loader {
+                    id: nowView
+
                     active: page.nowMade
 
                     sourceComponent: Component {
@@ -479,9 +504,10 @@ Item {
                             contentWidth: availableWidth
                             clip: true
 
-                            ColumnLayout {
-                                width: Math.min(nowScroll.availableWidth, 680)
-                                x: Math.max(0, (nowScroll.availableWidth - width) / 2)
+                            // A legible column, centred (PageColumn.qml).
+                            PageColumn {
+                                theme: page.theme
+                                room: nowScroll.availableWidth
                                 spacing: 12
 
                                 // Quiet time: the rest of the day, and when work comes back.
@@ -616,7 +642,7 @@ Item {
                                     Repeater {
                                         model: page.shown ? page.shown.free : []
 
-                                        delegate: Button {
+                                        delegate: BareButton {
                                             id: offer
 
                                             required property var modelData
@@ -910,7 +936,7 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 2
 
-                                        Button {
+                                        BareButton {
                                             flat: true
                                             text: (fold.open ? "▾  " : "▸  ") + page.sioul.text(fold.modelData.label)
                                             onClicked: {
@@ -1460,8 +1486,12 @@ Item {
         }
     }
 
-    // Asleep: one line, a thought noted for later, and the tasks if you ask.
+    // Asleep: over Now alone, one line, a thought noted for later, and Now's
+    // tasks if you ask; the tabs stay in reach, and the other tabs show everything.
     RestCover {
+        objectName: "tasksRest"
+        parent: nowView
+        z: 1
         visible: page.rest
         sioul: page.sioul
         theme: page.theme
