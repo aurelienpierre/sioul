@@ -250,20 +250,20 @@ fn the_days_off_editor_keeps_ids_and_a_day_that_arrived() {
     now = rounds_announced(&folder, &key, &both, now, 1);
     let path_of = |c: &Computer| c.path("config/config.toml");
     let days = |c: &Computer| list_of(&c.read("config/config.toml"), "time_off").iter().map(|t| (t.get("label").and_then(toml::Value::as_str).unwrap_or_default().to_string(), t.get("id").is_some())).collect::<Vec<_>>();
-    let shown = |c: &Computer| sioul_core::config::Config::load(&path_of(c)).unwrap().time_off.iter().map(|t| sioul_core::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect::<Vec<_>>();
+    let shown = |c: &Computer| sioul_core::config::Config::load(&path_of(c)).unwrap().time_off.iter().map(|t| sioul_core::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone(), kind: t.kind.clone() }).collect::<Vec<_>>();
     let with_ids_after_switch = days(&desk);
     // The desk's editor opens.
     let open_on_desk = shown(&desk);
     // The phone adds Christmas; it reaches the desk.
     let open_on_phone = shown(&phone);
     let mut phone_days = open_on_phone.clone();
-    phone_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: "Christmas".into() });
+    phone_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: "Christmas".into(), kind: String::new() });
     sioul_core::settings::change(&path_of(&phone), "time_off", Some(&sioul_core::config::SettingValue::TimeOff(open_on_phone)), &sioul_core::config::SettingValue::TimeOff(phone_days)).unwrap();
     now = rounds_announced(&folder, &key, &both, now, 2);
     let arrived = days(&desk);
     // The desk adds Easter from the editor still open.
     let mut desk_days = open_on_desk.clone();
-    desk_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2027-03-26".into(), until: "2027-03-29".into(), label: "Easter".into() });
+    desk_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2027-03-26".into(), until: "2027-03-29".into(), label: "Easter".into(), kind: String::new() });
     // As the editor sends it: what it showed, and the list with its day added (`settings::change`).
     sioul_core::settings::change(&path_of(&desk), "time_off", Some(&sioul_core::config::SettingValue::TimeOff(open_on_desk)), &sioul_core::config::SettingValue::TimeOff(desk_days)).unwrap();
     rounds_announced(&folder, &key, &both, now, 3);

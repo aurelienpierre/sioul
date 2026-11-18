@@ -187,7 +187,7 @@ fn fresh_lines(tasks: &[Task], quiet: Option<&sioul_core::quiet::QuietTasks>) ->
             let config = load_config();
             let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
             let horizon = now.checked_add(jiff::Span::new().days(7)).unwrap_or_else(|_| now.clone());
-            sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &crate::hours::blocks(&now), &config.porch_windows(), &now, &horizon, &[], 400)
+            sioul_core::quiet::frames(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &crate::hours::blocks(&now), &config.porch_windows(), &now, &horizon, &[], 400)
         }
         _ => Vec::new(),
     };
@@ -1102,7 +1102,7 @@ pub(crate) fn closing(shared: &Shared) -> Closed {
     situation.closed.insert(date);
     let after = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded, shared, &read), &spent, &today.aside);
     let config = load_config();
-    let back = sioul_core::quiet::after_today(&config.working_hours(), &config.time_off, &now, i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7));
+    let back = sioul_core::quiet::after_today(&config.working_hours(), &sioul_core::vacations::DaysOff::of(&config), &now, i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7));
     let back_day = back.date();
     let task = |uid: &str| loaded.tasks.iter().find(|t| t.uid == uid);
     // What got done, and what was worked on: three lines at most, nothing when nothing.

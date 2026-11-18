@@ -539,7 +539,7 @@ pub(super) fn moment_read(s: &Session) -> Moment {
     let now = sioul_core::zone::now();
     let overrides = Overrides::load(&Overrides::default_path());
     let blocks = quiet::Blocks::read_now(&now);
-    let mode = quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);
+    let mode = quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &now);
     let until = mode.until.as_ref().map(|z| quiet::until_text(&s.tr, z, &now)).unwrap_or_default();
     let mut args = sioul_core::i18n::args();
     args.set("until", until.clone());

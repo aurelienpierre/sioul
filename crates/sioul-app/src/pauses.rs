@@ -51,7 +51,7 @@ fn hm(stamp: i64, now: &Zoned) -> String {
 
 /// Today's usual end of work, when today has working hours and no time off.
 fn usual_end(config: &sioul_core::config::Config, now: &Zoned) -> Option<i64> {
-    if sioul_core::quiet::time_off_on(&config.time_off, now.date()).is_some() {
+    if sioul_core::vacations::DaysOff::of(&config).on(now.date()).is_some() {
         return None;
     }
     sioul_core::window::hours_on(&config.working_hours(), now.date(), now.time_zone()).map(|(_, closing)| closing.timestamp().as_second())
@@ -228,7 +228,7 @@ fn porch_back(config: &sioul_core::config::Config, now: &Zoned) -> Option<i64> {
     let admin: Vec<_> = config.week_hours().into_iter().filter(|w| w.kind() == "admin").collect();
     let hours = if admin.is_empty() { config.week_hours() } else { admin };
     let morning = i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7);
-    let next = sioul_core::quiet::next_work(&hours, &config.time_off, now).unwrap_or_else(|| sioul_core::quiet::after_today(&[], &[], now, morning));
+    let next = sioul_core::quiet::next_work(&hours, &sioul_core::vacations::DaysOff::of(&config), now).unwrap_or_else(|| sioul_core::quiet::after_today(&[], &sioul_core::vacations::DaysOff::default(), now, morning));
     Some(next.timestamp().as_second())
 }
 
@@ -245,7 +245,7 @@ pub(crate) fn come_back(mut sioul: Pin<&mut Sioul>) -> QString {
     let mut overrides = before.clone();
     let after = config.pause.after();
     let morning = i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7);
-    let back = sioul_core::quiet::after_today(&config.working_hours(), &config.time_off, &now, morning);
+    let back = sioul_core::quiet::after_today(&config.working_hours(), &sioul_core::vacations::DaysOff::of(&config), &now, morning);
     let rest = (after == After::Rest).then(|| back.timestamp().as_second());
     pause::end_pause(&mut overrides, &now, after, rest, porch_back(&config, &now));
     if !save(&mut sioul, &overrides) {

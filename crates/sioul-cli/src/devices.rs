@@ -76,7 +76,7 @@ fn list(s: &Session, json: bool) -> Result<(), String> {
     let known = dispatch::Known::read(&s.config, &sioul_core::config::state_dir(), now);
     let at = sioul_core::zone::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let mode = sioul_core::quiet::mode(&s.config.week_hours(), &s.config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&at), &at).on(&known.lines());
+    let mode = sioul_core::quiet::mode(&s.config.week_hours(), &sioul_core::vacations::DaysOff::of(&s.config), &overrides, &sioul_core::quiet::Blocks::read_now(&at), &at).on(&known.lines());
     let mut grid = device_grid::grid(&mut rows, &s.config.devices, &known, &mode, &at, &s.tr);
     // Settings that do not travel from here: what this device tells may come twice.
     let here = sioul_sync::share::Here::load(&sioul_core::config::state_dir());
@@ -148,7 +148,7 @@ fn say_at(s: &Session, device: &str, time: &str, areas: &str) -> Result<(), Stri
     // What comes forward there then, as the settings now say it.
     let line = sioul_core::config::Config::load(&s.config_path).ok().and_then(|config| config.devices.get(&row.id).map(device_said::Said::line)).unwrap_or_default();
     // The week's hours, for what a cell left as its areas say brings (admin at work while it has no hours of its own).
-    let week = sioul_core::quiet::mode(&s.config.week_hours(), &s.config.time_off, &sioul_core::quiet::Overrides::default(), &sioul_core::quiet::Blocks::default(), &sioul_core::zone::now()).week;
+    let week = sioul_core::quiet::mode(&s.config.week_hours(), &sioul_core::vacations::DaysOff::of(&s.config), &sioul_core::quiet::Overrides::default(), &sioul_core::quiet::Blocks::default(), &sioul_core::zone::now()).week;
     let pairs = [("device", crate::plain_lines(&row.name)), ("time", device_grid::time_title(at, &s.tr)), ("areas", device_grid::cell_label(line.cell(at, week), &s.tr))];
     println!("{}", s.say(if cell.is_some() { "devices-said-cell" } else { "devices-said-cell-usual" }, &pairs));
     Ok(())

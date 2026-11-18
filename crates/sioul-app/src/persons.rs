@@ -351,7 +351,7 @@ fn admin_now(config: &Config) -> bool {
     let now = sioul_core::zone::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let blocks = sioul_core::quiet::Blocks::read_now(&now);
-    match sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now).time {
+    match sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &now).time {
         Time::Admin | Time::Any => true,
         Time::Several(open) => open.admin,
         _ => false,
