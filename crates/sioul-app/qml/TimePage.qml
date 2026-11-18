@@ -65,9 +65,10 @@ Item {
         timeDialog.now().begin(page.project)
     }
 
+    // The period asked: made off the window's thread, shown when it comes (`timeView`).
     function reload() {
         page.projects = JSON.parse(page.sioul.projectRows() || "[]")
-        page.shown = JSON.parse(page.sioul.timePage(page.period, page.iso(page.anchor), page.project) || "null")
+        page.sioul.showTimePage(page.period, page.iso(page.anchor), page.project)
     }
 
     function move(steps) {
@@ -109,6 +110,10 @@ Item {
     Connections {
         target: page.sioul
 
+        // The view asked, made.
+        function onTimeViewChanged() {
+            page.shown = JSON.parse(page.sioul.timeView || "null")
+        }
         function onLinksChanged() {
             page.reload()
         }

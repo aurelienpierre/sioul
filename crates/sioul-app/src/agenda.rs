@@ -572,9 +572,10 @@ impl FilterNow {
         sioul_core::agendas::hidden(&self.agendas, self.hours, self.over.as_ref(), &self.out, self.now)
     }
 
-    /// Your word holds now.
-    fn chosen(&self) -> bool {
-        self.over.as_ref().is_some_and(|o| o.holds(self.hours, self.now))
+    /// Your word holds now and turns something: in the Agenda's full views
+    /// (`set_alone`), a set chosen by its button counts too.
+    fn chosen(&self, set_alone: bool) -> bool {
+        self.over.as_ref().is_some_and(|o| o.holds(self.hours, self.now) && (!o.turns_nothing() || (set_alone && !o.set.is_empty())))
     }
 
     /// The filter as its list shows it: the agendas taking events (the agenda's
@@ -590,11 +591,24 @@ impl FilterNow {
         sioul_core::agendas::hidden_by_hand(&self.agendas, self.hours, self.over.as_ref(), &self.kept, self.now)
     }
 
+    /// The same for the Agenda's Day, Week and Month: a set chosen by its
+    /// button shows alone there (`agendas::hidden_by_hand_with_set`); the
+    /// Tasks page's full lists keep `hidden_by_hand`, as on main.
+    pub(crate) fn hidden_in_agenda_full(&self) -> std::collections::BTreeSet<String> {
+        sioul_core::agendas::hidden_by_hand_with_set(&self.agendas, self.hours, self.over.as_ref(), &self.kept, self.now)
+    }
+
     /// The filter as the full lists show it (`full`): each agenda on unless
     /// your word leaves it out, whatever the hours; else as `shown`.
     pub(crate) fn shown_as(&self, tasks: bool, full: bool) -> FilterShown {
         use sioul_core::agendas::{Whose, default_on, shown};
-        let by_hand = if full { self.hidden_by_hand() } else { std::collections::BTreeSet::new() };
+        // The Agenda's full views (`!tasks`) show a set chosen by its button alone; the Tasks page's, your turns alone.
+        let set_alone = full && !tasks;
+        let by_hand = match (full, tasks) {
+            (false, _) => std::collections::BTreeSet::new(),
+            (true, true) => self.hidden_by_hand(),
+            (true, false) => self.hidden_in_agenda_full(),
+        };
         let mut groups: Vec<GroupShown> = Vec::new();
         let mut sorted: Vec<&sioul_core::agendas::Agenda> = self.agendas.iter().filter(|a| if tasks { a.tasks } else { a.events }).collect();
         sorted.sort_by(|a, b| (a.whose, a.person.to_lowercase(), a.name.to_lowercase(), &a.id).cmp(&(b.whose, b.person.to_lowercase(), b.name.to_lowercase(), &b.id)));
@@ -623,7 +637,7 @@ impl FilterNow {
                 });
             }
         }
-        let until = if self.chosen() {
+        let until = if self.chosen(set_alone) {
             self.over.as_ref().and_then(|o| o.until).and_then(|until| jiff::Timestamp::from_second(until).ok()).map(|t| sioul_core::quiet::until_text(tr(), &t.to_zoned(self.zoned.time_zone().clone()), &self.zoned)).unwrap_or_default()
         } else {
             String::new()
@@ -639,7 +653,7 @@ impl FilterNow {
                 SetShown { name: name.clone(), agendas: set.agendas.clone(), times: set.times.clone(), by_time: !full && self.by_time.as_deref() == Some(name.as_str()), showing: !listed.is_empty() && listed == on }
             })
             .collect();
-        FilterShown { chosen: self.chosen(), until, groups, sets }
+        FilterShown { chosen: self.chosen(set_alone), until, groups, sets }
     }
 }
 
@@ -705,12 +719,13 @@ pub(crate) fn turn_by_hand(ids: &[String], on: bool) -> String {
 }
 
 /// A set chosen by hand (part 4): its agendas shown, every other left out,
-/// as your word, in every view, the full ones too (`agendas::set_chosen`),
+/// as your word against the hours at the press, as always, and the set kept
+/// so that the Agenda's full views show it alone too (`agendas::set_chosen`);
 /// holding until work's hours change. Returns what went wrong, else "".
 pub(crate) fn use_set(name: &str) -> String {
     write_filter(|now| {
         let Some(set) = now.sets.get(name) else { return now.over.clone() };
-        sioul_core::agendas::set_chosen(&now.agendas, &set.agendas, now.hours)
+        sioul_core::agendas::set_chosen(now.over.as_ref(), &now.agendas, &set.agendas, now.hours, &now.out, now.now)
     })
 }
 
@@ -1060,7 +1075,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     // What it leaves out takes no lane, no bar and no column: it is not among the days.
     let filter = filter_now();
     let by_hand = mode != Mode::Comes;
-    let filtered = if by_hand { filter.hidden_by_hand() } else { filter.hidden() };
+    let filtered = if by_hand { filter.hidden_in_agenda_full() } else { filter.hidden() };
     let left_out = |source: &timeline::Source| matches!(source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
     // What comes' next day past its days: its next event the filter shows, or its next date asked.
     let next = if mode == Mode::Comes {
@@ -1683,6 +1698,8 @@ mod tests {
     /// three lanes and "+2"; a list starting after it began says "Ongoing since".
     #[test]
     fn what_comes_writes_an_event_over_several_days_once() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing comes", 2099);
@@ -1738,6 +1755,8 @@ mod tests {
     /// is said only when nothing comes later either.
     #[test]
     fn what_comes_names_the_next_day_past_its_days() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Comes later", None, &["VEVENT"]).unwrap();
         let base = jiff::civil::date(2091, 3, 5);
@@ -1786,6 +1805,8 @@ mod tests {
     /// week's row, out of its cells' lines.
     #[test]
     fn the_grids_draw_one_bar_per_long_event() {
+        // Another test's set chosen leaves no calendar of this one out (`view_held`).
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing grids", 2093);
@@ -2077,7 +2098,7 @@ mod tests {
         assert_eq!(use_set("Only one"), "");
         let now = filter_now();
         assert!(!now.hidden().contains(&place(&a)) && now.hidden().contains(&place(&b)), "{:?}", now.hidden());
-        assert!(now.chosen(), "your word");
+        assert!(now.chosen(true), "your word: the set, in the Agenda's full views");
         let listed = now.shown(false).sets;
         assert!(listed.iter().any(|s| s.name == "Only one" && s.times == ["leisure"]), "{listed:?}");
         assert_eq!(keep_set("Only one", None, Vec::new()), "");

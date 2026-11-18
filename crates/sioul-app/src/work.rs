@@ -424,14 +424,22 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     // Today's events, from the plan's one read; deleted, or an occurrence left out, while "Undo" is offered: gone already.
     let (removed, skipped) = crate::mail::hidden_pim(shared);
     let events: Vec<sioul_core::agenda::Occurrence> = pim::without_waiting(desk.read.iter().filter(|o| o.end > midnight && o.start < next_midnight).cloned().collect(), &removed, &skipped);
-    let sioul_core::dayview::Today { drawn: mut day, mut kept } = sioul_core::dayview::today(&now, &events, &desk.plan, &desk.loaded.tasks, desk.filter.quiet.as_ref(), &desk.settings);
+    let two = sioul_core::dayview::today(&now, &events, &desk.plan, &desk.loaded.tasks, desk.filter.quiet.as_ref(), &desk.settings);
+    dressed_today(two, &desk.loaded.tasks, crate::capacity::dress)
+}
+
+/// Today's two layouts dressed: the slots in force written from the one laid
+/// from the tasks kept (`write`: `capacity::dress`, which writes them for
+/// every process of this device), never from the one drawn; the drawn day in
+/// words, given those slots in place of its own (`dayview::with_slots_of`).
+fn dressed_today(two: sioul_core::dayview::Today, tasks: &[Task], write: impl FnOnce(&mut sioul_core::dayview::DayView, &[Task])) -> sioul_core::dayview::DayView {
+    let sioul_core::dayview::Today { drawn: mut day, mut kept } = two;
     // Meals and naps without a name of their own: their usual one, in your language.
     for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
         block.title = crate::health::block_name(block.kind, &block.key, "");
     }
-    // The slots in force written from the tasks kept, as always; the day drawn in words, with them.
-    crate::capacity::dress(&mut kept, &desk.loaded.tasks);
-    crate::capacity::dress_words(&mut day, &desk.loaded.tasks);
+    write(&mut kept, tasks);
+    crate::capacity::dress_words(&mut day, tasks);
     sioul_core::dayview::with_slots_of(&mut day, &kept);
     day
 }
@@ -3043,6 +3051,25 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The slots of time for you are written from the layout of the tasks
+    /// kept, never from the one drawn (the review of the branch `views`, V2):
+    /// the writer is given the kept day, and the drawn day shows its slots in
+    /// place of its own.
+    #[test]
+    fn the_slots_written_are_the_kept_layout_s() {
+        use sioul_core::dayview::{Block, DayView, Today};
+        let gain = |key: &str, start: i64| Block { start, end: start + 1800, kind: "gain", title: String::new(), key: key.into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false };
+        let step = Block { start: 4_000, end: 7_600, kind: "task", title: "Figures".into(), key: "figures".into(), ..gain("figures", 4_000) };
+        let kept = DayView { blocks: vec![gain("gain:after", 10_000)], ..DayView::default() };
+        let drawn = DayView { blocks: vec![step, gain("gain:after", 20_000)], ..DayView::default() };
+        let mut written: Vec<(String, i64)> = Vec::new();
+        let day = dressed_today(Today { drawn, kept }, &[], |day, _| written = day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.key.clone(), b.start)).collect());
+        assert_eq!(written, [("gain:after".to_string(), 10_000)], "the kept day's slots, written");
+        let drawn_gains: Vec<i64> = day.blocks.iter().filter(|b| b.kind == "gain").map(|b| b.start).collect();
+        assert_eq!(drawn_gains, [10_000], "the drawn day shows them, never its own");
+        assert!(day.blocks.iter().any(|b| b.kind == "task" && b.key == "figures"), "its steps kept");
+    }
 
     /// A full view hides nothing (the settings rework, 18 November 2026):
     /// today's layout, which the Agenda's Day and Week and Tasks ▸ The day

@@ -234,6 +234,19 @@ pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
     line_said(result)
 }
 
+/// The Time page as last asked (`Shared::time_asked`), made off the window's
+/// thread (each stretch's area once a reading, but its files and tasks read
+/// all the same), then shown (`time_view`): one run at a time, the newest
+/// asked last.
+pub(crate) fn show_time(qt: &QtThread, shared: &Arc<Shared>) {
+    let qt = qt.clone();
+    crate::backend::coalesced(shared, |s| &s.time_job, move |shared| {
+        let (period, anchor, project) = shared.time_asked.lock().map(|a| a.clone()).unwrap_or_default();
+        let view = time(shared, &period, &anchor, &project);
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().set_time_view(cxx_qt_lib::QString::from(&view)));
+    });
+}
+
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.
 pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -> String {
     let loaded = loaded(shared);
@@ -249,8 +262,9 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     // whose area is not ticked folds, and the lines say so; one project chosen by hand shows
     // whatever the ticks. What is left to bill stays whole (`timereport::view`).
     let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
-    let areas = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects);
-    let shows = |e: &Entry| !project.is_empty() || timereport::area_of(e, &loaded.projects, &loaded.tasks, &areas).is_none_or(|area| area.meets(ticked));
+    // Each project's area once, each task's once, then a look-up a stretch (`StretchAreas`).
+    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects));
+    let shows = |e: &Entry| !project.is_empty() || stretches.area_of(e).is_none_or(|area| area.meets(ticked));
     let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr(), &shows);
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
     let kinds: std::collections::BTreeMap<String, Option<timelog::Kind>> = sessions.iter().map(|s| (s.key(), s.kind)).collect();

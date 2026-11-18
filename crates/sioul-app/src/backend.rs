@@ -103,6 +103,8 @@ pub mod qobject {
         #[qproperty(QString, places_found)]
         // The groups Sioul noticed, for Mail ▸ ⚙ ▸ Topics (`topics::find_groups`).
         #[qproperty(QString, topic_groups)]
+        // The Time page as last asked (`show_time_page`), made off the window's thread.
+        #[qproperty(QString, time_view)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -2571,9 +2573,10 @@ pub mod qobject {
         #[qinvokable]
         fn save_project(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
 
-        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or all.
+        /// The Time page: "week", "month" or "year" around `anchor` ("2026-10-05"), one project or
+        /// all, made off the window's thread: `time_view` follows.
         #[qinvokable]
-        fn time_page(self: &Sioul, period: &QString, anchor: &QString, project: &QString) -> QString;
+        fn show_time_page(self: Pin<&mut Sioul>, period: &QString, anchor: &QString, project: &QString);
 
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
@@ -3155,6 +3158,7 @@ pub struct SioulRust {
     forecast: QString,
     places_found: QString,
     topic_groups: QString,
+    time_view: QString,
     shared: Arc<Shared>,
 }
 
@@ -3258,6 +3262,9 @@ pub(crate) struct Shared {
     /// from the older plan beside the newer calendars (review of 3a2fbd4, later 4).
     pub(crate) replan_due: AtomicBool,
     pub(crate) health_job: Job,
+    /// The Time page (`projects::show_time`), and what it asked last: period, day, project.
+    pub(crate) time_job: Job,
+    pub(crate) time_asked: Mutex<(String, String, String)>,
     /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
     pub(crate) agenda_job: Job,
     pub(crate) agenda_generation: AtomicU64,
@@ -7226,6 +7233,9 @@ impl qobject::Sioul {
         if shared.health_job.deferred.swap(false, Ordering::SeqCst) {
             crate::health::show_health(&qt, &shared);
         }
+        if shared.time_job.deferred.swap(false, Ordering::SeqCst) {
+            crate::projects::show_time(&qt, &shared);
+        }
         crate::share::set_shown(true);
         // Something shared to Sioul, a mailto: link opened with it: its draft (docs/android.md, "Sharing").
         crate::outside::take(self.as_mut());
@@ -8019,8 +8029,12 @@ impl qobject::Sioul {
         QString::from(&crate::projects::save(&self.qt_thread(), &self.shared(), &id.to_string(), &edit.to_string()))
     }
 
-    fn time_page(&self, period: &QString, anchor: &QString, project: &QString) -> QString {
-        QString::from(&crate::projects::time(&self.shared(), &period.to_string(), &anchor.to_string(), &project.to_string()))
+    fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {
+        let shared = self.shared();
+        if let Ok(mut asked) = shared.time_asked.lock() {
+            *asked = (period.to_string(), anchor.to_string(), project.to_string());
+        }
+        crate::projects::show_time(&self.qt_thread(), &shared);
     }
 
     fn note_time(self: Pin<&mut Self>, edit: &QString) -> QString {
