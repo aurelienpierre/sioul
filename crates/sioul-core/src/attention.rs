@@ -2228,12 +2228,13 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     write(path, config, &attention, &[row])
 }
 
-/// Rows written whole from Settings ▸ What reaches you (`behaviours`): each
-/// row's nine cells set, a fixed cell kept as it is (a value differing there
-/// refused), a value not offered refused; then written as `apply` writes a
-/// row, under the configuration's lock, from the file as it is then. The
-/// call screening's rows are refused.
-pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Level; 9])]) -> Result<(), String> {
+/// Rows written from Settings ▸ What reaches you (`behaviours`): each cell
+/// a choice names set (`Some`), the others kept as the file has them then
+/// (`None`); a fixed cell kept as it is (a value differing there refused), a
+/// value not offered refused; then written as `apply` writes a row, under
+/// the configuration's lock, from the file as it is then. The call
+/// screening's rows are refused.
+pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9])]) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
         let mut attention = Attention::of(&fresh);
@@ -2242,7 +2243,9 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Level; 9])]) -> R
                 return Err(screened_refusal(&format!("attention.{}", row.id())));
             }
             for (column, level) in Column::ALL.iter().zip(cells) {
-                attention.set(*row, *column, *level)?;
+                if let Some(level) = level {
+                    attention.set(*row, *column, *level)?;
+                }
             }
         }
         let written: Vec<Row> = rows.iter().map(|(row, _)| *row).collect();

@@ -281,12 +281,12 @@ f is ● for Safe (Free time lets your safe people's messages through, decision 
 
 | Group | Rows | Choice |
 |---|---|---|
-| What you set or asked for | codes, doses, the alarm at waking, an event's alarms | at once, fixed; one choice: doses while you sleep (Sleep ●) or at waking (Sleep ○) |
+| What you set or asked for | codes, doses, the alarm at waking, an event's alarms | one choice, the doses' cell for sleep alone: doses while you sleep (●) or at waking (○); read from that cell alone; codes, the alarm at waking, an event's alarms and the doses' other cells are never written by it (review R2) |
 | Reminders | before an event, the working day before, dates | When awake (as shipped) or Off (○ everywhere) |
 | Care | meals, naps and the night; the pause to move; "Work hours are over"; the time running | a switch each: on, as shipped; off, – everywhere |
 | Sites and apps | sites' news (a computer), apps' automatons (a phone) | At the gathered times (as shipped) or At once (● where shipped says ◎); the gathered times (`reminders.gathered`, moved to this page's section of the settings) |
 
-A group whose rows match no choice reads Your own; a choice writes every row of the group as its pattern (care, one switch's row). The Sites row takes At once since this page (`attention::choices`): a site's news is then told at once by `sites::notified`, as a site in real time is; an older Sioul refuses that cell and reads the shipped ◎. `reminders.gather`, the computer's gathered notice of sites, stays read and leaves the page.
+A group whose rows match no choice reads Your own; a choice writes every row of the group as its pattern (care, one switch's row), but What you set or asked for, whose choice writes one cell (`behaviours::Cells`: a cell a choice does not name stays as the file has it, `attention::apply_rows`). The Sites row takes At once since this page (`attention::choices`): a site's news is then told at once by `sites::notified`, as a site in real time is; an older Sioul refuses that cell and reads the shipped ◎. `reminders.gather`, the computer's gathered notice of sites, stays read and leaves the page.
 
 **Moments** (design-reach §1.3): As usual (your rules; nothing turns it on; on a phone, as Android is set), Do not disturb (Always through and what you set yourself; the switch, and a box each for a pause or Free time, the night, and **while busy**, `[dnd] button`, `pauses`, `sleep`, `focus`, with Free time's Nothing at all (`free_time.nothing`) under them; on a phone, Sioul's own mode letting through whom Sioul does), Reachable (everyone not blocked; the switch, for a length; Sioul's mode off). Under it, **Who holds what on a phone**, four lines: a call, a message, do not disturb, your own Android modes, each with Sioul's part and Android's.
 

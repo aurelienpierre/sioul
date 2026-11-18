@@ -527,17 +527,23 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
 
 /// A choice made on the page (`what`: "people.<channel>.<circle>",
 /// "group.<group>", "care.<kind>"; `value`: a behaviour's or a choice's
-/// id), its rows written whole (`attention::apply_rows`). "" when kept,
+/// id), the cells it names written (`attention::apply_rows`). "" when kept,
 /// else why not.
 pub(crate) fn choose(what: &str, value: &str) -> String {
-    match writes_of(what, value).and_then(|rows| attention::apply_rows(&config_path(), &load_config(), &rows)) {
+    match choose_at(&config_path(), what, value) {
         Ok(()) => String::new(),
         Err(e) => e,
     }
 }
 
-/// The rows a choice of the page writes (`choose`), each whole; why not, when it cannot.
-fn writes_of(what: &str, value: &str) -> Result<Vec<(Row, [Level; 9])>, String> {
+/// `choose`, on the configuration at `path`.
+fn choose_at(path: &std::path::Path, what: &str, value: &str) -> Result<(), String> {
+    let config = if path.exists() { Config::load(path)? } else { Config::default() };
+    writes_of(what, value).and_then(|rows| attention::apply_rows(path, &config, &rows))
+}
+
+/// The cells a choice of the page writes (`choose`), per row; why not, when it cannot.
+fn writes_of(what: &str, value: &str) -> Result<Vec<(Row, behaviours::Cells)>, String> {
     if let Some(rest) = what.strip_prefix("people.") {
         let (channel, circle) = rest.split_once('.').unwrap_or((rest, ""));
         match (Channel::read(channel), Circle::read(circle), Behaviour::read(value)) {
