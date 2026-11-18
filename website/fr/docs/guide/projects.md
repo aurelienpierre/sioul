@@ -65,7 +65,7 @@ Une réponse dans une conversation du projet va avec lui, comme un courriel que 
 
 Dans un seul fichier, `sioul-projects.toml`, à la racine de votre dossier de notes : lisible, et modifiable à la main si vous voulez. Il voyage avec votre dossier de notes, ou par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)). Les tâches et les événements d’un projet portent son identifiant dans un champ standard, pour que les autres programmes d’agenda gardent le regroupement.
 
-Si votre dossier de notes contient encore `sioul-cases.toml`, le nom du fichier d’avant le nom unique des projets, rien ne change : Sioul le lit et l’écrit tel quel, pour qu’un appareil pas encore mis à jour le lise aussi. Quand chacun de vos appareils a cette version, **Renommer en sioul-projects.toml**, dans Paramètres ▸ Votre dossier et le partage, le renomme, en gardant une copie de l’ancien fichier à côté. Les liens vers un projet écrits avant l’ouvrent toujours.
+Si votre dossier de notes contient encore `sioul-cases.toml`, le nom du fichier d’avant le nom unique des projets, rien ne change : Sioul le lit et l’écrit tel quel, pour qu’un appareil pas encore mis à jour le lise aussi. Quand chacun de vos appareils a cette version, **Renommer en sioul-projects.toml**, dans les réglages de la page Notes (⚙), sous le dossier des notes, le renomme, en gardant une copie de l’ancien fichier à côté. Les liens vers un projet écrits avant l’ouvrent toujours.
 
 ## Selon vos heures {#in-quiet-time}
 

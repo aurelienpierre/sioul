@@ -83,10 +83,10 @@ What sets a phone up is on its own card in [Devices](#devices), under its name.
     - **Do not disturb on this phone**: Android's Do Not Disturb access and what each mode lets through; who of your Always through people is starred there; **Keep this phone in step in the background**. See [What each system does](notifications.md#what-each-system-does).
 - Another phone's card says that what Android allows is set on that phone.
 
-## Your folder and sharing
+## Sharing {#your-folder-and-sharing}
 
-- **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it ([Notes](notes.md)).
-- **Rename to sioul-projects.toml**: shown while your projects' file has its first name, `sioul-cases.toml`. It renames the file and its entries in one write, every project kept, with a copy of the old file beside it. Never done by itself: press it once each of your devices has this version of Sioul, since an older one reads only the first name ([Where projects live](projects.md#where-projects-live)).
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it.
+
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 
@@ -98,7 +98,7 @@ Every device you share with, this one first, each on a card; in a wide window, t
 - **What it is**, how it is **now**, when it was **last opened** and when it **last shared**, and its **Sioul**: as each device says them.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
 - **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
-- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Your folder and sharing](#your-folder-and-sharing).
+- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing).
 - **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**, for another device.
 - A phone's own sections: its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)).
 

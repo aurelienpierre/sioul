@@ -55,7 +55,7 @@ Item {
                 "settings-tab-words": "Words",
                 "settings-tab-reminders": "Reminders",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-files": "Your folder and sharing",
+                "settings-tab-files": "Sharing",
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
                 "settings-tab-ai": "AI agents",
@@ -65,7 +65,7 @@ Item {
                 "settings-about-words": "The words Sioul looks for in mail, papers, calls and tasks, in your languages.",
                 "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed, and notifications gathered.",
                 "settings-about-pauses": "Free time and the pause: when work ends, what helps you, the pause's screen.",
-                "settings-about-files": "Your notes folder, and sharing with your other devices.",
+                "settings-about-files": "Your devices in step, through a folder or a server, sealed; what each part carries.",
                 "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.",
                 "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
                 "settings-about-ai": "What AI agents may use, project by project."
@@ -78,7 +78,7 @@ Item {
                 "settings-tab-words": "Mots",
                 "settings-tab-reminders": "Rappels",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-files": "Votre dossier et le partage",
+                "settings-tab-files": "Partage",
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
                 "settings-tab-ai": "Agents d’IA",
@@ -88,7 +88,7 @@ Item {
                 "settings-about-words": "Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.",
                 "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.",
                 "settings-about-pauses": "Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.",
-                "settings-about-files": "Votre dossier de notes, et le partage avec vos autres appareils.",
+                "settings-about-files": "Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.",
                 "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.",
                 "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
                 "settings-about-ai": "Ce que les agents d’IA peuvent utiliser, projet par projet."
@@ -286,6 +286,8 @@ Item {
                 verify(entry.contentItem.implicitWidth <= entry.availableWidth + 0.5, entry.text + ": its words within the row (" + Math.round(entry.contentItem.implicitWidth) + " for " + Math.round(entry.availableWidth) + ")")
             }
             compare(entries[0].text, mock.text("settings-tab-look"))
+            // The sharing's section, named by what it holds alone (its id kept: "files").
+            compare(one(narrow, "settingsSection:files").text, data.language === "en" ? "Sharing" : "Partage")
             save(phone, "settings-phone-list-" + data.language)
             // Hours tapped: its rows, Back to the list.
             entries[narrow.sections.indexOf("hours")].clicked()
@@ -309,6 +311,7 @@ Item {
                 { tag: "a setting's row", key: "time_off", section: "hours" },
                 { tag: "a section", key: "invoices", section: "invoices" },
                 { tag: "a section of no rows", key: "ai", section: "ai" },
+                { tag: "the sharing, by its id", key: "files", section: "files" },
                 { tag: "a list of words", key: "words.voicemail.operators", section: "words" },
                 { tag: "an older key, calls (a phone: its card in Devices)", key: "calls", section: "devices" },
                 { tag: "an older key, apps (Android: its card in Devices)", key: "apps", section: "devices" },

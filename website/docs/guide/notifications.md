@@ -269,7 +269,7 @@ As of November 2026, from Apple's and Google's own pages, and for Android itself
 
 #### On your computers {#messages-on-your-computers}
 
-Your phone can show your computers the messages its notifications bring, texts first, on their Porch under **From your phone**: "While you slept, Dr Martin's office wrote: 09:41 Your appointment is moved to Thursday 10:30." It is off until you turn it on, on the phone and on each computer that should show them: Settings ▸ Devices ▸ this phone's card ▸ **On your computers** on the phone, the part **Messages from your phone** under Settings ▸ Your folder and sharing on a computer ([Sharing](sharing.md#what-travels-from-this-device)).
+Your phone can show your computers the messages its notifications bring, texts first, on their Porch under **From your phone**: "While you slept, Dr Martin's office wrote: 09:41 Your appointment is moved to Thursday 10:30." It is off until you turn it on, on the phone and on each computer that should show them: Settings ▸ Devices ▸ this phone's card ▸ **On your computers** on the phone, the part **Messages from your phone** under Settings ▸ Sharing on a computer ([Sharing](sharing.md#what-travels-from-this-device)).
 
 - **Which apps**: the phone's SMS app sends its words unless you say otherwise; every other app (Signal, WhatsApp, Discord…) sends nothing until you choose it. For each: **Not on your computers**, **Who and when**, or **Who, when and the words**.
 - **When they show**: once the phone let the notification through, and while the person who wrote may reach you, as on the phone; a text from a service (a short number, "AMELI") at the automatons' times. Never as a notification on the computer, never counted.
