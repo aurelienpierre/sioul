@@ -76,10 +76,11 @@ Item {
         function projectRows() { return "[]" }
         // The Time page: what its filter folds is Rust's; the filter's button, as the Projects page's.
         property var asked: []
-        function timePage(period, anchor, project) {
+        property string timeView: ""
+        function showTimePage(period, anchor, project) {
             mock.asked = mock.asked.concat([project])
             const shown = JSON.parse(mock.projectsPage())
-            return JSON.stringify({ title: "", sentence: "", total: "1 h", most: 0, bars: [], entries: [], projects: [], filter: shown.filter })
+            mock.timeView = JSON.stringify({ title: "", sentence: "", total: "1 h", total_line: "1 h in all", most: 0, bars: [], entries: [], projects: [], filter: shown.filter })
         }
         function saveProject(id, edit) {
             mock.saved = JSON.parse(edit)
@@ -216,6 +217,7 @@ Item {
             waitForRendering(page)
             const filter = named(page, "timeAreas")
             verify(filter !== null && filter.visible, "the filter over the time")
+            compare(page.shown.total_line, "1 h in all", "the view asked, taken when it came")
             compare(all(page, i => i.text === "ui-show-anyway").length, 0, "no cover, no Show anyway")
             const reads = mock.asked.length
             filter.tick("work", true)
