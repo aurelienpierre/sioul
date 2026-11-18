@@ -30,9 +30,20 @@ Item {
         property string notesFolder: ""
         property var written: []
         property string refusal: ""
+        // The folders Sioul's own chooser asked for (FolderBrowser.qml).
+        property var asked: []
 
         function text(key) {
             return key
+        }
+        function filesAccess() {
+            return true
+        }
+        function askFilesAccess() {
+        }
+        function foldersIn(path) {
+            mock.asked = mock.asked.concat([path])
+            return JSON.stringify({ path: path, parent: "", folders: [], readable: true })
         }
         function textWith(key, name, value) {
             return key + " " + value
@@ -129,6 +140,27 @@ Item {
             compare(mock.written, [["case_store", "/stand-in/Notes"]])
             compare(chosenSpy.count, 1, "the page told")
             verify(!needed.visible, "the page fills")
+        }
+
+        // On Android the button opens Sioul's own chooser, at each press: the
+        // first press makes it and opens it, the next ones open it again, and
+        // the folder chosen there is kept.
+        function test_sioul_s_own_chooser_opens_at_each_press() {
+            mock.notesFolder = JSON.stringify({ state: "unreadable", path: "/storage/stand-in/Notes" })
+            needed.ownChooser = true
+            mock.asked = []
+            named("folderNeededChoose").clicked()
+            verify(needed.ownBrowser !== null, "the chooser is made")
+            tryVerify(() => needed.ownBrowser.opened, 2000, "and open, at the first press")
+            compare(mock.asked, ["/storage/stand-in/Notes"], "in the folder that does not read")
+            needed.ownBrowser.close()
+            tryVerify(() => !needed.ownBrowser.visible)
+            named("folderNeededChoose").clicked()
+            tryVerify(() => needed.ownBrowser.opened, 2000, "and again at the second")
+            needed.ownBrowser.chosen("/storage/stand-in/Other")
+            compare(mock.written, [["case_store", "/storage/stand-in/Other"]])
+            needed.ownBrowser.close()
+            needed.ownChooser = false
         }
 
         function test_a_folder_refused_says_why() {

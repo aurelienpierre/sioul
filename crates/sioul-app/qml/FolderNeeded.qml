@@ -35,6 +35,11 @@ Item {
     readonly property bool shown: needed.folder.state !== "ready"
     // What went wrong keeping the folder chosen, in words.
     property string problem: ""
+    // Sioul's own folder chooser in place of the system's: on Android (a test
+    // sets it, to try that way on a computer).
+    property bool ownChooser: Qt.platform.os === "android"
+    // Sioul's own chooser once made, for that test; null before.
+    readonly property var ownBrowser: browser.item
 
     // A folder chosen and kept: the page reads itself again.
     signal chosen
@@ -47,13 +52,19 @@ Item {
     }
 
     // The system's chooser, or on Android Sioul's own (the system's refuses the phone's storage).
+    // Each step is its own statement, in braces: a line that starts with "("
+    // after a call would continue that call (tools/lint-qml.sh refuses it).
     function choose() {
-        if (Qt.platform.os === "android") {
-            if (browser.item === null)
-                browser.setSource("FolderBrowser.qml", { sioul: needed.sioul, theme: needed.theme })
-            (browser.item as FolderBrowser).begin(needed.folder.path || "")
-        } else {
+        if (!needed.ownChooser) {
             dialog.open()
+            return
+        }
+        if (browser.item === null) {
+            browser.setSource("FolderBrowser.qml", { sioul: needed.sioul, theme: needed.theme })
+        }
+        const own = browser.item as FolderBrowser
+        if (own !== null) {
+            own.begin(needed.folder.path || "")
         }
     }
 
