@@ -202,8 +202,79 @@ Qt's documentation: [Loader](https://doc.qt.io/qt-6/qml-qtquick-loader.html).
 - **One style, Basic.** Qt Quick Controls come in several *styles* (Material, Fusion, the system's…). Every file that uses controls imports `QtQuick.Controls.Basic`, and `crates/sioul-app/src/lib.rs` sets `QT_QUICK_CONTROLS_STYLE=Basic` unless you chose another, so that even Qt's own tooltips are drawn in it. Qt's documentation: [styles](https://doc.qt.io/qt-6/qtquickcontrols-styles.html).
 - **`Theme.qml`** is a `QtObject` (an object that draws nothing) with Sioul's colours, light or dark (`background`, `surface`, `text`, `muted`, `accent`…), its spacing (`gap`, narrower on a phone) and radius, and the reading settings (`readingFamily`, `readingSize`, `readingSpacing`). `main.qml` makes it once, and it travels as `theme`. Pages take their colours from it (`color: card.theme.text`); the one exception is the map's credit, drawn over the map's own colours (`ContactMap.qml`).
 - **Light or dark** (`Theme.darkFrom`, tried by `crates/sioul-app/tests/qml/tst_theme.qml`): the colours chosen in Settings; else, with high contrast on (`Qt.styleHints.accessibility.contrastPreference`), the system's own colours by their lightness (`SystemPalette`'s window colour); else the system's colour scheme (`Qt.styleHints.colorScheme`) when it says one; else that lightness again. `main.qml` binds the Theme to them, so a change made while Sioul runs is followed at once. The scheme comes before the palette since 14 October 2026: Qt 6.11's Windows Vista style (Windows 10; Windows 11 has a style of its own) draws a light palette while the system is dark (`QWindowsVistaStyle::polish`), and the window stayed light. In high contrast Sioul still draws its own colours: the system's decide light or dark, not the colours themselves.
-- **`SioulWindow.qml`**, the type of every window of Sioul, gives the theme's colours to Qt's controls through the window's `palette`.
-- **`Panel.qml`**, the card; **`Icon.qml`**, an icon; **`SioulMenu.qml`**, every menu (as wide as its widest line, kept inside the window). Use them rather than Qt's types directly, so that every page looks the same.
+- **`SioulWindow.qml`**, the type of every window of Sioul, gives the theme's colours to Qt's controls through the window's `palette`. Its `base`, Qt's colour for what you type in, is the theme's `field`: text fields, spin boxes and boxes to tick have a fill of their own.
+- **`Panel.qml`**, the card; **`Icon.qml`**, an icon; **`SioulMenu.qml`**, every menu (as wide as its widest line, kept inside the window); **`Tabs.qml`**, every row of tabs; **`PageColumn.qml`**, a page's column; **`Section.qml`**, a heading and a frame around a group of fields (below). Use them rather than Qt's types directly, so that every page looks the same.
+
+## Sioul's overrides of the Basic style
+Fields and buttons stand out from the words around them: a text field, a text area and a combo box have a fill of their own, the theme's `field`, and a firmer border, its `edge`; a flat button keeps an outline in the `edge`, so that no button is drawn as plain words. Basic draws neither: a flat button has no background until it is pressed or checked, a text area is bare words, and a field has the cards' own colour with a faint border.
+
+- **Where it is done**: once, for the whole program. Every page imports `QtQuick.Controls.Basic`, chosen as the program is built (`qmlcachegen` compiles the pages against it), so a style of Sioul's own would need each page to import it, and every new page to remember to. Instead `cpp/style.cpp` gives the QML engine an interceptor (`QQmlAbstractUrlInterceptor`) before the window's first file is read: wherever the engine would load the Basic style's own `Button.qml`, `TextField.qml` or `TextArea.qml`, it loads `qml/style/StyleButton.qml`, `StyleTextField.qml` or `StyleTextArea.qml`. Every window and dialog gets them, Qt's own included.
+- **What they change**: each is Basic's file, line for line (under the licences Qt gives it), but for its background. `StyleButton`: a flat button at rest (not pressed, checked nor highlighted) has no fill and a 1-point outline in the `edge`, fainter when disabled; every other button is drawn as Basic draws it. `StyleTextField`: Basic's field, its border in the `edge`; with the focus, Basic's 2 points in the highlight. `StyleTextArea`: a text area you can type in is a field, the `field` and the `edge`; a read-only one (a text to select and copy) stays bare. Every size is Basic's. A control that brings its own `background:` keeps it; the pages that draw their own field (a note, a task's notes, a contact's, an event's) draw it in the `field` and the `edge` too. Every combo box is a `PlainComboBox`, drawn as a field there.
+- **Their colours**: the overrides read the window's theme (`Window.window.theme`, as `Icon.qml` does: every window of Sioul's is a `SioulWindow`); a window of Qt's own has none, and gets the palette's `mid` instead. The `field` is a step below the cards' surface (light: 93 L* against 98; dark: 9 against 16) and away from a filled button's; the text on it reads at 12:1 light and 13.5:1 dark, a placeholder at 4.9:1 and 6.9:1. The `edge` stands at 3:1 or more against the field, the cards, the page and a filled button in both themes, the contrast WCAG asks of what tells a control apart. `tst_style.qml` checks these numbers in both themes, and the overrides' drawing and sizes against Basic's.
+- **The fields' menu** (cut, copy, paste on a right click or a long press): Qt 6.11's Basic gives its fields one (`TextEditingContextMenu`); Qt 6.10, the Flatpak's runtime, has none. The overrides make it at the first request, when Qt has it, and none otherwise, as Basic does there.
+- **Checking**: `qmltestrunner` does not run `cpp/style.cpp`, so the QML tests draw Basic's own controls, except `tst_style.qml`, which makes the overrides directly. The window's pictures show them (`tools/demo/run.sh`).
+
+## Tabs
+A page that has several views switches between them with `Tabs.qml`, one row of tabs: Settings' sections on a computer, Tasks' six views, Accounts, Money, the Agenda's views (What comes, Day, Week, Month, Search) and Time's period (Week, Month, Year).
+
+```qml
+Tabs {
+    objectName: "moneyTabs"
+    Layout.fillWidth: true
+    theme: page.theme
+    model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, …]
+    current: page.tabId
+    onChosen: id => page.tabId = id
+}
+```
+
+- **What it shows**: a thin rule under the whole row; the tab shown marked by a thick line in the accent and strong words; the others in muted words, darker with a fine line under the pointer; no fill. Qt's own `TabButton` is not used: under Sioul's palette its Basic look fills the tabs not chosen with the accent.
+- **How wide**: it spans the width it is given (`Layout.fillWidth`). Each tab takes an equal share while every name fits in one; else each takes its name's width (measured bold, so that the row never moves as you choose) and the room left is shared among them; when the names are wider than the row, it scrolls sideways, by a finger or the wheel, and keeps the tab shown in sight. A tab's words are never cut.
+- **Keys**: the row takes the focus as a whole (Tab, or a click); Left and Right then choose the tab before or after, around the ends, Home and End the first and the last. A screen reader hears a list of page tabs, the one shown checked.
+- **The page decides**: `model` holds `{ id, text }`, `text` fixed words (a translation) or made plain; `current` is the id shown; `chosen(id)` says which was chosen, and the page shows it.
+- **Tests find a tab** by its name, `<objectName>:<id>` (`moneyTabs:movements`, `agendaModes:week`, `settingsTabs:devices`, `taskModes:list`, `accountTabs:add`, `timePeriods:month`). `tst_tabs.qml` checks the shares, the scrolling, the tab kept in sight and the keys.
+- **What stays as it is**: filters are not views, and keep their own look: Mail's chips, Contacts' category, a budget's Days, Weeks, Months and Years, Notes' List and Folders, the two- and three-way choices inside forms.
+- **On Tasks**, the tabs take their own row; Routines, the project, kind and category filters, the agendas' filter and ⚙ go on the row under them. On the Agenda and Time, the tabs are above the row of Today, ◂ ▸ and the title.
+
+## A page's column
+Text and forms keep a legible width, centred in the page; tables, grids and cards in several columns take the whole width. `PageColumn.qml` is that column: a `ColumnLayout` given the room the page has (its `ScrollView`'s `availableWidth`), as wide as the theme's `readable` (720 points) at most, centred, or as wide as the room with `wide`.
+
+```qml
+ScrollView {
+    id: scroll
+
+    contentWidth: availableWidth
+
+    PageColumn {
+        theme: page.theme
+        room: scroll.availableWidth
+        wide: page.section === "devices"
+        …
+    }
+}
+```
+
+Settings' sections (What reaches you and Devices `wide`), Papers, Letters and Tasks ▸ Now lay their content in one. The title and the tabs of a page stay outside it, across the page.
+
+## Settings on a phone
+On a computer, Settings' sections are tabs across the page. On a phone (`compact`), the page opens on the list of its sections, each with its name and one line saying what it holds (`settings-about-<section>`); a tap opens one, with its name as the page's title, and Back (the system's, or the arrow in the page's bar: `canGoBack` and `back()`, as other pages) returns to the list. A link to a setting (`window.showParameters(key)`, `sioul:settings/<key>`, `settings:<key>`) opens its section there as on a computer; so does setting `section` (the pictures' steps). `tst_settingstabs.qml` checks both widths.
+
+## Sections
+`Section.qml` is a heading and a frame around a group of fields, for cards and dialogs: the heading in strong words in the accent, said as a heading to screen readers; under it the group on a card's surface with its thin border, so that the fields on it stand out. What it holds goes in its column.
+
+```qml
+Section {
+    Layout.fillWidth: true
+    theme: page.theme
+    title: page.sioul.text("…")
+
+    TextField {
+        Layout.fillWidth: true
+    }
+}
+```
+
+Settings' rows are shown this way, one frame per heading (`group` in `settings::for_view`).
 
 ## Icons, fonts and resources
 A *resource file* (`.qrc`) lists files that the build compiles into the program; QML and C++ reach them by addresses that begin with `qrc:/` or `:/`.
