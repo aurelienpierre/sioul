@@ -93,6 +93,48 @@ impl StretchAreas {
     }
 }
 
+/// One area's line of the Time page's comparison: the tasks done in the
+/// period, the time spent on them beside what was first estimated
+/// (`estimates_by_area`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AreaEstimate {
+    /// "work", "admin", "leisure".
+    pub area: &'static str,
+    pub spent_minutes: u32,
+    pub estimated_minutes: u32,
+    /// In words: "3 h 20", "2 h 30".
+    pub spent: String,
+    pub estimated: String,
+}
+
+/// Where estimates are off, by area: for each task done from `from` to `to`
+/// (none a step of a bigger one, as the plan's ratio reads them,
+/// `capacity::finished`) that `counts` and that has an estimate and time
+/// spent, all its stretches summed beside its first estimate (else its
+/// current one), each under the first of its areas (`area_of`: work, then
+/// your admin, then leisure). An area with no such task has no line.
+pub fn estimates_by_area(entries: &[Entry], tasks: &[Task], area_of: &dyn Fn(&Task) -> crate::areas::Area, counts: &dyn Fn(&Task) -> bool, from: Date, to: Date, zone: &TimeZone) -> Vec<AreaEstimate> {
+    let mut spent: std::collections::BTreeMap<&str, u32> = std::collections::BTreeMap::new();
+    for e in entries.iter().filter(|e| !e.task.is_empty()) {
+        *spent.entry(e.task.as_str()).or_insert(0) += e.minutes;
+    }
+    let mut sums = [(0u32, 0u32); 3];
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for task in tasks.iter().filter(|t| t.status == crate::tasks::Status::Completed && t.parent().is_none() && counts(t) && seen.insert(t.uid.as_str())) {
+        let Some(done) = task.completed.and_then(|at| jiff::Timestamp::from_second(at).ok()).map(|t| t.to_zoned(zone.clone()).date()) else { continue };
+        let estimate = task.estimate_first.unwrap_or(task.estimate);
+        let minutes = spent.get(task.uid.as_str()).copied().unwrap_or(0);
+        if done < from || done > to || estimate == 0 || minutes == 0 {
+            continue;
+        }
+        let area = area_of(task);
+        let slot = if area.work { 0 } else if area.admin { 1 } else { 2 };
+        sums[slot].0 += minutes;
+        sums[slot].1 += estimate;
+    }
+    ["work", "admin", "leisure"].into_iter().zip(sums).filter(|(_, (spent, _))| *spent > 0).map(|(area, (spent, estimated))| AreaEstimate { area, spent_minutes: spent, estimated_minutes: estimated, spent: duration(spent), estimated: duration(estimated) }).collect()
+}
+
 /// What `minutes` at `rate` an hour come to, to the cent.
 pub fn amount(minutes: u32, rate: f64) -> Money {
     Money((f64::from(minutes) * rate * 100.0 / 60.0).round() as i64)
@@ -392,6 +434,52 @@ pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Time for every area (the owner's word, 18 November 2026): time
+    /// noted on an admin task with no project and on a leisure task in a
+    /// project of its own is kept, shown and summed as work's is; the
+    /// filter folds it by area and counts it in the whole; the comparison by
+    /// area puts each task done in the period under its area, time spent
+    /// beside its first estimate.
+    #[test]
+    fn time_on_admin_and_leisure_tasks_is_kept_shown_and_summed() {
+        use crate::areas::{Area, TaskAreas};
+        let zone = TimeZone::UTC;
+        let at = |d: &str, h: i8| Date::from(d.parse::<Date>().unwrap()).at(h, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let task = |uid: &str, categories: &[&str], projects: &[&str], estimate: u32| Task { uid: uid.into(), title: uid.into(), categories: categories.iter().map(|c| c.to_string()).collect(), projects: projects.iter().map(|p| p.to_string()).collect(), estimate, estimate_first: Some(estimate), status: crate::tasks::Status::Completed, completed: Some(at("2026-10-07", 18)), ..Task::default() };
+        let tasks = vec![task("report", &["travail"], &["lumen"], 60), task("taxes", &[], &[], 30), task("choir", &["loisirs"], &["garden"], 45)];
+        let projects = vec![Project { id: "lumen".into(), title: "Lumen".into(), client: Some("Lumen".into()), kind: Some("project".into()), ..Project::default() }, Project { id: "garden".into(), title: "Garden".into(), ..Project::default() }];
+        let sessions = vec![
+            Session { task: "report".into(), start: at("2026-10-05", 9), minutes: 90, ..Session::default() },
+            Session { task: "taxes".into(), start: at("2026-10-06", 20), minutes: 50, ..Session::default() },
+            Session { task: "choir".into(), start: at("2026-10-07", 21), minutes: 40, ..Session::default() },
+        ];
+        let all = entries(&sessions, &tasks, &projects, &zone);
+        assert_eq!(all.iter().map(|e| e.project.as_str()).collect::<Vec<_>>(), ["lumen", "", "garden"], "with or without a project");
+        let tr = Translator::new("en");
+        let today: Date = "2026-10-07".parse().unwrap();
+        let week = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &|_| true);
+        assert_eq!(week.total, "3 h", "every area summed");
+        assert_eq!(week.entries.len(), 3);
+        let lines: Vec<(&str, u32)> = week.projects.iter().map(|p| (p.id.as_str(), p.minutes)).collect();
+        assert_eq!(lines, [("lumen", 90), ("", 50), ("garden", 40)]);
+        // By area: in the evening, leisure's shown, the rest in the whole.
+        let areas = TaskAreas { work_categories: vec!["travail".into()], leisure_categories: vec!["loisirs".into()], ..TaskAreas::usual() };
+        let stretches = StretchAreas::of(&projects, &tasks, &areas);
+        let leisure = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr, &|e: &Entry| stretches.area_of(e).is_none_or(|a| a.meets(Area::LEISURE)));
+        assert_eq!(leisure.total_line, "40 min shown, 3 h in all");
+        // Where estimates are off, by area: each done task's time beside its first estimate.
+        let (from, to) = bounds("week", today);
+        let by_area = estimates_by_area(&all, &tasks, &|t| areas.of(t), &|_| true, from, to, &zone);
+        let got: Vec<(&str, u32, u32)> = by_area.iter().map(|a| (a.area, a.spent_minutes, a.estimated_minutes)).collect();
+        assert_eq!(got, [("work", 90, 60), ("admin", 50, 30), ("leisure", 40, 45)]);
+        assert_eq!((by_area[0].spent.as_str(), by_area[0].estimated.as_str()), ("1 h 30", "1 h"));
+        // A task done outside the period, or not counted (another project chosen), has no line.
+        let only_lumen = estimates_by_area(&all, &tasks, &|t| areas.of(t), &|t| t.projects.contains(&"lumen".to_string()), from, to, &zone);
+        assert_eq!(only_lumen.iter().map(|a| a.area).collect::<Vec<_>>(), ["work"]);
+        let next_week = bounds("week", "2026-10-14".parse().unwrap());
+        assert!(estimates_by_area(&all, &tasks, &|t| areas.of(t), &|_| true, next_week.0, next_week.1, &zone).is_empty());
+    }
 
     /// The Time page's filter asks each project's area once per reading,
     /// never once per stretch (the review of the branch `views`, V6: a year of
