@@ -2772,6 +2772,63 @@ pub fn remove_lines(text: &str, drop: impl Fn(&str) -> bool) -> Option<String> {
     Some(lines::fold(&source))
 }
 
+/// One changed time of a series (its own VEVENT, whose RECURRENCE-ID is
+/// `rid`) marked busy or free, that time alone (review B7): its TRANSP lines
+/// written again, every other line and every other VEVENT as they were, its
+/// SEQUENCE untouched. None when the file holds no such changed time.
+pub fn set_busy_of_time(text: &str, rid: &str, busy: bool) -> Option<String> {
+    let rid = rid.trim();
+    if rid.is_empty() {
+        return None;
+    }
+    let mut source = lines::unfold(text);
+    let mut start = None;
+    let mut nested = 0;
+    let mut matches = false;
+    let mut range = None;
+    for (i, line) in source.iter().enumerate() {
+        let name = lines::name(line);
+        let value = lines::value(line).trim().to_string();
+        match (name.as_str(), start) {
+            ("BEGIN", None) if value.eq_ignore_ascii_case("VEVENT") => {
+                start = Some(i);
+                matches = false;
+            }
+            ("BEGIN", Some(_)) => nested += 1,
+            ("END", Some(_)) if nested > 0 => nested -= 1,
+            ("RECURRENCE-ID", Some(_)) if nested == 0 => matches = value == rid,
+            ("END", Some(begin)) if value.eq_ignore_ascii_case("VEVENT") => {
+                if matches {
+                    range = Some(begin..i + 1);
+                    break;
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    let range = range?;
+    let mut kept: Vec<String> = Vec::new();
+    let mut depth = 0;
+    for (i, line) in source[range.clone()].iter().enumerate() {
+        let name = lines::name(line);
+        if name == "BEGIN" && i > 0 {
+            depth += 1;
+        }
+        if name == "END" && depth > 0 {
+            depth -= 1;
+        }
+        if depth == 0 && name == "TRANSP" {
+            continue;
+        }
+        kept.push(line.clone());
+    }
+    let end = kept.len() - 1;
+    kept.insert(end, format!("TRANSP:{}", if busy { "OPAQUE" } else { "TRANSPARENT" }));
+    source.splice(range, kept);
+    Some(lines::fold(&source))
+}
+
 /// The lines of the main VEVENT, BEGIN to END.
 fn master_range(source: &[String]) -> Option<std::ops::Range<usize>> {
     let mut start = None;
@@ -5383,6 +5440,21 @@ mod tests {
         assert!(!days.contains("TRANSP"), "{days}");
         let timed_away = apply(&away, &EventEdit { start: "2026-11-24T09:00".into(), end: "2026-11-24T17:00".into(), all_day: false, ..edit_of_text(&away, &zone).unwrap() }, &zone).unwrap();
         assert!(timed_away.contains("TRANSP:OPAQUE"), "said busy, kept: {timed_away}");
+    }
+
+    /// Busy on one changed time of a series writes that time alone (review
+    /// B7): its own VEVENT's TRANSP, the series' and every other line as they were.
+    #[test]
+    fn one_changed_time_is_marked_alone() {
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261102T090000Z\r\nDTEND:20261102T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly\r\nRECURRENCE-ID:20261109T090000Z\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261109T110000Z\r\nDTEND:20261109T120000Z\r\nSUMMARY:Choir\r\nTRANSP:OPAQUE\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let free = set_busy_of_time(series, "20261109T090000Z", false).unwrap();
+        assert_eq!(free.matches("TRANSP:").count(), 1, "{free}");
+        let at = free.find("TRANSP:TRANSPARENT").unwrap();
+        assert!(at > free.find("RECURRENCE-ID").unwrap(), "that time's own: {free}");
+        assert!(free.contains("RRULE:FREQ=WEEKLY") && free.contains("TRIGGER:-PT10M") && !free.contains("SEQUENCE"), "{free}");
+        assert_eq!(set_busy_of_time(&free, "20261109T090000Z", true).unwrap().matches("TRANSP:OPAQUE").count(), 1);
+        assert!(set_busy_of_time(series, "20261116T090000Z", false).is_none(), "an unchanged time has no VEVENT of its own");
+        assert!(set_busy_of_time(series, "", false).is_none());
     }
 
     /// A phone whose system zone has no name writes the same lines, on the

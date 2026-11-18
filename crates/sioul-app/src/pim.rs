@@ -1733,19 +1733,27 @@ fn uid_of(text: &str) -> Option<String> {
     sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty())
 }
 
-/// The form's fields of an event, yours about a meeting with others read
-/// from your own file when it has it (`own_time`), else from the meeting's
-/// lines an older Sioul wrote: what the form and the reminder chooser start
-/// from. An event that is no meeting reads its own lines, whatever your own
-/// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
-/// An event marked busy or free from its card (`busy`: its TRANSP), through
-/// the one writer of an event's form; refused for a meeting with others,
-/// whose file is never written. What went wrong, else "".
-pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, busy: bool) -> String {
+/// An event marked busy or free from its card (`busy`: its TRANSP): one
+/// changed time of a series (`rid`, its RECURRENCE-ID) that time alone
+/// (review B7), else the event through the one writer of an event's form;
+/// refused for a meeting with others, whose file is never written. What
+/// went wrong, else "".
+pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, busy: bool, rid: &str) -> String {
     let saved = || -> Result<(), String> {
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
-        if std::fs::read_to_string(&path).is_ok_and(|text| with_others(&text)) {
+        let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        if with_others(&text) {
             return Err(tr().text("busy-with-others", None));
+        }
+        if let Some(changed) = agenda::set_busy_of_time(&text, rid, busy) {
+            vdir::write_item(&path, &changed)?;
+            if let Some(calendar) = collection_of(&path) {
+                nudge(shared, &calendar.account);
+            }
+            tell(qt, shared, tr().text("event-saved", None));
+            crate::work::show_work(qt, shared);
+            show_pim(qt, shared);
+            return Ok(());
         }
         let mut edit = agenda::edit_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
         edit.busy = Some(busy);
@@ -1755,6 +1763,11 @@ pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, bus
     saved().err().unwrap_or_default()
 }
 
+/// The form's fields of an event, yours about a meeting with others read
+/// from your own file when it has it (`own_time`), else from the meeting's
+/// lines an older Sioul wrote: what the form and the reminder chooser start
+/// from. An event that is no meeting reads its own lines, whatever your own
+/// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
 pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
     let text = std::fs::read_to_string(path).ok()?;
     let mut edit = agenda::edit_of_text(&text, &sioul_core::zone::current())?;

@@ -105,6 +105,11 @@ Item {
         function textArgs(key, args) { return key }
         // An event's time by its start (0: its next), as `agenda::event_card` reads it.
         function eventCard(key, start) {
+            // One changed time of a series (its RECURRENCE-ID), and an event of a calendar free as a whole (review B7).
+            if (key === "/c/choir.ics")
+                return JSON.stringify({ id: "event:c/choir.ics", key: key, uid: "choir", start: 4000400000, end: 4000403600, all_day: false, summary: "Choir", when: "Friday", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: true, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "", marked_busy: true, busy_writable: true, busy_why: "", rid: "20961005T090000Z" })
+            if (key === "/c/market.ics")
+                return JSON.stringify({ id: "event:c/market.ics", key: key, uid: "market", start: 4000500000, end: 4000503600, all_day: false, summary: "Market", when: "Saturday", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "", marked_busy: false, busy_writable: false, busy_why: "Its calendar is free as a whole.", rid: "" })
             if (key === "/c/yoga.ics") {
                 const at = start === 0 ? mock.s1 : start
                 if (at !== mock.s1 && at !== mock.s2)
@@ -116,8 +121,8 @@ Item {
         }
         function eventReminder(key, start) { return "{}" }
         // Busy or free from the card (`pim::set_event_busy`): what was asked, recorded.
-        function setEventBusy(key, busy) {
-            mock.calls.push({ what: "setEventBusy", key: key, busy: busy })
+        function setEventBusy(key, busy, rid) {
+            mock.calls.push({ what: "setEventBusy", key: key, busy: busy, rid: rid })
             return ""
         }
         function reminderChoices(current) { return "[]" }
@@ -1024,6 +1029,19 @@ Item {
             const asked = mock.calls.filter(c => c.what === "setEventBusy")
             compare(asked.length, 1, JSON.stringify(mock.calls))
             compare(asked[0].key + " " + asked[0].busy, "/c/dentist.ics false")
+            // One changed time: its RECURRENCE-ID goes with it, so that only that time changes (review B7).
+            verify(host.show({ kind: "event", srcKey: "/c/choir.ics", srcStart: 4000400000 }))
+            wait(20)
+            mock.calls = []
+            const choir = root.find(host.eventCard, "eventCardBusy")
+            choir.toggle()
+            choir.toggled()
+            compare(mock.calls.filter(c => c.what === "setEventBusy")[0].rid, "20961005T090000Z")
+            // A calendar free as a whole: greyed, saying why.
+            verify(host.show({ kind: "event", srcKey: "/c/market.ics", srcStart: 4000500000 }))
+            wait(20)
+            const free = root.find(host.eventCard, "eventCardBusy")
+            verify(free.visible && !free.enabled, "greyed")
             host.show({ kind: "event", srcKey: "/c/board.ics", srcStart: 4000172800 })
             wait(20)
             const theirs = root.find(host.eventCard, "eventCardBusy")

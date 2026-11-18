@@ -6875,6 +6875,7 @@ busy = Busy
 busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.
 busy-task = Busy while I work on it
 busy-task-help = Its time counts in the availability you share where it is known (a time block, a start time, the plan's time before its date), and while its timer runs your rules for busy time apply.
+busy-calendar-free = Its calendar is free as a whole: none of its events marks you busy, whatever each says.
 busy-time-holds = { $more ->
     [0] In the availability you share: { $spans }.
    *[other] In the availability you share: { $spans }, and { $more } more.
