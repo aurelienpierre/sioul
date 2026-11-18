@@ -320,29 +320,28 @@ pub(crate) fn holds_others() -> bool {
     holds
 }
 
-/// Do-not-disturb holding from its switch or a focus session (`gated`):
+/// Do-not-disturb holding from its switch or a busy stretch (`gated`):
 /// when it ends, when that is known, and which of the two holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Gated {
     pub(crate) until: Option<i64>,
-    pub(crate) focus: bool,
+    pub(crate) busy: bool,
     pub(crate) switch: bool,
 }
 
-/// While do-not-disturb holds from its switch or a focus session (a layer
+/// While do-not-disturb holds from its switch or a busy stretch (a layer
 /// of the matrix of what reaches you): when it ends, when that is known
-/// (none: until turned off, or a session open-ended), and which of the two
-/// holds (the listener's line in the phone's log: "dnd (focus session)");
-/// none otherwise.
+/// (none: until turned off), and which of the two holds (the listener's
+/// line in the phone's log: "dnd (busy)"); none otherwise.
 pub(crate) fn gated() -> Option<Gated> {
     gated_of(&now())
 }
 
 /// The same, of a reading already made (`now`).
 pub(crate) fn gated_of(state: &Now) -> Option<Gated> {
-    let gates: Vec<&sioul_core::everywhere::Held> = state.holds.iter().filter(|h| matches!(h.why, Why::Focus | Why::Manual)).collect();
+    let gates: Vec<&sioul_core::everywhere::Held> = state.holds.iter().filter(|h| matches!(h.why, Why::Busy | Why::Manual)).collect();
     let until = if gates.iter().any(|h| h.until.is_none()) { None } else { gates.iter().filter_map(|h| h.until).max() };
-    (!gates.is_empty()).then_some(Gated { until, focus: gates.iter().any(|h| h.why == Why::Focus), switch: gates.iter().any(|h| h.why == Why::Manual) })
+    (!gates.is_empty()).then_some(Gated { until, busy: gates.iter().any(|h| h.why == Why::Busy), switch: gates.iter().any(|h| h.why == Why::Manual) })
 }
 
 // ---------------------------------------------------------------- applying
@@ -1283,9 +1282,9 @@ mod tests {
         assert!(!sioul_core::attention::dnd_from_files(&config, ms / 1000), "the files' reading too");
         switch_saved(&[("old-laptop", device(ms - 60_000, rules::State::Dnd, 0, 0))]);
         assert!(!now().on() && !sioul_core::attention::dnd_from_files(&config, ms / 1000), "a gone device's Do not disturb holds nowhere");
-        // A focus session since an hour; Reachable for an hour ten minutes ago; a pause from five to two minutes ago.
+        // A busy task's timer since an hour; Reachable for an hour ten minutes ago; a pause from five to two minutes ago.
         let _ = std::fs::remove_file(rules::gone_path());
-        let running = sioul_core::timelog::Running { task: String::new(), start: ms / 1000 - 3600, planned: 120, paused_at: None, paused: 0 };
+        let running = sioul_core::timelog::Running { task: String::new(), start: ms / 1000 - 3600, planned: 120, paused_at: None, paused: 0, busy: true };
         sioul_core::timelog::keep_running_in(&sioul_core::timelog::folder(), Some(&running)).unwrap();
         switch_saved(&[("laptop-1", device(ms - 600_000, rules::State::Reachable, ms + 3_000_000, 0))]);
         assert!(!sioul_core::attention::dnd_from_files(&config, ms / 1000), "Reachable holds the session off");

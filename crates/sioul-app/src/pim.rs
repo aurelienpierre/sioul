@@ -1746,6 +1746,23 @@ fn uid_of(text: &str) -> Option<String> {
 /// lines an older Sioul wrote: what the form and the reminder chooser start
 /// from. An event that is no meeting reads its own lines, whatever your own
 /// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
+/// An event marked busy or free from its card (`busy`: its TRANSP), through
+/// the one writer of an event's form; refused for a meeting with others,
+/// whose file is never written. What went wrong, else "".
+pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, busy: bool) -> String {
+    let saved = || -> Result<(), String> {
+        let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
+        if std::fs::read_to_string(&path).is_ok_and(|text| with_others(&text)) {
+            return Err(tr().text("busy-with-others", None));
+        }
+        let mut edit = agenda::edit_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+        edit.busy = Some(busy);
+        let json = serde_json::to_string(&edit).map_err(|e| e.to_string())?;
+        save_event(qt, shared, key, &json, "")
+    };
+    saved().err().unwrap_or_default()
+}
+
 pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
     let text = std::fs::read_to_string(path).ok()?;
     let mut edit = agenda::edit_of_text(&text, &sioul_core::zone::current())?;

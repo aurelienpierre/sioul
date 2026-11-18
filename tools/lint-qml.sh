@@ -32,4 +32,16 @@ qmllint=$(command -v qmllint-qt6 || command -v qmllint6 || echo /usr/lib64/qt6/b
 status=0
 "$qmllint" -I "$lint" qml/*.qml qml/style/*.qml qml-desktop/*.qml || status=$?
 python3 "$repo/tools/check-plain-text.py" || status=1
+# A line that starts with "(" right after a call continues that call: JavaScript
+# inserts no semicolon there, so `f(x)` then `(a as B).go()` calls what f gave
+# back, and qmllint says nothing. Only a condition's own parenthesis (if,
+# while, for) or a comment may come before such a line.
+joined=$(awk 'FNR == 1 { before = "" }
+    before ~ /\)[ \t]*$/ && $0 ~ /^[ \t]*\(/ && before !~ /^[ \t]*(\}[ \t]*)?(else[ \t]+)?(if|while|for)[ \t]*\(/ && before !~ /^[ \t]*\/\// { print FILENAME ":" FNR ": " $0 }
+    { before = $0 }' qml/*.qml qml/style/*.qml qml-desktop/*.qml)
+if [ -n "$joined" ]; then
+    echo "A line that starts with ( continues the call above it: put that step in braces" >&2
+    echo "$joined" >&2
+    status=1
+fi
 exit "$status"

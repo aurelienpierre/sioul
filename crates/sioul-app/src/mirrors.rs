@@ -20,7 +20,12 @@
 //!
 //! What this device did on the servers is its own memory
 //! (`state/availability.toml`), never shared: the settings say what is
-//! shared, each device sees to it.
+//! shared, each device sees to it. So is the time the plan last gave each
+//! busy task with a date asked and no time of its own
+//! (`state/busy-planned.toml`, `keep_planned`): the window writes it after
+//! each plan, only when a block's times changed, and every writer of a
+//! mirror reads it, the phone's background step too, so that a mirror never
+//! drops a busy task's time for want of a plan.
 
 use crate::backend::{load_config, say, tr};
 use serde::{Deserialize, Serialize};
@@ -57,6 +62,35 @@ struct Memo {
 
 fn memo_path() -> PathBuf {
     sioul_core::config::state_dir().join("availability.toml")
+}
+
+/// The plan's time for busy tasks, as the window last worked it out (`availability::Planned`).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct PlannedFile {
+    /// By task UID: (start, end), Unix seconds.
+    #[serde(default)]
+    tasks: BTreeMap<String, Vec<(i64, i64)>>,
+}
+
+fn planned_path() -> PathBuf {
+    sioul_core::config::state_dir().join("busy-planned.toml")
+}
+
+/// The plan's time for busy tasks, as last kept here; none when never kept.
+fn planned() -> av::Planned {
+    std::fs::read_to_string(planned_path()).ok().and_then(|text| toml::from_str::<PlannedFile>(&text).ok()).map(|f| f.tasks).unwrap_or_default()
+}
+
+/// The plan's time for busy tasks kept, when it changed: whether it did, so
+/// that the mirrors are written again only when a busy block's times changed.
+pub(crate) fn keep_planned(planned: &av::Planned) -> bool {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _held = LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if self::planned() == *planned {
+        return false;
+    }
+    let file = PlannedFile { tasks: planned.clone() };
+    toml::to_string(&file).is_ok_and(|text| sioul_sync::share::write_atomically(&planned_path(), text.as_bytes()).is_ok())
 }
 
 impl Memo {
@@ -233,14 +267,18 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
     }
     let widest = fresh.iter().map(|(a, _)| av::window(a, now)).fold((i64::MAX, i64::MIN), |(from, to), (a, b)| (from.min(a), to.max(b)));
     let events = sioul_core::agenda::occurrences(widest.0, widest.1);
-    let tasks = sioul_core::tasks::all(&sioul_core::zone::current());
+    let zone = sioul_core::zone::current();
+    let tasks = sioul_core::tasks::all(&zone);
     let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path()).unwrap_or_default();
     let health = av::health_events(&events, &av::errand_tasks(&tasks, &recorded));
+    // Only what is marked busy: a task's own time where it is fixed, else the plan's before its date asked.
+    let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
+    let task_time = av::task_time(&tasks, &events, &planned(), estimate, &zone, now);
     let (busy, not_known) = (tr().text("availability-busy", None), tr().text("availability-not-known", None));
     let words = av::Words { busy: &busy, not_known: &not_known };
     let mut changed: Vec<String> = Vec::new();
     for (availability, view) in fresh {
-        let files = av::mirror_files(&events, availability, &words, &health, now);
+        let files = av::mirror_files(&events, availability, &words, &health, &task_time, now);
         let mut wrote = false;
         for mirror in &availability.mirrors {
             let Some(collection) = collection(&mirror.account, &mirror.calendar) else { continue };

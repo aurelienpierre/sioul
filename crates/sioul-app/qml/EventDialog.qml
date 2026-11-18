@@ -197,6 +197,11 @@ SafeDialog {
     // Its reminder before it: "" as usual, "none", or minutes ("15"); and the choices offered.
     property string remind: ""
     property var reminds: []
+    // Busy or free (`busy`, its TRANSP): a time busy, a whole day free, unless
+    // said otherwise; `busyTouched` once the switch was pressed, after which
+    // "All day" no longer moves it.
+    property bool busy: true
+    property bool busyTouched: false
 
     signal saved
 
@@ -285,6 +290,10 @@ SafeDialog {
         dialog.around = f.margins
         dialog.demands = f.demands
         dialog.remind = f.remind
+        if (f.busy !== undefined) {
+            dialog.busy = f.busy
+            dialog.busyTouched = true
+        }
         dialog.links = f.links || []
         dialog.guests = f.guests || dialog.guests
         dialog.moreShown = true
@@ -369,6 +378,8 @@ SafeDialog {
             dialog.geo = e.geo || ""
             dialog.remind = e.remind || ""
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices(dialog.remind) || "[]")
+            dialog.busy = e.busy !== undefined && e.busy !== null ? e.busy : !e.all_day
+            dialog.busyTouched = false
             dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || dialog.remind !== "" || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
             // What was typed here before, closed without Save: given back, said so.
             dialog.loadedForm = JSON.stringify(dialog.form())
@@ -405,6 +416,8 @@ SafeDialog {
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.remind = ""
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices("") || "[]")
+            dialog.busy = true
+            dialog.busyTouched = false
             dialog.moreShown = false
         }
         dialog.closedBySave = false
@@ -564,6 +577,7 @@ SafeDialog {
             margins: dialog.around,
             demands: dialog.demands,
             remind: dialog.remind,
+            busy: dialog.busy,
             geo: dialog.geo,
             links: dialog.links,
             guests: dialog.guests
@@ -694,6 +708,35 @@ SafeDialog {
                 objectName: "eventAllDay"
                 enabled: !dialog.withOthers
                 text: dialog.sioul.text("agenda-all-day")
+                // Untouched, Busy follows Google's default: a time busy, a whole day free.
+                onToggled: {
+                    if (!dialog.busyTouched)
+                        dialog.busy = !allDay.checked
+                }
+            }
+            // Busy (« Indisponible »): what it does said under it. A meeting with
+            // others keeps its organizer's: shown, never written.
+            Switch {
+                id: busySwitch
+
+                objectName: "eventBusy"
+                visible: dialog.legOf === ""
+                enabled: !dialog.withOthers
+                text: dialog.sioul.text("busy")
+                checked: dialog.busy
+                onToggled: {
+                    dialog.busy = busySwitch.checked
+                    dialog.busyTouched = true
+                }
+            }
+            Label {
+                visible: busySwitch.visible
+                Layout.fillWidth: true
+                text: dialog.sioul.text(dialog.withOthers ? "busy-with-others" : "busy-help")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: dialog.theme.muted
             }
             GridLayout {
                 enabled: !dialog.withOthers

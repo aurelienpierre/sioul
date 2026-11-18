@@ -893,6 +893,9 @@ SioulWindow {
             window.page = 4
         else if (item.kind === "sites")
             window.page = 3
+        // What reaches you's line of what is set elsewhere: a person's own times are on their sheet, in Contacts.
+        else if (item.kind === "contacts")
+            window.page = 5
         else if (item.kind === "porch")
             window.page = 0
         // New mail's notification of several messages: the mailbox at its top (decision 3).
@@ -4012,60 +4015,59 @@ SioulWindow {
                 () => window.close()
             ]
             // What reaches you (SIOUL_GRAB_STEPS=attention; SIOUL_GRAB_PHONE for a
-            // phone's): Settings ▸ What reaches you by time, a time's rows and a
-            // cell's choices; by person (mail, then calls), a row's times on a
-            // phone; Sioul's own and a fixed cell's why; the exceptions; do not
-            // disturb; then a contact's card and how they reach you.
+            // phone's; a computer's at 1400 wide): Your rules top to bottom, Sioul's own,
+            // Moments, a circle's choices, Who is in which circle; What comes when, a
+            // fixed cell's why, a row's times on a phone; a contact's card and how they
+            // reach you; then Busy on an event's card and on a task's panel.
             readonly property var attentionSteps: [
-                () => window.showParameters("attention"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-time"),
-                () => parametersPage.scrollBy(0.5),
-                () => {},
-                () => grabber.save("attention-time-more"),
-                // A time's rows, sleep's; a cell's choices in words.
-                () => window.showParameters("attention.sleep"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-sleep"),
-                () => window.reachesTab().openCell("mail.safe", "sleep"),
-                () => {},
-                () => grabber.saveWindow("attention-choices"),
-                () => window.reachesTab().closeChoices(),
-                // By person: mail, then calls; on a phone, a row's nine values.
-                () => window.showParameters("attention.mail"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-person-mail"),
-                () => window.showParameters("attention.calls"),
-                () => {},
-                () => grabber.save("attention-person-calls"),
+                // Settings ▸ What reaches you: Your rules, top to bottom; a circle's choices.
                 () => {
-                    window.showParameters("attention.mail")
-                    window.reachesTab().rowOpen = "mail.neutral"
+                    if (!window.phoneGrab)
+                        window.width = 1400
+                    window.showParameters("attention")
                 },
                 () => {},
-                () => grabber.save("attention-row"),
-                // Sioul's own, and a fixed cell's why.
+                () => {},
+                () => grabber.save("attention-rules"),
+                () => parametersPage.scrollBy(0.45),
+                () => {},
+                () => grabber.save("attention-rules-2"),
+                () => parametersPage.scrollBy(0.45),
+                () => {},
+                () => grabber.save("attention-rules-3"),
                 () => window.showParameters("attention.own"),
                 () => {},
                 () => {},
                 () => grabber.save("attention-own"),
-                () => window.reachesTab().openCell("doses", "dnd"),
+                () => window.showParameters("attention.dnd"),
                 () => {},
-                () => grabber.saveWindow("attention-fixed"),
+                () => {},
+                () => grabber.save("attention-moments"),
+                () => window.showParameters("attention.person"),
+                () => {},
+                () => {},
+                () => window.reachesTab().openChoice("contacts", "mail"),
+                () => {},
+                () => grabber.saveWindow("attention-choices"),
                 () => window.reachesTab().closeChoices(),
-                // The exceptions, your safe senders put on Always through; and do not disturb.
+                // Who is in which circle: your safe senders put on Always through first.
                 () => sioul.dndChange("add-safe", "{}"),
                 () => window.showParameters("attention.exceptions"),
                 () => {},
                 () => {},
-                () => grabber.save("attention-exceptions"),
-                () => window.showParameters("attention.dnd"),
+                () => grabber.save("attention-circles"),
+                // What comes when: the grid in words; a fixed cell's why; on a phone, a row's values.
+                () => window.showParameters("attention.table"),
                 () => {},
                 () => {},
-                () => grabber.save("attention-dnd"),
+                () => grabber.save("attention-table"),
+                () => window.reachesTab().openCell("doses", "dnd"),
+                () => {},
+                () => grabber.saveWindow("attention-fixed"),
+                () => window.reachesTab().closeChoices(),
+                () => window.reachesTab().rowOpen = "mail.neutral",
+                () => {},
+                () => grabber.save("attention-row"),
                 // A contact's card, and their sheet.
                 () => window.page = 5,
                 () => {},
@@ -4077,6 +4079,22 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(personSheet.item, "attention-sheet"),
                 () => personSheet.item.close(),
+                // Busy: an event's card, a task's panel.
+                () => window.page = 4,
+                () => agendaPage.mode = "week",
+                () => {},
+                () => {},
+                () => agendaPage.openTitled("Dr Varga"),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("busy-event-card", cardHost),
+                () => cardHost.close(),
+                () => window.page = 1,
+                () => {},
+                () => tasksPage.openFirst(),
+                () => {},
+                () => {},
+                () => grabber.save("busy-task"),
                 () => window.close()
             ]
             // Settings in tabs; the Health page in its order; a site's menu by a right

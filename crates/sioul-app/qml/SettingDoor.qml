@@ -25,6 +25,7 @@ QtObject {
     // names them: the window's page number and its name there. Bitwarden's
     // are Accounts' card, at the top of Your accounts.
     readonly property var pages: ({
+        "notes": [6, "notesPage"],
         "sites": [3, "sitesPage"],
         "bitwarden": [11, "accountsPage"],
         "agenda": [4, "agendaPage"],

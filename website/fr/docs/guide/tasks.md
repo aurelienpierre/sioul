@@ -100,6 +100,7 @@ La fenêtre de concentration reste au premier plan pendant que vous travaillez a
 - Deux minutes avant la fin : « Encore deux minutes : le moment de trouver où s’arrêter. »
 - À la fin : **Continuer**, ou **S’arrêter ici, cela compte**.
 - S’arrêter propose une ligne, **La prochaine fois, commencer par…**, montrée quand la tâche revient.
+- **Indisponible pendant que j’y travaille**, sur le panneau de la tâche : tant que son minuteur tourne vous êtes indisponible, et avec **Pendant une indisponibilité** coché « Ne pas déranger » tient sur tous vos appareils ; son temps compte dans la disponibilité que vous partagez ([Indisponible](notifications.md#busy)). Désactivé sauf si vous le mettez.
 
 Le temps est noté pour la tâche, et pour son projet : pour le facturer, et pour apprendre combien de temps les choses prennent vraiment ([Temps](time.md)). Un minuteur oublié est coupé quand vous l’arrêtez, et le moment le dit ([Temps](time.md#where-time-comes-from)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
 

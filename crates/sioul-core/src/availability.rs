@@ -6,8 +6,11 @@
 //! 53; research/availability-sharing.md): your busy times, never what fills
 //! them.
 //!
-//! An **availability** is what you give out of your time: the agendas that
-//! count as busy, the margins kept around their events, one word per agenda
+//! An **availability** is what you give out of your time: the agendas whose
+//! events marked busy count (`busy::event_marked`: a time busy unless said
+//! free, a whole day free unless said busy), the tasks marked busy where
+//! their time is fixed or bounded by a date (`TaskTime`), the margins kept
+//! around them, one word per agenda
 //! at most ("Work", for a partner, who reads a bare "busy" as secrecy:
 //! Thayer et al. 2012, research/agendas.md §2.3), how coarse the blocks are
 //! and how far ahead they go. Each has **shares**, one per audience: a
@@ -317,7 +320,7 @@ impl Single {
     pub fn wanted(&self, events: &[Occurrence], busy: &str) -> BTreeMap<String, String> {
         let availability = self.migrated("", "");
         let words = Words { busy, not_known: busy };
-        blocks(events, &availability, &words, &BTreeSet::new(), (i64::MIN, i64::MAX)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
+        blocks(events, &availability, &words, &BTreeSet::new(), &TaskTime::default(), (i64::MIN, i64::MAX)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
     }
 }
 
@@ -361,16 +364,110 @@ pub fn window(availability: &Availability, now: i64) -> (i64, i64) {
     (today - DAY, today + i64::from(availability.days_ahead()) * DAY)
 }
 
-/// The blocks of `events` within `window` (those of the agendas picked, that
-/// take time: not cancelled, free or declined, never a whole day), each
+/// What tasks give an availability (docs/client.md, "Sharing your
+/// availability"): only what is marked busy. A task's time block is its
+/// task's time, never an event of its own: it counts when its task is
+/// marked busy, whatever its calendar, and never otherwise.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaskTime {
+    /// Every task known here, by UID: a block of one of them is its task's
+    /// time (`spans` holds it when it counts); a block of a task not known
+    /// here is an event like any other.
+    pub known: BTreeSet<String>,
+    /// The busy tasks' times, their margins around them (Unix seconds): a
+    /// block pinned by hand, a start time given, the plan's time before a
+    /// date asked (`task_time`). Each says "Busy".
+    pub spans: Vec<(i64, i64)>,
+}
+
+/// What the plan gives each busy task with a date asked and no time of its
+/// own, by UID: the times the day's layout lays it at before its date
+/// (`dayview::lay_on`), its margins included. The window works it out from
+/// its plan (`plan_spans`); a reader without one reads the last it kept.
+pub type Planned = BTreeMap<String, Vec<(i64, i64)>>;
+
+/// The tasks' part of an availability, from `tasks` as read, the blocks among
+/// `events` (`Occurrence::task`), and `planned`, at `now` (Unix seconds):
+/// each open task marked busy (`Task::busy`) gives its time where it is
+/// fixed: its blocks (those gone by stay what they were); else, while none
+/// is to come or under way, a start time given (`Task::start` with an hour)
+/// for its estimate (`default_estimate` when it has none), else, with a date
+/// asked, what the plan gives it (`planned`). A task with neither a date
+/// asked nor a time of its own is fluid: there is no telling, and it gives
+/// nothing. A task done, dropped, or someone else's (`Task::elsewhere`) gives nothing.
+pub fn task_time(tasks: &[crate::tasks::Task], events: &[Occurrence], planned: &Planned, default_estimate: u32, zone: &jiff::tz::TimeZone, now: i64) -> TaskTime {
+    let known: BTreeSet<String> = tasks.iter().map(|t| t.uid.clone()).collect();
+    let mut spans = Vec::new();
+    for task in tasks.iter().filter(|t| t.busy && t.status.is_open() && !t.elsewhere) {
+        let (before, after) = (i64::from(task.margins.before.min(24 * 60)) * 60, i64::from(task.margins.after.min(24 * 60)) * 60);
+        let blocks: Vec<&Occurrence> = events.iter().filter(|e| e.task == task.uid && !e.cancelled && e.end > e.start).collect();
+        spans.extend(blocks.iter().map(|e| (e.start - before, e.end + after)));
+        // Pinned to a block to come or under way: that is its time (`blocks::Blocks::of`).
+        if blocks.iter().any(|e| e.end > now) {
+            continue;
+        }
+        let start = task.start.contains('T').then(|| task.start.parse::<jiff::civil::DateTime>().ok().and_then(|at| at.to_zoned(zone.clone()).ok())).flatten();
+        if let Some(start) = start {
+            let start = start.timestamp().as_second();
+            let minutes = i64::from(if task.estimate > 0 { task.estimate } else { default_estimate.max(1) });
+            spans.push((start - before, start + minutes * 60 + after));
+            continue;
+        }
+        if !task.due.is_empty() {
+            spans.extend(planned.get(&task.uid).into_iter().flatten().copied());
+        }
+    }
+    TaskTime { known, spans }
+}
+
+/// The busy tasks with a date asked and no time of their own at `now`, by
+/// UID: those whose time the plan gives (`Planned`). A block to come or under
+/// way, a start time, or no date asked: none.
+pub fn planned_tasks<'a>(tasks: &'a [crate::tasks::Task], events: &[Occurrence], now: i64) -> Vec<&'a crate::tasks::Task> {
+    tasks.iter().filter(|t| t.busy && t.status.is_open() && !t.elsewhere && !t.due.is_empty() && !t.start.contains('T') && !events.iter().any(|e| e.task == t.uid && !e.cancelled && e.end > now)).collect()
+}
+
+/// What the plan gives each busy task with a date asked and no time of its
+/// own (`planned_tasks`): the times the day's layout lays it at, on each day
+/// the plan gives it (`Plan::days`, `dayview::lay_on`), its margins with it,
+/// following the plan wherever it moves it. Today is laid from the half hour
+/// begun (`now` rounded down), so that a step the plan keeps at the head of
+/// the day moves a mirror once in a half hour at most, never at each minute.
+/// `events` are those the plan read (today on, `plan::HORIZON_DAYS`).
+pub fn plan_spans(plan: &crate::plan::Plan, settings: &crate::plan::Settings, tasks: &[crate::tasks::Task], events: &[Occurrence], now: &jiff::Zoned) -> Planned {
+    let wanted: BTreeSet<&str> = planned_tasks(tasks, events, now.timestamp().as_second()).iter().map(|t| t.uid.as_str()).collect();
+    let mut out = Planned::new();
+    if wanted.is_empty() {
+        return out;
+    }
+    let zone = now.time_zone();
+    let half = now.timestamp().as_second().div_euclid(1800) * 1800;
+    let at = jiff::Timestamp::from_second(half).map_or_else(|_| now.clone(), |t| t.to_zoned(zone.clone()));
+    let midnight = |date: jiff::civil::Date| date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    let dates: BTreeSet<jiff::civil::Date> = plan.days.iter().filter(|(_, steps)| steps.iter().any(|(uid, _)| wanted.contains(uid.as_str()))).map(|(date, _)| *date).collect();
+    for date in dates {
+        let (start, end) = (midnight(date), date.tomorrow().map_or(midnight(date) + DAY, midnight));
+        let day: Vec<Occurrence> = events.iter().filter(|o| o.end > start && o.start < end).cloned().collect();
+        let view = crate::dayview::lay_on(date, &at, &day, plan, tasks, settings, crate::dayview::Drawn::ADMIN);
+        for block in view.blocks.iter().filter(|b| wanted.contains(b.key.as_str()) && matches!(b.kind, "task" | "margin") && b.end > b.start) {
+            out.entry(block.key.clone()).or_default().push((block.start, block.end));
+        }
+    }
+    out
+}
+
+/// The blocks of `events` within `window` (those of the agendas picked that
+/// mark you busy, `busy::event_marked`: not cancelled, free or declined; a
+/// whole day only when said busy), and the busy tasks' times (`tasks`), each
 /// widened by the margins kept around it (getting there is your time, and no
 /// server knows it), rounded outward to the availability's rounding; each
 /// says its agenda's word or "Busy", and "Busy" always for health
-/// (`health`, by UID: `health_events`), whatever the agenda's word. Blocks
-/// of one word that touch, overlap or lie closer than the rounding are made
-/// one, so that nothing says how many things fill a time. With `closing`,
-/// one last block "Not known yet" from the window's end on.
-pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, window: (i64, i64)) -> Vec<Block> {
+/// (`health`, by UID: `health_events`) and for a task, whatever the agenda's
+/// word. A task's block counts as its task (`TaskTime`), never as an event.
+/// Blocks of one word that touch, overlap or lie closer than the rounding
+/// are made one, so that nothing says how many things fill a time. With
+/// `closing`, one last block "Not known yet" from the window's end on.
+pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, window: (i64, i64)) -> Vec<Block> {
     let (from, to) = window;
     let step = availability.step();
     let outward = |start: i64, end: i64| if step > 0 { (start.div_euclid(step) * step, (end + step - 1).div_euclid(step) * step) } else { (start, end) };
@@ -382,11 +479,15 @@ pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words,
     };
     let mut found: Vec<Block> = events
         .iter()
-        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && !e.cancelled && !e.transparent && !e.declined && !e.all_day && e.end > e.start && e.end > from && e.start < to)
+        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && !tasks.known.contains(&e.task) && e.end > e.start && e.end > from && e.start < to)
         .map(|e| {
             let (start, end) = outward(e.start - i64::from(e.margins.before.min(24 * 60)) * 60, e.end + i64::from(e.margins.after.min(24 * 60)) * 60);
             Block { start, end, word: word_of(e) }
         })
+        .chain(tasks.spans.iter().filter(|(start, end)| end > start && *end > from && *start < to).map(|(start, end)| {
+            let (start, end) = outward(*start, *end);
+            Block { start, end, word: words.busy.to_string() }
+        }))
         .collect();
     found.sort_by(|a, b| (&a.word, a.start, a.end).cmp(&(&b.word, b.start, b.end)));
     let mut merged: Vec<Block> = Vec::new();
@@ -482,8 +583,8 @@ pub fn block_text(block: &Block) -> String {
 /// The files a mirror of `availability` holds, by name (`<uid>.ics`): what it
 /// should hold at `now`, from `events` (read over `window`), the same on
 /// every device that read the same events the same day.
-pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, now: i64) -> BTreeMap<String, String> {
-    blocks(events, availability, words, health, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
+pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, now: i64) -> BTreeMap<String, String> {
+    blocks(events, availability, words, health, tasks, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
 }
 
 // ---------------------------------------------------------------- who keeps a mirror: the freshest view
@@ -803,14 +904,18 @@ mod tests {
             Occurrence { cancelled: true, ..event("me/personal", "c", 5_000, 6_000, "Cancelled") },
             Occurrence { transparent: true, ..event("me/personal", "f", 7_000, 8_000, "Free") },
             Occurrence { all_day: true, ..event("me/personal", "h", 0, 86_400, "Holiday") },
+            // A whole day said busy counts; a task's block counts as its task, never as an event.
+            Occurrence { all_day: true, opaque: true, ..event("me/personal", "w", 86_400, 2 * 86_400, "Away") },
+            Occurrence { task: "t-free".into(), ..event("me/personal", "t", 12_000, 13_000, "Write the report") },
             Occurrence { declined: true, ..event("me/personal", "n", 10_000, 11_000, "Declined") },
             event("me/hidden", "p", 9_000, 9_500, "Not picked"),
         ];
         let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["me/personal", "work/main"]) };
-        let found = blocks(&events, &availability, &WORDS, &BTreeSet::new(), ALL);
-        assert_eq!(found, [Block { start: 1_000, end: 3_000, word: "Busy".into() }, Block { start: 2_500, end: 4_000, word: "Work".into() }]);
-        let files = mirror_files(&events, &availability, &WORDS, &BTreeSet::new(), 0);
-        assert_eq!(files.len(), 2);
+        let tasks = TaskTime { known: ["t-free".to_string()].into(), spans: Vec::new() };
+        let found = blocks(&events, &availability, &WORDS, &BTreeSet::new(), &tasks, ALL);
+        assert_eq!(found, [Block { start: 1_000, end: 3_000, word: "Busy".into() }, Block { start: 2_500, end: 4_000, word: "Work".into() }, Block { start: 86_400, end: 2 * 86_400, word: "Busy".into() }]);
+        let files = mirror_files(&events, &availability, &WORDS, &BTreeSet::new(), &tasks, 0);
+        assert_eq!(files.len(), 3);
         let all: String = files.values().cloned().collect();
         for kept in ["Dentist", "Lunch", "Board", "Rue Blanche"] {
             assert!(!all.contains(kept), "{kept}: {all}");
@@ -826,14 +931,14 @@ mod tests {
         let at = |h: i64, m: i64| 1_800_000_000 / DAY * DAY + h * 3600 + m * 60;
         let session = Occurrence { margins: crate::demands::Margins { before: 20, after: 10 }, ..event("me/personal", "s", at(17, 0), at(17, 50), "Session") };
         let exact = mine(&["me/personal"]);
-        assert_eq!(blocks(std::slice::from_ref(&session), &exact, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(16, 40), end: at(18, 0), word: "Busy".into() }], "the margins, exact");
+        assert_eq!(blocks(std::slice::from_ref(&session), &exact, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(16, 40), end: at(18, 0), word: "Busy".into() }], "the margins, exact");
         let coarse = Availability { rounding: 15, ..exact.clone() };
         let plain = event("me/personal", "x", at(9, 7), at(9, 57), "Fifty minutes");
-        assert_eq!(blocks(std::slice::from_ref(&plain), &coarse, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(9, 0), end: at(10, 0), word: "Busy".into() }], "outward to the quarter hour");
+        assert_eq!(blocks(std::slice::from_ref(&plain), &coarse, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(9, 0), end: at(10, 0), word: "Busy".into() }], "outward to the quarter hour");
         // Ten minutes apart: one block once rounded; exact, two.
         let near = [event("me/personal", "a", at(11, 0), at(11, 50), "A"), event("me/personal", "b", at(12, 0), at(12, 30), "B")];
-        assert_eq!(blocks(&near, &coarse, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(11, 0), end: at(12, 30), word: "Busy".into() }]);
-        assert_eq!(blocks(&near, &exact, &WORDS, &BTreeSet::new(), ALL).len(), 2);
+        assert_eq!(blocks(&near, &coarse, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(11, 0), end: at(12, 30), word: "Busy".into() }]);
+        assert_eq!(blocks(&near, &exact, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL).len(), 2);
     }
 
     /// Health is never named: an event known as health says "Busy" in an
@@ -844,7 +949,7 @@ mod tests {
         let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["work/main"]) };
         let events = [event("work/main", "meeting", 1_000, 2_000, "Board"), event("work/main", "therapy", 5_000, 6_000, "Session")];
         let health: BTreeSet<String> = ["therapy".to_string()].into();
-        assert_eq!(blocks(&events, &availability, &WORDS, &health, ALL), [Block { start: 1_000, end: 2_000, word: "Work".into() }, Block { start: 5_000, end: 6_000, word: "Busy".into() }]);
+        assert_eq!(blocks(&events, &availability, &WORDS, &health, &TaskTime::default(), ALL), [Block { start: 1_000, end: 2_000, word: "Work".into() }, Block { start: 5_000, end: 6_000, word: "Busy".into() }]);
         crate::config::stand_ins_only();
         let dir = crate::config::state_dir().join("availability-health-test");
         std::fs::create_dir_all(&dir).unwrap();
@@ -875,16 +980,16 @@ mod tests {
         let link = Availability { horizon: defaults(Audience::Link).horizon, rounding: 15, ..mine(&["me/personal"]) };
         assert_eq!(window(&link, now), (today - DAY, today + 14 * DAY));
         let events = vec![event("me/personal", "near", today + 3600, today + 7200, "Near"), event("me/personal", "far", today + 20 * DAY, today + 20 * DAY + 3600, "Far"), event("me/personal", "past", today - 3 * DAY, today - 3 * DAY + 60, "Past")];
-        let files = mirror_files(&events, &link, &WORDS, &BTreeSet::new(), now);
+        let files = mirror_files(&events, &link, &WORDS, &BTreeSet::new(), &TaskTime::default(), now);
         assert_eq!(files.len(), 1, "beyond the two weeks and before yesterday: left out");
         let booking = Availability { rounding: 15, horizon: 60, closing: true, ..mine(&["me/personal"]) };
-        let found = blocks(&events, &booking, &WORDS, &BTreeSet::new(), window(&booking, now));
+        let found = blocks(&events, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), window(&booking, now));
         let last = found.last().unwrap();
         assert_eq!((last.start, last.word.as_str()), (today + 60 * DAY, "Not known yet"), "closed from the horizon on");
         // Two devices: the same day, the events in another order.
         let mut reversed = events.clone();
         reversed.reverse();
-        assert_eq!(mirror_files(&reversed, &booking, &WORDS, &BTreeSet::new(), today + 80_000), mirror_files(&events, &booking, &WORDS, &BTreeSet::new(), now));
+        assert_eq!(mirror_files(&reversed, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), today + 80_000), mirror_files(&events, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), now));
         assert_eq!(defaults(Audience::Person), Defaults { rounding: 0, horizon: 60, closing: false });
         assert_eq!(defaults(Audience::Booking), Defaults { rounding: 15, horizon: 60, closing: true });
     }
@@ -1011,10 +1116,81 @@ mod tests {
         // The same view on both: the same bytes.
         let events = [event("me/personal", "e1", now + 3_600, now + 7_200, "Dentist")];
         let a = mine(&["me/personal"]);
-        assert_eq!(mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now), mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now + 300));
+        assert_eq!(mirror_files(&events, &a, &WORDS, &BTreeSet::new(), &TaskTime::default(), now), mirror_files(&events, &a, &WORDS, &BTreeSet::new(), &TaskTime::default(), now + 300));
         // Uneven: one source newer than the last write, the other older.
         assert!(!may_write(view(&[Some(now + 600), Some(now - 120)]), [written]), "one source older than the mirror's: held");
         assert!(!may_write(view(&[Some(now), None]), []), "one source never pulled whole: held");
         assert!(!may_write(view(&[]), []), "no source: nothing to write");
+    }
+
+    fn task(uid: &str) -> crate::tasks::Task {
+        crate::tasks::Task { uid: uid.into(), title: uid.into(), busy: true, ..crate::tasks::Task::default() }
+    }
+
+    /// A task gives an availability only what is marked busy: its block, a
+    /// start time given for its estimate, or the plan's time before its date
+    /// asked; a fluid task (no date, no time) never; a task not marked busy,
+    /// done or someone else's never; its block counts as it, margins and all.
+    #[test]
+    fn a_busy_task_counts_where_its_time_is_known() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let blocked = crate::tasks::Task { margins: crate::demands::Margins { before: 10, after: 0 }, ..task("blocked") };
+        let timed = crate::tasks::Task { start: "2026-11-20T09:00".into(), estimate: 45, ..task("timed") };
+        let defaulted = crate::tasks::Task { start: "2026-11-21T09:00".into(), ..task("defaulted") };
+        let dated = crate::tasks::Task { due: "2026-11-25".into(), ..task("dated") };
+        let fluid = task("fluid");
+        let not_busy = crate::tasks::Task { busy: false, start: "2026-11-20T15:00".into(), ..task("not-busy") };
+        let done = crate::tasks::Task { status: crate::tasks::Status::Completed, start: "2026-11-20T16:00".into(), ..task("done") };
+        let elsewhere = crate::tasks::Task { elsewhere: true, start: "2026-11-20T17:00".into(), ..task("elsewhere") };
+        let tasks = vec![blocked, timed, defaulted, dated, fluid, not_busy, done, elsewhere];
+        let block = Occurrence { task: "blocked".into(), ..event("me/planned-tasks", "b1", 50_000, 53_600, "Blocked") };
+        let not_busy_block = Occurrence { task: "not-busy".into(), ..event("me/planned-tasks", "b2", 60_000, 63_600, "Not busy") };
+        let planned: Planned = [("dated".to_string(), vec![(70_000, 73_600)]), ("fluid".to_string(), vec![(80_000, 83_600)])].into();
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let time = task_time(&tasks, &[block.clone(), not_busy_block.clone()], &planned, 30, &zone, 0);
+        assert_eq!(time.spans, vec![(50_000 - 600, 53_600), (at("2026-11-20T09:00"), at("2026-11-20T09:45")), (at("2026-11-21T09:00"), at("2026-11-21T09:30")), (70_000, 73_600)]);
+        assert!(time.known.contains("not-busy") && time.known.contains("fluid"));
+        // In the blocks: the busy task's block once, as its task; the other's block not at all, whatever its calendar.
+        let found = blocks(&[block, not_busy_block], &mine(&["me/planned-tasks"]), &WORDS, &BTreeSet::new(), &time, ALL);
+        let mut spans = time.spans.clone();
+        spans.sort_unstable();
+        assert_eq!(found.iter().map(|b| (b.start, b.end)).collect::<Vec<_>>(), spans);
+        assert!(found.iter().all(|b| b.word == "Busy"));
+        // Which tasks the plan's time is asked for: busy, a date asked, no block nor start time.
+        assert_eq!(planned_tasks(&tasks, &[], 0).iter().map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["dated"]);
+        // Its block gone by: what it was stays, and the plan's time counts again.
+        let over = task_time(&tasks[..1], &[Occurrence { task: "blocked".into(), ..event("me/planned-tasks", "b0", 1_000, 2_000, "Blocked") }], &planned, 30, &zone, 10_000);
+        assert_eq!(over.spans, vec![(1_000 - 600, 2_000)]);
+        let dated_over = crate::tasks::Task { due: "2026-11-25".into(), ..tasks[0].clone() };
+        let planned_again: Planned = [("blocked".to_string(), vec![(70_000, 73_600)])].into();
+        let again = task_time(&[dated_over], &[Occurrence { task: "blocked".into(), ..event("me/planned-tasks", "b0", 1_000, 2_000, "Blocked") }], &planned_again, 30, &zone, 10_000);
+        assert_eq!(again.spans, vec![(1_000 - 600, 2_000), (70_000, 73_600)]);
+    }
+
+    /// The plan's time for a busy task with a date asked follows the plan:
+    /// laid on the days the plan gives it, moved when the plan moves it.
+    #[test]
+    fn the_plan_s_time_follows_the_plan() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let now = jiff::civil::date(2026, 11, 18).at(8, 10, 0, 0).to_zoned(zone.clone()).unwrap();
+        let dated = crate::tasks::Task { due: "2026-11-25".into(), estimate: 60, ..task("dated") };
+        let hours = crate::window::parse_ranges("mo-fr 09:00-17:00");
+        let settings = crate::plan::Settings::of_hours(&hours, crate::areas::TaskAreas::usual()).with_events(&now, &[]);
+        let tasks = vec![dated];
+        let plan = crate::plan::plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let spans = plan_spans(&plan, &settings, &tasks, &[], &now);
+        let laid = spans.get("dated").cloned().unwrap_or_default();
+        assert!(!laid.is_empty(), "{plan:?}");
+        assert_eq!(laid.iter().map(|(a, b)| b - a).sum::<i64>(), 3_600, "its estimate: {laid:?}");
+        // An event over that time: the plan moves it, and its time with it.
+        let (start, end) = laid[0];
+        let meeting = Occurrence { agenda: "me/work".into(), uid: "m".into(), start: start - 3_600, end: end + 3_600, ..Occurrence::default() };
+        let moved_settings = crate::plan::Settings::of_hours(&hours, crate::areas::TaskAreas::usual()).with_events(&now, &[meeting.clone()]);
+        let moved_plan = crate::plan::plan(&tasks, now.date(), &moved_settings, &BTreeMap::new(), &BTreeSet::new());
+        let moved = plan_spans(&moved_plan, &moved_settings, &tasks, &[meeting], &now);
+        assert_ne!(moved.get("dated"), Some(&laid), "moved with the plan");
+        // A task not marked busy, or with no date asked: nothing asked of the plan.
+        let quiet = vec![crate::tasks::Task { busy: false, ..tasks[0].clone() }];
+        assert!(plan_spans(&plan, &settings, &quiet, &[], &now).is_empty());
     }
 }

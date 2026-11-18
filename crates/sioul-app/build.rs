@@ -183,6 +183,7 @@ fn main() {
         "qml/VaultHeld.qml",
         "qml/AccountPassword.qml",
         "qml/FolderBrowser.qml",
+        "qml/FolderNeeded.qml",
         "qml/RestCover.qml",
         "qml/DoseTaken.qml",
         "qml/RecentsGuard.qml",

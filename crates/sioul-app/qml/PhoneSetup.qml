@@ -6,8 +6,8 @@
 // What reaches you). Above it, what this device is (`device_kind`). Call screening
 // (Sioul as Android's caller ID & spam app, the contacts, where a declined
 // call goes, texts; CallsSetup.qml, TextsSetup.qml: with telephony only); other apps' notifications (the access
-// in two steps, holding, the apps that rang before Sioul held them;
-// AppNotesSetup.qml); what they send to your computers
+// in two steps, holding, the apps that rang before Sioul held them, each
+// app, conversation and site, by time; AppNotesSetup.qml); what they send to your computers
 // (PhoneMessagesSetup.qml); Do Not Disturb's access and its modes, who of your
 // Always through people is starred here, keeping in step in the background,
 // the battery (DndSetup.qml); exact alarms and Sioul's own notifications.
@@ -65,6 +65,14 @@ ColumnLayout {
         sioul: phone.sioul
         theme: phone.theme
         part: "phone"
+    }
+    // Each app, conversation and browser site, and each by time: here since What
+    // reaches you is one page (design-reach §1.5); the phone's card in Devices takes them next.
+    AppNotesSetup {
+        Layout.fillWidth: true
+        sioul: phone.sioul
+        theme: phone.theme
+        part: "lists"
     }
     PhoneMessagesSetup {
         Layout.fillWidth: true

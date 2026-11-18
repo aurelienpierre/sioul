@@ -14,7 +14,7 @@ Your notes are a folder of Markdown files that stays yours. It can be your Obsid
 - Opening a note fetches nothing from the internet. A picture from the web shows as a link to it, so nobody learns that you read the note. Nothing written in a note can run: HTML shows as the text it is, apart from simple marks such as bold and italics.
 - A link in a note opens a web page, a mail address, a phone number or a file of this computer. A program, a script or an installer is never started from a note: its folder opens instead. A link to a shared network folder is not followed.
 - When Sioul's sharing carries your notes, each one is sealed on your device before it leaves it. The server of the shared folder sees how big each sealed file is, never its name nor what it says.
-- When another device's change replaces a note here, the note as it was is kept on this device, to be put back: **Settings ▸ Your folder and sharing ▸ Show earlier versions** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
+- When another device's change replaces a note here, the note as it was is kept on this device, to be put back: **Settings ▸ Sharing ▸ Show earlier versions** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 
 ## The same folder as Obsidian and Nextcloud Notes
 
@@ -34,7 +34,7 @@ Some of what Obsidian draws, Sioul shows as the text it is: callouts, highlights
 
 ## Your notes folder
 
-Chosen in **Settings ▸ Your folder and sharing ▸ The notes folder**. Beside your notes, the same folder keeps your projects, budgets, papers and scanned letters, so that they all travel together when the folder is synced to your other devices. Where no sync carries it, Sioul's sharing can carry them, if you switch them on there ([Sharing](sharing.md)).
+Your notes are plain Markdown files in a folder of yours, on this device, which other programs, a notes editor among them, may open and sync: Sioul links to them and never owns them. While this device has none, the Notes page asks for it in its place, in one sentence, with **Choose a folder…**, which opens your system's folder chooser (on Android, Sioul's own, which first asks Android for **All files access**); the page fills once a folder is chosen. A folder set but that cannot be read (on a drive that is not plugged in, moved or renamed) is said the same way, with its path and **Choose again…**; plugged in again, the page fills by itself within a minute. Never an empty list in its place. Later, the folder is changed in the page's settings (⚙), **The notes folder**, its first row; it is this device's own, each of your devices saying where its copy is. Beside your notes, the same folder keeps your projects, budgets, papers and scanned letters, so that they all travel together when the folder is synced to your other devices. Where no sync carries it, Sioul's sharing can carry them, if you switch them on there ([Sharing](sharing.md)).
 
 ## Finding a note
 
@@ -56,7 +56,7 @@ A line such as `- [ ] Ask for the certificate`, not ticked, is one click from be
 
 ## New notes
 
-**New note**, or **New ▾ ▸ A note**, asks for its title. Every new note goes into one folder of your notes, set in the Notes page's ⚙: **New notes go into** (`notes` unless you change it). So do the notes you make from elsewhere:
+**New note**, or **New ▾ ▸ A note**, asks for its title. Every new note goes into one folder of your notes, set in the Notes page's ⚙, under the notes folder: **New notes go into** (`notes` unless you change it). So do the notes you make from elsewhere:
 
 - from a message: titled with its subject, starting with who wrote it and its first lines quoted, the message tied to it;
 - from an event: dated, its guests listed, tied both ways, then **Send to the guests**;

@@ -45,15 +45,12 @@ Each day of each week is on or off, with one range of hours or several: **+** ad
 
 ## What reaches you {#what-reaches-you}
 
-One place for when each thing reaches you: mail, calls and other apps' messages by who sends them, Sioul's own notifications by what they are, at each time of your day. On top, what holds now, in sentences, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then five views:
+One page for when each thing reaches you: Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound. On top, what holds now in a sentence, the three states (As usual, Do not disturb, Reachable) and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then two tabs:
 
-- **By time**: a card for each time of your day, in sentences; **Change…** opens its rows.
-- **By person**: what reaches you by mail, by phone and by message from each list of people, **Tell me of new mail**, **Include newsletters**, and who is on which list.
-- **Sioul's own**: codes, doses, reminders, Health's notices, your sites and other apps, with **Sites' notifications gathered**.
-- **Exceptions**: the people who always get through, and each conversation, app or site with a choice of its own.
-- **Do not disturb**: what turns it on, what holds while it does, what each device does.
+- **Your rules**: **People**, a choice per circle (Always through, Safe, Your contacts, Restricted, Everyone else) for mail and for messages, with **Tell me of new mail** and **Include newsletters**; **Who is in which circle**, Always through beside the lists Safe, Restricted and Blocked, the people placed on them and your groups; **Sioul's own notices**, in four groups; **Moments**, what turns do-not-disturb on (**While busy** among them) and who holds what on a phone. One line counts what is set elsewhere, with a button to each place; calls are set for each phone, in **Devices**.
+- **What comes when**: every row at every time, a word in each cell, a press to change it.
 
-Free time's **Nothing at all** is on its card. See [What reaches you, and when](notifications.md).
+See [What reaches you, and when](notifications.md).
 
 ## Reminders {#reminders}
 
@@ -82,10 +79,10 @@ On Android, what sets it up, nothing that decides when (that is [What reaches yo
 - **Do not disturb on this phone**: Android's Do Not Disturb access, which Sioul's modes need, and what each mode lets through; **Starred on this phone**, who of your Always through people is not starred there; **Keep this phone in step in the background**, and **Allow in the background**. See [What each system does](notifications.md#what-each-system-does).
 - **Alarms and notifications**: Android's pages for exact alarms, which reminders, doses and the alarm at waking need to come on time, and for Sioul's own notifications.
 
-## Your folder and sharing
+## Sharing {#your-folder-and-sharing}
 
-- **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it ([Notes](notes.md)).
-- **Rename to sioul-projects.toml**: shown while your projects' file has its first name, `sioul-cases.toml`. It renames the file and its entries in one write, every project kept, with a copy of the old file beside it. Never done by itself: press it once each of your devices has this version of Sioul, since an older one reads only the first name ([Where projects live](projects.md#where-projects-live)).
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it.
+
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 
@@ -97,7 +94,7 @@ Every device you share with, this one first, each on a card; in a wide window, t
 - **What it is**, how it is **now**, when it was **last opened** and when it **last shared**, and its **Sioul**: as each device says them.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
 - **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
-- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Your folder and sharing](#your-folder-and-sharing).
+- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing).
 - **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**, for another device.
 
 While this device does not share, it is the only one listed. See [Your devices](sharing.md#your-devices).

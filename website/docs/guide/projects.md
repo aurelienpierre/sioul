@@ -65,7 +65,7 @@ As it arrives, and each time the project's page shows it, mail is checked before
 
 In one file, `sioul-projects.toml`, at the root of your notes folder: readable, and written by hand if you like. It travels with your notes folder, or through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)). A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
 
-If your notes folder still holds `sioul-cases.toml`, the file's name before projects had one name, nothing changes: Sioul reads it and writes it as it is, so that a device not yet updated reads it too. When each of your devices has this version, **Rename to sioul-projects.toml**, in Settings ▸ Your folder and sharing, renames it, with a copy of the old file kept beside it. Links to a project written before still open it.
+If your notes folder still holds `sioul-cases.toml`, the file's name before projects had one name, nothing changes: Sioul reads it and writes it as it is, so that a device not yet updated reads it too. When each of your devices has this version, **Rename to sioul-projects.toml**, in the Notes page's settings (⚙), under the notes folder, renames it, with a copy of the old file kept beside it. Links to a project written before still open it.
 
 ## By your hours {#in-quiet-time}
 

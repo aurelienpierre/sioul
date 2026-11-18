@@ -541,13 +541,13 @@ impl Dnd {
     fn of(moment: &serde_json::Value) -> Option<Dnd> {
         let why = moment["why"].as_str().unwrap_or_default();
         let line = moment["line"].as_str().unwrap_or_default().trim();
-        if moment["on"].as_bool() != Some(true) || !matches!(why, "manual" | "focus") || line.is_empty() {
+        if moment["on"].as_bool() != Some(true) || !matches!(why, "manual" | "busy") || line.is_empty() {
             return None;
         }
-        // A focus session's end is no promise (it is stopped, or runs over):
+        // A busy stretch's end is no promise (a timer is stopped, or runs over):
         // said in the frame for now only, unless an end is given.
         let until = match (why, moment["until_at"].as_i64()) {
-            ("focus", Some(0)) => None,
+            ("busy", Some(0)) => None,
             (_, until) => until,
         };
         Some(Dnd { line: line.to_string(), until })
@@ -2867,7 +2867,7 @@ mod tests {
             assert_eq!(Dnd::of(&serde_json::json!({ "on": on, "why": why, "line": line, "until_at": until })), None, "{on} {why}");
         }
         // A focus session's, its end no promise: the frame for now only.
-        let focus = Dnd::of(&serde_json::json!({ "on": true, "why": "focus", "line": line, "until_at": 0 })).unwrap();
+        let focus = Dnd::of(&serde_json::json!({ "on": true, "why": "busy", "line": line, "until_at": 0 })).unwrap();
         assert_eq!(focus.until, None);
         // Until switched off: in every frame but the night's.
         let lasting = Dnd::of(&serde_json::json!({ "on": true, "why": "manual", "line": line, "until_at": 0 })).unwrap();
