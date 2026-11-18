@@ -285,9 +285,19 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
             from: &from,
             until: &until,
             busy: &sioul_core::busy::stretches,
+            busy_is_dnd: busy_turns_dnd(config),
         },
         line,
     )
+}
+
+/// Whether being busy turns do-not-disturb on (the box "While busy" among
+/// what turns it on, the Busy rule's branch): then a busy stretch is
+/// do-not-disturb on this phone's line, else its column "while busy" holds.
+/// A stand-in until that branch is merged: no such box yet, the column holds.
+fn busy_turns_dnd(config: &Config) -> bool {
+    let _ = config;
+    false
 }
 
 /// Whether this phone's own line in Settings ▸ Devices says what it lets ring

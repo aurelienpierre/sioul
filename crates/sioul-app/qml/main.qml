@@ -1386,7 +1386,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "phones": grabber.phonesSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -3459,6 +3459,165 @@ SioulWindow {
             // tabs scrolling (pictures alone). First, in the log, whether Sioul's overrides of the
             // Basic style are in place (cpp/style.cpp): a flat button with words drawn with its
             // outline, a text area with its ground; the release's Flatpak job reads that line.
+            // Calls per phone, starred people and the phone's permissions (SIOUL_GRAB_STEPS=phones;
+            // the demo with SIOUL_DEMO_STARS=1): on a computer, a phone stood in beside this device,
+            // its section Calls set Personal with a group's row, then the Always through list saying
+            // where each is starred; on a phone, this device stood in as the phone, its card's
+            // sections unfolded one by one: Calls, what Android must allow, the restricted settings'
+            // three steps (`phonecard::demo`).
+            property string phonesId: ""
+            function phonesFold(name, open) {
+                const fold = grabber.named(parametersPage, name)
+                if (fold)
+                    fold.open = open
+                return fold
+            }
+            readonly property var phonesSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.showParameters("devices")
+                },
+                () => {},
+                () => {
+                    const devices = parametersPage.devices
+                    const own = (devices.view.rows || []).filter(row => row.here === true)
+                    grabber.phonesId = window.phoneGrab && own.length > 0 ? own[0].id : "phone-id"
+                    sioul.deviceSay(grabber.phonesId, "calls.profile", "personal")
+                    sioul.deviceSay(grabber.phonesId, "calls.group.add", grabber.demoFrench ? "École" : "School")
+                    devices.reload()
+                    const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                    if (window.phoneGrab) {
+                        // This device, a phone.
+                        const rows = (devices.view.rows || []).map(row => row.here === true ? Object.assign({}, row, { form: "phone", form_words: sioul.text("set-device-kind-phone") }) : row)
+                        devices.view = Object.assign({}, devices.view, { rows: rows })
+                    } else {
+                        const phone = { id: "phone-id", here: false, name: "Moss", given: "Moss", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "admin+leisure", area_words: "", parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: false }
+                        devices.view = Object.assign({}, devices.view, { on: true, rows: own.concat([phone]) })
+                    }
+                },
+                () => {},
+                () => {
+                    grabber.phonesFold("foldCalls", true)
+                    parametersPage.bringIntoView(grabber.named(parametersPage, window.phoneGrab ? "foldCalls" : "phoneCard-phone-id"))
+                },
+                () => {},
+                () => grabber.save("devices-calls"),
+                () => parametersPage.scrollBy(0.25),
+                () => grabber.save("devices-calls-down"),
+                // On a phone: what Android must allow, then the restricted settings' three steps.
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldCalls", false)
+                    // The restricted settings' card open under it: room for the list's first line at the top.
+                    grabber.phonesFold("foldRestricted", true)
+                    grabber.phonesFold("foldAllow", true)
+                },
+                () => {},
+                // Laid out: the fold brought to the top.
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldAllow"))
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("devices-allow")
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-0")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("notice") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-1")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("info") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-2")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("back") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-3")
+                },
+                // The Always through list, with where each is starred (What reaches you ▸ Exceptions).
+                () => window.showParameters("attention.exceptions"),
+                () => {},
+                () => {},
+                () => parametersPage.bringIntoView(grabber.named(parametersPage, "starsSwitch")),
+                () => {},
+                () => grabber.save("always-through"),
+                () => window.close()
+            ]
             readonly property var shellSteps: [
                 () => {
                     const button = Qt.createQmlObject("import QtQuick.Controls.Basic; Button { opacity: 0; flat: true; text: \"Probe\" }", window.contentItem)

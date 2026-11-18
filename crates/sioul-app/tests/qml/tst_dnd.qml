@@ -32,6 +32,8 @@ Item {
         property int letThrough: 0
         property var changes: []
         property bool android: false
+        // Starred people both ways (`stars::switch_view`), and each person's places, when on.
+        property var starring: undefined
         property var people: [
             { id: "a", name: "Alice", phones: ["+33 1 99 00 12 34"], emails: ["alice@example.org"], notes: [] },
             { id: "b", name: "", phones: [], emails: ["bob@example.org"], notes: ["dnd-setup-no-number"] },
@@ -53,6 +55,8 @@ Item {
         function reachCard() { return JSON.stringify({ now: ["Work and admin until 17:00.", "The people you know reach you at once."], held: "", talks: mock.talks, realtime: mock.realtime, screening: mock.calls.shown ? "Numbers nobody knows go to your voicemail, at all hours." : "", calls: mock.calls }) }
         function setup() {
             const s = { here: { on: true, line: "Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.", lines: ["dnd-setup-plasma-mail"], consent: "", offers: [{ key: "plasma", label: "Plasma's notification settings" }] }, gnome: false, people: mock.people, problem: "", said: "", android: mock.android }
+            if (mock.starring !== undefined)
+                s.starring = mock.starring
             if (mock.android) {
                 s.stars = { permission: true, summary: "Two people on your list are not starred on this phone.", missing: 2, people: [{ id: "a", name: "Alice", state: "not-starred", contact: "content://com.android.contacts/contacts/lookup/x/1" }, { id: "b", name: "bob@example.org", state: "no-number", contact: "" }] }
                 s.steps = { on: true, running: true, sharing: true, battery: false, line: "dnd-steps-on", battery_line: "dnd-steps-battery" }
@@ -275,6 +279,19 @@ Item {
 
     TestCase {
         name: "DndSetup"
+
+        // An item by its objectName under `item`.
+        function named(item, name) {
+            if (item.objectName === name)
+                return item
+            const kids = item.children || []
+            for (let i = 0; i < kids.length; ++i) {
+                const found = named(kids[i], name)
+                if (found)
+                    return found
+            }
+            return null
+        }
         when: windowShown
 
         function texts(item, out) {
@@ -325,6 +342,41 @@ Item {
             verify(seen.indexOf("dnd-setup-no-number") >= 0, seen)
             verify(seen.indexOf("dnd-setup-plasma-mail") < 0, "this desktop's system is under Do not disturb")
             verify(seen.indexOf("dnd-stars-title") < 0, seen)
+        }
+
+        // Starred people both ways: the switch, what it does in a sentence, the books whose favourites
+        // cannot be kept in step yet, and under each person where they are starred; within 412 px.
+        function test_the_list_says_where_each_person_is_starred() {
+            mock.changes = []
+            mock.starring = { on: true, label: "stars-switch", said: "stars-switch-said", why: "", servers: ["Contacts (alex@cloud.example.org): its favourites cannot be kept in step yet."] }
+            mock.people = [
+                { id: "a", name: "Alice", phones: ["+33 1 99 00 12 34"], emails: [], notes: [], places: ["Starred on Moss.", "Not starred on a phone of yours yet."] },
+                { id: "c", name: "Carol", phones: ["+33 2 61 91 00 03"], emails: [], notes: [], places: ["In no contact of Moss: Sioul cannot star them there."] }
+            ]
+            const setup = createTemporaryObject(setupComponent, root, { part: "list" })
+            tryVerify(() => setup.shown.people.length === 2)
+            const seen = texts(setup, [])
+            for (const words of ["stars-switch", "stars-switch-said", "Starred on Moss.", "Not starred on a phone of yours yet.", "In no contact of Moss: Sioul cannot star them there.", "Contacts (alex@cloud.example.org): its favourites cannot be kept in step yet."])
+                verify(seen.indexOf(words) >= 0, words + " in " + seen)
+            const toggle = named(setup, "starsSwitch")
+            verify(toggle.checked, "on")
+            toggle.toggle()
+            toggle.toggled()
+            compare(mock.changes[mock.changes.length - 1][0], "stars")
+            compare(mock.changes[mock.changes.length - 1][1].on, false)
+            wait(50)
+            compare(overflow(setup, 412, []).length, 0)
+            // Off: no place said, the switch alone with what it would do.
+            mock.starring = { on: false, label: "stars-switch", said: "stars-switch-said", why: "phone-stars-why", servers: [] }
+            mock.people = [{ id: "a", name: "Alice", phones: ["+33 1 99 00 12 34"], emails: ["alice@example.org"], notes: [] }]
+            setup.reload()
+            const off = texts(setup, [])
+            verify(off.indexOf("phone-stars-why stars-switch-said") >= 0, "the sentence before Android's question, on a phone: " + off)
+            mock.starring = undefined
+            mock.people = [
+                { id: "a", name: "Alice", phones: ["+33 1 99 00 12 34"], emails: ["alice@example.org"], notes: [] },
+                { id: "b", name: "", phones: [], emails: ["bob@example.org"], notes: ["dnd-setup-no-number"] },
+            ]
         }
 
         function test_the_form_is_filled_anew_each_time() {

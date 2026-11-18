@@ -71,8 +71,19 @@ pub(crate) fn checklist(a: &Allowed, tr: &Translator) -> Vec<Value> {
         .collect()
 }
 
-/// What Android allows now on this phone; none elsewhere.
+/// The demo profile's pictures of a phone (`SIOUL_DEMO` with
+/// `SIOUL_GRAB_PHONE`, tools/demo/run.sh): a phone's card stood in on a
+/// computer, which has no Android to ask.
+pub(crate) fn demo() -> bool {
+    !cfg!(target_os = "android") && std::env::var_os("SIOUL_DEMO").is_some() && std::env::var_os("SIOUL_GRAB_PHONE").is_some()
+}
+
+/// What Android allows now on this phone; none elsewhere (the demo's pictures stand one in).
 fn allowed_here() -> Option<Allowed> {
+    if demo() {
+        let stars = crate::backend::load_config().dnd.stars;
+        return Some(Allowed { role: Some(true), contacts: true, history: false, notifications: Some(false), texts: Some(false), dnd: Some(true), alarms: true, battery: false, stars: stars.then_some(false) });
+    }
     if !cfg!(target_os = "android") {
         return None;
     }

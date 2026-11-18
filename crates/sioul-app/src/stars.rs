@@ -145,11 +145,16 @@ pub(crate) fn places(person: &sioul_core::everywhere::Person, here: &str, config
         .collect()
 }
 
-/// The books of yours whose server keeps no star, each in a sentence (their memory says so here).
+/// The books of yours looked at whose favourites cannot be kept in step yet
+/// (no card answered as a favourite there: `sioul_sync::dav::keep_stars`),
+/// each in a sentence.
 pub(crate) fn without_stars(config: &sioul_core::config::Config, books: &[sioul_core::vdir::Collection], tr: &sioul_core::i18n::Translator) -> Vec<String> {
     books
         .iter()
-        .filter(|b| Memory::load(&stars::folder().join(&b.account).join(format!("{}.json", b.id))).kept == Some(false))
+        .filter(|b| {
+            let memory = Memory::load(&stars::folder().join(&b.account).join(format!("{}.json", b.id)));
+            memory.looked > 0 && memory.kept != Some(true)
+        })
         .map(|b| {
             let mut args = sioul_core::i18n::args();
             args.set("place", place_name(&format!("book:{}/{}", b.account, b.id), "", config, books, tr));
@@ -160,7 +165,7 @@ pub(crate) fn without_stars(config: &sioul_core::config::Config, books: &[sioul_
 
 /// The switch and what it says, for the list's block: {on, label, said, why
 /// (the sentence before Android's question, on a phone), servers (the books
-/// that keep no star)}.
+/// whose favourites cannot be kept in step yet)}.
 pub(crate) fn switch_view(config: &sioul_core::config::Config) -> serde_json::Value {
     let tr = crate::backend::tr();
     let books = sioul_core::vdir::collections(sioul_core::vdir::Kind::Contacts);

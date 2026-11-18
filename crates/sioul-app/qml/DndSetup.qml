@@ -3,10 +3,12 @@
 
 // Do-not-disturb's parts (docs/do-not-disturb.md), each where it belongs
 // (`part`): what this device's system lets Sioul do, with the pages it needs
-// (What reaches you ▸ Do not disturb; This phone); the Always through list,
-// the same on every device (What reaches you ▸ Exceptions); on a phone, who
-// on it is starred (Sioul never stars anyone: it opens their contact), and
-// Sioul kept in step in the background (This phone).
+// (What reaches you ▸ Do not disturb; this phone's card in Devices); the
+// Always through list, the same on every device (What reaches you ▸
+// Exceptions), with starred people both ways (its switch; where each person
+// is starred, and where they cannot be); on a phone, who on it is starred,
+// with their contact opened, and Sioul kept in step in the background (this
+// phone's card in Devices).
 
 pragma ComponentBehavior: Bound
 
@@ -144,6 +146,57 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: setup.theme.text
     }
+    // Starred people both ways (`stars::switch_view`): a contact starred on a phone, or a
+    // favourite on a server that keeps them, is on the list; everyone on it is starred where
+    // their contact is. On a phone, the sentence saying why Android is asked comes first.
+    Switch {
+        id: starring
+
+        objectName: "starsSwitch"
+        visible: setup.listShown && setup.shown.starring !== undefined
+        Layout.fillWidth: true
+        text: setup.shown.starring ? setup.theme.plain(setup.shown.starring.label) : ""
+        checked: setup.shown.starring !== undefined && setup.shown.starring.on === true
+        onToggled: {
+            setup.act("stars", { on: starring.checked })
+            starring.checked = Qt.binding(() => setup.shown.starring !== undefined && setup.shown.starring.on === true)
+        }
+
+        contentItem: Label {
+            leftPadding: starring.indicator.width + starring.spacing
+            text: starring.text
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            verticalAlignment: Text.AlignVCenter
+            color: setup.theme.text
+        }
+    }
+    Label {
+        objectName: "starsSaid"
+        visible: setup.listShown && setup.shown.starring !== undefined
+        Layout.fillWidth: true
+        text: setup.shown.starring ? (setup.shown.starring.on ? setup.shown.starring.said : [setup.shown.starring.why, setup.shown.starring.said].filter(w => w !== "").join(" ")) : ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: setup.theme.muted
+    }
+    // The books of yours whose favourites cannot be kept in step yet.
+    Repeater {
+        model: setup.listShown && setup.shown.starring && setup.shown.starring.on ? setup.shown.starring.servers || [] : []
+
+        delegate: Label {
+            required property string modelData
+
+            objectName: "starsServer"
+            Layout.fillWidth: true
+            text: modelData
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: setup.theme.muted
+        }
+    }
     Label {
         visible: setup.listShown && setup.shown.people.length === 0
         Layout.fillWidth: true
@@ -202,6 +255,22 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: setup.theme.muted
+                    font.pixelSize: 12
+                }
+            }
+            // Where they are starred, and where they cannot be (`stars::places`).
+            Repeater {
+                model: person.modelData.places || []
+
+                delegate: Label {
+                    required property string modelData
+
+                    objectName: "personPlace"
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: setup.theme.text
                     font.pixelSize: 12
                 }
             }

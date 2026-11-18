@@ -22,6 +22,11 @@
 // words, a line per time. A cell opens three boxes and "As its areas say";
 // one you changed is framed. Then one sentence for now on this device, one
 // for the areas no device is for, and what a device's areas never keep back.
+//
+// A phone's card holds its own sections (PhoneCard.qml): its calls, set from
+// any device; on the phone itself, what Android must allow, Android's
+// restricted settings, and what the tab "This phone" held (design of 18
+// November 2026). At a phone's width each section folds.
 
 pragma ComponentBehavior: Bound
 
@@ -40,8 +45,12 @@ ColumnLayout {
     // rows give it; none while they are not read.
     property var kindRow: null
 
-    // What the core says: { on, why, stays, rows, grid } (`share::devices`).
+    // What the core says: { on, why, stays, rows, grid, calls } (`share::devices`):
+    // `calls`, each phone's section Calls by its id (`calls_line::view`).
     property var view: ({ on: false, why: "", stays: "", rows: [] })
+    readonly property var calls: tab.view.calls || ({})
+    // What this phone says of itself, on the phone (`phonecard::view`): {phone, allow, restricted}.
+    property var own: ({ phone: false })
     readonly property var rows: tab.view.rows || []
     // What is said around the cells: the times' names, now on this device,
     // the areas no device is for, what is never kept back (`device_grid::Grid`).
@@ -78,6 +87,8 @@ ColumnLayout {
 
     function reload() {
         tab.view = JSON.parse(tab.sioul.devices() || "{}")
+        if (typeof tab.sioul.phoneCard === "function")
+            tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
     }
 
     function say(id, field, value) {
@@ -93,6 +104,18 @@ ColumnLayout {
     spacing: 8
     onVisibleChanged: if (visible) tab.reload()
     Component.onCompleted: tab.reload()
+
+    // Back from Android's question or page: what it allows here, read again
+    // (and, back from Sioul's page, the accesses asked again: `phonecard::view`).
+    Connections {
+        target: tab.Window.window
+
+        function onActiveChanged() {
+            const window = tab.Window.window
+            if (window && window.active && tab.visible && typeof tab.sioul.phoneCard === "function")
+                tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
+        }
+    }
 
     // While shown: news of the other devices as it comes; never under a name
     // being typed, a choice being made or a question being read.
@@ -535,6 +558,31 @@ ColumnLayout {
                     Layout.fillWidth: true
                     host: tab
                     deviceId: device.deviceId
+                }
+
+                // A phone's own sections: its calls, from any device; on the phone itself what
+                // Android must allow and the tab "This phone"'s blocks (PhoneCard.qml). This
+                // device's own is where a door to the phone's setup lands (`setting:devices.here`).
+                Loader {
+                    active: tab.calls[device.deviceId] !== undefined || (device.row.here === true && tab.own.phone === true)
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+
+                    sourceComponent: Component {
+                        PhoneCard {
+                            objectName: device.row.here === true ? "setting:devices.here" : "phoneCard-" + device.deviceId
+                            sioul: tab.sioul
+                            theme: tab.theme
+                            deviceId: device.deviceId
+                            here: device.row.here === true
+                            calls: tab.calls[device.deviceId] || null
+                            own: tab.own
+                            folds: !tab.wide
+                            onSay: (field, value) => tab.say(device.deviceId, field, value)
+                            onOwnSaid: own => tab.own = own
+                        }
+                    }
                 }
             }
         }

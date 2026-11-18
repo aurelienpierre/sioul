@@ -674,7 +674,10 @@ pub(crate) fn devices() -> String {
     let mut grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
     // Settings that do not travel from here: what this device tells may come twice.
     grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
-    let calls = calls_views(&config, rows.iter().map(|r| (r.id.as_str(), r.form.as_str())));
+    // Every device of the table, and a device whose line says what it lets ring but that the table
+    // does not hold (yet): the window shows only those it has a row for.
+    let listed: Vec<(String, String)> = rows.iter().map(|r| (r.id.clone(), r.form.clone())).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new()))).collect();
+    let calls = calls_views(&config, listed.iter().map(|(id, form)| (id.as_str(), form.as_str())));
     json(&Devices { on: vault.is_some(), why, stays, rows, grid, calls })
 }
 

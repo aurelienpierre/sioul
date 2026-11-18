@@ -226,8 +226,15 @@ pub(crate) fn restricted(r: &Restricted, tr: &Translator) -> Option<Value> {
     }))
 }
 
-/// What Android and this phone say now, for the card; none elsewhere.
+/// What Android and this phone say now, for the card; none elsewhere. The
+/// demo's pictures of a phone stand one in: Android 16, installed from a
+/// file, each step's outcome seen once pressed (`phonecard::demo`).
 fn restricted_here() -> Option<Restricted> {
+    if crate::phonecard::demo() {
+        let steps = Steps::load();
+        let back = steps.back > 0;
+        return Some(Restricted { api: 36, source: "file".into(), notifications_needed: true, notifications_given: back, texts_on: true, texts_given: back, texts_asked: steps.notice > 0, texts_at_once: steps.notice > 0, steps });
+    }
     let said = said_here()?;
     let source = crate::steps::java("install-source", "{}");
     let state = crate::steps::java("texts-state", "{}");
@@ -257,6 +264,17 @@ pub(crate) fn restricted_step(step: &str) -> Value {
     let Some(r) = restricted_here() else { return Value::Null };
     let mut steps = r.steps;
     let now = jiff::Timestamp::now().as_second();
+    if crate::phonecard::demo() {
+        // The demo's pictures: each step's outcome as if seen, nothing asked of an Android there is not.
+        match step {
+            "notice" => steps.notice = now,
+            "info" => steps.info = now,
+            "back" => steps.back = now,
+            _ => {}
+        }
+        steps.save();
+        return restricted_card();
+    }
     match step {
         "notice" if r.api >= GUARDED_TEXTS => {
             crate::steps::java("texts-ask", "{}");
@@ -279,6 +297,10 @@ pub(crate) fn restricted_step(step: &str) -> Value {
 /// Back in Sioul after its page was opened (the window shown again): the
 /// accesses still held asked again, once for each opening of the page.
 pub(crate) fn restricted_back() {
+    // The demo's pictures press each step themselves.
+    if crate::phonecard::demo() {
+        return;
+    }
     let Some(r) = restricted_here() else { return };
     if r.source != "file" || r.steps.info <= r.steps.back {
         return;

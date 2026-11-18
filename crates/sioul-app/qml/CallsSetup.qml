@@ -23,6 +23,9 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
+    // In this phone's card in Settings ▸ Devices: the role, the contacts and the call history are its
+    // checklist's (AllowList.qml), and who may call when its section Calls: not said here again.
+    property bool inCard: false
 
     // calls.rs's `setup`: {android, state: {api, available, held, contacts, history, table, emergency_at}, moment,
     // screening: {title, intro, rows, hears, expecting}}.
@@ -102,66 +105,73 @@ ColumnLayout {
         text: setup.sioul.text("calls-setup-dnd")
     }
 
-    // ---------------------------------------------------------------- this phone
-    Heading {
-        text: setup.sioul.text("calls-setup-here")
-    }
-    Said {
-        text: setup.sioul.text(setup.held ? "calls-setup-on" : setup.tooOld ? "calls-setup-too-old" : !setup.available ? "calls-setup-unavailable" : "calls-setup-off")
-    }
-    Note {
-        visible: setup.held && setup.phone.table !== true
-        text: setup.sioul.text("calls-setup-no-table")
-    }
-    Button {
-        visible: !setup.held && setup.available
-        text: setup.sioul.text("calls-setup-ask")
-        icon.name: "call-start"
-        icon.color: setup.theme.text
-        onClicked: setup.act("ask-role", {})
-    }
-    Note {
-        visible: !setup.held && setup.available
-        text: setup.sioul.text("calls-setup-ask-help")
-    }
-    Note {
-        visible: !setup.held && setup.available
-        text: setup.sioul.text("calls-setup-replaces")
-    }
-    // Without reading the contacts, Android does not ask Sioul about their calls.
-    Said {
-        visible: setup.held && setup.phone.contacts !== true
-        text: setup.sioul.text("calls-setup-contacts-off")
-    }
-    Button {
-        visible: setup.held && setup.phone.contacts !== true
-        text: setup.sioul.text("calls-setup-contacts-allow")
-        onClicked: setup.act("allow-contacts", {})
-    }
-    // The call history, read once allowed: the calls you missed, those of yours that did
-    // not reach them, and their tasks (Porch ⚙ ▸ Calls), with or without the screening.
-    Said {
-        visible: setup.shown.android === true && setup.phone.history !== true
-        text: setup.sioul.text("calls-setup-history-off")
-    }
-    Button {
-        visible: setup.shown.android === true && setup.phone.history !== true
-        text: setup.sioul.text("calls-setup-history-allow")
-        onClicked: setup.act("ask-history", {})
-    }
-    Note {
-        visible: setup.held
-        text: setup.sioul.text("calls-setup-android-block")
-    }
-    Button {
-        visible: setup.held || (!setup.available && !setup.tooOld)
-        flat: true
-        text: setup.sioul.text("calls-setup-change")
-        onClicked: setup.act("open-roles", {})
-    }
-    Note {
-        visible: setup.held
-        text: setup.sioul.text("calls-setup-change-help")
+    // Left out of Settings ▸ Devices' card (`inCard`): its checklist and its section Calls say it.
+    ColumnLayout {
+        visible: !setup.inCard
+        Layout.fillWidth: true
+        spacing: 6
+
+        // ---------------------------------------------------------------- this phone
+        Heading {
+            text: setup.sioul.text("calls-setup-here")
+        }
+        Said {
+            text: setup.sioul.text(setup.held ? "calls-setup-on" : setup.tooOld ? "calls-setup-too-old" : !setup.available ? "calls-setup-unavailable" : "calls-setup-off")
+        }
+        Note {
+            visible: setup.held && setup.phone.table !== true
+            text: setup.sioul.text("calls-setup-no-table")
+        }
+        Button {
+            visible: !setup.held && setup.available
+            text: setup.sioul.text("calls-setup-ask")
+            icon.name: "call-start"
+            icon.color: setup.theme.text
+            onClicked: setup.act("ask-role", {})
+        }
+        Note {
+            visible: !setup.held && setup.available
+            text: setup.sioul.text("calls-setup-ask-help")
+        }
+        Note {
+            visible: !setup.held && setup.available
+            text: setup.sioul.text("calls-setup-replaces")
+        }
+        // Without reading the contacts, Android does not ask Sioul about their calls.
+        Said {
+            visible: setup.held && setup.phone.contacts !== true
+            text: setup.sioul.text("calls-setup-contacts-off")
+        }
+        Button {
+            visible: setup.held && setup.phone.contacts !== true
+            text: setup.sioul.text("calls-setup-contacts-allow")
+            onClicked: setup.act("allow-contacts", {})
+        }
+        // The call history, read once allowed: the calls you missed, those of yours that did
+        // not reach them, and their tasks (Porch ⚙ ▸ Calls), with or without the screening.
+        Said {
+            visible: setup.shown.android === true && setup.phone.history !== true
+            text: setup.sioul.text("calls-setup-history-off")
+        }
+        Button {
+            visible: setup.shown.android === true && setup.phone.history !== true
+            text: setup.sioul.text("calls-setup-history-allow")
+            onClicked: setup.act("ask-history", {})
+        }
+        Note {
+            visible: setup.held
+            text: setup.sioul.text("calls-setup-android-block")
+        }
+        Button {
+            visible: setup.held || (!setup.available && !setup.tooOld)
+            flat: true
+            text: setup.sioul.text("calls-setup-change")
+            onClicked: setup.act("open-roles", {})
+        }
+        Note {
+            visible: setup.held
+            text: setup.sioul.text("calls-setup-change-help")
+        }
     }
 
     // ---------------------------------------------------------------- the call screening, apart
@@ -193,29 +203,36 @@ ColumnLayout {
         text: setup.screening.hears || ""
     }
 
-    // ---------------------------------------------------------------- who may call when
-    Heading {
-        text: setup.sioul.text("calls-setup-when-title")
-    }
-    Said {
-        text: setup.sioul.text("calls-setup-when")
-    }
-    // Settings ▸ What reaches you ▸ By person ▸ Calls, and its Always through people.
-    Flow {
+    // Left out of Settings ▸ Devices' card (`inCard`): its checklist and its section Calls say it.
+    ColumnLayout {
+        visible: !setup.inCard
         Layout.fillWidth: true
         spacing: 6
 
-        Button {
-            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-            flat: true
-            text: setup.sioul.text("calls-setup-when-open")
-            onClicked: setup.sioul.reminderOpened("settings:attention.calls", "", "")
+        // ---------------------------------------------------------------- who may call when
+        Heading {
+            text: setup.sioul.text("calls-setup-when-title")
         }
-        Button {
-            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-            flat: true
-            text: setup.sioul.text("calls-setup-people-open")
-            onClicked: setup.sioul.reminderOpened("settings:attention.exceptions", "", "")
+        Said {
+            text: setup.sioul.text("calls-setup-when")
+        }
+        // Settings ▸ What reaches you ▸ By person ▸ Calls, and its Always through people.
+        Flow {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Button {
+                width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                flat: true
+                text: setup.sioul.text("calls-setup-when-open")
+                onClicked: setup.sioul.reminderOpened("settings:attention.calls", "", "")
+            }
+            Button {
+                width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                flat: true
+                text: setup.sioul.text("calls-setup-people-open")
+                onClicked: setup.sioul.reminderOpened("settings:attention.exceptions", "", "")
+            }
         }
     }
 
