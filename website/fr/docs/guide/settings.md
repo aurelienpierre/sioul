@@ -79,10 +79,10 @@ Sur Android, ce qui le règle, rien de ce qui décide quand (c’est [Ce qui vou
 - **« Ne pas déranger » sur ce téléphone** : l’accès « Ne pas déranger » d’Android, dont les modes de Sioul ont besoin, et ce que chaque mode laisse passer ; **En favori sur ce téléphone**, qui, parmi les personnes qui passent toujours, n’y est pas en favori ; **Garder ce téléphone à jour en arrière-plan**, et **Autoriser en arrière-plan**. Voir [Ce que fait chaque système](notifications.md#what-each-system-does).
 - **Alarmes et notifications** : les pages d’Android pour les alarmes exactes, dont les rappels, les prises et le réveil ont besoin pour venir à l’heure, et pour les notifications de Sioul.
 
-## Votre dossier et le partage {#your-folder-and-sharing}
+## Partage {#your-folder-and-sharing}
 
-- **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais ([Les notes](notes.md)).
-- **Renommer en sioul-projects.toml** : montré tant que le fichier de vos projets a son premier nom, `sioul-cases.toml`. Il renomme le fichier et ses entrées en une seule écriture, chaque projet gardé, avec une copie de l’ancien fichier à côté. Jamais fait de lui-même : appuyez quand chacun de vos appareils a cette version de Sioul, car une version plus ancienne ne lit que le premier nom ([Où vivent les projets](projects.md#where-projects-live)).
+Le dossier des notes est à la page Notes, dans son ⚙ ([Votre dossier de notes](notes.md#your-notes-folder)) ; une ligne dit ici lequel c’est, puisque vos notes partent de lui, avec un bouton vers lui.
+
 - **Entre vos appareils** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
 - **Voir les versions précédentes** : ce qu’un changement venu d’un autre appareil a remplacé ici, gardé sur cet appareil, avec **Remettre** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
 
@@ -94,7 +94,7 @@ Chaque appareil avec lequel vous partagez, celui-ci d’abord, chacun sur une ca
 - **Ce qu’il est**, où il en est **maintenant**, sa **dernière ouverture**, son **dernier partage** et son **Sioul** : tels que chaque appareil les dit.
 - **Pour** : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez ; sans rien de coché, tout y arrive. Vous pouvez le dire de n’importe quel appareil, depuis n’importe lequel. Cela voyage avec vos réglages, vers chaque appareil qui partage **Réglages et comptes**. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela.
 - **Ce qui arrive, et quand**, sous les appareils : pour chaque appareil, ce qui arrive à chaque moment de votre semaine (travail, démarches, loisirs, repas, sommeil). Appuyez sur une case pour la changer ; **Selon ce à quoi il sert** la remet. Une phrase dit ce que cet appareil fait venir en ce moment ([À quoi sert chaque appareil](hours.md#what-each-device-is-for)).
-- **Partage** : les parties que l’appareil partage. Une partie se change sur l’appareil lui-même ; celles de cet appareil sont dans [Votre dossier et le partage](#your-folder-and-sharing).
+- **Partage** : les parties que l’appareil partage. Une partie se change sur l’appareil lui-même ; celles de cet appareil sont dans [Partage](#your-folder-and-sharing).
 - **Le compter de nouveau**, **Oublier cet appareil**, **L’oublier maintenant** et **L’oublier et retirer ses fichiers…**, pour un autre appareil.
 
 Tant que cet appareil ne partage pas, il est le seul de la liste. Voir [Vos appareils](sharing.md#your-devices).

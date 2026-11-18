@@ -131,7 +131,7 @@ The ⚙ at the top of the page:
 
 ## Where contacts live
 
-On your contacts server, as standard cards: your phone and other programs see them. Editing in Sioul changes only what you changed: a photo or another program's fields stay as they were. When a card was changed both here and on the server between two syncs, the server's version is kept, and yours is set aside among the earlier versions (**Settings ▸ Your folder and sharing ▸ Show earlier versions**, under **Your calendars and contacts**), on Android too, to put back if you prefer it; the status line says so.
+On your contacts server, as standard cards: your phone and other programs see them. Editing in Sioul changes only what you changed: a photo or another program's fields stay as they were. When a card was changed both here and on the server between two syncs, the server's version is kept, and yours is set aside among the earlier versions (**Settings ▸ Sharing ▸ Show earlier versions**, under **Your calendars and contacts**), on Android too, to put back if you prefer it; the status line says so.
 
 Google contacts work the same way, with less kept: Sioul writes them as Google reads them, and says what would be lost before moving a contact there.
 

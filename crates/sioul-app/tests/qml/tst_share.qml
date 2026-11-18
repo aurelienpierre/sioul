@@ -34,6 +34,10 @@ Item {
         id: mock
 
         property string language: "en"
+        // The notes folder as the backend says it (the sharing's line to the Notes page).
+        property string notesFolder: JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
+        // What the sharing's line to the notes folder asked the window to open.
+        property var opened: []
         property var sends: []
         property int again: 0
         property bool sent: false
@@ -90,8 +94,14 @@ Item {
         signal shareEstimated(string estimate)
         signal shareStarted(string problem)
 
+        function reminderOpened(kind, uri, key) {
+            mock.opened = mock.opened.concat([kind])
+        }
         function text(key) {
             return mock.words[mock.language][key] || key
+        }
+        function textWith(key, name, value) {
+            return mock.text(key) + " " + value
         }
         function filesAccess() {
             return true
@@ -219,6 +229,20 @@ Item {
             mock.held = false
             mock.leaving = false
             mock.asked = []
+        }
+
+        // The notes folder is the Notes page's: one line says which it is (or that there
+        // is none), with a button to its row there, by its key.
+        function test_the_notes_folder_line_leads_to_the_notes_page() {
+            mock.opened = []
+            const line = walk(panel, i => i.objectName === "shareNotesFolder", [])[0]
+            verify(line.visible)
+            verify(line.text.indexOf("/stand-in/Notes") >= 0, line.text)
+            mock.notesFolder = JSON.stringify({ state: "unset" })
+            verify(line.text.indexOf("/stand-in/Notes") < 0 && line.text !== "", line.text)
+            walk(panel, i => i.objectName === "shareNotesFolderOpen", [])[0].clicked()
+            compare(mock.opened, ["settings:case_store"])
+            mock.notesFolder = JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
         }
 
         // Notes held after going many at once, said with what can be done;

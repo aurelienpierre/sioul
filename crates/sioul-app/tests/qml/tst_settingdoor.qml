@@ -35,7 +35,9 @@ TestCase {
             "reminders.waits": "tasks",
             "reminders.payment_days": "money",
             "texts": "texts",
-            "texts.sending": "texts"
+            "texts.sending": "texts",
+            "case_store": "notes",
+            "notes_folder": "notes"
         })
 
         function settingPage(key) {
@@ -69,6 +71,7 @@ TestCase {
         property var tasksPage: FakePage {}
         property var budgetsPage: FakePage {}
         property var textsPage: FakePage {}
+        property var notesPage: FakePage {}
     }
 
     SettingDoor {
@@ -126,6 +129,18 @@ TestCase {
             compare(fakeWindow.page, 12, key)
         }
         compare(fakeWindow.parametersPage.asked, ["reminders.asked_days", "reminders_closed", "reminders.gathered", "reminders"])
+    }
+
+    // The notes folder: the Notes page's ⚙, at its row (the sharing's line, the Porch,
+    // older links); Settings' tab "files" holds the sharing alone, opened by its id.
+    function test_the_notes_folder_opens_the_notes_page_settings() {
+        fakeWindow.notesPage = Qt.createQmlObject("import QtQuick; QtObject { property var asked: []; function openSettings(open, key) { asked = asked.concat([[open, key]]) } }", root)
+        door.open("case_store")
+        compare(fakeWindow.page, 6)
+        compare(fakeWindow.notesPage.asked, [[true, "case_store"]])
+        door.open("files")
+        compare(fakeWindow.page, 12, "the sharing: Settings")
+        compare(fakeWindow.parametersPage.asked, ["files"])
     }
 
     // The multimedia messages sent from here: the Texts page's ⚙, by the setting's key
