@@ -390,13 +390,14 @@ Item {
             contentWidth: availableWidth
             clip: true
 
-            // The section's rows in a legible column, centred; What reaches you and Devices, the whole width.
+            // The section's rows in a legible column, centred; Devices, and What reaches you's What
+            // comes when, the whole width (Your rules in the column: the pictures' review, point 2).
             PageColumn {
                 id: column
 
                 theme: page.theme
                 room: scroll.availableWidth
-                wide: page.section === "attention" || page.section === "devices"
+                wide: page.section === "devices" || (page.section === "attention" && (reaches.item as ReachesTab) !== null && (reaches.item as ReachesTab).view === "table")
                 spacing: 6
 
                 Label {

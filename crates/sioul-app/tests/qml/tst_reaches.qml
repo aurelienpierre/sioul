@@ -39,6 +39,7 @@ Item {
             column: "work",
             now_columns: ["work"],
             presets: [{ id: "usual", label: "As Sioul does now", current: true, changes: 0 }, { id: "quieter", label: "Quieter", current: false, changes: 12 }, { id: "reachable", label: "More reachable", current: false, changes: 6 }],
+            presets_note: "A preset leaves calls as they are.",
             changed: "",
             people: {
                 channels: [{ id: "mail", label: "Mail", note: "" }, { id: "messages", label: "Messages", note: "" }],
@@ -186,6 +187,26 @@ Item {
                 page.view = "rules"
                 page.rowOpen = ""
             }
+        }
+
+        // A phone's top in three rows before the tabs (the pictures' review, point 1): the
+        // sentence, the states (pressed, the card), Start from as one button opening the presets
+        // with the calls' line; a computer keeps Change… and the presets side by side.
+        function test_a_phone_s_top_in_three_rows() {
+            verify(find(narrow, "reachesStates") === null, "no Change… on a phone: the row opens the card")
+            verify(find(wide, "reachesStates") !== null)
+            const start = find(narrow, "reachesStartFrom")
+            verify(start !== null && start.text.indexOf("As Sioul does now") >= 0, start ? start.text : "none")
+            verify(find(narrow, "preset-quieter") === null && find(wide, "preset-quieter") !== null)
+            verify(find(narrow, "reachesPresetsNote") === null, "the calls' line is in the phone's menu")
+        }
+
+        // Nothing at all under its own heading; the grid's words said under it (points 4 and 5).
+        function test_free_time_and_the_grid_s_key() {
+            verify(find(wide, "reachesGridKey") === null, "the key with the grid only")
+            find(wide, "reachesTabs:table").clicked()
+            verify(find(wide, "reachesGridKey") !== null)
+            find(wide, "reachesTabs:rules").clicked()
         }
 
         // The state on is said by a mark and to a screen reader, not by colour alone (review W1).

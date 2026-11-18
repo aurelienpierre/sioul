@@ -18,7 +18,7 @@ Sioul décide en un seul endroit quand chaque chose vous joint : les courriels
 En haut, toujours :
 
 - **Maintenant**, en une phrase : « Maintenant : loisirs, jusqu’à 22:00. Les courriels de vos expéditeurs sûrs arrivent tout de suite. »
-- **Les trois états**, Comme d’habitude, Ne pas déranger et Joignable, celui de maintenant marqué ; **Changer…** ouvre la carte du bouton de la ligne d’état, où chacun s’appuie pour une durée ([plus bas](#the-button-and-its-card)).
+- **Les trois états**, Comme d’habitude, Ne pas déranger et Joignable, celui de maintenant marqué ; **Changer…** ouvre la carte du bouton de la ligne d’état, où chacun s’appuie pour une durée ([plus bas](#the-button-and-its-card)). Celui qui est actif porte un ✓. Sur un téléphone, la rangée des états ouvre elle-même la carte, et **Partir de** est un seul bouton qui ouvre les trois préréglages, pour que le haut de la page tienne en trois rangées.
 - **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable** ([Les préréglages](#presets)). Dès que vous changez quelque chose, une ligne le dit, « Le vôtre : 3 changements depuis Comme Sioul le fait maintenant. », avec **Revenir à Comme Sioul le fait maintenant**.
 
 Puis deux onglets :
@@ -75,7 +75,7 @@ Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur
 
 - **Comme Sioul le fait maintenant** : ce que décrit cette page.
 - **Plus calme** : les courriels de vos expéditeurs sûrs affichés, sans notification, aux loisirs et aux repas ; les messages de vos contacts et des groupes retenus aux loisirs et aux repas ; ceux de vos expéditeurs sûrs retenus pendant le temps libre ; sous « Ne pas déranger », tout SMS retenu ; les rappels de dates, et les sites en temps réel, attendent aux loisirs et aux repas.
-- **Plus joignable** : les courriels de vos contacts tout de suite aux loisirs et aux repas ; ceux des inconnus affichés aux loisirs ; les automates des autres applications tout de suite au travail et aux démarches.
+- **Plus joignable** : les courriels de vos contacts tout de suite aux loisirs et aux repas ; ceux de tous les autres affichés aux loisirs ; les automates des autres applications tout de suite au travail et aux démarches.
 
 En choisir un pendant que vous avez des changements à vous le demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. » Une ligne qu’un préréglage règle case par case se lit **À votre façon**. Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils, et le compte de vos changements ne compte que ce que montre cette page.
 
@@ -86,7 +86,7 @@ En choisir un pendant que vous avez des changements à vous le demande d’abord
   <figcaption>Ce qui vient quand : chaque ligne à chaque moment, un mot par case.</figcaption>
 </figure>
 
-Le tableau entier : de haut en bas, chaque ligne (les cercles des courriels et des messages, puis les types de Sioul qui agissent sur cet appareil) ; de gauche à droite, les sept moments et les deux couches, ceux de maintenant en gras. Chaque case est un mot ; un appui ouvre ses choix en toutes lettres, celui qu’elle a en gras. Une case grisée est fixe, pour votre sécurité, et dit pourquoi. Un point marque ce que vous avez changé depuis Comme Sioul le fait maintenant. Sur un téléphone, une ligne par rangée avec son mot pour maintenant ; un appui ouvre ses neuf valeurs.
+Le tableau entier : de haut en bas, chaque ligne (les cercles des courriels et des messages, puis les types de Sioul qui agissent sur cet appareil) ; de gauche à droite, les sept moments et les deux couches, ceux de maintenant en gras. Chaque case est un mot ; un appui ouvre ses choix en toutes lettres, celui qu’elle a en gras. Une case grisée est fixe, pour votre sécurité, et dit pourquoi. Un point marque ce que vous avez changé depuis Comme Sioul le fait maintenant. Sur un téléphone, une ligne par rangée avec son mot pour maintenant ; un appui ouvre ses neuf valeurs. Une ligne sous le tableau dit ce que veut dire chaque mot.
 
 ### Les moments {#the-times}
 
@@ -117,7 +117,7 @@ Deux **couches** valent par-dessus le moment, jamais à sa place ; entre le mo
 | **Comme leur liste** | Comme leur liste | Les personnes qui passent toujours n’ont rien de plus que ce que leur donne leur propre liste. |
 | **Passe** | Passe « Ne pas déranger », à leurs moments | Sur une couche : elle ne retient pas les personnes qui passent toujours ; les moments de leur propre liste le font. |
 
-**Le temps libre** a son propre choix, sous Moments : **Rien du tout**, pas même vos expéditeurs sûrs. Les personnes qui passent toujours, les prises et les codes que vous avez demandés viennent quand même.
+**Le temps libre** a son propre choix, sous Moments : **Rien du tout**, pas même vos expéditeurs sûrs. Les personnes qui passent toujours, les prises et les codes que vous avez demandés viennent quand même. Il a son propre titre, **Pendant le temps libre**, puisqu’il ne met rien en route : il rend le temps libre plus strict.
 
 **Ce à quoi sert une chose** compte aussi, quoi que disent les cases : un courriel à une adresse pour le travail, un site ou une application pour le travail, les dates d’une tâche de travail attendent le moment du travail, sauf ceux des personnes qui passent toujours ([Les heures](hours.md)). Pendant une réunion, aucun avis de repas et aucun « Les heures de travail sont finies ». Après une pause, le Porche se repose jusqu’à vos prochaines heures de démarches.
 

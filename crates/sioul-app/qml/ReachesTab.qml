@@ -123,6 +123,12 @@ ColumnLayout {
             revealer.ask(part)
     }
 
+    // The status line's card, where the three states are pressed with their lengths.
+    function openCard() {
+        if (tab.host && tab.host.statusLine && tab.host.statusLine.reachButton)
+            tab.host.statusLine.reachButton.openCard()
+    }
+
     function readLists() {
         tab.lists = JSON.parse(tab.sioul.settings("senders") || "[]")
     }
@@ -247,13 +253,20 @@ ColumnLayout {
         objectName: "reachesNow"
         text: tab.shown.now.join(" ")
     }
+    // The three states on one row, the one on marked; the status line's card, where they are
+    // set, opens from Change… on a computer, from the row itself on a phone, which keeps its
+    // top to three rows before the tabs (the pictures' review, point 1).
     RowLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        Flow {
+        Row {
+            id: stateRow
+
             Layout.fillWidth: true
-            spacing: 6
+            spacing: tab.narrow ? 4 : 6
+            Accessible.role: tab.narrow ? Accessible.Button : Accessible.Grouping
+            Accessible.name: tab.narrow ? tab.sioul.text("attention-change") : ""
 
             Repeater {
                 model: [{ id: "usual", label: "reach-moment-usual" }, { id: "dnd", label: "reach-moment-dnd" }, { id: "reachable", label: "reach-moment-reachable" }]
@@ -265,13 +278,14 @@ ColumnLayout {
                     readonly property bool current: tab.shown.state === stateWord.modelData.id
 
                     objectName: "state-" + stateWord.modelData.id
-                    leftPadding: 10
-                    rightPadding: 10
+                    leftPadding: tab.narrow ? 7 : 10
+                    rightPadding: tab.narrow ? 7 : 10
                     topPadding: 5
                     bottomPadding: 5
                     // The one on said by a mark and to a screen reader, not by its colour alone (review W1).
                     text: (stateWord.current ? "✓ " : "") + tab.sioul.text(stateWord.modelData.label)
                     textFormat: Text.PlainText
+                    font.pixelSize: tab.narrow ? 13 : 14
                     font.weight: stateWord.current ? Font.DemiBold : Font.Normal
                     color: stateWord.current ? tab.theme.accentText : tab.theme.muted
                     Accessible.name: tab.sioul.text(stateWord.modelData.label) + (stateWord.current ? ", " + tab.sioul.text("reach-state-now") : "")
@@ -283,18 +297,22 @@ ColumnLayout {
                     }
                 }
             }
+            TapHandler {
+                enabled: tab.narrow
+                onTapped: tab.openCard()
+            }
         }
         // The states are pressed where they always are: the status line's button and its card.
         Button {
             objectName: "reachesStates"
+            visible: !tab.narrow
             text: tab.sioul.text("attention-change")
-            onClicked: {
-                if (tab.host && tab.host.statusLine && tab.host.statusLine.reachButton)
-                    tab.host.statusLine.reachButton.openCard()
-            }
+            onClicked: tab.openCard()
         }
     }
+    // Start from: the presets side by side on a computer; one button on a phone, opening them.
     Flow {
+        visible: !tab.narrow
         Layout.fillWidth: true
         spacing: 6
 
@@ -305,7 +323,7 @@ ColumnLayout {
             color: tab.theme.muted
         }
         Repeater {
-            model: tab.shown.presets
+            model: tab.narrow ? [] : tab.shown.presets
 
             delegate: Button {
                 id: presetButton
@@ -326,10 +344,53 @@ ColumnLayout {
             }
         }
     }
+    Button {
+        id: startFrom
+
+        objectName: "reachesStartFrom"
+        visible: tab.narrow
+        Layout.maximumWidth: tab.width
+        readonly property var current: tab.shown.presets.find(p => p.current === true) || null
+        text: tab.theme.plain(tab.sioul.text("reach-start") + " " + (startFrom.current ? startFrom.current.label : tab.sioul.text("reach-own")) + " ▾")
+        onClicked: presetMenu.popup(startFrom, 0, startFrom.height)
+    }
+    SioulMenu {
+        id: presetMenu
+
+        Instantiator {
+            model: tab.narrow ? tab.shown.presets : []
+
+            delegate: MenuItem {
+                id: presetLine
+
+                required property var modelData
+
+                objectName: "presetLine-" + presetLine.modelData.id
+                text: tab.theme.plain(presetLine.modelData.label)
+                checkable: true
+                checked: presetLine.modelData.current === true
+                onTriggered: tab.preset(presetLine.modelData.id, false)
+            }
+            onObjectAdded: (index, object) => presetMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => presetMenu.removeItem(object)
+        }
+        MenuItem {
+            enabled: false
+            contentItem: Label {
+                width: Math.min(380, Math.max(160, tab.width - 60))
+                text: tab.shown.presets_note || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: tab.theme.muted
+            }
+            Accessible.name: tab.shown.presets_note || ""
+        }
+    }
     // A preset leaves the calls as they are: each phone's (review R3).
     Note {
         objectName: "reachesPresetsNote"
-        visible: text !== ""
+        visible: text !== "" && !tab.narrow
         text: tab.shown.presets_note || ""
     }
     RowLayout {
@@ -901,7 +962,28 @@ ColumnLayout {
             text: tab.sioul.text("attention-dnd-turns-on")
         }
         Repeater {
-            model: ["dnd.button", "dnd.pauses", "dnd.sleep", "dnd.focus", "free_time.nothing"].map(k => tab.setting(k)).filter(s => s !== null)
+            model: ["dnd.button", "dnd.pauses", "dnd.sleep", "dnd.focus"].map(k => tab.setting(k)).filter(s => s !== null)
+
+            delegate: SettingRow {
+                required property var modelData
+
+                Layout.fillWidth: true
+                setting: modelData
+                sioul: tab.sioul
+                theme: tab.theme
+                onSave: (key, value, shown) => tab.save(key, value, shown)
+            }
+        }
+        // Free time made stricter: it turns nothing on, so it stands under its own heading
+        // (the pictures' review, point 5).
+        Strong {
+            objectName: "reachesFreeTime"
+            Layout.topMargin: 8
+            visible: tab.setting("free_time.nothing") !== null
+            text: tab.sioul.text("reach-free-time")
+        }
+        Repeater {
+            model: ["free_time.nothing"].map(k => tab.setting(k)).filter(s => s !== null)
 
             delegate: SettingRow {
                 required property var modelData
@@ -1035,10 +1117,16 @@ ColumnLayout {
     }
 
     // ================================================================ What comes when
+    // As wide as its words, centred in the page's whole width (the pictures' review, point 2).
     Loader {
+        id: gridLoader
+
+        readonly property var grid: gridLoader.item as AttentionGrid
         active: tab.view === "table" && !tab.narrow
         visible: active
-        Layout.fillWidth: true
+        Layout.fillWidth: gridLoader.grid === null
+        Layout.preferredWidth: gridLoader.grid !== null ? Math.min(tab.width, gridLoader.grid.nameWidth + gridLoader.grid.widths.reduce((sum, w) => sum + w, 0) + 24) : tab.width
+        Layout.alignment: Qt.AlignHCenter
         Layout.bottomMargin: 18
 
         sourceComponent: Component {
@@ -1164,6 +1252,15 @@ ColumnLayout {
                 onClicked: cellChoices.ask(tab.openRowData, valueLine.modelData, valueLine)
             }
         }
+    }
+    // What each word of the grid says, in one line under it (the pictures' review, point 4).
+    Note {
+        objectName: "reachesGridKey"
+        visible: tab.view === "table"
+        Layout.maximumWidth: tab.narrow ? -1 : gridLoader.Layout.preferredWidth
+        Layout.alignment: Qt.AlignHCenter
+        Layout.bottomMargin: 18
+        text: tab.sioul.text("reach-grid-key")
     }
 
     // A circle's behaviours, for one channel (a computer's cell) or both (a

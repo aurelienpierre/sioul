@@ -128,13 +128,25 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: setup.theme.accent
     }
-    Label {
-        visible: setup.listShown
-        Layout.fillWidth: true
-        text: setup.sioul.text("dnd-setup-list-help")
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: setup.theme.muted
+    // What the list does, an item per sentence rather than one paragraph (the pictures' review, point 6).
+    Repeater {
+        model: setup.listShown ? setup.sioul.text("dnd-setup-list-help").split(/(?<=[.!?])\s+(?=\S)/) : []
+
+        delegate: Label {
+            required property string modelData
+
+            Layout.fillWidth: true
+            leftPadding: 14
+            text: modelData
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: setup.theme.muted
+
+            Label {
+                text: "•"
+                color: setup.theme.muted
+            }
+        }
     }
     Label {
         visible: setup.listShown && (setup.shown.problem !== "" || setup.shown.said !== "")

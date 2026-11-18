@@ -18,7 +18,7 @@ Sioul decides in one place when each thing reaches you: mail and other apps' mes
 On top, always:
 
 - **Now**, in a sentence: "Now: leisure, until 22:00. Mail from your safe senders comes at once."
-- **The three states**, As usual, Do not disturb and Reachable, the one now marked; **Change…** opens the card of the status line's button, where each is pressed for a length ([below](#the-button-and-its-card)).
+- **The three states**, As usual, Do not disturb and Reachable, the one now marked; **Change…** opens the card of the status line's button, where each is pressed for a length ([below](#the-button-and-its-card)). The one on carries a ✓. On a phone the row of states opens the card itself, and **Start from** is one button that opens the three presets, so that the top of the page keeps to three rows.
 - **Start from**: **As Sioul does now**, **Quieter** or **More reachable** ([Presets](#presets)). Once you change something, a line says so, "Yours: 3 changes from As Sioul does now.", with **Back to As Sioul does now**.
 
 Then two tabs:
@@ -75,7 +75,7 @@ Outside a line's times, your safe senders' mail waits on the Porch, shown; every
 
 - **As Sioul does now**: what this page describes.
 - **Quieter**: your safe senders' mail shown, not told, in leisure and meals; your contacts' and groups' messages held in leisure and meals; your safe senders' messages held in Free time; under do-not-disturb, every text held; reminders of dates, and sites in real time, wait in leisure and meals.
-- **More reachable**: your contacts' mail at once in leisure and meals; strangers' mail shown in leisure; other apps' automatons at once in work and admin.
+- **More reachable**: your contacts' mail at once in leisure and meals; everyone else's mail shown in leisure; other apps' automatons at once in work and admin.
 
 Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are." A line a preset sets cell by cell reads **Your own**. A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices, and the count of your changes counts only what this page shows.
 
@@ -86,7 +86,7 @@ Choosing one while you have changes of your own asks first: "Quieter replaces yo
   <figcaption>What comes when: every row at every time, a word in each cell.</figcaption>
 </figure>
 
-The whole table: down, each row (mail's and messages' circles, then Sioul's own kinds that act on this device); across, the seven times and the two layers, the ones now in bold. Each cell is a word; a press opens its choices in full words, the one it has in bold. A greyed one is fixed, for your safety, and says why. A dot marks what you changed from As Sioul does now. On a phone, a line per row with its word for now; a press opens its nine values.
+The whole table: down, each row (mail's and messages' circles, then Sioul's own kinds that act on this device); across, the seven times and the two layers, the ones now in bold. Each cell is a word; a press opens its choices in full words, the one it has in bold. A greyed one is fixed, for your safety, and says why. A dot marks what you changed from As Sioul does now. On a phone, a line per row with its word for now; a press opens its nine values. One line under the table says what each word means.
 
 ### The times {#the-times}
 
@@ -117,7 +117,7 @@ Two **layers** hold on top of the time, never instead of it; of the time and a l
 | **As their list** | As their list | Your Always through people get no more than their own list gives them. |
 | **Through** | Through do-not-disturb, at their times | On a layer: it does not hold your Always through people; their own list's times do. |
 
-**Free time** has its own choice, under Moments: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come.
+**Free time** has its own choice, under Moments: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come. It stands under its own heading, **In Free time**, since it turns nothing on: it makes Free time stricter.
 
 **What a thing is for** holds too, whatever the cells: mail to an address for work, a site or an app for work, a work task's dates wait for work time, but your Always through people's ([Hours](hours.md)). During a meeting, no meal's notice and no "Work hours are over". After a pause, the Porch rests until your next admin hours.
 
