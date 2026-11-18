@@ -6856,7 +6856,7 @@ reach-elsewhere-open-contacts = Contacts
 busy = Busy
 busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.
 busy-task = Busy while I work on it
-busy-task-help = While its timer runs, it counts in the availability you share and your rules for busy time apply.
+busy-task-help = Its time counts in the availability you share where it is known (a time block, a start time, the plan's time before its date), and while its timer runs your rules for busy time apply.
 busy-with-others = A meeting with others keeps its organizer's busy or free: Sioul never writes it.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = At once

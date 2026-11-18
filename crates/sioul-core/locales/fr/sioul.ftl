@@ -6917,7 +6917,7 @@ reach-elsewhere-open-contacts = Contacts
 busy = Indisponible
 busy-help = Compte dans la disponibilité que vous partagez, et tant qu’il dure vos règles pour les moments indisponibles s’appliquent.
 busy-task = Indisponible pendant que j’y travaille
-busy-task-help = Tant que son minuteur tourne, il compte dans la disponibilité que vous partagez et vos règles pour les moments indisponibles s’appliquent.
+busy-task-help = Son temps compte dans la disponibilité que vous partagez là où il est connu (un créneau, une heure de début, le temps que le plan lui donne avant sa date), et tant que son minuteur tourne vos règles pour les moments indisponibles s’appliquent.
 busy-with-others = Une réunion avec d’autres garde l’indisponibilité que son organisateur a dite : Sioul ne l’écrit jamais.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = Tout de suite
