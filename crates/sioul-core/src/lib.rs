@@ -334,6 +334,8 @@ pub mod timereport;
 pub mod today;
 pub mod trust;
 pub mod unsubscribe;
+// Your days off, and why: one answer for every reader (docs/areas.md).
+pub mod vacations;
 pub mod vdir;
 pub mod view;
 pub mod voicemail;

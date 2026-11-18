@@ -1159,7 +1159,8 @@ impl Hours {
     pub fn at(config: &Config, overrides: &crate::quiet::Overrides, now: &Zoned) -> Hours {
         let windows = config.week_hours();
         let blank = crate::quiet::Blocks::default();
-        let at = |when: &Zoned| crate::quiet::mode(&windows, &config.time_off, overrides, &blank, when);
+        let days_off = crate::vacations::DaysOff::of(config);
+        let at = |when: &Zoned| crate::quiet::mode(&windows, &days_off, overrides, &blank, when);
         let state = |mode: &crate::quiet::Mode| (mode.time != Time::Any, mode.time.works());
         let first = at(now);
         let (set, work) = state(&first);

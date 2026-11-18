@@ -179,8 +179,11 @@ pub struct Config {
     /// When offices are open, for tasks that need one; Monday to Friday 9:00–17:00 when unsaid.
     #[serde(rename = "office_hours", default)]
     pub office_hours: Vec<AdminWindow>,
-    /// Days off: holidays, sick leave; quiet from the first day to the last.
-    #[serde(rename = "time_off", default)]
+    /// Your vacations: holidays, sick leave; quiet from the first day to the
+    /// last. Read through `vacations::DaysOff` alone, which adds the public
+    /// holidays of a subscribed calendar. An entry that does not read is
+    /// passed over (`time_off_entries`), the rest still read.
+    #[serde(rename = "time_off", default, deserialize_with = "time_off_entries")]
     pub time_off: Vec<TimeOff>,
     #[serde(default)]
     pub quiet: QuietSettings,
@@ -294,7 +297,7 @@ pub struct RowSettings {
     pub hidden: Option<Vec<String>>,
 }
 
-/// Days off, from one day to another, both included.
+/// A vacation you typed, from one day to another, both included.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TimeOff {
     /// Its id, given when the sharing takes format 2 (one id per day off); empty before.
@@ -306,6 +309,20 @@ pub struct TimeOff {
     pub until: jiff::civil::Date,
     #[serde(default)]
     pub label: String,
+    /// "vacation", "sick" or "other" (18 November 2026); unsaid, or a word
+    /// this Sioul does not know, a vacation. An older Sioul passes over it.
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// The `[[time_off]]` entries that read: one without its two days, or whose
+/// day is no date, is passed over, never the whole configuration (before 18
+/// November 2026 it stopped the configuration from loading). A list that is
+/// not a list reads as none.
+fn time_off_entries<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<TimeOff>, D::Error> {
+    let value = toml::Value::deserialize(d)?;
+    let toml::Value::Array(entries) = value else { return Ok(Vec::new()) };
+    Ok(entries.into_iter().filter_map(|entry| entry.try_into::<TimeOff>().ok()).collect())
 }
 
 /// What quiet time keeps: the categories of tasks that are yours (family,
@@ -2191,6 +2208,9 @@ pub struct TimeOffValue {
     pub until: String,
     #[serde(default)]
     pub label: String,
+    /// "vacation", "sick", "other" (`TimeOff::kind`); "" a vacation.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
 }
 
 /// A day's hours, as the settings edit them.
@@ -2248,12 +2268,30 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
             // id of its own once the list carries ids (format 2: one id per day off).
             let mut there: Vec<Table> = doc.get(key).and_then(Item::as_array_of_tables).map(|list| list.iter().cloned().collect()).unwrap_or_default();
             let with_ids = there.iter().any(|t| t.get("id").and_then(Item::as_str).is_some_and(|id| !id.is_empty()));
-            let same = |t: &Table, from: &toml_edit::Datetime, until: &toml_edit::Datetime, label: &str| {
-                t.get("from").and_then(Item::as_datetime) == Some(from) && t.get("until").and_then(Item::as_datetime) == Some(until) && t.get("label").and_then(Item::as_str).unwrap_or_default() == label
+            // A vacation's kind, written only when it is not a vacation (unsaid reads as one).
+            let kind_of = |kind: &str| -> Option<&'static str> {
+                match kind.trim() {
+                    "sick" => Some("sick"),
+                    "other" => Some("other"),
+                    _ => None,
+                }
             };
+            let same = |t: &Table, from: &toml_edit::Datetime, until: &toml_edit::Datetime, label: &str, kind: Option<&str>| {
+                t.get("from").and_then(Item::as_datetime) == Some(from) && t.get("until").and_then(Item::as_datetime) == Some(until) && t.get("label").and_then(Item::as_str).unwrap_or_default() == label && t.get("kind").and_then(Item::as_str).and_then(kind_of) == kind
+            };
+            // An entry that does not read (no day, or no date) is shown nowhere: kept as it is, at the end.
+            let reads = |t: &Table| toml::from_str::<TimeOff>(&t.to_string()).is_ok();
+            let unread: Vec<Table> = there.iter().filter(|t| !reads(t)).cloned().collect();
+            there.retain(reads);
             let mut tables = ArrayOfTables::new();
             for off in days {
-                let (from, until, label) = (date(&off.from)?, date(&off.until)?, off.label.trim());
+                let (from, until, label, kind) = (date(&off.from)?, date(&off.until)?, off.label.trim(), kind_of(&off.kind));
+                let set_kind = |table: &mut Table| match kind {
+                    Some(kind) => table["kind"] = value(kind),
+                    None => {
+                        table.remove("kind");
+                    }
+                };
                 // Named by its id: changed in its own table, which keeps its id and the rest.
                 if let Some(at) = there.iter().position(|t| !off.id.is_empty() && t.get("id").and_then(Item::as_str) == Some(off.id.as_str())) {
                     let mut table = there.remove(at);
@@ -2264,10 +2302,11 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                     } else {
                         table["label"] = value(label);
                     }
+                    set_kind(&mut table);
                     tables.push(table);
                     continue;
                 }
-                if let Some(at) = there.iter().position(|t| same(t, &from, &until, label)) {
+                if let Some(at) = there.iter().position(|t| same(t, &from, &until, label, kind)) {
                     tables.push(there.remove(at));
                     continue;
                 }
@@ -2280,9 +2319,13 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                 if !label.is_empty() {
                     table["label"] = value(label);
                 }
+                set_kind(&mut table);
                 tables.push(table);
             }
-            if days.is_empty() {
+            for table in unread {
+                tables.push(table);
+            }
+            if tables.is_empty() {
                 doc.remove(key);
             } else {
                 doc[key] = Item::ArrayOfTables(tables);
@@ -2959,7 +3002,7 @@ mod tests {
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
         // The last day off, the last hours taken away: the window's JSON `[]` reads as numbers.
         let empty: SettingValue = serde_json::from_str("[]").unwrap();
-        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new() }])).unwrap();
+        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new(), kind: String::new() }])).unwrap();
         set_value(&path, "time_off", &empty).unwrap();
         set_value(&path, "window.admin", &empty).unwrap();
         let config = Config::load(&path).unwrap();

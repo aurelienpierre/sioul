@@ -22,7 +22,7 @@
 //! happening. Codes from verified senders still come at once: they are asked for.
 
 use crate::areas::{Area, Here, Lines, TaskAreas, Time, Week};
-use crate::config::TimeOff;
+use crate::vacations::DaysOff;
 use crate::window::{self, AdminWindow};
 use jiff::civil::Date;
 use jiff::{Span, Zoned};
@@ -289,17 +289,12 @@ impl Overrides {
     }
 }
 
-/// The time off that covers `date`, if any.
-pub fn time_off_on(time_off: &[TimeOff], date: Date) -> Option<&TimeOff> {
-    time_off.iter().find(|t| t.from <= date && date <= t.until)
-}
-
-/// When working hours next open after `now`, past any time off; None without hours.
-pub fn next_work(windows: &[AdminWindow], time_off: &[TimeOff], now: &Zoned) -> Option<Zoned> {
+/// When working hours next open after `now`, past any day off; None without hours.
+pub fn next_work(windows: &[AdminWindow], days_off: &DaysOff, now: &Zoned) -> Option<Zoned> {
     let mut from = now.clone();
     for _ in 0..60 {
         let opening = window::next_opening(windows, &from)?;
-        match time_off_on(time_off, opening.date()) {
+        match days_off.on(opening.date()) {
             None => return Some(opening),
             // Within time off: from the day after it ends.
             Some(off) => {
@@ -313,26 +308,26 @@ pub fn next_work(windows: &[AdminWindow], time_off: &[TimeOff], now: &Zoned) -> 
 
 /// When work comes back once you are done for today: the next working hours
 /// after today, past any time off; without hours, tomorrow at `morning`.
-pub fn after_today(windows: &[AdminWindow], time_off: &[TimeOff], now: &Zoned, morning: i8) -> Zoned {
+pub fn after_today(windows: &[AdminWindow], days_off: &DaysOff, now: &Zoned, morning: i8) -> Zoned {
     let Some(tomorrow) = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()) else {
         return now.clone();
     };
     // `morning` comes from the settings: an hour that is none is midnight.
     let at_morning = jiff::civil::Time::new(morning, 0, 0, 0).ok().and_then(|t| tomorrow.date().to_datetime(t).to_zoned(now.time_zone().clone()).ok());
-    next_work(windows, time_off, &tomorrow).unwrap_or_else(|| at_morning.unwrap_or(tomorrow))
+    next_work(windows, days_off, &tomorrow).unwrap_or_else(|| at_morning.unwrap_or(tomorrow))
 }
 
 /// When "Work now" ends: once the next working day is over, today's while
 /// its working hours are not; past any time off. Without working hours, at
 /// midnight. `work` are the working hours only.
-pub fn end_of_next_workday(work: &[AdminWindow], time_off: &[TimeOff], now: &Zoned) -> Zoned {
+pub fn end_of_next_workday(work: &[AdminWindow], days_off: &DaysOff, now: &Zoned) -> Zoned {
     let zone = now.time_zone();
-    if time_off_on(time_off, now.date()).is_none()
+    if days_off.on(now.date()).is_none()
         && let Some((_, closing)) = window::hours_on(work, now.date(), zone).filter(|(_, closing)| closing.timestamp() > now.timestamp())
     {
         return closing;
     }
-    if let Some(opening) = next_work(work, time_off, now)
+    if let Some(opening) = next_work(work, days_off, now)
         && let Some((_, closing)) = window::hours_on(work, opening.date(), zone)
     {
         return closing;
@@ -348,7 +343,7 @@ pub fn end_of_next_workday(work: &[AdminWindow], time_off: &[TimeOff], now: &Zon
 /// the card), or one of `ends` (what the caller knows more of). At most
 /// `most` frames.
 #[allow(clippy::too_many_arguments)]
-pub fn frames(hours: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, blocks: &Blocks, opens: &[AdminWindow], now: &Zoned, horizon: &Zoned, ends: &[Zoned], most: usize) -> Vec<(Zoned, Zoned, Mode)> {
+pub fn frames(hours: &[AdminWindow], days_off: &DaysOff, overrides: &Overrides, blocks: &Blocks, opens: &[AdminWindow], now: &Zoned, horizon: &Zoned, ends: &[Zoned], most: usize) -> Vec<(Zoned, Zoned, Mode)> {
     let zone = now.time_zone().clone();
     let instant = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
     let kept: Vec<Zoned> = blocks.kept.iter().flat_map(|k| [k.start, k.at, k.end]).filter_map(instant).collect();
@@ -356,7 +351,7 @@ pub fn frames(hours: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
     let mut out = Vec::new();
     let mut at = now.clone();
     while at.timestamp() < horizon.timestamp() && out.len() < most {
-        let moment = mode(hours, time_off, overrides, blocks, &at);
+        let moment = mode(hours, days_off, overrides, blocks, &at);
         let mut stops = vec![horizon.clone()];
         stops.extend(midnight_after(&at));
         stops.extend(moment.until.clone());
@@ -450,7 +445,7 @@ struct ByHours {
 
 /// The time by the hours, the overrides and time off: the hours of work and
 /// admin, leisure outside them. Meals and sleep come after (`mode`).
-fn by_hours(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, now: &Zoned) -> ByHours {
+fn by_hours(windows: &[AdminWindow], days_off: &DaysOff, overrides: &Overrides, now: &Zoned) -> ByHours {
     let of = |kind: &str| -> Vec<AdminWindow> { windows.iter().filter(|w| w.kind() == kind).cloned().collect() };
     let (work, admin) = (of("work"), of("admin"));
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(now.time_zone().clone()));
@@ -465,11 +460,11 @@ fn by_hours(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
     if let Some(until) = overrides.work_now.filter(|w| *w > stamp) {
         return made(Time::Work, Reason::WorkNow, at(until));
     }
-    if windows.is_empty() && time_off.is_empty() {
+    if windows.is_empty() && days_off.is_empty() {
         return made(Time::Any, Reason::NoHours, None);
     }
-    if let Some(off) = time_off_on(time_off, now.date()) {
-        return ByHours { time: Time::Leisure, reason: Reason::TimeOff, until: next_work(windows, time_off, now), label: off.label.clone() };
+    if let Some(off) = days_off.on(now.date()) {
+        return ByHours { time: Time::Leisure, reason: Reason::TimeOff, until: next_work(windows, days_off, now), label: off.label.clone() };
     }
     if windows.is_empty() {
         return made(Time::Any, Reason::NoHours, None);
@@ -489,7 +484,7 @@ fn by_hours(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
             }
             let reason = if window::open_day(&work, now.date()) { Reason::Evening } else { Reason::DayOff };
             // Until the next hours of either kind.
-            made(Time::Leisure, reason, next_work(windows, time_off, now))
+            made(Time::Leisure, reason, next_work(windows, days_off, now))
         }
         // Work, or work and admin at once.
         open => made(open, Reason::Working, closing),
@@ -511,12 +506,12 @@ fn earliest(a: Option<Zoned>, b: Option<Zoned>) -> Option<Zoned> {
 /// leisure. No working or admin hours at all: everything comes (`Time::Any`),
 /// meals and sleep aside. `windows` are the week's hours of work and admin
 /// (`Config::week_hours`): an older Sioul's free time is left aside.
-pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, blocks: &Blocks, now: &Zoned) -> Mode {
+pub fn mode(windows: &[AdminWindow], days_off: &DaysOff, overrides: &Overrides, blocks: &Blocks, now: &Zoned) -> Mode {
     let windows: Vec<AdminWindow> = windows.iter().filter(|w| w.kind() != "leisure").cloned().collect();
     let week = Week { work_hours: windows.iter().any(|w| w.kind() == "work"), admin_hours: windows.iter().any(|w| w.kind() == "admin"), meals: blocks.meals, sleep: blocks.sleep };
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(now.time_zone().clone()));
     let stamp = now.timestamp().as_second();
-    let hours = by_hours(&windows, time_off, overrides, now);
+    let hours = by_hours(&windows, days_off, overrides, now);
     // The pause holds everything Sioul shows, whatever the time (docs/pauses.md).
     if overrides.paused_from().is_some() {
         return Mode { quiet: true, time: Time::Sleep, week, reason: Reason::Paused, until: None, back: hours.until.clone(), label: String::new(), here: Here::default() };
@@ -616,7 +611,8 @@ pub fn back_for(quiet: &QuietTasks, task: &crate::tasks::Task, frames: &[(Zoned,
 
 impl Situation {
     pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, projects: &[crate::projects::Project]) -> Situation {
-        let mode = mode(&config.week_hours(), &config.time_off, overrides, blocks, now);
+        let days_off = DaysOff::of(config);
+        let mode = mode(&config.week_hours(), &days_off, overrides, blocks, now);
         let office = config.office_hours();
         let open = window::current(&office, now).is_some();
         let next = if open { String::new() } else { window::next_opening(&office, now).map(|z| tr.when(&z)).unwrap_or_default() };
@@ -629,15 +625,7 @@ impl Situation {
         // Time off within the coming year, and today once done for it.
         let today = now.date();
         let horizon = today.checked_add(Span::new().days(400)).unwrap_or(today);
-        let mut closed = std::collections::BTreeSet::new();
-        for off in &config.time_off {
-            let mut day = off.from.max(today);
-            while day <= off.until && day <= horizon {
-                closed.insert(day);
-                let Ok(next) = day.tomorrow() else { break };
-                day = next;
-            }
-        }
+        let mut closed = days_off.days(today, horizon);
         if mode.reason == Reason::DoneForTheDay {
             closed.insert(today);
         }
@@ -718,33 +706,33 @@ mod tests {
         let none = Overrides::default();
         // 2 October 2026 is a Friday.
         let friday_noon = at("2026-10-02T12:00[Europe/Paris]");
-        let m = mode(&week(), &[], &none, &self::none(), &friday_noon);
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &none, &self::none(), &friday_noon);
         assert_eq!((m.quiet, m.reason.clone(), m.time), (false, Reason::Working, Time::Work));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T17:00:00");
         let friday_evening = at("2026-10-02T19:00[Europe/Paris]");
-        let m = mode(&week(), &[], &none, &self::none(), &friday_evening);
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &none, &self::none(), &friday_evening);
         assert_eq!((m.quiet, m.reason.clone(), m.time), (true, Reason::Evening, Time::Leisure), "the evening is leisure");
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-05T09:00:00", "until Monday morning");
         let saturday = at("2026-10-03T11:00[Europe/Paris]");
-        assert_eq!(mode(&week(), &[], &none, &self::none(), &saturday).reason, Reason::DayOff);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &none, &self::none(), &saturday).reason, Reason::DayOff);
         // Holidays the next week: leisure until the Monday after.
-        let off = vec![TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
-        let m = mode(&week(), &off, &none, &self::none(), &saturday);
+        let off = vec![crate::config::TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into(), kind: String::new() }];
+        let m = mode(&week(), &crate::vacations::DaysOff::typed(&off), &none, &self::none(), &saturday);
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-12T09:00:00");
-        let m = mode(&week(), &off, &none, &self::none(), &at("2026-10-06T10:00[Europe/Paris]"));
+        let m = mode(&week(), &crate::vacations::DaysOff::typed(&off), &none, &self::none(), &at("2026-10-06T10:00[Europe/Paris]"));
         assert_eq!((m.quiet, m.reason, m.label.as_str(), m.time), (true, Reason::TimeOff, "Holidays", Time::Leisure));
         // Done for the day at noon: leisure; working late in the evening: work.
         let rest = Overrides { rest_until: Some(at("2026-10-05T09:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() };
-        let m = mode(&week(), &[], &rest, &self::none(), &friday_noon);
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &rest, &self::none(), &friday_noon);
         assert_eq!((m.reason, m.time), (Reason::DoneForTheDay, Time::Leisure));
         let late = Overrides { work_until: Some(at("2026-10-02T20:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() };
-        let m = mode(&week(), &[], &late, &self::none(), &friday_evening);
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &late, &self::none(), &friday_evening);
         assert_eq!((m.quiet, m.reason, m.time), (false, Reason::WorkingLate, Time::Work));
-        assert_eq!(mode(&[], &[], &none, &self::none(), &saturday).reason, Reason::NoHours);
+        assert_eq!(mode(&[], &crate::vacations::DaysOff::default(), &none, &self::none(), &saturday).reason, Reason::NoHours);
         // Stopping on Friday at noon: work comes back on Monday; without hours, tomorrow morning.
-        assert_eq!(after_today(&week(), &[], &friday_noon, 7).datetime().to_string(), "2026-10-05T09:00:00");
-        assert_eq!(after_today(&[], &[], &friday_noon, 7).datetime().to_string(), "2026-10-03T07:00:00");
-        assert_eq!(after_today(&[], &[], &friday_noon, 30).datetime().to_string(), "2026-10-03T00:00:00", "a morning hour that is none");
+        assert_eq!(after_today(&week(), &crate::vacations::DaysOff::default(), &friday_noon, 7).datetime().to_string(), "2026-10-05T09:00:00");
+        assert_eq!(after_today(&[], &crate::vacations::DaysOff::default(), &friday_noon, 7).datetime().to_string(), "2026-10-03T07:00:00");
+        assert_eq!(after_today(&[], &crate::vacations::DaysOff::default(), &friday_noon, 30).datetime().to_string(), "2026-10-03T00:00:00", "a morning hour that is none");
         let tr = crate::i18n::Translator::new("en");
         assert_eq!(until_text(&tr, &at("2026-10-02T17:00[Europe/Paris]"), &friday_noon), "17:00");
         assert_eq!(until_text(&tr, &at("2026-10-03T09:00[Europe/Paris]"), &friday_noon), "tomorrow at 09:00");
@@ -755,22 +743,22 @@ mod tests {
     fn work_now_until_the_next_working_day_is_over() {
         // Friday 2 October 2026 at 19:00, Saturday at 11:00, Friday at noon.
         let (friday_evening, saturday, friday_noon) = (at("2026-10-02T19:00[Europe/Paris]"), at("2026-10-03T11:00[Europe/Paris]"), at("2026-10-02T12:00[Europe/Paris]"));
-        assert_eq!(end_of_next_workday(&week(), &[], &saturday).datetime().to_string(), "2026-10-05T17:00:00", "Monday's end");
-        assert_eq!(end_of_next_workday(&week(), &[], &friday_evening).datetime().to_string(), "2026-10-05T17:00:00");
-        assert_eq!(end_of_next_workday(&week(), &[], &friday_noon).datetime().to_string(), "2026-10-02T17:00:00", "today's, not over yet");
+        assert_eq!(end_of_next_workday(&week(), &crate::vacations::DaysOff::default(), &saturday).datetime().to_string(), "2026-10-05T17:00:00", "Monday's end");
+        assert_eq!(end_of_next_workday(&week(), &crate::vacations::DaysOff::default(), &friday_evening).datetime().to_string(), "2026-10-05T17:00:00");
+        assert_eq!(end_of_next_workday(&week(), &crate::vacations::DaysOff::default(), &friday_noon).datetime().to_string(), "2026-10-02T17:00:00", "today's, not over yet");
         // Two spans a day: the day is over at the last one's end.
         let mut split = week();
         split.push(AdminWindow { day: "monday".into(), start: "19:00".into(), end: Some("20:00".into()), minutes: 0, kind: None });
-        assert_eq!(end_of_next_workday(&split, &[], &saturday).datetime().to_string(), "2026-10-05T20:00:00");
+        assert_eq!(end_of_next_workday(&split, &crate::vacations::DaysOff::default(), &saturday).datetime().to_string(), "2026-10-05T20:00:00");
         // Holidays the next week: the Monday after; no working hours: midnight.
-        let off = vec![TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
-        assert_eq!(end_of_next_workday(&week(), &off, &saturday).datetime().to_string(), "2026-10-12T17:00:00");
-        assert_eq!(end_of_next_workday(&[], &[], &saturday).datetime().to_string(), "2026-10-04T00:00:00");
+        let off = vec![crate::config::TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into(), kind: String::new() }];
+        assert_eq!(end_of_next_workday(&week(), &crate::vacations::DaysOff::typed(&off), &saturday).datetime().to_string(), "2026-10-12T17:00:00");
+        assert_eq!(end_of_next_workday(&[], &crate::vacations::DaysOff::default(), &saturday).datetime().to_string(), "2026-10-04T00:00:00");
         // Ticked on Saturday: work shown, as work, until then.
-        let now = Overrides { work_now: Some(end_of_next_workday(&week(), &[], &saturday).timestamp().as_second()), ..Overrides::default() };
-        let m = mode(&week(), &[], &now, &none(), &saturday);
+        let now = Overrides { work_now: Some(end_of_next_workday(&week(), &crate::vacations::DaysOff::default(), &saturday).timestamp().as_second()), ..Overrides::default() };
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &now, &none(), &saturday);
         assert_eq!((m.time, m.reason, m.quiet), (Time::Work, Reason::WorkNow, false));
-        assert_eq!(mode(&week(), &[], &now, &none(), &at("2026-10-05T17:30[Europe/Paris]")).reason, Reason::Evening, "over with Monday");
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &now, &none(), &at("2026-10-05T17:30[Europe/Paris]")).reason, Reason::Evening, "over with Monday");
     }
 
     #[test]
@@ -779,12 +767,12 @@ mod tests {
         let mut hours = week();
         hours.push(AdminWindow { day: "friday".into(), start: "16:00".into(), end: Some("18:00".into()), minutes: 0, kind: Some("admin".into()) });
         // Friday 2 October at 16:30: both are open; until 17:00, when work's close.
-        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T16:30[Europe/Paris]"));
+        let m = mode(&hours, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T16:30[Europe/Paris]"));
         assert_eq!((m.time, m.quiet), (Time::Several(Area::MIXED), false));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T17:00:00");
         assert!(in_view(Area::ADMIN, m.time, m.week) && in_view(Area::WORK, m.time, m.week) && !in_view(Area::LEISURE, m.time, m.week));
         // At 17:30, admin alone.
-        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T17:30[Europe/Paris]"));
+        let m = mode(&hours, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T17:30[Europe/Paris]"));
         assert_eq!((m.time, m.reason, m.quiet), (Time::Admin, Reason::AdminTime, true));
     }
 
@@ -799,13 +787,13 @@ mod tests {
         assert_eq!(config.week_hours().iter().map(|w| w.kind()).collect::<Vec<_>>(), ["work", "admin"]);
         let none = Overrides::default();
         let saturday = at("2026-10-03T11:00[Europe/Paris]");
-        let m = mode(&config.week_hours(), &[], &none, &self::none(), &saturday);
+        let m = mode(&config.week_hours(), &crate::vacations::DaysOff::default(), &none, &self::none(), &saturday);
         assert_eq!((m.time, m.reason), (Time::Leisure, Reason::DayOff));
         // Given all the same, they change nothing.
-        let m = mode(&config.windows, &[], &none, &self::none(), &saturday);
+        let m = mode(&config.windows, &crate::vacations::DaysOff::default(), &none, &self::none(), &saturday);
         assert_eq!((m.time, m.reason, m.week.work_hours, m.week.admin_hours), (Time::Leisure, Reason::DayOff, true, true));
         // Friday at 20:00, after admin's hour: leisure until Monday... none on Monday here: the next Friday.
-        let m = mode(&config.windows, &[], &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
+        let m = mode(&config.windows, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
         assert_eq!((m.time, m.reason.clone()), (Time::Leisure, Reason::Evening));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-09T09:00:00", "never Saturday's old free time");
     }
@@ -820,7 +808,7 @@ mod tests {
         let tr = crate::i18n::Translator::new("en");
         for (time, id, end) in [("12:30", "mode-meal", "13:00"), ("14:10", "mode-nap", "14:35")] {
             let now = at(&format!("2026-10-02T{time}[Europe/Paris]"));
-            let m = mode(&week(), &[], &Overrides::default(), &Blocks::of(&needs, &Days::default(), &[], &now), &now);
+            let m = mode(&week(), &crate::vacations::DaysOff::default(), &Overrides::default(), &Blocks::of(&needs, &Days::default(), &[], &now), &now);
             assert!(matches!(m.reason, Reason::Meal | Reason::Nap) && m.label.is_empty(), "{m:?}");
             let mut args = crate::i18n::args();
             args.set("until", until_text(&tr, m.until.as_ref().unwrap(), &now));
@@ -836,7 +824,7 @@ mod tests {
         let blocks = |now: &Zoned| Blocks::of(&health(), &Days::default(), &[], now);
         let mode_at = |time: &str, overrides: &Overrides| {
             let now = if time.starts_with("+") { at(&format!("2026-10-03T{}[Europe/Paris]", &time[1..])) } else { friday(time) };
-            mode(&week(), &[], overrides, &blocks(&now), &now)
+            mode(&week(), &crate::vacations::DaysOff::default(), overrides, &blocks(&now), &now)
         };
         // Work, until lunch is got ready.
         let m = mode_at("10:00", &none);
@@ -870,25 +858,25 @@ mod tests {
         assert_eq!(mode_at("11:00", &done).reason, Reason::DoneForTheDay);
         // No working or admin hours at all: everything, but meals and sleep keep their time.
         let now = friday("12:30");
-        assert_eq!(mode(&[], &[], &none, &blocks(&now), &now).time, Time::Meals);
+        assert_eq!(mode(&[], &crate::vacations::DaysOff::default(), &none, &blocks(&now), &now).time, Time::Meals);
         let now = friday("10:00");
-        let m = mode(&[], &[], &none, &blocks(&now), &now);
+        let m = mode(&[], &crate::vacations::DaysOff::default(), &none, &blocks(&now), &now);
         assert_eq!((m.time, m.quiet), (Time::Any, false));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T12:10:00");
         // Lunch off today: work goes on; lunch quiet today (no notice): still a meal.
         let mut days = Days::default();
         days.change(now.date(), "meal:1", |b| b.off = true);
         let noon = friday("12:30");
-        assert_eq!(mode(&week(), &[], &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Work);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Work);
         let mut days = Days::default();
         days.change(now.date(), "meal:1", |b| b.quiet = true);
-        assert_eq!(mode(&week(), &[], &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Meals);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Meals);
         // Without a night, nights are leisure: nothing keeps notifications away.
         let no_night = Needs { sleep_on: false, ..health() };
         let late = friday("23:30");
         let blocks = Blocks::of(&no_night, &Days::default(), &[], &late);
         assert!(!blocks.night && blocks.sleep, "naps still");
-        assert_eq!(mode(&week(), &[], &none, &blocks, &late).time, Time::Leisure);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &none, &blocks, &late).time, Time::Leisure);
     }
 
     #[test]
@@ -931,9 +919,9 @@ mod tests {
         // The time on a device: Friday evening on the work computer, leisure waits elsewhere; at noon, admin does
         // (it comes in working hours while it has none of its own); with nothing said, nothing does.
         let lines = Lines::of(computer, &[phone]);
-        let evening = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"));
+        let evening = mode(&self::week(), &crate::vacations::DaysOff::default(), &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"));
         assert_eq!((evening.elsewhere(), evening.clone().on(&lines).elsewhere()), (Area::default(), Area::LEISURE));
-        let noon = mode(&self::week(), &[], &Overrides::default(), &none(), &self::at("2026-10-02T12:00[Europe/Paris]")).on(&lines);
+        let noon = mode(&self::week(), &crate::vacations::DaysOff::default(), &Overrides::default(), &none(), &self::at("2026-10-02T12:00[Europe/Paris]")).on(&lines);
         assert_eq!(noon.elsewhere(), Area::ADMIN);
         assert!(noon.brings(Area::WORK) && !noon.brings(Area::ADMIN) && noon.keeps_back(Area::ADMIN) && !noon.keeps_back(Area::LEISURE));
         // The situation of the task pages on this device.
@@ -979,16 +967,16 @@ mod tests {
         let none = Overrides::default();
         let mut hours = week();
         hours.push(AdminWindow { day: "friday".into(), start: "18:00".into(), end: Some("19:00".into()), minutes: 0, kind: Some("admin".into()) });
-        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T18:30[Europe/Paris]"));
+        let m = mode(&hours, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T18:30[Europe/Paris]"));
         assert_eq!((m.time, m.reason.clone(), m.quiet), (Time::Admin, Reason::AdminTime, true));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T19:00:00");
         // After every hours set: leisure, until the next hours of either kind.
-        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
+        let m = mode(&hours, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
         assert_eq!((m.time, m.reason.clone()), (Time::Leisure, Reason::Evening));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-05T09:00:00");
-        assert_eq!(mode(&hours, &[], &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Work);
+        assert_eq!(mode(&hours, &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Work);
         assert!(m.week.work_hours && m.week.admin_hours && !m.week.meals && !m.week.sleep);
-        assert_eq!(mode(&[], &[], &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Any);
+        assert_eq!(mode(&[], &crate::vacations::DaysOff::default(), &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Any);
     }
 
     #[test]
