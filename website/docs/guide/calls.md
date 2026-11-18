@@ -11,7 +11,7 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 1. **Settings ▸ Devices**, this phone's card (on the phone): its section **The call screening on this phone** says what Sioul does with calls, what it never does, and what always rings.
 2. **Let Sioul screen calls**: in **What Android must allow** on the same card, the line **Caller ID & spam app**; Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, **Android's default apps**, then "None".
 3. **Allow reading contacts**, the line **Contacts** there, if Android has not been asked yet: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
-4. **Who may call you, and when**: the card's section **Calls**, which you can set from any of your devices ([Each phone its own calls](#calls-per-phone)). Until you choose there, a phone keeps What reaches you's Calls rows and the call screening below.
+4. **Who may call you, and when**: the card's section **Calls**, which you can set from any of your devices ([Each phone its own calls](#calls-per-phone)). Until you change it, the table shows what the phone does today, the same on every phone.
 5. **The people who must always get through** (a carer, your doctor's office): put them on your Always through list, in What reaches you ▸ Who is in which circle, or from their card, **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). Their calls ring at any time, sleep and pauses included, unless you blocked them.
 6. **Where declined calls go**: **Check \*#67#** and **Check \*#61#** open the phone app with the code typed in; you press call. Most operators send declined calls to voicemail.
 
@@ -37,7 +37,7 @@ A work phone and a phone of your own need not screen alike. In **Settings ▸ De
 - **One small table**: who rings in your work hours, the rest of the day, the night, and while you are busy (an event or a task marked busy). Each cell is **Rings** or **Voicemail**. **Give a group its row…** adds a group of your contacts (School, Clients…).
 - **Three switches**: commercial and automated callers never ring; a second call within 15 minutes rings; numbers you called in the last 14 days ring as your contacts do.
 
-Until you choose here, a phone screens as before, with the settings of What reaches you. In a pause and under do-not-disturb, only your Always through people ring; while you are Reachable, everyone you know rings. Whatever the table says, emergency numbers ring, and every call for a day after you call one.
+Until you change it, the table shows what the phone does today, as every phone does: where a moment of the day differs from another (your contacts ringing in leisure but not in Free time, say), the cell says **Varies**, and a line under the table says when it rings. A first change starts from it, for that phone only; **Screen as every phone does** takes the phone's own table away. Calls are set there alone: the presets of What reaches you leave them as they are. In a pause and under do-not-disturb, only your Always through people ring; while you are Reachable, everyone you know rings. Whatever the table says, emergency numbers ring, and every call for a day after you call one.
 
 **Two SIMs**: Android does not tell a screening app which SIM a call comes on, so Sioul cannot screen by SIM. To keep one SIM quiet, turn it off in Android (the card opens that page).
 

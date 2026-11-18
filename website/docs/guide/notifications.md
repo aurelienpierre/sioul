@@ -233,7 +233,7 @@ In this phone's card in Settings ▸ Devices, as each app, conversation and site
 
 #### Other apps, by time {#other-apps-by-time}
 
-**Other apps, by time**, in this phone's card in Settings ▸ Devices, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in [What comes when](#by-time). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time.
+**Other apps, by time**, in this phone's card in Settings ▸ Devices, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in [What comes when](#by-time). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time. On a computer, each phone's card in Settings ▸ Devices lists the apps and conversations given times of their own, read and changed there as on the phone.
 
 - **As usual** follows what the notification is: a message by who wrote it, an automaton at the gathered times, an app set to **At once** at once. Nothing changes for an app until you set one of its cells.
 - **A conversation's** cell, where set, wins over its app's; where it says **As usual**, the app's counts.
