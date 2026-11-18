@@ -178,6 +178,15 @@ SafeDialog {
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
+    // How a series ends (18 November 2026): never, on a day (UNTIL), after a number of times (COUNT).
+    readonly property var endings: ["", "until", "count"]
+    // What it pauses during (`series::Source` ids), and what may be chosen (`pauseSources`):
+    // my vacations, public holidays, each school-holidays calendar by its name.
+    property var pauses: []
+    property var pauseChoices: []
+    // Not offered on a meeting with others, a meeting you organize or one given guests:
+    // each date left out would be sent to every guest.
+    readonly property bool pausable: dialog.legOf === "" && repeat.currentIndex > 0 && !dialog.withOthers && !dialog.organized && dialog.guests.length === 0 && dialog.pauseChoices.length > 0
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
     // The choices, with the event's own when another program wrote one not
     // among them: what it keeps always shows, never as "unsaid" (22 October 2026).
@@ -243,6 +252,19 @@ SafeDialog {
         dialog.keeper.forms = forms
     }
 
+    // A series' end and pauses as the form shows them (`EventEdit::ends`, `until`, `count`, `pauses`).
+    function setSeries(e) {
+        try {
+            dialog.pauseChoices = JSON.parse(dialog.sioul.pauseSources() || "{}").sources || []
+        } catch (error) {
+            dialog.pauseChoices = []
+        }
+        ends.currentIndex = Math.max(0, dialog.endings.indexOf(e.ends || ""))
+        until.date = e.until || startDay.date
+        count.value = Math.max(1, e.count || 10)
+        dialog.pauses = e.pauses || []
+    }
+
     // Fields of a form as `form()` gives them, put back over the form as it is.
     function applyForm(given) {
         const f = Object.assign(dialog.form(), given)
@@ -257,6 +279,7 @@ SafeDialog {
         dialog.measureLength()
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(f.repeat))
         every.value = Math.max(1, f.every || 1)
+        dialog.setSeries(f)
         dialog.clock = f.clock || ""
         dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
         dialog.around = f.margins
@@ -330,6 +353,7 @@ SafeDialog {
             dialog.measureLength()
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
             every.value = Math.max(1, e.every || 1)
+            dialog.setSeries(e)
             dialog.clock = e.clock || ""
             dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
@@ -370,6 +394,7 @@ SafeDialog {
             dialog.measureLength()
             repeat.currentIndex = 0
             every.value = 1
+            dialog.setSeries({})
             calendar.currentIndex = 0
             dialog.currentCalendar = ""
             dialog.calendarName = ""
@@ -532,6 +557,10 @@ SafeDialog {
             clock: allDay.checked ? "" : dialog.clock,
             repeat: dialog.repeats[repeat.currentIndex],
             every: dialog.repeats[repeat.currentIndex] === "" ? 1 : every.value,
+            ends: repeat.currentIndex > 0 ? dialog.endings[ends.currentIndex] : "",
+            until: repeat.currentIndex > 0 && ends.currentIndex === 1 ? until.date : "",
+            count: repeat.currentIndex > 0 && ends.currentIndex === 2 ? count.value : 0,
+            pauses: dialog.pausable ? dialog.pauses : [],
             margins: dialog.around,
             demands: dialog.demands,
             remind: dialog.remind,
@@ -1121,6 +1150,92 @@ SafeDialog {
                     Label {
                         text: dialog.sioul.textArgs("event-repeat-unit", JSON.stringify({ unit: dialog.repeats[repeat.currentIndex], n: every.value }))
                         textFormat: Text.PlainText
+                        color: dialog.theme.muted
+                    }
+                }
+                // How it ends: never, on a day, after a number of times (the rule's UNTIL, COUNT).
+                Label {
+                    visible: dialog.legOf === "" && repeat.currentIndex > 0
+                    text: dialog.sioul.text("event-repeat-ends")
+                    color: dialog.theme.muted
+                }
+                Flow {
+                    visible: dialog.legOf === "" && repeat.currentIndex > 0
+                    Layout.fillWidth: true
+                    // Its choices one under the other on a phone: never wider than the form.
+                    Layout.preferredWidth: 0
+                    spacing: 6
+
+                    PlainComboBox {
+                        id: ends
+
+                        objectName: "eventRepeatEnds"
+                        enabled: !dialog.withOthers
+                        width: Math.min(240, parent ? parent.width : 240)
+                        model: dialog.endings.map(e => dialog.sioul.text("event-repeat-ends-" + (e || "never")))
+                        Accessible.name: dialog.sioul.text("event-repeat-ends")
+                    }
+                    DateField {
+                        id: until
+
+                        objectName: "eventRepeatUntil"
+                        visible: ends.currentIndex === 1
+                        enabled: !dialog.withOthers
+                        theme: dialog.theme
+                        sioul: dialog.sioul
+                        locale: Qt.locale(dialog.sioul.text("qt-locale"))
+                    }
+                    SpinBox {
+                        id: count
+
+                        objectName: "eventRepeatCount"
+                        visible: ends.currentIndex === 2
+                        enabled: !dialog.withOthers
+                        from: 1
+                        to: 999
+                        value: 10
+                        editable: true
+                    }
+                    Label {
+                        visible: ends.currentIndex === 2
+                        height: count.height
+                        verticalAlignment: Text.AlignVCenter
+                        text: dialog.sioul.textArgs("event-repeat-ends-times", JSON.stringify({ n: count.value }))
+                        textFormat: Text.PlainText
+                        color: dialog.theme.muted
+                    }
+                }
+                // What it pauses during, ticked together; not offered on a meeting with others.
+                Label {
+                    visible: dialog.pausable
+                    Layout.alignment: Qt.AlignTop
+                    text: dialog.sioul.text("event-pauses")
+                    color: dialog.theme.muted
+                }
+                ColumnLayout {
+                    visible: dialog.pausable
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    spacing: 2
+
+                    Repeater {
+                        model: dialog.pauseChoices
+
+                        delegate: WrapCheckBox {
+                            required property var modelData
+
+                            objectName: "eventPause"
+                            Layout.fillWidth: true
+                            text: modelData.name
+                            checked: dialog.pauses.indexOf(modelData.id) >= 0
+                            onToggled: dialog.pauses = checked ? dialog.pauses.filter(p => p !== modelData.id).concat([modelData.id]) : dialog.pauses.filter(p => p !== modelData.id)
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: dialog.sioul.text("event-pauses-help")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         color: dialog.theme.muted
                     }
                 }

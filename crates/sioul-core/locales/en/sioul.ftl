@@ -1382,6 +1382,40 @@ repeat-daily = Every day
 repeat-weekly = Every week
 repeat-monthly = Every month
 repeat-yearly = Every year
+# A series that ends, and pauses (18 November 2026, docs/client.md).
+event-repeat-ends = Ends
+event-repeat-ends-never = Never
+event-repeat-ends-until = On a day
+event-repeat-ends-count = After a number of times
+event-repeat-ends-times = { $n ->
+        [one] time
+       *[other] times
+    }
+event-pauses = Pauses during
+event-pauses-help = Each date that falls in them is left out of the series, in every calendar program; a date you left out yourself stays out.
+series-pause-vacations = my vacations
+series-pause-public = public holidays
+series-paused-back = Paused from { $from } ({ $why }), back on { $back }.
+series-paused = Paused from { $from } ({ $why }).
+series-every = { $every ->
+        [1] { $unit ->
+            [daily] Every day
+            [weekly] Every week
+            [monthly] Every month
+           *[yearly] Every year
+        }
+       *[other] { $unit ->
+            [daily] Every { $every } days
+            [weekly] Every { $every } weeks
+            [monthly] Every { $every } months
+           *[yearly] Every { $every } years
+        }
+    }
+series-until = { $rule } until { $date }
+series-count = { $rule }, { $count ->
+        [one] once
+       *[other] { $count } times
+    }
 contact-name = Name
 contact-emails = E-mail addresses
 contact-phones = Phone numbers

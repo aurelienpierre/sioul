@@ -1412,6 +1412,37 @@ repeat-daily = Tous les jours
 repeat-weekly = Toutes les semaines
 repeat-monthly = Tous les mois
 repeat-yearly = Tous les ans
+# Une série qui finit, et qui fait une pause (18 novembre 2026, docs/client.md).
+event-repeat-ends = Fin
+event-repeat-ends-never = Jamais
+event-repeat-ends-until = Un jour donné
+event-repeat-ends-count = Après un nombre de fois
+event-repeat-ends-times = fois
+event-pauses = En pause pendant
+event-pauses-help = Chaque date qui y tombe est retirée de la série, dans tous les logiciels d’agenda ; une date que vous avez retirée vous-même le reste.
+series-pause-vacations = mes vacances
+series-pause-public = les jours fériés
+series-paused-back = En pause à partir du { $from } ({ $why }), reprend le { $back }.
+series-paused = En pause à partir du { $from } ({ $why }).
+series-every = { $every ->
+        [1] { $unit ->
+            [daily] Chaque jour
+            [weekly] Chaque semaine
+            [monthly] Chaque mois
+           *[yearly] Chaque année
+        }
+       *[other] { $unit ->
+            [daily] Tous les { $every } jours
+            [weekly] Toutes les { $every } semaines
+            [monthly] Tous les { $every } mois
+           *[yearly] Tous les { $every } ans
+        }
+    }
+series-until = { $rule } jusqu’au { $date }
+series-count = { $rule }, { $count ->
+        [one] une fois
+       *[other] { $count } fois
+    }
 contact-name = Nom
 contact-emails = Adresses électroniques
 contact-phones = Numéros de téléphone
