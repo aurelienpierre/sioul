@@ -111,7 +111,26 @@ SafeDialog {
     closePolicy: Popup.CloseOnEscape
     onRejected: dialog.sioul.closeContactsImport()
 
+    // A part of the window brought into sight by its objectName (the pictures' steps).
+    function reveal(name) {
+        const find = item => {
+            if (item.objectName === name)
+                return item
+            for (let i = 0; i < item.children.length; i++) {
+                const found = find(item.children[i])
+                if (found)
+                    return found
+            }
+            return null
+        }
+        const item = find(steps)
+        if (item)
+            scroller.contentItem.contentY = Math.max(0, Math.min(item.mapToItem(steps, 0, 0).y - 8, steps.implicitHeight - scroller.height))
+    }
+
     contentItem: ScrollView {
+        id: scroller
+
         implicitHeight: Math.min(steps.implicitHeight, dialog.roomHeight * 0.7)
         contentWidth: availableWidth
         clip: true
@@ -119,7 +138,7 @@ SafeDialog {
         ColumnLayout {
             id: steps
 
-            width: parent ? parent.width : 500
+            width: scroller.availableWidth
             spacing: 8
 
             // What the file holds, or why it does not read.
@@ -281,22 +300,28 @@ SafeDialog {
                 placeholderText: dialog.sioul.text("import-groups")
                 onTextEdited: dialog.edited = true
             }
-            CheckBox {
+            WrapCheckBox {
                 id: groupsHere
+
+                Layout.fillWidth: true
 
                 objectName: "importGroupsHere"
                 visible: groups.text.trim() !== ""
                 text: dialog.sioul.text("import-groups-here")
                 onToggled: dialog.edited = true
             }
-            CheckBox {
+            WrapCheckBox {
                 id: titles
+
+                Layout.fillWidth: true
 
                 text: dialog.sioul.text("import-titles")
                 onToggled: dialog.edited = true
             }
-            CheckBox {
+            WrapCheckBox {
                 id: international
+
+                Layout.fillWidth: true
 
                 objectName: "importInternational"
                 visible: dialog.read.region === true
@@ -338,8 +363,10 @@ SafeDialog {
             }
 
             // Those already here, card by card, with what the file would add: added only when ticked.
-            CheckBox {
+            WrapCheckBox {
                 id: complete
+
+                Layout.fillWidth: true
 
                 objectName: "importComplete"
                 visible: dialog.state.step === "planned" && (dialog.state.gaining || 0) > 0
@@ -414,7 +441,7 @@ SafeDialog {
                 }
             }
             // The file's own groups that one of your lists reads: kept on its new cards only when ticked (review V6).
-            CheckBox {
+            WrapCheckBox {
                 objectName: "importKeepListed"
                 visible: dialog.state.step === "planned" && (dialog.state.keep_listed || "") !== ""
                 Layout.fillWidth: true

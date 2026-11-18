@@ -131,10 +131,9 @@ ColumnLayout {
         objectName: "contactFormName"
         Layout.fillWidth: true
     }
-    // The name's parts, under the name: what other programs sort and address by.
-    Button {
+    // The name's parts, under the name: what other programs sort and address by (a fold line: BareButton).
+    BareButton {
         objectName: "contactFormParts"
-        flat: true
         text: (form.partsShown ? "▾  " : "▸  ") + form.sioul.text("contact-name-parts")
         onClicked: form.partsShown = !form.partsShown
     }

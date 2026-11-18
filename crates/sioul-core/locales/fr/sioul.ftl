@@ -3263,6 +3263,9 @@ set-calendars = Agendas
 set-calendars-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste.
 set-address-books = Carnets d’adresses
 set-address-books-help = Où vos contacts sont gardés, et avec qui chaque carnet est partagé. Qui peut vous joindre dépend des groupes d’un contact, jamais de son carnet d’adresses ; les groupes d’un carnet que quelqu’un d’autre peut modifier ne comptent qu’une fois que vous le dites sur sa ligne.
+set-contacts-batches = Changements de nombreux contacts
+set-contacts-batches-help = Chacun peut être annulé en entier pendant trente jours : ce qui a changé depuis reste tel quel.
+set-contacts-more-group = Carte et numéros
 set-collections-remove = Le supprimer, ici et sur le serveur
 word-and = et
 health-every-days = { $days ->
@@ -9294,7 +9297,7 @@ batch-ask-delete = { $n ->
     [one] Supprimer un contact ?
    *[other] Supprimer { $n } contacts ?
 }
-batch-ask-delete-note = Annuler, dans la ligne d’état, les fait revenir pendant dix secondes ; ensuite, pendant trente jours, Contacts ⚙ ▸ Carnets d’adresses le fait.
+batch-ask-delete-note = Annuler, dans la ligne d’état, les fait revenir pendant dix secondes ; ensuite, pendant trente jours, Contacts ⚙ ▸ Changements de nombreux contacts le fait.
 batch-cannot = { $n ->
     [one] Un reste tel quel :
    *[other] { $n } restent tels quels :
@@ -9556,7 +9559,6 @@ books-remove-undone = « { $name } » est revenu, avec ses contacts.
 books-remove-too-late = Trop tard : son serveur l’a déjà supprimé. Ses contacts sont gardés dans { $copy } ; Importer… les fait revenir.
 books-batches = Changements de nombreux contacts, ces trente derniers jours
 books-batches-none = Aucun changement de nombreux contacts ces trente derniers jours.
-books-batches-help = Chacun peut être annulé en entier : ce qui a changé depuis reste tel quel.
 dav-kept-both = { $n ->
     [one] Un contact a changé ailleurs avant que son déplacement n’atteigne son serveur : il est gardé dans les deux carnets d’adresses, tel que vous l’avez laissé et tel qu’il a été changé. { $names }
    *[other] { $n } contacts ont changé ailleurs avant que leur déplacement n’atteigne leur serveur : chacun est gardé dans les deux carnets d’adresses, tel que vous l’avez laissé et tel qu’il a été changé. { $names }

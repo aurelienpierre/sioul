@@ -119,7 +119,7 @@ Google keeps one address book: Sioul says so on its line and offers nothing it w
 - **Move the title into its field…**: a title at the start of a name (M., Mr, Mme, Mlle, Dr, Me, Pr, Mrs, Ms, Miss, Monsieur, Madame…) goes into the card's title field, and the name shown loses it. Each card shows its name before and after, with its own box: ticked when the word cannot be anything but a title (a full stop after it, or Mme, Mlle, Mrs, Ms, Miss followed by a name), unticked when it may be part of a name or a company ("Me", "Pr", "M" without a full stop, "Dr" on a company's card); you tick what you want. A name of two people ("M. et Mme Dupont", "Mr and Mrs Smith") is never changed, and said. The rest of the name's line (its other names, its parameters) is kept as it is. **Also add them to a group** gives them a group in the same step.
 - **Delete…**
 
-Each says how many it will change before it runs, and why some cannot ("its address book can only be read"). It runs with its progress and a **Stop**, and ends by naming what it could not do, card by card. A card changed since it was counted is left as it is, and said. **Undo** in the status line takes the whole change back for ten seconds; then Contacts ⚙ ▸ Address books lists the changes of the last thirty days, each with **Undo…**, asked first, or why it can no longer be undone. Undo puts back each card the change touched while it is as the change left it; a card changed, moved or deleted since stays as it is, and is named.
+Each says how many it will change before it runs, and why some cannot ("its address book can only be read"). It runs with its progress and a **Stop**, and ends by naming what it could not do, card by card. A card changed since it was counted is left as it is, and said. **Undo** in the status line takes the whole change back for ten seconds; then Contacts ⚙ ▸ Changes to many contacts lists those of the last thirty days, each with **Undo…**, asked first, or why it can no longer be undone. Undo puts back each card the change touched while it is as the change left it; a card changed, moved or deleted since stays as it is, and is named.
 
 ## Importing contacts {#importing}
 
@@ -176,7 +176,7 @@ Google contacts work the same way, with less kept: Sioul writes them as Google r
 
 ## Not there yet
 
-Changing a contact's photo in Sioul is planned. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond **Undo**: ten seconds in the status line, thirty days for a change to many at once (Contacts ⚙ ▸ Address books).
+Changing a contact's photo in Sioul is planned. Sioul makes no calendar of your contacts' birthdays, and keeps no bin for deleted contacts beyond **Undo**: ten seconds in the status line, thirty days for a change to many at once (Contacts ⚙ ▸ Changes to many contacts).
 
 ## Going further {#going-further}
 

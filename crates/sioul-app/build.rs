@@ -48,6 +48,7 @@ fn main() {
         "qml/ContactSelection.qml",
         "qml/ContactImport.qml",
         "qml/AddressBooksSetup.qml",
+        "qml/ContactBatches.qml",
         "qml/LabeledRows.qml",
         "qml/DateField.qml",
         "qml/Later.qml",

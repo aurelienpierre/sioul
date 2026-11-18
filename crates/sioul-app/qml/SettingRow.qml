@@ -47,7 +47,8 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        // A block under a heading of its own (the panel's Section) says no title again.
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -405,6 +406,19 @@ ColumnLayout {
                 sioul: field.sioul
                 theme: field.theme
                 about: field.setting.help
+            }
+        }
+    }
+    // The changes to many contacts of the last thirty days (ContactBatches.qml), under their own heading.
+    Loader {
+        active: field.setting.kind === "contactbatches"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ContactBatches {
+                sioul: field.sioul
+                theme: field.theme
             }
         }
     }

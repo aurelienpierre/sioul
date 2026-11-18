@@ -102,6 +102,10 @@ pub enum Kind {
     /// exported (`addressbooks`). The window reads and writes them itself
     /// (`address_books_setup`…). Nothing in `value`.
     AddressBooks,
+    /// The changes to many contacts of the last thirty days, each undone as a
+    /// whole, the window's own block (`ContactBatches.qml`, review F2), under
+    /// its own heading. Nothing in `value`.
+    ContactBatches,
     /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
@@ -683,8 +687,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 0.0, 10.0, 1.0, "");
         }
         "contacts" => {
-            // The address books' own block (wave D): their lines, made, renamed, merged, removed, shared.
+            // The address books' own block (wave D), under its heading: their lines, made, renamed, merged, removed, shared.
+            b.group = tr.text("set-address-books", None);
             b.push("addressbooks", "address-books", Kind::AddressBooks, SettingValue::Text(String::new()));
+            // The changes to many contacts of the last thirty days, each undone (review F2), under its own heading.
+            b.group = tr.text("books-batches", None);
+            b.push("contacts.batches", "contacts-batches", Kind::ContactBatches, SettingValue::Text(String::new()));
+            b.group = tr.text("set-contacts-more-group", None);
             b.push("map.geocode", "map-geocode", Kind::Bool, SettingValue::Bool(config.map.geocode));
             b.push("map.tiles", "map-tiles", Kind::Text, SettingValue::Text(config.map.tiles.clone().unwrap_or_default()));
             // The country of numbers written without one: "04 65…" found as "+33 4 65…" (phones.rs).
@@ -1707,7 +1716,7 @@ mod tests {
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
         assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
         // The address books' own block first (wave D), whatever this computer holds.
-        assert_eq!(keys("contacts"), vec!["addressbooks", "map.geocode", "map.tiles", "contacts.region"]);
+        assert_eq!(keys("contacts"), vec!["addressbooks", "contacts.batches", "map.geocode", "map.tiles", "contacts.region"]);
         // The sites' colours, which only the Sites page reads, then where Bitwarden is set.
         assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "link.bitwarden"]);
         // Bitwarden, Accounts' card: its account, its server, the lock after a time (the

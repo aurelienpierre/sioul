@@ -75,6 +75,15 @@ Item {
     })
 
     Component {
+        id: batchesComponent
+
+        ContactBatches {
+            sioul: mock
+            theme: testTheme
+        }
+    }
+
+    Component {
         id: setupComponent
 
         AddressBooksSetup {
@@ -230,7 +239,8 @@ Item {
                 { id: "1789000000-merge", line: "17 November 2026 · 40 contacts moved.", partly: "Stopped after 40 of 50.", why_not: "Cannot be undone: its address book is gone.", ask: "" }
             ])
             for (const width of [1000, 412]) {
-                const setup = make(width)
+                const setup = test.createTemporaryObject(batchesComponent, root, { width: width })
+                test.waitForRendering(setup)
                 verify(root.calls("batches").length >= 1, "read when shown")
                 const rows = root.named(setup, "contactsBatch")
                 compare(rows.length, 2)

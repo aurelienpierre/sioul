@@ -1570,6 +1570,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
         # shared with Sam on the server (Agenda ⚙ ▸ Your availability); its blocks come from the upkeep.
         ("calendars", "busy-sam", t("Noa, busy times", "Noa, heures prises"), "#5b6470", ["VEVENT"]),
         ("contacts", "contacts", "Contacts", None, []),
+        # A book a co-worker can write (wave D): shared with Sam to write, its groups off until said.
+        ("contacts", "team", t("Team", "Équipe"), None, []),
     ]
     for kind, cid, name, colour, components in collections:
         folder = p.data / kind / DAV / cid
@@ -1579,6 +1581,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         read_only = "true" if cid == "sam" else "false"
         state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", f"read_only = {read_only}",
                  "components = " + toml_list(components)]
+        # Address books: yours, as the server lists them with their shares (`oc:invite`).
+        if kind == "contacts":
+            state += ["owned = true", "writers_known = true"] + (["writers = [\"sam\"]"] if cid == "team" else [])
         p.write(p.state / "dav" / DAV / kind / f"{cid}.toml", "\n".join(state) + "\n")
     # Where the account's calendars live, as a Nextcloud says it (`/remote.php/dav/`): what
     # Agenda ⚙ ▸ Your availability reads the server's kind and name from.
@@ -1793,6 +1798,27 @@ def write_contacts(p: Profile):
     people = contacts()
     for key, c in people.items():
         p.write(p.data / "contacts" / DAV / "contacts" / f"demo-contact-{key}.vcf", vcard(key, c))
+    # The co-workers' book (wave D): titles at the start of names (the title's move), a household.
+    team = {
+        "clara": dict(name="Mme Clara Exemple", first="Clara", last="Exemple", email=[("work", "clara.exemple@example.org")], phone=[("work", "+33 4 65 71 30 01")], cats=["clients"]),
+        "paul": dict(name="Dr. Paul Exemple", first="Paul", last="Exemple", email=[("work", "paul.exemple@example.org")], phone=[("work", "+33 4 65 71 30 02")]),
+        "dupont": dict(name=t("Mr and Mrs Dupont", "M. et Mme Dupont"), email=[("home", "dupont@example.org")], phone=[("home", "+33 4 65 71 30 03")]),
+        "lou": dict(name="Me Lou Exemple", first="Lou", last="Exemple", email=[("work", "lou.exemple@example.org")]),
+    }
+    for key, c in team.items():
+        p.write(p.data / "contacts" / DAV / "team" / f"demo-team-{key}.vcf", vcard(f"team-{key}", c))
+    # A small file of invented people to import (the import's pictures): one already here, two at one number.
+    p.write(p.root / "cache" / "demo-import" / "clients.csv", t(
+        "Title;First name;Last name;Phone;E-mail;Groups\n"
+        "Mrs;Ada;Exemple;04 65 71 40 01;ada.exemple@example.org;Clients\n"
+        "Mr;Ben;Exemple;04 65 71 40 01;ben.exemple@example.org;Clients\n"
+        f"Ms;{W.iris[0].split()[0]};{W.iris[0].split()[1]};+33 4 65 71 20 14;{W.iris[1]};\n"
+        "Dr;Nina;Exemple;04 65 71 40 02;nina.exemple@example.org;family\n",
+        "Civilité;Prénom;Nom;Téléphone;E-mail;Groupes\n"
+        "Mme;Ada;Exemple;04 65 71 40 01;ada.exemple@example.org;Clients\n"
+        "M.;Ben;Exemple;04 65 71 40 01;ben.exemple@example.org;Clients\n"
+        f"Mme;{W.iris[0].split()[0]};{W.iris[0].split()[1]};+33 4 65 71 20 14;{W.iris[1]};\n"
+        "Dr;Nina;Exemple;04 65 71 40 02;nina.exemple@example.org;famille\n"))
     places = ["[found]"]
     for c in people.values():
         if c.get("adr"):

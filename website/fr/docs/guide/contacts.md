@@ -119,7 +119,7 @@ Google garde un seul carnet d’adresses : Sioul le dit sur sa ligne et ne pro
 - **Mettre la civilité dans son champ…** : une civilité au début d’un nom (M., Mr, Mme, Mlle, Dr, Me, Pr, Mrs, Ms, Miss, Monsieur, Madame…) va dans le champ de civilité de la fiche, et le nom montré la perd. Chaque fiche montre son nom avant et après, avec sa propre case : cochée quand le mot ne peut être qu’une civilité (suivi d’un point, ou Mme, Mlle, Mrs, Ms, Miss suivis d’un nom), décochée quand il peut faire partie d’un nom ou d’une entreprise (« Me », « Pr », « M » sans point, « Dr » sur la fiche d’une entreprise) ; vous cochez ce que vous voulez. Un nom de deux personnes (« M. et Mme Dupont », « Mr and Mrs Smith ») n’est jamais changé, et c’est dit. Le reste de la ligne du nom (ses autres noms, ses paramètres) reste tel quel. **Les ajouter aussi à un groupe** leur donne un groupe dans le même pas.
 - **Supprimer…**
 
-Chacune dit combien de fiches elle changera avant de commencer, et pourquoi certaines ne le peuvent pas (« son carnet d’adresses est en lecture seule »). Elle avance avec sa progression et un bouton **Arrêter**, et finit en nommant ce qu’elle n’a pas pu faire, fiche par fiche. Une fiche changée depuis qu’elle a été comptée reste telle quelle, et c’est dit. **Annuler**, dans la ligne d’état, reprend tout le changement pendant dix secondes ; ensuite, Contacts ⚙ ▸ Carnets d’adresses montre les changements des trente derniers jours, chacun avec **Annuler…**, demandé d’abord, ou la raison pour laquelle il ne peut plus l’être. Annuler remet chaque fiche touchée tant qu’elle est telle que le changement l’a laissée ; une fiche changée, déplacée ou supprimée depuis reste telle quelle, et est nommée.
+Chacune dit combien de fiches elle changera avant de commencer, et pourquoi certaines ne le peuvent pas (« son carnet d’adresses est en lecture seule »). Elle avance avec sa progression et un bouton **Arrêter**, et finit en nommant ce qu’elle n’a pas pu faire, fiche par fiche. Une fiche changée depuis qu’elle a été comptée reste telle quelle, et c’est dit. **Annuler**, dans la ligne d’état, reprend tout le changement pendant dix secondes ; ensuite, Contacts ⚙ ▸ Changements de nombreux contacts montre ceux des trente derniers jours, chacun avec **Annuler…**, demandé d’abord, ou la raison pour laquelle il ne peut plus l’être. Annuler remet chaque fiche touchée tant qu’elle est telle que le changement l’a laissée ; une fiche changée, déplacée ou supprimée depuis reste telle quelle, et est nommée.
 
 ## Importer des contacts {#importing}
 
@@ -176,7 +176,7 @@ Les contacts Google marchent de la même façon, en gardant moins : Sioul les 
 
 ## Pas encore là {#not-there-yet}
 
-Changer la photo d’un contact dans Sioul est prévu. Sioul ne fait pas d’agenda des anniversaires de vos contacts, et ne garde pas de corbeille pour les contacts supprimés au-delà d’**Annuler** : dix secondes dans la ligne d’état, trente jours pour un changement de plusieurs contacts à la fois (Contacts ⚙ ▸ Carnets d’adresses).
+Changer la photo d’un contact dans Sioul est prévu. Sioul ne fait pas d’agenda des anniversaires de vos contacts, et ne garde pas de corbeille pour les contacts supprimés au-delà d’**Annuler** : dix secondes dans la ligne d’état, trente jours pour un changement de plusieurs contacts à la fois (Contacts ⚙ ▸ Changements de nombreux contacts).
 
 ## Pour aller plus loin {#going-further}
 

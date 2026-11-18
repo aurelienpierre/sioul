@@ -3227,6 +3227,9 @@ set-calendars = Calendars
 set-calendars-help = Renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays.
 set-address-books = Address books
 set-address-books-help = Where your contacts are kept, and with whom each book is shared. Who may reach you is decided by a contact's groups, never by its address book; the groups of a book someone else can write count only once you say so on its line.
+set-contacts-batches = Changes to many contacts
+set-contacts-batches-help = Each can be undone as a whole for thirty days: what changed since stays as it is.
+set-contacts-more-group = Map and numbers
 set-collections-remove = Delete it, here and on the server
 word-and = and
 health-every-days = { $days ->
@@ -8909,7 +8912,7 @@ batch-ask-delete = { $n ->
     [one] Delete one contact?
    *[other] Delete { $n } contacts?
 }
-batch-ask-delete-note = Undo, in the status line, brings them back for ten seconds; then, for thirty days, Contacts ⚙ ▸ Address books does.
+batch-ask-delete-note = Undo, in the status line, brings them back for ten seconds; then, for thirty days, Contacts ⚙ ▸ Changes to many contacts does.
 batch-cannot = { $n ->
     [one] One stays as it is:
    *[other] { $n } stay as they are:
@@ -9171,7 +9174,6 @@ books-remove-undone = “{ $name }” is back, with its contacts.
 books-remove-too-late = Too late: its server deleted it already. Its contacts are kept in { $copy }; Import… brings them back.
 books-batches = Changes to many contacts, the last thirty days
 books-batches-none = No change to many contacts in the last thirty days.
-books-batches-help = Each can be undone as a whole: what changed since stays as it is.
 dav-kept-both = { $n ->
     [one] One contact changed elsewhere before its move reached its server: it is kept in both address books, as you left it and as they changed it. { $names }
    *[other] { $n } contacts changed elsewhere before their move reached their server: each is kept in both address books, as you left it and as they changed it. { $names }

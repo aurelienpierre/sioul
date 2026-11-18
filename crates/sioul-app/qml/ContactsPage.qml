@@ -62,6 +62,18 @@ Item {
         page.selected = next
     }
 
+    // Contacts ⚙ opened (or closed), scrolled to a setting when one is named (the pictures' steps).
+    function openSettings(open, key) {
+        contactsSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => contactsSettings.scrollTo(key))
+    }
+
+    // One of Contacts ⚙'s parts, by its objectName (the pictures' steps), or null.
+    function settingsPart(name) {
+        return contactsSettings.part(name, true)
+    }
+
     // Every contact the filters show, ticked.
     function selectShown() {
         const next = {}
@@ -472,6 +484,8 @@ Item {
                     onClicked: importFile.open()
                 }
                 SettingsButton {
+                    id: contactsSettings
+
                     sioul: page.sioul
                     theme: page.theme
                     view: "contacts"

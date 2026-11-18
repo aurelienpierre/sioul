@@ -14,9 +14,10 @@
 // offers only what it allows, and says so. A merge, or a removal that moves
 // the contacts, asks first: how many go where, what the target would not
 // keep, who sees it. What is chosen or typed in a line is kept by its book
-// while the lines are drawn again at each sync (review F4). Below the
-// books, the changes to many contacts of the last thirty days, each undone
-// as a whole (review F2). Books say where contacts are kept and with whom
+// while the lines are drawn again at each sync (review F4). The changes to
+// many contacts of the last thirty days are a block of their own, under
+// their heading (ContactBatches.qml). A book's line is a row (BareButton);
+// what acts on it is an outlined button. Books say where contacts are kept and with whom
 // they are shared; who may reach you is decided by a contact's groups,
 // never by its book, with one switch about trust: "Its groups decide who
 // may reach me", on for a book only you can write, off until you turn it on
@@ -56,9 +57,6 @@ ColumnLayout {
     property var typed: ({})
     // The question before a merge (`mergeQuestion`), with its two places; {} when none.
     property var question: ({})
-    // The batches of the last thirty days (`contactsBatches`), and the one whose Undo is asked.
-    readonly property var batches: setup.sioul.contactsBatches ? JSON.parse(setup.sioul.contactsBatches) : []
-    property string undoing: ""
     // "New address book…" open.
     property bool making: false
 
@@ -146,10 +144,7 @@ ColumnLayout {
 
     objectName: "addressBooksSetup"
     spacing: 4
-    Component.onCompleted: {
-        setup.read()
-        setup.sioul.readContactsBatches()
-    }
+    Component.onCompleted: setup.read()
 
     Label {
         visible: setup.about !== ""
@@ -182,11 +177,12 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 4
 
-            // Its name, where it is kept, how many: a click opens the rest.
-            ItemDelegate {
+            // Its name, where it is kept, how many: a click opens the rest (a row: BareButton).
+            BareButton {
                 objectName: "addressBookLine"
                 Layout.fillWidth: true
                 padding: 6
+                Accessible.name: line.modelData.name
                 onClicked: setup.toggle(line.modelData.place)
 
                 contentItem: ColumnLayout {
@@ -613,88 +609,6 @@ ColumnLayout {
                 flat: true
                 text: setup.sioul.text("ui-cancel")
                 onClicked: setup.making = false
-            }
-        }
-    }
-
-    // The changes to many contacts of the last thirty days, newest first, each undone as a whole.
-    Label {
-        Layout.fillWidth: true
-        Layout.topMargin: 12
-        text: setup.sioul.text("books-batches")
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        font.weight: Font.DemiBold
-        color: setup.theme.text
-    }
-    Label {
-        Layout.fillWidth: true
-        text: setup.sioul.text(setup.batches.length > 0 ? "books-batches-help" : "books-batches-none")
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: setup.theme.muted
-    }
-    Repeater {
-        model: setup.batches
-
-        delegate: ColumnLayout {
-            id: batch
-
-            required property var modelData
-
-            objectName: "contactsBatch"
-            Layout.fillWidth: true
-            spacing: 2
-
-            Label {
-                Layout.fillWidth: true
-                text: [batch.modelData.line, batch.modelData.partly].filter(l => l !== "").join(" ")
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: setup.theme.text
-            }
-            Label {
-                visible: batch.modelData.why_not !== ""
-                Layout.fillWidth: true
-                text: batch.modelData.why_not
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: setup.theme.muted
-            }
-            Button {
-                objectName: "contactsBatchUndo"
-                visible: batch.modelData.why_not === "" && setup.undoing !== batch.modelData.id
-                flat: true
-                text: setup.sioul.text("batch-undo")
-                onClicked: setup.undoing = batch.modelData.id
-            }
-            Label {
-                visible: setup.undoing === batch.modelData.id
-                Layout.fillWidth: true
-                text: batch.modelData.ask
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: setup.theme.text
-            }
-            Flow {
-                visible: setup.undoing === batch.modelData.id
-                Layout.fillWidth: true
-                spacing: 6
-
-                Button {
-                    objectName: "contactsBatchUndoGo"
-                    text: setup.sioul.text("batch-undo-go")
-                    onClicked: {
-                        setup.problem = setup.sioul.undoContactsBatch(batch.modelData.id)
-                        setup.undoing = ""
-                    }
-                }
-                Button {
-                    flat: true
-                    text: setup.sioul.text("ui-cancel")
-                    onClicked: setup.undoing = ""
-                }
             }
         }
     }
