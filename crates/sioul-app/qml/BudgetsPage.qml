@@ -242,12 +242,20 @@ Item {
             page.openId = page.view.budgets[0].id
     }
 
+    // On a phone, the page's ⚙ is in the window's bar (main.qml), so that the tabs keep the
+    // row's whole width; it opens `openSettings` below.
+    readonly property bool barSettings: page.window.compact && page.openId === ""
+
     // The page's ⚙, open at one of its settings ("reminders.payment_days", from a link by
     // key: SettingDoor.qml), or closed.
     function openSettings(open, key) {
-        moneySettings.show(open)
+        page.settingsMade = true
+        const button = moneySettingsHolder.item as SettingsButton
+        if (button === null)
+            return
+        button.show(open)
         if (open && key)
-            Qt.callLater(() => moneySettings.scrollTo(key))
+            Qt.callLater(() => button.scrollTo(key))
     }
 
     // An act on a movement said: its effect, and whether the payee's next ones go there too, asked once.
@@ -297,8 +305,9 @@ Item {
             objectName: "moneyTabs"
             name: page.sioul.text("ui-budgets")
             Layout.fillWidth: true
-            // Room at its end for the page's ⚙ (`moneySettings`, below), outside the part that scrolls.
-            rightPadding: moneySettings.width + 6
+            // On a computer, room at its end for the page's ⚙ (`moneySettingsHolder`, below), outside the
+            // part that scrolls; on a phone the ⚙ is in the page's bar (`barSettings`): the row keeps its width.
+            rightPadding: page.window.compact ? 0 : (moneySettingsHolder.item ? moneySettingsHolder.item.width : 40) + 6
             theme: page.theme
             model: [{ id: "overview", text: page.sioul.text("money-tab-overview") }, { id: "budgets", text: page.sioul.text("money-tab-budgets") }, { id: "movements", text: page.sioul.text("money-tab-movements") }, { id: "mail", text: page.sioul.text("money-tab-mail") }, { id: "invoices", text: page.sioul.text("money-tab-invoices") }]
             current: moneyTabs.ids[page.tab] || "overview"
@@ -416,16 +425,25 @@ Item {
         }
     }
 
-    // The page's ⚙, at the end of the tabs' row, while no budget is open: the
-    // reminder before a planned payment (`settings::for_view("money")`).
-    SettingsButton {
-        id: moneySettings
+    // The page's ⚙, at the end of the tabs' row on a computer, while no budget is open: the
+    // reminder before a planned payment (`settings::for_view("money")`). On a phone it is
+    // made only when the bar's ⚙ asks for it (`barSettings`): a phone counts its items.
+    property bool settingsMade: !page.window.compact
 
-        visible: page.openId === ""
+    Loader {
+        id: moneySettingsHolder
+
+        active: page.settingsMade
+        visible: page.openId === "" && !page.window.compact
         x: page.width - page.theme.gap - width
         y: page.theme.gap + (moneyTabs.height - height) / 2
-        sioul: page.sioul
-        theme: page.theme
-        view: "money"
+
+        sourceComponent: Component {
+            SettingsButton {
+                sioul: page.sioul
+                theme: page.theme
+                view: "money"
+            }
+        }
     }
 }

@@ -135,6 +135,7 @@ Item {
 
         function init() {
             tabs.width = 600
+            tabs.rightPadding = 0
             tabs.theme = testTheme
             tabs.font.pixelSize = 15
             tabs.said = []
@@ -165,6 +166,35 @@ Item {
                 verify(tab(id).width >= tab(id).contentItem.implicitWidth, id + ": its words whole")
             verify(tab("b").width > tab("a").width, "the long one wider")
             fuzzyCompare(tab("c").x + tab("c").width, 600, 0.5, "the row filled")
+        }
+
+        // Names a little too wide for their room: their padding narrows before the row scrolls.
+        function test_names_narrow_their_padding_before_scrolling() {
+            tabs.model = [{ id: "a", text: "Overview" }, { id: "b", text: "Budgets" }, { id: "c", text: "Movements" }]
+            waitForRendering(tabs)
+            tabs.width = Math.ceil(tabs.leastTotal + 4)
+            tabs.current = "a"
+            waitForRendering(tabs)
+            verify(tabs.naturalTotal > tabs.width, "too wide at their room")
+            compare(tabs.fit, "tight")
+            verify(!tabs.scrolls, "no scrolling")
+            for (const id of ["a", "b", "c"])
+                verify(tab(id).width >= tab(id).contentItem.implicitWidth, id + ": its words whole")
+            fuzzyCompare(tab("c").x + tab("c").width, tabs.width, 0.5, "the row filled")
+        }
+
+        // A page's room at the row's end (a ⚙): the row, its fade and its chevrons keep out of it.
+        function test_a_page_s_room_at_the_end_is_left_out() {
+            tabs.model = words(12, "A rather long section")
+            tabs.current = "t0"
+            tabs.rightPadding = 46
+            waitForRendering(tabs)
+            compare(tabs.strip.width, 600 - 46, "the row less the room")
+            const fade = child("fade")
+            compare(fade.x + fade.width, 600 - 46, "the fade within the row")
+            const chevron = child("chevronAfter")
+            verify(chevron.mapToItem(tabs, chevron.width, 0).x <= 600 - 46 + 0.5, "the chevron within the row")
+            tabs.rightPadding = 0
         }
 
         function test_a_row_that_scrolls_says_so_and_keeps_the_tab_in_sight() {

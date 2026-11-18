@@ -5828,6 +5828,18 @@ SioulWindow {
                             color: theme.text
                             elide: Text.ElideRight
                         }
+                        // The page's ⚙, where the page gives its rows' whole width to its tabs (Money: `barSettings`).
+                        ToolButton {
+                            objectName: "barSettings"
+                            visible: !window.canGoBack && window.shownPage !== null && window.shownPage.barSettings === true
+                            Layout.preferredWidth: 48
+                            Layout.fillHeight: true
+                            icon.name: "settings-configure"
+                            icon.color: theme.text
+                            display: AbstractButton.IconOnly
+                            Accessible.name: sioul.text("ui-settings")
+                            onClicked: window.shownPage.openSettings(true, "")
+                        }
                     }
                 }
 

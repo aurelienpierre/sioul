@@ -9,13 +9,14 @@
 // the pointer; no fill. Not Qt's TabButton, whose Basic look fills the tabs
 // not chosen with the accent under Sioul's palette.
 //
-// It spans the width it is given. Each tab takes an equal share while every
-// name fits in one; else each takes its name's width and the room left is
-// shared among them. When the names are wider than the row, it scrolls
-// sideways (a finger, the wheel), and says so: the side that has more fades
-// out, the tab at that edge shows cut, never whole, and on a computer a
-// chevron there brings the next tab into view. The tab shown is kept in
-// sight. The names are measured in the font the row has now: a font changed
+// It spans the width it is given, less what a page keeps at its end
+// (`rightPadding`, for a ⚙). Each tab takes an equal share while every name
+// fits in one; else each takes its name's width and the room left is shared
+// among them, their padding narrowed before the row scrolls. When the names
+// are wider than the row even so, it scrolls sideways (a finger, the wheel),
+// and says so: the side that has more fades out, the tab at that edge shows
+// cut, never whole, and on a computer a chevron there brings the next tab
+// into view. The tab shown is kept in sight. The names are measured in the font the row has now: a font changed
 // later is measured again.
 //
 // The keyboard's focus is on the tab shown: Tab reaches it, Left and Right
@@ -46,22 +47,32 @@ Control {
     // A tab chosen (a click, a tap, an arrow key): its id. The page shows it, and sets `current`.
     signal chosen(string id)
 
-    // Each tab's room on either side of its name: narrower on a phone.
+    // Each tab's room on either side of its name: narrower on a phone; at least
+    // `leastPadding` before the row scrolls (as many names in sight as a row of buttons had).
     readonly property int sidePadding: tabs.theme.compact ? 10 : 14
+    readonly property int leastPadding: 6
     readonly property int shownIndex: tabs.model.findIndex(t => t.id === tabs.current)
     // Each name's width at its strongest (the tab shown is bold): the row never moves as you
     // choose. `metrics.font` is read so that the names are measured again when the font
     // changes: a call to advanceWidth() alone is read once, in the font of then (62a86f5f).
-    readonly property var naturals: {
+    readonly property var wordWidths: {
         const font = metrics.font
-        return font ? tabs.model.map(t => Math.ceil(metrics.advanceWidth(String(t.text))) + 2 * tabs.sidePadding) : []
+        return font ? tabs.model.map(t => Math.ceil(metrics.advanceWidth(String(t.text)))) : []
     }
+    readonly property var naturals: tabs.wordWidths.map(w => w + 2 * tabs.sidePadding)
     readonly property real naturalTotal: tabs.naturals.reduce((sum, w) => sum + w, 0)
+    // The names at their least padding: what a row too narrow for their room shows.
+    readonly property var leasts: tabs.wordWidths.map(w => w + 2 * tabs.leastPadding)
+    readonly property real leastTotal: tabs.leasts.reduce((sum, w) => sum + w, 0)
     readonly property real share: tabs.model.length > 0 ? tabs.availableWidth / tabs.model.length : 0
     // "equal": every name fits in an equal share; "spread": each its name's width and an equal
-    // part of what is left; "scroll": the names are wider than the row, which scrolls.
-    readonly property string fit: tabs.naturals.every(w => w <= tabs.share) ? "equal" : tabs.naturalTotal <= tabs.availableWidth ? "spread" : "scroll"
-    readonly property var widths: tabs.fit === "equal" ? tabs.naturals.map(() => tabs.share) : tabs.fit === "spread" ? tabs.naturals.map(w => w + (tabs.availableWidth - tabs.naturalTotal) / tabs.model.length) : tabs.cutWidths(tabs.naturals, tabs.availableWidth - (tabs.chevrons ? tabs.chevronWidth : 0))
+    // part of what is left; "tight": the same at the least padding; "scroll": the names are
+    // wider than the row even so, which scrolls, at the least padding.
+    readonly property string fit: tabs.naturals.every(w => w <= tabs.share) ? "equal" : tabs.naturalTotal <= tabs.availableWidth ? "spread" : tabs.leastTotal <= tabs.availableWidth ? "tight" : "scroll"
+    readonly property var widths: tabs.fit === "equal" ? tabs.naturals.map(() => tabs.share)
+        : tabs.fit === "spread" ? tabs.naturals.map(w => w + (tabs.availableWidth - tabs.naturalTotal) / tabs.model.length)
+        : tabs.fit === "tight" ? tabs.leasts.map(w => w + (tabs.availableWidth - tabs.leastTotal) / tabs.model.length)
+        : tabs.cutWidths(tabs.leasts, tabs.availableWidth - (tabs.chevrons ? tabs.chevronWidth : 0))
     // Whether the row scrolls sideways: the names do not fit.
     readonly property bool scrolls: tabs.fit === "scroll"
     // More tabs out of sight before the first one shown whole, or after the last.
@@ -333,7 +344,8 @@ Control {
         objectName: "fade"
         z: 1
         visible: tabs.moreBefore || tabs.moreAfter
-        width: tabs.width
+        x: tabs.leftPadding
+        width: tabs.availableWidth
         height: tabs.height - 1
         gradient: Gradient {
             orientation: Gradient.Horizontal
@@ -391,7 +403,8 @@ Control {
     }
     Loader {
         z: 2
-        width: tabs.width
+        x: tabs.leftPadding
+        width: tabs.availableWidth
         height: tabs.height
         active: tabs.chevrons
 
@@ -406,7 +419,7 @@ Control {
                 Chevron {
                     objectName: "chevronAfter"
                     visible: tabs.moreAfter
-                    x: tabs.width - width
+                    x: tabs.availableWidth - width
                     side: 1
                 }
             }
