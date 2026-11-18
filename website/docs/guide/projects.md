@@ -74,7 +74,7 @@ The button above the list says what it shows ("Leisure ▾") and opens three box
 ## Going further {#going-further}
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
-- **On a device not updated yet**: **Admin** and **Leisure** together are written as the older **Yours, outside work**, which an older Sioul reads, and its box reads here as admin and leisure (beside a client, all three, as the older Sioul read it). Other choices are new to an older Sioul: it reads them as nothing said, and saving the project's form there takes them out. Update every device before using them.
+- **On a device not updated yet**: **Admin** and **Leisure** together, and all three on a client's project, are written as the older **Yours, outside work**, which an older Sioul reads, and its box reads here as admin and leisure (beside a client, all three, as the older Sioul read it). Other choices are new to an older Sioul: it reads them as nothing said, and saving the project's form there takes them out. Update every device before using them.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
 

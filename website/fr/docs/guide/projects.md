@@ -74,7 +74,7 @@ Le bouton au-dessus de la liste dit ce qu’elle montre (« Loisirs ▾ ») 
 ## Pour aller plus loin {#going-further}
 
 - **Une file sur le Porche** : **Projets montrés ici**, dans le ⚙ du Porche, donne à un projet sa propre file ([Le Porche](porch.md)).
-- **Sur un appareil pas encore mis à jour** : **Démarches** et **Loisirs** ensemble s’écrivent comme l’ancienne case **À vous, hors travail**, qu’un Sioul plus ancien lit, et cette case se lit ici comme démarches et loisirs (à côté d’un client, les trois, comme le Sioul plus ancien la lisait). Les autres choix sont nouveaux pour un Sioul plus ancien : il les lit comme si rien n’était dit, et enregistrer le formulaire du projet là-bas les retire. Mettez chaque appareil à jour avant de vous en servir.
+- **Sur un appareil pas encore mis à jour** : **Démarches** et **Loisirs** ensemble, et les trois sur le projet d’un client, s’écrivent comme l’ancienne case **À vous, hors travail**, qu’un Sioul plus ancien lit, et cette case se lit ici comme démarches et loisirs (à côté d’un client, les trois, comme le Sioul plus ancien la lisait). Les autres choix sont nouveaux pour un Sioul plus ancien : il les lit comme si rien n’était dit, et enregistrer le formulaire du projet là-bas les retire. Mettez chaque appareil à jour avant de vous en servir.
 - **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
 - **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire la page d’un projet telle que la fenêtre la montre, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels. Il n’y change rien.
 
