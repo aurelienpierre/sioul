@@ -45,15 +45,12 @@ Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusie
 
 ## Ce qui vous joint {#what-reaches-you}
 
-Un seul endroit pour quand chaque chose vous joint : les courriels, les appels et les messages des autres applications selon qui les envoie, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues :
+Une seule page pour quand chaque chose vous joint : Sioul décide de ce qui passe, et quand ; le « Ne pas déranger » d’Android décide seulement si cela fait du bruit. En haut, ce qui vaut maintenant en une phrase, les trois états (Comme d’habitude, Ne pas déranger, Joignable) et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis deux onglets :
 
-- **Par moment** : une carte pour chaque moment de votre journée, en phrases ; **Changer…** ouvre ses lignes.
-- **Par personne** : ce qui vous joint par courriel, par téléphone et par message de la part de chaque liste de personnes, **Me dire les nouveaux courriels**, **Avec les infolettres**, et qui est sur quelle liste.
-- **Celles de Sioul** : les codes, les prises, les rappels, les avis de Santé, vos sites et les autres applications, avec **Notifications des sites regroupées**.
-- **Exceptions** : les personnes qui passent toujours, et chaque conversation, application ou site qui a un choix à lui.
-- **Ne pas déranger** : ce qui le met, ce qui tient pendant ce temps, ce que fait chaque appareil.
+- **Vos règles** : **Personnes**, un choix par cercle (Passent toujours, Sûrs, Vos contacts, Restreints, Tous les autres) pour les courriels et pour les messages, avec **Me dire les nouveaux courriels** et **Avec les infolettres** ; **Qui est dans quel cercle**, Passent toujours à côté des listes Sûrs, Restreints et Bloqués, des personnes mises dessus et de vos groupes ; **Les avis de Sioul**, en quatre groupes ; **Moments**, ce qui met « Ne pas déranger » (**Pendant une indisponibilité** parmi eux) et qui retient quoi sur un téléphone. Une ligne compte ce qui est réglé ailleurs, avec un bouton vers chaque endroit ; les appels se règlent pour chaque téléphone, dans **Appareils**.
+- **Ce qui vient quand** : chaque ligne à chaque moment, un mot par case, un appui pour la changer.
 
-**Rien du tout**, pour le temps libre, est sur sa carte. Voir [Ce qui vous joint, et quand](notifications.md).
+Voir [Ce qui vous joint, et quand](notifications.md).
 
 ## Rappels {#reminders}
 

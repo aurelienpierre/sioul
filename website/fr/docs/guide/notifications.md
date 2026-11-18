@@ -4,164 +4,137 @@ description: "Quand chaque chose vous joint, en un seul endroit : les courriel
 
 # Ce qui vous joint, et quand {#what-reaches-you-and-when}
 
-Sioul décide en un seul endroit quand chaque chose vous joint : les courriels, les appels et les messages des autres applications selon qui les écrit, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. **Paramètres ▸ Ce qui vous joint** le dit d’abord en phrases, puis vous laisse le changer. Ce qui peut venir maintenant vient ; le reste attend son moment, jamais perdu.
+Sioul décide en un seul endroit quand chaque chose vous joint : les courriels et les messages des autres applications selon qui les écrit, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. **Paramètres ▸ Ce qui vous joint** pose trois questions, qui, quoi, et à quel moment, chacune dans un petit tableau. Ce qui peut venir maintenant vient ; le reste attend son moment, jamais perdu.
+
+**Sioul décide de ce qui passe, et quand. Le « Ne pas déranger » d’Android décide seulement si ce qui est passé fait du bruit.**
 
 <figure markdown="span">
-  [![Paramètres, l’onglet Ce qui vous joint : en haut, une phrase sur maintenant (« Maintenant : travail, jusqu’à 17:00. Les courriels de tout le monde arrivent tout de suite… ») et Partir de, avec Comme Sioul le fait maintenant, Plus calme et Plus joignable ; puis cinq boutons, Par moment, Par personne, Celles de Sioul, Exceptions, Ne pas déranger ; en dessous, les cartes de Par moment, Travail d’abord, marquée maintenant, chacune disant en phrases ce qui arrive tout de suite, ce qui attend et jusqu’à quand, et ce que l’ordinateur met en silence alors, avec Changer… à la fin.](../assets/screens/fr/settings-attention.png){ loading=lazy }](../assets/screens/fr/settings-attention.png "Ouvrir l’image en grand")
-  <figcaption>Ce qui vous joint, par moment : une carte par moment, en phrases.</figcaption>
+  [![Paramètres, Ce qui vous joint : en haut, la phrase pour maintenant (« Maintenant : travail, jusqu’à 17:00. »), les trois états avec Comme d’habitude marqué et Changer…, et Partir de avec Comme Sioul le fait maintenant, Plus calme et Plus joignable ; deux onglets, Vos règles et Ce qui vient quand ; sous Vos règles, Personnes : les cercles de haut en bas (Passent toujours, Sûrs, Vos contacts, Restreints, Tous les autres, Bloqués), Courriels et Messages de gauche à droite, chaque case un choix en mots comme Quand vous ne dormez pas ou Aux heures de travail et de démarches.](../assets/screens/settings-attention.png){ loading=lazy }](../assets/screens/settings-attention.png "Ouvrir l’image en grand")
+  <figcaption>Ce qui vous joint : Vos règles, un choix par cercle de personnes.</figcaption>
 </figure>
 
-## Un seul endroit {#one-place}
+## Une page, deux onglets {#one-place}
 
-Dans Paramètres ▸ **Ce qui vous joint**, toujours en haut :
+En haut, toujours :
 
-- **Maintenant** : ce qui vaut à cet instant, en quelques phrases : « Maintenant : loisirs, jusqu’à 22:00. Les courriels de vos expéditeurs sûrs arrivent tout de suite. Les codes et liens que vous demandez, vos prises et vos rappels arrivent tout de suite. Les courriels de tous les autres attendent. »
-- **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable** ([Les préréglages](#presets)). Dès que vous changez une case, une ligne le dit, « Le vôtre : 3 changements depuis Comme Sioul le fait maintenant. », avec **Revenir à Comme Sioul le fait maintenant**.
+- **Maintenant**, en une phrase : « Maintenant : loisirs, jusqu’à 22:00. Les courriels de vos expéditeurs sûrs arrivent tout de suite. »
+- **Les trois états**, Comme d’habitude, Ne pas déranger et Joignable, celui de maintenant marqué ; **Changer…** ouvre la carte du bouton de la ligne d’état, où chacun s’appuie pour une durée ([plus bas](#the-button-and-its-card)).
+- **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable** ([Les préréglages](#presets)). Dès que vous changez quelque chose, une ligne le dit, « Le vôtre : 3 changements depuis Comme Sioul le fait maintenant. », avec **Revenir à Comme Sioul le fait maintenant**.
 
-Puis cinq vues :
+Puis deux onglets :
 
-- **Par moment** (l’habituelle) : une carte par moment de votre journée, en phrases ([plus bas](#by-time)).
-- **Par personne** : ce que les courriels, les appels et les messages font de chaque liste de personnes, et qui est sur quelle liste ([plus bas](#by-person)).
-- **Celles de Sioul** : ce que Sioul vous dit lui-même : les codes, les prises, les rappels, les avis de Santé, vos sites, les autres applications ([plus bas](#sioul-s-own)).
-- **Exceptions** : les personnes qui passent toujours, et chaque conversation, application ou site qui a un choix à lui ([plus bas](#exceptions)).
-- **Ne pas déranger** : ce qui le met, ce qui tient pendant ce temps, ce que fait chaque appareil ([plus bas](#do-not-disturb-on-every-device)).
+- **Vos règles**, d’abord : Personnes, Les avis de Sioul et Moments, chacun un petit tableau ([plus bas](#by-person)).
+- **Ce qui vient quand** : chaque ligne à chaque moment, un mot par case ([plus bas](#by-time)). Vos règles écrivent le même tableau : rien n’est gardé deux fois.
 
-Un appui sur une marque, ou sur la valeur d’une ligne, ouvre ses choix en mots, celui qu’elle a en gras. Une marque grisée est fixe, pour votre sécurité, et dit pourquoi quand on appuie dessus. Un point marque ce que vous avez changé depuis Comme Sioul le fait maintenant. Ce que vous réglez voyage avec vos paramètres vers vos autres appareils ([Le partage](sharing.md)) : une seule matrice pour tous.
+Ce que vous réglez voyage avec vos paramètres vers vos autres appareils ([Le partage](sharing.md)). Sur un téléphone, chaque tableau est une liste : un appui sur une ligne ouvre ses choix.
 
-Sur un petit écran, la grille entière ne s’affiche jamais : les cartes d’abord, puis les lignes d’un moment, ou les moments d’une ligne, chaque valeur en mots.
+## Personnes {#by-person}
 
-## Les moments {#the-times}
+Un choix pour chaque cercle de personnes, pour les **courriels** et pour les **messages** (les SMS et les discussions des autres applications, sur un téléphone). Les appels se règlent pour chaque téléphone, dans Paramètres ▸ Appareils.
 
-Un seul moment vaut à chaque instant, le premier de ceux-ci qui s’applique ([Les heures](hours.md)) :
-
-1. **En pause** : de l’appui sur Pause jusqu’à votre retour ([Les pauses](pauses.md#pause)).
-2. **Sommeil** : du coucher au réveil, et les siestes ([La santé](health.md#meals-rest-and-sleep)).
-3. **Temps libre** : de l’appui sur Temps libre jusqu’à votre retour, la nuit ou minuit ([Les pauses](pauses.md#free-time)).
-4. **Repas** : de la préparation d’un repas à sa fin.
-5. **Travail**, **Démarches** et **Loisirs**, comme le disent vos heures. Sans aucune heure réglée, travail et démarches ensemble : la plus ouverte de leurs deux cases.
-
-Deux **couches** s’ajoutent au moment, jamais à sa place ; du moment et d’une couche, la plus stricte l’emporte :
-
-- **Du temps pour vous** : un créneau que le plan du jour garde pour vous ([Les tâches](tasks.md#the-day)).
-- **Ne pas déranger**, par son interrupteur ou une séance de concentration ([plus bas](#do-not-disturb-on-every-device)). « Ne pas déranger » tenu pour une pause, le temps libre ou le sommeil ne change rien : leurs propres colonnes le disent.
-
-Deux interrupteurs de plus ont chacun une ligne sous les cartes : **J’attends un appel** et **Le courrier chaque minute** (autrefois le Temps réel du Porche), tous deux dans la carte **Ce qui vous joint maintenant**, derrière le bouton de la ligne d’état ([plus bas](#the-button-and-its-card) ; [Les appels](calls.md#expecting-a-call)).
-
-## Ce que dit chaque marque {#the-levels}
-
-| Marque | En mots | Ce qui arrive |
+| | Courriels | Messages |
 |---|---|---|
-| ● | **Tout de suite** | Cela vient maintenant : affiché, notifié, laissé passer, ça sonne. Sur une couche : la couche ne change rien. |
-| ◑ | **Affiché, sans notification** | C’est dans Sioul si vous regardez (le Porche) ; rien ne vous le dit. C’est notifié quand vient un moment où cela l’est. Pour un message pendant « Ne pas déranger », **dans le volet des notifications, sans son** : il arrive sans bruit dans les notifications de votre téléphone tant que celui-ci est en silence, et attend sinon. |
-| ◐ | **Si son événement tombe dans ce moment** | Les alarmes d’un événement et le rappel de Sioul avant lui : tout de suite quand l’événement tombe dans ce moment ; sinon plus tard. |
-| ◎ | **Aux heures de regroupement** | Cela vient à la prochaine heure de regroupement : 09:00, 13:00 et 18:00 sauf si vous en réglez d’autres. |
-| ○ | **Plus tard** | Cela attend hors de vue, et vient quand commence un moment où cela peut venir : les courriels hors du Porche, un message retenu, un appel envoyé sur la messagerie et listé alors. |
-| – | **Pas du tout** | Jamais notifié. Un code reste sur le Porche, un courriel dans sa file, un repas sur Santé. |
-| ★ | **Tout de suite, quoi que dise leur liste** | Les personnes qui passent toujours. |
-| = | **Comme leur liste** | Les personnes qui passent toujours n’ont pas plus que ce que leur propre liste leur donne. |
-| ☆ | **Passe « Ne pas déranger », à leurs moments** | Sur une couche : elle ne retient pas les personnes qui passent toujours ; les moments de leur propre liste le font. |
+| Passent toujours | Toujours | Toujours |
+| Sûrs | Quand vous ne dormez pas | Quand vous ne dormez pas |
+| Vos contacts | Aux heures de travail et de démarches | Quand vous ne dormez pas |
+| Restreints | Aux heures de travail | Aux heures de travail |
+| Tous les autres | Aux heures de travail et de démarches | Aux heures de travail et de démarches |
+| Bloqués | Jamais | Jamais |
+
+C’est ce que fait Sioul sauf si vous le changez. Les choix, les mêmes sur chaque ligne :
+
+- **Toujours** : à tout moment, la nuit, une pause et « Ne pas déranger » compris. Les courriels s’affichent sur le Porche sans bruit la nuit et en pause.
+- **Quand vous ne dormez pas** : au travail, aux démarches, aux loisirs et aux repas ; retenus pendant le sommeil et une pause ; sous « Ne pas déranger », un courriel s’affiche sans bruit et un SMS arrive dans le volet, en silence. Pendant le temps libre, les messages de vos personnes sûres viennent quand même.
+- **Aux heures de travail et de démarches**, **Aux heures de travail**.
+- **Jamais notifié** : le courriel reste sur le Porche sans un mot ; un message est retenu.
+
+Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur le Porche, affiché ; celui de tous les autres attend hors de vue. Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant ([Les heures](hours.md)). Le choix de vos contacts pour les messages règle aussi les conversations de groupe.
+
+**À votre façon**, en italique, dit qu’une ligne a été réglée case par case, dans Ce qui vient quand. Choisissez l’un des autres pour la régler de nouveau en entier.
+
+**Les interrupteurs des courriels**, sous le tableau : **Me dire les nouveaux courriels**, une notification discrète par lot de courriels qui arrive maintenant, un clic ouvrant son courriel ; **Avec les infolettres**, non sauf si vous le mettez.
+
+### Qui est dans quel cercle {#who-is-on-which-list}
+
+<figure markdown="span">
+  [![Ce qui vous joint, Qui est dans quel cercle : « Toute personne de vos carnets d’adresses est parmi vos contacts, sans rien régler. » ; Passent toujours et sa liste, avec Ajouter vos expéditeurs sûrs et Ajouter un contact… ; puis les listes Sûrs, Restreints et Bloqués, les personnes mises sur une liste, et les groupes de vos contacts, chacun avec Aucune liste ou une liste.](../assets/screens/attention-circles.png){ loading=lazy }](../assets/screens/attention-circles.png "Ouvrir l’image en grand")
+  <figcaption>Qui est dans quel cercle : Passent toujours, trois listes, des personnes et des groupes.</figcaption>
+</figure>
+
+- **Vos contacts**, c’est toute personne de vos carnets d’adresses, et quiconque vous laissez entrer depuis le filtre : rien à régler.
+- **Passent toujours** : les personnes qui doivent toujours vous joindre ([plus bas](#always-through)).
+- **Sûrs**, **Restreints** et **Bloqués** : trois listes. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `+33899*` pour chaque numéro qui commence ainsi. Personne n’est bloqué parce qu’il partage un serveur ou un domaine avec quelqu’un d’autre.
+- **Les personnes sur une liste** : chacune mise sur une liste depuis sa fiche, avec **Comme le disent ses groupes**, **Sûr**, **Restreint** ou **Bloqué**.
+- **Les groupes** : une ligne pour chaque groupe auquel vos contacts appartiennent (Amis, Famille, Clients…), avec **Aucune liste** ou l’une des trois. Toute personne du groupe le prend, sauf si son propre choix dit autre chose.
+- **Garder une personne simple contact** dans un groupe restreint : sur sa fiche, **Vos contacts** ([plus bas](#a-persons-sheet)).
+
+**De la personne à la liste** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis ses groupes, puis un domaine ou le début d’un numéro ; puis vos contacts ; toute autre personne est inconnue. **La preuve d’abord** : un courriel qui échoue à ses vérifications est pesé comme celui d’un inconnu, et un courriel contrefait est mis de côté, même quand il se réclame de l’adresse d’un expéditeur sûr.
 
 ## D’où vous partez {#presets}
 
 - **Comme Sioul le fait maintenant** : ce que décrit cette page.
-- **Plus calme** : les courriels de vos expéditeurs sûrs affichés sans notification pendant les loisirs et les repas ; les appels de vos contacts neutres sur la messagerie pendant les démarches, les loisirs et les repas, et leurs messages retenus pendant les loisirs et les repas ; les messages de vos expéditeurs sûrs retenus pendant le temps libre ; les rappels de dates, et les sites en temps réel, attendent pendant les loisirs et les repas.
-- **Plus joignable** : les courriels de vos contacts neutres tout de suite pendant les loisirs et les repas (leurs appels et leurs messages viennent déjà alors) ; les courriels des inconnus affichés pendant les loisirs ; les automates des autres applications tout de suite pendant le travail et les démarches. Aucun préréglage ne change le filtrage des appels ([Les appels](calls.md#the-call-screening)).
+- **Plus calme** : les courriels de vos expéditeurs sûrs affichés, sans notification, aux loisirs et aux repas ; les messages de vos contacts et des groupes retenus aux loisirs et aux repas ; ceux de vos expéditeurs sûrs retenus pendant le temps libre ; sous « Ne pas déranger », tout SMS retenu ; les rappels de dates, et les sites en temps réel, attendent aux loisirs et aux repas.
+- **Plus joignable** : les courriels de vos contacts tout de suite aux loisirs et aux repas ; ceux des inconnus affichés aux loisirs ; les automates des autres applications tout de suite au travail et aux démarches.
 
-Un préréglage ne touche jamais une case fixe. En choisir un alors que vous avez des changements à vous demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. »
+En choisir un pendant que vous avez des changements à vous le demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. » Une ligne qu’un préréglage règle case par case se lit **À votre façon**.
 
-## Par moment {#by-time}
-
-Une carte par moment, le moment actuel d’abord et marqué **maintenant**, puis les deux couches. Chaque carte dit quand ce moment vaut (« Du lundi au vendredi, de 09:00 à 12:00 et de 14:00 à 17:00. »), puis en phrases, par groupes : ce qui arrive tout de suite ; ce qui arrive si son événement tombe alors ; aux heures de regroupement ; ce qui s’affiche sans notification ; ce qui attend, et jusqu’à quand (« un moment de travail ou de démarches », « jusqu’à votre réveil ») ; ce qui ne vient pas. Puis ce que le téléphone ou l’ordinateur met en silence alors, et ce qui tient aussi dans ce moment : « Après la pause, le Porche se repose jusqu’à vos prochaines heures de démarches. » **Changer…** ouvre les lignes de ce moment, chacune avec sa valeur en mots.
-
-Comme Sioul le fait maintenant, sauf si vous le changez :
-
-| Moment | Arrive tout de suite | Affiché, sans notification | Attend |
-|---|---|---|---|
-| **Travail** | les courriels et les messages de tout le monde ; les appels de vos contacts sûrs, neutres et restreints ; vos rappels, prises, codes ; les avis de Santé, la pause pour bouger ; un site en temps réel | | vos sites et les automates des autres applications arrivent aux heures de regroupement |
-| **Démarches** | les courriels et les messages de tous sauf vos contacts restreints ; les appels de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé ; « Les heures de travail sont finies » | | les courriels et les messages de vos contacts restreints, jusqu’à un moment de travail ; les appels de vos contacts restreints vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
-| **Loisirs** | les courriels de vos expéditeurs sûrs ; les appels et les messages de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé | | les courriels de tous les autres, et les messages de vos contacts restreints, des inconnus et des groupes, jusqu’à un moment de travail ou de démarches ; les appels de vos contacts restreints vont sur la messagerie, listés alors ; ce qui est pour le travail |
-| **Repas** | comme les loisirs | | comme les loisirs |
-| **Sommeil** | les prises ; les alarmes d’un événement et le rappel de Sioul avant lui quand l’événement est dans la nuit ; le réveil | les courriels de vos expéditeurs sûrs ; les codes que vous avez demandés | les messages et les appels, sauf ceux des personnes qui passent toujours ; les dates, jusqu’à votre réveil ; les avis de Santé ne viennent pas |
-| **En pause** | les prises ; les codes ; les alarmes d’un événement et le rappel de Sioul avant lui ; les appels et les messages des personnes qui passent toujours | les courriels de vos expéditeurs sûrs et des personnes qui passent toujours | tout le reste, jusqu’à votre retour ; après elle, le Porche se repose jusqu’à vos prochaines heures de démarches |
-| **Temps libre** | les appels et les messages de vos expéditeurs sûrs ; les prises ; les codes ; les rappels propres à un événement quand il y tombe | les courriels de vos expéditeurs sûrs | tous les autres, jusqu’à la fin du temps libre ; les rappels de dates ; les sites ; les avis de Santé ne viennent pas |
-
-Les deux couches s’ajoutent au moment, et ne retiennent jamais que davantage :
-
-- **Du temps pour vous** : les courriels sont au plus affichés, sans notification ; vos sites et les automates des autres applications attendent ; la pause pour bouger ne vient pas. Les appels, les messages, les rappels, les prises et les codes suivent le moment.
-- **Ne pas déranger** : les courriels, les appels et les messages des personnes qui passent toujours arrivent tout de suite ; les courriels de tous les autres sont au plus affichés, sans notification ; leurs appels vont sur la messagerie et leurs messages attendent ; vos sites, un appel dans un site et les automates des autres applications attendent ; la pause pour bouger ne vient pas. Les rappels, les prises, les codes et les avis de Santé suivent le moment. Sur un ordinateur, seul ce qui est à faire vient tant qu’il est actif : les prises, les codes, les alarmes d’un événement ; les courriels des personnes qui passent toujours, les rappels et les avis de Santé attendent sur le Porche, dans Santé et dans l’agenda ([À savoir, ou à faire](#to-know-or-to-do)).
-
-Les appels des numéros que personne ne connaît et des numéros masqués ne sont dans aucune de ces lignes : le filtrage des appels en décide, à part des moments, et chaque carte le dit dans une ligne à elle. Quand vos contacts attendent (le sommeil, une pause, le temps libre, « Ne pas déranger »), ils attendent aussi, sauf si vous attendez un appel ([Le filtrage des appels](calls.md#the-call-screening)).
-
-Le **temps libre** a un choix à lui, sur sa carte : **Rien du tout**, pas même vos expéditeurs sûrs. Les personnes qui passent toujours, les prises et les codes demandés viennent encore. Le menu du temps libre dans la ligne d’état le propose aussi ([Les pauses](pauses.md#free-time)).
-
-**Ce à quoi sert une chose** vaut aussi, quoi que disent les cases : les courriels d’une adresse pour le travail, un site ou une application pour le travail, les dates d’une tâche de travail attendent un moment de travail, sauf les personnes qui passent toujours ([Les heures](hours.md)). Les courriels de vos expéditeurs sûrs à une telle adresse s’affichent en attendant sur le Porche, et sont notifiés quand les heures de cette adresse commencent. Pendant une réunion, pas d’avis de repas ni de « Les heures de travail sont finies ». Après une pause, le Porche se repose jusqu’à vos prochaines heures de démarches : les nouveaux courriels s’y affichent, sans notification. Les cartes disent chacun là où il agit.
-
-## Par personne {#by-person}
+## Ce qui vient quand {#by-time}
 
 <figure markdown="span">
-  [![Ce qui vous joint, Par personne : trois boutons, Courriels, Appels et Messages, le premier choisi ; Me dire les nouveaux courriels et Avec les infolettres ; une phrase sur ce que retient votre filtre à indésirables ; puis une grille, les lignes de haut en bas (Passent toujours, Sûrs, Vos contacts, Restreints, Inconnus, Bloqués) et neuf colonnes en travers (Travail, Démarches, Loisirs, Repas, Sommeil, En pause, Temps libre, Du temps pour vous, Ne pas déranger), une marque dans chaque case, la ligne des bloqués grisée ; en dessous, la légende en mots, puis qui est sur quelle liste.](../assets/screens/fr/attention-person-mail.png){ loading=lazy }](../assets/screens/fr/attention-person-mail.png "Ouvrir l’image en grand")
-  <figcaption>Par personne : chaque liste de personnes, à chaque moment.</figcaption>
+  [![Ce qui vous joint, Ce qui vient quand : un seul tableau, les lignes de haut en bas dans leurs groupes, les sept moments et les deux couches de gauche à droite, Travail marqué comme maintenant, chaque case un mot : Aussitôt, Affiché, Plus tard, Retenu, Sans son, Regroupé, À l’événement, Porche.](../assets/screens/attention-table.png){ loading=lazy }](../assets/screens/attention-table.png "Ouvrir l’image en grand")
+  <figcaption>Ce qui vient quand : chaque ligne à chaque moment, un mot par case.</figcaption>
 </figure>
 
-Les courriels, les appels et les messages des autres applications suivent qui a écrit, quels que soient l’adresse ou le numéro employés. **Courriels**, **Appels** et **Messages** (SMS, et discussions des autres applications, sur un téléphone ou une tablette) ont chacun une grille : qui, de haut en bas ; les moments et les couches, en travers. Les appels et les messages passent par un de vos téléphones : tant qu’aucun ne filtre vos appels ni ne retient les notifications des autres applications (un téléphone avec cette version de Sioul dit à vos autres appareils si vous y avez donné à Sioul l’accès aux notifications), une phrase le dit au-dessus de leur grille.
+Le tableau entier : de haut en bas, chaque ligne (les cercles des courriels et des messages, puis les types de Sioul qui agissent sur cet appareil) ; de gauche à droite, les sept moments et les deux couches, ceux de maintenant en gras. Chaque case est un mot ; un appui ouvre ses choix en toutes lettres, celui qu’elle a en gras. Une case grisée est fixe, pour votre sécurité, et dit pourquoi. Un point marque ce que vous avez changé depuis Comme Sioul le fait maintenant. Sur un téléphone, une ligne par rangée avec son mot pour maintenant ; un appui ouvre ses neuf valeurs.
 
-**Qui**, une ligne chacun :
+### Les moments {#the-times}
 
-- **Passent toujours** : les personnes de votre liste Passent toujours ([plus bas](#always-through)). ★ tout de suite quoi que dise leur propre liste ; = comme leur propre liste.
-- **Sûrs** : les amis, les collègues et la famille que vous choisissez. Vous seul y mettez quelqu’un.
-- **Vos contacts** (« Neutres » dans les versions plus anciennes, et dans les fichiers) : toute personne de vos carnets d’adresses, ou laissée entrer depuis le filtre, tant que vous n’en décidez pas autrement.
-- **Restreints** : ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont les courriels pèsent.
-- **Inconnus** : dans aucun de vos carnets d’adresses, et sur aucune liste ; et les courriels que rien ne prouve être les leurs. Leurs appels relèvent du filtrage des appels, à part ([Les appels](calls.md#the-call-screening)).
-- **Numéros masqués** (appels) : un appel qui ne montre aucun numéro, quelqu’un qui cache le sien ou le standard d’un hôpital. Le filtrage des appels en décide aussi ; d’habitude, ils sonnent pendant le travail et les démarches.
-- **Groupes** (messages) : une conversation où plusieurs personnes écrivent, comme des inconnus tant que vous ne changez pas leur ligne.
-- **Bloqués** : jamais, sur aucun canal, même sur votre liste Passent toujours : leurs courriels mis de côté pour de bon, jamais montrés, jamais comptés ; leurs appels refusés et jamais listés. Rien n’est supprimé.
+Un seul moment vaut à chaque instant, le premier de ceux-ci qui s’applique ([Les heures](hours.md)) :
 
-Comme Sioul le fait maintenant :
+1. **En pause** : de l’appui sur Pause jusqu’à votre retour ([Les pauses](pauses.md#pause)).
+2. **Sommeil** : du coucher au réveil, et les siestes ([Les heures](hours.md#sleep)).
+3. **Temps libre** : de l’appui sur Temps libre jusqu’à votre retour, la nuit ou minuit ([Les pauses](pauses.md#free-time)).
+4. **Repas** : de la préparation d’un repas à sa fin.
+5. **Travail**, **Démarches** et **Loisirs**, comme le disent vos heures. Sans aucune heure réglée, travail et démarches ensemble : la plus ouverte de leurs deux cases.
 
-| Courriels | Travail | Démarches | Loisirs | Repas | Sommeil | En pause | Temps libre | Du temps pour vous | Ne pas déranger |
-|---|---|---|---|---|---|---|---|---|---|
-| Passent toujours | ★ | ★ | ★ | ★ | ◑ | ◑ | ★ | ★ | ★ |
-| Sûrs | ● | ● | ● | ● | ◑ | ◑ | ◑ | ◑ | ◑ |
-| Vos contacts | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
-| Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
-| Inconnus | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
+Deux **couches** valent par-dessus le moment, jamais à sa place ; entre le moment et une couche, la plus stricte l’emporte :
 
-| Appels | Travail | Démarches | Loisirs | Repas | Sommeil | En pause | Temps libre | Du temps pour vous | Ne pas déranger |
-|---|---|---|---|---|---|---|---|---|---|
-| Passent toujours | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
-| Sûrs | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Vos contacts | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
-| Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+- **Du temps pour vous** : un créneau du plan du jour gardé pour vous ([Les tâches](tasks.md#the-day)).
+- **Ne pas déranger**, par son interrupteur, ou pendant que vous êtes indisponible ([plus bas](#do-not-disturb-on-every-device)). « Ne pas déranger » tenu pour une pause, le temps libre ou le sommeil ne change rien : leurs propres colonnes le disent.
 
-Les appels des numéros absents de vos contacts et des numéros masqués ont quitté cette grille le 19 octobre 2026 : le filtrage des appels en décide, à part ([Les appels](calls.md#the-call-screening)).
+### Ce que dit chaque mot {#the-levels}
 
-Les messages vont comme les appels, mais les messages des inconnus arrivent tout de suite pendant le travail et les démarches, et ceux des groupes pendant le travail, les démarches, les loisirs et les repas ; pendant « Ne pas déranger », les messages de vos personnes sûres, de vos contacts et des groupes arrivent dans le volet, sans son (◑), et leurs appels vont sur la messagerie. La notification d’une application de courriel, sur Android, suit la grille Courriels, et elle est retenue là où les courriels seraient affichés sans notification : Android ne peut pas montrer ce qu’il retient. Un appel envoyé sur la messagerie est listé sur le Porche quand son auteur peut vous joindre, ou pendant le travail et les démarches pour une ligne qui ne sonne jamais ([Les appels](calls.md#afterwards-on-the-porch)).
+| Mot | En toutes lettres | Ce qui se passe |
+|---|---|---|
+| **Aussitôt** | Tout de suite | Il vient maintenant : affiché, notifié, laissé passer, il sonne. Sur une couche : la couche ne change rien. |
+| **Affiché** | Affiché, sans notification | Il est dans Sioul si vous regardez (le Porche) ; rien ne vous le dit. Il est notifié quand vient un moment où il l’est. |
+| **Sans son** | Dans le volet des notifications, sans son | Un SMS sous « Ne pas déranger » : il arrive en silence dans les notifications du téléphone tant que le téléphone est en silence, et attend sinon. |
+| **À l’événement** | Si son événement tombe dans ce moment | Les alarmes d’un événement et le rappel de Sioul avant lui : tout de suite quand l’événement tombe dans ce moment ; plus tard sinon. |
+| **Regroupé** | Aux heures de regroupement | Il vient à la prochaine heure de regroupement : 09:00, 13:00 et 18:00 sauf si vous en réglez d’autres. |
+| **Plus tard**, **Retenu**, **Messagerie** | Plus tard | Il attend hors de vue, et vient quand commence un moment où il peut venir : un courriel hors du Porche, un message retenu, un appel envoyé sur la messagerie et listé alors. |
+| **Jamais**, **Porche** | Pas du tout | Jamais notifié. Un code reste sur le Porche, un courriel dans sa file, un repas sur Santé. |
+| **Comme leur liste** | Comme leur liste | Les personnes qui passent toujours n’ont rien de plus que ce que leur donne leur propre liste. |
+| **Passe** | Passe « Ne pas déranger », à leurs moments | Sur une couche : elle ne retient pas les personnes qui passent toujours ; les moments de leur propre liste le font. |
 
-**Les interrupteurs des courriels**, au-dessus de leur grille :
+**Le temps libre** a son propre choix, sous Moments : **Rien du tout**, pas même vos expéditeurs sûrs. Les personnes qui passent toujours, les prises et les codes que vous avez demandés viennent quand même.
 
-- **Me dire les nouveaux courriels** : une seule notification discrète pour chaque lot de courriels qui arrive maintenant, avec combien de courriels et les premiers expéditeurs avec leur objet ; sur un ordinateur, chacun avec son bouton qui ouvre ce courriel, et un clic sur la notification ouvre le premier. Un courriel envoyé à deux de vos adresses est dit une fois. Les courriels qui attendaient sont dits une fois, quand leur moment vient : « Le Porche ouvre : trois courriels vous attendent. » ; de même pour ceux arrivés pendant que votre ordinateur était éteint, relevés à son démarrage. Activé sauf si vous le désactivez. Avec un téléphone et un ordinateur, celui dont vous vous êtes servi en dernier le dit, et l’autre ne redit pas ce qu’il a dit, une fois que votre partage l’a apporté : un courriel dit sur l’un juste avant que l’autre le relève peut encore venir sur les deux.
-- **Avec les infolettres** : les infolettres et les listes de diffusion, rangées sur le Porche, sont dites aussi. Désactivé sauf si vous l’activez.
-- Ce que retient votre propre filtre à indésirables, en une phrase : le peut-être indésirable et le probablement indésirable des inconnus attendent sur le Porche, dans « Retenu par votre filtre à indésirables », jamais notifiés ([Les paramètres](settings.md#your-own-spam-filter)).
-- Ce à quoi sert une adresse : les courriels d’une adresse pour un autre moment attendent ce moment, ceux de vos expéditeurs sûrs aussi, qui s’affichent en attendant sur le Porche et sont notifiés quand les heures de l’adresse commencent ; ceux des personnes qui passent toujours viennent quand même, et ceux de tous pendant Joignable. Une adresse sans rien de coché garde les moments de vos expéditeurs sûrs ; seuls ceux des autres attendent les heures du travail. « À quoi sert cette adresse » se règle sur sa carte, dans [Les comptes](accounts.md#a-mail-address).
+**Ce à quoi sert une chose** compte aussi, quoi que disent les cases : un courriel à une adresse pour le travail, un site ou une application pour le travail, les dates d’une tâche de travail attendent le moment du travail, sauf ceux des personnes qui passent toujours ([Les heures](hours.md)). Pendant une réunion, aucun avis de repas et aucun « Les heures de travail sont finies ». Après une pause, le Porche se repose jusqu’à vos prochaines heures de démarches.
 
-### Qui est sur quelle liste {#who-is-on-which-list}
-
-Sous la grille :
-
-- **Quatre listes** : Sûrs, Vos contacts, Restreints et Bloqués. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `*@*.example.org` pour ses sous-domaines, `+33899*` pour tous les numéros qui commencent ainsi. Personne n’est bloqué pour partager un serveur ou un domaine avec quelqu’un d’autre.
-- **Les personnes sur une liste** : chaque personne que vous avez mise sur une liste depuis sa fiche ou sa fiche « Comment … vous joint » ([plus bas](#a-persons-sheet)), chacune avec **Comme le disent ses catégories**, **Sûr**, **Vos contacts**, **Restreint** ou **Bloqué**. La fiche décide pour toutes ses adresses et tous ses numéros, ceux ajoutés plus tard aussi.
-- **Les catégories de vos contacts** : une ligne pour chaque catégorie qu’emploient vos contacts (Amis, Famille, Clients…), avec **Aucune liste** ou l’une des quatre. Chaque personne dont la fiche est dans la catégorie la prend, à chacune de ses adresses et chacun de ses numéros. Rien ne va sur une liste tout seul, famille et amis compris.
-
-**De la personne à la liste** : le choix propre à une personne vient d’abord (son adresse ou son numéro, puis sa fiche), puis les catégories de sa fiche, puis un domaine ou le début d’un numéro ; puis, neutre : toute personne de vos carnets d’adresses, et toute personne que vous laissez entrer depuis le filtre ; tous les autres sont des inconnus. Ainsi un ami peut être neutre alors que la catégorie Amis est sûre. Quand un même niveau donne deux réponses (une personne dans deux catégories sur deux listes), le blocage l’emporte, puis restreint, puis neutre, puis sûr.
-
-**La preuve vient d’abord** : un courriel qui échoue à ses vérifications est pesé comme celui d’un inconnu, et un courriel falsifié, ou qui emprunte un nom, est mis de côté, même quand il prétend venir de l’adresse d’un expéditeur sûr.
-
-## Celles de Sioul {#sioul-s-own}
+## Les avis de Sioul {#sioul-s-own}
 
 <figure markdown="span">
-  [![Ce qui vous joint, Celles de Sioul : une grille, les types de haut en bas en quatre groupes (Ce que vous avez réglé ou demandé : codes et liens, prises, les alarmes d’un événement ; Rappels ; Votre journée : repas, siestes et la nuit, la pause pour bouger, les heures de travail sont finies, le temps qui court ; Sites, sur un ordinateur) et les neuf colonnes en travers, les marques fixes grisées ; au-dessus, Notifications des sites regroupées et les heures de regroupement.](../assets/screens/fr/attention-own.png){ loading=lazy }](../assets/screens/fr/attention-own.png "Ouvrir l’image en grand")
-  <figcaption>Les notifications de Sioul, chaque type à chaque moment.</figcaption>
+  [![Ce qui vous joint, Les avis de Sioul : quatre groupes, chacun avec ce qu’il contient et son choix : Ce que vous avez réglé ou demandé, Prises pendant le sommeil ou Prises au réveil ; Rappels, Quand vous ne dormez pas ou Non ; Soin, un interrupteur pour les repas, siestes et la nuit, la pause pour bouger, Les heures de travail sont finies et le temps qui court ; Sites et applications, Tout de suite ou Aux heures de regroupement, avec les heures de regroupement.](../assets/screens/attention-own.png){ loading=lazy }](../assets/screens/attention-own.png "Ouvrir l’image en grand")
+  <figcaption>Les avis de Sioul, en quatre groupes.</figcaption>
 </figure>
+
+| Groupe | Ce qu’il contient | Votre choix |
+|---|---|---|
+| Ce que vous avez réglé ou demandé | les codes et liens, les prises, le réveil, les alarmes d’un événement | toujours tout de suite ; **Prises pendant le sommeil** ou **Prises au réveil** |
+| Rappels | avant un événement, le jour travaillé d’avant, les dates, les attentes, les paiements, les papiers | **Quand vous ne dormez pas** ou **Non** |
+| Soin | les repas, siestes et la nuit ; la pause pour bouger ; « Les heures de travail sont finies » ; le temps qui court | un interrupteur chacun |
+| Sites et applications | les nouvelles de vos sites sur un ordinateur, les notifications automatiques des applications sur un téléphone | **Tout de suite** ou **Aux heures de regroupement**, et les heures de regroupement |
+
+Un groupe réglé case par case dans Ce qui vient quand dit **À votre façon**, et aucun choix n’est coché ; choisissez-en un pour le régler de nouveau en entier.
 
 Chaque notification vient une fois, jamais répétée. Ce que fait chaque type, sauf si vous changez sa ligne :
 
@@ -208,29 +181,26 @@ Sur un téléphone, les notifications de Sioul sont des deux mêmes types, chacu
 
 Du coucher au réveil, et pendant une sieste, les prises viennent sauf si vous le changez : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller.
 
-- **Pendant le sommeil et une pause** : la ligne **Prises**, dans Celles de Sioul : **Tout de suite** (sauf si vous le changez) ou **Plus tard**. Plus tard, le rappel de chaque prise vient à votre réveil ou à votre retour, une fois, et la question sur les prises dues pendant que Sioul était fermé aussi. Toutes les autres cases sont fixées à tout de suite : Sioul ne retient jamais une prise sans ce choix.
+- **Pendant le sommeil** : **Prises pendant le sommeil** (sauf si vous le changez) ou **Prises au réveil**, sous Ce que vous avez réglé ou demandé ; pendant une pause, la ligne **Prises** de Ce qui vient quand. Plus tard, le rappel de chaque prise vient à votre réveil ou à votre retour, une fois, et la question sur les prises dues pendant que Sioul était fermé aussi. Toutes les autres cases sont fixées à tout de suite : Sioul ne retient jamais une prise sans ce choix.
 - **Sans nuit réglée** dans Paramètres ▸ Heures, rien n’écarte les notifications la nuit : le Porche la demande dans une carte ([Les heures](hours.md#sleep)).
 
 ### Les heures de regroupement {#the-gathered-times}
 
-Paramètres ▸ Rappels ▸ **Regroupées à** : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Trois par jour ont le plus aidé dans un essai sur le terrain (Fitz et al. 2019).
+Ce qui vous joint ▸ Les avis de Sioul ▸ Sites et applications ▸ **Regroupées à** : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Trois par jour ont le plus aidé dans un essai sur le terrain (Fitz et al. 2019).
 
 - **Sur un ordinateur**, une seule notification dit alors lesquels de vos sites ont du nouveau, pour les sites de ces heures-là, sur l’ordinateur où vous êtes, avec **Ouvrir le Porche**. Avec **Notifications des sites regroupées** décoché (dans Celles de Sioul), leurs nouvelles attendent sur le Porche seulement.
 - **Sur Android**, les notifications des automates des autres applications reviennent alors.
 - **Une heure de regroupement** qui tombe pendant que leur ligne dit plus tard est sautée : ce qui attend vient à la suivante.
 
-## Exceptions {#exceptions}
+## Ce qui est propre à chaque personne et à chaque source {#exceptions}
 
-<figure markdown="span">
-  [![Ce qui vous joint, Exceptions : Passent toujours, une phrase qui dit ce que font, à chaque moment, les courriels des personnes qui passent toujours (les appels et les messages aussi, là où un de vos téléphones les filtre ou les retient), puis la liste : chaque personne avec ses numéros et ses adresses, Modifier et Retirer de la liste, Ajouter vos expéditeurs sûrs, Ajouter quelqu’un à la main et un champ pour ajouter un contact ; puis vos sites, chacun avec son propre choix ; le rappel propre à un événement, avec Ouvrir l’Agenda ; un repas, une sieste, la nuit, un jour, avec Ouvrir Santé.](../assets/screens/fr/attention-exceptions.png){ loading=lazy }](../assets/screens/fr/attention-exceptions.png "Ouvrir l’image en grand")
-  <figcaption>Exceptions : les personnes qui passent toujours, et chaque source qui a un choix à elle.</figcaption>
-</figure>
+Certaines personnes et certaines sources ont des choix à elles, à côté de vos cercles : les personnes qui passent toujours, les propres moments d’une personne (sur sa fiche), chaque autre application et conversation sur un téléphone, le temps réel d’un site, le rappel d’un événement, le jour d’un repas. Ce qui vous joint compte ceux réglés ailleurs en une ligne, « Réglé ailleurs : un site en temps réel, les rappels propres de 2 événements. », avec un bouton vers chaque endroit.
 
 ### Passent toujours {#always-through}
 
 Les personnes qui doivent toujours vous joindre : un aidant, le cabinet de votre médecin, l’école de votre enfant. Une seule liste pour tous vos appareils, gardée scellée dans votre dossier de partage : vos carnets d’adresses peuvent différer d’un appareil à l’autre ; la liste, non.
 
-Au-dessus de la liste, la ligne Passent toujours de chaque canal, en une phrase. Comme Sioul le fait maintenant : leurs appels sonnent et leurs messages arrivent à tout moment, sommeil et pauses compris ; leurs courriels arrivent tout de suite, mais s’affichent sans notification pendant votre sommeil ou une pause ; « Ne pas déranger » ne les retient pas. Vous pouvez leur donner moins : = leur donne les moments de leur propre liste, case par case.
+Elle se trouve sous Ce qui vous joint ▸ **Qui est dans quel cercle**, à côté de vos trois listes. La ligne Passent toujours de chaque canal est dans Personnes, Toujours sauf si vous la changez. Comme Sioul le fait maintenant : leurs appels sonnent et leurs messages arrivent à tout moment, sommeil et pauses compris ; leurs courriels arrivent tout de suite, mais s’affichent sans notification pendant votre sommeil ou une pause ; « Ne pas déranger » ne les retient pas. Vous pouvez leur donner moins : = leur donne les moments de leur propre liste, case par case.
 
 - **Ajouter vos expéditeurs sûrs** : chaque personne de votre liste Sûrs, avec le nom et les numéros de sa fiche quand une fiche les a. Un motif comme `*@example.org` ne nomme personne : il est laissé de côté, et Sioul le dit.
 - **Ajouter un contact…** : depuis vos carnets d’adresses, par un nom, un numéro ou une adresse.
@@ -254,7 +224,7 @@ Sur Android, Sioul peut retenir les notifications des autres applications jusqu�
 - **Le premier son** : Android fait sonner une notification avant que Sioul la voie. Lié à votre ordinateur, Sioul rend silencieuses lui-même les applications qu’il regroupe : Paramètres ▸ Ce téléphone ▸ **Laisser Sioul les rendre silencieuses**, puis choisissez dans la liste d’appareils d’Android l’ordinateur, appairé en Bluetooth, vers lequel Sioul relaie les notifications de votre téléphone. Seulement les canaux qui ont sonné pendant que Sioul retenait la notification d’un automate, et ceux que vous désignez avec **Rendre silencieux** ; les discussions, les SMS et le courrier gardent leur son, pour que sonnent les personnes laissées passer, et un canal qui a porté un jour un code, un paiement ou une connexion à approuver ou un rappel garde aussi le sien. Android attache deux choses de plus au lien : Sioul peut ouvrir sa fenêtre depuis l’arrière-plan, et, à partir d’Android 15, Android ne cache plus à Sioul les codes à usage unique ; Sioul les lit sur votre téléphone seulement, pour les laisser passer tout de suite, et n’en envoie jamais les mots à vos ordinateurs. Chaque changement apparaît dans les paramètres d’Android comme le vôtre. **Rendre le son**, à côté d’une application, rétablit ses canaux tels qu’ils étaient ; **Arrêter, et rendre tous les sons** les rétablit tous et laisse aller le lien. Sans le lien (un téléphone qui ne le propose pas, ou si vous préférez ne pas le faire), **Rendre silencieux** ouvre la page de chaque canal dans Android, pour que vous l’y rendiez silencieux.
 - **Avant de désinstaller Sioul**, appuyez sur **Arrêter**, puis attendez que l’onglet dise que tous les sons sont rendus (Sioul a besoin de l’accès aux notifications pour cela) : Android ne prévient aucune application qu’on la désinstalle, et les canaux que Sioul a rendus silencieux le resteraient. Pour le défaire à la main : paramètres d’Android ▸ Applications ▸ l’application ▸ Notifications, puis le son de chaque canal.
 
-Dans Exceptions, à mesure que chaque application, conversation et site paraît :
+Dans Paramètres ▸ Ce téléphone, à mesure que chaque application, conversation et site paraît :
 
 - **Chaque application** : **Notification par notification** (l’habituel : les messages selon qui les écrit, le reste regroupé), **Messages entre personnes**, **Un automate : regroupées**, ou **Tout de suite**, comme le dit sa ligne dans Celles de Sioul. Une application dont les notifications ne peuvent pas attendre (un trajet, une livraison à votre porte, l’application d’un médecin ou d’une pharmacie) : **Tout de suite**. **Pour** : le travail, vos démarches ou les loisirs, comme pour une adresse ; à toute heure sauf si vous choisissez.
 - **Chaque conversation** : **Selon qui écrit** ; **Passe toujours**, à tout moment, sommeil, pauses et « Ne pas déranger » compris (le groupe de l’école, par exemple) ; **Regroupée avec les automates** ; ou **Jamais**, retenue pour de bon. Un groupe est jugé selon sa propre ligne tant que vous ne choisissez pas. Sioul laisse passer une conversation, jamais un nom : dans les discussions, chacun choisit son nom.
@@ -263,7 +233,7 @@ Dans Exceptions, à mesure que chaque application, conversation et site paraît�
 
 #### Les autres applications, selon le moment {#other-apps-by-time}
 
-**Autres applications, selon le moment**, en haut de la partie du téléphone dans Exceptions, est un tableau : en ligne, chaque application vue dans le dernier mois, puis les conversations pour lesquelles vous avez choisi et les dix vues en dernier ; en colonne, les sept moments et les deux couches, comme dans les grilles de [Par personne](#by-person). Chaque case dit **Comme d’habitude** (=), **Tout de suite** (●), **Aux heures de regroupement** (◎) ou **Retenues** (○) ; un appui ouvre ses choix en mots. Pour laisser passer Discord pendant le travail et le retenir sinon : **Tout de suite** sous Travail, **Retenues** sous tous les autres moments.
+**Autres applications, selon le moment**, dans Paramètres ▸ Ce téléphone, est un tableau : en ligne, chaque application vue dans le dernier mois, puis les conversations pour lesquelles vous avez choisi et les dix vues en dernier ; en colonne, les sept moments et les deux couches, comme dans les grilles de [Par personne](#by-person). Chaque case dit **Comme d’habitude** (=), **Tout de suite** (●), **Aux heures de regroupement** (◎) ou **Retenues** (○) ; un appui ouvre ses choix en mots. Pour laisser passer Discord pendant le travail et le retenir sinon : **Tout de suite** sous Travail, **Retenues** sous tous les autres moments.
 
 - **Comme d’habitude** suit ce qu’est la notification : un message selon qui l’écrit, un automate aux heures de regroupement, une application réglée sur **Tout de suite** tout de suite. Rien ne change pour une application tant que vous n’avez réglé aucune de ses cases.
 - **La case d’une conversation**, si elle est réglée, l’emporte sur celle de son application ; si elle dit **Comme d’habitude**, celle de l’application compte.
@@ -271,7 +241,7 @@ Dans Exceptions, à mesure que chaque application, conversation et site paraît�
 - **Comme avant** : les personnes qui passent toujours viennent toujours ; les bloquées jamais ; les codes et les approbations, les appels, les alarmes et ce qui est en cours ne sont jamais retenus.
 - **La ligne de chaque application** dit sa ligne du tableau en une phrase : « Tout de suite : Travail ; retenues : Démarches, Loisirs, Repas, Sommeil, En pause, Temps libre, Du temps pour vous et Ne pas déranger. »
 - **Ce qu’Android permet** : le premier son d’une notification joue avant que Sioul la voie ; rendez donc silencieuse une application retenue à certains moments (Paramètres ▸ Ce téléphone, **Rendre silencieux**), ou laissez Sioul le faire pour les applications qu’il regroupe. Pendant une pause, le temps libre ou « Ne pas déranger », le mode de Sioul décide de ce qui sonne : ce qu’une case laisse passer alors s’affiche sans son, sauf une conversation prioritaire ou un contact favori.
-- **Sur un ordinateur**, Exceptions montre les lignes des applications réglées sur votre téléphone, par leur nom, et les change : elles voyagent avec vos réglages.
+- **Sur un ordinateur**, les lignes des applications réglées sur votre téléphone voyagent avec vos réglages ; elles se changent sur le téléphone.
 
 **Ce que Sioul garde**, sur cet appareil seulement, jamais partagé avec vos autres appareils : vos choix du type de chaque application, de la façon dont passe chaque conversation et de chaque site, le nom des applications, conversations et sites vus, et quand ce qu’il a retenu revient. Jamais ce que dit une notification, sauf si vous envoyez les messages d’une application à vos ordinateurs ([plus bas](#messages-on-your-computers)). Les lignes selon le moment voyagent avec vos réglages : celle d’une application avec son nom, celle d’une conversation par un nombre tiré d’elle, jamais son titre.
 
@@ -314,9 +284,12 @@ Votre téléphone peut montrer à vos ordinateurs les messages qu’apportent se
 
 ### Les sites, les événements, les jours de Santé {#sites-events-health}
 
-- **Vos sites**, sur un ordinateur : le **Temps réel** ou **En silence** de chaque site, dit ici et changé dans son menu sur la page [Sites](sites.md).
+Comptés dans la ligne de Ce qui vous joint sur ce qui est réglé ailleurs, chacun changé à son endroit :
+
+- **Vos sites**, sur un ordinateur : le **Temps réel** ou **En silence** de chaque site, dans son menu sur la page [Sites](sites.md).
 - **Le rappel propre à un événement** : **Rappel**, dans son formulaire et ses détails, comme d’habitude, pas pour celui-ci, ou tant de minutes avant ([L’agenda](agenda.md#reminders)).
 - **Un repas, une sieste, la nuit, un jour** : chacun peut se passer de ses avis, pour un jour ou pour de bon, sur la page [Santé](health.md#meals-rest-and-sleep).
+- **Les propres moments d’une personne** : sur sa fiche ([plus bas](#their-own-times)).
 
 ## Le bouton et sa carte {#the-button-and-its-card}
 
@@ -342,37 +315,46 @@ Un clic droit, ou un appui long, sur le bouton ouvre un court menu : **Joignab
   <figcaption>Joignable, et pour combien de temps.</figcaption>
 </figure>
 
-Tant qu’il dure, sur chacun de vos appareils qui a cette version de Sioul, tous ceux qui écrivent et ne sont pas bloqués, et les personnes que vous connaissez qui appellent, vous joignent tout de suite, leurs propres heures comprises ([plus bas](#their-own-times)) ; une conversation que vous avez réglée sur jamais reste retenue. Le Porche s’ouvre avec toutes les files et toutes les adresses, dit les nouveaux courriels et relève le courrier chaque minute ; ce que retient votre téléphone revient à l’appui. Ni une séance de concentration, ni la nuit, ni le temps libre n’activent « Ne pas déranger » pendant ce temps. Les numéros que personne ne connaît restent au filtrage des appels ([Les appels](calls.md#the-call-screening)). Quelle que soit la durée choisie, il finit au plus tard au début de la nuit (appuyé la nuit, à votre réveil), et la carte le dit quand une durée l’atteint. **Comme d’habitude** y met fin, une pause aussi ; il n’est pas proposé pendant une pause. Deux appareils appuyés à moins d’une minute, sans se connaître : le plus calme l’emporte (Ne pas déranger, puis Comme d’habitude, puis Joignable).
+Tant qu’il dure, sur chacun de vos appareils qui a cette version de Sioul, tous ceux qui écrivent et ne sont pas bloqués, et les personnes que vous connaissez qui appellent, vous joignent tout de suite, leurs propres heures comprises ([plus bas](#their-own-times)) ; une conversation que vous avez réglée sur jamais reste retenue. Le Porche s’ouvre avec toutes les files et toutes les adresses, dit les nouveaux courriels et relève le courrier chaque minute ; ce que retient votre téléphone revient à l’appui. Ni un moment indisponible, ni la nuit, ni le temps libre n’activent « Ne pas déranger » pendant ce temps. Les numéros que personne ne connaît restent au filtrage des appels ([Les appels](calls.md#the-call-screening)). Quelle que soit la durée choisie, il finit au plus tard au début de la nuit (appuyé la nuit, à votre réveil), et la carte le dit quand une durée l’atteint. **Comme d’habitude** y met fin, une pause aussi ; il n’est pas proposé pendant une pause. Deux appareils appuyés à moins d’une minute, sans se connaître : le plus calme l’emporte (Ne pas déranger, puis Comme d’habitude, puis Joignable).
 
 ## Ne pas déranger sur tous vos appareils {#do-not-disturb-on-every-device}
 
 <figure markdown="span">
-  [![Ce qui vous joint, Ne pas déranger : Ce qui l’active, quatre interrupteurs (L’interrupteur dans la ligne d’état, Pendant que je me concentre sur une tâche, Pendant les pauses, Pendant mon sommeil), chacun avec sa phrase ; Tant qu’il est actif, les phrases de la carte Ne pas déranger ; puis Sur cet appareil, ce que le système de cet ordinateur laisse faire à Sioul.](../assets/screens/fr/attention-dnd.png){ loading=lazy }](../assets/screens/fr/attention-dnd.png "Ouvrir l’image en grand")
-  <figcaption>Ne pas déranger : ce qui le met, ce qu’il retient, ce que fait chaque appareil.</figcaption>
+  [![Ce qui vous joint, Moments : « Sioul décide de ce qui passe, et quand ; le « Ne pas déranger » d’Android décide seulement si cela fait du bruit. » ; un tableau de Comme d’habitude, Ne pas déranger et Joignable, chacun avec qui passe, ce qui le met et ce que fait votre téléphone ; ce qui met « Ne pas déranger », une case pour l’interrupteur, les pauses, la nuit et Pendant une indisponibilité ; Qui retient quoi sur un téléphone, la part de Sioul et celle d’Android pour un appel, un message, « Ne pas déranger » et vos propres modes.](../assets/screens/attention-dnd.png){ loading=lazy }](../assets/screens/attention-dnd.png "Ouvrir l’image en grand")
+  <figcaption>Moments : qui passe, ce qui met « Ne pas déranger », qui retient quoi sur un téléphone.</figcaption>
 </figure>
 
 « Ne pas déranger » est un seul interrupteur pour tous vos appareils : activé ou désactivé sur l’un, il vaut sur tous, dès que chacun l’apprend par votre [dossier de partage](sharing.md). Tant qu’il est actif, sa colonne de la matrice s’ajoute au moment, et chaque appareil met son système en silence, autant que ce système le permet à une application.
 
 ### L’interrupteur {#the-switch}
 
-Ne pas déranger est l’un des trois états du bouton ([plus haut](#the-button-and-its-card)) : dans sa carte, **Ne pas déranger**, puis **30 min**, **1 h**, **2 h**, **Jusqu’à 17:00** (jusqu’à la fin du moment où vous êtes) ou **Jusqu’à ce que je l’arrête** ; ou **Ne pas déranger pendant une heure** dans le menu du bouton. **Comme d’habitude** le désactive, sur tous vos appareils, quoi qui l’ait activé ; s’il tient pour une séance de concentration ou une nuit, celle-ci reste écartée jusqu’à sa fin. La carte dit pourquoi il tient (« Pendant que vous vous concentrez sur une tâche. »), et **Remettre cet appareil en silence** quand vous avez désactivé le mode propre à cet appareil sans que Sioul puisse l’entendre.
+Ne pas déranger est l’un des trois états du bouton ([plus haut](#the-button-and-its-card)) : dans sa carte, **Ne pas déranger**, puis **30 min**, **1 h**, **2 h**, **Jusqu’à 17:00** (jusqu’à la fin du moment où vous êtes) ou **Jusqu’à ce que je l’arrête** ; ou **Ne pas déranger pendant une heure** dans le menu du bouton. **Comme d’habitude** le désactive, sur tous vos appareils, quoi qui l’ait activé ; s’il tient pour un moment indisponible ou une nuit, celui-ci reste écarté jusqu’à sa fin. La carte dit pourquoi il tient (« Pendant que vous êtes indisponible. »), et **Remettre cet appareil en silence** quand vous avez désactivé le mode propre à cet appareil sans que Sioul puisse l’entendre.
 
 ### Ce qui l’active {#what-turns-it-on-by-itself}
 
-Dans Ce qui vous joint ▸ **Ne pas déranger** :
+Dans Ce qui vous joint ▸ Vos règles ▸ **Moments** :
 
 - **L’interrupteur dans la ligne d’état** (activé) : gardé de l’interrupteur d’avant la version 0.0.7 ; le bouton de ce qui vous joint s’affiche quoi qu’il dise.
-- **Pendant que je me concentre sur une tâche** (désactivé) : tant qu’une séance de concentration compte ([Les tâches](tasks.md#starting-and-stopping)), jusqu’à une demi-heure après le temps choisi, trois heures pour une séance sans durée : une séance oubliée ne vous rend jamais injoignable longtemps.
+- **Pendant une indisponibilité** (désactivé) : pendant un événement marqué **Indisponible**, et tant qu’une tâche marquée **Indisponible pendant que j’y travaille** a son minuteur qui tourne ([plus bas](#busy)). Un minuteur oublié lâche une demi-heure après le temps choisi, trois heures pour un minuteur sans fin. Un minuteur sur une tâche qui n’est pas marquée indisponible ne l’active plus, comme le faisait **Pendant que je me concentre sur une tâche** avant le 18 novembre 2026 : marquez les tâches pendant lesquelles vous voulez qu’on vous laisse.
 - **Pendant les pauses** (activé) : le temps libre et la pause mettent aussi vos appareils en silence ([Les pauses](pauses.md)). Décoché, elles ne retiennent que les notifications de Sioul.
 - **Pendant mon sommeil** (désactivé) : du coucher au réveil, et pendant les siestes ([La santé](health.md#meals-rest-and-sleep)).
 
-**Le dernier changement l’emporte.** Désactivé pendant une séance de concentration, il le reste jusqu’à la fin de cette séance, et la suivante le réactive ; de même pour une nuit. Désactivé pendant une pause, seul le mode « Ne pas déranger » de vos appareils est levé : la pause retient toujours les notifications de Sioul. Un appui qui l’active n’annule jamais une raison. Deux appuis sur deux appareils à moins d’une minute d’écart, chacun sans connaître l’autre : l’activation l’emporte, le choix le plus calme ; un appui de plus tranche.
+**Le dernier changement l’emporte.** Désactivé pendant un moment indisponible, il le reste jusqu’à la fin de ce moment, et le suivant le réactive ; de même pour une nuit. Désactivé pendant une pause, seul le mode « Ne pas déranger » de vos appareils est levé : la pause retient toujours les notifications de Sioul. Un appui qui l’active n’annule jamais une raison. Deux appuis sur deux appareils à moins d’une minute d’écart, chacun sans connaître l’autre : l’activation l’emporte, le choix le plus calme ; un appui de plus tranche.
 
 **Tant qu’il est actif**, comme Sioul le fait maintenant : les courriels, les appels et les messages des personnes qui passent toujours arrivent tout de suite ; les courriels de tous les autres s’affichent sans notification ; leurs appels vont sur la messagerie et leurs messages attendent ; les prises, les codes et les alarmes d’un événement viennent toujours, et sur un téléphone les rappels et les avis de Santé aussi (sur un ordinateur, ils attendent sur le Porche, dans Santé et dans l’agenda : [À savoir, ou à faire](#to-know-or-to-do)) ; vos sites, les automates des autres applications et la pause pour bouger attendent. La vue le dit dans les mêmes phrases que la carte Ne pas déranger, avec **Changer…**.
 
+### Indisponible {#busy}
+
+La fiche et le formulaire d’un événement, et le panneau d’une tâche, ont un interrupteur **Indisponible** (sur une tâche, **Indisponible pendant que j’y travaille**). Tant qu’il dure :
+
+- il compte dans la disponibilité que vous partagez ([L’agenda](agenda.md#your-availability)) ;
+- avec **Pendant une indisponibilité** coché, « Ne pas déranger » tient, sur tous vos appareils.
+
+Un événement avec une heure est indisponible sauf si vous dites le contraire, un événement d’une journée entière disponible sauf si vous le dites indisponible, comme Google et chaque application d’agenda le gardent : la marque est celle de l’événement, elle voyage donc vers votre serveur et en revient. Cocher **Toute la journée** dans le formulaire rend un nouvel événement disponible, sauf si vous avez appuyé sur l’interrupteur. Une réunion avec d’autres garde la marque de son organisateur : affichée, jamais écrite. Une tâche n’est jamais indisponible sauf si vous le dites ; sur une liste que Google garde, l’interrupteur est grisé, Google ne gardant pas une telle marque.
+
 ### Ce que fait chaque système {#what-each-system-does}
 
-Chaque appareil active un mode « Ne pas déranger » à lui pour les trois modes de Sioul : la pause, le temps libre, et « Ne pas déranger » par son interrupteur, une séance de concentration ou votre sommeil. Il le fait autant que son système le permet à une application. Sa ligne dit ce qui a été mis en silence et ce qui n’a pas pu l’être : dans le menu de l’interrupteur, et dans Ce qui vous joint ▸ Ne pas déranger ▸ **Sur cet appareil**. Désactivé depuis Sioul, le mode « Ne pas déranger » propre à un appareil se désactive aussi, là où Sioul le peut ([Dans les deux sens](#both-ways)).
+Chaque appareil active un mode « Ne pas déranger » à lui pour les trois modes de Sioul : la pause, le temps libre, et « Ne pas déranger » par son interrupteur, un moment indisponible ou votre sommeil. Il le fait autant que son système le permet à une application. Sa ligne dit ce qui a été mis en silence et ce qui n’a pas pu l’être : dans le menu de l’interrupteur, et dans Ce qui vous joint ▸ Ne pas déranger ▸ **Sur cet appareil**. Désactivé depuis Sioul, le mode « Ne pas déranger » propre à un appareil se désactive aussi, là où Sioul le peut ([Dans les deux sens](#both-ways)).
 
 - **Android** (10 et plus récent) : un mode propre à Sioul pour chacun, « En pause », « Temps libre » et « Ne pas déranger (Sioul) », parmi les programmes « Ne pas déranger » d’Android (ses modes, à partir d’Android 15). Chacun laisse passer ce que la matrice laisse passer à ce moment, autant qu’Android peut le dire :
     - **Les appels** : tant que ce téléphone filtre les appels ([Les appels](calls.md)), les appels de vos contacts sonnent à travers le mode, Sioul ayant déjà envoyé les autres sur votre messagerie ; ceux de tout le monde, quand le filtrage des appels laisse alors sonner les numéros que personne ne connaît et que vos contacts le peuvent aussi, ou pendant que vous attendez un appel. Sans le filtrage, ceux de vos contacts favoris seulement. Personne, quand la matrice ne laisse appeler personne (**Rien du tout** du temps libre, par exemple), sauf ceux qui passent toujours.
@@ -410,7 +392,7 @@ Chaque appareil active un mode « Ne pas déranger » à lui pour les trois 
 
 ### Ce que dit la ligne d’état {#what-the-status-line-says}
 
-Tant que « Ne pas déranger » tient, le bouton dit où, et jusqu’à quand une fois que chaque raison qui le tient a une fin (la limite d’une séance de concentration n’est jamais dite) :
+Tant que « Ne pas déranger » tient, le bouton dit où, et jusqu’à quand une fois que chaque raison qui le tient a une fin (la fin d’un moment indisponible n’est jamais dite) :
 
 - « Ne pas déranger, sur tous vos appareils, jusqu’à 15:00. » : chaque autre appareil entendu la semaine passée le tient, son système en silence, et celui-ci aussi.
 - « Ne pas déranger ici ; les nouvelles de vos autres appareils arrivent. » : les autres n’ont pas donné de nouvelles depuis qu’il a commencé.
@@ -419,7 +401,7 @@ Tant que « Ne pas déranger » tient, le bouton dit où, et jusqu’à quan
 - « Ne pas déranger : cet appareil ne retient que les notifications de Sioul. » : le système de cet appareil ne peut pas être mis en silence (Windows, un bureau sans moyen, Android sans l’accès). Avec « sur vos autres appareils » quand d’autres sont en silence.
 - « Ne pas déranger sur vos autres appareils ; vous l’avez désactivé ici. » : vous avez désactivé le mode propre à cet appareil quand Sioul ne pouvait pas l’entendre, ou désactivé le mode de Sioul dans les paramètres d’Android. **Remettre cet appareil en silence**, dans son menu, le remet en silence.
 
-Sa carte dit pourquoi (« Activé depuis votre téléphone. », « Pendant que vous vous concentrez sur une tâche. »). Un ordinateur où Sioul a été quitté est fermé jusqu’à ce que Sioul y redémarre ; un ordinateur dont on n’a pas de nouvelles depuis une demi-heure (Sioul arrêté sans un mot) est en attente de ses nouvelles. Un appareil avec un Sioul plus ancien ne suit pas ; ses propres pauses le mettent toujours en silence. Sur Android, la carte de l’écran d’accueil montre la ligne aussi, tant que « Ne pas déranger » est activé par son interrupteur ou une séance de concentration.
+Sa carte dit pourquoi (« Activé depuis votre téléphone. », « Pendant que vous êtes indisponible. »). Un ordinateur où Sioul a été quitté est fermé jusqu’à ce que Sioul y redémarre ; un ordinateur dont on n’a pas de nouvelles depuis une demi-heure (Sioul arrêté sans un mot) est en attente de ses nouvelles. Un appareil avec un Sioul plus ancien ne suit pas ; ses propres pauses le mettent toujours en silence. Sur Android, la carte de l’écran d’accueil montre la ligne aussi, tant que « Ne pas déranger » est activé par son interrupteur ou une séance de concentration.
 
 ## La fiche d’une personne {#a-persons-sheet}
 
@@ -466,17 +448,22 @@ Sur un téléphone Android, le filtrage des appels est à part de « Ne pas d�
 
 ## Où changer chaque chose {#where-to-change-each-thing}
 
-- **Paramètres ▸ Ce qui vous joint** : la matrice, par moment, par personne et celles de Sioul ; **Me dire les nouveaux courriels**, **Avec les infolettres**, **Notifications des sites regroupées**, **Les notifications pour information durent** ; **Rien du tout**, pour le temps libre ; vos listes ; Passent toujours et sa liste ; sur Android, chaque application, conversation et site du navigateur ; ce qui met « Ne pas déranger », et ce que le système de cet appareil laisse faire à Sioul.
-- **Paramètres ▸ Rappels** : **Dates demandées : jours travaillés avant**, **Fenêtre de Sioul fermée**, **Regroupées à** ([Les paramètres](settings.md#reminders)) ; **Avant un événement** dans le ⚙ de l’Agenda, **Une attente finie** dans celui des Tâches, **Paiements prévus : jours travaillés avant** dans celui de la page Budgets.
-- **Paramètres ▸ Ce téléphone** (**Cette tablette** sur une tablette), sur Android : le filtrage des appels, l’accès aux notifications des autres applications et leur retenue, l’accès « Ne pas déranger », qui est en favori, garder le téléphone à jour en arrière-plan, les alarmes exactes ([Les paramètres](settings.md#this-phone)).
+- **Paramètres ▸ Ce qui vous joint** : Personnes (un choix par cercle, **Me dire les nouveaux courriels**, **Avec les infolettres**), qui est dans quel cercle (Passent toujours, vos listes, vos groupes), Les avis de Sioul (avec **Regroupées à** et **Les notifications pour information durent**), Moments (ce qui met « Ne pas déranger », **Pendant une indisponibilité** parmi eux, **Rien du tout** pour le temps libre), et Ce qui vient quand, chaque case.
+- **Paramètres ▸ Rappels** : **Dates demandées : jours travaillés avant**, **Fenêtre de Sioul fermée** ([Les paramètres](settings.md#reminders)) ; **Avant un événement** dans le ⚙ de l’Agenda, **Une attente finie** dans celui des Tâches, **Paiements prévus : jours travaillés avant** dans celui de la page Budgets.
+- **Paramètres ▸ Ce téléphone** (**Cette tablette** sur une tablette), sur Android : le filtrage des appels, l’accès aux notifications des autres applications et leur retenue, chaque application, conversation et site du navigateur, l’accès « Ne pas déranger », qui est en favori, garder le téléphone à jour en arrière-plan, les alarmes exactes ([Les paramètres](settings.md#this-phone)).
 - **La fiche d’une personne**, depuis sa fiche de contact ou un message : sa liste, Passe toujours ([plus haut](#a-persons-sheet)).
-- **Un événement** : **Rappel**, dans son formulaire et ses détails ([L’agenda](agenda.md#reminders)).
+- **Un événement** : **Rappel** et **Indisponible**, dans son formulaire et ses détails ([L’agenda](agenda.md#reminders)) ; **une tâche** : **Indisponible pendant que j’y travaille**, sur son panneau ([Les tâches](tasks.md)).
 - **Un site** : **Temps réel**, et son menu ([Les sites](sites.md)).
 - **Paramètres ▸ Heures** : les avis des repas, des siestes et de la nuit ([Repas, repos et sommeil](health.md#meals-rest-and-sleep)) ; **le ⚙ de la page Santé** : la pause pour bouger ([La santé](health.md#moving)).
 - **Le ⚙ des tâches** : **Du temps pour vous** ([Les tâches](tasks.md#the-tasks-settings)).
 - **Les paramètres d’Android** : chacun des canaux de Sioul, son son compris : « Doses » et « Prises pendant une pause », « À savoir » (ce qui est à savoir), « À faire » et « À faire pendant une pause » (un code), « Courriels des personnes qui passent toujours », « Réveil », « Minuteur de concentration », « Appareils à jour ». Les canaux d’un Sioul plus ancien (« Événements », « Alarmes des événements », « Nouveaux courriels », « Fin de journée ») ont disparu. Un canal « pendant une pause » passe les modes de Sioul tant que vous ne l’y avez pas changé ; les conversations que vous laissez toujours passer, **Prioritaire** dans la page de chacune.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- **Trois petits tableaux, pas une grille.** La page était une grille de 253 cases et neuf cartes d’une douzaine de phrases chacune, jugée intimidante. La plupart des lignes disent l’une de quelques choses, qui ont maintenant un nom ; la grille reste à un onglet, un mot par case, pour le reste. Rien n’a bougé dessous : vos réglages se lisent comme avant, et une ligne réglée case par case le dit.
+- **Vos contacts se règlent seuls.** Vos carnets d’adresses disent déjà qui sont vos contacts : une liste d’eux, et un choix d’eux sur chaque groupe, ne faisaient que brouiller. La catégorie d’un contact s’appelle un groupe, le mot de votre carnet d’adresses.
+- **Sioul décide, Android sonne.** Les deux retiennent des choses sur un téléphone, par des moyens différents : Sioul refuse un appel ou retient une notification ; le « Ne pas déranger » d’Android décide si ce qui est passé fait du bruit. La page dit la part de chacun en ces mots.
+- **Indisponible est la marque standard.** Le « Occupé / Disponible » de Google l’écrit, et chaque serveur et application d’agenda la garde : un événement marqué indisponible sur votre téléphone l’est partout, et rien ne change de ce que vous partagez tant que vous ne marquez rien. Une tâche n’a pas de telle marque : Sioul garde la sienne, et ne compte une tâche indisponible que là où son temps est connu, puisqu’une tâche sans date ni heure pourrait être n’importe où.
 
 - Regrouper les notifications trois fois par jour a amélioré l’attention, l’humeur et le stress, tandis que les personnes qui n’en avaient aucune se sentaient plus anxieuses que les autres (Fitz et al. 2019). Alors ce qui peut attendre vient regroupé, à des moments que vous pouvez lire à l’avance, et ne disparaît pas.
 - Une notification laissée sans réponse coûte encore de l’attention (Stothart, Mitchum & Yehnert 2015). Alors chacune vient une fois, les courriels sans bruit, et aucune pastille ne les compte.
