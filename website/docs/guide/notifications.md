@@ -46,7 +46,7 @@ That is what Sioul does unless you change it. The choices, the same on every lin
 - **Always**: at every time, the night, a pause and do-not-disturb included. Mail is shown on the Porch without a sound at night and in a pause.
 - **When awake**: in work, admin, leisure and meals; held while you sleep or pause; under do-not-disturb, mail is shown without a sound and a text comes in the shade, silent. In Free time, your safe people's messages still come.
 - **In work and admin hours**, **In work hours**.
-- **Never told**: mail stays on the Porch without a word; a message is held.
+- **Never told**: mail stays on the Porch without a word; a message is held at every time, on your phone, in its own app, and the card What reaches you now counts what the phone holds.
 
 Outside a line's times, your safe senders' mail waits on the Porch, shown; everyone else's waits out of sight. A message is told only while what it was written to, an address or an app, is for now ([Hours](hours.md)). Your contacts' choice for messages also sets group conversations.
 
@@ -130,7 +130,7 @@ Two **layers** hold on top of the time, never instead of it; of the time and a l
 
 | Group | What it holds | Your choice |
 |---|---|---|
-| What you set or asked for | codes and links, doses, the alarm at waking, an event's alarms | always at once; **Doses while you sleep** or **Doses at waking** |
+| What you set or asked for | codes and links, doses, the alarm at waking, an event's alarms | doses and the alarm at waking at once; codes on the Porch while you sleep; an event's alarms during sleep and Free time when their event falls then. **Doses while you sleep** or **Doses at waking** sets the doses' cell for sleep, nothing else |
 | Reminders | before an event, the working day before, dates, waits, payments, papers | **When awake** or **Off** |
 | Care | meals, naps and the night; the pause to move; "Work hours are over"; the time running | a switch each |
 | Sites and apps | your sites' news on a computer, apps' automatic notifications on a phone | **At once** or **At the gathered times**, and the gathered times |

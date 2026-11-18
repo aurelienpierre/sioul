@@ -273,6 +273,16 @@ Item {
             compare(wide.view, "table")
             wide.show("rules", "mail")
             compare(wide.view, "rules")
+            // A door to a row lands on the row (review W4): in sight on a computer, opened on a phone.
+            revealed.clear()
+            wide.show("time", "doses")
+            compare(wide.view, "table")
+            tryCompare(revealed, "count", 1)
+            compare(revealed.signalArguments[0][0].objectName, "cell-doses-work")
+            narrow.show("time", "doses")
+            compare(narrow.rowOpen, "doses")
+            narrow.show("time", "pause")
+            compare(narrow.rowOpen, "", "a time is no row")
         }
 
         // What comes when, on a computer: the grid in words, now's column marked; a cell changed by its row.

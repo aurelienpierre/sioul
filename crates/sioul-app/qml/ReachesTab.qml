@@ -108,6 +108,13 @@ ColumnLayout {
         tab.rowOpen = ""
         if (view === "table" || (view === "time" && (detail || "") !== "")) {
             tab.view = "table"
+            // A door to a row lands on the row (review W4): its line opened on a phone, in sight on a computer.
+            if ((tab.shown.rows || []).indexOf(detail) >= 0) {
+                if (tab.narrow)
+                    tab.rowOpen = detail
+                else
+                    revealer.ask("cell-" + detail + "-work")
+            }
             return
         }
         tab.view = "rules"
@@ -179,6 +186,7 @@ ColumnLayout {
 
         property string part: ""
 
+        // A part of Your rules by its name ("people"), or an item by its own ("cell-doses-work").
         function ask(part) {
             revealer.part = part
             revealer.restart()
@@ -186,7 +194,7 @@ ColumnLayout {
 
         interval: 120
         onTriggered: {
-            const item = tab.findNamed(tab, "part-" + revealer.part)
+            const item = tab.findNamed(tab, revealer.part.startsWith("cell-") ? revealer.part : "part-" + revealer.part)
             if (item)
                 tab.reveal(item)
         }
@@ -777,7 +785,7 @@ ColumnLayout {
                 }
                 Note {
                     visible: group.modelData.value === "own" && group.modelData.choices.length > 0
-                    text: tab.sioul.text("reach-own") + ": " + tab.shown.people.own_help
+                    text: tab.sioul.text("reach-own") + ": " + (group.modelData.own_help || tab.shown.people.own_help)
                     font.italic: true
                 }
                 Note {

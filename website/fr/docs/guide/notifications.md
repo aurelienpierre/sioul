@@ -46,7 +46,7 @@ C’est ce que fait Sioul sauf si vous le changez. Les choix, les mêmes sur cha
 - **Toujours** : à tout moment, la nuit, une pause et « Ne pas déranger » compris. Les courriels s’affichent sur le Porche sans bruit la nuit et en pause.
 - **Quand vous ne dormez pas** : au travail, aux démarches, aux loisirs et aux repas ; retenus pendant le sommeil et une pause ; sous « Ne pas déranger », un courriel s’affiche sans bruit et un SMS arrive dans le volet, en silence. Pendant le temps libre, les messages de vos personnes sûres viennent quand même.
 - **Aux heures de travail et de démarches**, **Aux heures de travail**.
-- **Jamais notifié** : le courriel reste sur le Porche sans un mot ; un message est retenu.
+- **Jamais notifié** : le courriel reste sur le Porche sans un mot ; un message est retenu à tout moment, sur votre téléphone, dans son application, et la fiche Ce qui vous joint maintenant compte ce que le téléphone retient.
 
 Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur le Porche, affiché ; celui de tous les autres attend hors de vue. Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant ([Les heures](hours.md)). Le choix de vos contacts pour les messages règle aussi les conversations de groupe.
 
@@ -130,7 +130,7 @@ Deux **couches** valent par-dessus le moment, jamais à sa place ; entre le mo
 
 | Groupe | Ce qu’il contient | Votre choix |
 |---|---|---|
-| Ce que vous avez réglé ou demandé | les codes et liens, les prises, le réveil, les alarmes d’un événement | toujours tout de suite ; **Prises pendant le sommeil** ou **Prises au réveil** |
+| Ce que vous avez réglé ou demandé | les codes et liens, les prises, le réveil, les alarmes d’un événement | les prises et le réveil tout de suite ; les codes sur le Porche pendant le sommeil ; les alarmes d’un événement pendant le sommeil et le temps libre quand leur événement tombe à ce moment. **Prises pendant le sommeil** ou **Prises au réveil** règle la case des prises pour le sommeil, rien d’autre |
 | Rappels | avant un événement, le jour travaillé d’avant, les dates, les attentes, les paiements, les papiers | **Quand vous ne dormez pas** ou **Non** |
 | Soin | les repas, siestes et la nuit ; la pause pour bouger ; « Les heures de travail sont finies » ; le temps qui court | un interrupteur chacun |
 | Sites et applications | les nouvelles de vos sites sur un ordinateur, les notifications automatiques des applications sur un téléphone | **Tout de suite** ou **Aux heures de regroupement**, et les heures de regroupement |

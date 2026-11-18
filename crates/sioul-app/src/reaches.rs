@@ -368,7 +368,7 @@ pub(crate) fn view(realtime: bool) -> String {
         "presets_note": text("reach-presets-calls"),
         "changed": changed,
         "people": people(&attention, reach),
-        "own": own_groups(&attention, &config),
+        "own": own_groups(&attention, &config, &rows),
         "moments": moments(),
         "elsewhere": elsewhere(&attention, &config, reach),
         "calls": text("reach-calls"),
@@ -435,11 +435,15 @@ fn people(attention: &Attention, reach: Reach) -> Value {
 /// Sioul's own notices in four groups (design 1.2): each its choice as its
 /// rows read it (`behaviours::group_reading`), "own" when none; care's
 /// switches one by one; the gathered times under Sites and apps.
-fn own_groups(attention: &Attention, config: &Config) -> Value {
+fn own_groups(attention: &Attention, config: &Config, rows: &[Row]) -> Value {
+    let usual = Attention::usual();
     let groups: Vec<Value> = Group::ALL
         .iter()
         .map(|group| {
             let read = behaviours::group_reading(attention, *group);
+            // "Your own" points at What comes when only where this device's table shows the row
+            // set cell by cell (review R5): a row of a phone's alone, on a computer, says so.
+            let hidden = group.kinds().iter().any(|k| !rows.contains(&Row::Own(*k)) && Column::ALL.iter().any(|c| attention.cell(Row::Own(*k), *c) != usual.cell(Row::Own(*k), *c)));
             let choice_label = |choice: &str| text(&format!("reach-choice-{}-{choice}", group.id()));
             let switches: Vec<Value> = if *group == Group::Care {
                 group.kinds().iter().map(|k| json!({ "kind": k.id(), "label": attention::row_label(tr(), Row::Own(*k)), "on": behaviours::care(attention, *k) })).collect()
@@ -460,6 +464,7 @@ fn own_groups(attention: &Attention, config: &Config) -> Value {
                 "choices": choices,
                 "switches": switches,
                 "gathered": if *group == Group::Sites { say("reach-gathered", &[("times", gathered_times(config))]) } else { String::new() },
+                "own_help": text(if hidden { "reach-own-help-elsewhere" } else { "reach-own-help" }),
             })
         })
         .collect();
@@ -1228,9 +1233,10 @@ mod tests {
                     }
                     said_well(page["own_help"].as_str().unwrap(), language);
                     said_well(page["blocked"]["help"].as_str().unwrap(), language);
-                    for group in own_groups(&attention, &config).as_array().unwrap() {
+                    for group in own_groups(&attention, &config, &table_rows(false)).as_array().unwrap() {
                         worded(group["label"].as_str().unwrap(), language);
                         said_well(group["holds"].as_str().unwrap(), language);
+                        said_well(group["own_help"].as_str().unwrap(), language);
                         for choice in group["choices"].as_array().unwrap() {
                             worded(choice["label"].as_str().unwrap(), language);
                         }
@@ -1306,9 +1312,15 @@ mod tests {
         assert_eq!(read("contacts"), pair("work-admin", "In work and admin hours", "awake", "When awake"));
         assert_eq!(read("restricted"), pair("work", "In work hours", "work", "In work hours"));
         assert_eq!(read("others"), pair("work-admin", "In work and admin hours", "work-admin", "In work and admin hours"));
-        let groups = own_groups(&usual, &Config::default());
+        let groups = own_groups(&usual, &Config::default(), &table_rows(false));
         let value = |id: &str| groups.as_array().unwrap().iter().find(|g| g["id"] == id).unwrap()["value"].as_str().unwrap().to_string();
         assert_eq!([value("asked"), value("reminders"), value("care"), value("sites")], ["sleep", "awake", "on", "gathered"]);
+        // "Your own" on a computer, for a row only a phone's table shows (review R5): said so.
+        let reachable = Preset::Reachable.matrix();
+        let sites = |rows: &[Row]| own_groups(&reachable, &Config::default(), rows).as_array().unwrap().iter().find(|g| g["id"] == "sites").unwrap().clone();
+        assert_eq!(sites(&table_rows(false))["value"], "own");
+        assert_eq!(sites(&table_rows(false))["own_help"], text("reach-own-help-elsewhere"));
+        assert_eq!(sites(&table_rows(true))["own_help"], text("reach-own-help"));
         assert!(table_rows(true).iter().all(|r| !matches!(r, Row::People(Channel::Calls, _))));
         assert!(table_rows(false).contains(&Row::Own(Kind::Sites)) && table_rows(true).contains(&Row::Own(Kind::AppAutomatons)));
         // A row changed in the grid: "Your own", in words.
