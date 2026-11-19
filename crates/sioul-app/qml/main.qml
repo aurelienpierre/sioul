@@ -4469,17 +4469,23 @@ SioulWindow {
             // end; the move made on the demo profile; then Settings ▸ Sharing's line
             // of the old files with "Take them out", and what the press said.
             readonly property var storageSteps: [
-                () => window.showStorageMove(),
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.showStorageMove()
+                },
                 () => {},
                 () => {},
-                () => grabber.save("storage-move"),
+                () => grabber.saveWindow("storage-move"),
                 () => {
                     const shown = storageMove.item as StorageMove
                     if (shown !== null)
                         shown.toEnd()
                 },
                 () => {},
-                () => grabber.save("storage-move-end"),
+                () => grabber.saveWindow("storage-move-end"),
                 () => {
                     const shown = storageMove.item as StorageMove
                     if (shown !== null)
@@ -4489,7 +4495,7 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => {},
-                () => grabber.save("storage-moved"),
+                () => grabber.saveWindow("storage-moved"),
                 () => {
                     const shown = storageMove.item as StorageMove
                     if (shown !== null)
