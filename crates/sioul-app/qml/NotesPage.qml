@@ -53,6 +53,14 @@ Item {
     // On a phone, the note open takes the page; Back keeps it (saved) and
     // closes it (main.qml).
     readonly property bool canGoBack: page.note !== null
+    // The page's ⚙, open at one of its settings ("case_store", the notes folder, from a
+    // link by key: SettingDoor.qml, the sharing's line), or closed; with no folder too.
+    function openSettings(open, key) {
+        notesSettings.show(open)
+        if (open && key)
+            Qt.callLater(() => notesSettings.scrollTo(key))
+    }
+
     function back() {
         page.open("")
     }
@@ -322,9 +330,22 @@ Item {
         }
     }
 
+    // No notes folder on this device, or one that does not read: asked for in
+    // the page's place (FolderNeeded.qml), never an empty list.
+    FolderNeeded {
+        id: folderNeeded
+
+        anchors.fill: parent
+        sioul: page.sioul
+        theme: page.theme
+        title: page.sioul.text("ui-notes")
+        onChosen: page.sioul.searchNotes(page.query)
+    }
+
     RowLayout {
         id: columns
 
+        visible: !folderNeeded.shown
         anchors.fill: parent
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
@@ -396,17 +417,12 @@ Item {
                     Layout.fillWidth: true
                 }
                 SettingsButton {
+                    id: notesSettings
+
                     sioul: page.sioul
                     theme: page.theme
                     view: "notes"
                 }
-            }
-            Label {
-                visible: page.shown.missing
-                Layout.fillWidth: true
-                text: page.sioul.text("note-no-store")
-                wrapMode: Text.Wrap
-                color: page.theme.muted
             }
             // One list, or a tree of folders: your choice, kept.
             RowLayout {

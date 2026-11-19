@@ -29,11 +29,12 @@ Sioul notes the time you spend, while you work or afterwards by hand, and keeps 
 
 - a bar per day (per month, over a year), stacked by project;
 - each project's hours, and what is left to bill, in hours and in money at its rate, the money counted line by line as its invoice will count it, so that the two agree to the cent;
+- **Done in this period, by area**: for the tasks done in the period, the time spent on them beside what you first estimated, one line for work, your admin and leisure each, so that you see where your guesses are off (each task counts once: a leisure task in a personal project counts as leisure);
 - then each stretch of time, newest first.
 
 ## Where time comes from {#where-time-comes-from}
 
-- **The focus timer**: the minutes of a [focus session](tasks.md#starting-and-stopping) count for its task, and for the task's project.
+- **The focus timer**: the minutes of a [focus session](tasks.md#starting-and-stopping) count for its task, and for the task's project. Any task, whatever it is for and whatever the hour: your admin and leisure count as work does, with or without a project.
 - **Note time**, on this page, on a project's page, or with **New ▾ ▸ Time spent**: a meeting, a call, work done away from the timer. **For** (a project, or a task), **How long** (`1h30`, `45m`, `90`), **When**, **What it was**, and **Not to bill** when it should not be.
 
 While a focus session runs, on Linux and on Android, a notification shows it: its task, since when, and **Pause** (**Go on** once paused) and **Stop**, which do what the focus window's buttons do. On a Linux desktop it stays among the desktop's notifications while Sioul is open (in KDE Plasma, under the bell once its popup goes), and goes when Sioul quits. On Android, a chronometer counts in it, and its buttons work with Sioul in the background or closed. Paused or stopped elsewhere, in the focus window or on another device, it follows. On Windows and macOS, the focus window alone shows the time running, for now.
@@ -59,7 +60,7 @@ A task's **Takes about** is a guess. The time noted for it is what it took. Siou
 
 It never scores you, never shows anything as late, never fills in **Takes about** for you, and never compares you with anyone.
 
-Timing leisure is up to you. Gaps are fine: time not noted is left out, not counted against anything.
+Timing your admin and leisure is up to you, and it teaches the plan as work's does: each area's tasks learn their own length. Gaps are fine: time not noted is left out, not counted against anything.
 
 ## A spreadsheet of billable time {#a-spreadsheet-of-billable-time}
 
@@ -266,7 +267,7 @@ The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and s
 ### How the plan learns from your time {#how-the-plan-learns-from-your-time}
 
 - **Your first guess is kept.** The first time a task gets a length, Sioul keeps it with the task and never changes it, even when you change **Takes about** later. A task given a length before this existed has none kept; its current length is used instead.
-- **Only finished tasks teach it**, each one's time spent against its first guess, all its stretches added up.
+- **Only finished tasks teach it**, each one's time spent against its first guess, all its stretches added up, its steps' with them: a timer runs on the step you are doing, so a task done through its steps learns from their time, against its own guess. A step alone teaches nothing, and teaches through its task once that task is done.
     - Timed minutes count fully, corrected ones too.
     - Minutes noted by hand count a quarter, because remembered durations are less sure.
     - Dropped tasks never count.

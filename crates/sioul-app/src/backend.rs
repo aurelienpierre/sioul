@@ -88,6 +88,10 @@ pub mod qobject {
         #[qproperty(QString, notes)]
         #[qproperty(QString, focus_session)]
         #[qproperty(QString, reading)]
+        // The notes folder as this device finds it, as JSON (`Config::notes_folder`):
+        // {"state": "ready" | "unreadable" | "unset", "path"}; "" until first found.
+        // The Notes page asks for it when it is not ready (FolderNeeded.qml).
+        #[qproperty(QString, notes_folder)]
         // What this device is for what follows you: "phone", "tablet" or "computer" (devicekind.rs).
         // Never the layout, which follows the window's size (main.qml's `compact`).
         #[qproperty(QString, device_kind)]
@@ -706,6 +710,18 @@ pub mod qobject {
         /// Show changed, on this device alone; returns what went wrong, else "".
         #[qinvokable]
         fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
+
+        /// The Day's and the Week's steps: the areas ticked ("work+leisure", "" for none),
+        /// kept on this device until changed (`agenda::set_step_areas`); "everything" and
+        /// "as the hours say" below. Each returns what went wrong, else "".
+        #[qinvokable]
+        fn tick_step_areas(self: Pin<&mut Sioul>, areas: &QString) -> QString;
+
+        #[qinvokable]
+        fn step_areas_everything(self: Pin<&mut Sioul>) -> QString;
+
+        #[qinvokable]
+        fn step_areas_as_hours(self: Pin<&mut Sioul>) -> QString;
 
         /// The agenda filter: the agendas `ids` (a JSON list of places) turned
         /// on or off by hand, until work's hours change (`agenda::turn`);
@@ -3160,6 +3176,7 @@ pub struct SioulRust {
     notes: QString,
     focus_session: QString,
     reading: QString,
+    notes_folder: QString,
     device_kind: QString,
     telephony: bool,
     keyboard: bool,
@@ -3527,6 +3544,28 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
                 break;
             }
         }
+    });
+}
+
+/// The notes folder's state (`notesFolder`), found off the window's thread (a
+/// drive that does not answer never holds the window), then set when it
+/// changed; once it was known, a change shows again what reads the folder.
+pub(crate) fn notes_folder_now(qt: &QtThread, shared: &Arc<Shared>) {
+    let (qt, shared) = (qt.clone(), shared.clone());
+    std::thread::spawn(move || {
+        let found = serde_json::to_string(&load_config().notes_folder()).unwrap_or_default();
+        let qt_again = qt.clone();
+        let _ = qt.queue(move |mut sioul| {
+            let before = sioul.notes_folder().to_string();
+            if before == found {
+                return;
+            }
+            sioul.as_mut().set_notes_folder(QString::from(&found));
+            if !before.is_empty() {
+                show(&qt_again, &shared);
+                work::show_work(&qt_again, &shared);
+            }
+        });
     });
 }
 
@@ -4786,6 +4825,7 @@ impl qobject::Sioul {
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
+        notes_folder_now(&self.qt_thread(), &self.shared());
         self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
         // Said again now that Android's side answers (a first sentence may have come before it).
         crate::devicekind::name_in_words();
@@ -5797,6 +5837,25 @@ impl qobject::Sioul {
 
     fn set_agenda_view(self: Pin<&mut Self>, view: &QString) -> QString {
         QString::from(&crate::agenda::set_view(&view.to_string()))
+    }
+
+    fn tick_step_areas(self: Pin<&mut Self>, areas: &QString) -> QString {
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areas::Area::parse(&areas.to_string()).unwrap_or_default()));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_everything(self: Pin<&mut Self>) -> QString {
+        let problem = crate::agenda::set_step_areas(None);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_as_hours(self: Pin<&mut Self>) -> QString {
+        // What now is for on this device, ticked as your word: it stays when the hours change.
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areafilter::hours_say(&crate::hours::mode_now())));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
     }
 
     fn find_things(&self, query: &QString) -> QString {
@@ -7581,6 +7640,8 @@ impl qobject::Sioul {
     }
 
     fn refresh_mode(mut self: Pin<&mut Self>) {
+        // The notes folder read again: a drive plugged in or taken out is seen within a minute.
+        notes_folder_now(&self.qt_thread(), &self.shared());
         // Doses to remind, errands to make: off the window's thread.
         let (qt, shared_tick) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
@@ -8367,8 +8428,13 @@ impl qobject::Sioul {
         }
         // What this device is: the window's, and the others' at the next exchange (its devices' entry).
         // The notes folder moved: whether a sync app carries it, so whether notes and papers travel from here.
+        // The notes folder chosen (Notes ⚙, or the Notes page that asked for it): what
+        // reads it is shown again.
         if key == "case_store" {
             crate::devices::parts_now();
+            notes_folder_now(&qt, &shared);
+            show(&qt, &shared);
+            work::show_work(&qt, &shared);
         }
         if key == "device_kind" {
             self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
@@ -8567,10 +8633,11 @@ impl qobject::Sioul {
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
         // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
         // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
-        // Invoices (the guide's pictures; docs/projects.md), "shell" Settings' tabs and, on a phone, its
+        // Invoices (the guide's pictures; docs/projects.md), "views" the Week's steps by area and the
+        // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

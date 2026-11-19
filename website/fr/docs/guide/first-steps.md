@@ -72,7 +72,7 @@ Ce qui change sur Android :
 
 ## Rejoindre vos autres appareils {#join-your-other-devices}
 
-Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Votre dossier et le partage** propose la même chose à tout moment.
+Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Partage** propose la même chose à tout moment.
 
 ## Ajouter vos courriels {#add-your-mail}
 
@@ -177,7 +177,7 @@ Les courriels de Google s’ajoutent dans le formulaire des courriels, plus haut
 
 Vos notes sont un dossier de fichiers Markdown : un coffre Obsidian fonctionne tel quel. Sioul garde aussi vos projets, vos budgets, vos papiers et vos lettres scannées dans ce dossier, pour qu’ils voyagent avec lui jusqu’à vos autres appareils.
 
-Dans **Paramètres ▸ Votre dossier et le partage**, choisissez **Le dossier des notes**. Sioul le lit et y fait des liens ; il ne se l’approprie jamais. Voir [Les notes](notes.md).
+Ouvrez **Notes** : tant que cet appareil n’a pas de dossier de notes, la page en demande un, avec **Choisir un dossier…**. Sioul le lit et y fait des liens ; il ne se l’approprie jamais. Ses réglages (⚙) le changent ensuite. Voir [Votre dossier de notes](notes.md#your-notes-folder).
 
 ## Régler vos heures {#set-your-hours}
 

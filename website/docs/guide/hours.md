@@ -161,7 +161,7 @@ From winding down to waking, and during a nap, nothing disturbs:
 - **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** for Doses ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;
-- Tasks ▸ Now waits behind one sentence and **Show anyway**, where a thought can still be noted for later; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
+- Tasks ▸ Now waits behind one sentence and **Show anyway**; a thought can still be noted for later in the line under the tabs; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
 
 Without a night set in Settings ▸ Hours, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
 

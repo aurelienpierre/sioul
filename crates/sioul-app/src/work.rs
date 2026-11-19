@@ -554,14 +554,20 @@ pub(crate) fn hiding_work() -> sioul_core::quiet::QuietTasks {
 /// an hour are left before midnight: no block fits today.
 #[cfg(test)]
 pub(crate) fn work_task_pinned_today(calendar: &std::path::Path, uid: &str, title: &str) -> bool {
+    task_pinned_today(calendar, uid, title, "Travail", 600)
+}
+
+/// The same for a task of `category`, its block from `ahead` seconds from now.
+#[cfg(test)]
+pub(crate) fn task_pinned_today(calendar: &std::path::Path, uid: &str, title: &str, category: &str, ahead: i64) -> bool {
     let now = sioul_core::zone::now();
     let zone = now.time_zone().clone();
-    let start = now.timestamp().as_second() + 600;
+    let start = now.timestamp().as_second() + ahead;
     let midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(start, |z| z.timestamp().as_second());
     if midnight - start < 35 * 60 {
         return false;
     }
-    let edit = TaskEdit { title: title.into(), estimate: 30, categories: vec!["Travail".into()], ..TaskEdit::default() };
+    let edit = TaskEdit { title: title.into(), estimate: 30, categories: vec![category.into()], ..TaskEdit::default() };
     sioul_core::vdir::write_item(&calendar.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
     let utc = |at: i64| jiff::Timestamp::from_second(at).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
     let block = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{title}\r\n{}:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(start), utc(start + 1800), sioul_core::blocks::TASK);

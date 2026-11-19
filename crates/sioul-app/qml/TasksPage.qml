@@ -1414,6 +1414,25 @@ Item {
                     text: page.sioul.text("ui-details")
                     onTriggered: page.open(taskMenuForm.target.uid)
                 }
+                // Its timer, from any view, whatever it is for and whatever the hour: time spent
+                // on admin and leisure counts as work's does (docs/capacity.md), as on its card.
+                SioulMenu {
+                    objectName: "taskStartMenu"
+                    enabled: taskMenuForm.target !== null && !taskMenuForm.target.read_only && taskMenuForm.target.has_steps !== true && taskMenuForm.target.status !== "completed" && taskMenuForm.target.status !== "cancelled"
+                    title: page.sioul.text("task-start")
+
+                    Repeater {
+                        model: [2, 15, 25, 45, 0]
+
+                        delegate: MenuItem {
+                            required property int modelData
+
+                            objectName: "taskStart:" + modelData
+                            text: page.theme.plain(modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData)))
+                            onTriggered: page.focusOn(taskMenuForm.target.uid, modelData)
+                        }
+                    }
+                }
                 MenuSeparator {}
                 AddMenu {
                     sioul: page.sioul
@@ -1486,8 +1505,9 @@ Item {
         }
     }
 
-    // Asleep: over Now alone, one line, a thought noted for later, and Now's
-    // tasks if you ask; the tabs stay in reach, and the other tabs show everything.
+    // Asleep: over Now alone, one line, and Now's tasks if you ask; the tabs
+    // stay in reach, the other tabs show everything, and a thought is noted
+    // for later in the line under the tabs, which says so then.
     RestCover {
         objectName: "tasksRest"
         parent: nowView
@@ -1499,15 +1519,6 @@ Item {
         onShown: {
             page.anyway = true
             page.sioul.showTasksAnyway(true)
-        }
-
-        CaptureField {
-            id: restCapture
-
-            Layout.fillWidth: true
-            sioul: page.sioul
-            theme: page.theme
-            placeholder: page.sioul.text("task-note-for-later")
         }
     }
 }

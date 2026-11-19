@@ -92,7 +92,7 @@ Une tâche peut aussi dire **ce que ça coûte**, dans son panneau : *léger*,
 
 ## Commencer, et s’arrêter {#starting-and-stopping}
 
-Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**.
+Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**. Il est dans Maintenant, sur la carte d’une tâche, et dans le menu d’une tâche (un clic droit ou un appui long) dans **Liste**, **Tableau** et **Gantt**, pour n’importe quelle tâche, à toute heure.
 
 La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur Android, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
 
@@ -232,7 +232,7 @@ Google Tasks garde moins : une liste là-bas grise ce que Google ne garde pas 
 
 Pendant le calme ([Les heures](hours.md#quiet-time)), **Maintenant** ne garde que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour. Les autres onglets montrent tout, quelle que soit l’heure. Une tâche que vous créez sur la page Tâches reste en vue dans Maintenant jusqu’à ce que vous quittiez la page, quelles que soient les heures, et sa ligne dit quand elle revient : « Hors de ces heures : de retour demain à 09:00. »
 
-Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), **Maintenant** attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les onglets restent à portée : **La journée**, **Liste**, **Tableau**, **Gantt** et **Chercher** montrent tout. Dans Maintenant, **Nouveau ▾ ▸ Une tâche** le montre quand même, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
+Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), **Maintenant** attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. La ligne sous les onglets note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les onglets restent à portée : **La journée**, **Liste**, **Tableau**, **Gantt** et **Chercher** montrent tout. Dans Maintenant, **Nouveau ▾ ▸ Une tâche** le montre quand même, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
 
 ## Pour aller plus loin {#going-further}
 

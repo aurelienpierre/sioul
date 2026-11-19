@@ -11,7 +11,9 @@
 // what a new device needs ("Add a device"). Your devices themselves are
 // listed in their own tab (DevicesTab.qml), one line here leading to it; the
 // devices that no longer count and what waits to leave the server stay here,
-// with "Remove its files" (RemovalAsked.qml).
+// with "Remove its files" (RemovalAsked.qml). The notes folder, which the
+// sharing carries notes and papers from, is the Notes page's: one line here
+// says which it is, with a button to its row there.
 
 pragma ComponentBehavior: Bound
 
@@ -180,6 +182,27 @@ ColumnLayout {
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: panel.theme.muted
+    }
+    // The notes folder, where notes and papers travel from: the Notes page's ⚙ (its row, by its key).
+    Label {
+        objectName: "shareNotesFolder"
+        readonly property var folder: panel.sioul.notesFolder ? JSON.parse(panel.sioul.notesFolder) : ({ state: "ready", path: "" })
+
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        text: folder.state === "unset" ? panel.sioul.text("share-notes-folder-none") : panel.sioul.textWith("share-notes-folder", "path", folder.path || "")
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        color: panel.theme.text
+    }
+    Button {
+        objectName: "shareNotesFolderOpen"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        flat: true
+        icon.name: "go-next"
+        icon.color: panel.theme.text
+        text: panel.sioul.text("share-notes-folder-open")
+        onClicked: panel.sioul.reminderOpened("settings:case_store", "", "")
     }
     Repeater {
         model: panel.status.lines

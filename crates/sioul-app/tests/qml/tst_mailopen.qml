@@ -20,6 +20,10 @@ Item {
     width: 1100
     height: 800
 
+    // Where the pictures of the Notes page without its folder go; none when empty
+    // (a change of your own, not to commit).
+    readonly property string pictures: ""
+
     Theme {
         id: testTheme
     }
@@ -30,6 +34,9 @@ Item {
 
     QtObject {
         id: mock
+
+        // The notes folder as the backend says it (FolderNeeded.qml); "" not known yet.
+        property string notesFolder: ""
 
         property string status: ""
         property string mailAccounts: ""
@@ -144,6 +151,13 @@ Item {
             theme: testTheme
             window: fakeWindow
         }
+    }
+
+    // A screen of a given width, for a page made in it.
+    Component {
+        id: folderHolder
+
+        Item {}
     }
 
     TestCase {
@@ -262,6 +276,72 @@ Item {
                 compare(fakeWindow.opened.length, 1, href)
                 compare(fakeWindow.opened[0].key, root.messageKey, href)
             }
+        }
+
+        // Without its notes folder (none set, or one that does not read), at a computer's
+        // width and at a phone's: the folder asked for in the page's place (FolderNeeded.qml),
+        // what it is or which one does not read, "Choose a folder…" within the screen, and
+        // nothing of the page's own; chosen, the page back.
+        function test_without_its_folder_it_asks_for_it_data() {
+            return [
+                { tag: "unset, computer", state: "unset", width: 1400, compact: false },
+                { tag: "unset, phone", state: "unset", width: 412, compact: true },
+                { tag: "unreadable, computer", state: "unreadable", width: 1400, compact: false },
+                { tag: "unreadable, phone", state: "unreadable", width: 412, compact: true }
+            ]
+        }
+        function test_without_its_folder_it_asks_for_it(data) {
+            const all = (item, test, found) => {
+                if (!item)
+                    return found
+                if (test(item))
+                    found.push(item)
+                const kids = item.children || []
+                for (let i = 0; i < kids.length; ++i)
+                    all(kids[i], test, found)
+                if (item.contentItem && item.contentItem !== item && kids.indexOf(item.contentItem) < 0)
+                    all(item.contentItem, test, found)
+                return found
+            }
+            const within = (item, outer) => {
+                for (let p = item; p; p = p.parent)
+                    if (p === outer)
+                        return true
+                return false
+            }
+            mock.notesFolder = JSON.stringify(data.state === "unset" ? { state: "unset" } : { state: "unreadable", path: "/media/stand-in/Notes" })
+            if (fakeWindow.compact !== undefined)
+                fakeWindow.compact = data.compact
+            testTheme.compact = data.compact
+            const holder = createTemporaryObject(folderHolder, root, { width: data.width, height: 891 })
+            const page = createTemporaryObject(notesComponent, holder)
+            waitForRendering(page)
+            const needed = all(page, i => i instanceof FolderNeeded, [])[0]
+            verify(needed && needed.visible, "asked for in the page's place")
+            const said = all(needed, i => i.objectName === "folderNeededSaid", [])[0]
+            verify(said.visible && said.text !== "")
+            if (data.state === "unreadable")
+                verify(said.text.indexOf("/media/stand-in/Notes") >= 0, "the folder that does not read, by its path: " + said.text)
+            else
+                compare(said.text, mock.text("notes-folder-what"))
+            const choose = all(needed, i => i.objectName === "folderNeededChoose", [])[0]
+            verify(choose.visible, "Choose a folder…")
+            const right = choose.mapToItem(holder, choose.width, 0).x
+            verify(right <= data.width + 0.5, "within the screen: " + right)
+            const shown = all(page, i => i.visible && typeof i.text === "string" && i.text !== "" && i.width > 0 && !within(i, needed), [])
+            compare(shown.map(i => i.text), [], "nothing of the page's own")
+            if (root.pictures !== "" && data.state === "unset") {
+                let saved = false
+                holder.grabToImage(result => saved = result.saveToFile(root.pictures + "/notes-no-folder-" + data.width + ".png"))
+                tryVerify(() => saved, 3000)
+            }
+            // Chosen (as the backend says once it reads it): the page is back.
+            mock.notesFolder = JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
+            verify(!needed.visible, "the page back")
+            mock.notesFolder = ""
+            if (fakeWindow.compact !== undefined)
+                fakeWindow.compact = false
+            testTheme.compact = false
         }
     }
 }

@@ -41,6 +41,7 @@
     <file>sioul/16/folder-documents.svg</file>
     <file>sioul/16/folder-mail.svg</file>
     <file>sioul/16/folder-new.svg</file>
+    <file>sioul/16/folder-open.svg</file>
     <file>sioul/16/folder-trash.svg</file>
     <file>sioul/16/folder.svg</file>
     <file>sioul/16/games-hint.svg</file>
@@ -169,6 +170,7 @@
     <file>sioul/22/folder-documents.svg</file>
     <file>sioul/22/folder-mail.svg</file>
     <file>sioul/22/folder-new.svg</file>
+    <file>sioul/22/folder-open.svg</file>
     <file>sioul/22/folder-trash.svg</file>
     <file>sioul/22/folder.svg</file>
     <file>sioul/22/food.svg</file>
@@ -280,6 +282,7 @@
     <file>sioul/32/folder-documents.svg</file>
     <file>sioul/32/folder-mail.svg</file>
     <file>sioul/32/folder-new.svg</file>
+    <file>sioul/32/folder-open.svg</file>
     <file>sioul/32/folder-trash.svg</file>
     <file>sioul/32/folder.svg</file>
     <file>sioul/32/go-down.svg</file>
@@ -394,6 +397,7 @@
     <file>sioul-dark/16/folder-documents.svg</file>
     <file>sioul-dark/16/folder-mail.svg</file>
     <file>sioul-dark/16/folder-new.svg</file>
+    <file>sioul-dark/16/folder-open.svg</file>
     <file>sioul-dark/16/folder-trash.svg</file>
     <file>sioul-dark/16/folder.svg</file>
     <file>sioul-dark/16/games-hint.svg</file>
@@ -522,6 +526,7 @@
     <file>sioul-dark/22/folder-documents.svg</file>
     <file>sioul-dark/22/folder-mail.svg</file>
     <file>sioul-dark/22/folder-new.svg</file>
+    <file>sioul-dark/22/folder-open.svg</file>
     <file>sioul-dark/22/folder-trash.svg</file>
     <file>sioul-dark/22/folder.svg</file>
     <file>sioul-dark/22/food.svg</file>
@@ -633,6 +638,7 @@
     <file>sioul-dark/32/folder-documents.svg</file>
     <file>sioul-dark/32/folder-mail.svg</file>
     <file>sioul-dark/32/folder-new.svg</file>
+    <file>sioul-dark/32/folder-open.svg</file>
     <file>sioul-dark/32/folder-trash.svg</file>
     <file>sioul-dark/32/folder.svg</file>
     <file>sioul-dark/32/go-down.svg</file>

@@ -58,6 +58,11 @@ Item {
         property var turned: null
         function turnAgendas(ids, on) { mock.turned = { ids: JSON.parse(ids), on: on }; return "" }
         function agendasAsHours() { mock.turned = "hours"; return "" }
+        // The Day's and the Week's steps by area.
+        property var stepAreas: []
+        function tickStepAreas(areas) { mock.stepAreas = mock.stepAreas.concat([areas]); return "" }
+        function stepAreasEverything() { mock.stepAreas = mock.stepAreas.concat(["everything"]); return "" }
+        function stepAreasAsHours() { mock.stepAreas = mock.stepAreas.concat(["hours"]); return "" }
         // Children's events asked about (part 3): none here.
         function holderQuestions() { return "[]" }
     }
@@ -574,6 +579,47 @@ Item {
         // the steps; never a date asked (review of 21436bf, later 2). The agenda
         // filter leaves out an agenda by its place (the agenda's `hidden`). Its
         // button shows there too, and the filter's when there are agendas.
+        // The Day and the Week filter their steps by area (the owner's word, 18 November,
+        // evening): the filter on the header, every area ticked, "Everything" and "As the hours
+        // say" one tap each; gone while Show leaves the steps out, and in What comes and the Month.
+        function test_the_day_and_the_week_filter_their_steps_by_area() {
+            const page = makePage()
+            page.mode = "week"
+            mock.stepAreas = []
+            const every = { work: true, admin: true, leisure: true, label: "All areas", own: true }
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [0, 1, 2, 3, 4, 5, 6].map(n => day(n)), steps_areas: every })
+            wait(50)
+            const filter = root.find(page, "agendaStepAreas")
+            verify(filter !== null && filter.visible, "on the Week's header")
+            compare(filter.shown.label, "All areas")
+            filter.tick("work", false)
+            compare(mock.stepAreas, ["admin+leisure"], "the three as they then stand")
+            filter.unfold()
+            const everything = root.all(filter.Overlay.overlay, o => o.objectName === "areaFilterEverything")[0]
+            verify(everything !== undefined && !everything.visible, "every area ticked: Everything not offered")
+            root.all(filter.Overlay.overlay, o => o.objectName === "areaFilterAsHours")[0].clicked()
+            compare(mock.stepAreas[mock.stepAreas.length - 1], "hours")
+            filter.fold()
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [0, 1, 2, 3, 4, 5, 6].map(n => day(n)), steps_areas: { work: false, admin: false, leisure: true, label: "Leisure", own: false } })
+            wait(50)
+            filter.unfold()
+            const offered = root.all(filter.Overlay.overlay, o => o.objectName === "areaFilterEverything")[0]
+            verify(offered.visible, "an area unticked: Everything offered")
+            offered.clicked()
+            compare(mock.stepAreas[mock.stepAreas.length - 1], "everything")
+            filter.fold()
+            // Show ▸ Steps off: the filter goes with them.
+            page.view = { steps: false }
+            verify(!filter.visible, "no steps drawn, no filter for them")
+            page.view = { steps: true }
+            verify(filter.visible)
+            // What comes: no such filter.
+            page.mode = "agenda"
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", comes: true, days: [day(0)] })
+            wait(50)
+            verify(!filter.visible, "What comes keeps the hours")
+        }
+
         function test_show_holds_in_what_comes_and_the_month() {
             const page = makePage()
             page.mode = "agenda"

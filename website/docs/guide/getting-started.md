@@ -173,7 +173,7 @@ A sync app you already use carries the sharing folder (Nextcloud, Dropbox, Synct
 
 ### On the first device: start sharing {#start-sharing}
 
-1. Open **Settings ▸ Your folder and sharing**, and find **Between your devices**.
+1. Open **Settings ▸ Sharing**, and find **Between your devices**.
 2. **Folder**: choose a folder inside the one your sync app carries, such as a new folder `Sioul` in your Nextcloud folder. With a Nextcloud account in Sioul, you can choose **Sioul keeps it in step with your Nextcloud itself** instead, and need no sync app.
 3. **Passphrase**, then **Once more**: a few words you will not forget, at least 12 characters.
 4. **Share**.

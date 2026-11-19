@@ -300,6 +300,25 @@ Item {
     // The agenda filter by hand in the full views, the Day, the Week and the Month, which
     // hide nothing by the hour; by the hours in What comes, the calm tab (the agenda's `filter`).
     readonly property bool filterByHand: page.shown.comes !== true
+    // The Day and the Week: the steps drawn by their task's area (AreaFilter.qml), every area
+    // unless you say; hidden while Show leaves the steps out.
+    readonly property bool stepsFiltered: (page.mode === "day" || page.mode === "week") && !page.hide.steps && !!page.shown.steps_areas
+
+    // For the window's pictures: the steps' filter unfolded, then folded.
+    function openStepAreas() {
+        return (page.narrow ? stepAreasNarrow : stepAreasWide).unfold()
+    }
+
+    function closeStepAreas() {
+        stepAreasWide.fold()
+        stepAreasNarrow.fold()
+    }
+
+    // The steps' areas changed: ticked, every area, or what now is for; the days read again.
+    function stepAreas(said) {
+        if (said !== "")
+            page.sioul.status = said
+    }
 
     // Show changed: `part` ("steps", "needs", "doses") on or off, kept on this device.
     function showPart(part, on) {
@@ -747,6 +766,21 @@ Item {
                     iconOnly: page.width < 1000
                     Layout.preferredWidth: page.width < 1000 ? 40 : -1
                 }
+                // Which tasks' steps the Day and the Week draw, by their area.
+                AreaFilter {
+                    id: stepAreasWide
+
+                    objectName: "agendaStepAreas"
+                    visible: !page.narrow && page.stepsFiltered
+                    sioul: page.sioul
+                    theme: page.theme
+                    shown: page.shown.steps_areas || null
+                    help: page.sioul.text("agenda-steps-filter-help")
+                    offersEverything: true
+                    onTicked: picked => page.stepAreas(page.sioul.tickStepAreas(picked))
+                    onEverything: page.stepAreas(page.sioul.stepAreasEverything())
+                    onAsHours: page.stepAreas(page.sioul.stepAreasAsHours())
+                }
                 // What every view shows here: the plan's steps, meals and the night, doses, rides.
                 // Words beside its icon on a wide window; on a phone, on the title's line.
                 Button {
@@ -830,6 +864,21 @@ Item {
                     theme: page.theme
                     view: "agenda"
                 }
+            }
+            // On a phone, the steps' filter on a line of its own: its words never squeeze the title.
+            AreaFilter {
+                id: stepAreasNarrow
+
+                objectName: "agendaStepAreasNarrow"
+                visible: page.narrow && page.stepsFiltered
+                sioul: page.sioul
+                theme: page.theme
+                shown: page.shown.steps_areas || null
+                help: page.sioul.text("agenda-steps-filter-help")
+                offersEverything: true
+                onTicked: picked => page.stepAreas(page.sioul.tickStepAreas(picked))
+                onEverything: page.stepAreas(page.sioul.stepAreasEverything())
+                onAsHours: page.stepAreas(page.sioul.stepAreasAsHours())
             }
 
             // Today's head line, under the header: what now is for, what comes next.

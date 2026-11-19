@@ -161,7 +161,7 @@ Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange 
 - **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Plus tard** pour Prises ▸ Sommeil dans Paramètres ▸ Ce qui vous joint ▸ [Celles de Sioul](notifications.md#doses) : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
 - si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un courriel sur un projet vient parmi les personnes que vous connaissez ;
 - chaque adresse se replie sur la page Courriels ; seuls les sites de loisirs sont listés ;
-- Tâches ▸ Maintenant attend derrière une phrase et **Montrer quand même**, où une idée peut encore être notée pour plus tard ; les autres onglets montrent tout. Projets et Temps montrent ceux des loisirs, tout le reste à une case près.
+- Tâches ▸ Maintenant attend derrière une phrase et **Montrer quand même** ; une idée peut encore être notée pour plus tard dans la ligne sous les onglets ; les autres onglets montrent tout. Projets et Temps montrent ceux des loisirs, tout le reste à une case près.
 
 Sans nuit réglée dans Paramètres ▸ Heures, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
 

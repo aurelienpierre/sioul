@@ -351,6 +351,70 @@ Item {
                 }
             }
 
+            // Where estimates are off, by area: the tasks done in the period, time spent beside
+            // the first estimate (`timereport::estimates_by_area`); three lines at most.
+            GridLayout {
+                objectName: "timeByArea"
+                visible: page.shown !== null && (page.shown.by_area || []).length > 0
+                Layout.fillWidth: true
+                // Narrow enough on a wide window that each number stays beside its area.
+                Layout.maximumWidth: 520
+                Layout.topMargin: 12
+                Layout.bottomMargin: 12
+                columns: 3
+                columnSpacing: 16
+                rowSpacing: 2
+
+                Label {
+                    Layout.fillWidth: true
+                    text: page.sioul.text("time-by-area")
+                    textFormat: Text.PlainText
+                    font.weight: Font.DemiBold
+                    color: page.theme.text
+                }
+                Label {
+                    Layout.alignment: Qt.AlignRight
+                    text: page.sioul.text("time-by-area-spent")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 12
+                    color: page.theme.muted
+                }
+                Label {
+                    Layout.alignment: Qt.AlignRight
+                    text: page.sioul.text("time-by-area-estimated")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 12
+                    color: page.theme.muted
+                }
+                Repeater {
+                    model: page.shown ? (page.shown.by_area || []).reduce((cells, a) => cells.concat([{ text: page.sioul.text("area-filter-" + a.area), strong: false }, { text: a.spent, strong: true }, { text: a.estimated, strong: false }]), []) : []
+
+                    delegate: Label {
+                        required property var modelData
+                        required property int index
+
+                        Layout.fillWidth: index % 3 === 0
+                        Layout.alignment: index % 3 === 0 ? Qt.AlignLeft : Qt.AlignRight
+                        text: modelData.text
+                        textFormat: Text.PlainText
+                        font.weight: modelData.strong ? Font.DemiBold : Font.Normal
+                        color: page.theme.text
+                    }
+                }
+                Label {
+                    Layout.columnSpan: 3
+                    Layout.fillWidth: true
+                    // The help wraps: its one long line must not widen the table on a phone.
+                    Layout.preferredWidth: 0
+                    Layout.topMargin: 4
+                    text: page.sioul.text("time-by-area-help")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: page.theme.muted
+                }
+            }
+
             // Each project: its time, and what is left to bill (under the
             // title on a phone).
             Repeater {

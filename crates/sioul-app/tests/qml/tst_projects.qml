@@ -80,7 +80,7 @@ Item {
         function showTimePage(period, anchor, project) {
             mock.asked = mock.asked.concat([project])
             const shown = JSON.parse(mock.projectsPage())
-            mock.timeView = JSON.stringify({ title: "", sentence: "", total: "1 h", total_line: "1 h in all", most: 0, bars: [], entries: [], projects: [], filter: shown.filter })
+            mock.timeView = JSON.stringify({ title: "", sentence: "", total: "1 h", total_line: "1 h in all", most: 0, bars: [], entries: [], projects: [], filter: shown.filter, by_area: [{ area: "work", spent: "1 h 30", estimated: "1 h", spent_minutes: 90, estimated_minutes: 60 }, { area: "leisure", spent: "40 min", estimated: "45 min", spent_minutes: 40, estimated_minutes: 45 }] })
         }
         function saveProject(id, edit) {
             mock.saved = JSON.parse(edit)
@@ -218,6 +218,12 @@ Item {
             const filter = named(page, "timeAreas")
             verify(filter !== null && filter.visible, "the filter over the time")
             compare(page.shown.total_line, "1 h in all", "the view asked, taken when it came")
+            // Where estimates are off, by area: a line an area, time spent beside the first estimate.
+            const table = named(page, "timeByArea")
+            verify(table !== null && table.visible, "the comparison by area")
+            const words = all(table, i => i.text !== undefined && i.visible).map(i => i.text)
+            verify(words.indexOf("area-filter-work") >= 0 && words.indexOf("1 h 30") >= 0 && words.indexOf("1 h") >= 0 && words.indexOf("area-filter-leisure") >= 0 && words.indexOf("45 min") >= 0, words.join(" | "))
+            verify(words.indexOf("area-filter-admin") < 0, "no line for an area with nothing done")
             compare(all(page, i => i.text === "ui-show-anyway").length, 0, "no cover, no Show anyway")
             const reads = mock.asked.length
             filter.tick("work", true)

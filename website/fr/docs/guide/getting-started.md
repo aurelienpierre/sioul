@@ -173,7 +173,7 @@ Une application de synchronisation que vous utilisez déjà porte le dossier du 
 
 ### Sur le premier appareil : commencer le partage {#start-sharing}
 
-1. Ouvrez **Paramètres ▸ Votre dossier et le partage**, et trouvez **Entre vos appareils**.
+1. Ouvrez **Paramètres ▸ Partage**, et trouvez **Entre vos appareils**.
 2. **Dossier** : choisissez un dossier dans celui que votre application de synchronisation porte, par exemple un nouveau dossier `Sioul` dans votre dossier Nextcloud. Avec un compte Nextcloud dans Sioul, vous pouvez choisir à la place **Sioul le tient à jour avec votre Nextcloud**, sans application de synchronisation.
 3. **Phrase de passe**, puis **Encore une fois** : quelques mots que vous n’oublierez pas, au moins 12 caractères.
 4. **Partager**.

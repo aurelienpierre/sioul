@@ -1592,6 +1592,23 @@ impl Config {
         }
     }
 
+    /// The notes folder as this device finds it (docs/notes-folder.md): one
+    /// that reads, one set that does not read (a drive not plugged in, a
+    /// folder moved), or none set (on Android, its `~/Notes` counts as set
+    /// once it reads). The Notes page asks for it when it is not ready,
+    /// rather than show nothing.
+    pub fn notes_folder(&self) -> NotesFolder {
+        let reads = |path: &Path| std::fs::read_dir(path).is_ok();
+        match self.notes_root.as_deref().filter(|root| !root.trim().is_empty()) {
+            Some(root) if reads(&expand_home(root)) => NotesFolder::Ready(root.to_string()),
+            Some(root) => NotesFolder::Unreadable(root.to_string()),
+            None => match self.notes_root_path() {
+                Some(path) if reads(&path) => NotesFolder::Ready(path.display().to_string()),
+                _ => NotesFolder::Unset,
+            },
+        }
+    }
+
     /// The known senders' file: `known_senders`, else `known-senders.txt` next to the configuration.
     pub fn known_senders_path(&self) -> PathBuf {
         self.known_senders.as_deref().map_or_else(|| config_dir().join("known-senders.txt"), expand_home)
@@ -2887,6 +2904,19 @@ pub fn downloads_dir() -> PathBuf {
     named.unwrap_or_else(|| expand_home("~/Downloads"))
 }
 
+/// The notes folder as `Config::notes_folder` finds it, as the window reads it:
+/// `{"state": "ready" | "unreadable" | "unset", "path": "…"}` (no path when unset).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", content = "path", rename_all = "lowercase")]
+pub enum NotesFolder {
+    /// Set and read: its path as set.
+    Ready(String),
+    /// Set, and not read: its path as set, for the page to say.
+    Unreadable(String),
+    /// None set.
+    Unset,
+}
+
 /// Expands a leading `~` to the home folder (`USERPROFILE` on Windows):
 /// "~/Notes", and "~\Notes" as Windows writes it.
 pub fn expand_home(path: &str) -> PathBuf {
@@ -2903,6 +2933,27 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The notes folder: none set, set and read, set and not read (a drive not
+    /// plugged in); the window reads its state as JSON.
+    #[test]
+    fn the_notes_folder_is_ready_unset_or_unreadable() {
+        let dir = std::env::temp_dir().join(format!("sioul-notes-folder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Notes")).unwrap();
+        let notes = dir.join("Notes").display().to_string().replace('\\', "/");
+        let of = |text: &str| toml::from_str::<Config>(text).unwrap().notes_folder();
+        if !cfg!(target_os = "android") {
+            assert_eq!(of(""), NotesFolder::Unset);
+            assert_eq!(of("case_store = \"  \"\n"), NotesFolder::Unset, "blank is none");
+        }
+        assert_eq!(of(&format!("case_store = \"{notes}\"\n")), NotesFolder::Ready(notes.clone()));
+        let gone = format!("{notes}/not-plugged-in");
+        assert_eq!(of(&format!("case_store = \"{gone}\"\n")), NotesFolder::Unreadable(gone.clone()));
+        assert_eq!(serde_json::to_string(&NotesFolder::Unreadable(gone.clone())).unwrap(), format!("{{\"state\":\"unreadable\",\"path\":\"{gone}\"}}"));
+        assert_eq!(serde_json::to_string(&NotesFolder::Unset).unwrap(), "{\"state\":\"unset\"}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A day as people type it (the review of phase 3, F19): ISO, a day
     /// first with slashes, dots or dashes, a year first; never a day that

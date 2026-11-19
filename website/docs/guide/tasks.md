@@ -92,7 +92,7 @@ A task can also say **what it takes**, in its panel: *light*, *the usual*, *heav
 
 ## Starting, and stopping {#starting-and-stopping}
 
-Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**.
+Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**. It is on Now, on a task's card, and in a task's menu (a right click or a long press) in **List**, **Board** and **Gantt**, for any task, at any hour.
 
 The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound. On Linux and on Android, a notification also shows the time running, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 
@@ -232,7 +232,7 @@ Google Tasks keeps less: a list there greys what Google does not keep (a day to 
 
 In quiet time ([Hours](hours.md#quiet-time)), **Now** keeps only what fits now: in leisure and during a meal, what is yours; work waits for work to come back. The other tabs show everything, whatever the hour. A task you make on the Tasks page stays in view on Now until you leave the page, whatever the hours, and its row says when it comes back: "Out of these hours: back tomorrow at 09:00."
 
-While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), **Now** waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. The tabs stay in reach: **The day**, **List**, **Board**, **Gantt** and **Search** show everything. On Now, **New ▾ ▸ A task** shows it anyway, a new task's form open. Task reminders wait too, for waking.
+While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), **Now** waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. The line under the tabs notes a thought for later, in one line, out of sight until work comes back. The tabs stay in reach: **The day**, **List**, **Board**, **Gantt** and **Search** show everything. On Now, **New ▾ ▸ A task** shows it anyway, a new task's form open. Task reminders wait too, for waking.
 
 ## Going further {#going-further}
 

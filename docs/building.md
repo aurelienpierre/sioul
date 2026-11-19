@@ -19,7 +19,7 @@ cargo build --release
 `cargo build` and `cargo test` build the core, sync and the command line; the window is left out unless asked for, so machines without Qt can work on the rest.
 
 ## Which build
-Each build knows its version and the commit it was made from (`sioul_core::build`: `VERSION`, `COMMIT`, `DESCRIBED`, "0.0.3 (eff8661abcde)"), and says them: `sioul --version`; Settings ▸ Your folder and sharing ("This device: Sioul 0.0.3 (eff8661abcde)."); this device's entry among your devices, which the others show under its name; the first line of each batch of its records ([database.md](database.md), "Devices", "The log"). `crates/sioul-core/build.rs` finds the commit:
+Each build knows its version and the commit it was made from (`sioul_core::build`: `VERSION`, `COMMIT`, `DESCRIBED`, "0.0.3 (eff8661abcde)"), and says them: `sioul --version`; Settings ▸ Sharing ("This device: Sioul 0.0.3 (eff8661abcde)."); this device's entry among your devices, which the others show under its name; the first line of each batch of its records ([database.md](database.md), "Devices", "The log"). `crates/sioul-core/build.rs` finds the commit:
 1. `git rev-parse --short=12 HEAD`, with "-dirty" after it when tracked files hold changes not committed (`git status --porcelain --untracked-files=no`: files git does not track never count);
 2. else the `.git` folder read directly (HEAD, the branch it names, the packed references), for a build where `git` cannot run, or refuses a checkout another user owns (a container's); never "-dirty" then;
 3. else `SIOUL_COMMIT` from the environment (letters, digits, `-` and `.` only), for a build from a copy without the repository's history;

@@ -72,7 +72,7 @@ What differs on Android:
 
 ## Join your other devices
 
-Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on Android, what it has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
+Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on Android, what it has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Sharing** offers the same at any time.
 
 ## Add your mail
 
@@ -177,7 +177,7 @@ Google's mail is added in the mail form, above: with an app password, or signed 
 
 Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul also keeps your projects, budgets, papers and scanned letters in that folder, so that they travel with it to your other devices.
 
-In **Settings ▸ Your folder and sharing**, choose **The notes folder**. Sioul reads it and links to it; it never owns it. See [Notes](notes.md).
+Open **Notes**: as long as this device has no notes folder, the page asks for one, with **Choose a folder…**. Sioul reads it and links to it; it never owns it. Its settings (⚙) change it later. See [Your notes folder](notes.md#your-notes-folder).
 
 ## Set your hours
 
