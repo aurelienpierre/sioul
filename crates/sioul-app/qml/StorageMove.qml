@@ -62,6 +62,12 @@ SafeDialog {
         move.sioul.moveLists(move.papers, move.letters, move.carry && !move.view.carries && move.view.sharing === true)
     }
 
+    // Its end in view (the window's pictures).
+    function toEnd() {
+        const bar = scroll.ScrollBar.vertical
+        bar.position = Math.max(0, 1 - bar.size)
+    }
+
     function choose(which) {
         move.choosing = which
         if (!move.ownChooser) {
