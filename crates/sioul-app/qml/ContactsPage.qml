@@ -439,7 +439,8 @@ Item {
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.sioul.text("dup-open")
                     icon.name: "edit-copy"
-                    icon.color: page.theme.text
+                    // Highlighted, it is filled with the accent: its icon in the words' colour on it.
+                    icon.color: highlighted ? page.theme.accentText : page.theme.text
                     highlighted: page.duplicatesShown
                     display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
@@ -459,7 +460,7 @@ Item {
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.sioul.text("contacts-select")
                     icon.name: "edit-select-all"
-                    icon.color: page.theme.text
+                    icon.color: highlighted ? page.theme.accentText : page.theme.text
                     highlighted: page.selecting
                     display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text

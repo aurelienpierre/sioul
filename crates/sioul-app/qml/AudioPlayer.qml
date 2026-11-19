@@ -44,7 +44,8 @@ ColumnLayout {
         Button {
             text: media.playbackState === MediaPlayer.PlayingState ? player.sioul.text("audio-pause") : player.sioul.text("audio-play")
             icon.name: media.playbackState === MediaPlayer.PlayingState ? "media-playback-pause" : "media-playback-start"
-            icon.color: player.theme.text
+            // Highlighted, it is filled with the accent: its icon in the words' colour on it.
+            icon.color: highlighted ? player.theme.accentText : player.theme.text
             highlighted: media.playbackState !== MediaPlayer.PlayingState
             onClicked: media.playbackState === MediaPlayer.PlayingState ? media.pause() : media.play()
         }
