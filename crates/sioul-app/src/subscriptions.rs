@@ -37,12 +37,14 @@ type Round = Vec<(String, Taken)>;
 /// One round: the folders made to follow the settings, then each calendar
 /// due (or `only` that one, whatever its time) asked and taken in.
 fn round(opening: bool, only: Option<&str>) -> Round {
-    let config = load_config();
+    // Settings that do not read change nothing: no copy taken out, none read (F19).
+    let Some(config) = crate::backend::config_read() else { return Vec::new() };
     subscribed::settle(&config);
     let mut out = Vec::new();
     for (id, subscription) in &config.agenda.subscriptions {
         let now = jiff::Timestamp::now().as_second();
-        if only.is_some_and(|o| o != id) || (only.is_none() && !subscribed::due(id, subscription, now, opening)) {
+        // An entry that does not read is neither read nor taken out (F20).
+        if subscription.unread || only.is_some_and(|o| o != id) || (only.is_none() && !subscribed::due(id, subscription, now, opening)) {
             continue;
         }
         let answer = sioul_sync::feeds::fetch(&subscription.url, subscribed::validators(id, subscription));
@@ -79,7 +81,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let opening = !OPENED.swap(true, Ordering::Relaxed);
     // Nothing subscribed, nothing left here to take out: no round.
     let left = std::fs::read_dir(sioul_core::vdir::Kind::Calendars.root().join(subscribed::ACCOUNT)).is_ok_and(|mut d| d.next().is_some());
-    if load_config().agenda.subscriptions.is_empty() && !left {
+    // Settings that do not read: no round (F19).
+    let Some(config) = crate::backend::config_read() else { return };
+    if config.agenda.subscriptions.is_empty() && !left {
         return;
     }
     if RUNNING.swap(true, Ordering::Relaxed) {
@@ -137,7 +141,13 @@ pub(crate) fn background_step() {
 /// line on this device; none for another agenda.
 pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_json::Value {
     let Some(id) = subscribed::id_of(place) else { return serde_json::Value::Null };
+    let now = sioul_core::zone::now();
+    // Settings that do not read: its copy stays, and its line says why nothing else shows (F19).
+    if crate::backend::config_read().is_none() {
+        return serde_json::json!({ "id": id, "url": "", "name": "", "holidays": "", "days_off": false, "after_class": false, "engagements": false, "unread": true, "line": subscribed::line_unread(id, true, &now, tr()) });
+    }
     let Some(subscription) = config.agenda.subscriptions.get(id) else { return serde_json::Value::Null };
+    let line = if subscription.unread { subscribed::line_unread(id, false, &now, tr()) } else { subscribed::line(id, &now, tr()) };
     serde_json::json!({
         "id": id,
         "url": subscription.url,
@@ -145,7 +155,8 @@ pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_jso
         "holidays": subscription.holidays().map_or("", |h| h.id()),
         "days_off": subscription.days_off(),
         "after_class": subscription.after_class(),
-        "line": subscribed::line(id, &sioul_core::zone::now(), tr()),
+        "unread": subscription.unread,
+        "line": line,
     })
 }
 
@@ -204,7 +215,9 @@ pub(crate) fn subscribe(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> Stri
     }
     // A child's timetable goes to that child: their person found, or made (docs/persons.md).
     let problem = crate::persons::tie_role(&place);
-    subscribed::settle(&load_config());
+    if let Some(config) = crate::backend::config_read() {
+        subscribed::settle(&config);
+    }
     let busy = refresh_now(qt, shared, &id);
     answer(&id, if problem.is_empty() { &busy } else { &problem })
 }
@@ -215,7 +228,9 @@ pub(crate) fn set_field(qt: &QtThread, shared: &Arc<Shared>, id: &str, field: &s
     if let Err(problem) = subscribed::set(&crate::backend::config_path(), id, field, value, tr()) {
         return problem;
     }
-    subscribed::settle(&load_config());
+    if let Some(config) = crate::backend::config_read() {
+        subscribed::settle(&config);
+    }
     match field {
         "url" => refresh_now(qt, shared, id),
         // What counts as your days off, or when holidays begin, changed: the series, the plan, the hours.
@@ -265,4 +280,33 @@ pub(crate) fn holidays() -> String {
         })
         .collect();
     json(&serde_json::json!({ "calendars": list }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The review's F19: a settings file that does not read reads as no
+    /// subscription at all; no round runs on its word: no copy taken out,
+    /// none read, and the calendar's line says why.
+    #[test]
+    fn settings_that_do_not_read_take_no_copy_out() {
+        sioul_core::config::stand_ins_only();
+        let dir = sioul_core::config::data_dir().join(format!("f19-subscriptions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n[agenda.subscriptions.f19-test]\nurl = \"https://calendar.example.org/a.ics\"\n[agenda\nbroken").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        let id = "f19-test";
+        sioul_core::vdir::prepare_subscribed(id, "Classes", None).unwrap();
+        assert!(crate::backend::config_read().is_none());
+        assert!(round(false, None).is_empty(), "nothing read");
+        assert!(subscribed::folder(id).is_dir(), "its copy stays");
+        let row = row(&load_config(), &subscribed::place(id));
+        assert!(row["line"].as_str().unwrap_or_default().starts_with(&tr().text("subscribe-line-settings-unread", None)), "{row}");
+        assert_eq!(row["unread"], true);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        sioul_core::vdir::remove_subscribed(id).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

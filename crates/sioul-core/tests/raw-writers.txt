@@ -597,7 +597,7 @@ sioul-core/src/series.rs	remember	1	crate::filelock::replace(&path, toml::to_str
 
 # sioul-core/src/subscribed.rs: what this device last read of a subscribed calendar (state/subscribed/), and its note taken out with the calendar: no item.
 sioul-core/src/subscribed.rs	save	1	crate::filelock::replace(&path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
-sioul-core/src/subscribed.rs	settle	1	std::fs::remove_file(Fetched::path(id))
+sioul-core/src/subscribed.rs	settle	1	std::fs::remove_file(Fetched::path(&id))
 sioul-core/src/subscribed.rs	stop	1	std::fs::remove_file(Fetched::path(id))
 
 # sioul-core/src/vdir.rs:

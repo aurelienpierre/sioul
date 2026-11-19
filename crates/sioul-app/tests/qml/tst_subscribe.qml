@@ -63,7 +63,9 @@ Item {
     readonly property var view: ({
         agendas: [
             Object.assign({}, root.row, { id: "subscribed/timetable", name: "Lycée timetable", place: "example.org", server: null, subscription: { id: "timetable", url: "https://school.example.org/calendar/export_execute.php?userid=7&authtoken=0123", name: "", holidays: "", days_off: false, after_class: false, line: "Read Wed 19 Nov 08:00." } }),
-            Object.assign({}, root.row, { id: "subscribed/zone-a", name: "Zone A", place: "opendatasoft.com", server: null, subscription: { id: "zone-a", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", name: "Zone A", holidays: "school", days_off: false, after_class: true, line: "Not read on this device yet." } })
+            Object.assign({}, root.row, { id: "subscribed/zone-a", name: "Zone A", place: "opendatasoft.com", server: null, subscription: { id: "zone-a", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", name: "Zone A", holidays: "school", days_off: false, after_class: true, line: "Not read on this device yet." } }),
+            // An entry that does not read here (F20): its line, and Stop alone.
+            Object.assign({}, root.row, { id: "subscribed/unread", name: "Unread", place: "example.org", server: null, subscription: { id: "unread", url: "", name: "", holidays: "", days_off: false, after_class: false, engagements: false, unread: true, line: "This calendar's settings do not read here." } })
         ],
         pairs: [],
         children: { kinds: [], yours: [], follow_ups: true, any: false },
@@ -227,6 +229,21 @@ Item {
             mouseClick(daysOff)
             compare(mock.calls[mock.calls.length - 1], ["field", "zone-a", "days_off", "true"])
             compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
+        }
+
+        // The review's F19 and F20: settings that do not read: the line says so, and Stop alone is offered.
+        function test_a_calendar_whose_settings_do_not_read() {
+            root.width = 412
+            const setup = createTemporaryObject(setupComponent, root)
+            setup.toggle("subscribed/unread")
+            const lines = root.named(setup, "subscriptionLine").filter(l => l.visible)
+            compare(lines.length, 1)
+            compare(lines[0].text, "This calendar's settings do not read here.")
+            compare(root.named(setup, "subscriptionRefresh").filter(b => b.visible).length, 0)
+            compare(root.named(setup, "subscriptionChange").filter(b => b.visible).length, 0)
+            compare(root.named(setup, "subscriptionName").filter(b => b.visible).length, 0)
+            compare(root.named(setup, "subscriptionStop").filter(b => b.visible).length, 1, "Stop stays")
+            compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
     }
 }

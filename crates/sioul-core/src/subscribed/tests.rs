@@ -191,17 +191,39 @@ fn the_official_files_shapes_give_their_days() {
     }
 }
 
-/// An entry that does not read is passed over, never the whole
-/// configuration: a subscription without an address or of another shape,
-/// a vacation without its days or with no date; the rest still read.
+/// An entry that does not read never stops the whole configuration: a
+/// vacation without its days or with no date is passed over; a subscription
+/// without an address or of another shape stays, marked as not reading, as
+/// the last entry that read on this device said it, else as what of it
+/// reads (F20); its copy is never taken out for it, and its line says so.
 #[test]
-fn an_entry_that_does_not_read_is_passed_over() {
+fn an_entry_that_does_not_read_changes_nothing() {
+    crate::config::stand_ins_only();
     let text = "[[time_off]]\nfrom = 2030-08-01\nuntil = 2030-08-15\nlabel = \"Summer\"\nkind = \"sick\"\n\n[[time_off]]\nfrom = 2030-09-01\n\n[[time_off]]\nfrom = \"tomorrow\"\nuntil = 2030-09-02\n\n\
-                [agenda.subscriptions.good]\nurl = \"https://calendar.example.org/a.ics\"\n\n[agenda.subscriptions.noaddress]\nname = \"Nothing\"\n\n[agenda.subscriptions.wrong]\nurl = 3\n\n[agenda.subscriptions.\"../up\"]\nurl = \"https://calendar.example.org/b.ics\"\n";
+                [agenda.subscriptions.good]\nurl = \"https://calendar.example.org/a.ics\"\n\n[agenda.subscriptions.noaddress]\nname = \"Nothing\"\n\n[agenda.subscriptions.wrong-test]\nurl = 3\nholidays = \"school\"\n\n[agenda.subscriptions.\"../up\"]\nurl = \"https://calendar.example.org/b.ics\"\n";
     let config: Config = toml::from_str(text).unwrap();
     assert_eq!(config.time_off.len(), 1);
     assert_eq!((config.time_off[0].label.as_str(), config.time_off[0].kind.as_str()), ("Summer", "sick"));
-    assert_eq!(config.agenda.subscriptions.keys().collect::<Vec<_>>(), ["good"]);
+    assert_eq!(config.agenda.subscriptions.keys().collect::<Vec<_>>(), ["good", "noaddress", "wrong-test"]);
+    assert!(!config.agenda.subscriptions["good"].unread);
+    let noaddress = &config.agenda.subscriptions["noaddress"];
+    assert!(noaddress.unread && noaddress.name == "Nothing" && noaddress.url.is_empty());
+    assert_eq!(config.agenda.subscriptions["wrong-test"].holidays(), Some(Holidays::School), "what of it reads");
+    // The last entry that read here stands for it: taken in with a calendar, then written otherwise by a later Sioul.
+    let id = "wrong-test";
+    let last = subscription("https://calendar.example.org/zone.ics", Some("school"), Some(true));
+    vdir::prepare_subscribed(id, "Zone", None).unwrap();
+    assert_eq!(take(id, &last, calendar(SCHOOL), 1_000).unwrap(), Taken::Changed);
+    let config: Config = toml::from_str(text).unwrap();
+    let wrong = &config.agenda.subscriptions[id];
+    assert_eq!((wrong.unread, wrong.url.as_str(), wrong.after_class()), (true, "https://calendar.example.org/zone.ics", true));
+    // Its copy stays when the folders follow the settings; its line says why nothing else changes.
+    let here = ["good".to_string(), id.to_string(), "gone".to_string()];
+    assert_eq!(stopped(&config, &here), ["gone"], "only a folder the settings no longer name is taken out");
+    let tr = crate::i18n::Translator::new("en");
+    let now = jiff::Timestamp::from_second(2_000).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
+    assert!(line_unread(id, false, &now, &tr).starts_with("This calendar's settings do not read here"), "{}", line_unread(id, false, &now, &tr));
+    vdir::remove_subscribed(id).unwrap();
 }
 
 /// A subscription written, a field changed, stopped: the address checked

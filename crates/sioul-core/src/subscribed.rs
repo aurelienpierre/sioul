@@ -84,6 +84,12 @@ pub struct Subscription {
     /// "#rrggbb", its colour in the agenda; unsaid, the agenda's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// Its entry does not read here (a field of another type, written by a
+    /// later Sioul or by hand; no address): what is here is the last entry
+    /// that read on this device (`Fetched::entry`), else what of it reads.
+    /// Never fetched, never taken out, said on its line (F20).
+    #[serde(skip)]
+    pub unread: bool,
 }
 
 /// The kinds of calendars of holidays.
@@ -138,13 +144,41 @@ pub fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-/// The subscriptions that read: an entry with another shape, without an
-/// address or with an id that names no folder of its own is passed over,
-/// never the whole configuration.
+/// The subscriptions, never the whole configuration stopped by one: an id
+/// that names no folder of its own is passed over; an entry of another
+/// shape or without an address stays, marked as not reading (`unread`), as
+/// the last entry that read on this device said it, else as what of it reads:
+/// absence proves nothing, and an entry that does not read changes nothing
+/// (its copy, its days off, the pauses it gave: F20).
 pub fn entries<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Subscription>, D::Error> {
     let value = toml::Value::deserialize(d)?;
     let toml::Value::Table(table) = value else { return Ok(BTreeMap::new()) };
-    Ok(table.into_iter().filter(|(id, _)| valid_id(id)).filter_map(|(id, value)| value.try_into::<Subscription>().ok().filter(|s| !s.url.trim().is_empty()).map(|s| (id, s))).collect())
+    Ok(table
+        .into_iter()
+        .filter(|(id, _)| valid_id(id))
+        .map(|(id, value)| {
+            let read = value.clone().try_into::<Subscription>().ok().filter(|s| !s.url.trim().is_empty());
+            let entry = read.unwrap_or_else(|| unread(&id, &value));
+            (id, entry)
+        })
+        .collect())
+}
+
+/// An entry that does not read: the last that read here, else its fields that read, marked so.
+fn unread(id: &str, value: &toml::Value) -> Subscription {
+    let last = Fetched::load(id).entry;
+    let word = |field: &str| value.get(field).and_then(toml::Value::as_str).map(str::to_string);
+    let yes = |field: &str| value.get(field).and_then(toml::Value::as_bool);
+    let entry = last.unwrap_or_else(|| Subscription {
+        url: word("url").unwrap_or_default(),
+        name: word("name").unwrap_or_default(),
+        holidays: word("holidays"),
+        days_off: yes("days_off"),
+        after_class: yes("after_class"),
+        colour: word("colour"),
+        unread: false,
+    });
+    Subscription { unread: true, ..entry }
 }
 
 /// A subscribed calendar's place among the agendas, `subscribed/<id>`.
@@ -510,6 +544,10 @@ pub struct Fetched {
     /// How many events its copy holds.
     #[serde(default)]
     pub events: usize,
+    /// Its entry in the settings as it last read here: what stands for it
+    /// while it does not read (`entries`, F20).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<Subscription>,
 }
 
 fn is_zero(n: &u16) -> bool {
@@ -636,6 +674,10 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
     let mut state = Fetched::load(id);
     let same_address = state.url == subscription.url && folder(id).is_dir() && state.checked > 0;
     state.tried = now;
+    // Its entry as it reads now: what stands for it if it stops reading (F20).
+    if !subscription.unread {
+        state.entry = Some(subscription.clone());
+    }
     let refused = |mut state: Fetched, problem: Problem| -> Result<Taken, String> {
         if state.problem != problem.id() || state.since == 0 {
             state.since = now;
@@ -704,13 +746,20 @@ pub fn settle(config: &Config) -> bool {
         }
     }
     let here: Vec<String> = std::fs::read_dir(Kind::Calendars.root().join(ACCOUNT)).into_iter().flatten().filter_map(Result::ok).filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
-    for id in here.iter().filter(|id| valid_id(id) && !config.agenda.subscriptions.contains_key(*id)) {
-        if vdir::remove_subscribed(id).is_ok() {
-            let _ = std::fs::remove_file(Fetched::path(id));
+    for id in stopped(config, &here) {
+        if vdir::remove_subscribed(&id).is_ok() {
+            let _ = std::fs::remove_file(Fetched::path(&id));
             changed = true;
         }
     }
     changed
+}
+
+/// Which of the folders `here` were stopped: those the settings no longer
+/// name at all. One whose entry does not read is named still, and stays
+/// (F20); the caller asks only settings that read (F19).
+pub fn stopped(config: &Config, here: &[String]) -> Vec<String> {
+    here.iter().filter(|id| valid_id(id) && !config.agenda.subscriptions.contains_key(*id)).cloned().collect()
 }
 
 // ---------------------------------------------------------------- written into the settings
@@ -826,7 +875,18 @@ pub fn stop(path: &Path, id: &str) -> Result<(), String> {
 /// read; never yet; or why the last asking gave nothing, since when, what
 /// to do, the last copy kept.
 pub fn line(id: &str, now: &jiff::Zoned, tr: &crate::i18n::Translator) -> String {
-    let state = Fetched::load(id);
+    line_of(&Fetched::load(id), now, tr)
+}
+
+/// A subscribed calendar's line when its entry in the settings does not
+/// read here, or the settings themselves do not (F19, F20): said first,
+/// then when it was last read.
+pub fn line_unread(id: &str, whole_file: bool, now: &jiff::Zoned, tr: &crate::i18n::Translator) -> String {
+    let said = tr.text(if whole_file { "subscribe-line-settings-unread" } else { "subscribe-line-entry-unread" }, None);
+    format!("{said} {}", line(id, now, tr))
+}
+
+fn line_of(state: &Fetched, now: &jiff::Zoned, tr: &crate::i18n::Translator) -> String {
     let when = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(now.time_zone().clone())).map(|z| tr.date(&z, true)).unwrap_or_default();
     let mut args = crate::i18n::args();
     match state.problem() {

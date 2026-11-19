@@ -437,6 +437,8 @@ ColumnLayout {
                     id: feed
 
                     readonly property var sub: one.modelData.subscription || null
+                    // Its settings do not read here (F19, F20): its line says so, Stop alone stays.
+                    readonly property bool unread: feed.sub !== null && feed.sub.unread === true
                     property bool changing: false
                     property bool stopping: false
 
@@ -459,11 +461,13 @@ ColumnLayout {
 
                         Button {
                             objectName: "subscriptionRefresh"
+                            visible: !feed.unread
                             text: setup.sioul.text("subscribe-refresh")
                             onClicked: setup.problem = setup.sioul.refreshSubscription(feed.sub.id)
                         }
                         Button {
                             objectName: "subscriptionChange"
+                            visible: !feed.unread
                             text: setup.sioul.text("subscribe-change")
                             onClicked: {
                                 newAddress.text = feed.sub.url
@@ -536,6 +540,7 @@ ColumnLayout {
                     }
                     TextField {
                         objectName: "subscriptionName"
+                        visible: !feed.unread
                         Layout.fillWidth: true
                         text: feed.sub ? feed.sub.name : ""
                         placeholderText: setup.theme.plain(one.modelData.name)
@@ -547,6 +552,7 @@ ColumnLayout {
                         readonly property var kinds: ["", "public", "school"]
 
                         objectName: "subscriptionKind"
+                        visible: !feed.unread
                         Layout.fillWidth: true
                         model: kinds.map(k => setup.sioul.text("subscribe-holidays-" + (k === "" ? "none" : k)))
                         currentIndex: feed.sub ? Math.max(0, kinds.indexOf(feed.sub.holidays)) : 0
@@ -555,7 +561,7 @@ ColumnLayout {
                     }
                     WrapCheckBox {
                         objectName: "subscriptionDaysOff"
-                        visible: feed.sub !== null && feed.sub.holidays !== ""
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays !== ""
                         Layout.fillWidth: true
                         text: setup.sioul.text("subscribe-days-off")
                         checked: feed.sub !== null && feed.sub.days_off === true
@@ -563,7 +569,7 @@ ColumnLayout {
                     }
                     WrapCheckBox {
                         objectName: "subscriptionAfterClass"
-                        visible: feed.sub !== null && feed.sub.holidays === "school"
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === "school"
                         Layout.fillWidth: true
                         text: setup.sioul.text("subscribe-after-class")
                         checked: feed.sub !== null && feed.sub.after_class === true
