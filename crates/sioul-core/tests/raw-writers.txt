@@ -936,10 +936,7 @@ sioul-core/src/changes.rs	stamp_in	1	std::fs::write(dir.join(kind.id()), jiff::T
 
 # sioul-core/src/vdir.rs: a subscribed calendar's one door (replace_subscribed, guarded by subscribed_only): its whole copy written beside, then swapped in for the last one, a cut short swap settled, the copy taken out when the subscription stops; never a calendar of yours, which every other door keeps (its sync state read only).
 sioul-core/src/vdir.rs	replace_whole	1	std::fs::remove_dir_all(&next)
-sioul-core/src/vdir.rs	replace_whole	1	std::fs::write(next.join(file), text)
-sioul-core/src/vdir.rs	replace_whole	1	std::fs::write(next.join("displayname"), name.trim())
-sioul-core/src/vdir.rs	replace_whole	1	std::fs::write(next.join("color"), colour)
-sioul-core/src/vdir.rs	replace_whole	1	std::fs::write(next.join(WHOLE), "This copy was written whole.\n")
+sioul-core/src/vdir.rs	written_through	1	std::fs::File::create(path)
 sioul-core/src/vdir.rs	replace_whole	1	std::fs::rename(&live, &old)
 sioul-core/src/vdir.rs	replace_whole	1	std::fs::rename(&next, &live)
 sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::rename(&live, &old)

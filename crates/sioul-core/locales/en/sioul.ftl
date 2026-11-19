@@ -4759,6 +4759,7 @@ subscribe-too-many = This calendar holds more than twenty thousand events: it wa
 subscribe-too-large-kept = This calendar would take too much room kept here, far more than it weighs: it was not read.
 subscribe-cut = The calendar came back cut short: it was not read.
 subscribe-no-event = The calendar came back without any event.
+subscribe-not-written = This device could not write the calendar's copy (its disk may be full).
 subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
 subscribe-text = The server answered "{ $said }", not a calendar.
 subscribe-empty = The server answered nothing.

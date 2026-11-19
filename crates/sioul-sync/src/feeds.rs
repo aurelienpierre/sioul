@@ -11,7 +11,10 @@
 //! - **public addresses only**, the first and each redirect's: every address
 //!   a name resolves to is checked before it is reached, by the resolver the
 //!   contact's photos use (`stalls::public_agent`), so no second lookup can
-//!   answer otherwise;
+//!   answer otherwise; with a proxy named in the environment (`HTTPS_PROXY`,
+//!   `ALL_PROXY`), which resolves the name itself, the name is checked here
+//!   before the proxy is asked (`stalls::resolves_public`, F1), never the
+//!   proxy's own address;
 //! - **three redirects at most**, followed here one by one, each checked as
 //!   the first; the server's validators are sent to the first address alone
 //!   (RFC 9110 §15.4);
@@ -48,22 +51,48 @@ pub trait Hop {
     fn get(&self, url: &str, validators: Option<&(String, String)>) -> Result<Reply, Problem>;
 }
 
-/// The network, through an agent that reaches public addresses only, over https alone, and follows no redirect itself.
+/// The network, through an agent that reaches public addresses only, over
+/// https alone, and follows no redirect itself; or, for an address a proxy
+/// of the environment serves, through that proxy once its name was checked.
 pub struct Network {
-    agent: ureq::Agent,
+    direct: ureq::Agent,
+    proxied: Option<(ureq::Proxy, ureq::Agent)>,
 }
 
 impl Network {
+    /// The network as this device reaches it: its environment's proxy, if one is named.
     pub fn new() -> Network {
-        let config = ureq::Agent::config_builder()
-            .timeout_connect(Some(Duration::from_secs(20)))
-            .timeout_global(Some(Duration::from_secs(60)))
-            .http_status_as_error(false)
-            .https_only(true)
-            .max_redirects(0)
-            .max_redirects_will_error(false)
-            .build();
-        Network { agent: crate::stalls::public_agent(config) }
+        Network::with_proxy(ureq::Proxy::try_from_env())
+    }
+
+    /// The network, through `proxy` for the addresses it serves (the tests').
+    pub fn with_proxy(proxy: Option<ureq::Proxy>) -> Network {
+        let config = |proxy: Option<ureq::Proxy>| {
+            ureq::Agent::config_builder()
+                .timeout_connect(Some(Duration::from_secs(20)))
+                .timeout_global(Some(Duration::from_secs(60)))
+                .http_status_as_error(false)
+                .https_only(true)
+                .max_redirects(0)
+                .max_redirects_will_error(false)
+                .proxy(proxy)
+                .build()
+        };
+        // Directly: never the environment's proxy, whose own address the resolver would check.
+        let direct = crate::stalls::public_agent(config(None));
+        let proxied = proxy.map(|p| (p.clone(), ureq::Agent::new_with_config(config(Some(p)))));
+        Network { direct, proxied }
+    }
+
+    /// The agent for `url`: through the proxy when it serves it and the name
+    /// resolves to public addresses here (F1), else directly; refused when not public.
+    fn agent_for(&self, url: &str) -> Result<&ureq::Agent, Problem> {
+        let Some((proxy, agent)) = &self.proxied else { return Ok(&self.direct) };
+        let uri: ureq::http::Uri = url.parse().map_err(|_| Problem::NotAddress)?;
+        if proxy.is_no_proxy(&uri) {
+            return Ok(&self.direct);
+        }
+        if crate::stalls::resolves_public(&uri) { Ok(agent) } else { Err(Problem::NotPublic) }
     }
 }
 
@@ -75,7 +104,7 @@ impl Default for Network {
 
 impl Hop for Network {
     fn get(&self, url: &str, validators: Option<&(String, String)>) -> Result<Reply, Problem> {
-        let mut request = self.agent.get(url).header("User-Agent", "Sioul").header("Accept", "text/calendar, text/plain;q=0.8, */*;q=0.5").header("Accept-Encoding", "identity");
+        let mut request = self.agent_for(url)?.get(url).header("User-Agent", "Sioul").header("Accept", "text/calendar, text/plain;q=0.8, */*;q=0.5").header("Accept-Encoding", "identity");
         if let Some((etag, modified)) = validators {
             if !etag.is_empty() {
                 request = request.header("If-None-Match", etag.as_str());
@@ -163,7 +192,10 @@ fn joined(base: &str, location: &str) -> Option<String> {
     if location.is_empty() {
         return None;
     }
-    if location.contains("://") {
+    // Absolute when it begins with a scheme (RFC 3986 §3.1), never for a
+    // `://` in its query (`/login?next=https://…`: F2).
+    let scheme = location.split_once(':').map(|(s, _)| s).filter(|s| s.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')));
+    if scheme.is_some() {
         return Some(location.to_string());
     }
     let (scheme, rest) = base.split_once("://")?;
@@ -185,10 +217,11 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::Mutex;
 
-    /// A stand-in of the network: each address's reply; any other address
-    /// goes to the real network's agent, which refuses private addresses
-    /// before any connection (IP literals and `localhost` resolve without
-    /// asking anyone). It notes each address asked, with the validators sent.
+    /// A stand-in of the network: each address's reply; any other address is
+    /// only checked as the real network checks it before any connection
+    /// (`stalls::resolves_public`: IP literals and `localhost` resolve without
+    /// asking anyone), never reached, whatever the check says (F6). It notes
+    /// each address asked, with the validators sent.
     struct StandIn {
         replies: BTreeMap<String, Reply>,
         asked: Mutex<Vec<(String, bool)>>,
@@ -206,7 +239,10 @@ mod tests {
             match self.replies.get(url) {
                 Some(reply) => Ok(reply.clone()),
                 None if url.contains("example.") => Err(Problem::Network),
-                None => Network::new().get(url, validators),
+                None => {
+                    let uri: ureq::http::Uri = url.parse().map_err(|_| Problem::NotAddress)?;
+                    Err(if crate::stalls::resolves_public(&uri) { Problem::Network } else { Problem::NotPublic })
+                }
             }
         }
     }
@@ -257,7 +293,21 @@ mod tests {
         for private in ["https://home.example.org/x", "https://local.example.org/x", "https://v6.example.org/x"] {
             assert_eq!(fetch_with(private, None, &hop), Answer::Refused(Problem::NotPublic), "{private}");
         }
-        assert_eq!(Network::new().get("https://127.0.0.1:9/calendar.ics", None), Err(Problem::NotPublic), "the resolver itself");
+    }
+
+    /// The review's F1: with a proxy named in the environment, the name is
+    /// checked here before the proxy is asked, and refused when it is not
+    /// public; never a connection (the proxy at a port nothing listens on).
+    #[test]
+    fn a_proxy_never_takes_the_public_rule_away() {
+        let proxy = ureq::Proxy::new("http://127.0.0.1:9").unwrap();
+        let through = Network::with_proxy(Some(proxy));
+        for private in ["https://192.168.1.1/x.ics", "https://localhost/x.ics", "https://[::ffff:10.0.0.5]/x.ics", "https://127.0.0.1:9/x.ics"] {
+            assert_eq!(through.agent_for(private).err(), Some(Problem::NotPublic), "{private}");
+        }
+        // Without a proxy, directly through the public resolver; a local proxy's own address never checked.
+        assert!(Network::with_proxy(None).agent_for("https://192.168.1.1/x.ics").is_ok());
+        assert!(through.agent_for("https://9.9.9.9/x.ics").is_ok(), "a public address goes through the proxy (nothing asked of it here)");
     }
 
     /// The server's 304 to the copy's validators says unchanged; a 304 never
@@ -299,5 +349,9 @@ mod tests {
         assert_eq!(joined("https://a.example.org/x/y.ics", "//b.example.org/r.ics").as_deref(), Some("https://b.example.org/r.ics"));
         assert_eq!(joined("https://a.example.org", "r.ics").as_deref(), Some("https://a.example.org/r.ics"));
         assert_eq!(joined("https://a.example.org/x", " ").as_deref(), None);
+        // F2: a relative address whose query holds another address stays relative.
+        assert_eq!(joined("https://a.example.org/x/y.ics", "/login?next=https://b.example.org/cal").as_deref(), Some("https://a.example.org/login?next=https://b.example.org/cal"));
+        assert_eq!(joined("https://a.example.org/x/y.ics", "z.ics?from=webcal://c").as_deref(), Some("https://a.example.org/x/z.ics?from=webcal://c"));
+        assert_eq!(joined("https://a.example.org/x", "webcal://b.example.org/r.ics").as_deref(), Some("webcal://b.example.org/r.ics"));
     }
 }

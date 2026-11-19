@@ -73,10 +73,18 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// One round, on this thread (the phone's background step's too): each
 /// series that pauses settled, those this device may write. How many changed.
 pub(crate) fn keep_paused_here(why: &str) -> usize {
+    /// The round's mark, set back when it ends, a panic in it included (F5).
+    struct Running;
+    impl Drop for Running {
+        fn drop(&mut self) {
+            RUNNING.store(false, Ordering::Relaxed);
+        }
+    }
     if RUNNING.swap(true, Ordering::Relaxed) {
         AGAIN.store(true, Ordering::Relaxed);
         return 0;
     }
+    let _running = Running;
     let mut changed = 0;
     loop {
         AGAIN.store(false, Ordering::Relaxed);
@@ -85,7 +93,6 @@ pub(crate) fn keep_paused_here(why: &str) -> usize {
             break;
         }
     }
-    RUNNING.store(false, Ordering::Relaxed);
     changed
 }
 

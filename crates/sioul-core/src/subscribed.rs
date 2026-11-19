@@ -46,6 +46,11 @@ pub const MOST_BYTES: u64 = 10_000_000;
 /// The most events a calendar may hold (each series counted once; its
 /// times are capped as every agenda's are, `agenda::EXPANSION_LIMIT`).
 pub const MOST_EVENTS: usize = 20_000;
+/// The most series (events with a rule) a calendar may hold: each is
+/// expanded at every reading of the agenda, up to the agenda's own cap
+/// (`agenda::EXPANSION_LIMIT`), so a stranger's server could otherwise ask
+/// hundreds of millions of steps of each reading (F14).
+pub const MOST_SERIES: usize = 2_000;
 /// The most redirects followed, each checked as the first address is.
 pub const MOST_REDIRECTS: usize = 3;
 /// How often a calendar is read on a computer, unless it says otherwise.
@@ -191,6 +196,9 @@ fn unread(id: &str, value: &toml::Value) -> Subscription {
     let last = Fetched::load(id).entry;
     let word = |field: &str| value.get(field).and_then(toml::Value::as_str).map(str::to_string);
     let yes = |field: &str| value.get(field).and_then(toml::Value::as_bool);
+    // The last entry that read here, its address as the settings say it when that still reads
+    // (the state keeps no address, F17).
+    let last = last.map(|entry| Subscription { url: word("url").unwrap_or_default(), ..entry });
     let entry = last.unwrap_or_else(|| Subscription {
         url: word("url").unwrap_or_default(),
         name: word("name").unwrap_or_default(),
@@ -308,6 +316,8 @@ pub enum Problem {
     Cut,
     /// A calendar without any event, where the copy kept had some (F10).
     NoEvent,
+    /// Read, but its copy could not be written on this device (a full disk) (F4).
+    NotWritten,
     /// A web page, not a calendar: a sign-in page, an error page.
     Page,
     /// A line of text, not a calendar: a refusal ("Invalid authentication").
@@ -337,6 +347,7 @@ impl Problem {
             Problem::TooLargeKept => "subscribe-too-large-kept",
             Problem::Cut => "subscribe-cut",
             Problem::NoEvent => "subscribe-no-event",
+            Problem::NotWritten => "subscribe-not-written",
             Problem::Page => "subscribe-page",
             Problem::Text(_) => "subscribe-text",
             Problem::Empty => "subscribe-empty",
@@ -353,7 +364,7 @@ impl Problem {
     pub fn line_id(&self) -> &'static str {
         match self {
             Problem::Network | Problem::Status(408 | 429 | 500..=599) => "subscribe-line-unreached",
-            Problem::TooLarge | Problem::TooMany | Problem::TooLargeKept | Problem::Cut | Problem::NoEvent | Problem::NotPublic | Problem::Redirects => "subscribe-line-not-taken",
+            Problem::TooLarge | Problem::TooMany | Problem::TooLargeKept | Problem::Cut | Problem::NoEvent | Problem::NotWritten | Problem::NotPublic | Problem::Redirects => "subscribe-line-not-taken",
             _ => "subscribe-line-no-calendar",
         }
     }
@@ -436,8 +447,7 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
     if !opens {
         // A short answer of words: what the server said (Moodle's "Invalid authentication").
         if trimmed.len() <= 300 && !trimmed.contains(['<', '{']) {
-            let said: String = trimmed.lines().next().unwrap_or_default().trim().chars().filter(|c| !c.is_control()).take(120).collect();
-            return Err(Problem::Text(said));
+            return Err(Problem::Text(plain_words(trimmed.lines().next().unwrap_or_default(), SAID_MOST)));
         }
         return Err(Problem::NotCalendar);
     }
@@ -459,6 +469,25 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
         Err(crate::agenda::FileProblem::TooLarge) => return Err(Problem::TooLargeKept),
         Err(_) => return Err(Problem::NotCalendar),
     };
+    // A rule that repeats by the second, the minute or the hour and never ends
+    // is left out (no timetable, deadline or holiday is one): each reading would
+    // expand it to the agenda's cap. Too many series refuse the calendar (F14).
+    let mut series = 0usize;
+    let objects: Vec<(String, String)> = objects
+        .into_iter()
+        .filter(|(_, object)| match crate::lines::unfold(object).iter().find(|l| crate::lines::name(l) == "RRULE").map(|l| crate::lines::value(l).trim().to_ascii_uppercase()) {
+            None => true,
+            Some(rule) => {
+                let parts: Vec<&str> = rule.split(';').map(str::trim).collect();
+                let restless = parts.iter().any(|p| matches!(*p, "FREQ=SECONDLY" | "FREQ=MINUTELY" | "FREQ=HOURLY")) && !parts.iter().any(|p| p.starts_with("COUNT=") || p.starts_with("UNTIL="));
+                series += usize::from(!restless);
+                !restless
+            }
+        })
+        .collect();
+    if series > MOST_SERIES {
+        return Err(Problem::TooMany);
+    }
     // The calendar's own lines, outside its components.
     let (mut name, mut refresh) = (String::new(), None);
     let (mut depth, mut alt_name, mut ttl) = (0usize, String::new(), None);
@@ -480,12 +509,33 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
     if name.is_empty() {
         name = alt_name;
     }
-    let name: String = name.chars().filter(|c| !c.is_control()).take(120).collect::<String>().trim().to_string();
+    let name = plain_words(&name, NAME_MOST);
     let mut items: Vec<(String, String)> = objects.into_iter().map(|(uid, text)| (format!("{}.ics", vdir::content_hash(uid.as_bytes())), text)).collect();
     items.sort();
     items.dedup_by(|a, b| a.0 == b.0);
     let hash = steady(&items);
     Ok(Feed { items, name, refresh: refresh.or(ttl), hash })
+}
+
+/// The most of a server's words said (F16), and of a calendar's own name.
+const SAID_MOST: usize = 80;
+const NAME_MOST: usize = 60;
+
+/// Words from a server as Sioul says them (F16): one line, its control and
+/// direction marks taken out (U+202E would turn the line around), any
+/// address in it said as "…" (a server repeating the address asked would
+/// put its token into a notice and this device's state), cut to `most`
+/// characters. Drawn as plain text wherever they are shown.
+pub fn plain_words(text: &str, most: usize) -> String {
+    let direction = |c: char| matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+    let kept: String = text.chars().filter(|c| !c.is_control() && !direction(*c)).collect();
+    let words: Vec<&str> = kept.split_whitespace().map(|word| if word.contains("://") || word.contains('?') || word.contains('=') { "…" } else { word }).collect();
+    let line = words.join(" ");
+    let mut out: String = line.chars().take(most).collect();
+    if line.chars().count() > most {
+        out.push('…');
+    }
+    out.trim().to_string()
 }
 
 /// How many events a whole calendar holds, as the reader reads them
@@ -564,7 +614,7 @@ pub fn duration(text: &str) -> Option<i64> {
                 let n: i64 = number.parse().ok()?;
                 number.clear();
                 any = true;
-                seconds += n * match (unit, timed) {
+                let unit = match (unit, timed) {
                     ('W', false) => 7 * 86_400,
                     ('D', false) => 86_400,
                     ('H', true) => 3600,
@@ -572,6 +622,8 @@ pub fn duration(text: &str) -> Option<i64> {
                     ('S', true) => 1,
                     _ => return None,
                 };
+                // A number past what a duration can hold reads as none (F15).
+                seconds = seconds.checked_add(n.checked_mul(unit)?)?;
             }
         }
     }
@@ -584,9 +636,12 @@ pub fn duration(text: &str) -> Option<i64> {
 /// (`state/subscribed/<id>.toml`): its own, never shared.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fetched {
-    /// The address its copy came from: another one now, it is read again whole.
+    /// Which address its copy came from, as a hash of it (`address_of`): the
+    /// address itself is kept once, in the settings, never a second time in
+    /// this device's state (F17). Another one now: its copy goes, and it is
+    /// read again whole (F22).
     #[serde(default)]
-    pub url: String,
+    pub address: String,
     /// When it was last asked (Unix seconds); 0 never.
     #[serde(default)]
     pub tried: i64,
@@ -614,6 +669,9 @@ pub struct Fetched {
     pub status: u16,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub since: i64,
+    /// How many askings in a row gave nothing (`every`: tried again at growing intervals, F3).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub failures: u32,
     /// How often it asks to be read, seconds; 0 when it says nothing.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub refresh: i64,
@@ -634,6 +692,10 @@ fn is_zero(n: &u16) -> bool {
 }
 
 fn is_zero_i64(n: &i64) -> bool {
+    *n == 0
+}
+
+fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
 
@@ -667,6 +729,7 @@ impl Fetched {
             "subscribe-too-large-kept" => Problem::TooLargeKept,
             "subscribe-cut" => Problem::Cut,
             "subscribe-no-event" => Problem::NoEvent,
+            "subscribe-not-written" => Problem::NotWritten,
             "subscribe-page" => Problem::Page,
             "subscribe-text" => Problem::Text(self.said.clone()),
             "subscribe-empty" => Problem::Empty,
@@ -683,6 +746,11 @@ impl Fetched {
     }
 }
 
+/// What this device's state keeps of an address: a hash of it, never the address (F17).
+pub fn address_of(url: &str) -> String {
+    vdir::content_hash(url.trim().as_bytes())
+}
+
 /// The copy's folder of a subscribed calendar.
 pub fn folder(id: &str) -> PathBuf {
     Kind::Calendars.root().join(ACCOUNT).join(id)
@@ -693,7 +761,7 @@ pub fn folder(id: &str) -> PathBuf {
 /// else the whole calendar is asked for, and written again (F11).
 pub fn validators(id: &str, subscription: &Subscription) -> Option<(String, String)> {
     let state = Fetched::load(id);
-    (state.url == subscription.url && state.checked > 0 && intact(id, &state) && !(state.etag.is_empty() && state.last_modified.is_empty())).then_some((state.etag, state.last_modified))
+    (state.address == address_of(&subscription.url) && state.checked > 0 && intact(id, &state) && !(state.etag.is_empty() && state.last_modified.is_empty())).then_some((state.etag, state.last_modified))
 }
 
 /// Whether this device's copy is the one its state notes: its folder there,
@@ -717,7 +785,8 @@ pub fn intact(id: &str, state: &Fetched) -> bool {
 
 /// How often a calendar is read on a computer: its own wish, between one
 /// hour and one day; else once a day for holidays, every three hours for
-/// the rest. After a problem, within the hour.
+/// the rest. After a problem, at growing intervals (F3): an hour, then
+/// two, four, eight, sixteen, then once a day, never every hour for ever.
 pub fn every(subscription: &Subscription, state: &Fetched) -> i64 {
     let usual = if state.refresh > 0 {
         state.refresh.clamp(SOONEST, LATEST)
@@ -726,19 +795,24 @@ pub fn every(subscription: &Subscription, state: &Fetched) -> i64 {
     } else {
         EVERY
     };
-    if state.problem.is_empty() { usual } else { usual.min(SOONEST) }
+    if state.problem.is_empty() {
+        return usual;
+    }
+    let doubled = SOONEST.saturating_mul(1i64 << state.failures.saturating_sub(1).min(16));
+    doubled.min(LATEST)
 }
 
 /// Whether a calendar is to be read now: never read from this address
 /// here; when Sioul opens (`opening`), unless read in the last ten minutes;
-/// else once its time has come (`every`).
-pub fn due(id: &str, subscription: &Subscription, now: i64, opening: bool) -> bool {
+/// else once its time has come (`every`), and `at_least` seconds after the
+/// last asking (a phone's few times a day, F23; 0 on a computer).
+pub fn due(id: &str, subscription: &Subscription, now: i64, opening: bool, at_least: i64) -> bool {
     let state = Fetched::load(id);
-    if state.url != subscription.url || state.tried == 0 {
+    if state.address != address_of(&subscription.url) || state.tried == 0 {
         return true;
     }
     let since = now - state.tried;
-    since < 0 || since >= if opening { OPENED_AGAIN } else { every(subscription, &state) }
+    since < 0 || since >= if opening { OPENED_AGAIN } else { every(subscription, &state).max(at_least) }
 }
 
 /// What the network gave for a calendar (sioul-sync's `feeds`).
@@ -774,19 +848,30 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
     }
     vdir::finish_subscribed(id);
     let mut state = Fetched::load(id);
-    let same_address = state.url == subscription.url && folder(id).is_dir() && state.checked > 0;
+    let address = address_of(&subscription.url);
+    // The copy of a former address (changed, or an id used again) never stands
+    // for this one, whatever this one answers (F22): it goes now.
+    if !state.address.is_empty() && state.address != address {
+        if let Err(e) = vdir::replace_subscribed(id, &display_name(subscription, ""), subscription.colour.as_deref(), &[]) {
+            eprintln!("subscribed calendar {id}: {e}");
+        }
+        state = Fetched { tried: state.tried, entry: state.entry, ..Fetched::default() };
+    }
+    state.address = address.clone();
+    let same_address = folder(id).is_dir() && state.checked > 0;
     // "Unchanged" is judged against the copy on the disk, never this device's note alone (F11).
     let intact = same_address && intact(id, &state);
     state.tried = now;
     // Its entry as it reads now: what stands for it if it stops reading (F20).
     if !subscription.unread {
-        state.entry = Some(subscription.clone());
+        state.entry = Some(Subscription { url: String::new(), ..subscription.clone() });
     }
     let refused = |mut state: Fetched, problem: Problem| -> Result<Taken, String> {
         if state.problem != problem.id() || state.since == 0 {
             state.since = now;
         }
         state.problem = problem.id().to_string();
+        state.failures = state.failures.saturating_add(1);
         state.said = if let Problem::Text(said) = &problem { said.clone() } else { String::new() };
         state.status = if let Problem::Status(status) = problem { status } else { 0 };
         state.save(id)?;
@@ -797,6 +882,7 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
         state.said.clear();
         state.status = 0;
         state.since = 0;
+        state.failures = 0;
     };
     match answer {
         Answer::Refused(problem) => refused(state, problem),
@@ -827,8 +913,13 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
                 return Ok(Taken::Unchanged);
             }
             let name = display_name(subscription, &feed.name);
-            vdir::replace_subscribed(id, &name, subscription.colour.as_deref(), &feed.items)?;
-            (state.url, state.hash, state.changed, state.checked, state.events) = (subscription.url.clone(), feed.hash, now, now, feed.items.len());
+            // Not written here (a full disk): said, and asked again later at growing
+            // intervals, never at each minute (F4); the last copy stays.
+            if let Err(e) = vdir::replace_subscribed(id, &name, subscription.colour.as_deref(), &feed.items) {
+                eprintln!("subscribed calendar {id}: {e}");
+                return refused(state, Problem::NotWritten);
+            }
+            (state.hash, state.changed, state.checked, state.events) = (feed.hash, now, now, feed.items.len());
             state.save(id)?;
             Ok(Taken::Changed)
         }
@@ -1065,6 +1156,10 @@ pub fn holidays(config: &Config, zone: &jiff::tz::TimeZone) -> Vec<HolidayDays> 
     for (id, subscription) in &config.agenda.subscriptions {
         let Some(kind) = subscription.holidays() else { continue };
         let dir = folder(id);
+        // Between the replacement's two renames there is no copy: waited for, once (F13).
+        if !dir.is_dir() {
+            vdir::finish_subscribed(id);
+        }
         let key: Key = (modified(&dir), modified(&Fetched::path(id)), subscription.after_class(), crate::zone::name_of(zone, jiff::Timestamp::now()));
         let known = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).filter(|(k, ..)| *k == key).map(|(_, p, name, as_of)| (p.clone(), name.clone(), *as_of));
         let (periods, own_name, as_of) = known.unwrap_or_else(|| {

@@ -26,6 +26,25 @@ use sioul_core::subscribed::{self, Taken};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// The least time between two readings of a calendar here (F23): on a phone,
+/// a few times a day (`steps::SUBSCRIBED_EVERY`, six hours; a calendar of
+/// holidays once a day, `subscribed::every`), each calendar's own last
+/// asking kept in its state, so that a new process does not read again;
+/// on a computer, as `subscribed::every` says.
+fn at_least() -> i64 {
+    if cfg!(target_os = "android") { crate::steps::SUBSCRIBED_EVERY } else { 0 }
+}
+
+/// Whether this device reads calendars on the network it is on now: never
+/// on one the system calls metered when this device keeps its large
+/// downloads to Wi-Fi or other unmetered networks (its own choice,
+/// Settings ▸ Mail ▸ the filter's download, `[spam] train_network`). Refresh
+/// now, pressed by you, reads whatever the network (F23).
+fn network_allows(config: &sioul_core::config::Config) -> bool {
+    let metered = if cfg!(target_os = "android") { crate::spam::phone_power().metered } else { sioul_sync::power::kept_power().and_then(|p| p.metered) };
+    config.spam.downloads_on(metered)
+}
+
 /// A round running: one at a time, whoever asks.
 static RUNNING: AtomicBool = AtomicBool::new(false);
 /// The window's first minute passed: Sioul opened.
@@ -33,6 +52,28 @@ static OPENED: AtomicBool = AtomicBool::new(false);
 
 /// What a round read: each calendar asked, and what became of it.
 type Round = Vec<(String, Taken)>;
+
+/// A round running, set back when it ends, a panic in it included (F5): a
+/// round that fails never stops the next ones.
+struct Running;
+
+impl Running {
+    /// The round's mark taken; none while another round runs.
+    fn take() -> Option<Running> {
+        (!RUNNING.swap(true, Ordering::Relaxed)).then_some(Running)
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        RUNNING.store(false, Ordering::Relaxed);
+    }
+}
+
+/// The calendars whose answer could not even be noted here (a full disk:
+/// their state not written, F4), each with how many times in a row and
+/// when it may be asked again: an hour, then two, four… a day at most.
+static HELD_BACK: std::sync::Mutex<std::collections::BTreeMap<String, (u32, i64)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// One round: the folders made to follow the settings, then each calendar
 /// due (or `only` that one, whatever its time) asked and taken in.
@@ -44,14 +85,27 @@ fn round(opening: bool, only: Option<&str>) -> Round {
     for (id, subscription) in &config.agenda.subscriptions {
         let now = jiff::Timestamp::now().as_second();
         // An entry that does not read is neither read nor taken out (F20).
-        if subscription.unread || only.is_some_and(|o| o != id) || (only.is_none() && !subscribed::due(id, subscription, now, opening)) {
+        if subscription.unread || only.is_some_and(|o| o != id) || (only.is_none() && !subscribed::due(id, subscription, now, opening, at_least())) {
+            continue;
+        }
+        let held_back = HELD_BACK.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).copied();
+        if only.is_none() && held_back.is_some_and(|(_, next)| now < next) {
             continue;
         }
         let answer = sioul_sync::feeds::fetch(&subscription.url, subscribed::validators(id, subscription));
         // Said by its id alone: its address never goes to a log.
+        let mut held = HELD_BACK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         match subscribed::take(id, subscription, answer, now) {
-            Ok(taken) => out.push((id.clone(), taken)),
-            Err(e) => eprintln!("subscribed calendar {id}: {e}"),
+            Ok(taken) => {
+                held.remove(id);
+                out.push((id.clone(), taken));
+            }
+            Err(e) => {
+                eprintln!("subscribed calendar {id}: {e}");
+                let times = held_back.map_or(1, |(n, _)| n.saturating_add(1));
+                let wait = (subscribed::SOONEST.saturating_mul(1i64 << times.saturating_sub(1).min(16))).min(subscribed::LATEST);
+                held.insert(id.clone(), (times, now + wait));
+            }
         }
     }
     if !out.is_empty() {
@@ -78,7 +132,8 @@ fn after(qt: &QtThread, shared: &Arc<Shared>, round: &Round) {
 /// one after, what is due; on a thread of its own, never while another
 /// round runs.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
-    let opening = !OPENED.swap(true, Ordering::Relaxed);
+    // A phone's window starts cold many times a day: no reading for its opening there (F23).
+    let opening = !OPENED.swap(true, Ordering::Relaxed) && !cfg!(target_os = "android");
     // Nothing subscribed, nothing left here to take out: no round.
     let left = std::fs::read_dir(sioul_core::vdir::Kind::Calendars.root().join(subscribed::ACCOUNT)).is_ok_and(|mut d| d.next().is_some());
     // Settings that do not read: no round (F19).
@@ -86,13 +141,15 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     if config.agenda.subscriptions.is_empty() && !left {
         return;
     }
-    if RUNNING.swap(true, Ordering::Relaxed) {
+    // A network this device keeps large downloads off: no reading on it (F23).
+    if !network_allows(&config) {
         return;
     }
+    let Some(running) = Running::take() else { return };
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let done = round(opening, None);
-        RUNNING.store(false, Ordering::Relaxed);
+        drop(running);
         after(&qt, &shared, &done);
     });
 }
@@ -100,13 +157,11 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// "Refresh now" on a calendar's line: read at once, whatever its time,
 /// and said in the status line. Returns "" (the round runs apart).
 pub(crate) fn refresh_now(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    if RUNNING.swap(true, Ordering::Relaxed) {
-        return tr().text("subscribe-reading", None);
-    }
+    let Some(running) = Running::take() else { return tr().text("subscribe-reading", None) };
     let (qt, shared, id) = (qt.clone(), Arc::clone(shared), id.to_string());
     std::thread::spawn(move || {
         let done = round(false, Some(&id));
-        RUNNING.store(false, Ordering::Relaxed);
+        drop(running);
         let said = match done.first().map(|(_, taken)| taken) {
             Some(Taken::Changed) => tr().text("subscribe-refreshed", None),
             Some(Taken::Unchanged) => tr().text("subscribe-unchanged", None),
@@ -125,11 +180,12 @@ pub(crate) fn refresh_now(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Stri
 /// holidays changed then kept as on a computer (the series that pause for
 /// them); no window to tell.
 pub(crate) fn background_step() {
-    if RUNNING.swap(true, Ordering::Relaxed) {
+    if !crate::backend::config_read().is_some_and(|c| network_allows(&c)) {
         return;
     }
+    let Some(running) = Running::take() else { return };
     let done = round(false, None);
-    RUNNING.store(false, Ordering::Relaxed);
+    drop(running);
     let config = load_config();
     if done.iter().any(|(id, taken)| *taken == Taken::Changed && config.agenda.subscriptions.get(id).is_some_and(|s| s.holidays().is_some())) {
         crate::series::keep_paused_here("holidays");
@@ -309,5 +365,18 @@ mod tests {
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         sioul_core::vdir::remove_subscribed(id).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The review's F5: a round that panics sets its mark back, so that the
+    /// next rounds run.
+    #[test]
+    fn a_round_that_fails_does_not_stop_the_next() {
+        let held = std::panic::catch_unwind(|| {
+            let _running = Running::take();
+            panic!("a hostile answer");
+        });
+        assert!(held.is_err());
+        let next = Running::take();
+        assert!(next.is_some(), "the next round runs");
     }
 }

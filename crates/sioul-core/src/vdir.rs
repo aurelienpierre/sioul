@@ -840,25 +840,34 @@ fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, S
     }
     std::fs::create_dir_all(&next).map_err(|e| fail(&next, e))?;
     std::fs::create_dir_all(live.parent().unwrap_or(&live)).map_err(|e| fail(&live, e))?;
+    // Each file on the disk before the mark that says the copy is whole, and
+    // the mark before the renames: a power cut never leaves a copy of empty
+    // files in place, with no old one to come back to (F12).
     for (file, text) in items {
-        std::fs::write(next.join(file), text).map_err(|e| fail(&next.join(file), e))?;
+        written_through(&next.join(file), text.as_bytes()).map_err(|e| fail(&next.join(file), e))?;
     }
-    std::fs::write(next.join("displayname"), name.trim()).map_err(|e| fail(&next, e))?;
+    written_through(&next.join("displayname"), name.trim().as_bytes()).map_err(|e| fail(&next, e))?;
     if let Some(colour) = colour.filter(|c| c.len() == 7 && c.starts_with('#')) {
-        std::fs::write(next.join("color"), colour).map_err(|e| fail(&next, e))?;
+        written_through(&next.join("color"), colour.as_bytes()).map_err(|e| fail(&next, e))?;
     }
-    std::fs::write(next.join(WHOLE), "This copy was written whole.\n").map_err(|e| fail(&next, e))?;
+    folder_through(&next);
+    written_through(&next.join(WHOLE), b"This copy was written whole.\n").map_err(|e| fail(&next, e))?;
+    folder_through(&next);
     if crashed(5) {
         return Ok(());
     }
     if live.exists() {
         std::fs::create_dir_all(old.parent().unwrap_or(&old)).map_err(|e| fail(&old, e))?;
         std::fs::rename(&live, &old).map_err(|e| fail(&live, e))?;
+        folder_through(old.parent().unwrap_or(&old));
     }
     if crashed(6) {
         return Ok(());
     }
     std::fs::rename(&next, &live).map_err(|e| fail(&next, e))?;
+    // The renames on the disk before the last copy is taken out.
+    folder_through(live.parent().unwrap_or(&live));
+    folder_through(next.parent().unwrap_or(&next));
     if crashed(7) {
         return Ok(());
     }
@@ -866,6 +875,22 @@ fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, S
     counted(&live.join("whole.ics"));
     collection_said(Kind::Calendars);
     Ok(())
+}
+
+/// A file written and flushed to the disk (`File::sync_all`).
+fn written_through(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// A folder's entries flushed to the disk, where the system lets a folder be
+/// opened so (not Windows, whose renames go through its journal).
+fn folder_through(dir: &Path) {
+    if let Ok(folder) = std::fs::File::open(dir) {
+        let _ = folder.sync_all();
+    }
 }
 
 /// A subscribed calendar's replacement cut short, settled (`replace_subscribed`):

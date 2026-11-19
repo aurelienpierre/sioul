@@ -100,7 +100,7 @@ fn unchanged_but_for_its_stamps_writes_nothing() {
     let id = "moodle-test";
     let s = subscription("https://school.example.org/calendar/export_execute.php?userid=7&authtoken=0123", None, None);
     vdir::prepare_subscribed(id, "Moodle", None).unwrap();
-    assert!(due(id, &s, 1_000, false), "never read here");
+    assert!(due(id, &s, 1_000, false, 0), "never read here");
     assert_eq!(take(id, &s, calendar(&moodle("20301118T100000Z")), 1_000).unwrap(), Taken::Changed);
     let file = folder(id).join(&first.items[0].0);
     let written = std::fs::metadata(&file).unwrap().modified().unwrap();
@@ -108,7 +108,9 @@ fn unchanged_but_for_its_stamps_writes_nothing() {
     assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), written, "nothing written");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), first.items[0].1, "the first copy's stamps stay");
     assert_eq!(Fetched::load(id).checked, 2_000);
-    assert!(!due(id, &s, 2_000 + EVERY - 1, false) && due(id, &s, 2_000 + EVERY, false));
+    assert!(!due(id, &s, 2_000 + EVERY - 1, false, 0) && due(id, &s, 2_000 + EVERY, false, 0));
+    // A phone's few times a day (F23): six hours at least, whatever the calendar's own time.
+    assert!(!due(id, &s, 2_000 + EVERY, false, 6 * 3600) && due(id, &s, 2_000 + 6 * 3600, false, 6 * 3600));
     let moved = moodle("20301118T100200Z").replace("SUMMARY:Quiz opens", "SUMMARY:Quiz opens, moved");
     assert_eq!(take(id, &s, calendar(&moved), 3_000).unwrap(), Taken::Changed);
     assert!(folder(id).read_dir().unwrap().flatten().any(|e| std::fs::read_to_string(e.path()).unwrap_or_default().contains("Quiz opens, moved")));
@@ -133,7 +135,7 @@ fn unchanged_but_for_its_stamps_writes_nothing() {
     // Another address: read whole again, whatever its hash.
     let other = Subscription { url: "https://school.example.org/other.ics".into(), ..s.clone() };
     assert_eq!(validators(id, &other), None);
-    assert!(due(id, &other, 7_001, false));
+    assert!(due(id, &other, 7_001, false, 0));
     assert_eq!(take(id, &other, calendar(&moved), 8_000).unwrap(), Taken::Changed);
     vdir::remove_subscribed(id).unwrap();
 }
@@ -145,9 +147,9 @@ fn unchanged_but_for_its_stamps_writes_nothing() {
 fn each_calendar_is_read_at_its_time() {
     let plain = subscription("https://calendar.example.org/a.ics", None, None);
     let holidays = subscription("https://calendar.example.org/h.ics", Some("public"), None);
-    let state = |refresh: i64| Fetched { url: plain.url.clone(), tried: 10, checked: 10, refresh, ..Fetched::default() };
+    let state = |refresh: i64| Fetched { address: address_of(&plain.url), tried: 10, checked: 10, refresh, ..Fetched::default() };
     assert_eq!(every(&plain, &state(0)), EVERY);
-    assert_eq!(every(&holidays, &Fetched { url: holidays.url.clone(), ..state(0) }), HOLIDAYS_EVERY);
+    assert_eq!(every(&holidays, &Fetched { address: address_of(&holidays.url), ..state(0) }), HOLIDAYS_EVERY);
     assert_eq!(every(&plain, &state(60)), SOONEST, "never sooner than an hour");
     assert_eq!(every(&plain, &state(7 * 86_400)), LATEST, "never later than a day");
     assert_eq!(every(&plain, &state(6 * 3600)), 6 * 3600);
@@ -216,7 +218,7 @@ fn an_entry_that_does_not_read_changes_nothing() {
     assert_eq!(take(id, &last, calendar(SCHOOL), 1_000).unwrap(), Taken::Changed);
     let config: Config = toml::from_str(text).unwrap();
     let wrong = &config.agenda.subscriptions[id];
-    assert_eq!((wrong.unread, wrong.url.as_str(), wrong.after_class()), (true, "https://calendar.example.org/zone.ics", true));
+    assert_eq!((wrong.unread, wrong.url.as_str(), wrong.after_class(), wrong.holidays()), (true, "", true, Some(Holidays::School)), "its last settings; no address kept in the state");
     // Its copy stays when the folders follow the settings; its line says why nothing else changes.
     let here = ["good".to_string(), id.to_string(), "gone".to_string()];
     assert_eq!(stopped(&config, &here), ["gone"], "only a folder the settings no longer name is taken out");
@@ -426,4 +428,84 @@ fn a_subscribed_calendar_s_sioul_lines_are_not_yours() {
     let own: Vec<String> = crate::lines::unfold(text).into_iter().filter(|l| crate::lines::raw_name(l).starts_with("X-SIOUL-")).map(|l| crate::lines::raw_name(&l)).collect();
     assert_eq!(own, [crate::agenda::ORGANIZER_SEQUENCE.to_string(), crate::agenda::ORGANIZER_DTSTAMP.to_string()], "{text}");
     assert!(text.contains("SUMMARY:Rehearsal") && text.contains("TRIGGER:-PT1H"), "the publisher's own lines stay: {text}");
+}
+
+/// The review's F14: a rule that repeats by the second and never ends is
+/// left out of the copy; more than two thousand series refuse the calendar.
+#[test]
+fn restless_rules_and_too_many_series_are_kept_out() {
+    let restless = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:tick@example.org\r\nDTSTART:20300101T000000Z\r\nRRULE:FREQ=SECONDLY\r\nSUMMARY:Tick\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:counted@example.org\r\nDTSTART:20300101T000000Z\r\nRRULE:FREQ=HOURLY;COUNT=3\r\nSUMMARY:Three hours\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:class@example.org\r\nDTSTART:20300101T090000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Class\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let feed = read(restless.as_bytes()).unwrap();
+    assert_eq!(feed.items.len(), 2, "the endless one left out");
+    assert!(feed.items.iter().all(|(_, t)| !t.contains("SUMMARY:Tick")));
+    let mut many = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n");
+    for n in 0..=MOST_SERIES {
+        many.push_str(&format!("BEGIN:VEVENT\r\nUID:{n}@example.org\r\nDTSTART;VALUE=DATE:20300101\r\nRRULE:FREQ=YEARLY\r\nEND:VEVENT\r\n"));
+    }
+    many.push_str("END:VCALENDAR\r\n");
+    assert_eq!(read(many.as_bytes()), Err(Problem::TooMany));
+}
+
+/// The review's F3 and F4: after a problem a calendar is asked again at
+/// growing intervals, an hour then two, four… a day at most; a copy that
+/// could not be written (a full disk) keeps the last one, is said, and is
+/// not asked again at the next minute.
+#[test]
+fn problems_are_tried_again_at_growing_intervals() {
+    crate::config::stand_ins_only();
+    let plain = subscription("https://calendar.example.org/a.ics", None, None);
+    let failing = |failures: u32| Fetched { address: address_of(&plain.url), tried: 10, checked: 10, problem: "subscribe-network".into(), failures, ..Fetched::default() };
+    let waits: Vec<i64> = (1..=7).map(|n| every(&plain, &failing(n))).collect();
+    assert_eq!(waits, [3600, 7200, 14_400, 28_800, 57_600, LATEST, LATEST]);
+    // A write that fails: the next copy's place is taken by a file, as a disk that refuses would.
+    let id = "unwritten-test";
+    vdir::prepare_subscribed(id, "Classes", None).unwrap();
+    assert_eq!(take(id, &plain, calendar(PUBLIC), 1_000).unwrap(), Taken::Changed);
+    let next = crate::config::data_dir().join("subscribed").join("next").join(id);
+    std::fs::create_dir_all(next.parent().unwrap()).unwrap();
+    std::fs::write(&next, "not a folder").unwrap();
+    assert_eq!(take(id, &plain, calendar(&moodle("20301118T100000Z")), 2_000).unwrap(), Taken::Kept(Problem::NotWritten));
+    assert!(!due(id, &plain, 2_060, false, 0), "not asked again at the next minute");
+    assert_eq!(folder(id).read_dir().unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count(), 2, "the last copy stays");
+    std::fs::remove_file(&next).unwrap();
+    vdir::remove_subscribed(id).unwrap();
+}
+
+/// The review's F16 and F17: what a server says is one line of plain words,
+/// its direction marks out, any address in it said "…", cut short; this
+/// device's state keeps no address, only a hash of it.
+#[test]
+fn a_server_s_words_are_plain_and_the_state_keeps_no_address() {
+    assert_eq!(plain_words("Session expired\u{202E}, sign in at https://evil.example.org/login", 80), "Session expired, sign in at …");
+    assert_eq!(read(b"Invalid token for /calendar?authtoken=abc123"), Err(Problem::Text("Invalid token for …".into())));
+    let long = "a".repeat(200);
+    assert_eq!(plain_words(&long, SAID_MOST).chars().count(), SAID_MOST + 1);
+    crate::config::stand_ins_only();
+    let id = "noaddress-test";
+    let s = subscription("https://school.example.org/calendar/export?authtoken=secret0123", None, None);
+    vdir::prepare_subscribed(id, "Moodle", None).unwrap();
+    assert_eq!(take(id, &s, calendar(&moodle("20301118T100000Z")), 1_000).unwrap(), Taken::Changed);
+    let state = std::fs::read_to_string(Fetched::path(id)).unwrap();
+    assert!(!state.contains("secret0123") && !state.contains("school.example.org"), "{state}");
+    vdir::remove_subscribed(id).unwrap();
+}
+
+/// The review's F22: the copy of a former address never stands for a new
+/// one: a new address that gives a page leaves no copy, and says nothing
+/// was read from it yet.
+#[test]
+fn a_former_address_s_copy_never_stands_for_a_new_one() {
+    crate::config::stand_ins_only();
+    let id = "former-test";
+    let first = subscription("https://calendar.example.org/zone-a.ics", Some("school"), None);
+    vdir::prepare_subscribed(id, "Zone", None).unwrap();
+    assert_eq!(take(id, &first, calendar(SCHOOL), 1_000).unwrap(), Taken::Changed);
+    let moved = Subscription { url: "https://calendar.example.org/zone-b.ics".into(), ..first };
+    let page = Answer::Calendar { bytes: b"<html>Sign in</html>".to_vec(), etag: String::new(), last_modified: String::new() };
+    assert_eq!(take(id, &moved, page, 2_000).unwrap(), Taken::Kept(Problem::Page));
+    assert_eq!(folder(id).read_dir().unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count(), 0, "the former copy is gone");
+    let tr = crate::i18n::Translator::new("en");
+    let now = jiff::Timestamp::from_second(3_000).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
+    assert!(line(id, &now, &tr).contains("Nothing was read from it yet"), "{}", line(id, &now, &tr));
+    vdir::remove_subscribed(id).unwrap();
 }

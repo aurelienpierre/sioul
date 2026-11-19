@@ -4792,6 +4792,7 @@ subscribe-too-many = Cet agenda tient plus de vingt mille événements : il n�
 subscribe-too-large-kept = Cet agenda prendrait ici bien plus de place qu’il n’en pèse : il n’a pas été lu.
 subscribe-cut = L’agenda est revenu coupé avant sa fin : il n’a pas été lu.
 subscribe-no-event = L’agenda est revenu sans aucun événement.
+subscribe-not-written = Cet appareil n’a pas pu écrire la copie de l’agenda (son disque est peut-être plein).
 subscribe-page = L’adresse donne une page web, pas un agenda : peut-être une page de connexion.
 subscribe-text = Le serveur a répondu « { $said } », pas un agenda.
 subscribe-empty = Le serveur n’a rien répondu.
