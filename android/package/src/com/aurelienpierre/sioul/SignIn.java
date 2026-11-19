@@ -460,9 +460,10 @@ public final class SignIn extends Activity
             return;
         }
         if (!waitedFor(saved != null, window != null && window.isBinderAlive())) {
-            // Its page ended with its process: a window still waiting hears "cancelled" at once. Said, then gone.
+            // Made again after its process ended (its page went with it), or Sioul's window ended
+            // before the screen came: a window still waiting hears "cancelled" at once. Said, then gone.
             clean();
-            end(interrupted(french));
+            end(saved != null ? interrupted(french) : windowClosed(french));
             return;
         }
         try {
