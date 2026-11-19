@@ -719,7 +719,9 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
         return Ok(());
     }
     let now = jiff::Timestamp::now().as_second();
-    if !storage::Storage::read(&folders.state).is_moved() {
+    if storage::Storage::read(&folders.state).is_moved() {
+        println!("{}", s.tr.text("storage-moved-already", None));
+    } else {
         let moved = storage::move_now(&folders, now, || Ok::<(), String>(())).map_err(said)?;
         println!("lists {} · papers {} · letters {} · bytes {} · paths named anew {}", moved.lists, moved.papers, moved.letters, moved.bytes, moved.named);
         for to in &moved.alone {
