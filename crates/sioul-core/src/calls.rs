@@ -308,6 +308,10 @@ pub struct Layers {
     /// Reachable, from when, until when (Unix seconds; none: until turned
     /// off): the people you know ring then, whatever the time (part 3).
     pub reachable: Option<(i64, Option<i64>)>,
+    /// Do-not-disturb's layer holds by a busy stretch alone (its box "While
+    /// busy"): a phone's own line reads its busy column then (H2), the table
+    /// of before its layer as ever.
+    pub dnd_busy: bool,
 }
 
 /// The column a moment is said by: a layer that holds, else the time's (the
@@ -514,10 +518,14 @@ pub struct Inputs<'a> {
     /// for the line either, as for do-not-disturb (review of `phones`, H1).
     pub press: Option<&'a crate::everywhere::Press>,
     /// Being busy turns do-not-disturb on (the box "While busy" among what
-    /// turns it on, the Busy rule's): a busy stretch is then do-not-disturb
-    /// on this phone's line, only Always through ringing; off, the line's
-    /// column "while busy" holds.
+    /// turns it on, the Busy rule's): a busy cell as usual then reads as
+    /// do-not-disturb; off, as the moment.
     pub busy_is_dnd: bool,
+    /// The night (the box "While you sleep") and a pause or Free time (the
+    /// box "A pause or Free time") turn do-not-disturb on: on a phone's own
+    /// line they then decide as on every phone (M4).
+    pub sleep_is_dnd: bool,
+    pub pauses_is_dnd: bool,
 }
 
 /// A phone's table (docs/android.md, "Calls, per phone"). Its line saying
@@ -571,7 +579,11 @@ pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
         unverified: spam(grid.switches.unverified),
         called: grid.switches.called,
     };
-    let frames = line_frames(&LineMoments { attention: i.attention, clock: i.clock, layers: i.layers, busy: &busy, busy_is_dnd: i.busy_is_dnd, own: &own, grid: &grid, groups: &groups }, i.from, i.until);
+    let frames = line_frames(
+        &LineMoments { attention: i.attention, clock: i.clock, layers: i.layers, busy: &busy, busy_is_dnd: i.busy_is_dnd, sleep_is_dnd: i.sleep_is_dnd, pauses_is_dnd: i.pauses_is_dnd, press: i.press, screening: &i.screening, own: &own, grid: &grid, groups: &groups },
+        i.from,
+        i.until,
+    );
     let mut made = table(Made {
         made: i.made,
         region,
@@ -640,6 +652,13 @@ pub struct LineMoments<'a> {
     pub busy: &'a [(i64, i64)],
     /// Being busy turns do-not-disturb on (`Inputs::busy_is_dnd`).
     pub busy_is_dnd: bool,
+    /// The night, a pause or Free time turn do-not-disturb on (`Inputs`).
+    pub sleep_is_dnd: bool,
+    pub pauses_is_dnd: bool,
+    /// The switch's latest press: a night or a Free time it holds off is no do-not-disturb.
+    pub press: Option<&'a crate::everywhere::Press>,
+    /// The shared call screening: numbers nobody knows and hidden numbers where the line gives way (M4).
+    pub screening: &'a screening::Screening,
     /// The people's own rows (`own_rows`), read as the matrix says them.
     pub own: &'a [OwnRow],
     pub grid: &'a crate::calls_line::Grid,
@@ -649,16 +668,18 @@ pub struct LineMoments<'a> {
 /// The frames of a phone whose line says something: the clock's frames cut
 /// where do-not-disturb's layer, Reachable or a busy stretch begins or ends.
 /// A busy stretch is one do-not-disturb reads: none while Reachable lasts,
-/// none a press held off (`build`, H1). In this order: a pause and
-/// do-not-disturb's layer (its switch, a focus session) hold all but Always
-/// through, and a person's own row as the matrix says it; then Reachable,
-/// every row of the people you know; then, during a busy stretch, the
+/// none a press held off (`build`, H1). In this order (the decision on the
+/// review of `phones`): Reachable, every row of the people you know; a
+/// pause, do-not-disturb's switch (or a focus session), "Nothing at all" in
+/// Free time, the night and Free time where their boxes turn do-not-disturb
+/// on: as every phone, from the matrix's cells and the shared screening,
+/// the line left aside (M4); then, during a busy stretch, the
 /// column "while busy": a cell Rings or Voicemail decides, even where being
 /// busy turns do-not-disturb on (`busy_is_dnd`), and a cell as usual reads
 /// as the moment's column, or as do-not-disturb where being busy turns it
 /// on (H2, M1); else the moment's column (`When::of`: the night, work
 /// hours, the rest of the day). Numbers nobody knows and hidden numbers by
-/// their cells, never opened by a state. As Android does: every row rings.
+/// their cells, never opened by Reachable. As Android does: every row rings.
 /// Slots of time for you are no part of it.
 pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
     use crate::calls_line::{Cell, Row, When};
@@ -673,45 +694,67 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
         for pair in cuts.windows(2) {
             let (start, end) = (pair[0], pair[1]);
             let holds = |layer: Option<(i64, Option<i64>)>| layer.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
-            let dnd = holds(m.layers.dnd);
+            // Do-not-disturb's layer from its switch (or a focus session); held by a busy stretch alone, the busy column decides (H2).
+            let dnd = holds(m.layers.dnd) && !m.layers.dnd_busy;
             let mut now = attention::Now::of_moment(&f.moment).layers(false, dnd);
             now.reachable = holds(m.layers.reachable);
             // While Reachable lasts no busy stretch holds, as for do-not-disturb (`everywhere::now`; H1).
             let busy = !now.reachable && m.busy.iter().any(|&(a, b)| a <= start && start < b);
-            let held = dnd || now.times.contains(&attention::Column::Pause);
+            // As on every phone (M4): a pause, do-not-disturb's switch, "Nothing at all" in Free time, the night and
+            // Free time where their boxes turn do-not-disturb on (none held off by a press, none while Reachable).
+            let boxed = |on: bool| on && !now.reachable && !crate::everywhere::pressed_off(m.press, f.start);
+            let held = dnd
+                || now.is(attention::Column::Pause)
+                || (now.nothing && now.is(attention::Column::Free))
+                || (now.is(attention::Column::Sleep) && boxed(m.sleep_is_dnd))
+                || (now.is(attention::Column::Free) && boxed(m.pauses_is_dnd));
             let when = When::of(&now);
             let hours = now.times.iter().any(|c| matches!(c, attention::Column::Work | attention::Column::Admin));
-            // A row's cell now: its moment's, or while busy its busy cell; as usual while busy
-            // reads as the moment, or as do-not-disturb (only Always through) where being busy turns it on.
-            let cell = |cells: Option<crate::calls_line::Cells>| -> bool {
+            // What every phone does now, and under do-not-disturb (a busy cell as usual where being busy turns it on).
+            let every = |person: Person, dnd: bool| m.attention.person(Channel::Calls, person, false, &now.clone().layers(false, dnd || now.dnd)) == Level::Now;
+            let every_unknown = |hidden: bool, dnd: bool| m.screening.rings(hidden, hours) && every(Person::Neutral, dnd);
+            // A row's cell now: its moment's, or while busy its busy cell (H2); as usual while busy
+            // reads as the moment, or as do-not-disturb where being busy turns it on; held: as every phone.
+            let cell = |cells: Option<crate::calls_line::Cells>, held_as: bool, dnd_as: bool| -> bool {
+                if android {
+                    return true;
+                }
+                if held {
+                    return held_as;
+                }
                 let Some(cells) = cells else { return false };
                 match (busy, cells[When::Busy.index()]) {
                     (true, Cell::Rings) => true,
                     (true, Cell::Voicemail) => false,
-                    (true, Cell::Usual) if m.busy_is_dnd => false,
+                    (true, Cell::Usual) if m.busy_is_dnd => dnd_as,
                     _ => cells[when.index()] == Cell::Rings,
                 }
             };
-            // The people you know: their cell, every one while Reachable, none while held.
-            let known = |rings: bool| android || (!held && (now.reachable || rings));
-            // Numbers nobody knows and hidden numbers: their cell, never opened by a state.
-            let unknown = |rings: bool| android || (!held && rings);
+            let known = |cells: Option<crate::calls_line::Cells>, person: Person| {
+                // The people you know: every one while Reachable (the rule every phone follows, before do-not-disturb).
+                if now.reachable {
+                    return true;
+                }
+                cell(cells, every(person, false), every(person, true))
+            };
             let mut ring: BTreeMap<String, bool> = BTreeMap::new();
             for row in ROWS {
                 let rings = match row {
-                    "safe" => known(cell(m.grid.cells(&Row::Safe))),
-                    "neutral" => known(cell(m.grid.cells(&Row::Contacts))),
-                    "restricted" => known(cell(m.grid.cells(&Row::Restricted))),
+                    "safe" => known(m.grid.cells(&Row::Safe), Person::Safe),
+                    "neutral" => known(m.grid.cells(&Row::Contacts), Person::Neutral),
+                    "restricted" => known(m.grid.cells(&Row::Restricted), Person::Restricted),
                     // Always through: a row of its own that always rings.
                     _ => true,
                 };
                 ring.insert(row.to_string(), rings);
             }
-            ring.insert("stranger".to_string(), unknown(cell(m.grid.cells(&Row::Unknown))));
-            ring.insert("hidden".to_string(), unknown(cell(m.grid.cells(&Row::Hidden))));
+            // Numbers nobody knows and hidden numbers: their cell, never opened by a state; held, as every phone.
+            ring.insert("stranger".to_string(), cell(m.grid.cells(&Row::Unknown), every_unknown(false, false), every_unknown(false, true)));
+            ring.insert("hidden".to_string(), cell(m.grid.cells(&Row::Hidden), every_unknown(true, false), every_unknown(true, true)));
             for g in m.groups {
-                let rings = g.groups.iter().any(|n| m.grid.groups.get(*n).is_some_and(|(_, cells)| cell(Some(*cells))));
-                ring.insert(g.row.clone(), known(rings));
+                // A group's row stands for your contacts (M11): held, as every phone rings them.
+                let rings = if now.reachable { true } else { g.groups.iter().any(|n| m.grid.groups.get(*n).is_some_and(|(_, cells)| cell(Some(*cells), every(Person::Neutral, false), every(Person::Neutral, true)))) };
+                ring.insert(g.row.clone(), rings);
             }
             // A person's own row as the matrix says it, a busy stretch that turns do-not-disturb on read as do-not-disturb (H1).
             let mut own_now = now.clone();
@@ -2826,14 +2869,14 @@ mod tests {
         // The layers (Q11): do-not-disturb's switch from 18:00 to 19:00 sends the safe to voicemail, Always through rings;
         // a slot of time for you holds no call.
         let (dnd_from, dnd_until) = (at("2026-10-05T18:00[Europe/Paris]").timestamp().as_second(), at("2026-10-05T19:00[Europe/Paris]").timestamp().as_second());
-        let layers = Layers { slots: vec![(dnd_until + 600, dnd_until + 1800)], dnd: Some((dnd_from, Some(dnd_until))), reachable: None };
+        let layers = Layers { slots: vec![(dnd_until + 600, dnd_until + 1800)], dnd: Some((dnd_from, Some(dnd_until))), reachable: None, dnd_busy: false };
         let table = Table { frames: super::frames(&attention, &clock, &layers, &from, &until), ..table.clone() };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
         assert_eq!((at_("18:30").column.as_str(), at_("18:30").ring["safe"], at_("18:30").ring["always-safe"]), ("dnd", false, true));
         assert_eq!((at_("17:30").column.as_str(), at_("17:30").ring["safe"]), ("leisure", true));
         assert_eq!((at_("19:15").column.as_str(), at_("19:15").ring["safe"]), ("slot", true));
         // A layer over work keeps work's hours: the screening's hours are the time's, never do-not-disturb's.
-        let morning = Layers { slots: Vec::new(), dnd: Some((at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second(), None)), reachable: None };
+        let morning = Layers { slots: Vec::new(), dnd: Some((at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second(), None)), reachable: None, dnd_busy: false };
         let table_dnd = Table { frames: super::frames(&attention, &clock, &morning, &from, &until), ..table.clone() };
         let f = table_dnd.frame_at(ms("2026-10-05T10:30[Europe/Paris]")).unwrap();
         assert_eq!((f.column.as_str(), f.hours, f.ring["safe"]), ("dnd", true, false));
@@ -3737,11 +3780,13 @@ mod line_tests {
         busy_is_dnd: bool,
         /// The switch's latest press.
         press: Option<crate::everywhere::Press>,
+        /// The stand-in for the box "While you sleep".
+        sleep_is_dnd: bool,
     }
 
     impl World {
         fn new() -> World {
-            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new(), busy_is_dnd: false, press: None }
+            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new(), busy_is_dnd: false, press: None, sleep_is_dnd: false }
         }
 
         /// The table from Monday 16 November 2026, as `build` makes it; whether it asked for the busy stretches.
@@ -3752,7 +3797,7 @@ mod line_tests {
                 asked.set(true);
                 self.busy.clone()
             };
-            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, press: self.press.as_ref(), busy_is_dnd: self.busy_is_dnd };
+            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, press: self.press.as_ref(), busy_is_dnd: self.busy_is_dnd, sleep_is_dnd: self.sleep_is_dnd, pauses_is_dnd: false };
             (build(&inputs, line), asked.get())
         }
 
@@ -4051,5 +4096,31 @@ mod line_tests {
         let fred = decide(Some(&table), &call("01 99 00 00 02", "23:00"));
         assert_eq!((fred.refuse, fred.why), (true, "group"), "a plain contact: the group's row");
         assert!(!table.groups.contains_key("+33199000001"), "no group's row for someone placed by hand");
+    }
+
+    /// A pause, do-not-disturb's switch and the night where its box turns
+    /// do-not-disturb on decide on a phone with its own table as on every
+    /// phone, from the matrix's cells (review of `phones`, M4): Safe set to
+    /// ring under do-not-disturb in the matrix rings under it on the line
+    /// too; at night with the box, Safe follows the matrix's Sleep cell, not
+    /// the line's night.
+    #[test]
+    fn a_line_gives_way_as_every_phone_under_do_not_disturb() {
+        let safe = "01 99 00 00 01";
+        let mut attention = Attention::usual();
+        attention.set(attention::Row::People(Channel::Calls, Person::Safe), attention::Column::Dnd, Level::Now).unwrap();
+        let dnd = World { attention: attention.clone(), layers: Layers { dnd: Some((s("2026-11-16T09:30"), Some(s("2026-11-16T11:00")))), ..Layers::default() }, ..World::new() };
+        let (line_table, _) = dnd.build(Some(&line(Profile::Personal)));
+        let before = dnd.as_before();
+        assert_eq!(rings(&line_table, safe, "10:00"), rings(&before, safe, "10:00"), "as every phone under do-not-disturb");
+        assert!(rings(&line_table, safe, "10:00"), "the matrix lets Safe through do-not-disturb");
+        assert!(!rings(&line_table, "01 99 00 00 02", "10:00"), "your contacts do not");
+        let mut night_line = line(Profile::Personal);
+        night_line.grid.fixed[0][2] = Cell::Rings;
+        let boxed = World { sleep_is_dnd: true, ..World::new() };
+        let (table, _) = boxed.build(Some(&night_line));
+        assert_eq!(rings(&table, safe, "23:30"), rings(&boxed.as_before(), safe, "23:30"), "the night with its box: as every phone");
+        let (open, _) = World::new().build(Some(&night_line));
+        assert!(rings(&open, safe, "23:30"), "without the box: the line's night");
     }
 }

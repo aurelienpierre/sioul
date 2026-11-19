@@ -688,17 +688,41 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
     let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
     let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config)).names();
     let today = crate::calls::today(config);
+    let held = held_words(config);
     devices
         .filter_map(|(id, form)| {
             let said = config.devices.get(id);
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
-                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: "", older: false };
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: false };
                 (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
             })
         })
         .collect()
+}
+
+/// Who rings in a pause and under do-not-disturb, as on every phone, in a
+/// sentence for each phone's section Calls (review of `phones`, M4): Always
+/// through, and each circle whose Calls row lets it through do-not-disturb.
+fn held_words(config: &sioul_core::config::Config) -> String {
+    use sioul_core::attention::{Column, Level, Person, Row};
+    let attention = sioul_core::attention::Attention::of(config);
+    let rows: Vec<String> = [(Person::Safe, "safe"), (Person::Neutral, "contacts"), (Person::Restricted, "restricted")]
+        .into_iter()
+        .filter(|(person, _)| attention.cell(Row::People(sioul_core::reach::Channel::Calls, *person), Column::Dnd) == Level::Now)
+        .map(|(_, id)| tr().text(&format!("phone-calls-row-{id}"), None))
+        .collect();
+    let who = if rows.is_empty() {
+        tr().text("phone-calls-held-alone", None)
+    } else {
+        let mut args = sioul_core::i18n::args();
+        args.set("rows", rows.join(", "));
+        tr().text("phone-calls-held-with", Some(&args))
+    };
+    let mut args = sioul_core::i18n::args();
+    args.set("who", who);
+    tr().text("phone-calls-held", Some(&args))
 }
 
 /// What you said of a device, written into the shared settings

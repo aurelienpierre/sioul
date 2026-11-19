@@ -287,6 +287,8 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
             busy: &sioul_core::busy::stretches,
             press: switch.latest().as_ref(),
             busy_is_dnd: busy_turns_dnd(config),
+            sleep_is_dnd: config.dnd.sleep,
+            pauses_is_dnd: config.dnd.pauses,
         },
         line,
     )
@@ -337,9 +339,12 @@ fn layers() -> rules::Layers {
     // Read now, once, both layers alike: never a reading kept by time, since the table
     // made of it is kept until its inputs change (review of part 3, F4).
     let state = crate::everywhere::now();
-    let dnd = crate::everywhere::gated_of(&state).map(|g| (since, g.until));
+    let gated = crate::everywhere::gated_of(&state);
+    let dnd = gated.as_ref().map(|g| (since, g.until));
     let reachable = state.reachable.map(|r| (r.since, r.until));
-    rules::Layers { slots: crate::hours::slots().slots, dnd, reachable }
+    // Held by a busy stretch alone: a phone's own line reads its busy column then (H2).
+    let dnd_busy = gated.as_ref().is_some_and(|g| g.busy && !g.switch);
+    rules::Layers { slots: crate::hours::slots().slots, dnd, reachable, dnd_busy }
 }
 
 // ---------------------------------------------------------------- Expecting a call
