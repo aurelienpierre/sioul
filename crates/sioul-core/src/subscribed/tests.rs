@@ -385,3 +385,31 @@ fn an_answer_without_events_keeps_a_copy_that_had_some() {
     assert_eq!(take(moodle, &m, calendar(empty), 2_000).unwrap(), Taken::Unchanged);
     vdir::remove_subscribed(moodle).unwrap();
 }
+
+/// The review's F11: "unchanged" is judged against the copy on the disk:
+/// a copy cleared, or a file of it left empty, is written again by the
+/// same answer, and the server's validators are not sent for it.
+#[test]
+fn unchanged_is_judged_against_the_copy_on_the_disk() {
+    crate::config::stand_ins_only();
+    let id = "intact-test";
+    let s = subscription("https://calendar.example.org/intact.ics", Some("public"), None);
+    vdir::prepare_subscribed(id, "Holidays", None).unwrap();
+    let answer = || Answer::Calendar { bytes: PUBLIC.as_bytes().to_vec(), etag: "\"v1\"".into(), last_modified: String::new() };
+    assert_eq!(take(id, &s, answer(), 1_000).unwrap(), Taken::Changed);
+    assert_eq!(validators(id, &s), Some(("\"v1\"".to_string(), String::new())));
+    assert_eq!(take(id, &s, answer(), 2_000).unwrap(), Taken::Unchanged);
+    let files: Vec<std::path::PathBuf> = folder(id).read_dir().unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
+    // One file gone: no validators, the same answer written again.
+    std::fs::remove_file(&files[0]).unwrap();
+    assert_eq!(validators(id, &s), None);
+    assert_eq!(take(id, &s, Answer::Unchanged, 3_000).unwrap(), Taken::Kept(Problem::NotCalendar), "a 304 cannot stand for a copy not there");
+    assert_eq!(take(id, &s, answer(), 4_000).unwrap(), Taken::Changed);
+    assert!(files[0].is_file());
+    // One file left empty (a power cut after the renames): the same.
+    std::fs::write(&files[1], "").unwrap();
+    assert!(!intact(id, &Fetched::load(id)));
+    assert_eq!(take(id, &s, answer(), 5_000).unwrap(), Taken::Changed);
+    assert!(intact(id, &Fetched::load(id)));
+    vdir::remove_subscribed(id).unwrap();
+}

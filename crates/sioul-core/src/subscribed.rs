@@ -682,10 +682,31 @@ pub fn folder(id: &str) -> PathBuf {
     Kind::Calendars.root().join(ACCOUNT).join(id)
 }
 
-/// The server's validators to send (ETag, date), when the copy kept here came from this address.
+/// The server's validators to send (ETag, date), when the copy kept here
+/// came from this address and is on the disk as it was written (`intact`):
+/// else the whole calendar is asked for, and written again (F11).
 pub fn validators(id: &str, subscription: &Subscription) -> Option<(String, String)> {
     let state = Fetched::load(id);
-    (state.url == subscription.url && state.checked > 0 && folder(id).is_dir() && !(state.etag.is_empty() && state.last_modified.is_empty())).then_some((state.etag, state.last_modified))
+    (state.url == subscription.url && state.checked > 0 && intact(id, &state) && !(state.etag.is_empty() && state.last_modified.is_empty())).then_some((state.etag, state.last_modified))
+}
+
+/// Whether this device's copy is the one its state notes: its folder there,
+/// holding as many events as were written, none of them empty. Not so after
+/// a folder cleared by hand, a backup restored without it, or a power cut
+/// that kept the renames and not the files' contents (F11, F12): then
+/// "unchanged" no longer holds, and the next answer is written whole.
+pub fn intact(id: &str, state: &Fetched) -> bool {
+    let Ok(entries) = std::fs::read_dir(folder(id)) else { return false };
+    let mut count = 0usize;
+    for entry in entries.flatten() {
+        if entry.path().extension().is_some_and(|x| x == "ics") {
+            if entry.metadata().map_or(true, |m| m.len() == 0) {
+                return false;
+            }
+            count += 1;
+        }
+    }
+    count == state.events
 }
 
 /// How often a calendar is read on a computer: its own wish, between one
@@ -748,6 +769,8 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
     vdir::finish_subscribed(id);
     let mut state = Fetched::load(id);
     let same_address = state.url == subscription.url && folder(id).is_dir() && state.checked > 0;
+    // "Unchanged" is judged against the copy on the disk, never this device's note alone (F11).
+    let intact = same_address && intact(id, &state);
     state.tried = now;
     // Its entry as it reads now: what stands for it if it stops reading (F20).
     if !subscription.unread {
@@ -771,13 +794,14 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
     };
     match answer {
         Answer::Refused(problem) => refused(state, problem),
-        Answer::Unchanged if same_address => {
+        Answer::Unchanged if intact => {
             state.checked = now;
             clear(&mut state);
             state.save(id)?;
             Ok(Taken::Unchanged)
         }
-        // A 304 for a copy that is not this address's: never asked so; read again next time.
+        // A 304 for a copy that is not this address's, or no longer whole on the disk:
+        // never asked so (`validators`); read whole again next time.
         Answer::Unchanged => refused(state, Problem::NotCalendar),
         Answer::Calendar { bytes, etag, last_modified } => {
             let feed = match read(&bytes) {
@@ -791,7 +815,7 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
             }
             (state.etag, state.last_modified, state.refresh, state.name) = (etag, last_modified, feed.refresh.unwrap_or(0), feed.name.clone());
             clear(&mut state);
-            if same_address && feed.hash == state.hash {
+            if intact && feed.hash == state.hash {
                 state.checked = now;
                 state.save(id)?;
                 return Ok(Taken::Unchanged);
