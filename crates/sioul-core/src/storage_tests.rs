@@ -741,3 +741,22 @@ fn a_change_in_an_old_file_after_the_switch_is_told_and_kept() {
     assert_eq!(cleaned.changed, [crate::budget::LEDGER.to_string()]);
     assert!(budgets.is_file());
 }
+
+/// The dated copy is bytes of its own: an editor that writes an old list in
+/// place (vim with a file of several names, rsync --inplace, some syncs)
+/// never changes it (review S12).
+#[test]
+fn the_dated_copy_is_a_copy_of_its_own() {
+    let stand = stand("dated-own");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    let bank = stand.folders.notes.join(crate::bank::MANIFEST);
+    let dated = PathBuf::from(&Journal::read(&stand.folders.state).unwrap().files.iter().find(|e| e.from == crate::bank::MANIFEST).unwrap().kept);
+    let before = std::fs::read(&dated).unwrap();
+    assert!(!same_file(&bank, &dated), "never a second name of the old file");
+    // Written in place, the same file truncated and filled again.
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().write(true).truncate(true).open(&bank).unwrap();
+    file.write_all(b"# written over in place\n").unwrap();
+    drop(file);
+    assert_eq!(std::fs::read(&dated).unwrap(), before, "the dated copy as it was");
+}

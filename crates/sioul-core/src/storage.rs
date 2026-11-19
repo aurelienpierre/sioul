@@ -725,6 +725,20 @@ fn passing(to: &Path) -> PathBuf {
     to.with_file_name(format!(".{name}.sioul-move"))
 }
 
+/// `dir` made with the folders above it, each folder made flushed in its
+/// parent, up to the first one that was there (a power cut after the switch
+/// must not lose a folder the copies are in).
+fn made_dirs(dir: &Path) -> std::io::Result<()> {
+    let missing: Vec<PathBuf> = dir.ancestors().take_while(|d| !d.as_os_str().is_empty() && !d.exists()).map(Path::to_path_buf).collect();
+    std::fs::create_dir_all(dir)?;
+    for made in missing.iter().rev() {
+        if let Some(parent) = made.parent() {
+            sync_dir(parent);
+        }
+    }
+    Ok(())
+}
+
 /// The folder's change made to last (a phone's file system may keep a name
 /// whose bytes a crash lost); nothing to do where folders cannot be opened.
 fn sync_dir(dir: &Path) {
@@ -950,25 +964,29 @@ fn check(folders: &Folders, journal: &Journal) -> Result<(), Fault> {
 }
 
 /// Step 3: a dated copy of every source in `<kept>/<day>/`, its path from
-/// the notes folder kept: a second name of the same file where the disk
-/// allows it (nothing writes the old files any more), else a copy.
+/// the notes folder kept: a copy of its own, never a second name of the old
+/// file (an editor or a sync that writes the old file in place would write
+/// it too), a copy-on-write clone where the file system gives one (the
+/// system's copy: Btrfs and XFS on Linux, APFS on a Mac), its bytes on the
+/// disk before it counts.
 fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
     let day = PathBuf::from(&journal.kept);
     for entry in journal.files.iter_mut().filter(|e| !e.alone) {
         let from = join(&folders.notes, &entry.from);
         let to = join(&day, &entry.from);
-        if to.exists() && same_bytes(&from, &to).unwrap_or(false) {
+        if to.exists() && !same_file(&from, &to) && same_bytes(&from, &to).unwrap_or(false) {
             entry.kept = to.display().to_string();
             continue;
         }
         let fail = |e: std::io::Error| Fault::new("keep", format!("{}: {e}", to.display()));
-        std::fs::create_dir_all(to.parent().unwrap_or(&day)).map_err(fail)?;
+        let parent = to.parent().unwrap_or(&day).to_path_buf();
+        made_dirs(&parent).map_err(fail)?;
         let _ = std::fs::remove_file(&to);
-        if std::fs::hard_link(&from, &to).is_err() {
-            crate::filelock::copy_whole(&from, &to).map_err(fail)?;
-        }
+        std::fs::copy(&from, &to).map_err(fail)?;
+        std::fs::File::open(&to).and_then(|file| file.sync_all()).map_err(fail)?;
+        sync_dir(&parent);
         entry.kept_this_run = true;
-        if !same_bytes(&from, &to).map_err(fail)? {
+        if same_file(&from, &to) || !same_bytes(&from, &to).map_err(fail)? {
             return Err(Fault::new("changed", from.display()));
         }
         entry.kept = to.display().to_string();
