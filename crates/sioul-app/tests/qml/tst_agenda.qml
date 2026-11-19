@@ -574,6 +574,27 @@ Item {
             verify(root.all(cells[1], c => c.objectName === "monthDot" && c.visible).length === 1, "Tuesday's dot: the trip passes")
         }
 
+        // The Search tab draws its words' field and its filters, in the page's room (reported
+        // on a real session, 19 November 2026: the tab showed nothing).
+        function test_the_search_tab_draws_its_field_and_filters() {
+            const page = makePage()
+            page.mode = "search"
+            const loader = root.find(page, "agendaSearch")
+            verify(loader !== null, "the tab's loader")
+            tryVerify(() => loader.item !== null, 2000, "the search made")
+            wait(50)
+            verify(loader.visible && loader.width > 300 && loader.height > 200, "the tab has room: " + loader.width + " x " + loader.height)
+            const words = root.find(loader.item, "thingsWords")
+            verify(words !== null && words.visible && words.width > 100, "the words' field shows")
+            verify(root.find(loader.item, "thingsCategory") !== null && root.find(loader.item, "thingsKind") !== null, "its filters")
+            // Left and shown again, the search is the same one, kept as it was.
+            const made = loader.item
+            page.mode = "week"
+            verify(!loader.visible)
+            page.mode = "search"
+            verify(loader.visible && loader.item === made, "kept, not made again")
+        }
+
         // Show leaves out of What comes and the Month what it leaves out of the Day
         // and the Week, on this device: doses, meals and rest, the plan's line with
         // the steps; never a date asked (review of 21436bf, later 2). The agenda

@@ -700,7 +700,9 @@ Item {
 
     onModeChanged: {
         page.comesDays = page.comesPage
-        if (page.searching)
+        // Asked of the mode itself: `searching` follows the mode by a binding, which this
+        // handler may run ahead of; it then read "not searching", and the tab stayed empty.
+        if (page.mode === "search")
             page.searchMade = true
         if (page.whole)
             page.load()
@@ -1525,7 +1527,9 @@ Item {
             Loader {
                 objectName: "agendaSearch"
                 visible: page.searching
-                active: page.searchMade
+                // Made the first time the tab shows, then kept: by either word, so that no order
+                // of the two can leave the tab empty.
+                active: page.searchMade || page.searching
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
