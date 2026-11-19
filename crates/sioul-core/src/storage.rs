@@ -1422,6 +1422,33 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
     Ok(cleaned)
 }
 
+/// The old files of the notes folder changed since this device's lists
+/// left them (written by hand, by an agent, by a notes sync from a device
+/// not moved yet): each with its bytes' SHA-256 now, for the Porch to name
+/// it once; nothing is merged by itself, and the take-out leaves them
+/// (rule 1). Looked at by size and time first, read only when they moved.
+pub fn changed_since(state: &Path) -> Vec<(String, String)> {
+    let storage = Storage::read(state);
+    let (Some(notes), Ok(Some(journal))) = (storage.from_path(), Journal::load(state)) else { return Vec::new() };
+    journal
+        .files
+        .iter()
+        .filter(|e| !e.alone)
+        .filter_map(|e| {
+            let old = join(&notes, &e.from);
+            let moved = stamp(&old).is_some_and(|now| now != (e.size, e.time));
+            moved.then(|| sha_of(&old).ok()).flatten().filter(|sha| *sha != e.sha).map(|sha| (e.from.clone(), sha))
+        })
+        .collect()
+}
+
+/// Whether a move was begun on this device and not finished (its journal
+/// open: a failure that left copies, Sioul stopped during it): the Porch
+/// offers the window of the move again.
+pub fn begun(state: &Path) -> bool {
+    !Storage::read(state).is_moved() && Journal::load(state).ok().flatten().is_some_and(|journal| journal.switched == 0)
+}
+
 /// How many old files of Sioul's this device's notes folder still holds, by
 /// the journal of its move: what the line of Settings ▸ Sharing offers to
 /// take out (`clean`, on the person's press, never by itself).

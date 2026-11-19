@@ -729,6 +729,63 @@ Item {
                     }
                 }
 
+                // Where Sioul keeps its lists (docs/notes-folder.md, "What lives where"), when
+                // something waits for you: a move begun and not finished here (a failure, Sioul
+                // stopped during it), with the window of the move to finish it; or old files of the
+                // notes folder changed since the lists left them, named, merged with nothing (said
+                // until put away, again when another changes). `storage::view_json`.
+                Panel {
+                    id: storageCard
+
+                    readonly property var view: page.sioul.storageMove ? JSON.parse(page.sioul.storageMove) : ({})
+                    readonly property bool unfinished: storageCard.view.moved !== true && storageCard.view.begun === true && storageCard.view.moving !== true
+                    readonly property var changed: storageCard.view.changed_old || []
+                    readonly property string changedKey: "storage-changed-said:" + (storageCard.view.changed_key || "")
+                    property bool putAway: false
+
+                    objectName: "porchStorage"
+                    visible: storageCard.unfinished || (storageCard.changed.length > 0 && !storageCard.putAway && !page.sioul.viewFlag(storageCard.changedKey))
+                    Layout.fillWidth: true
+                    theme: page.theme
+                    onChangedKeyChanged: storageCard.putAway = false
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            objectName: "porchStorageLine"
+                            Layout.fillWidth: true
+                            text: storageCard.unfinished ? page.sioul.text("storage-porch-unfinished") : page.sioul.textWith("storage-porch-changed", "files", storageCard.changed.join(", "))
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            color: page.theme.text
+                        }
+                        RowLayout {
+                            spacing: 8
+
+                            Button {
+                                objectName: "porchStorageOpen"
+                                visible: storageCard.unfinished
+                                text: page.sioul.text("storage-move-open")
+                                icon.name: "go-next"
+                                icon.color: page.theme.text
+                                onClicked: page.window.openThing({ kind: "storage-move", uri: "", key: "" })
+                            }
+                            Button {
+                                objectName: "porchStorageSeen"
+                                visible: !storageCard.unfinished
+                                flat: true
+                                text: page.sioul.text("storage-porch-seen")
+                                onClicked: {
+                                    page.sioul.setViewFlag(storageCard.changedKey, true)
+                                    storageCard.putAway = true
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // The persons made from older texts: who, and what named each.
                 Panel {
                     objectName: "porchPersonsMade"

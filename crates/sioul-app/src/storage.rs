@@ -217,6 +217,12 @@ struct View {
     take_out_open: bool,
     take_out_waiting: String,
     taken: String,
+    /// A move begun here and not finished (a failure, Sioul stopped during it): the Porch offers the window again.
+    begun: bool,
+    /// Old files of the notes folder changed since the lists left them (`storage::changed_since`), named
+    /// on the Porch once (`changed_key`: what was said), merged with nothing.
+    changed_old: Vec<String>,
+    changed_key: String,
     /// The window of the move may show itself (not moved, every device knows).
     offer: bool,
 }
@@ -271,7 +277,11 @@ pub(crate) fn view_json() -> String {
             view.bytes += std::fs::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
         }
     }
+    view.begun = !view.moved && (storage::begun(&sioul_core::config::state_dir()) || !view.said.is_empty());
     if view.moved {
+        let changed = storage::changed_since(&sioul_core::config::state_dir());
+        view.changed_key = if changed.is_empty() { String::new() } else { sioul_core::notices::digest(&changed.iter().map(|(file, sha)| format!("{file} {sha}")).collect::<Vec<_>>().join("\n")) };
+        view.changed_old = changed.into_iter().map(|(file, _)| file).collect();
         view.old_files = storage::old_files(&sioul_core::config::state_dir());
         match take_out_gate(stand.as_ref()) {
             Ok(()) => view.take_out_open = true,

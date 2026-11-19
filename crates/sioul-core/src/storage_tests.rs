@@ -716,3 +716,28 @@ fn clean_keeps_an_old_file_whose_copy_is_gone() {
     assert!(!stand.folders.notes.join(crate::budget::LEDGER).exists(), "the others went, each against its copy");
     assert_eq!(Storage::read(&stand.folders.state).cleaned, 0);
 }
+
+/// An old file written after the switch (by hand, a sync from a device not
+/// moved): named with its bytes, never merged, never taken out; a move
+/// begun and left unfinished is said too (review S11, and the window's way
+/// back from the Porch).
+#[test]
+fn a_change_in_an_old_file_after_the_switch_is_told_and_kept() {
+    let stand = stand("changed-after");
+    STOP_AT.with(|stop| stop.set(3));
+    let _ = prepare(&stand.folders, NOW);
+    STOP_AT.with(|stop| stop.set(0));
+    assert!(begun(&stand.folders.state), "a move begun, not finished");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    assert!(!begun(&stand.folders.state));
+    assert!(changed_since(&stand.folders.state).is_empty(), "nothing changed yet");
+    let budgets = stand.folders.notes.join(crate::budget::LEDGER);
+    std::fs::write(&budgets, format!("{}\n[[budget]]\nid = \"late\"\n", text(&budgets))).unwrap();
+    let changed = changed_since(&stand.folders.state);
+    assert_eq!(changed.iter().map(|(file, _)| file.as_str()).collect::<Vec<_>>(), [crate::budget::LEDGER]);
+    assert_eq!(changed[0].1, sha_of(&budgets).unwrap());
+    assert!(!text(&stand.folders.records.join(crate::budget::LEDGER)).contains("late"), "merged with nothing");
+    let cleaned = clean(&stand.folders.state, NOW + 86_400).unwrap();
+    assert_eq!(cleaned.changed, [crate::budget::LEDGER.to_string()]);
+    assert!(budgets.is_file());
+}
