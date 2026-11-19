@@ -5937,7 +5937,7 @@ mod stars_tests {
             state.items.push(ItemState { href: format!("{BOOK}{file}"), file: file.to_string(), etag: "\"1\"".into(), hash: String::new(), size: 0, mtime: 0, ..ItemState::default() });
         }
         state.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
-        Listed { kind: Kind::Contacts, url: format!("{base}{BOOK}"), id: id.into(), name: "Contacts".into(), color: None, read_only: false, ctag: None, sync_token: None, components: Vec::new(), transparent: false, owned: Some(true) }
+        Listed { kind: Kind::Contacts, url: format!("{base}{BOOK}"), id: id.into(), name: "Contacts".into(), color: None, read_only: false, ctag: None, sync_token: None, components: Vec::new(), transparent: false, owned: Some(true), writers: Vec::new(), writers_known: true }
     }
 
     /// A favourite added; someone on the list marked; unmarked there, off
