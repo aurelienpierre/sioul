@@ -246,6 +246,8 @@ struct View {
 /// `View`, as JSON. Reads the sharing folder's entries and lists the notes
 /// folder: never on the window's thread (`backend::storage_move_now`).
 pub(crate) fn view_json() -> String {
+    // The dated copies swept in their time with no sharing too (no exchange then: review S19).
+    tidy();
     // The state file written again from a closed journal whose copies are all there (`Storage::recover`).
     if Storage::recover(&sioul_core::config::state_dir()).unwrap_or(false) {
         crate::devices::storage_now();
