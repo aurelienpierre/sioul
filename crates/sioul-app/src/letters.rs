@@ -79,8 +79,13 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 let _ = qt.queue(|mut sioul| sioul.as_mut().letters_changed());
             }
         }
-        let (Some(inbox), Some(places)) = (inbox(), config.places()) else { return };
-        let Ok(entries) = std::fs::read_dir(&inbox) else { return };
+        // The arrival folder, and the old one in the notes folder while it is there (`letters_inboxes`).
+        let Some(places) = config.places() else { return };
+        let read: Vec<std::fs::ReadDir> = config.letters_inboxes().iter().filter_map(|inbox| std::fs::read_dir(inbox).ok()).collect();
+        if read.is_empty() {
+            return;
+        }
+        let entries = read.into_iter().flatten();
         let Ok(letters) = Letters::load_at(&places) else { return };
         let known: Vec<String> = letters.list.iter().map(|l| l.source.clone()).collect();
         // Read first (seconds each), then added to the letters as the file holds them then.

@@ -1597,6 +1597,22 @@ impl Config {
         }
     }
 
+    /// Where scans arrive to be read: the arrival folder (`letters_inbox`),
+    /// and, once the lists moved and no arrival folder is set by hand, the
+    /// old one in the notes folder too while it is there: a scanner app or a
+    /// helper set on it goes on writing there (review S40).
+    pub fn letters_inboxes(&self) -> Vec<PathBuf> {
+        let mut inboxes: Vec<PathBuf> = self.letters_inbox().into_iter().collect();
+        if self.letters.inbox.as_deref().is_none_or(|inbox| inbox.trim().is_empty())
+            && let Some(old) = self.storage.from_path().map(|from| from.join(crate::storage::OLD_LETTERS).join("inbox"))
+            && old.is_dir()
+            && !inboxes.contains(&old)
+        {
+            inboxes.push(old);
+        }
+        inboxes
+    }
+
     /// The notes folder as this device finds it (docs/notes-folder.md): one
     /// that reads, one set that does not read (a drive not plugged in, a
     /// folder moved), or none set (on Android, its `~/Notes` counts as set

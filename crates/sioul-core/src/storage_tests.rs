@@ -942,3 +942,23 @@ fn a_profile_with_nothing_of_sioul_s_starts_moved() {
     let none = Folders { notes: PathBuf::new(), state: base.join("state-3"), ..folders };
     assert!(start_moved(&none, NOW).unwrap(), "no notes folder set: nothing of Sioul's anywhere");
 }
+
+/// Once moved, scans arriving in the old `letters/inbox` of the notes
+/// folder are still read, beside the new arrival folder; an arrival folder
+/// set by hand is the only one (review S40).
+#[test]
+fn the_old_inbox_is_still_read_after_the_move() {
+    let stand = stand("old-inbox");
+    let config = |inbox: Option<String>| {
+        let mut config = crate::config::Config { notes_root: Some(stand.folders.notes.display().to_string()), storage: Storage { moved: NOW, from: stand.folders.notes.display().to_string(), ..Storage::default() }, ..crate::config::Config::default() };
+        config.letters.folder = Some(stand.folders.letters.display().to_string());
+        config.letters.inbox = inbox;
+        config
+    };
+    let inboxes = config(None).letters_inboxes();
+    assert_eq!(inboxes, [stand.folders.letters.join("inbox"), stand.folders.notes.join("letters").join("inbox")]);
+    let set = stand.base.join("Scans");
+    assert_eq!(config(Some(set.display().to_string())).letters_inboxes(), [set]);
+    std::fs::remove_dir_all(stand.folders.notes.join("letters").join("inbox")).unwrap();
+    assert_eq!(config(None).letters_inboxes(), [stand.folders.letters.join("inbox")]);
+}
