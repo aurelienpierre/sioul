@@ -6,10 +6,12 @@
 // Work, Admin and Leisure, ticked as the hours say until you tick others;
 // "As the hours say" sets them back, while your ticks hold; one "?" says how
 // it works. Rust keeps the ticks and decides when they end (`areafilter`);
-// this lays them out. Mail's All addresses and the Budgets page use it, and
-// each cell of Settings ▸ Devices (DeviceGrid.qml), where the boxes are what
-// comes forward on a device at a time and the way back is "As its areas say"
-// (`asHoursText`, `name`).
+// this lays them out. Mail's All addresses, the Budgets, Projects and Time
+// pages use it, and each cell of Settings ▸ Devices (DeviceGrid.qml), where
+// the boxes are what comes forward on a device at a time and the way back is
+// "As its areas say" (`asHoursText`, `name`). The Agenda's Day and Week use
+// it for the steps they draw, every area ticked unless you say: there
+// "Everything" (`offersEverything`) ticks the three in one tap.
 
 pragma ComponentBehavior: Bound
 
@@ -41,6 +43,10 @@ Item {
     signal ticked(string areas)
     // "As the hours say".
     signal asHours
+    // "Everything": the three ticked (`offersEverything`).
+    signal everything
+    // "Everything" offered while some area is not ticked.
+    property bool offersEverything: false
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
@@ -57,12 +63,13 @@ Item {
         list.close()
     }
 
-    // Unfolded under its button (the window's pictures and tests too).
+    // Unfolded under its button (the window's pictures and tests too); the list, for a picture of it.
     function unfold() {
         const at = button.mapToItem(list.parent, 0, button.height)
         list.x = Math.max(list.leftMargin, Math.min(at.x, list.parent.width - list.width - list.rightMargin))
         list.y = at.y + 2
         list.open()
+        return list
     }
 
     Button {
@@ -167,6 +174,15 @@ Item {
                     filter.tick("leisure", leisureBox.checked)
                     leisureBox.checked = Qt.binding(() => !!filter.shown && filter.shown.leisure === true)
                 }
+            }
+            // Every area, in one tap.
+            Button {
+                objectName: "areaFilterEverything"
+                visible: filter.offersEverything && !!filter.shown && !(filter.shown.work === true && filter.shown.admin === true && filter.shown.leisure === true)
+                flat: true
+                font.pixelSize: 13
+                text: filter.sioul.text("area-filter-everything")
+                onClicked: filter.everything()
             }
             // Your ticks hold: the hours' back, in one tap.
             Button {

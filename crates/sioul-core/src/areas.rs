@@ -678,6 +678,16 @@ impl TaskAreas {
 
     /// What a task's categories, projects and list say, its own area aside.
     pub fn by_tags(&self, task: &crate::tasks::Task) -> Area {
+        let mut area = self.by_categories(task);
+        // Each of its projects' areas, as the project says it (`Project::area_of`).
+        for (_, of) in self.projects.iter().filter(|(id, _)| task.projects.contains(id)) {
+            area = area.with(*of);
+        }
+        if area.is_empty() { Area::ADMIN } else { area }
+    }
+
+    /// What a task's categories and list alone say: nothing when they say nothing.
+    fn by_categories(&self, task: &crate::tasks::Task) -> Area {
         let fold = |s: &str| crate::text::fold(s.trim()).into_iter().collect::<String>();
         let has = |list: &[String]| {
             let list: Vec<String> = list.iter().map(|c| fold(c)).collect();
@@ -693,17 +703,55 @@ impl TaskAreas {
         if has(&self.personal_categories) {
             area = area.with(Area::PERSONAL);
         }
-        // Each of its projects' areas, as the project says it (`Project::area_of`).
-        for (_, of) in self.projects.iter().filter(|(id, _)| task.projects.contains(id)) {
-            area = area.with(*of);
+        area
+    }
+
+    /// Where a task leans, for a sum by area that counts each task once (the
+    /// Time page's comparison): its own area when it says one; else, among
+    /// the areas it is in, those its categories alone say (a leisure task in
+    /// a personal project leans to leisure); else every area it is in.
+    pub fn leaning(&self, task: &crate::tasks::Task) -> Area {
+        let whole = self.of(task);
+        if Area::parse(&task.area).is_some() {
+            return whole;
         }
-        if area.is_empty() { Area::ADMIN } else { area }
+        let said = self.by_categories(task).both(whole);
+        if said.is_empty() { whole } else { said }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_task_leans_to_what_its_categories_say() {
+        let areas = TaskAreas {
+            work_categories: vec!["work".into()],
+            leisure_categories: vec!["leisure".into()],
+            personal_categories: vec!["health".into()],
+            projects: vec![("choir".into(), Area::PERSONAL), ("lumen".into(), Area::WORK)],
+        };
+        let task = |categories: &[&str], projects: &[&str], own: &str| crate::tasks::Task {
+            categories: categories.iter().map(|c| c.to_string()).collect(),
+            projects: projects.iter().map(|p| p.to_string()).collect(),
+            area: own.into(),
+            ..Default::default()
+        };
+        // A leisure task in a personal project: in admin and leisure, leaning to leisure.
+        let score = task(&["leisure"], &["choir"], "");
+        assert_eq!(areas.of(&score), Area::PERSONAL);
+        assert_eq!(areas.leaning(&score), Area::LEISURE);
+        // Nothing but the project: every area it is in.
+        assert_eq!(areas.leaning(&task(&[], &["choir"], "")), Area::PERSONAL);
+        // A work category in a personal project leans to work.
+        assert_eq!(areas.leaning(&task(&["work"], &["choir"], "")), Area::WORK);
+        // Its own area, as said, whatever its categories.
+        assert_eq!(areas.leaning(&task(&["leisure"], &["choir"], "admin")), Area::ADMIN);
+        // Categories outside the areas it is in say nothing more: an own area wins.
+        assert_eq!(areas.leaning(&task(&[], &["lumen"], "")), Area::WORK);
+        assert_eq!(areas.leaning(&task(&[], &[], "")), Area::ADMIN);
+    }
 
     #[test]
     fn what_comes_when() {

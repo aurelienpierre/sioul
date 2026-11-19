@@ -1376,6 +1376,30 @@ mod tests {
         }
     }
 
+    /// The plan learns from time spent on every area (the owner's word, 18
+    /// November 2026: admin and personal tasks are timed to plan better): a
+    /// finished admin task and a leisure one count in the ratio of time spent
+    /// to first estimates as a work one does, yours and their kind's. Fails if
+    /// either is left out of that sum.
+    #[test]
+    fn the_ratio_learns_from_every_area() {
+        let today = day("2026-10-06");
+        let tasks = vec![done("report", 30, Some(30), "2026-10-05", "work"), done("taxes", 30, Some(30), "2026-10-05", "admin"), done("choir", 30, Some(30), "2026-10-05", "leisure")];
+        let sessions = vec![session("report", "2026-10-05", 60, Some(Kind::Measured)), session("taxes", "2026-10-05", 60, Some(Kind::Measured)), session("choir", "2026-10-05", 60, Some(Kind::Measured))];
+        let all = finished(&tasks, &sessions, &area, &TimeZone::UTC);
+        let mut kinds: Vec<&str> = all.iter().map(|f| f.kind).collect();
+        kinds.sort();
+        assert_eq!(kinds, ["admin", "leisure", "work"], "each area's task finished counts");
+        let r = ratios(&all, today);
+        assert!((r.count - 3.0).abs() < 1e-6, "three tasks behind your ratio: {}", r.count);
+        for kind in ["work", "admin", "leisure"] {
+            assert!(r.kinds.get(kind).is_some_and(|(_, weight)| (*weight - 1.0).abs() < 1e-6), "{kind}: {:?}", r.kinds);
+        }
+        // Without the admin and leisure tasks, the ratio would stand on one task: it does not.
+        let work_alone = ratios(&finished(&tasks[..1], &sessions[..1], &area, &TimeZone::UTC), today);
+        assert!(r.count > work_alone.count && (r.person - work_alone.person).abs() > 1e-6);
+    }
+
     #[test]
     fn the_ratio_learns_from_finished_timed_tasks() {
         let today = day("2026-10-06");

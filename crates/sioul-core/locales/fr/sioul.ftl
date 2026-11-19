@@ -445,6 +445,9 @@ area-filter-none = Rien de coché
 area-filter-as-hours = Selon vos heures
 area-filter-name = Ce qui s’affiche : { $areas }
 area-filter-how = Comment ce filtre fonctionne
+area-filter-all = Tous les domaines
+area-filter-everything = Tout
+agenda-steps-filter-help = Les étapes du plan s’affichent selon ce à quoi sert leur tâche : chaque domaine, sauf si vous en décochez un. Ce que vous cochez reste jusqu’à ce que vous le changiez ; Selon vos heures coche ce à quoi sert le moment. Les événements suivent le filtre Agendas ; les repas, la nuit et les prises suivent Afficher.
 ## Ce à quoi sert chaque appareil, et ce qui y arrive quand (docs/areas.md, "What each device is for")
 device-areas = { $areas ->
     [work] le travail
@@ -3219,6 +3222,10 @@ project-area-unsaid = Rien de coché : le projet d’un client compte comme tr
 projects-filter-help = Les projets s’affichent selon leur usage, d’après vos heures : ceux du travail pendant vos heures de travail, ceux des démarches pendant vos heures de démarches, ceux des loisirs pendant votre temps libre. Cochez-en d’autres un moment. Le projet d’un client dont l’usage n’est pas dit compte comme travail ; un autre s’affiche pour ce à quoi servent ses tâches ouvertes, et toujours s’il n’en a aucune. La page Temps partage ces cases.
 projects-none-ticked = Aucun projet pour ce qui est coché.
 time-filter-help = Le temps s’affiche selon l’usage de son projet, d’après vos heures : celui du travail pendant vos heures de travail, celui des démarches pendant vos heures de démarches, celui des loisirs pendant votre temps libre. Cochez-en d’autres un moment ; la page Projets partage ces cases. Le temps sans projet compte selon sa tâche ; le temps noté sur rien s’affiche toujours. Ce qui est replié compte dans le total entier, à côté, et ce qui reste à facturer ne se replie jamais.
+time-by-area = Fait pendant cette période, par domaine
+time-by-area-spent = Passé
+time-by-area-estimated = Première estimation
+time-by-area-help = Pour les tâches faites pendant cette période : le temps passé dessus à côté de ce qui était d’abord estimé. Le plan apprend des deux, dans chaque domaine.
 project-routes = Les courriels qui arrivent ici tout seuls
 ui-show-anyway = Montrer quand même
 folder-server-only = Gardé sur le serveur seulement : clic droit pour en garder une copie ici.

@@ -29,11 +29,12 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 
 - une barre par jour (par mois, sur une année), empilée par projet ;
 - les heures de chaque projet, et ce qui reste à facturer, en heures et en argent à son taux, l’argent compté ligne par ligne comme sa facture le comptera, pour que les deux s’accordent au centime près ;
+- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent (chaque tâche compte une fois : une tâche de loisirs dans un projet personnel compte en loisirs) ;
 - puis chaque plage de temps, de la plus récente à la plus ancienne.
 
 ## D’où vient le temps {#where-time-comes-from}
 
-- **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche.
+- **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche. N’importe quelle tâche, quel que soit son usage et quelle que soit l’heure : vos démarches et vos loisirs comptent comme le travail, avec ou sans projet.
 - **Noter du temps**, sur cette page, sur la page d’un projet, ou avec **Nouveau ▾ ▸ Du temps passé** : une réunion, un appel, un travail fait loin du minuteur. **Pour** (un projet, ou une tâche), **Combien de temps** (`1h30`, `45m`, `90`), **Quand**, **Ce que c’était**, et **Ne pas facturer** quand il ne doit pas l’être.
 
 Pendant une séance de concentration, sous Linux et sur Android, une notification la montre : sa tâche, depuis quand, et **Pause** (**Reprendre** une fois en pause) et **Arrêter**, qui font ce que font les boutons de la fenêtre de concentration. Sur un bureau Linux, elle reste parmi les notifications du bureau tant que Sioul est ouvert (dans KDE Plasma, sous la cloche une fois sa bulle partie), et s’en va quand Sioul se ferme. Sur Android, un chronomètre y tourne, et ses boutons marchent avec Sioul en arrière-plan ou fermé. Mise en pause ou arrêtée ailleurs, dans la fenêtre de concentration ou sur un autre appareil, elle suit. Sous Windows et macOS, seule la fenêtre de concentration montre le temps qui court, pour l’instant.
@@ -59,7 +60,7 @@ Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle
 
 Il ne vous note jamais, ne montre jamais rien en retard, ne remplit jamais **Prend environ** à votre place, et ne vous compare jamais à personne.
 
-Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
+Chronométrer vos démarches et vos loisirs, c’est à vous de voir, et cela apprend au plan comme le travail : les tâches de chaque domaine apprennent leur propre durée. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
 
 ## Un tableur du temps facturable {#a-spreadsheet-of-billable-time}
 

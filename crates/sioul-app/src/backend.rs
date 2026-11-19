@@ -711,6 +711,18 @@ pub mod qobject {
         #[qinvokable]
         fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
 
+        /// The Day's and the Week's steps: the areas ticked ("work+leisure", "" for none),
+        /// kept on this device until changed (`agenda::set_step_areas`); "everything" and
+        /// "as the hours say" below. Each returns what went wrong, else "".
+        #[qinvokable]
+        fn tick_step_areas(self: Pin<&mut Sioul>, areas: &QString) -> QString;
+
+        #[qinvokable]
+        fn step_areas_everything(self: Pin<&mut Sioul>) -> QString;
+
+        #[qinvokable]
+        fn step_areas_as_hours(self: Pin<&mut Sioul>) -> QString;
+
         /// The agenda filter: the agendas `ids` (a JSON list of places) turned
         /// on or off by hand, until work's hours change (`agenda::turn`);
         /// returns what went wrong, else "".
@@ -5823,6 +5835,25 @@ impl qobject::Sioul {
         QString::from(&crate::agenda::set_view(&view.to_string()))
     }
 
+    fn tick_step_areas(self: Pin<&mut Self>, areas: &QString) -> QString {
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areas::Area::parse(&areas.to_string()).unwrap_or_default()));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_everything(self: Pin<&mut Self>) -> QString {
+        let problem = crate::agenda::set_step_areas(None);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_as_hours(self: Pin<&mut Self>) -> QString {
+        // What now is for on this device, ticked as your word: it stays when the hours change.
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areafilter::hours_say(&crate::hours::mode_now())));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
     fn find_things(&self, query: &QString) -> QString {
         QString::from(&crate::thingsearch::search(&self.shared(), &query.to_string()))
     }
@@ -8598,10 +8629,11 @@ impl qobject::Sioul {
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
         // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
         // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
-        // Invoices (the guide's pictures; docs/projects.md), "shell" Settings' tabs and, on a phone, its
+        // Invoices (the guide's pictures; docs/projects.md), "views" the Week's steps by area and the
+        // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
