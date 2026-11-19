@@ -5894,6 +5894,10 @@ mod stars_tests {
     use sioul_core::everywhere::{People, Person};
     use std::sync::Arc;
 
+    /// These tests clear and fill the one list of people of the tests' home: one at a
+    /// time, or one reads what another just cleared.
+    static LIST: Mutex<()> = Mutex::new(());
+
     /// An address book of two cards, each with its favourite, kept per card
     /// when `keeps`; every PROPPATCH counted.
     struct Book {
@@ -5968,6 +5972,7 @@ mod stars_tests {
     /// none: nothing written, known by reading only, said on the page.
     #[test]
     fn nextcloud_s_favourites_kept_in_step() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
         let _ = home();
         let list = People::default_path();
         sioul_core::everywhere::change_people(&list, |people| {
@@ -6048,6 +6053,7 @@ mod stars_tests {
     /// marked by Sioul; then the server answers the collection alone.
     #[test]
     fn an_answer_that_names_no_card_changes_nothing() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
         let _ = home();
         let list = People::default_path();
         sioul_core::everywhere::change_people(&list, |people| {
@@ -6095,6 +6101,7 @@ mod stars_tests {
     /// written there, the memory kept.
     #[test]
     fn a_failed_answer_changes_nothing() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
         let _ = home();
         let list = People::default_path();
         sioul_core::everywhere::change_people(&list, |people| {
