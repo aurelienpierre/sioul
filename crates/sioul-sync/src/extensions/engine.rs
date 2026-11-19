@@ -513,17 +513,17 @@ fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     }
     visit.requests += 1;
     let request = WebRequest { method: method.to_string(), url: url.to_string(), host: host.clone(), headers, body };
-    let path = url.split(['?', '#']).next().unwrap_or("").strip_prefix("https://").unwrap_or("").to_string();
     let wait = left.min(visit.limits.request_time);
     let most = visit.limits.answer_body;
+    // A host and a status, never a path (W3): a path may name a pupil or an account.
     match visit.services.web(&request, wait, most) {
         Ok(answer) => {
-            visit.said(format!("{method} {path}: {} ({} bytes)", answer.status, answer.body.len()));
+            visit.said(format!("{method} {host}: {} ({} bytes)", answer.status, answer.body.len()));
             let headers: Vec<[String; 2]> = answer.headers.iter().map(|(n, v)| [n.to_ascii_lowercase(), v.clone()]).collect();
             json!({ "status": answer.status, "headers": headers, "body": answer.body })
         }
         Err(why) => {
-            visit.said(format!("{method} {path}: {why}"));
+            visit.said(format!("{method} {host}: {why}"));
             refused(why)
         }
     }

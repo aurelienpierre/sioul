@@ -162,6 +162,8 @@ fn a_web_request_reaches_only_the_hosts_named() {
     let reply: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
     assert_eq!((reply["status"].as_u64(), reply["headers"][0][0].as_str()), (Some(200), Some("content-type")));
     assert_eq!(stand.asked[0].host, "api.example.org");
+    // W3: Sioul's line holds the host and the status, never the path nor the query.
+    assert!(outcome.log.iter().any(|l| l.contains("sioul: GET api.example.org: 200")) && !outcome.log.iter().any(|l| l.contains("/a")), "{:?}", outcome.log);
     for (url, why) in [
         ("https://evil.example.net/", "host"),
         ("https://sub.api.example.org/", "host"),

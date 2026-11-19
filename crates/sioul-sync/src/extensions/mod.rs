@@ -24,7 +24,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// What Sioul calls itself to the hosts an extension asks, unless the extension says otherwise.
+/// What Sioul calls itself to the hosts an extension asks, unless the
+/// extension says otherwise (W1): its name and version, nothing of the device
+/// or the person; an extension of the repository names itself the same way.
 const AGENT: &str = concat!("Sioul/", env!("CARGO_PKG_VERSION"));
 /// The most a manifest, its signature and an extension's file weigh.
 const MANIFEST_BYTES: usize = 1 << 20;
@@ -87,7 +89,9 @@ fn said(error: &ureq::Error) -> &'static str {
 
 impl Services for Real {
     fn web(&mut self, request: &WebRequest, wait: Duration, most: usize) -> Result<WebAnswer, &'static str> {
-        let config = ureq::Agent::config_builder().https_only(true).max_redirects(0).http_status_as_error(false).timeout_global(Some(wait)).user_agent(AGENT).build();
+        // No proxy, whatever the environment says (W2): with one, the resolver would check
+        // the proxy's address, never the host asked, and a public proxy would reach any.
+        let config = ureq::Agent::config_builder().https_only(true).max_redirects(0).http_status_as_error(false).timeout_global(Some(wait)).user_agent(AGENT).proxy(None).build();
         let agent = crate::stalls::public_agent(config);
         let answer = if request.method == "POST" {
             let mut asked = agent.post(&request.url);
@@ -223,7 +227,7 @@ fn fetch(address: &str, most: usize) -> Result<Vec<u8>, String> {
     if !address.starts_with("https://") {
         return Err("not an https address".into());
     }
-    let config = ureq::Agent::config_builder().https_only(true).max_redirects(5).http_status_as_error(false).timeout_global(Some(Duration::from_secs(60))).user_agent(AGENT).build();
+    let config = ureq::Agent::config_builder().https_only(true).max_redirects(5).http_status_as_error(false).timeout_global(Some(Duration::from_secs(60))).user_agent(AGENT).proxy(None).build();
     let mut answer = crate::stalls::public_agent(config).get(address).call().map_err(|e| format!("{address}: {e}"))?;
     if answer.status().as_u16() != 200 {
         return Err(format!("{address}: the server answered {}", answer.status().as_u16()));
