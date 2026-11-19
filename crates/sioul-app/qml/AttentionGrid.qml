@@ -413,7 +413,7 @@ ColumnLayout {
                 objectName: note ? "groupDoor-" + row.modelData.group_id : ""
                 visible: note !== undefined && (note.door || "") !== ""
                 flat: true
-                text: note ? note.door_label : ""
+                text: note ? grid.theme.plain(note.door_label) : ""
                 onClicked: grid.sioul.reminderOpened(note.door, "", "")
             }
         }
