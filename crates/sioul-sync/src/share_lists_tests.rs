@@ -151,3 +151,21 @@ fn record_of(file: &str) -> String {
         other => format!("notes/{other}"),
     }
 }
+
+/// A list caught of no bytes for an instant (a save in place between its
+/// truncation and its writing): looked at again at the next exchange, never
+/// rebuilt over what its editor writes then (review S34).
+#[test]
+fn a_list_blank_for_an_instant_is_looked_at_again() {
+    let list = &ALL[2];
+    let base = scratch("lists-instant");
+    let (folder, key, desk, _phone, desk_notes, _phone_notes) = two_holding(&base, list);
+    let path = place(&desk_notes, list);
+    std::fs::write(&path, "").unwrap();
+    let outcome = exchange_in(&desk, &folder, &key, NOW + 3 * MINUTE, &desk_notes);
+    assert!(!outcome.problems.iter().any(|p| p.starts_with("share-list-back")), "{outcome:?}");
+    let saved = format!("{}{}", list.text, list.third);
+    put(&path, &saved);
+    exchange_in(&desk, &folder, &key, NOW + 4 * MINUTE, &desk_notes);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved, "the editor's save stays as written");
+}

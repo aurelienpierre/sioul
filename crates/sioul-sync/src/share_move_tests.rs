@@ -372,3 +372,20 @@ fn the_letters_store_joins_when_its_part_comes_on_after_the_move() {
     let letters = desk.read("letters/letters.toml");
     assert!(letters.contains("tax") && letters.contains("caf"), "{letters}");
 }
+
+/// A file at the top of the letters' folder that is no list and no text (a
+/// scan dropped there by hand) is no record of the letters' list on a moved
+/// device: it never lands in Sioul's records (review S33).
+#[test]
+fn a_scan_at_the_top_of_letters_is_no_record() {
+    let base = scratch("move-letters-top");
+    let (folder, key, desk, phone) = desk_and_phone(&base);
+    put(&phone.notes.join("letters").join("dropped.pdf"), "%PDF dropped by hand");
+    phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+    desk.moves(&folder, &key, NOW + 4 * MINUTE);
+    for at in 5..8 {
+        desk.exchange(&folder, &key, NOW + at * MINUTE);
+    }
+    assert!(!desk.records().join("letters").join("dropped.pdf").exists(), "never in Sioul's records");
+    assert!(desk.read("letters/letters.toml").contains("caf"), "the list itself comes");
+}

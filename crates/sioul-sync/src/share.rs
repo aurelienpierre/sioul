@@ -761,6 +761,14 @@ const NOT_NOTES_MOVED: &[&str] = &[
     sioul_core::letters::FOLDER,
 ];
 
+/// What a store of a folder's top alone (`Store::flat`, the letters' list
+/// and texts once moved) holds: the list and the `.txt` texts at its top,
+/// never a file below, nor another file there (a scan dropped at the top of
+/// `letters/` by hand stays a scan: review S33).
+fn flat_own(relative: &str) -> bool {
+    !relative.contains('/') && (relative == sioul_core::letters::MANIFEST || relative.ends_with(".txt"))
+}
+
 /// The letters' list and texts, by the name every version gives them in the
 /// records (the notes folder's `letters/`), wherever this device keeps them.
 pub const LETTERS_RECORDS: &str = "files/notes/letters/";
@@ -1484,10 +1492,11 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
             } else {
                 list_files(&store.path, &store.path, store.skip, &mut files);
             }
-            // A store of a folder's top alone (`Store::flat`): never a file below it.
+            // A store of a folder's top alone (`Store::flat`): never a file below it, and only
+            // the list and the letters' texts there (review S33).
             if store.flat {
-                files.retain(|(relative, _)| !relative.contains('/'));
-                carried.retain(|(relative, _)| !relative.contains('/'));
+                files.retain(|(relative, _)| flat_own(relative));
+                carried.retain(|(relative, _)| flat_own(relative));
             }
             for (relative, path) in files {
                 read_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
@@ -2012,6 +2021,10 @@ pub const LETTERS_LIST: &str = "files/notes/letters/letters.toml";
 /// file alone was guarded so (docs/database.md, "Sioul's own lists").
 pub const LISTS: &[&str] = &["notes/sioul-cases.toml", CLIENTS, "notes/sioul-budgets.toml", "notes/sioul-bank.toml", "notes/sioul-contracts.toml", MOVEMENTS, "notes/sioul-papers.toml", LETTERS_LIST];
 
+/// How long a list written of no bytes is left to its writer before the
+/// guard takes it for lost (`lists_lost`).
+const LIST_SETTLES: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Whether a file of the records is one of Sioul's own lists (`LISTS`).
 fn is_list(file: &str) -> bool {
     LISTS.contains(&file)
@@ -2045,7 +2058,11 @@ fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory)
                 return None;
             }
             let gone = std::fs::metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
-            (gone || blank(&path)).then(|| (*file).to_string())
+            // A save in place caught between its truncation and its writing looks blank for an
+            // instant: one written in the last seconds is looked at again at the next exchange,
+            // never rebuilt over what its editor writes then (review S34).
+            let settling = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age < LIST_SETTLES);
+            (gone || (blank(&path) && !settling)).then(|| (*file).to_string())
         })
         .collect()
 }
@@ -8562,8 +8579,9 @@ fn locate<'a>(stores: &'a [Store], file: &str) -> Option<(&'a Store, PathBuf)> {
     if relative.is_empty() || relative.split('/').any(|part| part.is_empty() || part == ".." || part == "." || part.contains(['\\', ':'])) {
         return None;
     }
-    // A store of a folder's top alone: what is below it is none of its own.
-    if store.flat && relative.contains('/') {
+    // A store of a folder's top alone: what is below it is none of its own, nor
+    // a file there that is no list and no text (a scan dropped there by hand).
+    if store.flat && !flat_own(relative) {
         return None;
     }
     // Files sealed apart: never what tools make, nor what another part carries
