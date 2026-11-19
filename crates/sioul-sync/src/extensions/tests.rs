@@ -234,6 +234,13 @@ fn the_secret_kept_never_reaches_the_log() {
     assert_eq!(outcome.reply.unwrap(), r#"{"kept":true}"#);
     assert_eq!(stand.secret.as_deref(), Some(r#"{"refresh":"RT-kept-0000"}"#));
     assert!(outcome.log.iter().any(|l| l.ends_with("renewed with [hidden]")), "{:?}", outcome.log);
+    // K3: too long for every system's keyring: refused whole, never cut, and said.
+    let long = format!(r#"{{"keep":"{}"}}"#, "k".repeat(2401));
+    let file = module(&["secret", "answer", "reply"], &[&long], &echo("secret"));
+    let (outcome, stand) = run_it(&file, &given, Stand::default(), false);
+    assert_eq!(outcome.reply.unwrap(), r#"{"refused":"size"}"#);
+    assert_eq!(stand.secret, None);
+    assert!(outcome.log.iter().any(|l| l.contains("refused a secret of 2401 bytes")), "{:?}", outcome.log);
 }
 
 /// K1: an extension removed while a call runs (a refresh renewing its

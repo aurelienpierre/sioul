@@ -115,8 +115,14 @@ impl Services for Real {
         Ok(WebAnswer { status, headers, body: String::from_utf8_lossy(&body).into_owned() })
     }
 
+    // Kept as bytes (UTF-8 as it is): 2,400 bytes fit every system's keyring,
+    // where a text takes two bytes a character on Windows (K3).
     fn secret(&mut self) -> Result<Option<String>, &'static str> {
-        crate::secret::named_checked(&sioul_core::extensions::secret_name(&self.id)).map_err(|_| "keyring")
+        match crate::secret::named_bytes(&sioul_core::extensions::secret_name(&self.id)) {
+            Ok(Some(bytes)) => String::from_utf8(bytes).map(Some).map_err(|_| "keyring"),
+            Ok(None) => Ok(None),
+            Err(_) => Err("keyring"),
+        }
     }
 
     fn keep_secret(&mut self, secret: &str) -> Result<(), &'static str> {
@@ -125,7 +131,7 @@ impl Services for Real {
         if self.removed() {
             return Err("not-now");
         }
-        crate::secret::save_named(&sioul_core::extensions::secret_name(&self.id), secret).map_err(|_| "keyring")
+        crate::secret::save_named_bytes(&sioul_core::extensions::secret_name(&self.id), secret.as_bytes()).map_err(|_| "keyring")
     }
 
     fn forget_secret(&mut self) -> Result<(), &'static str> {

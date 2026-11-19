@@ -541,7 +541,9 @@ fn secret_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
         };
     }
     if let Some(secret) = ask["keep"].as_str() {
+        // Refused whole, never cut: a secret cut would not sign in again.
         if secret.len() > sioul_core::extensions::SECRET_BYTES {
+            visit.said(format!("refused a secret of {} bytes: a keyring entry holds {} on every system", secret.len(), sioul_core::extensions::SECRET_BYTES));
             return refused("size");
         }
         visit.hide_json(secret);
