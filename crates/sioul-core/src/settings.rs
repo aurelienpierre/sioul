@@ -1743,7 +1743,9 @@ mod tests {
         // Each page's settings are its own: none of them is in Settings too.
         let parameters: Vec<String> = for_view("parameters", &config, &tr, &[], None).into_iter().map(|s| s.key).collect();
         for page in PAGES {
-            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note) {
+            // "collections" is the Agenda's and Tasks' alike, each listing its own kind: it is
+            // there only when the folders hold some, which another test's stand-ins may.
+            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections") {
                 assert!(!parameters.contains(&row.key), "{} is in {page} and in Settings", row.key);
                 assert_eq!(page_of(&row.key, &config, &tr), Some(*page), "{}", row.key);
             }
