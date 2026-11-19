@@ -4,7 +4,9 @@
 //! An extension's replies read (docs/extensions.md, "The calls"). An agenda
 //! it handed back is parsed and counted, every bound applied before anything
 //! is built (agendas a reply, bytes and lines an agenda, events an agenda),
-//! and handed on whole: its files are written by the door of read-only
+//! then written again from what was parsed, through an allow-list (`clean`):
+//! names are judged once parsed, as Sioul reads every calendar, never on the
+//! extension's lines. It is handed on whole: its files are written by the door of read-only
 //! agendas alone, one file per event with the time zones it needs, through
 //! the subscribed calendars' writer; nothing here copies a calendar's head
 //! into each event. What the agenda could not read is kept from the last
@@ -12,11 +14,11 @@
 //! as the interface says is nonsense: the call ends, nothing is taken in.
 
 use crate::agenda;
-use calcard::icalendar::ICalendarComponentType;
+use calcard::icalendar::{ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty, ICalendarValue};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Why a reply was not taken: said in the log, the call ended with one sentence.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,12 +65,14 @@ pub enum SignInReply {
     Problem(Problem),
 }
 
-/// An agenda handed back, read and counted; its files are the door's to write.
+/// An agenda handed back, read, counted and written again; its files are the door's to write.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgendaReply {
     pub id: String,
     pub name: String,
-    /// Its calendar, one text: its events and their time zones, each once.
+    /// Its calendar written again from what was parsed (`clean`): its events,
+    /// with the properties of the allow-list alone, and the time zones they
+    /// name, each once.
     pub calendar: String,
     /// How many events it holds.
     pub events: usize,
@@ -91,6 +95,9 @@ pub const MOST_EVENTS: usize = 20_000;
 /// text before it is parsed, so that the parser's tree stays bounded too.
 pub const MOST_BYTES: usize = 8 << 20;
 pub const MOST_LINES: usize = 250_000;
+/// The most the time zones an agenda names weigh, written: a zone is a few
+/// hundred bytes (an extension that writes times in UTC needs none).
+pub const MOST_ZONE_BYTES: usize = 64 << 10;
 const MOST_CHOICES: usize = 200;
 const MOST_PERIODS: usize = 400;
 
@@ -182,7 +189,7 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if calendar.len() > MOST_BYTES || calendar.bytes().filter(|b| *b == b'\n').count() > MOST_LINES {
             return nonsense("an agenda larger than an agenda may be");
         }
-        let events = count(calendar)?;
+        let (calendar, events) = clean(calendar)?;
         let mut unread = Vec::new();
         for period in agenda["unread"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
             let (Some(from), Some(until)) = (instant(&period["from"]), instant(&period["until"])) else { return nonsense("an unread period that does not read") };
@@ -194,34 +201,138 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if unread.len() > MOST_PERIODS {
             return nonsense("too many unread periods");
         }
-        agendas.push(AgendaReply { id: id.to_string(), name, calendar: calendar.to_string(), events, unread });
+        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, unread });
     }
     Ok(RefreshReply { agendas, problem })
 }
 
-/// An agenda's calendar read as Sioul reads every calendar, and its events
-/// counted: events only at its top (each with a UID and a start), and no more
-/// than an agenda holds. Nothing is built from it here.
-pub fn count(calendar: &str) -> Result<usize, Nonsense> {
+/// What an extension's event keeps (X3, X4): its identifier, start, end or
+/// duration, title, place, description, status, busy or free, categories,
+/// its stamps and sequence. Dropped in this version: guests, organizer,
+/// alarms, every `X-` line (Sioul's own included: a reminder, the time kept
+/// around, costs, an area, ties to your things are yours, never an
+/// extension's), repeat rules, links, attachments, conference lines, class.
+const KEPT: [ICalendarProperty; 14] = [
+    ICalendarProperty::Uid,
+    ICalendarProperty::Dtstart,
+    ICalendarProperty::Dtend,
+    ICalendarProperty::Duration,
+    ICalendarProperty::Summary,
+    ICalendarProperty::Location,
+    ICalendarProperty::Description,
+    ICalendarProperty::Status,
+    ICalendarProperty::Transp,
+    ICalendarProperty::Categories,
+    ICalendarProperty::Dtstamp,
+    ICalendarProperty::Created,
+    ICalendarProperty::LastModified,
+    ICalendarProperty::Sequence,
+];
+
+/// What a time zone's own parts (its standard and daylight times) keep.
+const ZONE_KEPT: [ICalendarProperty; 6] = [ICalendarProperty::Dtstart, ICalendarProperty::Tzoffsetfrom, ICalendarProperty::Tzoffsetto, ICalendarProperty::Tzname, ICalendarProperty::Rrule, ICalendarProperty::Rdate];
+
+/// A text value as Sioul shows it: no control character (a new line kept in
+/// a description alone), no mark that turns a line around.
+fn plain_value(text: &str, lines: bool) -> String {
+    let direction = |c: char| matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+    text.chars().filter(|c| !(c.is_control() && !(lines && *c == '\n')) && !direction(*c)).collect()
+}
+
+/// A line of an event or a zone, kept when its name is in `kept`: with its
+/// time zone and its value's type alone among its parameters (no link, no
+/// `X-` parameter), its texts plain.
+fn kept_entry(entry: &ICalendarEntry, kept: &[ICalendarProperty]) -> Option<ICalendarEntry> {
+    if !kept.contains(&entry.name) {
+        return None;
+    }
+    let params = entry.params.iter().filter(|p| matches!(p.name, ICalendarParameterName::Tzid | ICalendarParameterName::Value)).cloned().collect();
+    let lines = entry.name == ICalendarProperty::Description;
+    let values = entry
+        .values
+        .iter()
+        .map(|value| match value {
+            ICalendarValue::Text(text) => ICalendarValue::Text(plain_value(text, lines)),
+            other => other.clone(),
+        })
+        .collect();
+    Some(ICalendarEntry { name: entry.name.clone(), params, values })
+}
+
+/// An agenda's calendar read as Sioul reads every calendar, its events
+/// counted (no more than an agenda holds), then written again from what was
+/// parsed: each event at the calendar's top with the lines of `KEPT` alone
+/// and no component inside it; the time zones the kept events name, once
+/// each, with their standard and daylight times alone; nothing else (an
+/// override of a series, a task, a zone no event names). Each event has a
+/// UID of its own and a start. The text, and how many events it holds.
+pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
     let Some(read) = agenda::parse(calendar) else { return nonsense("a calendar that is not one") };
     let Some(root) = read.components.first().filter(|c| c.component_type == ICalendarComponentType::VCalendar) else { return nonsense("a calendar that is not one") };
-    let mut events = 0usize;
-    for component in root.component_ids.iter().filter_map(|i| read.components.get(*i as usize)) {
-        match component.component_type {
-            ICalendarComponentType::VEvent => {
-                events += 1;
-                if events > MOST_EVENTS {
-                    return nonsense("more events than an agenda holds");
-                }
-                if component.uid().is_none_or(|uid| uid.trim().is_empty() || uid.len() > 255) || component.property(&calcard::icalendar::ICalendarProperty::Dtstart).is_none() {
-                    return nonsense("an event without its UID or its start");
-                }
+    let top: Vec<&ICalendarComponent> = root.component_ids.iter().filter_map(|i| read.components.get(*i as usize)).collect();
+    let listed = top.iter().filter(|c| c.component_type == ICalendarComponentType::VEvent).count();
+    if listed > MOST_EVENTS {
+        return nonsense("more events than an agenda holds");
+    }
+    let head = vec![
+        ICalendarEntry { name: ICalendarProperty::Version, params: Vec::new(), values: vec![ICalendarValue::Text("2.0".into())] },
+        ICalendarEntry { name: ICalendarProperty::Prodid, params: Vec::new(), values: vec![ICalendarValue::Text("-//Sioul//Extension//EN".into())] },
+    ];
+    let mut out = ICalendar { components: vec![ICalendarComponent { component_type: ICalendarComponentType::VCalendar, entries: head, component_ids: Vec::new() }] };
+    let (mut events, mut uids, mut named) = (Vec::new(), BTreeSet::new(), BTreeSet::new());
+    for event in top.iter().filter(|c| c.component_type == ICalendarComponentType::VEvent) {
+        // An override of a series: no series in this version.
+        if event.property(&ICalendarProperty::RecurrenceId).is_some() {
+            continue;
+        }
+        let entries: Vec<ICalendarEntry> = event.entries.iter().filter_map(|e| kept_entry(e, &KEPT)).collect();
+        let uid = entries.iter().find(|e| e.name == ICalendarProperty::Uid).and_then(|e| e.values.first()).and_then(|v| v.as_text()).map(str::trim).unwrap_or("");
+        let starts = entries.iter().any(|e| e.name == ICalendarProperty::Dtstart && matches!(e.values.first(), Some(ICalendarValue::PartialDateTime(_))));
+        if uid.is_empty() || uid.len() > 255 || !starts {
+            return nonsense("an event without its UID or its start");
+        }
+        if !uids.insert(uid.to_string()) {
+            return nonsense("an event's UID twice");
+        }
+        named.extend(entries.iter().filter_map(|e| e.tz_id().map(str::to_string)));
+        events.push(ICalendarComponent { component_type: ICalendarComponentType::VEvent, entries, component_ids: Vec::new() });
+    }
+    // The zones the events name, each once, before the events.
+    let mut zone_bytes = 0usize;
+    let mut written = BTreeSet::new();
+    for zone in top.iter().filter(|c| c.component_type == ICalendarComponentType::VTimezone) {
+        let Some(tzid) = zone.property(&ICalendarProperty::Tzid).and_then(|e| e.values.first()).and_then(|v| v.as_text()).map(|t| plain_value(t, false)) else { continue };
+        if !named.contains(&tzid) || !written.insert(tzid.clone()) {
+            continue;
+        }
+        let at = out.components.len();
+        out.components.push(ICalendarComponent {
+            component_type: ICalendarComponentType::VTimezone,
+            entries: vec![ICalendarEntry { name: ICalendarProperty::Tzid, params: Vec::new(), values: vec![ICalendarValue::Text(tzid)] }],
+            component_ids: Vec::new(),
+        });
+        let mut parts = Vec::new();
+        for part in zone.component_ids.iter().filter_map(|i| read.components.get(*i as usize)) {
+            if matches!(part.component_type, ICalendarComponentType::Standard | ICalendarComponentType::Daylight) {
+                parts.push(out.components.len() as u32);
+                let entries = part.entries.iter().filter_map(|e| kept_entry(e, &ZONE_KEPT)).collect();
+                out.components.push(ICalendarComponent { component_type: part.component_type.clone(), entries, component_ids: Vec::new() });
             }
-            ICalendarComponentType::VTimezone => {}
-            _ => return nonsense("a calendar that holds more than events"),
+        }
+        out.components[at].component_ids = parts;
+        out.components[0].component_ids.push(at as u32);
+        zone_bytes += out.components[at..].iter().map(|c| c.entries.iter().map(|e| e.size()).sum::<usize>()).sum::<usize>();
+        if zone_bytes > MOST_ZONE_BYTES {
+            return nonsense("time zones larger than an agenda needs");
         }
     }
-    Ok(events)
+    let count = events.len();
+    for event in events {
+        let at = out.components.len() as u32;
+        out.components[0].component_ids.push(at);
+        out.components.push(event);
+    }
+    Ok((out.to_string(), count))
 }
 
 /// The files an agenda holds once `new` (by file name, as the door's writer
@@ -283,11 +394,91 @@ mod tests {
     }
 
     #[test]
-    fn an_agenda_is_events_alone_each_with_its_uid_and_start() {
-        let text = calendar(&format!("{}{}", event("L1", "20261119T080000Z", "STATUS:CANCELLED\r\n"), event("L2", "20261120T080000Z", "")));
-        assert_eq!(count(&text), Ok(2));
-        for wrong in [calendar("BEGIN:VTODO\r\nUID:x\r\nEND:VTODO\r\n"), calendar("BEGIN:VEVENT\r\nDTSTART:20261119T080000Z\r\nEND:VEVENT\r\n"), calendar("BEGIN:VEVENT\r\nUID:x\r\nEND:VEVENT\r\n"), "not a calendar".to_string()] {
-            assert!(count(&wrong).is_err(), "{wrong}");
+    fn an_agenda_is_written_again_from_what_was_parsed() {
+        let alarm = "BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nATTENDEE;CN=\"A: B\":mailto:a@example.org\r\nORGANIZER:mailto:\r\n b@example.org\r\nURL:https://elsewhere.example.org/\r\nRRULE:FREQ=DAILY\r\nCLASS:PRIVATE\r\n";
+        let text = calendar(&format!("{}{}", event("L1", "20261119T080000Z", "STATUS:CANCELLED\r\nLOCATION;ALTREP=\"https://elsewhere.example.org/\":Room 2\r\n"), event("L2", "20261120T080000Z", alarm)));
+        let (kept, events) = clean(&text).unwrap();
+        assert_eq!(events, 2);
+        let read = agenda::parse(&kept).unwrap();
+        assert_eq!(read.components.iter().filter(|c| c.component_type == ICalendarComponentType::VEvent).count(), 2);
+        for gone in ["VALARM", "ATTENDEE", "b@example.org", "elsewhere.example.org", "RRULE", "CLASS", "ALTREP"] {
+            assert!(!kept.contains(gone), "{gone} came through:\n{kept}");
+        }
+        assert!(kept.contains("STATUS:CANCELLED\r\n") && kept.contains("LOCATION:Room 2\r\n"), "{kept}");
+        // A text without control characters or marks that turn a line around.
+        let (kept, _) = clean(&calendar(&event("L1", "20261119T080000Z", "DESCRIPTION:a\\nb\u{202E}c\u{7}d\r\n"))).unwrap();
+        assert!(kept.contains("DESCRIPTION:a\\nbcd\r\n"), "{kept}");
+        // A task at the top, an override of a series: left out, not taken for events.
+        let (kept, events) = clean(&calendar(&format!("BEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\n{}{}", event("L1", "20261119T080000Z", ""), event("L1", "20261120T080000Z", "RECURRENCE-ID:20261120T080000Z\r\n")))).unwrap();
+        assert_eq!(events, 1);
+        assert!(!kept.contains("VTODO") && !kept.contains("RECURRENCE-ID"), "{kept}");
+        for wrong in [calendar("BEGIN:VEVENT\r\nDTSTART:20261119T080000Z\r\nEND:VEVENT\r\n"), calendar("BEGIN:VEVENT\r\nUID:x\r\nEND:VEVENT\r\n"), calendar(&format!("{}{}", event("L1", "20261119T080000Z", ""), event("L1", "20261121T080000Z", ""))), "not a calendar".to_string()] {
+            assert!(clean(&wrong).is_err(), "{wrong}");
+        }
+    }
+
+    /// The time zones an agenda's events name, once each, with their standard and daylight times alone.
+    #[test]
+    fn a_time_zone_named_is_written_once_and_alone() {
+        let paris = "BEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nX-SIOUL-REMIND:30\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nATTENDEE:mailto:a@example.org\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\n";
+        let other = "BEGIN:VTIMEZONE\r\nTZID:Other/Zone\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:+0000\r\nTZOFFSETTO:+0000\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n";
+        let events: String = (0..50).map(|i| format!("BEGIN:VEVENT\r\nUID:L{i}\r\nDTSTART;TZID=Europe/Paris:20261119T090000\r\nDTEND;TZID=Europe/Paris:20261119T100000\r\nEND:VEVENT\r\n")).collect();
+        let (kept, events) = clean(&calendar(&format!("{paris}{other}{paris}{events}"))).unwrap();
+        assert_eq!(events, 50);
+        assert_eq!(kept.matches("BEGIN:VTIMEZONE").count(), 1, "once, whatever the number of events:\n{kept}");
+        assert!(!kept.contains("Other/Zone") && !kept.contains("X-SIOUL") && !kept.contains("ATTENDEE"), "{kept}");
+        assert!(kept.contains("TZOFFSETTO:+0200") && kept.contains("TZNAME:CET"), "{kept}");
+        assert_eq!(agenda::first_times(&kept, &TimeZone::UTC), Some((1_795_075_200, 1_795_078_800)), "read in its zone, as written:\n{kept}");
+        // A zone of more than an agenda needs: refused.
+        let filler: String = (0..2000).map(|i| format!("TZNAME:{i}-{}\r\n", "z".repeat(40))).collect();
+        let big = format!("BEGIN:VTIMEZONE\r\nTZID:Big\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:+0000\r\nTZOFFSETTO:+0000\r\n{filler}END:STANDARD\r\nEND:VTIMEZONE\r\n");
+        assert!(clean(&calendar(&format!("{big}BEGIN:VEVENT\r\nUID:x\r\nDTSTART;TZID=Big:20261119T090000\r\nEND:VEVENT\r\n"))).is_err());
+    }
+
+    /// X3, X4 (the review's scratch test, through `clean`): what the
+    /// allow-list leaves out does not come back another way. Each line passed
+    /// the line filter before, and calcard, which reads the file everywhere
+    /// else in Sioul, took it for what the filter meant to drop: it unfolds a
+    /// name written on two lines, skips a blank before the colon and quotes
+    /// around a name, and takes `\X` for `X` (calcard-0.3.14,
+    /// src/common/tokenizer.rs, `token`).
+    #[test]
+    fn what_the_filter_drops_does_not_come_back_another_way() {
+        use calcard::icalendar::ICalendarProperty as P;
+        let read = |extra: &str| agenda::parse(&clean(&calendar(&event("L1", "20261119T080000Z", extra))).unwrap().0).unwrap();
+        let guests = [
+            ("a name folded on two lines", "ATT\r\n ENDEE:mailto:a@example.org\r\n"),
+            ("a blank before the colon", "ATTENDEE :mailto:a@example.org\r\n"),
+            ("quotes around the name", "\"ATTENDEE\":mailto:a@example.org\r\n"),
+            ("a backslash inside the name", "ATT\\ENDEE:mailto:a@example.org\r\n"),
+        ];
+        for (what, extra) in guests {
+            assert!(read(extra).components.iter().all(|c| c.property(&P::Attendee).is_none()), "a guest came through: {what}");
+        }
+        // ("ORG\ANIZER", not "ORGA\NIZER": calcard takes `\N` for a new line.)
+        for (what, organizer) in [("folded", "ORGAN\r\n IZER:mailto:o@example.org\r\n"), ("a backslash", "ORG\\ANIZER:mailto:o@example.org\r\n")] {
+            assert!(read(organizer).components.iter().all(|c| c.property(&P::Organizer).is_none()), "an organizer came through: {what}");
+        }
+        let alarms = [
+            ("BEGIN and END folded", "BEG\r\n IN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEN\r\n D:VALARM\r\n"),
+            ("a backslash inside VALARM", "BEGIN:VAL\\ARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VAL\\ARM\r\n"),
+        ];
+        for (what, extra) in alarms {
+            assert!(read(extra).components.iter().all(|c| c.component_type != ICalendarComponentType::VAlarm), "an alarm came through: {what}");
+        }
+        // With no trick at all: a whole event, its guest and its alarm, inside a time zone.
+        let zone = "BEGIN:VTIMEZONE\r\nTZID:X\r\nBEGIN:VEVENT\r\nUID:hidden\r\nDTSTART:20261119T030000Z\r\nATTENDEE:mailto:a@example.org\r\nORGANIZER:mailto:o@example.org\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VTIMEZONE\r\n";
+        let named = "BEGIN:VEVENT\r\nUID:L1\r\nDTSTART;TZID=X:20261119T080000\r\nEND:VEVENT\r\n";
+        let read_zone = agenda::parse(&clean(&calendar(&format!("{zone}{named}"))).unwrap().0).unwrap();
+        assert_eq!(read_zone.components.iter().filter(|c| c.component_type == ICalendarComponentType::VEvent).count(), 1, "an event came through inside a time zone");
+        assert!(read_zone.components.iter().all(|c| c.component_type != ICalendarComponentType::VAlarm && c.property(&P::Attendee).is_none()));
+        // A task inside an event (only the calendar's top level was checked).
+        let task = read("BEGIN:VTODO\r\nUID:t\r\nSUMMARY:A task\r\nEND:VTODO\r\n");
+        assert!(task.components.iter().all(|c| c.component_type != ICalendarComponentType::VTodo), "a task came through inside an event");
+        // X4: Sioul's own properties are the person's, never an extension's.
+        for own in ["X-SIOUL-REMIND:30", "X-SIOUL-BEFORE:PT30M", "X-SIOUL-AFTER:PT30M", "X-SIOUL-COST:9;9;9;9", "X-SIOUL-GAIN:9", "X-SIOUL-AREA:work", "X-SIOUL-LINK;LINKREL=related;VALUE=URI:sioul:note/admin/form.md", "X-SIOUL-BILLABLE:1", "X-\r\n SIOUL-REMIND:30"] {
+            let (kept, _) = clean(&calendar(&event("L1", "20261119T080000Z", &format!("{own}\r\n")))).unwrap();
+            assert!(!kept.to_ascii_uppercase().contains("X-SIOUL-") && !kept.contains("SIOUL-REMIND"), "{own} came through");
         }
     }
 
