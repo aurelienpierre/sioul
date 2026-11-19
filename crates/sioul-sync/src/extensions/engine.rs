@@ -1,0 +1,702 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+//! The engine: an extension's file run in a sandbox of its own
+//! (docs/extensions.md). wasmi, an interpreter written in Rust, runs the
+//! WebAssembly core module: no code is made at run time, so it runs the same
+//! on Linux, in the Flatpak, on Windows, on macOS and on Android.
+//!
+//! - **Only what its manifest grants**: the module may import the time, its
+//!   log and `hide` always; `web` when its manifest names hosts; `secret`
+//!   and `sign_in` when it signs in. A module that imports anything else is
+//!   not started (`Stop::AsksMore`).
+//! - **Limits**: one memory of 64 MiB at most, one table; computation given
+//!   in slices of fuel, 4 billion steps in all; 5 minutes for a call, the
+//!   person's time on a sign-in page aside; 100 web requests a call.
+//! - **One calm end**: a module that loops, grows without end, traps or
+//!   answers nonsense ends with a `Stop`, which the window says in one
+//!   sentence; the module is thrown away, nothing of it is taken in.
+//!
+//! Each ask is checked here (its form, its host, its size, the time left)
+//! before what it reaches does it (`Services`: the network, the keyring, the
+//! person); the log is kept here, every hidden value replaced once the call
+//! has ended. Never run on the window's thread: a call may last minutes.
+
+use serde_json::{Value, json};
+use sioul_core::extensions::manifest::Grants;
+use std::time::{Duration, Instant};
+use wasmi::{Caller, CompilationMode, Config, EnforcedLimits, Engine, Extern, ExternType, Func, Linker, Memory, Module, ResumableCall, Store, StoreLimits, StoreLimitsBuilder, Val};
+
+/// The interface's limits (docs/extensions.md, "Limits of a call").
+#[derive(Debug, Clone)]
+pub struct Limits {
+    /// The file's size.
+    pub file: usize,
+    /// The module's memory, in bytes.
+    pub memory: usize,
+    /// Steps of the interpreter in all, and how many are given at a time.
+    pub steps: u64,
+    pub slice: u64,
+    /// A call's time, the person's time on a sign-in page aside.
+    pub time: Duration,
+    /// The person's time on a sign-in page.
+    pub sign_in: Duration,
+    /// Web requests a call, each one's time, a request's body, an answer's body once unpacked.
+    pub requests: u32,
+    pub request_time: Duration,
+    pub request_body: usize,
+    pub answer_body: usize,
+    /// A call, an ask, an answer, a reply.
+    pub call: usize,
+    pub ask: usize,
+    pub answer: usize,
+    pub reply: usize,
+    /// Asks of any kind a call.
+    pub asks: u32,
+    /// Lines the extension may write in its log a call, and a line's length.
+    pub log_lines: usize,
+    pub log_width: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        const MIB: usize = 1 << 20;
+        Self {
+            file: 8 * MIB,
+            memory: 64 * MIB,
+            steps: 4_000_000_000,
+            slice: 20_000_000,
+            time: Duration::from_secs(300),
+            sign_in: Duration::from_secs(15 * 60),
+            requests: 100,
+            request_time: Duration::from_secs(30),
+            request_body: 256 * 1024,
+            answer_body: 4 * MIB,
+            call: 64 * 1024,
+            ask: MIB,
+            answer: 5 * MIB,
+            reply: 8 * MIB,
+            asks: 5_000,
+            log_lines: 50,
+            log_width: 300,
+        }
+    }
+}
+
+/// How a call ended without a reply: said in one sentence by the window
+/// (`word` names it), its detail in the log only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stop {
+    /// The file is not a module this engine reads.
+    NotRead(String),
+    /// It imports what its manifest does not grant.
+    AsksMore(String),
+    /// It speaks another interface.
+    Interface(i32),
+    /// It took too long: steps or time.
+    TooLong,
+    /// It asked for more memory than it may have.
+    Memory,
+    /// It ended in an error of its own.
+    Trapped(String),
+    /// It replied what cannot be read.
+    Nonsense(String),
+}
+
+impl Stop {
+    /// The word the window says it by ("stopped-time"…), kept as the extension's last problem.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Self::NotRead(_) => "stopped-unread",
+            Self::AsksMore(_) => "stopped-asks-more",
+            Self::Interface(_) => "stopped-interface",
+            Self::TooLong => "stopped-time",
+            Self::Memory => "stopped-memory",
+            Self::Trapped(_) => "stopped-error",
+            Self::Nonsense(_) => "stopped-nonsense",
+        }
+    }
+
+    /// What happened, for the log.
+    pub fn detail(&self) -> String {
+        match self {
+            Self::NotRead(why) => format!("the file does not read: {why}"),
+            Self::AsksMore(what) => format!("it imports {what}, which its manifest does not grant"),
+            Self::Interface(n) => format!("it speaks interface {n}"),
+            Self::TooLong => "it took too long".into(),
+            Self::Memory => "it asked for too much memory".into(),
+            Self::Trapped(why) => format!("it ended in an error of its own: {why}"),
+            Self::Nonsense(why) => format!("it replied nonsense: {why}"),
+        }
+    }
+}
+
+/// A web request, checked, for `Services::web`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebRequest {
+    pub method: String,
+    pub url: String,
+    /// The host, as checked (lower case).
+    pub host: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<String>,
+}
+
+/// A web request's answer.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WebAnswer {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+/// What the asks reach once checked: the network, the keyring, the person.
+/// A refusal is one word of the interface's (`network`, `size`, `keyring`…).
+pub trait Services {
+    /// The request made, `wait` at most; the body cut at `most` bytes once unpacked (`size` beyond).
+    fn web(&mut self, request: &WebRequest, wait: Duration, most: usize) -> Result<WebAnswer, &'static str>;
+    fn secret(&mut self) -> Result<Option<String>, &'static str>;
+    fn keep_secret(&mut self, secret: &str) -> Result<(), &'static str>;
+    fn forget_secret(&mut self) -> Result<(), &'static str>;
+    /// The sign-in page shown (`host` named above it), `wait` at most: the
+    /// address it returned to, which begins with `watch`; none when the person closed it.
+    fn sign_in(&mut self, open: &str, watch: &str, host: &str, wait: Duration) -> Result<Option<String>, &'static str>;
+    /// Seconds since 1970.
+    fn now(&self) -> i64;
+}
+
+/// What a call came to: its reply, or why it stopped; and its log's lines,
+/// each hidden value replaced, each cut.
+#[derive(Debug)]
+pub struct Outcome {
+    pub reply: Result<String, Stop>,
+    pub log: Vec<String>,
+}
+
+/// The kinds of ask, each its own import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Now,
+    Log,
+    Hide,
+    Web,
+    Secret,
+    SignIn,
+}
+
+/// The imports an extension may be given by its grants.
+fn granted(grants: &Grants) -> Vec<&'static str> {
+    let mut names = vec!["answer", "reply", "now", "log", "hide"];
+    if !grants.hosts.is_empty() {
+        names.push("web");
+    }
+    if grants.sign_in.is_some() {
+        names.extend(["secret", "sign_in"]);
+    }
+    names
+}
+
+/// One call's state, the store's data.
+struct Visit<S> {
+    services: S,
+    grants: Grants,
+    limits: Limits,
+    may_sign_in: bool,
+    signed_in: bool,
+    started: Instant,
+    /// The person's time on a sign-in page, not counted.
+    aside: Duration,
+    /// The last answer, until the module copies it.
+    kept: Vec<u8>,
+    reply: Option<Vec<u8>>,
+    hidden: Vec<String>,
+    log: Vec<String>,
+    lines: usize,
+    requests: u32,
+    asks: u32,
+    stop: Option<Stop>,
+    store_limits: StoreLimits,
+}
+
+impl<S: Services> Visit<S> {
+    fn spent(&self) -> Duration {
+        self.started.elapsed().saturating_sub(self.aside)
+    }
+
+    fn left(&self) -> Duration {
+        self.limits.time.saturating_sub(self.spent())
+    }
+
+    fn hide(&mut self, value: &str) {
+        if value.len() >= 4 && self.hidden.len() < 2_000 && !self.hidden.iter().any(|h| h == value) {
+            self.hidden.push(value.to_string());
+        }
+    }
+
+    /// Every string inside a JSON text hidden, the text itself too.
+    fn hide_json(&mut self, text: &str) {
+        self.hide(text);
+        fn walk(value: &Value, out: &mut Vec<String>) {
+            match value {
+                Value::String(s) => out.push(s.clone()),
+                Value::Array(all) => all.iter().for_each(|v| walk(v, out)),
+                Value::Object(all) => all.values().for_each(|v| walk(v, out)),
+                _ => {}
+            }
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(text) {
+            let mut strings = Vec::new();
+            walk(&value, &mut strings);
+            for s in strings {
+                self.hide(&s);
+            }
+        }
+    }
+
+    /// A line of Sioul's own in the extension's log.
+    fn said(&mut self, line: String) {
+        let at = jiff::Timestamp::from_second(self.services.now()).map(|t| t.to_string()).unwrap_or_default();
+        self.log.push(format!("{at} sioul: {line}"));
+    }
+}
+
+fn refused(why: &str) -> Value {
+    json!({ "refused": why })
+}
+
+// ---------------------------------------------------------------- the asks
+
+fn now_answer<S: Services>(visit: &mut Visit<S>) -> Value {
+    let unix = visit.services.now();
+    json!({ "now": jiff::Timestamp::from_second(unix).map(|t| t.to_string()).unwrap_or_default(), "unix": unix })
+}
+
+fn log_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    let Some(line) = ask["line"].as_str() else { return refused("form") };
+    if visit.lines >= visit.limits.log_lines {
+        return json!({ "logged": false });
+    }
+    visit.lines += 1;
+    let at = jiff::Timestamp::from_second(visit.services.now()).map(|t| t.to_string()).unwrap_or_default();
+    // Cut once hidden values are replaced (`finish`): kept whole meanwhile, 4 KiB at most.
+    let line: String = line.chars().filter(|c| !c.is_control()).take(4096).collect();
+    visit.log.push(format!("{at} {line}"));
+    json!({ "logged": true })
+}
+
+fn hide_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    let Some(values) = ask["values"].as_array() else { return refused("form") };
+    let mut count = 0;
+    for value in values.iter().filter_map(Value::as_str) {
+        visit.hide(value);
+        count += 1;
+    }
+    json!({ "hidden": count })
+}
+
+/// Header names Sioul sets itself.
+fn forbidden_header(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["host", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer", "keep-alive"].contains(&name.as_str()) || name.starts_with("proxy-")
+}
+
+/// An `https` address's host, checked: the default port alone, no user name.
+fn https_host(url: &str) -> Result<String, &'static str> {
+    let rest = url.strip_prefix("https://").ok_or("scheme")?;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.contains('@') || authority.is_empty() {
+        return Err("address");
+    }
+    let host = match authority.rsplit_once(':') {
+        Some((host, "443")) => host,
+        Some(_) => return Err("address"),
+        None => authority,
+    };
+    if url.bytes().any(|b| b.is_ascii_whitespace() || b.is_ascii_control()) {
+        return Err("address");
+    }
+    Ok(host.to_ascii_lowercase())
+}
+
+fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    let method = match ask["method"].as_str() {
+        Some("GET") => "GET",
+        Some("POST") => "POST",
+        _ => return refused("form"),
+    };
+    let Some(url) = ask["url"].as_str() else { return refused("form") };
+    let host = match https_host(url) {
+        Ok(host) => host,
+        Err(why) => return refused(why),
+    };
+    if !visit.grants.hosts.contains(&host) {
+        visit.said(format!("refused a request to a host its manifest does not name: {host}"));
+        return refused("host");
+    }
+    let mut headers = Vec::new();
+    for header in ask["headers"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        let (Some(name), Some(value)) = (header[0].as_str(), header[1].as_str()) else { return refused("form") };
+        let token = !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        if !token || value.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) || name.len() + value.len() > 8192 {
+            return refused("form");
+        }
+        if forbidden_header(name) {
+            return refused("form");
+        }
+        if name.eq_ignore_ascii_case("authorization") {
+            visit.hide(value);
+            if let Some((_, token)) = value.split_once(' ') {
+                visit.hide(token.trim());
+            }
+        }
+        headers.push((name.to_string(), value.to_string()));
+    }
+    if headers.len() > 32 {
+        return refused("form");
+    }
+    let body = match &ask["body"] {
+        Value::Null => None,
+        Value::String(body) if body.len() <= visit.limits.request_body => Some(body.clone()),
+        Value::String(_) => return refused("size"),
+        _ => return refused("form"),
+    };
+    if visit.requests >= visit.limits.requests {
+        return refused("count");
+    }
+    let left = visit.left();
+    if left < Duration::from_secs(1) {
+        return refused("time");
+    }
+    visit.requests += 1;
+    let request = WebRequest { method: method.to_string(), url: url.to_string(), host: host.clone(), headers, body };
+    let path = url.split(['?', '#']).next().unwrap_or("").strip_prefix("https://").unwrap_or("").to_string();
+    let wait = left.min(visit.limits.request_time);
+    let most = visit.limits.answer_body;
+    match visit.services.web(&request, wait, most) {
+        Ok(answer) => {
+            visit.said(format!("{method} {path}: {} ({} bytes)", answer.status, answer.body.len()));
+            let headers: Vec<[String; 2]> = answer.headers.iter().map(|(n, v)| [n.to_ascii_lowercase(), v.clone()]).collect();
+            json!({ "status": answer.status, "headers": headers, "body": answer.body })
+        }
+        Err(why) => {
+            visit.said(format!("{method} {path}: {why}"));
+            refused(why)
+        }
+    }
+}
+
+fn secret_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    if ask["get"] == true {
+        return match visit.services.secret() {
+            Ok(Some(secret)) => {
+                visit.hide_json(&secret);
+                json!({ "secret": secret })
+            }
+            Ok(None) => json!({ "secret": null }),
+            Err(why) => refused(why),
+        };
+    }
+    if let Some(secret) = ask["keep"].as_str() {
+        if secret.len() > sioul_core::extensions::SECRET_BYTES {
+            return refused("size");
+        }
+        visit.hide_json(secret);
+        return match visit.services.keep_secret(secret) {
+            Ok(()) => json!({ "kept": true }),
+            Err(why) => refused(why),
+        };
+    }
+    if ask["forget"] == true {
+        return match visit.services.forget_secret() {
+            Ok(()) => json!({ "forgotten": true }),
+            Err(why) => refused(why),
+        };
+    }
+    refused("form")
+}
+
+fn sign_in_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    if !visit.may_sign_in {
+        return refused("not-now");
+    }
+    if visit.signed_in {
+        return refused("count");
+    }
+    let (Some(open), Some(watch)) = (ask["open"].as_str(), ask["watch"].as_str()) else { return refused("form") };
+    let host = match https_host(open) {
+        Ok(host) => host,
+        Err(why) => return refused(why),
+    };
+    if !visit.grants.hosts.contains(&host) {
+        return refused("host");
+    }
+    let Some(prefix) = visit.grants.sign_in.clone() else { return refused("not-now") };
+    if !watch.starts_with(&prefix) || !sioul_core::extensions::manifest::watched(watch) {
+        return refused("form");
+    }
+    visit.signed_in = true;
+    visit.said(format!("a sign-in page shown on {host}"));
+    let shown = Instant::now();
+    let wait = visit.limits.sign_in;
+    let outcome = visit.services.sign_in(open, watch, &host, wait);
+    visit.aside += shown.elapsed();
+    match outcome {
+        Ok(Some(returned)) if returned.starts_with(watch) => {
+            visit.hide(&returned);
+            if let Some((_, query)) = returned.split_once('?') {
+                for pair in query.split(['&', '#']) {
+                    if let Some((_, value)) = pair.split_once('=') {
+                        visit.hide(value);
+                        visit.hide(&value.replace('+', " ").replace("%2B", "+").replace("%2F", "/").replace("%3D", "="));
+                    }
+                }
+            }
+            visit.said("the sign-in page returned".into());
+            json!({ "returned": returned })
+        }
+        Ok(_) => {
+            visit.said("the sign-in page was closed".into());
+            json!({ "cancelled": true })
+        }
+        Err(why) => refused(why),
+    }
+}
+
+// ---------------------------------------------------------------- memory, and the imports
+
+fn memory_of<S>(caller: &Caller<'_, Visit<S>>) -> Option<Memory> {
+    caller.get_export("memory").and_then(Extern::into_memory)
+}
+
+/// The call ended by the host, with why.
+fn halt<S, T>(caller: &mut Caller<'_, Visit<S>>, stop: Stop) -> Result<T, wasmi::Error> {
+    caller.data_mut().stop.get_or_insert(stop);
+    Err(wasmi::Error::new("stopped by Sioul"))
+}
+
+/// `len` bytes of the module's memory at `ptr`; none outside it.
+fn read<S>(caller: &Caller<'_, Visit<S>>, ptr: i32, len: i32, most: usize) -> Option<Vec<u8>> {
+    let (ptr, len) = (usize::try_from(ptr).ok()?, usize::try_from(len).ok()?);
+    if len > most {
+        return None;
+    }
+    let mut bytes = vec![0u8; len];
+    memory_of(caller)?.read(caller, ptr, &mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// One ask: read, checked, done, its answer kept for `answer`; its length.
+fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len: i32) -> Result<i32, wasmi::Error> {
+    let (most, asks) = (caller.data().limits.ask, caller.data().limits.asks);
+    if caller.data().spent() > caller.data().limits.time {
+        return halt(&mut caller, Stop::TooLong);
+    }
+    let Some(bytes) = read(&caller, ptr, len, most) else {
+        return halt(&mut caller, Stop::Trapped("an ask outside its memory, or larger than 1 MiB".into()));
+    };
+    let visit = caller.data_mut();
+    visit.asks += 1;
+    let answer = if visit.asks > asks {
+        refused("count")
+    } else {
+        match serde_json::from_slice::<Value>(&bytes) {
+            Err(_) => refused("form"),
+            Ok(ask) => match kind {
+                Kind::Now => now_answer(visit),
+                Kind::Log => log_answer(visit, &ask),
+                Kind::Hide => hide_answer(visit, &ask),
+                Kind::Web => web_answer(visit, &ask),
+                Kind::Secret => secret_answer(visit, &ask),
+                Kind::SignIn => sign_in_answer(visit, &ask),
+            },
+        }
+    };
+    let mut text = answer.to_string().into_bytes();
+    if text.len() > visit.limits.answer {
+        text = refused("size").to_string().into_bytes();
+    }
+    let len = i32::try_from(text.len()).unwrap_or(0);
+    visit.kept = text;
+    Ok(len)
+}
+
+fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>, grants: &Grants) -> Result<(), wasmi::Error> {
+    linker.func_wrap("sioul", "answer", |mut caller: Caller<'_, Visit<S>>, ptr: i32| -> Result<(), wasmi::Error> {
+        let kept = std::mem::take(&mut caller.data_mut().kept);
+        let written = usize::try_from(ptr).ok().zip(memory_of(&caller)).is_some_and(|(at, memory)| memory.write(&mut caller, at, &kept).is_ok());
+        if !written {
+            return halt(&mut caller, Stop::Trapped("an answer asked outside its memory".into()));
+        }
+        Ok(())
+    })?;
+    linker.func_wrap("sioul", "reply", |mut caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| -> Result<(), wasmi::Error> {
+        if caller.data().reply.is_some() {
+            return halt(&mut caller, Stop::Nonsense("it replied twice".into()));
+        }
+        let most = caller.data().limits.reply;
+        match read(&caller, ptr, len, most) {
+            Some(bytes) => {
+                caller.data_mut().reply = Some(bytes);
+                Ok(())
+            }
+            None => halt(&mut caller, Stop::Nonsense("a reply outside its memory, or larger than 8 MiB".into())),
+        }
+    })?;
+    linker.func_wrap("sioul", "now", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Now, ptr, len))?;
+    linker.func_wrap("sioul", "log", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Log, ptr, len))?;
+    linker.func_wrap("sioul", "hide", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Hide, ptr, len))?;
+    if !grants.hosts.is_empty() {
+        linker.func_wrap("sioul", "web", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Web, ptr, len))?;
+    }
+    if grants.sign_in.is_some() {
+        linker.func_wrap("sioul", "secret", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Secret, ptr, len))?;
+        linker.func_wrap("sioul", "sign_in", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::SignIn, ptr, len))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- a call
+
+/// Why the module stopped, from wasmi's error and what the host said.
+fn stop_of<S>(store: &mut Store<Visit<S>>, error: &wasmi::Error) -> Stop {
+    if let Some(stop) = store.data_mut().stop.take() {
+        return stop;
+    }
+    match error.as_trap_code() {
+        Some(wasmi::TrapCode::OutOfFuel) => Stop::TooLong,
+        Some(wasmi::TrapCode::GrowthOperationLimited) => Stop::Memory,
+        Some(code) => Stop::Trapped(code.to_string()),
+        None => Stop::Trapped(error.to_string()),
+    }
+}
+
+/// A function of the module run to its end, fuel given in slices, the steps
+/// and the time checked between them; its one result, an `i32`.
+fn run<S: Services>(store: &mut Store<Visit<S>>, func: &Func, params: &[Val]) -> Result<i32, Stop> {
+    let (slice, steps, time) = (store.data().limits.slice, store.data().limits.steps, store.data().limits.time);
+    store.set_fuel(slice).map_err(|e| Stop::Trapped(e.to_string()))?;
+    let mut used = 0u64;
+    let mut results = [Val::I32(0)];
+    let mut call = func.call_resumable(&mut *store, params, &mut results);
+    loop {
+        match call {
+            Ok(ResumableCall::Finished) => return results[0].i32().ok_or_else(|| Stop::Nonsense("a result that is not an i32".into())),
+            Ok(ResumableCall::OutOfFuel(out)) => {
+                used += slice;
+                if used >= steps || store.data().spent() > time {
+                    return Err(Stop::TooLong);
+                }
+                store.set_fuel(slice.max(out.required_fuel())).map_err(|e| Stop::Trapped(e.to_string()))?;
+                call = out.resume(&mut *store, &mut results);
+            }
+            Ok(ResumableCall::HostTrap(trap)) => {
+                let error = trap.into_host_error();
+                return Err(stop_of(store, &error));
+            }
+            Err(error) => return Err(stop_of(store, &error)),
+        }
+    }
+}
+
+/// The log's lines with every hidden value replaced, then cut.
+fn finish(log: Vec<String>, hidden: &mut [String], width: usize) -> Vec<String> {
+    hidden.sort_by_key(|h| std::cmp::Reverse(h.len()));
+    log.into_iter()
+        .map(|mut line| {
+            for value in hidden.iter() {
+                if line.contains(value.as_str()) {
+                    line = line.replace(value.as_str(), "[hidden]");
+                }
+            }
+            let mut cut: String = line.chars().take(width).collect();
+            if cut.len() < line.len() {
+                cut.push('…');
+            }
+            cut
+        })
+        .collect()
+}
+
+/// Runs one call of the extension in `file`, given only what `grants` say:
+/// `call` is the call's JSON, `may_sign_in` whether it may show a sign-in
+/// page (a `sign-in` call). The services come back with the outcome.
+pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, services: S, limits: &Limits, may_sign_in: bool) -> (Outcome, S) {
+    let visit = Visit {
+        services,
+        grants: grants.clone(),
+        limits: limits.clone(),
+        may_sign_in,
+        signed_in: false,
+        started: Instant::now(),
+        aside: Duration::ZERO,
+        kept: Vec::new(),
+        reply: None,
+        hidden: Vec::new(),
+        log: Vec::new(),
+        lines: 0,
+        requests: 0,
+        asks: 0,
+        stop: None,
+        store_limits: StoreLimitsBuilder::new().memory_size(limits.memory).memories(1).tables(1).table_elements(10_000).instances(1).trap_on_grow_failure(true).build(),
+    };
+    let mut config = Config::default();
+    config.consume_fuel(true).compilation_mode(CompilationMode::LazyTranslation).enforced_limits(EnforcedLimits::strict());
+    let engine = Engine::new(&config);
+    let mut store = Store::new(&engine, visit);
+    store.limiter(|visit| &mut visit.store_limits);
+    let reply = called(&engine, &mut store, file, grants, call, limits);
+    let mut visit = store.into_data();
+    if let Err(stop) = &reply {
+        visit.said(format!("stopped: {}", stop.detail()));
+    }
+    let log = finish(std::mem::take(&mut visit.log), &mut visit.hidden, limits.log_width);
+    (Outcome { reply, log }, visit.services)
+}
+
+fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], grants: &Grants, call: &str, limits: &Limits) -> Result<String, Stop> {
+    if file.len() > limits.file {
+        return Err(Stop::NotRead("larger than 8 MiB".into()));
+    }
+    if call.len() > limits.call {
+        return Err(Stop::Nonsense("a call larger than Sioul sends".into()));
+    }
+    let module = Module::new(engine, file).map_err(|e| Stop::NotRead(e.to_string()))?;
+    // Only what the manifest grants: anything else imported, and it is not started.
+    let given = granted(grants);
+    for import in module.imports() {
+        if import.module() != "sioul" || !given.contains(&import.name()) || !matches!(import.ty(), ExternType::Func(_)) {
+            return Err(Stop::AsksMore(format!("{}.{}", import.module(), import.name())));
+        }
+    }
+    let mut linker = Linker::new(engine);
+    link(&mut linker, grants).map_err(|e| Stop::Trapped(e.to_string()))?;
+    store.set_fuel(limits.slice).map_err(|e| Stop::Trapped(e.to_string()))?;
+    let instance = linker.instantiate_and_start(&mut *store, &module).map_err(|e| match e.as_trap_code() {
+        Some(_) => stop_of(store, &e),
+        None => Stop::Nonsense(format!("it does not start: {e}")),
+    })?;
+    let exported = |name: &str| Stop::Nonsense(format!("it exports no {name} of the interface's form"));
+    let memory = instance.get_memory(&*store, "memory").ok_or_else(|| exported("memory"))?;
+    // Each export of the interface's form (its types checked), then run untyped, in slices.
+    instance.get_typed_func::<(), i32>(&*store, "sioul_interface").map_err(|_| exported("sioul_interface"))?;
+    instance.get_typed_func::<i32, i32>(&*store, "sioul_alloc").map_err(|_| exported("sioul_alloc"))?;
+    instance.get_typed_func::<(i32, i32), i32>(&*store, "sioul_call").map_err(|_| exported("sioul_call"))?;
+    let func = |name: &str| instance.get_func(&*store, name).ok_or_else(|| exported(name));
+    let (interface, alloc, entry) = (func("sioul_interface")?, func("sioul_alloc")?, func("sioul_call")?);
+    let version = run(store, &interface, &[])?;
+    if u32::try_from(version).ok() != Some(sioul_core::extensions::INTERFACE) {
+        return Err(Stop::Interface(version));
+    }
+    let len = i32::try_from(call.len()).map_err(|_| Stop::Nonsense("a call too large".into()))?;
+    let at = run(store, &alloc, &[Val::I32(len)])?;
+    let written = usize::try_from(at).ok().filter(|at| *at != 0).is_some_and(|at| memory.write(&mut *store, at, call.as_bytes()).is_ok());
+    if !written {
+        return Err(Stop::Nonsense("no room for the call in its memory".into()));
+    }
+    let status = run(store, &entry, &[Val::I32(at), Val::I32(len)])?;
+    let Some(reply) = store.data_mut().reply.take() else { return Err(Stop::Nonsense("it gave no reply".into())) };
+    if status != 0 {
+        return Err(Stop::Nonsense(format!("its call returned {status}")));
+    }
+    String::from_utf8(reply).map_err(|_| Stop::Nonsense("a reply that is not UTF-8".into()))
+}

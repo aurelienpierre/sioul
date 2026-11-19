@@ -57,6 +57,13 @@ flate2 = "1"
 # NFC): already built for mail-auth's domain names.
 icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
+# Extensions (extensions/engine.rs, docs/extensions.md): their WebAssembly
+# files run by wasmi, an interpreter in pure Rust (MIT or Apache-2.0): no
+# code made at run time, so the same on Linux, in the Flatpak, on Windows,
+# macOS and Android; fuel and memory limits. `validate` checks a module before
+# it runs; no WAT, no SIMD's text, no default features.
+wasmi = { version = "2.0.1", default-features = false, features = ["std", "validate"] }
+
 # Security keys (OpenPGP cards: a YubiKey, a Nitrokey) on every device: the
 # card protocol, the backend traits its transports implement, and the PIN as
 # the protocol takes it (securitykey/ocard.rs); the phone's transport is
@@ -112,6 +119,8 @@ android-keyring = { version = "0.2", default-features = false, features = ["ndk-
 ndk-context = "0.1"
 
 [dev-dependencies]
+# The engine's tests write their small modules in WebAssembly's text form (extensions/tests.rs).
+wat = "1"
 # Your addresses for one test's thread alone (`agenda::own_addresses_here`): a meeting you organize, its deletion refused (dav.rs).
 sioul-core = { path = "../sioul-core", features = ["test-hooks"] }
 # The phone's backend tested against a stand-in card (securitykey/phone_tests.rs).

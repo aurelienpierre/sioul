@@ -727,6 +727,10 @@ sioul-sync/src/devices.rs	publish	1	crate::share::write_atomically(&path, sealed
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(path, format!("# This device, as it tells your other devices (docs/database.md, \"Devices\").\n{text}").as_bytes())
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(&published_path(path), text.as_bytes())
 
+# sioul-sync/src/extensions/mod.rs: an extension's file, kept in Sioul's private data once its hash held, and taken out: no item.
+sioul-sync/src/extensions/mod.rs	install	1	sioul_core::filelock::replace(&path, &bytes)
+sioul-sync/src/extensions/mod.rs	discard_file	1	std::fs::remove_file(state::file_path(offer))
+
 # sioul-sync/src/photo.rs: a contact's photo from the web, loaded when you asked, in the cache's photos: no item.
 sioul-sync/src/photo.rs	keep	1	std::fs::write(&part, bytes)
 sioul-sync/src/photo.rs	keep	1	std::fs::rename(&part, &path)

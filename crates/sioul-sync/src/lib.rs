@@ -75,6 +75,7 @@
 //! - [`geocode`]: where an address is, asked of OpenStreetMap's geocoder.
 //! - [`weather`]: the weather, asked of Open-Meteo.
 //! - [`ocr`]: a scan's text, read by the system's own programs.
+//! - [`extensions`]: programs apart from Sioul run in a sandbox, what they may ask done for them, their signed list and their files.
 //!
 //! ## Passwords
 //!
@@ -125,6 +126,7 @@ pub mod disk;
 // The desktop's do-not-disturb during Sioul's pauses (Plasma's inhibition, dconf's changes).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod dnd;
+pub mod extensions;
 pub mod fetch;
 pub mod filters;
 pub mod geocode;
