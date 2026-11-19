@@ -1600,6 +1600,22 @@ pub fn begun(state: &Path) -> bool {
     !Storage::read(state).is_moved() && Journal::load(state).ok().flatten().is_some_and(|journal| journal.switched == 0)
 }
 
+/// Where a paper or a scan the move copied is now, for a link that still
+/// names its old place in the notes folder's `papers/` or `letters/` (a
+/// task's or an event's `file://` link, never rewritten: an event may be a
+/// meeting, and they live on their servers): read from the move's own
+/// journal when the link is opened. None: not one of them, or its copy is
+/// no longer there.
+pub fn moved_to(state: &Path, old: &Path) -> Option<PathBuf> {
+    let notes = Storage::read(state).from_path()?;
+    let journal = Journal::load(state).ok().flatten()?;
+    let relative = old.strip_prefix(&notes).ok().map(Path::to_path_buf).or_else(|| resolved(old).strip_prefix(resolved(&notes)).ok().map(Path::to_path_buf))?;
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    let entry = journal.files.iter().find(|e| e.from == relative && matches!(e.kind, Some(Kind::Paper | Kind::Letter)))?;
+    let to = PathBuf::from(&entry.to);
+    std::fs::symlink_metadata(&to).is_ok_and(|meta| meta.is_file()).then_some(to)
+}
+
 /// How many old files of Sioul's this device's notes folder still holds, by
 /// the journal of its move: what the line of Settings ▸ Sharing offers to
 /// take out (`clean`, on the person's press, never by itself).

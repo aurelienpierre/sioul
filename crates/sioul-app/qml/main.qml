@@ -941,8 +941,12 @@ SioulWindow {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
         }
-        else if (item.key !== "")
-            Qt.openUrlExternally(item.key)
+        // Anything else, outside Sioul; a link to a paper's or a scan's old place in the notes
+        // folder (a task's or an event's, never rewritten) opens the moved file (`storage::moved_to`).
+        else if (item.key !== "") {
+            const moved = item.key.startsWith("file:") ? sioul.movedFile(item.key) : ""
+            Qt.openUrlExternally(moved !== "" ? moved : item.key)
+        }
     }
 
     // A message, from anywhere but Mail's own list and the Porch's own rows (the

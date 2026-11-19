@@ -1953,6 +1953,11 @@ pub mod qobject {
         /// off the window's thread; said in the status line and in `storageMove`.
         #[qinvokable]
         fn move_lists(self: Pin<&mut Sioul>, papers: &QString, letters: &QString, carry: bool);
+        /// Where a paper or a scan is now, for a `file://` link that still
+        /// names its old place in the notes folder (`storage::moved_to`), as a
+        /// file's address; "" for any other.
+        #[qinvokable]
+        fn moved_file(self: &Sioul, url: &QString) -> QString;
         /// The sentence that says a sync program is known to carry a folder
         /// chosen for papers or letters (`share::carrier_of`), or "".
         #[qinvokable]
@@ -8691,6 +8696,14 @@ impl qobject::Sioul {
 impl qobject::Sioul {
     fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
         QString::from(&crate::share::set_notes_carried(carried))
+    }
+
+    fn moved_file(&self, url: &QString) -> QString {
+        let url = url.to_string();
+        if !url.starts_with("file:") {
+            return QString::default();
+        }
+        QString::from(&sioul_core::storage::moved_to(&sioul_core::config::state_dir(), &local_path(&url)).map(|to| file_url(&to)).unwrap_or_default())
     }
 
     fn folder_carrier(&self, folder: &QString) -> QString {

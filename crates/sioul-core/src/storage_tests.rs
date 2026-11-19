@@ -869,3 +869,21 @@ fn a_trial_never_runs_on_the_devices_own_folders() {
         assert_eq!(clash(&spelled, &own), Some(("notes", "notes")));
     }
 }
+
+/// A task's or an event's link to a scan's or a paper's old place, never
+/// rewritten, opens the moved file, read from the move's journal; any other
+/// path is none of the move's (the builder's departure, settled).
+#[test]
+fn a_link_to_an_old_place_finds_the_moved_file() {
+    let stand = stand("old-link");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    let scan = stand.folders.notes.join("letters").join("2026").join("2026-10-12 caf other.pdf");
+    assert_eq!(moved_to(&stand.folders.state, &scan), Some(stand.folders.letters.join("2026").join("2026-10-12 caf other.pdf")));
+    assert_eq!(moved_to(&stand.folders.state, &stand.folders.notes.join("papers").join("ids").join("Card.png")), Some(stand.folders.papers.join("ids").join("Card.png")));
+    // Taken out of the notes folder since: the link still opens the copy.
+    assert!(clean(&stand.folders.state, NOW + 86_400).unwrap().whole());
+    assert!(!scan.exists());
+    assert_eq!(moved_to(&stand.folders.state, &scan), Some(stand.folders.letters.join("2026").join("2026-10-12 caf other.pdf")));
+    assert_eq!(moved_to(&stand.folders.state, &stand.folders.notes.join("admin").join("lease.md")), None, "a note: none of the move's");
+    assert_eq!(moved_to(&stand.folders.state, &stand.base.join("elsewhere").join("Tax-notice.pdf")), None);
+}
