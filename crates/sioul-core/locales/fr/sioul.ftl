@@ -9279,6 +9279,7 @@ storage-line-not = Les listes de Sioul sont encore dans votre dossier de notes s
 storage-waiting = Vos listes se déplacent une fois que chaque appareil sait où elles vont : { $devices } a un Sioul plus ancien. Mettez-le à jour, ou oubliez-le dans Paramètres ▸ Appareils.
 storage-moved-already = Vos listes ont déjà été déplacées sur cet appareil.
 storage-stopped = Le déplacement s’est arrêté avant la fin : rien n’a bougé.
+storage-sharing-unreadable = Le partage de Sioul est en place sur cet appareil, mais sa clé ne peut pas être lue maintenant (le trousseau du système verrouillé ?) : rien ne bouge et rien n’est retiré tant que Sioul ne peut pas savoir où en sont vos autres appareils.
 storage-old-files = Les anciens fichiers de Sioul sont encore dans votre dossier de notes ({ $count } fichiers). Plus rien ne les lit ; ils ne partent que quand vous le dites.
 storage-old-files-waiting = Ils pourront être retirés une fois que chaque appareil aura fait le déplacement : { $devices } ne l’a pas encore fait.
 storage-take-out = Les retirer

@@ -132,7 +132,8 @@ SafeDialog {
                 objectName: "storageMoveWaiting"
                 visible: move.view.moved !== true && move.view.open === false
                 Layout.fillWidth: true
-                text: move.sioul.textWith("storage-waiting", "devices", move.view.waiting || "")
+                // Why it waits: the devices on an older Sioul, or the sharing that cannot be read now (`held`).
+                text: (move.view.held || "") !== "" ? move.view.held : move.sioul.textWith("storage-waiting", "devices", move.view.waiting || "")
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: move.theme.warm

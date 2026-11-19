@@ -412,6 +412,9 @@ pub struct Named {
 /// `SILENT_DAYS` holds nobody.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StorageStand {
+    /// The sharing is set up here and cannot be read now (its key not given
+    /// by the keyring): as if a device were missing, nothing opens (rule 3).
+    pub unreadable: bool,
     /// No other device counts: nothing to wait for (no sharing, or alone in it).
     pub alone: bool,
     /// Every other device that counts knows the new places: this device may move.
@@ -439,6 +442,7 @@ fn stand_of(present: &[(String, Option<crate::devices::Entry>, bool)], _computer
     let waiting: Vec<Named> = present.iter().filter(|(_, entry, _)| said(entry) < crate::devices::STORAGE_KNOWS).map(|(id, entry, _)| named(id, entry.as_ref())).collect();
     let unmoved: Vec<Named> = present.iter().filter(|(_, entry, _)| said(entry) == crate::devices::STORAGE_KNOWS).map(|(id, entry, _)| named(id, entry.as_ref())).collect();
     StorageStand {
+        unreadable: false,
         alone: present.is_empty(),
         open: waiting.is_empty(),
         all_moved: waiting.is_empty() && unmoved.is_empty(),

@@ -1698,10 +1698,13 @@ fn exchanged(outcome: &share::Outcome, began_ms: i64) {
 static WHOLE: Mutex<Option<i64>> = Mutex::new(None);
 
 /// Where the move of Sioul's lists out of the notes folder stands among
-/// your devices (`share::storage_stand`); none while sharing is not set up here.
+/// your devices (`share::storage_stand`); none while sharing is not set up
+/// here. Set up and not readable now (the keyring did not give its key): a
+/// stand that opens nothing, never "no sharing" (rule 3).
 pub(crate) fn storage_stand() -> Option<share::StorageStand> {
     let here = here();
-    let (folder, key) = sealed(attached(&here))?;
+    let folder = attached(&here)?;
+    let Some((folder, key)) = sealed(Some(folder)) else { return Some(share::StorageStand { unreadable: true, ..share::StorageStand::default() }) };
     Some(share::storage_stand(&folder, &key, &memory_path(), &here.id, jiff::Timestamp::now().as_millisecond()))
 }
 

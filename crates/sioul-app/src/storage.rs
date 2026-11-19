@@ -52,11 +52,7 @@ fn moved_now(papers: &str, letters: &str, carry: bool) -> Result<String, String>
     if config.storage.is_moved() {
         return Ok(tr().text("storage-moved-already", None));
     }
-    if let Some(stand) = crate::share::storage_stand()
-        && !stand.open
-    {
-        return Err(say("storage-waiting", &[("devices", names(&stand.waiting))]));
-    }
+    move_gate(crate::share::storage_stand().as_ref())?;
     let pick = |chosen: &str, default: PathBuf| if chosen.trim().is_empty() { default } else { crate::backend::local_path(chosen.trim()) };
     let (papers, letters) = (pick(papers, config.papers_folder()), pick(letters, config.letters_folder()));
     // The notes folder in its three states (`Config::notes_folder`): set and not read now
@@ -114,12 +110,24 @@ pub(crate) fn tidy() {
     storage::sweep_kept(&sioul_core::config::data_dir().join(storage::KEPT), now);
 }
 
+/// Whether this device may move now: every other device that counts knows
+/// the new places (or none is known), and the sharing, set up, reads (a
+/// sharing that cannot be read holds the move as a device missing would).
+fn move_gate(stand: Option<&sioul_sync::share::StorageStand>) -> Result<(), String> {
+    match stand {
+        Some(stand) if stand.unreadable => Err(tr().text("storage-sharing-unreadable", None)),
+        Some(stand) if !stand.open => Err(say("storage-waiting", &[("devices", names(&stand.waiting))])),
+        _ => Ok(()),
+    }
+}
+
 /// Whether the old files may be taken out now: every other device that
 /// counts moved (or none is known), the sharing read. Else the sentence
 /// that says who is still to move, or what cannot be read.
 fn take_out_gate(stand: Option<&sioul_sync::share::StorageStand>) -> Result<(), String> {
     match stand {
         None => Ok(()),
+        Some(stand) if stand.unreadable => Err(tr().text("storage-sharing-unreadable", None)),
         Some(stand) if stand.alone || stand.all_moved => Ok(()),
         Some(stand) => Err(say("storage-old-files-waiting", &[("devices", names(&stand.waiting.iter().chain(&stand.unmoved).cloned().collect::<Vec<_>>()))])),
     }
@@ -177,6 +185,8 @@ struct View {
     said: String,
     /// Every other device that counts knows the new places (or none counts): the move may be made.
     open: bool,
+    /// Why the move waits, when it does: the devices on an older Sioul, or the sharing not read now.
+    held: String,
     /// No other device counts; sharing set up here at all.
     alone: bool,
     sharing: bool,
@@ -232,8 +242,9 @@ pub(crate) fn view_json() -> String {
         cleaned: here.cleaned > 0,
         moving: MOVING.load(Ordering::SeqCst),
         said: SAID.lock().map(|s| s.clone()).unwrap_or_default(),
-        open: stand.as_ref().is_none_or(|s| s.open),
-        alone: stand.as_ref().is_none_or(|s| s.alone),
+        open: move_gate(stand.as_ref()).is_ok(),
+        held: move_gate(stand.as_ref()).err().unwrap_or_default(),
+        alone: stand.as_ref().is_none_or(|s| s.alone && !s.unreadable),
         sharing: stand.is_some(),
         waiting: stand.as_ref().map(|s| names(&s.waiting)).unwrap_or_default(),
         unmoved: stand.as_ref().map(|s| names(&s.unmoved)).unwrap_or_default(),
@@ -311,4 +322,26 @@ pub(crate) fn change_folder(qt: &QtThread, shared: &Arc<Shared>, key: &str, fold
         crate::share::exchange(&qt_again, &shared);
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_sync::share::{Named, StorageStand};
+
+    /// The gates of the move and of the take-out: no sharing, nothing to wait
+    /// for; a sharing set up that cannot be read holds both, as a device
+    /// missing would (review S22); a device not moved holds the take-out, named.
+    #[test]
+    fn a_sharing_that_cannot_be_read_holds_the_move_and_the_take_out() {
+        assert!(move_gate(None).is_ok() && take_out_gate(None).is_ok());
+        let unreadable = StorageStand { unreadable: true, ..StorageStand::default() };
+        assert!(move_gate(Some(&unreadable)).is_err() && take_out_gate(Some(&unreadable)).is_err());
+        let alone = StorageStand { alone: true, open: true, all_moved: true, ..StorageStand::default() };
+        assert!(move_gate(Some(&alone)).is_ok() && take_out_gate(Some(&alone)).is_ok());
+        let phone = Named { id: "p".into(), name: "Phone".into(), kind: "phone".into() };
+        let one_to_move = StorageStand { open: true, unmoved: vec![phone], ..StorageStand::default() };
+        assert!(move_gate(Some(&one_to_move)).is_ok());
+        assert!(take_out_gate(Some(&one_to_move)).is_err_and(|line| line.contains("Phone")), "the device still to move named");
+    }
 }

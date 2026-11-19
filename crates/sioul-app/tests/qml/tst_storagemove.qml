@@ -58,7 +58,7 @@ Item {
     }
 
     function view(more) {
-        return JSON.stringify(Object.assign({ moved: false, cleaned: false, moving: false, said: "", open: true, alone: false, sharing: true, waiting: "", unmoved: "", carries: true, notes_carried: false, notes: "/stand-in/Notes", notes_state: "ready", lost: "", papers: "/stand-in/Documents/Papers", letters: "/stand-in/Documents/Letters", lists: 9, papers_files: 3, letters_files: 2, bytes: 4096, offer: true }, more))
+        return JSON.stringify(Object.assign({ moved: false, cleaned: false, moving: false, said: "", open: true, alone: false, sharing: true, waiting: "", unmoved: "", carries: true, notes_carried: false, notes: "/stand-in/Notes", notes_state: "ready", lost: "", held: "", papers: "/stand-in/Documents/Papers", letters: "/stand-in/Documents/Letters", lists: 9, papers_files: 3, letters_files: 2, bytes: 4096, offer: true }, more))
     }
 
     StorageMove {
@@ -176,6 +176,15 @@ Item {
             tryVerify(() => move.opened)
             verify(named("storageMoveWaiting").visible)
             compare(named("storageMoveWaiting").text, "storage-waiting Old laptop")
+            verify(!named("storageMoveNow").enabled)
+        }
+
+        function test_a_sharing_that_cannot_be_read_holds_the_move() {
+            mock.storageMove = root.view({ open: false, offer: false, held: "storage-sharing-unreadable" })
+            move.show()
+            tryVerify(() => move.opened)
+            verify(named("storageMoveWaiting").visible)
+            compare(named("storageMoveWaiting").text, "storage-sharing-unreadable")
             verify(!named("storageMoveNow").enabled)
         }
 
