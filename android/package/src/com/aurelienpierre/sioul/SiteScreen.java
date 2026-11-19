@@ -76,18 +76,25 @@ import android.widget.Toast;
  * device alone (no backup, no transfer: res/xml/sioul_data_extraction_rules.xml):
  * a site left and opened again is still signed in, after Android ended the
  * process too, and the page shown then is loaded again ({@link SiteWeb#kept}).
- * An upload goes through Android's file chooser; a download into Downloads,
- * said by Android's one notice that opens the file; a pop-up a site opens
- * at a tap shows over its page and goes when the page closes it; a link the
- * person taps to another site opens in the browser ({@link SiteWeb#where}).
- * The camera, the microphone and the location are refused in this phase,
- * the menu saying the site asked. A page whose drawing process ends closes
- * the screen; Sioul goes on.
+ * An upload goes through Android's file chooser, what it hands back
+ * checked ({@link SiteWeb#chosen}); a download is asked about first, then
+ * fetched by Sioul itself in the site's session ({@link SiteDownload}),
+ * into Downloads or a folder chosen, a line under the bar following it; a
+ * pop-up a site opens at a tap shows over its page and goes when the page
+ * closes it; a link the person taps to another site, or a new tab's first
+ * page on another site, opens in the browser ({@link SiteWeb#where}); the
+ * bar's first line is the site's name on its own domain, else the host
+ * shown ({@link SiteWeb#bar}). The camera, the microphone and the location
+ * are refused in this phase, the menu saying the site asked. A page whose
+ * drawing process ends closes the screen, or comes back at its return
+ * when it ended behind; Sioul goes on. Whatever brings Sioul up as its
+ * icon does closes the screen (the manifest's finishOnTaskLaunch).
  *
  * <p>Safety: https pages only, mixed content never; no file or content
- * access from a page; no JavaScript interface; not exported, its one extra
- * checked ({@link SiteWeb.Opening#of}); nothing of a page in the log (no
- * address, no cookie, not its console).
+ * access from a page or a service worker; third-party cookies refused; no
+ * JavaScript interface; not exported, its one extra checked
+ * ({@link SiteWeb.Opening#of}); nothing of a page in the log (no address,
+ * no cookie, not its console); not pictured in Recents.
  */
 public final class SiteScreen extends Activity
 {
