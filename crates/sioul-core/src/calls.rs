@@ -509,6 +509,10 @@ pub struct Inputs<'a> {
     /// The stretches you are busy in, from and to (Unix seconds:
     /// `busy::stretches`); asked only for a phone whose line says something.
     pub busy: &'a dyn Fn(i64, i64) -> Vec<(i64, i64)>,
+    /// The switch's latest press: a busy stretch it holds off (As usual
+    /// pressed after it began, `everywhere::pressed_off`) is no busy stretch
+    /// for the line either, as for do-not-disturb (review of `phones`, H1).
+    pub press: Option<&'a crate::everywhere::Press>,
     /// Being busy turns do-not-disturb on (the box "While busy" among what
     /// turns it on, the Busy rule's): a busy stretch is then do-not-disturb
     /// on this phone's line, only Always through ringing; off, the line's
@@ -551,7 +555,8 @@ pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
         });
     };
     let android = grid.screens_nothing();
-    let busy = if android { Vec::new() } else { (i.busy)(i.from.timestamp().as_second(), i.until.timestamp().as_second()) };
+    // The busy stretches as do-not-disturb reads them: none that a press holds off (H1).
+    let busy: Vec<(i64, i64)> = if android { Vec::new() } else { (i.busy)(i.from.timestamp().as_second(), i.until.timestamp().as_second()).into_iter().filter(|(since, _)| !crate::everywhere::pressed_off(i.press, *since)).collect() };
     let (group_numbers, groups) = if android { (Vec::new(), Vec::new()) } else { group_rows(&grid, i.senders, &numbers) };
     // The screening's part, from the line: what it keeps out whatever else (the switch "commercial"), numbers called.
     let spam = if grid.switches.commercial { screening::Spam::Voicemail } else { screening::Spam::Unknown };
@@ -641,9 +646,11 @@ pub struct LineMoments<'a> {
 
 /// The frames of a phone whose line says something: the clock's frames cut
 /// where do-not-disturb's layer, Reachable or a busy stretch begins or ends.
-/// In this order: a pause, do-not-disturb's layer (its switch, a focus
-/// session), and a busy stretch while being busy turns do-not-disturb on
-/// (`busy_is_dnd`) hold all but Always through; then Reachable; then the
+/// A busy stretch is one do-not-disturb reads: none while Reachable lasts,
+/// none a press held off (`build`, H1). In this order: a pause,
+/// do-not-disturb's layer (its switch, a focus session), and a busy stretch
+/// while being busy turns do-not-disturb on (`busy_is_dnd`) hold all but
+/// Always through; then Reachable; then the
 /// moment's column: busy (that box off), else the night (sleep), else work hours, else
 /// the rest of the day (admin, leisure, meals, Free time). In a pause or
 /// under do-not-disturb's layer (its switch, a focus session) only Always
@@ -667,7 +674,8 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
             let dnd = holds(m.layers.dnd);
             let mut now = attention::Now::of_moment(&f.moment).layers(false, dnd);
             now.reachable = holds(m.layers.reachable);
-            let busy = m.busy.iter().any(|&(a, b)| a <= start && start < b);
+            // While Reachable lasts no busy stretch holds, as for do-not-disturb (`everywhere::now`; H1).
+            let busy = !now.reachable && m.busy.iter().any(|&(a, b)| a <= start && start < b);
             // Busy with its box among what turns do-not-disturb on: do-not-disturb, its rule, not the busy column.
             let busy_dnd = busy && m.busy_is_dnd;
             let busy = busy && !m.busy_is_dnd;
@@ -703,9 +711,12 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
                 let cell = g.groups.iter().any(|n| m.grid.groups.get(*n).is_some_and(|(_, cells)| cells[when.index()]));
                 ring.insert(g.row.clone(), known(cell));
             }
+            // A person's own row as the matrix says it, a busy stretch that turns do-not-disturb on read as do-not-disturb (H1).
+            let mut own_now = now.clone();
+            own_now.dnd = dnd || busy_dnd;
             for o in m.own {
                 let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
-                ring.insert(o.row.clone(), android || m.attention.decide(&call, &now).level == Level::Now);
+                ring.insert(o.row.clone(), android || m.attention.decide(&call, &own_now).level == Level::Now);
             }
             let column = if busy_dnd && !android { "dnd" } else if busy && !held && !now.reachable && !android { "busy" } else { column_of(&now) }.to_string();
             let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
@@ -3721,11 +3732,13 @@ mod line_tests {
         busy: Vec<(i64, i64)>,
         /// The stand-in for the box "While busy" among what turns do-not-disturb on.
         busy_is_dnd: bool,
+        /// The switch's latest press.
+        press: Option<crate::everywhere::Press>,
     }
 
     impl World {
         fn new() -> World {
-            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new(), busy_is_dnd: false }
+            World { senders: senders(), attention: Attention::usual(), clock: clock(), layers: Layers::default(), people: people(), expecting: None, screening: screening::Screening::default(), busy: Vec::new(), busy_is_dnd: false, press: None }
         }
 
         /// The table from Monday 16 November 2026, as `build` makes it; whether it asked for the busy stretches.
@@ -3736,7 +3749,7 @@ mod line_tests {
                 asked.set(true);
                 self.busy.clone()
             };
-            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, busy_is_dnd: self.busy_is_dnd };
+            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, press: self.press.as_ref(), busy_is_dnd: self.busy_is_dnd };
             (build(&inputs, line), asked.get())
         }
 
@@ -3978,5 +3991,39 @@ mod line_tests {
         assert_eq!(said(&on("01 99 00 00 04", "10:00")), (true, "blocked", "blocked".to_string()));
         assert_eq!(said(&Incoming { last_call: ms("2026-10-05T19:58"), ..on("01 99 00 55 55", "20:00") }), (true, "matrix", "stranger".to_string()), "no second call on this line");
         assert_eq!(said(&on("01 99 00 55 55", "08:00")), (false, "no-frame", "stranger".to_string()));
+    }
+
+    /// Reachable pressed during a busy stretch, with "While busy" turning
+    /// do-not-disturb on: the people you know ring on a phone with a line, as
+    /// on a phone without one (review of `phones`, H1; the reviewer's test).
+    #[test]
+    fn reachable_opens_a_busy_stretch_on_a_line() {
+        let meeting = (s("2026-11-16T15:00"), s("2026-11-16T16:00"));
+        let world = World {
+            busy: vec![meeting],
+            busy_is_dnd: true,
+            // Reachable from 15:10 to 15:50: do-not-disturb's layer holds nothing then.
+            layers: Layers { reachable: Some((s("2026-11-16T15:10"), Some(s("2026-11-16T15:50")))), ..Layers::default() },
+            ..World::new()
+        };
+        let (table, _) = world.build(Some(&line(Profile::Personal)));
+        assert!(rings(&table, "01 99 00 00 02", "15:30"), "Reachable: a contact rings during the meeting");
+        assert!(rings(&table, "01 99 00 00 01", "15:30"), "Reachable: a safe person rings during the meeting");
+        assert!(!rings(&table, "01 99 00 00 02", "15:55"), "Reachable over, the meeting holds again");
+        let (unsaid, _) = world.build(None);
+        assert!(rings(&unsaid, "01 99 00 00 02", "15:30"));
+    }
+
+    /// "As usual" pressed during a busy stretch holds that stretch off for
+    /// the line as for do-not-disturb, until it ends; the next one holds
+    /// (`everywhere::pressed_off`; H1).
+    #[test]
+    fn as_usual_pressed_during_a_busy_stretch_holds_it_off_on_a_line() {
+        let press = crate::everywhere::Press { at: ms("2026-11-16T15:10"), on: false, until: 0, from: "computer".into(), via: String::new(), state: crate::everywhere::State::Usual, open: false, held_off: 0, gone: false };
+        let world = World { busy: vec![(s("2026-11-16T15:00"), s("2026-11-16T16:00")), (s("2026-11-17T15:00"), s("2026-11-17T16:00"))], busy_is_dnd: true, press: Some(press), ..World::new() };
+        let (table, _) = world.build(Some(&line(Profile::Personal)));
+        assert!(rings(&table, "01 99 00 00 02", "15:30"), "held off by As usual: the contact rings");
+        let tomorrow = Incoming { now: ms("2026-11-17T15:30"), ..call("01 99 00 00 02", "15:30") };
+        assert!(decide(Some(&table), &tomorrow).refuse, "the next stretch, begun after the press, holds");
     }
 }

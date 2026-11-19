@@ -285,6 +285,7 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
             from: &from,
             until: &until,
             busy: &sioul_core::busy::stretches,
+            press: switch.latest().as_ref(),
             busy_is_dnd: busy_turns_dnd(config),
         },
         line,

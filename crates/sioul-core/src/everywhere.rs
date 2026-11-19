@@ -773,6 +773,26 @@ pub fn held_by_system(now: &Now, press: Option<&Press>, here: &str) -> bool {
     only_manual && press.is_some_and(|p| p.on && p.from == here && p.via == VIA_SYSTEM)
 }
 
+/// Whether a reason that began at `since` (Unix seconds) is held off by the
+/// switch's latest press: pressed off after it began (As usual, or the
+/// switch's off), it is held off until it ends. A press "on" never holds a
+/// reason off; Reachable holds the times off while it lasts (`now`), then
+/// what the As usual it found held off (`held_off`, F8): what still holds and
+/// was not held off turns on again. A gone device's holds nothing. Read by
+/// do-not-disturb (`now`) and by each phone's calls' table for a busy
+/// stretch (`calls::build`): one rule for both (review of `phones`, H1).
+pub fn pressed_off(press: Option<&Press>, since: i64) -> bool {
+    press.is_some_and(|p| {
+        let off = match p.state {
+            _ if p.gone => 0,
+            State::Reachable => p.held_off,
+            State::Usual => p.at,
+            State::Dnd => 0,
+        };
+        off > since.saturating_mul(1000)
+    })
+}
+
 /// Why do-not-disturb holds at `now` (Unix seconds), from the reasons'
 /// sources, the settings and the switch's latest press. A press "off" made
 /// after a reason began holds that reason off until it ends; the pause first,
@@ -785,21 +805,7 @@ pub fn now(settings: &DndSettings, sources: &Sources, press: Option<&Press>, now
         let paused_after = sources.pause_pressed.is_some_and(|at| at.saturating_mul(1000) >= p.at) || sources.pause_saw.is_some_and(|saw| saw >= p.at);
         (now < end && sources.paused.is_none() && !paused_after).then(|| Reach { since: p.at / 1000, until: Some(end), from: p.from.clone(), open: p.open })
     });
-    // Pressed off after it began (As usual, or the switch's off): held off until it
-    // ends. A press "on" never holds a reason off; Reachable holds the times off while
-    // it lasts (below), then what the As usual it found held off (`held_off`, F8): what
-    // still holds and was not held off turns on again. A gone device's holds nothing.
-    let pressed_off_after = |since: i64| {
-        press.is_some_and(|p| {
-            let off = match p.state {
-                _ if p.gone => 0,
-                State::Reachable => p.held_off,
-                State::Usual => p.at,
-                State::Dnd => 0,
-            };
-            off > since.saturating_mul(1000)
-        })
-    };
+    let pressed_off_after = |since: i64| pressed_off(press, since);
     let mut holds = Vec::new();
     let mut add = |why: Why, since: i64, until: Option<i64>| {
         // While Reachable lasts, neither Free time, nor the night, nor a busy stretch turns do-not-disturb on.
