@@ -12,8 +12,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 fn wallet() -> Result<Wallet, String> {
-    let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
-    Wallet::load(&root)
+    let places = load_config().places().ok_or_else(|| tr().text("papers-no-store", None))?;
+    Wallet::load_at(&places)
 }
 
 #[derive(Serialize)]
@@ -111,7 +111,7 @@ pub(crate) fn view() -> String {
     let kinds = Kind::ALL.iter().map(|k| Choice { id: k.id(), label: tr().text(&format!("paper-kind-{}", k.id()), None) }).collect();
     let wallet = match wallet() {
         Ok(wallet) => wallet,
-        Err(problem) => return json(&PapersView { store: load_config().notes_root_path().is_some(), problem, kinds, ..PapersView::default() }),
+        Err(problem) => return json(&PapersView { store: load_config().places().is_some(), problem, kinds, ..PapersView::default() }),
     };
     let today = sioul_core::zone::now().date();
     let config = load_config();
@@ -190,9 +190,9 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         String::new()
     } else {
         let path = crate::backend::local_path(edit.file.trim());
-        let inside = wallet.file_path(&old).is_some_and(|f| f == path) || path.starts_with(wallet.root.join(sioul_core::papers::FOLDER));
+        let inside = wallet.file_path(&old).is_some_and(|f| f == path) || path.starts_with(&wallet.docs.folder);
         if inside {
-            path.strip_prefix(&wallet.root).map_or_else(|_| path.display().to_string(), |p| p.to_string_lossy().replace('\\', "/"))
+            wallet.docs.named(&path)
         } else if path.is_file() {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             match wallet.keep_file(&path, &name) {
@@ -244,8 +244,8 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
 
 /// A paper taken out; its file stays where it is.
 pub(crate) fn remove(id: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
-    if let Err(e) = Wallet::change(&root, |wallet| wallet.remove(id)) {
+    let Some(places) = load_config().places() else { return tr().text("papers-no-store", None) };
+    if let Err(e) = Wallet::change_at(&places, |wallet| wallet.remove(id)) {
         return e;
     }
     // Its ties to persons go with it.

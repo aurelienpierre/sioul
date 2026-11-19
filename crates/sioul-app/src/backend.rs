@@ -3330,7 +3330,11 @@ pub(crate) fn load_config() -> Config {
         && *s == size
         && *t == time
     {
-        return config.clone();
+        // Where this device keeps its lists, read each time: the move's switch
+        // writes the state folder alone, never the file whose stamp is kept here.
+        let mut config = config.clone();
+        config.storage = sioul_core::storage::Storage::here();
+        return config;
     }
     let config = Config::load(&path).unwrap_or_default();
     // The words this program looks for, said once each time the file is read (`words::current`).
@@ -3548,7 +3552,7 @@ impl World {
         let config = load_config();
         World {
             // With the mail tied to projects, so their conversations follow.
-            store: config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
+            store: config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
             known: KnownSenders::load(&config.known_senders_path()),
             senders: porch::Senders::load(&config),
             config,
@@ -3563,11 +3567,11 @@ impl World {
 
     fn ledger(&self) -> Option<Ledger> {
         // With the bank accounts' movements counted in their budgets.
-        self.config.notes_root_path().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
+        self.config.records_root().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
     }
 
     fn ledger_path(&self) -> Option<PathBuf> {
-        self.config.notes_root_path().map(|root| root.join(budget::LEDGER))
+        self.config.records_root().map(|root| root.join(budget::LEDGER))
     }
 
     /// Every message about money, and what becomes of it.
@@ -3793,7 +3797,7 @@ fn compute(shared: &Shared) -> Views {
     let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).is_some_and(|account| crate::mail::read_here_only(account, &mode));
     let ours: Vec<Triaged> = items.iter().filter(|t| !another(t)).cloned().collect();
     let shown = if porch.open { PorchState::newest_shown(&ours) } else { BTreeMap::new() };
-    let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
+    let budgets = world.config.records_root().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
         // The money read once (`movements::books`, made again only when a file changed).
         let words = sioul_core::words::Words::of(&world.config);
         let books = sioul_core::movements::books(&root, &words, now.date());
@@ -4327,7 +4331,7 @@ fn tie_to_projects(files: &[PathBuf]) {
     let before = ties.links.len();
     // GitHub's notification mail, to its issue's task.
     crate::github::tie_mail(&config, files, &mut ties);
-    if let Some(store) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
+    if let Some(store) = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties)) {
         let senders = porch::Senders::load(&config);
         for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second()) {
             // By its Message-ID, else its digest in its account (`sioul:mail/…`).
@@ -4355,7 +4359,7 @@ fn tie_to_projects(files: &[PathBuf]) {
 fn retie_project(id: String) {
     std::thread::spawn(move || {
         let config = load_config();
-        let Some(project) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).and_then(|s| s.get(&id).cloned()) else { return };
+        let Some(project) = config.places().and_then(|places| ProjectStore::open(&places).ok()).and_then(|s| s.get(&id).cloned()) else { return };
         let routes: Vec<&sioul_core::projects::Route> = project.routes.iter().filter(|r| r.needs_body()).collect();
         if routes.is_empty() {
             return;
@@ -6424,7 +6428,7 @@ impl qobject::Sioul {
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {
         let world = World::load();
         let today = sioul_core::zone::now().date();
-        let Some(root) = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()) else { return QString::default() };
+        let Some(root) = world.config.records_root().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()) else { return QString::default() };
         let books = sioul_core::movements::books(&root, &sioul_core::words::Words::of(&world.config), today);
         let Some(found) = books.counted.budgets.iter().find(|b| b.id == id.to_string()) else { return QString::default() };
         let anchor = anchor.to_string().parse().unwrap_or(today);
@@ -8221,7 +8225,7 @@ impl qobject::Sioul {
     fn settings(&self, view: &QString) -> QString {
         let config = load_config();
         let lists: Vec<(String, String)> = sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| (format!("{}/{}", c.account, c.id), c.label(&config, tr()))).collect();
-        let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok());
+        let store = config.places().and_then(|places| ProjectStore::open(&places).ok());
         let mut rows = sioul_core::settings::for_view(&view.to_string(), &config, tr(), &lists, store.as_ref());
         // The categories are the tasks': the core does not read them.
         if view.to_string() == "tasks" {

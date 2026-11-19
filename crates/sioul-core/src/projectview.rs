@@ -373,7 +373,7 @@ mod tests {
         }
         let index = MailIndex::build(std::slice::from_ref(&root));
         let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: vec![PROVIDER.into()], priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
-        let store = ProjectStore { root: root.clone(), projects: projects.to_vec(), ties: Default::default() };
+        let store = ProjectStore { root: root.clone(), notes: root.clone(), projects: projects.to_vec(), ties: Default::default() };
         let gate = Gate::new(vec![source], Some(store), SenderList::default(), senders, now);
         (root, index, gate)
     }

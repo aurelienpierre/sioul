@@ -314,6 +314,7 @@ pub mod sounds;
 pub mod spam;
 pub mod sites;
 pub mod state;
+pub mod storage;
 pub mod stopped;
 pub mod taskview;
 pub mod thingsearch;

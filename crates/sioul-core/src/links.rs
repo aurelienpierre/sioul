@@ -905,7 +905,7 @@ impl World<'_> {
             // ("Into the agenda" labels its link the same): never by its id (review of
             // part 4, later 11); its card reads the rest.
             Kind::Letter => {
-                let letters = self.letters.get_or_init(|| self.vault.and_then(|v| crate::letters::Letters::load(&v.root).ok()));
+                let letters = self.letters.get_or_init(|| self.vault.and_then(|v| crate::letters::Letters::for_notes(&v.root).ok()));
                 let sender = letters.as_ref().and_then(|letters| letters.get(&id).map(|l| l.reading.sender.trim().to_string())).filter(|s| !s.is_empty());
                 out.title = sender.unwrap_or_else(|| id.clone());
                 out.key = id.clone();
@@ -1185,7 +1185,7 @@ impl Loaded {
     pub fn read(config: &crate::config::Config) -> Loaded {
         let read_at = Some(std::time::SystemTime::now());
         let zone = crate::zone::current();
-        let root = config.notes_root_path();
+        let root = config.records_root();
         let budget = root
             .as_deref()
             .and_then(|r| crate::budget::Ledger::load_with_bank(r, &crate::words::Words::of(config)).ok())

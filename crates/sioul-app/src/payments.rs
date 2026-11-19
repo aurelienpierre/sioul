@@ -23,7 +23,7 @@ fn budgets(ledger: &sioul_core::budget::Ledger) -> Vec<serde_json::Value> {
 /// Returns {payment, title, budgets}, or {problem}.
 pub(crate) fn from(kind: &str, key: &str, trust: &str) -> String {
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
+    let Some(root) = config.records_root() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
     let words = sioul_core::words::Words::of(&config);
     let ledger = sioul_core::budget::Ledger::load(&root).unwrap_or_default();
     let made = match kind {
@@ -53,7 +53,7 @@ pub(crate) fn add(edit: &str) -> String {
         title: String,
     }
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
+    let Some(root) = config.records_root() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
     let edit: Edit = match serde_json::from_str(edit) {
         Ok(edit) => edit,
         Err(e) => return json!({ "problem": e.to_string() }).to_string(),
@@ -76,7 +76,7 @@ pub(crate) fn add(edit: &str) -> String {
 /// are asked about once. Returns {said, ask: {payee, budget, title, way}|null} or {problem}.
 pub(crate) fn place(account: &str, movement: &str, choice: &str) -> String {
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
+    let Some(root) = config.records_root() else { return json!({ "problem": tr().text("papers-no-store", None) }).to_string() };
     let path = root.join(sioul_core::budget::LEDGER);
     let Some(budget) = choice.strip_prefix("budget:") else {
         return match sioul_core::accounts::set_assignment(&path, account, movement, choice) {
@@ -122,7 +122,7 @@ fn effect(ledger: &sioul_core::budget::Ledger, moved: &acts::Moved) -> String {
 /// (`acts::decide`): a yes is a rule of the budget file. Returns what went wrong, else what it did, in words.
 pub(crate) fn decide(payee: &str, budget: &str, way: &str, next: bool) -> String {
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return tr().text("papers-no-store", None) };
+    let Some(root) = config.records_root() else { return tr().text("papers-no-store", None) };
     let way = if way == "in" { Way::In } else { Way::Out };
     match acts::decide(&root, payee, budget, way, next) {
         Ok(()) if next => {
@@ -138,7 +138,7 @@ pub(crate) fn decide(payee: &str, budget: &str, way: &str, next: bool) -> String
 /// any of its sources' keys, or its address), and what it needs to be moved.
 fn found(key: &str) -> Result<(std::path::PathBuf, std::sync::Arc<sioul_core::words::Words>, std::sync::Arc<movements::Books>, usize), String> {
     let config = load_config();
-    let root = config.notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+    let root = config.records_root().ok_or_else(|| tr().text("papers-no-store", None))?;
     let words = sioul_core::words::Words::of(&config);
     let books = movements::books(&root, &words, sioul_core::zone::now().date());
     let bare = key.strip_prefix("sioul:movement/").map_or_else(|| key.to_string(), sioul_core::notes::decode);

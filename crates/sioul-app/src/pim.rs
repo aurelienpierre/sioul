@@ -2702,7 +2702,7 @@ mod tests {
         let here = format!("{}/{}", calendar.account, calendar.id);
         let reading = sioul_core::letters::Reading { sender: "Caisse, Défense".into(), appointment: Some(("2099-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
         let letter = sioul_core::letters::Letter { id: "2026-10-28-1a2b".into(), file: "letters/inbox/caf.pdf".into(), status: "new".into(), project: "caf-file".into(), reading, ..Default::default() };
-        let letters = sioul_core::letters::Letters { root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
+        let letters = sioul_core::letters::Letters { docs: sioul_core::storage::Places::under(std::path::Path::new("/nowhere/Notes")).letters, root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
         let edit = crate::letters::event_of(&letters, &letter, "2099-10-29".parse().unwrap(), Some((14, 0)));
         let saved = write_event("", &edit.to_string(), &here).unwrap();
         let text = std::fs::read_to_string(&saved.path).unwrap();

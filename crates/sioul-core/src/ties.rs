@@ -394,7 +394,8 @@ impl Sources {
     /// contracts, letters, papers and money store; the persons; this device's
     /// invoices and time; the agendas and whose they are.
     pub fn read(config: &Config, loaded: &Loaded) -> Sources {
-        let root = config.notes_root_path();
+        let places = config.places();
+        let root = places.as_ref().map(|p| p.records.clone());
         let words = crate::words::Words::of(config);
         let today = crate::zone::now().date();
         // A budget file that does not read counts as none, as `Loaded::read` takes it.
@@ -408,7 +409,7 @@ impl Sources {
             budgets: books.as_ref().map(|b| b.ledger.budgets.iter().map(|budget| (budget.id.clone(), budget.title.clone())).collect()).unwrap_or_default(),
             persons,
             papers,
-            letters: root.as_deref().and_then(|r| Letters::load(r).ok()),
+            letters: places.as_ref().and_then(|p| Letters::load_at(p).ok()),
             contracts: root.as_deref().and_then(|r| crate::contracts::Contracts::load(r).ok()).map(|c| c.list).unwrap_or_default(),
             invoices: crate::invoice::all_in(&crate::invoice::folder()),
             sessions: crate::timelog::sessions(),
@@ -782,7 +783,7 @@ impl TieIndex {
                 }
                 if !letter.file.is_empty() {
                     for event in world.events {
-                        if event.links.iter().any(|l| crate::dated::links_scan(l.uri.trim(), &letter.file, &letters.root)) {
+                        if event.links.iter().any(|l| crate::dated::links_scan(l.uri.trim(), &letter.file, &letters.docs.base)) {
                             b.tie(&links::event_uri(&event.uid), &me, How::Link, Need::Nothing);
                         }
                     }

@@ -7,8 +7,10 @@
 //! one ends, early enough to renew it (a passport takes weeks, the
 //! complémentaire santé solidaire does not renew by itself).
 //!
-//! `sioul-papers.toml` at the root of the notes folder, the files in its
-//! `papers/` folder: they travel with your projects and notes.
+//! `sioul-papers.toml` among Sioul's lists (the notes folder's root until
+//! this device's lists moved, then the data folder's `records/`), the files
+//! in the papers' folder (the notes folder's `papers/` until then): a
+//! paper's `file` is named from that folder (`storage::Docs`).
 
 use jiff::civil::Date;
 use jiff::{Span, ToSpan};
@@ -294,11 +296,20 @@ pub fn usual_end(kind: Kind, issued: Date) -> Option<Date> {
     issued.checked_add(Span::new().years(kind.years()?)).ok()?.yesterday().ok()
 }
 
-/// The papers of a notes folder.
-#[derive(Debug, Clone, Default)]
+/// The papers' list and where their files are.
+#[derive(Debug, Clone)]
 pub struct Wallet {
+    /// Where the list is (`MANIFEST`): Sioul's lists' folder.
     pub root: PathBuf,
+    /// Where the papers' files are, and Sioul copies new ones.
+    pub docs: crate::storage::Docs,
     pub papers: Vec<Paper>,
+}
+
+impl Default for Wallet {
+    fn default() -> Wallet {
+        Wallet { root: PathBuf::new(), docs: crate::storage::Places::under(Path::new("")).papers, papers: Vec::new() }
+    }
 }
 
 #[derive(Deserialize, Default)]
@@ -311,17 +322,29 @@ impl Wallet {
     /// Read, changed by `change` and written back, all under the file's lock,
     /// which the sharing takes too: a change is set over the file as it is
     /// then, never over a copy read earlier. Returns what `change` returns.
-    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Wallet) -> R) -> Result<R, String> {
-        crate::filelock::with_lock(&root.join(MANIFEST), || {
-            let mut wallet = Wallet::load(root)?;
+    pub fn change_at<R>(places: &crate::storage::Places, change: impl FnOnce(&mut Wallet) -> R) -> Result<R, String> {
+        crate::filelock::with_lock(&places.records.join(MANIFEST), || {
+            let mut wallet = Wallet::load_at(places)?;
             let out = change(&mut wallet);
             wallet.save()?;
             Ok(out)
         })
     }
 
-    /// The wallet at the root of a notes folder; empty when there is none yet.
+    /// `change_at`, everything under one notes folder as before the move.
+    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Wallet) -> R) -> Result<R, String> {
+        Wallet::change_at(&crate::storage::Places::under(root), change)
+    }
+
+    /// The wallet at the root of a notes folder, its files in `papers/`, as
+    /// before the move; empty when there is none yet.
     pub fn load(root: &Path) -> Result<Wallet, String> {
+        Wallet::load_at(&crate::storage::Places::under(root))
+    }
+
+    /// The wallet where this device keeps it (`Config::places`); empty when there is none yet.
+    pub fn load_at(places: &crate::storage::Places) -> Result<Wallet, String> {
+        let root = places.records.as_path();
         let path = root.join(MANIFEST);
         let papers = match std::fs::read_to_string(&path) {
             Ok(text) => {
@@ -337,7 +360,7 @@ impl Wallet {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
         };
-        Ok(Wallet { root: root.to_path_buf(), papers })
+        Ok(Wallet { root: root.to_path_buf(), docs: places.papers.clone(), papers })
     }
 
     pub fn get(&self, id: &str) -> Option<&Paper> {
@@ -349,8 +372,7 @@ impl Wallet {
         if paper.file.is_empty() {
             return None;
         }
-        let path = Path::new(&paper.file);
-        Some(if path.is_absolute() { path.to_path_buf() } else { self.root.join(path) })
+        Some(self.docs.path_of(&paper.file))
     }
 
     /// A paper added or changed (by id; a new one gets an id from its title); returns its id.
@@ -374,12 +396,14 @@ impl Wallet {
         self.papers.len() != before
     }
 
-    /// A file copied into the wallet's folder, under a free name; its path from the notes folder.
+    /// A file copied into the papers' folder, under a free name; its path
+    /// as the list names it (`storage::Docs::named`: `papers/<name>` in the
+    /// notes folder's layout, `<name>` in a folder of its own).
     pub fn keep_file(&self, source: &Path, name: &str) -> Result<String, String> {
-        let folder = self.root.join(FOLDER);
+        let folder = self.docs.folder.clone();
         std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         if source.starts_with(&folder) {
-            return Ok(source.strip_prefix(&self.root).unwrap_or(source).to_string_lossy().replace('\\', "/"));
+            return Ok(self.docs.named(source));
         }
         let name = portable_name(name);
         let (stem, extension) = match name.rsplit_once('.') {
@@ -388,7 +412,7 @@ impl Wallet {
         };
         let target = std::iter::once(folder.join(&name)).chain((2..1000).map(|n| folder.join(format!("{stem}-{n}{extension}")))).find(|p| !p.exists()).ok_or("no free name")?;
         std::fs::copy(source, &target).map_err(|e| format!("{}: {e}", target.display()))?;
-        Ok(format!("{FOLDER}/{}", target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()))
+        Ok(self.docs.named(&target))
     }
 
     /// Written whole, next to its place then moved: never half a file. Under the file's lock.

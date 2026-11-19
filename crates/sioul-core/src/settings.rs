@@ -340,7 +340,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         // before, `[letters] inbox` as it was: the old setting is the one read).
         "letters" => {
             b.group = tr.text("set-letters-group", None);
-            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
+            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.letters_inbox().map(|inbox| inbox.display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
         }
         "porch" => {
@@ -715,7 +715,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
             // The projects' file under its first name: renamed only when you say
             // so (`projects::rename_file`); with both names there, which one is read.
-            if let Some(root) = config.notes_root_path() {
+            if let Some(root) = config.records_root() {
                 if crate::projects::only_old_in(&root) {
                     b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
                 } else if crate::projects::both_in(&root) {
@@ -821,7 +821,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.push("mcp.work_accounts", "mcp-work-accounts", Kind::Bool, SettingValue::Bool(config.mcp.work_accounts));
             }
             b.group = tr.text("set-ai-projects-group", None);
-            let projects = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+            let projects = config.records_root().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
             b.note(tr.text(if projects.is_empty() { "set-ai-projects-none" } else { "set-ai-projects-note" }, None), Vec::new());
             for project in projects {
                 b.said(&format!("project.{}.ai", project.id), Kind::Bool, project.title.clone(), String::new(), SettingValue::Bool(project.ai));
@@ -1237,7 +1237,7 @@ pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value
                 _ => config.blocked_senders_path(),
             }
         }
-        _ if key.starts_with("project.") => config()?.notes_root_path().map_or_else(|| config_path.to_path_buf(), |root| crate::projects::file_in(&root)),
+        _ if key.starts_with("project.") => config()?.records_root().map_or_else(|| config_path.to_path_buf(), |root| crate::projects::file_in(&root)),
         _ => config_path.to_path_buf(),
     };
     crate::filelock::with_lock(&kept_in, || {
@@ -1253,7 +1253,7 @@ pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value
 /// A setting's value as the files hold it now: its row's, in whichever view shows it.
 fn current_value(config: &Config, key: &str) -> Option<SettingValue> {
     let tr = crate::i18n::Translator::new("en");
-    let store = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok());
+    let store = config.records_root().and_then(|root| crate::projects::ProjectStore::load(&root).ok());
     let own = key.strip_prefix("project.").and_then(|k| k.strip_suffix(".routes")).map(|id| format!("project:{id}")).or_else(|| key.strip_prefix("account.").and_then(|k| k.split('.').next()).map(|id| format!("account:{id}")));
     let views: Vec<String> = own.into_iter().chain(VIEWS.iter().map(|v| (*v).to_string())).collect();
     views.iter().find_map(|view| for_view(view, config, &tr, &[], store.as_ref()).into_iter().find(|row| row.key == key).map(|row| row.value))
@@ -1429,21 +1429,21 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ if none => &[],
                 _ => return Err(format!("{key}: a list expected")),
             };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             let store = crate::projects::ProjectStore::load(&root).map_err(|e| e.to_string())?;
             let hidden: Vec<String> = store.projects.iter().map(|c| c.id.clone()).filter(|id| !shown.contains(id)).collect();
             set_value(config_path, "porch.hidden_projects", &SettingValue::Texts(hidden))
         }
         // The projects' file renamed, when its button is pressed (`projects::rename_file`).
         "projects.rename" => {
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::rename_file(&root).map(|_| ())
         }
         // A project opened to AI agents, or closed: `ai` on its entry in the projects' file (docs/ai.md).
         _ if key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).is_some_and(|id| !id.is_empty()) => {
             let id = key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).unwrap_or_default();
             let SettingValue::Bool(open) = value else { return Err(format!("{key}: on or off expected")) };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::set_ai(&crate::projects::file_in(&root), id, *open)
         }
         _ if key.starts_with("project.") && key.ends_with(".routes") => {
@@ -1453,7 +1453,7 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ if none => &[],
                 _ => return Err(format!("{key}: routes expected")),
             };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::set_routes(&crate::projects::file_in(&root), id, routes)
         }
         // A row of the matrix of what reaches you, its words: read, checked, written whole

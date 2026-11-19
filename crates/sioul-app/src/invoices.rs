@@ -48,7 +48,7 @@ fn duration(minutes: u32) -> String {
 
 /// The client profiles of the notes folder, as they are now.
 fn clients_now() -> Clients {
-    load_config().notes_root_path().and_then(|root| Clients::load(&root).ok()).unwrap_or_default()
+    load_config().records_root().and_then(|root| Clients::load(&root).ok()).unwrap_or_default()
 }
 
 fn refused(error: impl Into<String>) -> String {
@@ -1208,7 +1208,7 @@ pub(crate) fn save_client_profile(form: &str) -> String {
         Ok(f) => f,
         Err(e) => return refused(e.to_string()),
     };
-    let Some(root) = load_config().notes_root_path() else { return refused(tr().text("error-no-store", None)) };
+    let Some(root) = load_config().records_root() else { return refused(tr().text("error-no-store", None)) };
     let change = match checked(form.change) {
         Ok(c) => c,
         Err(e) => return refused(e),
@@ -1231,7 +1231,7 @@ pub(crate) fn save_client_profile(form: &str) -> String {
 pub(crate) fn set_client_traits(shared: &Arc<Shared>, id: &str, kind: &str, country: &str) -> String {
     let folder = invoice::folder();
     let Some(d) = invoice::draft_in(&folder, id) else { return refused(tr().text("invoice-draft-gone", None)) };
-    let Some(root) = load_config().notes_root_path() else { return refused(tr().text("error-no-store", None)) };
+    let Some(root) = load_config().records_root() else { return refused(tr().text("error-no-store", None)) };
     let clients = clients_now();
     let world = world(shared);
     let (client, profile) = clients::resolve(&d.client_ref, &clients, &world.contacts);

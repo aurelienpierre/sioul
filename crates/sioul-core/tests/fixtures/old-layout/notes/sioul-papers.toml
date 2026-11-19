@@ -1,0 +1,26 @@
+# Your papers: what each is, its file, how long it holds (docs/papers.md).
+
+[[paper]]
+id = "passport"
+kind = "passport"
+title = "Passport"
+file = "papers/Passport.pdf"
+until = 2031-05-01
+
+[[paper]]
+id = "card"
+kind = "identity"
+title = "Identity card"
+file = "papers/ids/Card.png"
+
+[[paper]]
+id = "tax-notice"
+kind = "tax-notice"
+title = "Tax notice 2025"
+file = "ABSOLUTE-ELSEWHERE"
+
+[[paper]]
+id = "power-contract"
+kind = "other"
+title = "Power contract"
+file = "ABSOLUTE-INSIDE"

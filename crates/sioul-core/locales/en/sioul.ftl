@@ -8826,3 +8826,22 @@ devices-plain-here-system = { $name } (this device, named { $system } by its sys
 devices-plain-line = { $label }: { $value }
 share-devices-moved = Your devices are listed in Settings ▸ Devices, with what each is for.
 share-devices-open = Open Devices
+
+# What lives where (docs/notes-folder.md): why a move of Sioul's lists did not happen, in one sentence (sioul_core::storage::Fault).
+storage-link = A link stands among the files to move, and Sioul cannot tell which file it means: put the file itself in its place, then move again.
+storage-unreadable = A file to move could not be read: nothing moved, and your lists stay where they are.
+storage-folder-not-absolute = Choose the folder whole, from the top of your disk.
+storage-folder-in-notes = This folder is inside your notes folder, or holds it: choose one beside it.
+storage-folder-in-sioul = This folder is one of Sioul's own: choose another one.
+storage-folders-same = Papers and letters each need a folder of their own.
+storage-journal = Sioul could not note where the move stands: nothing moved, and your lists stay where they are.
+storage-copy = A file could not be copied (a full disk, or a folder that cannot be written): nothing moved, and your lists stay where they are.
+storage-changed = A file changed while it was being copied: nothing moved. Try again in a moment.
+storage-keep = The dated copy could not be made: nothing moved, and your lists stay where they are.
+storage-records-taken = Another file is already where your lists go, and Sioul never writes over it: nothing moved.
+storage-list-unreadable = A list does not read as it should: nothing moved, and it stays as it is.
+storage-switch = The move could not be finished: your lists stay where they are.
+storage-busy = An exchange with your other devices is running: try again in a moment.
+storage-waiting = Your lists move once every device knows where they go: { $devices } runs an older Sioul. Update it, or forget it in Settings ▸ Devices.
+storage-moved-already = Your lists have already moved on this device.
+storage-stopped = The move stopped before its end: nothing moved.

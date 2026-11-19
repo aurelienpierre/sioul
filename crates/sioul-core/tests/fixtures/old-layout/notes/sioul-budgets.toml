@@ -1,0 +1,14 @@
+# Budgets (docs/accounting.md): a comment kept by every write.
+[[budget]]
+id = "home"
+title = "Home"
+period = "month"
+target = 0
+
+[[line]]
+id = "rent-oct"
+budget = "home"
+date = "2026-10-01"
+amount = -620.0
+label = "Rent"
+links = ["mid:rent-2026-10@landlord.example.org"]

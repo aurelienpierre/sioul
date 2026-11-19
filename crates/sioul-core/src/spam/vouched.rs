@@ -174,7 +174,7 @@ impl Dealings {
             }
             dealings.with(&crate::sites::host_of(&site.url), Dealing::Site);
         }
-        if let Some(root) = config.notes_root_path()
+        if let Some(root) = config.records_root()
             && let Ok(contracts) = crate::contracts::Contracts::load(&root)
         {
             for contract in &contracts.list {

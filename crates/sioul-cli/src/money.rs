@@ -135,7 +135,7 @@ pub(crate) enum MovementCommand {
 }
 
 fn root(s: &Session) -> Result<PathBuf, String> {
-    s.config.notes_root_path().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))
+    s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))
 }
 
 fn day(text: &str) -> Result<Date, String> {
