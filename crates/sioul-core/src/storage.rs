@@ -732,6 +732,23 @@ pub fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// The first of a trial's folders that is, holds or sits inside one of
+/// `own` (a device's own configuration, data, state, notes, papers or
+/// letters folder), as each resolves: (the folder's name in `folders`,
+/// what it clashes with). A trial of the move (`sioul move-lists`) runs on
+/// copies only (review S20).
+pub fn clash(folders: &Folders, own: &[(&'static str, PathBuf)]) -> Option<(&'static str, &'static str)> {
+    let given = [("notes", &folders.notes), ("records", &folders.records), ("papers", &folders.papers), ("letters", &folders.letters), ("kept", &folders.kept), ("state", &folders.state)];
+    let own: Vec<(&'static str, PathBuf)> = own.iter().filter(|(_, place)| !place.as_os_str().is_empty()).map(|(what, place)| (*what, resolved(place))).collect();
+    for (name, folder) in given.into_iter().filter(|(_, folder)| !folder.as_os_str().is_empty()) {
+        let real = resolved(folder);
+        if let Some((what, _)) = own.iter().find(|(_, place)| real.starts_with(place) || place.starts_with(&real)) {
+            return Some((name, *what));
+        }
+    }
+    None
+}
+
 /// A file's bytes' SHA-256, read a piece at a time.
 pub fn sha_of(path: &Path) -> std::io::Result<String> {
     use std::io::Read;

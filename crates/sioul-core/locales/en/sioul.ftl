@@ -8885,6 +8885,7 @@ storage-line-not = Sioul's lists are still in your notes folder on this device: 
 storage-waiting = Your lists move once every device knows where they go: { $devices } runs an older Sioul. Update it, or forget it in Settings ▸ Devices.
 storage-moved-already = Your lists have already moved on this device.
 storage-stopped = The move stopped before its end: nothing moved.
+storage-trial-own = The folder given with { $flag } is, holds or sits inside this device's own { $own } folder: a trial of the move runs on copies only.
 storage-move-carried = A sync program carries { $carrier }: the files of this folder would travel there too, readable on that program's server, not sealed by Sioul.
 storage-folder-empty = Choose a folder: an empty row would leave the files where they are and look for them elsewhere.
 storage-move-left = These stay in your notes folder, since no list of Sioul's names them: { $files }.

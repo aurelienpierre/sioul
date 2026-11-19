@@ -846,3 +846,26 @@ fn a_note_kept_under_letters_is_not_moved_out_of_the_notes_folder() {
     }
     assert!(!stand.folders.records.join("letters").join("todo.txt").exists());
 }
+
+/// A trial's folders never this device's own: a folder that is, holds or
+/// sits inside its data, state or notes folder (spelled otherwise too) is
+/// named (review S20).
+#[test]
+fn a_trial_never_runs_on_the_devices_own_folders() {
+    let stand = stand("trial-own");
+    let own: Vec<(&'static str, PathBuf)> = vec![("data", stand.base.join("own-data")), ("state", stand.base.join("own-state")), ("notes", stand.base.join("own-notes"))];
+    assert_eq!(clash(&stand.folders, &own), None);
+    let inside = Folders { kept: stand.base.join("own-data").join("moved"), ..stand.folders.clone() };
+    assert_eq!(clash(&inside, &own), Some(("kept", "data")));
+    let same = Folders { state: stand.base.join("own-state"), ..stand.folders.clone() };
+    assert_eq!(clash(&same, &own), Some(("state", "state")));
+    let around = Folders { notes: stand.base.clone(), ..stand.folders.clone() };
+    assert!(clash(&around, &own).is_some(), "holds them");
+    #[cfg(unix)]
+    {
+        std::fs::create_dir_all(stand.base.join("own-notes")).unwrap();
+        std::os::unix::fs::symlink(stand.base.join("own-notes"), stand.base.join("notes-link")).unwrap();
+        let spelled = Folders { notes: stand.base.join("notes-link"), ..stand.folders.clone() };
+        assert_eq!(clash(&spelled, &own), Some(("notes", "notes")));
+    }
+}

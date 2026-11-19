@@ -693,6 +693,15 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
     let absolute = |p: PathBuf| std::path::absolute(&p).map_err(|e| format!("{}: {e}", p.display()));
     let folders = storage::Folders { notes: absolute(folders.notes)?, records: absolute(folders.records)?, papers: absolute(folders.papers)?, letters: absolute(folders.letters)?, kept: absolute(folders.kept)?, state: absolute(folders.state)? };
     let said = |fault: storage::Fault| format!("{}: {}", s.tr.text(&format!("storage-{}", fault.code), None), fault.what);
+    // A trial on copies only (review S20): no folder given is, holds or sits inside this
+    // device's own configuration, data or state folder, nor its notes, papers or letters folder.
+    let own: Vec<(&'static str, PathBuf)> = [("configuration", config::config_dir()), ("data", config::data_dir()), ("state", config::state_dir()), ("notes", s.config.notes_root_path().unwrap_or_default()), ("papers", s.config.papers_folder()), ("letters", s.config.letters_folder())].into_iter().collect();
+    if let Some((flag, what)) = storage::clash(&folders, &own) {
+        let mut args = sioul_core::i18n::args();
+        args.set("flag", format!("--{flag}"));
+        args.set("own", what);
+        return Err(s.tr.text("storage-trial-own", Some(&args)));
+    }
     if plan {
         storage::check_folders(&folders).map_err(said)?;
         let survey = storage::survey(&folders).map_err(said)?;
