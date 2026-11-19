@@ -140,6 +140,17 @@ pub struct Entry {
     /// field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub clients: u32,
+    /// Where its Sioul keeps its own lists (docs/notes-folder.md, "What
+    /// lives where"): `STORAGE_KNOWS` (1) from a build that knows the new
+    /// places, its lists still in the notes folder; `STORAGE_MOVED` (2) once
+    /// this device moved them to its data folder (`sioul_core::storage`); 0
+    /// from an older one, which reads and writes the notes folder's for
+    /// good. Nothing moves on any device until every other device that
+    /// counts says 1 at least, and the old files leave the notes folder only
+    /// once every one says 2 (`share::storage_stand`). An older Sioul reads
+    /// the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub storage: u32,
     /// Whether its Sioul has the store of your word on mail's topics
     /// (`share::TOPICS`, `sioul_core::topics::labels`): 1 from a build that
     /// has it, 0 from an older one. The store travels only once every other
@@ -316,6 +327,11 @@ impl Replaced {
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
+
+/// What a device's entry says once its Sioul knows where its lists go, not moved yet (`Entry::storage`).
+pub const STORAGE_KNOWS: u32 = 1;
+/// What a device's entry says once its lists moved out of the notes folder (`Entry::storage`).
+pub const STORAGE_MOVED: u32 = 2;
 
 /// What a device's entry says once its Sioul follows what devices are for (`Entry::areas`).
 pub const AREAS: u32 = 1;
