@@ -4,21 +4,20 @@
 //! An extension's replies read (docs/extensions.md, "The calls"). An agenda
 //! it handed back is parsed and counted, every bound applied before anything
 //! is built (agendas a reply, bytes and lines an agenda, events an agenda),
-//! then written again from what was parsed, through an allow-list (`clean`):
-//! names are judged once parsed, as Sioul reads every calendar, never on the
-//! extension's lines. It is handed on whole: its files are written by the door of read-only
-//! agendas alone, one file per event with the time zones it needs, through
-//! the subscribed calendars' writer; nothing here copies a calendar's head
-//! into each event. What the agenda could not read is kept from the last
-//! copy (`files_after`, which the door applies). Anything that does not read
-//! as the interface says is nonsense: the call ends, nothing is taken in.
+//! a calendar cut short refused, then written again from what was parsed,
+//! through an allow-list (`clean`): names are judged once parsed, as Sioul
+//! reads every calendar, never on the extension's lines. It is handed on
+//! whole, with the period it says it read and the days it could not: its
+//! events are written by the agendas' door alone (`door`), each with the
+//! time zones it needs, through the writer of the subscribed calendars and
+//! the agenda's door for events. Anything that does not read as the
+//! interface says is nonsense: the call ends, nothing is taken in.
 
 use crate::agenda;
 use calcard::icalendar::{ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty, ICalendarValue};
 use jiff::Timestamp;
-use jiff::tz::TimeZone;
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 /// Why a reply was not taken: said in the log, the call ended with one sentence.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,7 +75,12 @@ pub struct AgendaReply {
     pub calendar: String,
     /// How many events it holds.
     pub events: usize,
-    /// Periods not read this time (seconds since 1970, from and until).
+    /// The period the extension says it read (seconds since 1970, from and
+    /// until): the door removes a marked event of it no longer in the answer.
+    /// None: nothing is removed.
+    pub read: Option<(i64, i64)>,
+    /// Periods not read this time (seconds since 1970, from and until):
+    /// nothing in them is changed.
     pub unread: Vec<(i64, i64)>,
 }
 
@@ -100,6 +104,8 @@ pub const MOST_LINES: usize = 250_000;
 pub const MOST_ZONE_BYTES: usize = 64 << 10;
 const MOST_CHOICES: usize = 200;
 const MOST_PERIODS: usize = 400;
+/// The longest period an agenda says it read: a little more than a year.
+const MOST_READ: i64 = 400 * 86_400;
 
 fn parse(text: &str) -> Result<serde_json::Map<String, Value>, Nonsense> {
     match serde_json::from_str::<Value>(text) {
@@ -108,9 +114,11 @@ fn parse(text: &str) -> Result<serde_json::Map<String, Value>, Nonsense> {
     }
 }
 
-/// A plain text of at most `most` characters, no control character; none when empty.
+/// A plain text of at most `most` characters, no control character nor mark
+/// that turns a line around (a name is shown as written, never as Sioul's
+/// voice); none when empty.
 fn plain(value: &Value, most: usize) -> Option<String> {
-    let text: String = value.as_str()?.chars().filter(|c| !c.is_control()).collect();
+    let text: String = value.as_str()?.chars().filter(|c| !c.is_control() && !direction(*c)).collect();
     let text = text.trim();
     (!text.is_empty() && text.chars().count() <= most).then(|| text.to_string())
 }
@@ -189,7 +197,21 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if calendar.len() > MOST_BYTES || calendar.bytes().filter(|b| *b == b'\n').count() > MOST_LINES {
             return nonsense("an agenda larger than an agenda may be");
         }
+        // A calendar cut short (a component left open, no end) is no answer: the parser would accept it.
+        if crate::subscribed::shape(calendar).is_none() {
+            return nonsense("a calendar cut short");
+        }
         let (calendar, events) = clean(calendar)?;
+        let read = match &agenda["period"] {
+            Value::Null => None,
+            period => {
+                let (Some(from), Some(until)) = (instant(&period["from"]), instant(&period["until"])) else { return nonsense("a period read that does not read") };
+                if until <= from || until - from > MOST_READ {
+                    return nonsense("a period read out of bounds");
+                }
+                Some((from, until))
+            }
+        };
         let mut unread = Vec::new();
         for period in agenda["unread"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
             let (Some(from), Some(until)) = (instant(&period["from"]), instant(&period["until"])) else { return nonsense("an unread period that does not read") };
@@ -201,7 +223,7 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if unread.len() > MOST_PERIODS {
             return nonsense("too many unread periods");
         }
-        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, unread });
+        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, read, unread });
     }
     Ok(RefreshReply { agendas, problem })
 }
@@ -232,10 +254,14 @@ const KEPT: [ICalendarProperty; 14] = [
 /// What a time zone's own parts (its standard and daylight times) keep.
 const ZONE_KEPT: [ICalendarProperty; 6] = [ICalendarProperty::Dtstart, ICalendarProperty::Tzoffsetfrom, ICalendarProperty::Tzoffsetto, ICalendarProperty::Tzname, ICalendarProperty::Rrule, ICalendarProperty::Rdate];
 
+/// A mark that turns a line around (U+202E and its kin).
+fn direction(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
 /// A text value as Sioul shows it: no control character (a new line kept in
 /// a description alone), no mark that turns a line around.
 fn plain_value(text: &str, lines: bool) -> String {
-    let direction = |c: char| matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
     text.chars().filter(|c| !(c.is_control() && !(lines && *c == '\n')) && !direction(*c)).collect()
 }
 
@@ -335,28 +361,10 @@ pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
     Ok((out.to_string(), count))
 }
 
-/// The files an agenda holds once `new` (by file name, as the door's writer
-/// made them) is taken in: every new event, and each event of the last copy
-/// (`old`, by file name) that the new ones do not replace and that overlaps a
-/// period not read this time. For the door to apply.
-pub fn files_after(new: &BTreeMap<String, String>, old: &BTreeMap<String, String>, unread: &[(i64, i64)]) -> BTreeMap<String, String> {
-    let mut files = new.clone();
-    for (name, text) in old {
-        if files.contains_key(name) {
-            continue;
-        }
-        if let Some((start, end)) = agenda::first_times(text, &TimeZone::UTC)
-            && unread.iter().any(|(from, until)| start < *until && end.max(start + 1) > *from)
-        {
-            files.insert(name.clone(), text.clone());
-        }
-    }
-    files
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::tz::TimeZone;
 
     fn calendar(events: &str) -> String {
         format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\n{events}END:VCALENDAR\r\n")
@@ -388,6 +396,23 @@ mod tests {
             wrong["agendas"][0][field] = value.clone();
             assert!(refresh_reply(&wrong.to_string()).is_err(), "{field}: {value}");
         }
+        assert_eq!(read.agendas[0].read, None, "no period said: nothing is removed");
+        // The period read, bounded; a name without the marks that turn a line around.
+        let mut said = good.clone();
+        said["agendas"][0]["period"] = serde_json::json!({ "from": "2026-11-12T00:00:00Z", "until": "2026-12-17T00:00:00Z" });
+        said["agendas"][0]["name"] = serde_json::json!("Timetable: \u{202E}xelA");
+        let read = refresh_reply(&said.to_string()).unwrap();
+        assert_eq!(read.agendas[0].read, Some((1_794_441_600, 1_797_465_600)));
+        assert_eq!(read.agendas[0].name, "Timetable: xelA");
+        for period in [serde_json::json!({ "from": "2026-12-17T00:00:00Z", "until": "2026-11-12T00:00:00Z" }), serde_json::json!({ "from": "2026-01-01T00:00:00Z", "until": "2027-06-01T00:00:00Z" }), serde_json::json!({ "from": "soon" })] {
+            let mut wrong = good.clone();
+            wrong["agendas"][0]["period"] = period.clone();
+            assert!(refresh_reply(&wrong.to_string()).is_err(), "{period}");
+        }
+        // A calendar cut short is no answer, though the parser would take it.
+        let mut cut = good.clone();
+        cut["agendas"][0]["calendar"] = serde_json::json!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:L1\r\nDTSTART:20261119T080000Z\r\nEND:VEVENT\r\n");
+        assert!(refresh_reply(&cut.to_string()).is_err(), "no end of the calendar");
         let twice = serde_json::json!({ "agendas": [good["agendas"][0].clone(), good["agendas"][0].clone()] });
         assert!(refresh_reply(&twice.to_string()).is_err());
         assert_eq!(refresh_reply(r#"{"agendas": [], "problem": {"kind": "unreachable", "detail": "down"}}"#).unwrap().problem.map(|p| p.kind), Some(ProblemKind::Unreachable));
@@ -480,21 +505,6 @@ mod tests {
             let (kept, _) = clean(&calendar(&event("L1", "20261119T080000Z", &format!("{own}\r\n")))).unwrap();
             assert!(!kept.to_ascii_uppercase().contains("X-SIOUL-") && !kept.contains("SIOUL-REMIND"), "{own} came through");
         }
-    }
-
-    #[test]
-    fn what_was_not_read_stays_from_the_last_copy() {
-        let file = |uid: &str, start: &str| (format!("{uid}.ics"), calendar(&event(uid, start, "")));
-        let old: BTreeMap<String, String> = [file("A", "20261119T080000Z"), file("B", "20261120T080000Z"), file("C", "20261121T080000Z")].into();
-        // The new copy: A moved, B's day unread, C gone.
-        let new: BTreeMap<String, String> = [file("A", "20261119T090000Z")].into();
-        let unread = [(1_795_129_200, 1_795_215_600)];
-        let after = files_after(&new, &old, &unread);
-        assert_eq!(after.len(), 2);
-        assert!(after["A.ics"].contains("DTSTART:20261119T090000Z"), "the new A");
-        assert!(after.contains_key("B.ics"), "B, on the day not read, stays");
-        assert!(!after.contains_key("C.ics"), "C, on a day read, goes");
-        assert_eq!(files_after(&new, &old, &[]).len(), 1);
     }
 
     /// X2 (the review's scratch test, through the reply): a calendar's head is

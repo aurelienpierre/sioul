@@ -30,14 +30,35 @@ pub struct State {
     pub extensions: Vec<Installed>,
 }
 
-/// An agenda an extension brought, as last taken in here.
+/// An agenda an extension brought, as last seen here: every agenda it ever
+/// named is kept (a pupil gone stays listed, with where its lessons went).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Brought {
     pub id: String,
     pub name: String,
+    /// The lessons its last answer held.
     #[serde(default)]
     pub events: usize,
+    /// The calendar its lessons go into, by its place ("account/id"), as
+    /// this device last wrote them; the shared setting
+    /// (`[extensions.calendars]`) says it for every device. "" none yet.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub calendar: String,
+    /// When its lessons were last read and written here (seconds since 1970); 0 never.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub read: i64,
+    /// Why its lessons were not written at the last refresh: one word
+    /// (`door::Problem::word`, "choose" when no calendar is chosen); none when they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
 }
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
+/// The most agendas the record keeps of one extension.
+pub const MOST_KEPT: usize = 64;
 
 /// An extension this device enabled once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

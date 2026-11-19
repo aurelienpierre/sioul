@@ -8,13 +8,16 @@
 //! - [`manifest`]: the signed list of what is offered, read and checked;
 //! - [`signature`]: the manifest's detached OpenPGP signature, checked
 //!   against the one key compiled in;
-//! - [`reply`]: an extension's replies read, and an agenda made the files
-//!   Sioul keeps, what it could not read kept from the last copy;
+//! - [`reply`]: an extension's replies read, an agenda written again from
+//!   what was parsed, through an allow-list;
+//! - [`door`]: an agenda written into a calendar of the person's own, through
+//!   the agenda's door for events, its events marked as the extension's;
 //! - [`state`]: what this device enabled, accepted and last saw.
 //!
 //! The engine that runs a file, what an extension may ask and the store live
 //! in `sioul-sync` (`extensions`); the window's side in `sioul-app`.
 
+pub mod door;
 pub mod manifest;
 pub mod reply;
 pub mod signature;
@@ -51,18 +54,72 @@ pub fn secret_name(id: &str) -> String {
     format!("extension {id}")
 }
 
-/// The folder of an agenda an extension brought, among the calendars kept on
-/// this device (`vdir::LOCAL`): `ext-<extension>-<agenda>`, the same on every
-/// device, so that the sharing's part "lists" carries it as one.
-pub fn agenda_folder(extension: &str, agenda: &str) -> String {
-    format!("ext-{extension}-{agenda}")
+/// The domain of the UIDs Sioul gives the events an extension brings (`event_uid`).
+const UID_DOMAIN: &str = "extensions.sioul";
+
+/// SHA-256 of `parts`, each preceded by its length (so that no two lists of
+/// parts give the same bytes), in lower-case hexadecimal.
+fn digest(parts: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The extension and the agenda of a folder made by `agenda_folder`, given
-/// the extensions known (an id may hold `-`: the longest that fits).
-pub fn agenda_of_folder<'a>(folder: &'a str, known: &[&'a str]) -> Option<(&'a str, &'a str)> {
-    let rest = folder.strip_prefix("ext-")?;
-    known.iter().filter_map(|id| Some((*id, rest.strip_prefix(id)?.strip_prefix('-')?))).filter(|(_, agenda)| !agenda.is_empty()).max_by_key(|(id, _)| id.len())
+/// An agenda of an extension, as its events' UIDs name it: 16 hexadecimal
+/// characters, whatever the agenda's id holds.
+pub fn agenda_key(extension: &str, agenda: &str) -> String {
+    digest(&["agenda", extension, agenda])[..16].to_string()
+}
+
+/// The UID Sioul gives an event an extension brought, written into the
+/// person's calendar: `<extension>.<agenda>.<lesson>@extensions.sioul`, the
+/// agenda and the lesson as hashes of the extension's id, the agenda's and
+/// the event's own UID, so that it is the same at every refresh and on every
+/// device, and holds nothing those ids hold (a separator, a dot, a dash
+/// first). The extension's id is the signed manifest's (`valid_id`). Its
+/// form is the mark Sioul knows the extension's events by (`uid_mark`).
+pub fn event_uid(extension: &str, agenda: &str, lesson: &str) -> String {
+    format!("{extension}.{}.{}@{UID_DOMAIN}", agenda_key(extension, agenda), &digest(&["lesson", extension, agenda, lesson])[..32])
+}
+
+/// What the UID of an event Sioul wrote for an extension says: the
+/// extension, and its agenda's key (`agenda_key`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UidMark {
+    pub extension: String,
+    pub agenda: String,
+}
+
+/// The mark of an event's UID when it has exactly the form `event_uid`
+/// gives; none for any other (an event of the person's own, whatever its
+/// title, time or categories).
+pub fn uid_mark(uid: &str) -> Option<UidMark> {
+    let rest = uid.strip_suffix(UID_DOMAIN)?.strip_suffix('@')?;
+    let mut parts = rest.split('.');
+    let (extension, agenda, lesson) = (parts.next()?, parts.next()?, parts.next()?);
+    let hex = |text: &str, length: usize| text.len() == length && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    (parts.next().is_none() && valid_id(extension) && hex(agenda, 16) && hex(lesson, 32)).then(|| UidMark { extension: extension.to_string(), agenda: agenda.to_string() })
+}
+
+/// The file name of an event Sioul writes for an extension, from its UID:
+/// `<extension>-<lesson>.ics`, letters, digits and dashes, safe in a folder
+/// and in a server's address, the same on every device.
+pub fn event_file(uid: &str) -> String {
+    let lesson = uid.split('@').next().and_then(|r| r.rsplit('.').next()).unwrap_or("");
+    let extension = uid.split('.').next().unwrap_or("");
+    format!("{extension}-{lesson}.ics")
+}
+
+/// The category an extension's events carry, and the name the event card
+/// says they come from: its id with a capital ("skolengo" → "Skolengo"),
+/// the same in every language and on every device, readable without its manifest.
+pub fn category(extension: &str) -> String {
+    let mut chars = extension.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -78,9 +135,32 @@ mod tests {
             assert!(!valid_id(bad), "{bad}");
         }
         assert_eq!(secret_name("skolengo"), "extension skolengo");
-        let folder = agenda_folder("my-ext", "pupil-1");
-        assert_eq!(folder, "ext-my-ext-pupil-1");
-        assert_eq!(agenda_of_folder(&folder, &["my", "my-ext"]), Some(("my-ext", "pupil-1")));
-        assert_eq!(agenda_of_folder("ext-other-a", &["my-ext"]), None);
+        assert_eq!(category("skolengo"), "Skolengo");
+    }
+
+    /// The UID of an extension's event: the same for the same ids, another
+    /// for any other, its form read back, and nothing of the ids in it but
+    /// the extension's own, whatever they hold (separators, dots, a dash first).
+    #[test]
+    fn an_event_s_uid_is_stable_safe_and_its_own_mark() {
+        let uid = event_uid("skolengo", "pupil-1", "L-42@skolengo");
+        assert_eq!(uid, event_uid("skolengo", "pupil-1", "L-42@skolengo"), "the same at every refresh");
+        assert_eq!(uid_mark(&uid), Some(UidMark { extension: "skolengo".into(), agenda: agenda_key("skolengo", "pupil-1") }));
+        assert!(uid.ends_with("@extensions.sioul") && uid.starts_with("skolengo."));
+        // Ids that once made two names one (`a` + `b-c`, `a-b` + `c`) are two.
+        assert_ne!(event_uid("a", "b-c", "x"), event_uid("a-b", "c", "x"));
+        assert_ne!(agenda_key("a", "b-c"), agenda_key("a-b", "c"));
+        assert_ne!(event_uid("e", "a", "b\u{0}c"), event_uid("e", "a\u{0}b", "c"), "parts never run into each other");
+        for (agenda, lesson) in [("../../x", "../../../etc/passwd"), ("-dash", "a/b\\c"), ("a.b.c", "x@y.z"), ("", ""), ("é", "\r\nBEGIN:VEVENT")] {
+            let uid = event_uid("skolengo", agenda, lesson);
+            assert!(uid.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'@'), "{uid}");
+            let file = event_file(&uid);
+            assert!(file.ends_with(".ics") && file.trim_end_matches(".ics").bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'), "{file}");
+            assert!(uid_mark(&uid).is_some());
+        }
+        // Anything else is no mark: the person's own events, look-alikes.
+        for other in ["L-42@skolengo", "skolengo.0123456789abcdef.0123456789abcdef0123456789abcdef@example.org", "Skolengo.0123456789abcdef.0123456789abcdef0123456789abcdef@extensions.sioul", "skolengo.0123456789ABCDEF.0123456789abcdef0123456789abcdef@extensions.sioul", "skolengo.0123456789abcdef.0123456789abcdef0123456789abcdef.x@extensions.sioul", "-x.0123456789abcdef.0123456789abcdef0123456789abcdef@extensions.sioul", ""] {
+            assert_eq!(uid_mark(other), None, "{other}");
+        }
     }
 }

@@ -343,6 +343,10 @@ sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::rename(&fresh, path)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::remove_file(&fresh)
 
+# sioul-core/src/extensions/door.rs: the hashes of the lessons an extension wrote from this device, and their file taken out on Remove (state): no item; the lessons themselves go through vdir::write_item and remove_item.
+sioul-core/src/extensions/door.rs	save_noted	1	crate::filelock::replace(&path, text.as_bytes())
+sioul-core/src/extensions/door.rs	take_out	1	std::fs::remove_file(noted_path(extension))
+
 # sioul-core/src/extensions/state.rs: this device's record of its extensions, and each one's log (state): no item.
 sioul-core/src/extensions/state.rs	change	1	crate::filelock::replace(path, text.as_bytes())
 sioul-core/src/extensions/state.rs	append_log	1	crate::filelock::replace(path, text.as_bytes())
