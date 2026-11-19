@@ -421,9 +421,13 @@
              registers no scheme. Part of Sioul's own task and seen in Recents,
              so that leaving it to read a code and coming back finds it;
              resized by the keyboard, so that the site's name stays in sight
-             while a password is typed. -->
+             while a password is typed. In a process of its own, alone there,
+             so that its web view keeps a store of its own (app_webview_signin),
+             emptied at each sign-in, apart from the sites' (SiteScreen, in the
+             window's process): neither sees the other's cookies. -->
         <activity
             android:name="com.aurelienpierre.sioul.SignIn"
+            android:process=":signin"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />

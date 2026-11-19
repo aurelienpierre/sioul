@@ -20,5 +20,10 @@
              folder: cookies, storage, service workers, caches) stay on this
              device: the new one signs in again (SiteScreen.java). -->
         <exclude domain="root" path="app_webview/" />
+        <!-- The extensions' sign-in page's own web view folder, in its
+             process apart (SignIn.java): emptied at each sign-in, never
+             moved. Both web views' caches are under cache/, which neither a
+             backup nor a transfer takes. -->
+        <exclude domain="root" path="app_webview_signin/" />
     </device-transfer>
 </data-extraction-rules>
