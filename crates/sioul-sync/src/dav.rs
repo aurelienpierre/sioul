@@ -1033,11 +1033,10 @@ const STARS_UNKNOWN_EVERY: i64 = 24 * 3600;
 /// property as its own for any card (200, with its value). A card that is
 /// not a favourite is answered 404 by a Nextcloud that keeps them and by a
 /// server that keeps none alike: only a favourite set tells them apart.
+/// Any answer but a multistatus that reads is an error (`Client::propfind`),
+/// so nothing is concluded from a failed one (review of `phones`, H4).
 fn favourites(client: &Client, url: &str) -> Result<(BTreeMap<String, bool>, bool), SyncError> {
-    let (status, responses) = client.propfind(url, "1", &format!(r#"<d:getetag/><nc:favorite xmlns:nc="{NEXTCLOUD}"/>"#))?;
-    if status != 207 {
-        return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
-    }
+    let responses = client.propfind(url, "1", &format!(r#"<d:getetag/><nc:favorite xmlns:nc="{NEXTCLOUD}"/>"#))?;
     let (mut cards, mut answered) = (BTreeMap::new(), false);
     // A card the answer names, present (its etag read): favourite or not. One the answer does not
     // name, or names as gone, is left out: unknown, never "not a favourite" (review of `phones`, H4).
@@ -6050,6 +6049,53 @@ mod stars_tests {
         assert_eq!(names(), ["Fred", "Claire"], "nobody leaves the list");
         assert_eq!(*server.patches.lock().unwrap(), patches, "nothing written");
         assert_eq!(sioul_core::stars::Memory::load(&memory_path).written, written, "the memory kept");
+    }
+
+    /// The book, its PROPFIND failing on demand (a 503 with no listing).
+    struct Failing {
+        book: Arc<Book>,
+        fails: std::sync::atomic::AtomicBool,
+    }
+
+    impl Server for Failing {
+        fn misbehaves(&self, request: &Request) -> Option<Fault> {
+            (request.method == "PROPFIND" && self.fails.load(std::sync::atomic::Ordering::Relaxed)).then_some(Fault::Status(503))
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            self.book.answer(request)
+        }
+    }
+
+    /// A failed answer concludes nothing (review of `phones`, H4), through
+    /// the PROPFIND that the address books' own rules share (`Client::propfind`,
+    /// review of `contacts`, F1): an error, nobody taken off the list, nothing
+    /// written there, the memory kept.
+    #[test]
+    fn a_failed_answer_changes_nothing() {
+        let _ = home();
+        let list = People::default_path();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.people.clear();
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let book = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let server = Arc::new(Failing { book: book.clone(), fails: std::sync::atomic::AtomicBool::new(false) });
+        let listed = synced("stars-failed", &serve(server.clone()));
+        let client = Client::new("alex", "secret");
+        let now = 1_800_000_000;
+        keep_stars(&client, "stars-failed", &listed, now).unwrap();
+        let names = || People::load(&list).people.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(), ["Fred", "Claire"]);
+        let patches = *book.patches.lock().unwrap();
+        let memory_path = sioul_core::stars::folder().join("stars-failed").join("contacts.json");
+        let memory = std::fs::read(&memory_path).unwrap();
+        server.fails.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(keep_stars(&client, "stars-failed", &listed, now + STARS_EVERY).is_err(), "a 503 is an error, not an empty book");
+        assert_eq!(names(), ["Fred", "Claire"], "nobody leaves the list");
+        assert_eq!(*book.patches.lock().unwrap(), patches, "nothing written");
+        assert_eq!(std::fs::read(&memory_path).unwrap(), memory, "the memory kept");
     }
 }
 
