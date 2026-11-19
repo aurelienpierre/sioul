@@ -31,14 +31,14 @@ Item {
 
     property var sites: []
     property string openId: ""
-    // The column of sites folded to their icons, as you left it.
-    property bool narrow: page.sioul.viewFlag("sites-narrow")
+    // The column of sites folded to their icons, as you left it (SitesList.qml).
+    property alias narrow: list.narrow
     // For the window's images: Bitwarden's dialog, the page it asks a key from, the chooser.
     property alias bitwardenUnlock: unlock
     property alias bitwardenKeyView: unlock.keyView
     property alias loginChooser: chooser
     property alias addSiteDialog: adding
-    property alias addSiteFind: find.text
+    property alias addSiteFind: adding.findText
     // What follows Bitwarden's unlocking: the login filled ("fill") or chosen ("choose").
     property string afterUnlock: "fill"
     // Sites opened this session stay loaded: going back to one does not reload it.
@@ -92,9 +92,9 @@ Item {
     // This page's ⚙, open at one of its settings ("calmer_colours", from a link by key:
     // SettingDoor.qml), or closed.
     function openSettings(open, key) {
-        sitesSettings.show(open)
+        list.settingsButton.show(open)
         if (open && key)
-            Qt.callLater(() => sitesSettings.scrollTo(key))
+            Qt.callLater(() => list.settingsButton.scrollTo(key))
     }
 
     // Chats covered: their daily time used (Health page), until it comes back.
@@ -129,25 +129,10 @@ Item {
     property string menuId: ""
     readonly property var menuSite: page.sites.find(s => s.id === page.menuId) || null
     readonly property int menuIndex: page.sites.findIndex(s => s.id === page.menuId)
-    // What a site is, as it behaves (sioul_core::sites::TYPES); your categories come on top.
-    readonly property var kinds: ["mailbox", "chat", "video", "social", "dating", "other"]
-    readonly property var kindIcons: ({ "mailbox": "mail-folder-inbox", "chat": "im-user", "video": "camera-video", "social": "system-users", "dating": "emblem-favorite" })
-    // The list filtered, each way at once: what a site is for, its type, one of your categories; "" for any.
-    property string areaFilter: ""
-    property string kindFilter: ""
-    property string categoryFilter: ""
-    // The categories your sites have, by name.
-    readonly property var categories: {
-        const words = []
-        page.sites.forEach(s => (s.categories || []).forEach(c => {
-            if (words.indexOf(c) < 0)
-                words.push(c)
-        }))
-        return words.sort((a, b) => a.localeCompare(b))
-    }
-    readonly property string filterWords: [page.areaFilter !== "" ? page.sioul.text("area-" + page.areaFilter) : "", page.kindFilter !== "" ? page.sioul.text("site-kind-" + page.kindFilter) : "", page.categoryFilter].filter(t => t !== "").join(" · ")
-    // The usual sites, as a menu: countries, their groups, the sites.
-    property var presetTree: []
+    // The list's filters, its order and its folded line (SitesList.qml), for the window's images.
+    property alias areaFilter: list.areaFilter
+    property alias kindFilter: list.kindFilter
+    property alias categoryFilter: list.categoryFilter
 
     // A sign-in window, a call window: each in a window of its own, on the
     // sites' profile, so it stays tied to the page that opened it (a sign-in
@@ -206,48 +191,21 @@ Item {
         return popup !== null && popup !== undefined && typeof popup.closePage === "function"
     }
 
-    property alias presetsMenu: presetsMenu
+    property alias presetsMenu: list.presetsMenu
     property alias siteMenu: siteMenu
     property alias devicesDialog: devicesDialog
     property alias callPanel: callPanel
-    property alias filterMenu: filterMenu
+    property alias filterMenu: list.filterMenu
     function showPresets() {
-        page.presetTree = JSON.parse(page.sioul.sitePresetsTree()).countries
-        presetsMenu.popup(presetsButton, 0, -presetsMenu.implicitHeight)
+        list.showPresets()
     }
     function showFilters() {
-        filterMenu.popup(filterButton, 0, filterButton.height)
+        list.showFilters()
     }
-
-    // Usual sites pinned: one, or a whole group; those already here stay as they are.
-    function pinAll(rows) {
-        const answer = JSON.parse(page.sioul.addSites(JSON.stringify(rows)))
-        page.problem = answer.error || ""
-        if (answer.added > 0)
-            page.sioul.status = page.sioul.textWith("site-pinned", "count", String(answer.added))
-        page.reload()
-    }
-    // The list by category, or in your own order, as you left it.
-    property bool byCategory: page.sioul.viewFlag("sites-by-category")
+    // The list by type, or in your own order, as you left it.
+    property alias byCategory: list.byCategory
     // The sites for other hours (docs/areas.md), shown when asked.
-    property bool laterShown: false
-    // The column's rows: the sites for these hours, then one line folding the
-    // others; each category named once when sorted by it.
-    readonly property var rows: {
-        const wanted = s => (page.areaFilter === "" || String(s.area).split("+").indexOf(page.areaFilter) >= 0) && (page.kindFilter === "" || s.kind === page.kindFilter) && (page.categoryFilter === "" || (s.categories || []).indexOf(page.categoryFilter) >= 0)
-        const shown = page.sites.filter(wanted)
-        const sorted = page.byCategory ? shown.slice().sort((a, b) => page.kinds.indexOf(a.kind) - page.kinds.indexOf(b.kind)) : shown
-        const out = []
-        const add = (list, later) => list.forEach((s, i) => out.push({ site: s, later: later, header: page.byCategory && (i === 0 || list[i - 1].kind !== s.kind) ? s.kind : "" }))
-        add(sorted.filter(s => s.in_view !== false), false)
-        const later = sorted.filter(s => s.in_view === false)
-        if (later.length > 0) {
-            out.push({ fold: true, count: later.length, header: "" })
-            if (page.laterShown)
-                add(later, true)
-        }
-        return out
-    }
+    property alias laterShown: list.laterShown
     readonly property int openedIndex: page.sites.findIndex(s => s.id === page.openId)
 
     function reload() {
@@ -613,285 +571,27 @@ Item {
         spacing: page.theme.gap
 
         // The sites, pinned: a narrow column, or their icons only, as you left it.
-        ColumnLayout {
+        SitesList {
+            id: list
+
             Layout.fillHeight: true
-            Layout.preferredWidth: page.narrow ? 40 : 170
-            Layout.maximumWidth: page.narrow ? 40 : 170
-            spacing: 6
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 0
-
-                Label {
-                    visible: !page.narrow
-                    Layout.fillWidth: true
-                    text: page.sioul.text("ui-sites")
-                    font.pixelSize: 20
-                    elide: Text.ElideRight
-                    color: page.theme.text
-                }
-                // Filtered by what a site is for, its type, one of your categories.
-                ToolButton {
-                    id: filterButton
-
-                    visible: !page.narrow
-                    icon.name: "view-filter"
-                    icon.color: page.theme.text
-                    display: AbstractButton.IconOnly
-                    highlighted: page.filterWords !== ""
-                    Accessible.name: page.sioul.text("site-filter")
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.sioul.text("site-filter")
-                    ToolTip.delay: 600
-                    onClicked: page.showFilters()
-                }
-                ToolButton {
-                    visible: !page.narrow
-                    checkable: true
-                    checked: page.byCategory
-                    icon.name: "view-sort"
-                    icon.color: page.theme.text
-                    display: AbstractButton.IconOnly
-                    Accessible.name: page.sioul.text(page.byCategory ? "site-sort-category" : "site-sort-own")
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.theme.plain(Accessible.name)
-                    ToolTip.delay: 600
-                    onToggled: {
-                        page.byCategory = checked
-                        page.sioul.setViewFlag("sites-by-category", checked)
-                    }
-                }
-                ToolButton {
-                    text: page.narrow ? "»" : "«"
-                    Accessible.name: page.narrow ? page.sioul.text("site-column-widen") : page.sioul.text("site-column-narrow")
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.theme.plain(Accessible.name)
-                    ToolTip.delay: 600
-                    onClicked: {
-                        page.narrow = !page.narrow
-                        page.sioul.setViewFlag("sites-narrow", page.narrow)
-                    }
-                }
+            Layout.preferredWidth: list.narrow ? 40 : 170
+            Layout.maximumWidth: list.narrow ? 40 : 170
+            sioul: page.sioul
+            theme: page.theme
+            sites: page.sites
+            openId: page.openId
+            canNarrow: true
+            settings: true
+            onChosen: id => page.open(id)
+            onMenuAsked: id => {
+                page.menuId = id
+                siteMenu.popup()
             }
-            // The filters at work, in words, and a way out of them.
-            RowLayout {
-                visible: !page.narrow && page.filterWords !== ""
-                Layout.fillWidth: true
-                spacing: 2
-
-                Label {
-                    Layout.fillWidth: true
-                    text: page.filterWords
-                    textFormat: Text.PlainText
-                    font.pixelSize: 12
-                    wrapMode: Text.Wrap
-                    color: page.theme.muted
-                }
-                ToolButton {
-                    icon.name: "edit-clear"
-                    icon.color: page.theme.text
-                    display: AbstractButton.IconOnly
-                    implicitWidth: 26
-                    implicitHeight: 26
-                    Accessible.name: page.sioul.text("site-filter-clear")
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.sioul.text("site-filter-clear")
-                    onClicked: {
-                        page.areaFilter = ""
-                        page.kindFilter = ""
-                        page.categoryFilter = ""
-                    }
-                }
-            }
-            Label {
-                visible: page.sites.length === 0 && !page.narrow
-                Layout.fillWidth: true
-                text: page.sioul.text("site-none")
-                wrapMode: Text.Wrap
-                color: page.theme.muted
-            }
-            // Many sites scroll; sorted by category, each category says its name once.
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                contentWidth: availableWidth
-                clip: true
-
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 6
-
-                    Repeater {
-                        model: page.rows
-
-                        delegate: ColumnLayout {
-                            id: entry
-
-                            required property var modelData
-                            required property int index
-
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                visible: entry.modelData.header !== "" && !page.narrow
-                                Layout.topMargin: entry.index === 0 ? 0 : 6
-                                text: entry.modelData.header !== "" ? page.sioul.text("site-kind-" + entry.modelData.header) : ""
-                                font.pixelSize: 12
-                                color: page.theme.muted
-                            }
-                            // The sites for other hours: one line, opened on demand.
-                            Button {
-                                visible: entry.modelData.fold === true
-                                Layout.fillWidth: true
-                                Layout.topMargin: 6
-                                flat: true
-                                text: page.theme.plain(page.narrow ? "⋯" : page.sioul.textWith("site-later", "count", String(entry.modelData.count || 0)) + (page.laterShown ? "  ▾" : "  ▸"))
-                                font.pixelSize: 13
-                                onClicked: page.laterShown = !page.laterShown
-                            }
-
-                            ItemDelegate {
-                                id: row
-
-                                readonly property var modelData: entry.modelData.site || ({})
-
-                                visible: entry.modelData.fold !== true
-                                opacity: entry.modelData.later ? 0.6 : 1
-                                Layout.fillWidth: true
-                                padding: page.narrow ? 4 : 6
-                                highlighted: page.openId === row.modelData.id
-                                onClicked: page.open(row.modelData.id)
-
-                                // Its menu, where it is: what it is, what it is for, its name, its place, out of Sioul.
-                                // On a touch screen, the menu comes at a long press; letting go then opens nothing.
-                                onPressAndHold: {
-                                    row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
-                                    page.menuId = row.modelData.id
-                                    siteMenu.popup()
-                                }
-                                TapHandler {
-                                    acceptedButtons: Qt.RightButton
-                                    // A touch has no buttons: on a touch screen, the row's long press.
-                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                    onTapped: {
-                                        page.menuId = row.modelData.id
-                                        siteMenu.popup()
-                                    }
-                                }
-                                ToolTip.visible: page.narrow && hovered
-                                ToolTip.text: page.theme.plain(row.modelData.name || "")
-                                ToolTip.delay: 400
-                                Accessible.name: row.modelData.name || ""
-
-                                background: Rectangle {
-                                    color: row.highlighted || row.hovered ? page.theme.surface : "transparent"
-                                    radius: page.theme.radius
-                                    border.color: row.visualFocus ? page.theme.focus : row.highlighted ? page.theme.line : "transparent"
-                                }
-
-                                contentItem: RowLayout {
-                                    spacing: 6
-
-                                    Item {
-                                        Layout.preferredWidth: 18
-                                        Layout.preferredHeight: 18
-
-                                        // Its own icon, kept on this computer; its type's until then, and when it cannot be drawn.
-                                        Image {
-                                            id: favicon
-
-                                            visible: favicon.status === Image.Ready
-                                            anchors.centerIn: parent
-                                            width: 16
-                                            height: 16
-                                            source: row.modelData.icon || ""
-                                            sourceSize: Qt.size(32, 32)
-                                            fillMode: Image.PreserveAspectFit
-                                            smooth: true
-                                            asynchronous: true
-                                        }
-                                        Icon {
-                                            visible: favicon.status !== Image.Ready
-                                            anchors.centerIn: parent
-                                            iconName: page.kindIcons[row.modelData.kind] || "internet-web-browser"
-                                            size: 16
-                                        }
-                                        // Something notified, not seen yet: a dot, never a number.
-                                        Rectangle {
-                                            visible: row.modelData.news === true && page.narrow
-                                            anchors.right: parent.right
-                                            anchors.top: parent.top
-                                            width: 7
-                                            height: 7
-                                            radius: 3.5
-                                            color: page.theme.accent
-                                        }
-                                    }
-                                    Label {
-                                        visible: !page.narrow
-                                        Layout.fillWidth: true
-                                        text: row.modelData.name || ""
-                                        textFormat: Text.PlainText
-                                        elide: Text.ElideRight
-                                        color: page.theme.text
-                                    }
-                                    // Quiet, not red as Breeze draws it.
-                                    Icon {
-                                        visible: row.modelData.muted === true && !page.narrow
-                                        iconName: "audio-volume-muted"
-                                        color: page.theme.muted
-                                        size: 14
-                                    }
-                                    Rectangle {
-                                        visible: row.modelData.news === true && !page.narrow
-                                        Layout.preferredWidth: 7
-                                        Layout.preferredHeight: 7
-                                        radius: 3.5
-                                        color: page.theme.accent
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Adding a site, and the page's settings (its colours, Bitwarden): under the list, small.
-            Flow {
-                Layout.fillWidth: true
-                spacing: 2
-
-                ToolButton {
-                    icon.name: "list-add"
-                    icon.color: page.theme.text
-                    text: page.narrow ? "" : page.sioul.text("site-add")
-                    display: page.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                    Accessible.name: page.sioul.text("site-add")
-                    ToolTip.visible: page.narrow && hovered
-                    ToolTip.text: page.sioul.text("site-add")
-                    onClicked: adding.open()
-                }
-                // The usual sites, by country, group and site: a whole group pinned at once, or one.
-                ToolButton {
-                    id: presetsButton
-
-                    icon.name: "bookmarks-organize"
-                    icon.color: page.theme.text
-                    text: page.narrow ? "" : page.sioul.text("site-presets") + "  ▾"
-                    display: page.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                    Accessible.name: page.sioul.text("site-presets")
-                    ToolTip.visible: page.narrow && hovered
-                    ToolTip.text: page.sioul.text("site-presets")
-                    onClicked: page.showPresets()
-                }
-                SettingsButton {
-                    id: sitesSettings
-
-                    sioul: page.sioul
-                    theme: page.theme
-                    view: "sites"
-                }
+            onAddAsked: adding.open()
+            onPinned: problem => {
+                page.problem = problem
+                page.reload()
             }
         }
 
@@ -1200,131 +900,21 @@ Item {
 
     // What a site is, and whether it stays open: the open site's (⋮), or any
     // site's of the list (a right click on it).
-    SioulMenu {
+    SiteMenu {
         id: siteMenu
 
-        Repeater {
-            model: page.kinds
-
-            delegate: MenuItem {
-                required property string modelData
-
-                text: page.sioul.text("site-kind-" + modelData)
-                checkable: true
-                checked: page.menuSite !== null && page.menuSite.kind === modelData
-                onTriggered: page.problem = page.sioul.setSite(page.menuId, "site", modelData)
-            }
-        }
-        MenuSeparator {}
-        // Its ties as a chain (ChainPage.qml): the person it is opened for, its mail.
-        MenuItem {
-            text: page.sioul.text("chain-its-ties")
-            onTriggered: page.window.openChain("sioul:site/" + encodeURIComponent(page.menuId))
-        }
-        MenuItem {
-            text: page.sioul.text("site-background")
-            checkable: true
-            checked: page.menuSite !== null && page.menuSite.background
-            onTriggered: page.problem = page.sioul.setSite(page.menuId, "background", String(checked))
-        }
-        // What it is for: the hours it comes forward in, any of them together (docs/areas.md).
-        // None ticked: as its kind goes.
-        SioulMenu {
-            title: page.sioul.text("site-area")
-
-            Repeater {
-                model: ["work", "admin", "leisure"]
-
-                delegate: MenuItem {
-                    required property string modelData
-
-                    readonly property var on: page.menuSite !== null ? String(page.menuSite.area).split("+") : []
-
-                    text: page.sioul.text("area-" + modelData)
-                    checkable: true
-                    checked: on.indexOf(modelData) >= 0
-                    onTriggered: {
-                        const was = on
-                        const now = ["work", "admin", "leisure"].filter(a => a === modelData ? checked : was.indexOf(a) >= 0)
-                        page.problem = page.sioul.setSite(page.menuId, "area", now.join("+"))
-                        page.reload()
-                    }
-                }
-            }
-        }
-        MenuSeparator {}
-        // For calls: what the site may use, each asked again at every call.
-        MenuItem {
-            text: page.sioul.text("site-microphone")
-            checkable: true
-            checked: page.menuSite !== null && page.menuSite.microphone
-            onTriggered: {
-                page.problem = page.sioul.setSite(page.menuId, "microphone", String(checked))
-                page.reload()
-            }
-        }
-        MenuItem {
-            text: page.sioul.text("site-camera")
-            checkable: true
-            checked: page.menuSite !== null && page.menuSite.camera
-            onTriggered: {
-                page.problem = page.sioul.setSite(page.menuId, "camera", String(checked))
-                page.reload()
-            }
-        }
-        MenuItem {
-            text: page.sioul.text("site-screen")
-            checkable: true
-            checked: page.menuSite !== null && page.menuSite.screen
-            onTriggered: {
-                page.problem = page.sioul.setSite(page.menuId, "screen", String(checked))
-                page.reload()
-            }
-        }
-        // Which camera, microphone and speaker calls use: the same for every site.
-        MenuItem {
-            text: page.sioul.text("site-devices") + "…"
-            onTriggered: devicesDialog.open()
-        }
-        MenuSeparator {}
-        // Your order: the list keeps it (by category, within each).
-        MenuItem {
-            text: page.sioul.text("site-move-up")
-            enabled: page.menuIndex > 0
-            onTriggered: {
-                page.problem = page.sioul.moveSite(page.menuId, -1)
-                page.reload()
-            }
-        }
-        MenuItem {
-            text: page.sioul.text("site-move-down")
-            enabled: page.menuIndex >= 0 && page.menuIndex < page.sites.length - 1
-            onTriggered: {
-                page.problem = page.sioul.moveSite(page.menuId, 1)
-                page.reload()
-            }
-        }
-        // Tied to a task, a note, a contact: a site is a correspondent too.
-        MenuItem {
-            text: page.sioul.text("site-link")
-            onTriggered: page.window.linkFrom({ uri: "sioul:site/" + encodeURIComponent(page.menuId), kind: "site", key: page.menuId, title: page.menuSite ? page.menuSite.name : "" })
-        }
-        MenuSeparator {}
-        // Another login than the site's own, or one of several: the vault searched (the site open).
-        MenuItem {
-            visible: page.menuId === page.openId
-            height: visible ? implicitHeight : 0
-            text: page.sioul.text("bitwarden-choose")
-            onTriggered: page.chooseLogin()
-        }
-        MenuItem {
-            text: page.sioul.text("site-edit")
-            onTriggered: editing.begin()
-        }
-        MenuItem {
-            text: page.sioul.text("site-remove")
-            onTriggered: siteRemove.ask(page.menuSite ? page.menuSite.name : "", page.sioul.text("site-remove-ask"), page.sioul.text("site-remove"))
-        }
+        sioul: page.sioul
+        window: page.window
+        site: page.menuSite
+        index: page.menuIndex
+        total: page.sites.length
+        canChoose: page.menuId === page.openId
+        onSaid: problem => page.problem = problem
+        onChanged: page.reload()
+        onDevicesAsked: devicesDialog.open()
+        onChooseAsked: page.chooseLogin()
+        onEditAsked: editing.begin(page.menuSite)
+        onRemoveAsked: siteRemove.ask(page.menuSite ? page.menuSite.name : "", page.sioul.text("site-remove-ask"), page.sioul.text("site-remove"))
     }
 
     // The devices of calls: the system's list of cameras, microphones and
@@ -1495,118 +1085,6 @@ Item {
         }
     }
 
-    // What the list shows: what a site is for, its type, one of your categories.
-    // One list of lines: a Repeater's lines land out of order in a menu once
-    // their model changes.
-    readonly property var filterLines: {
-        const out = [{ head: page.sioul.text("site-filter-for") }, { what: "area", value: "", text: page.sioul.text("site-filter-any-area") }]
-        for (const area of ["work", "admin", "leisure"])
-            out.push({ what: "area", value: area, text: page.sioul.text("area-" + area) })
-        out.push({ head: page.sioul.text("site-filter-type") }, { what: "kind", value: "", text: page.sioul.text("site-filter-any-kind") })
-        for (const kind of page.kinds.filter(k => page.sites.some(s => s.kind === k)))
-            out.push({ what: "kind", value: kind, text: page.sioul.text("site-kind-" + kind) })
-        if (page.categories.length > 0) {
-            out.push({ head: page.sioul.text("site-filter-category") }, { what: "category", value: "", text: page.sioul.text("site-filter-any-category") })
-            for (const category of page.categories)
-                out.push({ what: "category", value: category, text: category })
-        }
-        return out
-    }
-    function filterOf(what) {
-        return what === "area" ? page.areaFilter : what === "kind" ? page.kindFilter : page.categoryFilter
-    }
-    function setFilter(what, value) {
-        if (what === "area")
-            page.areaFilter = value
-        else if (what === "kind")
-            page.kindFilter = value
-        else
-            page.categoryFilter = value
-    }
-
-    SioulMenu {
-        id: filterMenu
-
-        Instantiator {
-            model: page.filterLines
-
-            delegate: MenuItem {
-                id: filterLine
-
-                required property var modelData
-                readonly property bool head: filterLine.modelData.head !== undefined
-
-                // Your categories may hold "&", a shortcut's mark in a menu: "&&" is one.
-                text: page.theme.plain((filterLine.head ? filterLine.modelData.head : filterLine.modelData.text).replace(/&/g, "&&"))
-                font.pixelSize: filterLine.head ? 12 : 15
-                enabled: !filterLine.head
-                checkable: !filterLine.head
-                checked: !filterLine.head && page.filterOf(filterLine.modelData.what) === filterLine.modelData.value
-                onTriggered: {
-                    // Chosen again: no longer filtered by it.
-                    const was = page.filterOf(filterLine.modelData.what)
-                    page.setFilter(filterLine.modelData.what, was === filterLine.modelData.value ? "" : filterLine.modelData.value)
-                    filterLine.checked = Qt.binding(() => !filterLine.head && page.filterOf(filterLine.modelData.what) === filterLine.modelData.value)
-                }
-            }
-            onObjectAdded: (index, object) => filterMenu.insertItem(index, object)
-            onObjectRemoved: (index, object) => filterMenu.removeItem(object)
-        }
-    }
-
-    // The usual sites: country, group, site; a country's states or provinces
-    // in a menu of their own, each with its groups. Each place and group
-    // opens with "All of them": a whole group pinned at once.
-    SioulMenu {
-        id: presetsMenu
-
-        Instantiator {
-            model: page.presetTree
-
-            delegate: PresetPlaceMenu {
-                id: countryMenu
-
-                required property var modelData
-
-                sioul: page.sioul
-                place: countryMenu.modelData
-                onPin: rows => page.pinAll(rows)
-
-                // Its states or provinces, last.
-                property Instantiator regions: Instantiator {
-                    model: countryMenu.modelData.regions.length > 0 ? [countryMenu.modelData] : []
-
-                    delegate: SioulMenu {
-                        id: regionsMenu
-
-                        required property var modelData
-
-                        title: page.theme.plain(regionsMenu.modelData.regions_name)
-
-                        Instantiator {
-                            model: regionsMenu.modelData.regions
-
-                            delegate: PresetPlaceMenu {
-                                id: regionMenu
-
-                                required property var modelData
-
-                                sioul: page.sioul
-                                place: regionMenu.modelData
-                                onPin: rows => page.pinAll(rows)
-                            }
-                            onObjectAdded: (index, object) => regionsMenu.insertMenu(index, object)
-                            onObjectRemoved: (index, object) => regionsMenu.removeMenu(object)
-                        }
-                    }
-                    onObjectAdded: (index, object) => countryMenu.addMenu(object)
-                    onObjectRemoved: (index, object) => countryMenu.removeMenu(object)
-                }
-            }
-            onObjectAdded: (index, object) => presetsMenu.insertMenu(index, object)
-            onObjectRemoved: (index, object) => presetsMenu.removeMenu(object)
-        }
-    }
 
     WebAuthDialog {
         id: webAuth
@@ -1741,403 +1219,26 @@ Item {
     }
 
     // A site's name, address, type and categories, changed.
-    SafeDialog {
+    SiteEditDialog {
         id: editing
 
-        // What was refused (an address without https…): said here, the dialog kept open.
-        property string problem: ""
-        property var persons: []
-        property string personId: ""
-
-        function begin() {
-            editName.text = page.menuSite ? page.menuSite.name : ""
-            editUrl.text = page.menuSite ? page.menuSite.url : ""
-            editKind.currentIndex = page.menuSite ? Math.max(0, page.kinds.indexOf(page.menuSite.kind)) : 0
-            editCategories.text = page.menuSite ? (page.menuSite.categories || []).join(", ") : ""
-            // Whom you open it for ("Odile's ameli account"): a person of the household, or nobody said.
-            editing.persons = (JSON.parse(page.sioul.household() || "{}").persons || []).filter(p => p.id !== "me")
-            editing.personId = ((page.menuSite ? JSON.parse(page.sioul.sitePerson(page.menuId) || "null") : null) || { id: "" }).id
-            editing.problem = ""
-            editing.open()
-        }
-
-        // Saved, it closes; refused, it stays open with why, what you typed kept.
-        function save() {
-            const categories = editCategories.text.split(",").map(c => c.trim()).filter(c => c !== "")
-            const problems = [page.sioul.setSite(page.menuId, "name", editName.text), page.sioul.setSite(page.menuId, "url", editUrl.text), page.sioul.setSite(page.menuId, "site", page.kinds[editKind.currentIndex]), page.sioul.setSite(page.menuId, "categories", JSON.stringify(categories)), page.sioul.setSiteFor(page.menuId, editing.personId)].filter(p => p !== "")
-            page.reload()
-            editing.problem = problems.join(" ")
-            if (editing.problem === "")
-                editing.close()
-        }
-
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(460, Math.min(page.width, editing.roomWidth) - 2 * page.theme.gap)
-        title: page.sioul.text("site-edit")
-
-        contentItem: GridLayout {
-            columns: 2
-            columnSpacing: 10
-            rowSpacing: 8
-
-            Label {
-                text: page.sioul.text("site-field-name")
-                color: page.theme.muted
-            }
-            TextField {
-                id: editName
-
-                Layout.fillWidth: true
-            }
-            Label {
-                text: page.sioul.text("site-field-url")
-                color: page.theme.muted
-            }
-            TextField {
-                id: editUrl
-
-                Layout.fillWidth: true
-                onAccepted: editing.save()
-            }
-            Label {
-                text: page.sioul.text("site-field-kind")
-                color: page.theme.muted
-            }
-            PlainComboBox {
-                id: editKind
-
-                Layout.fillWidth: true
-                model: page.kinds.map(k => page.sioul.text("site-kind-" + k))
-            }
-            Label {
-                text: page.sioul.text("site-field-categories")
-                color: page.theme.muted
-            }
-            TextField {
-                id: editCategories
-
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("site-categories-help")
-                onAccepted: editing.save()
-            }
-            Label {
-                visible: editing.persons.length > 0
-                text: page.sioul.text("site-field-for")
-                color: page.theme.muted
-            }
-            PlainComboBox {
-                readonly property var choices: [{ id: "", name: page.sioul.text("site-for-you") }].concat(editing.persons)
-
-                visible: editing.persons.length > 0
-                Layout.fillWidth: true
-                model: choices.map(c => page.theme.plain(c.name))
-                currentIndex: Math.max(0, choices.findIndex(c => c.id === editing.personId))
-                Accessible.name: page.sioul.text("site-field-for")
-                onActivated: index => editing.personId = choices[index].id
-            }
-            Label {
-                visible: editing.problem !== ""
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                text: editing.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
-        }
-
-        // Out of the footer's own box: a box there closes the dialog on "Save"
-        // before saving could be refused. Sioul's own words, translated.
-        footer: Item {
-            implicitWidth: editButtons.implicitWidth
-            implicitHeight: editButtons.implicitHeight
-
-            DialogButtonBox {
-                id: editButtons
-
-                anchors.fill: parent
-
-                Button {
-                    text: page.sioul.text("ui-save")
-                    highlighted: true
-                    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-                }
-                Button {
-                    text: page.sioul.text("ui-cancel")
-                    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                }
-                onAccepted: editing.save()
-                onRejected: editing.close()
-            }
-        }
+        sioul: page.sioul
+        theme: page.theme
+        room: page.width
+        onSaved: page.reload()
     }
 
-    // A site added: from the sites people usually keep, by country (and state or
-    // province) and kind, found by a word; or by hand. Only encrypted addresses.
-    SafeDialog {
+    // A site added: from the sites people usually keep, or by hand; it opens once pinned.
+    SiteAddDialog {
         id: adding
 
-        property var offered: ({ country: "", region: "", countries: [], types: [], categories: [], sites: [] })
-        // "type:chat", "category:Banque", or "" for all.
-        property string category: ""
-        // From the list: what it is for and which mail announces it; by hand, as its kind goes.
-        property string area: ""
-        property var announced: []
-        property string chosen: ""
-        // What was refused (an address without https…): said here, the dialog kept open.
-        property string problem: ""
-        readonly property var country: adding.offered.countries.find(c => c.code === adding.offered.country) || null
-        readonly property var shownPresets: {
-            const words = find.text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).filter(w => w !== "")
-            const folded = t => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            return adding.offered.sites
-                .filter(p => adding.category === "" || (adding.category.startsWith("type:") ? p.kind === adding.category.slice(5) : p.categories.indexOf(adding.category.slice(9)) >= 0))
-                .filter(p => words.every(w => folded(p.name + " " + p.about + " " + p.host + " " + p.categories.join(" ")).indexOf(w) >= 0))
-                .sort((a, b) => page.kinds.indexOf(a.kind) - page.kinds.indexOf(b.kind) || a.name.localeCompare(b.name))
-        }
-
-        function load(country, region) {
-            adding.offered = JSON.parse(page.sioul.sitePresets(country, region))
-        }
-
-        // Pinned, it closes on the site; refused, it stays open with why, what you typed kept.
-        function save() {
-            const categories = siteCategories.text.split(",").map(c => c.trim()).filter(c => c !== "")
-            const made = JSON.parse(page.sioul.addSite(JSON.stringify({ name: siteName.text.trim(), url: siteUrl.text.trim(), kind: page.kinds[siteKind.currentIndex], area: adding.area, announced_by: adding.announced, categories: categories })))
-            if (made.error) {
-                adding.problem = made.error
-                return
-            }
-            adding.close()
+        sioul: page.sioul
+        theme: page.theme
+        room: page.width
+        roomTall: page.height
+        onAdded: id => {
             page.reload()
-            page.open(made.id)
-        }
-
-        function take(preset) {
-            adding.chosen = preset.url
-            siteName.text = preset.name
-            siteUrl.text = preset.url
-            siteKind.currentIndex = Math.max(0, page.kinds.indexOf(preset.kind))
-            siteCategories.text = preset.categories.join(", ")
-            adding.area = preset.area
-            adding.announced = preset.announced_by
-        }
-
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(560, Math.min(page.width, adding.roomWidth) - 2 * page.theme.gap)
-        height: Math.min(660, Math.min(page.height, adding.roomHeight) - 2 * page.theme.gap)
-        title: page.sioul.text("site-add")
-        onAboutToShow: {
-            siteName.text = ""
-            siteUrl.text = "https://"
-            siteKind.currentIndex = 0
-            siteCategories.text = ""
-            find.text = ""
-            adding.category = ""
-            adding.area = ""
-            adding.announced = []
-            adding.chosen = ""
-            adding.problem = ""
-            adding.load("", "")
-        }
-        onOpened: find.forceActiveFocus()
-
-        contentItem: ColumnLayout {
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-
-                PlainComboBox {
-                    id: countryChoice
-
-                    readonly property var choices: [{ code: "-", name: page.sioul.text("site-presets-everyone") }].concat(adding.offered.countries)
-
-                    Layout.fillWidth: true
-                    model: choices.map(c => page.theme.plain(c.name))
-                    currentIndex: Math.max(0, choices.findIndex(c => c.code === (adding.offered.country || "-")))
-                    onActivated: index => adding.load(choices[index].code, "")
-                }
-                PlainComboBox {
-                    id: regionChoice
-
-                    readonly property var choices: [{ code: "", name: page.sioul.text("site-presets-whole-country") }].concat(adding.country ? adding.country.regions : [])
-
-                    visible: adding.country !== null && adding.country.regions.length > 0
-                    Layout.fillWidth: true
-                    model: choices.map(r => page.theme.plain(r.name))
-                    currentIndex: Math.max(0, choices.findIndex(r => r.code === adding.offered.region))
-                    onActivated: index => adding.load(adding.offered.country, choices[index].code)
-                }
-                PlainComboBox {
-                    readonly property var choices: [{ id: "", name: page.sioul.text("site-presets-all") }].concat(adding.offered.types.map(t => ({ id: "type:" + t, name: page.sioul.text("site-kind-" + t) }))).concat(adding.offered.categories.map(c => ({ id: "category:" + c, name: c })))
-
-                    Layout.fillWidth: true
-                    model: choices.map(c => page.theme.plain(c.name))
-                    currentIndex: Math.max(0, choices.findIndex(c => c.id === adding.category))
-                    onActivated: index => adding.category = choices[index].id
-                }
-            }
-            TextField {
-                id: find
-
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("site-presets-find")
-                inputMethodHints: Qt.ImhNoPredictiveText
-            }
-            ListView {
-                id: presetList
-
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumHeight: 120
-                clip: true
-                model: adding.shownPresets
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
-
-                delegate: ItemDelegate {
-                    id: preset
-
-                    required property var modelData
-
-                    width: ListView.view.width
-                    highlighted: adding.chosen === preset.modelData.url
-                    onClicked: adding.take(preset.modelData)
-                    onDoubleClicked: {
-                        adding.take(preset.modelData)
-                        adding.save()
-                    }
-
-                    contentItem: RowLayout {
-                        spacing: 8
-
-                        Icon {
-                            iconName: page.kindIcons[preset.modelData.kind] || "internet-web-browser"
-                            size: 16
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 0
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: preset.modelData.name
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                font.weight: Font.DemiBold
-                                color: page.theme.text
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: [preset.modelData.about, preset.modelData.categories.join(", "), preset.modelData.host, preset.modelData.calls === true ? page.sioul.text("site-presets-calls") : "", preset.modelData.kept ? page.sioul.text("site-presets-kept") : ""].filter(t => t !== "").join(" · ")
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                font.pixelSize: 12
-                                color: page.theme.muted
-                            }
-                        }
-                    }
-                }
-            }
-            Label {
-                visible: adding.shownPresets.length === 0
-                Layout.fillWidth: true
-                text: page.sioul.text("site-presets-none")
-                wrapMode: Text.Wrap
-                color: page.theme.muted
-            }
-            Label {
-                text: page.sioul.text("site-by-hand")
-                color: page.theme.muted
-            }
-            GridLayout {
-                Layout.fillWidth: true
-                columns: 2
-                columnSpacing: 10
-                rowSpacing: 6
-
-                Label {
-                    text: page.sioul.text("site-field-name")
-                    color: page.theme.muted
-                }
-                TextField {
-                    id: siteName
-
-                    Layout.fillWidth: true
-                }
-                Label {
-                    text: page.sioul.text("site-field-url")
-                    color: page.theme.muted
-                }
-                TextField {
-                    id: siteUrl
-
-                    Layout.fillWidth: true
-                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
-                    onAccepted: adding.save()
-                }
-                Label {
-                    text: page.sioul.text("site-field-kind")
-                    color: page.theme.muted
-                }
-                PlainComboBox {
-                    id: siteKind
-
-                    Layout.fillWidth: true
-                    model: page.kinds.map(k => page.sioul.text("site-kind-" + k))
-                    // Chosen by hand: what it is for follows its type.
-                    onActivated: adding.area = ""
-                }
-                Label {
-                    text: page.sioul.text("site-field-categories")
-                    color: page.theme.muted
-                }
-                TextField {
-                    id: siteCategories
-
-                    Layout.fillWidth: true
-                    placeholderText: page.sioul.text("site-categories-help")
-                }
-            }
-            Label {
-                visible: adding.problem !== ""
-                Layout.fillWidth: true
-                text: adding.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
-        }
-
-        // Out of the footer's own box: a box there closes the dialog on its
-        // first button before adding could be refused. Sioul's own words, translated.
-        footer: Item {
-            implicitWidth: addButtons.implicitWidth
-            implicitHeight: addButtons.implicitHeight
-
-            DialogButtonBox {
-                id: addButtons
-
-                anchors.fill: parent
-
-                Button {
-                    text: page.sioul.text("ui-add")
-                    highlighted: true
-                    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-                }
-                Button {
-                    text: page.sioul.text("ui-cancel")
-                    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                }
-                onAccepted: adding.save()
-                onRejected: adding.close()
-            }
+            page.open(id)
         }
     }
 }

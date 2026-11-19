@@ -105,12 +105,13 @@ fn allowed_here() -> Option<Allowed> {
 }
 
 /// This phone's own card, as JSON: {phone, allow: \[lines\], restricted
-/// (`access::restricted_card`)}; {phone: false} elsewhere. Read when the
+/// (`access::restricted_card`), webview (this device's web view in one
+/// line: `siteview::card_line`)}; {phone: false} elsewhere. Read when the
 /// window comes back too: back from Sioul's page in Android, the accesses
 /// still held are asked again by themselves (`back`, `access::restricted_back`).
 pub(crate) fn view() -> String {
     match allowed_here() {
-        Some(allowed) => json!({ "phone": true, "allow": checklist(&allowed, tr()), "restricted": crate::access::restricted_card() }).to_string(),
+        Some(allowed) => json!({ "phone": true, "allow": checklist(&allowed, tr()), "restricted": crate::access::restricted_card(), "webview": crate::siteview::card_line_here() }).to_string(),
         None => json!({ "phone": false }).to_string(),
     }
 }

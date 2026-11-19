@@ -10,7 +10,8 @@
 // (AppNotesSetup.qml, its two parts), messages on your computers
 // (PhoneMessagesSetup.qml), texts (TextsSetup.qml), the call screening's own
 // settings and where a declined call goes (CallsSetup.qml), and
-// do-not-disturb on this phone (DndSetup.qml). Another phone's card says that
+// do-not-disturb on this phone (DndSetup.qml), and its web view in one line
+// (where sites open: siteview.rs). Another phone's card says that
 // Android's accesses are set on that phone; on a computer, it lists each app,
 // conversation and site with times of its own, read and changed there too
 // (AppNotesSetup.qml's part "lists"). At a phone's width every section folds
@@ -37,7 +38,7 @@ ColumnLayout {
     property bool here: false
     // What the core says of its calls (`calls_line::view`); none for a device that is not a phone.
     property var calls: null
-    // What this phone says of itself (`phonecard::view`): {phone, allow, restricted}; {phone: false} elsewhere.
+    // What this phone says of itself (`phonecard::view`): {phone, allow, restricted, webview}; {phone: false} elsewhere.
     property var own: ({ phone: false })
     // A phone's width: the sections fold.
     property bool folds: false
@@ -96,6 +97,18 @@ ColumnLayout {
         visible: !card.here && card.calls !== null
         Layout.fillWidth: true
         text: card.sioul.text("phone-allow-elsewhere")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: card.theme.muted
+    }
+
+    // This device's web view, in one line: its version, where sites open, what it cannot carry (siteview.rs).
+    Label {
+        objectName: "webviewLine"
+        visible: card.phoneHere && (card.own.webview || "") !== ""
+        Layout.fillWidth: true
+        text: card.own.webview || ""
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13

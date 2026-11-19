@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALES = ROOT / "crates" / "sioul-core" / "locales"
-SOURCES = list((ROOT / "crates" / "sioul-app" / "qml").glob("*.qml")) + [p for p in ROOT.glob("crates/*/src/**/*.rs")]
+SOURCES = list((ROOT / "crates" / "sioul-app" / "qml").glob("*.qml")) + list((ROOT / "crates" / "sioul-app" / "qml" / "android").glob("*.qml")) + [p for p in ROOT.glob("crates/*/src/**/*.rs")]
 
 KEY = r'"([a-z][a-z0-9]*(?:-[a-z0-9]+)+)"'
 CALLS = [

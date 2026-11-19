@@ -26,6 +26,9 @@ struct SiteRow {
     in_view: bool,
     /// Its own icon, kept on this computer (a file's address); "" until fetched.
     icon: String,
+    /// Android: where it opens, in words (in Sioul, or in the browser and why: `siteview`); none on a computer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opens_line: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -204,9 +207,16 @@ pub(crate) fn move_site(id: &str, delta: i64) -> String {
     sioul_core::config::move_site(&crate::backend::config_path(), id, delta, crate::share::writes_format_2()).err().unwrap_or_default()
 }
 
-/// A site taken out of Sioul; its sign-ins stay in its profile until cleared. Returns what went wrong, else "".
+/// A site taken out of Sioul. On a computer its sign-ins stay in its
+/// profile until cleared; on Android its sign-in on this device is
+/// forgotten as far as the web view can (`siteview::forget_line`, review
+/// K1). Returns what went wrong, or what stays on this device, else "".
 pub(crate) fn remove(id: &str) -> String {
-    sioul_core::config::remove_site(&crate::backend::config_path(), id).err().unwrap_or_default()
+    let site = sites::sites(&load_config()).into_iter().find(|s| s.id == id);
+    match sioul_core::config::remove_site(&crate::backend::config_path(), id) {
+        Err(e) => e,
+        Ok(()) => site.map(|s| crate::siteview::forget_line(&s.url, &s.name)).unwrap_or_default(),
+    }
 }
 
 /// Where sites' icons are kept.
@@ -328,16 +338,20 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     crate::tell::tell_with(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Sites)), None, Some(claim), true);
 }
 
-/// The sites, for their list. In quiet time, work sites keep their news to themselves.
+/// The sites, for their list. In quiet time, work sites keep their news to
+/// themselves. On Android each says where it opens (`siteview`).
 pub(crate) fn list() -> String {
     let notices = Notices::load(&Notices::default_path());
     let mode = crate::backend::mode_now();
+    // On Android, where each opens: this device's web view asked once for the list.
+    let opens = crate::siteview::lines_here();
     let rows: Vec<SiteRow> = sites::sites(&load_config())
         .into_iter()
         .map(|site| {
             let in_view = mode.brings(site.area);
             let icon = sioul_sync::favicon::cached(&favicons(), &sites::host_of(&site.url)).map(|p| crate::backend::file_url(&p)).unwrap_or_default();
-            SiteRow { news: in_view && !notices.of(&site.id).is_empty(), in_view, icon, site }
+            let opens_line = opens.as_ref().map(|line| line(&site.url));
+            SiteRow { news: in_view && !notices.of(&site.id).is_empty(), in_view, icon, opens_line, site }
         })
         .collect();
     json(&rows)

@@ -144,6 +144,19 @@
 #   read from the sources, the old channels deleted, never the doses', a
 #   group on every notification, the background service's card, a code
 #   withdrawn, a tap taken at the window's start.
+# - SiteScreenCheck: a site's screen (SiteScreen, SiteWeb): what its one
+#   extra may carry, which addresses load (a link tapped to another site in
+#   the browser, a sign-in's redirects and pop-ups kept, http, files and
+#   other schemes refused), the host shown (the committed page's, in ASCII),
+#   the domain as Rust's, the address kept, the user agent, a file's name,
+#   what a site asked for, the features and words as Rust names them; read
+#   from the sources, the manifest's screen (not exported, no filter, kept
+#   through rotations, above the keyboard), the web view's diagnostics off
+#   and its folder out of a transfer, no JavaScript interface, no file
+#   access, no console nor address in the log, the camera, the microphone
+#   and the location refused, a drawing process that ends handled.
+#   androidx.webkit is stood in for (androidx/: its WebViewFeature's names,
+#   no web view), never part of Sioul's program.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -169,7 +182,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SiteScreenCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 
@@ -255,12 +268,23 @@ lines.append("}")
 pathlib.Path(sys.argv[2]).write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
+# The Android libraries Sioul's Java names beside android.jar, stood in for (androidx/): never part of the APK.
+androidx_sources=()
+while IFS= read -r -d '' file; do
+    androidx_sources+=("$file")
+done < <(find "$here/androidx" -name '*.java' -print0 | sort -z)
+if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$android_jar" -d "$work/androidx" "${androidx_sources[@]}" > "$work/javac-androidx.log" 2>&1; then
+    sed "s|^|  |" "$work/javac-androidx.log"
+    echo "jvm-checks: javac failed on the stand-ins for androidx (above)." >&2
+    exit 1
+fi
+
 echo "jvm-checks: compiling Sioul's Java and the checks against $(basename "$(dirname "$android_jar")")"
 sources=("$work/R.java" "$src"/com/aurelienpierre/sioul/*.java)
 for check in "${checks[@]}"; do
     sources+=("$here/$check.java")
 done
-if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$android_jar" -d "$work/out" "${sources[@]}" > "$work/javac.log" 2>&1; then
+if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$android_jar:$work/androidx" -d "$work/out" "${sources[@]}" > "$work/javac.log" 2>&1; then
     sed "s|^|  |" "$work/javac.log"
     echo "jvm-checks: javac failed (above)." >&2
     exit 1
@@ -287,7 +311,7 @@ sed "s|^|  |" "$work/javac-mms.log"
 
 failed=()
 for check in "${checks[@]}"; do
-    if ! java -Dsioul.root="$root" -cp "$json_jar:$work/out:$android_jar" "com.aurelienpierre.sioul.$check" > "$work/$check.log" 2>&1; then
+    if ! java -Dsioul.root="$root" -cp "$json_jar:$work/out:$work/androidx:$android_jar" "com.aurelienpierre.sioul.$check" > "$work/$check.log" 2>&1; then
         failed+=("$check")
     fi
     sed -e "s|^$check: ||" -e "s|^|  $check: |" "$work/$check.log"
@@ -299,7 +323,7 @@ sed -e "s|^MmsCheck: ||" -e "s|^|  MmsCheck: |" "$work/MmsCheck.log"
 
 if [[ "$javadoc" == yes ]]; then
     if ! javadoc -private -encoding UTF-8 -docencoding UTF-8 -charset UTF-8 -notimestamp -quiet \
-            -sourcepath "$src" -d "$work/javadoc" --class-path "$android_jar" -Xdoclint:all,-missing -Werror \
+            -sourcepath "$src" -d "$work/javadoc" --class-path "$android_jar:$work/androidx" -Xdoclint:all,-missing -Werror \
             com.aurelienpierre.sioul > "$work/javadoc.log" 2>&1; then
         failed+=(javadoc)
     fi
