@@ -4764,14 +4764,18 @@ subscribe-line-settings-unread = Sioul ne peut pas lire son fichier de réglages
 subscribe-line-entry-unread = Les réglages de cet agenda ne se lisent pas ici (écrits par un Sioul plus récent, ou à la main) : sa copie et ses derniers réglages restent tels qu’ils étaient.
 subscribe-line-read = Lu { $when }.
 subscribe-line-never = Pas encore lu sur cet appareil.
-subscribe-line-no-calendar = Cette adresse ne donne plus d’agenda, depuis { $since }. { $why } { $kept ->
-        [yes] La dernière copie reste.
-       *[no] Rien n’en a encore été lu.
+subscribe-line-no-calendar = { $kept ->
+        [yes] Cette adresse ne donne plus d’agenda, depuis { $since }. { $why } La copie lue { $when } reste.
+       *[no] Cette adresse ne donne pas d’agenda. { $why } Rien n’en a encore été lu.
     } Changez l’adresse, ou actualisez.
 subscribe-line-unreached = Pas joint depuis { $since }. { $why } { $kept ->
         [yes] La dernière copie reste ;
        *[no] {""}
     } Sioul réessaie plus tard.
+subscribe-line-not-taken = Depuis { $since }, ce que donne l’adresse n’est pas pris. { $why } { $kept ->
+        [yes] La copie lue { $when } reste.
+       *[no] Rien n’en a encore été lu.
+    }
 subscribe-not-https = Seule une adresse https:// est lue, ou une adresse webcal.
 subscribe-not-address = Ce n’est pas l’adresse d’un agenda.
 subscribe-not-public = Cette adresse est sur un réseau privé : Sioul lit seulement des adresses publiques.
@@ -4779,6 +4783,8 @@ subscribe-redirects = Cette adresse renvoie ailleurs plus de trois fois.
 subscribe-too-large = Cet agenda pèse plus de dix mégaoctets : il n’a pas été lu.
 subscribe-too-many = Cet agenda tient plus de vingt mille événements : il n’a pas été lu.
 subscribe-too-large-kept = Cet agenda prendrait ici bien plus de place qu’il n’en pèse : il n’a pas été lu.
+subscribe-cut = L’agenda est revenu coupé avant sa fin : il n’a pas été lu.
+subscribe-no-event = L’agenda est revenu sans aucun événement.
 subscribe-page = L’adresse donne une page web, pas un agenda : peut-être une page de connexion.
 subscribe-text = Le serveur a répondu « { $said } », pas un agenda.
 subscribe-empty = Le serveur n’a rien répondu.

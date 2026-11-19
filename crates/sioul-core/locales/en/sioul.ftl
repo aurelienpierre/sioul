@@ -4731,14 +4731,18 @@ subscribe-line-settings-unread = Sioul cannot read its settings file here: this 
 subscribe-line-entry-unread = This calendar's settings do not read here (written by a later Sioul, or by hand): its copy and its last settings stay as they were.
 subscribe-line-read = Read { $when }.
 subscribe-line-never = Not read on this device yet.
-subscribe-line-no-calendar = This address no longer gives a calendar, since { $since }. { $why } { $kept ->
-        [yes] The last copy stays.
-       *[no] Nothing was read from it yet.
+subscribe-line-no-calendar = { $kept ->
+        [yes] This address no longer gives a calendar, since { $since }. { $why } The copy read { $when } stays.
+       *[no] This address gives no calendar. { $why } Nothing was read from it yet.
     } Change the address, or refresh now.
 subscribe-line-unreached = Not reached since { $since }. { $why } { $kept ->
         [yes] The last copy stays;
        *[no] {""}
     } Sioul tries again later.
+subscribe-line-not-taken = Since { $since }, what the address gives is not taken. { $why } { $kept ->
+        [yes] The copy read { $when } stays.
+       *[no] Nothing was read from it yet.
+    }
 subscribe-not-https = Only an address beginning with https:// or webcal:// is read.
 subscribe-not-address = This is not a calendar's address.
 subscribe-not-public = This address is on a private network: Sioul reads public addresses only.
@@ -4746,6 +4750,8 @@ subscribe-redirects = This address sends elsewhere more than three times.
 subscribe-too-large = This calendar weighs more than ten megabytes: it was not read.
 subscribe-too-many = This calendar holds more than twenty thousand events: it was not read.
 subscribe-too-large-kept = This calendar would take too much room kept here, far more than it weighs: it was not read.
+subscribe-cut = The calendar came back cut short: it was not read.
+subscribe-no-event = The calendar came back without any event.
 subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
 subscribe-text = The server answered "{ $said }", not a calendar.
 subscribe-empty = The server answered nothing.

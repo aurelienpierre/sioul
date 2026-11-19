@@ -304,6 +304,10 @@ pub enum Problem {
     /// Far heavier kept here than it came (each event with its time zones,
     /// `agenda::kept_most`): a head of megabytes repeated for each event (F7).
     TooLargeKept,
+    /// Cut short: a component left open, or no end of the calendar (F9).
+    Cut,
+    /// A calendar without any event, where the copy kept had some (F10).
+    NoEvent,
     /// A web page, not a calendar: a sign-in page, an error page.
     Page,
     /// A line of text, not a calendar: a refusal ("Invalid authentication").
@@ -331,6 +335,8 @@ impl Problem {
             Problem::TooLarge => "subscribe-too-large",
             Problem::TooMany => "subscribe-too-many",
             Problem::TooLargeKept => "subscribe-too-large-kept",
+            Problem::Cut => "subscribe-cut",
+            Problem::NoEvent => "subscribe-no-event",
             Problem::Page => "subscribe-page",
             Problem::Text(_) => "subscribe-text",
             Problem::Empty => "subscribe-empty",
@@ -341,10 +347,15 @@ impl Problem {
         }
     }
 
-    /// Whether the address no longer gives a calendar (rather than not
-    /// being reached): the agenda's line says so, with what to do.
-    pub fn no_calendar(&self) -> bool {
-        !matches!(self, Problem::Network | Problem::Status(500..=599))
+    /// Which line the agenda says of it (`line`): the address gives no
+    /// calendar (with what to do), it was not reached (tried again later),
+    /// or what it gave was not taken (a limit met, cut short, no event).
+    pub fn line_id(&self) -> &'static str {
+        match self {
+            Problem::Network | Problem::Status(408 | 429 | 500..=599) => "subscribe-line-unreached",
+            Problem::TooLarge | Problem::TooMany | Problem::TooLargeKept | Problem::Cut | Problem::NoEvent | Problem::NotPublic | Problem::Redirects => "subscribe-line-not-taken",
+            _ => "subscribe-line-no-calendar",
+        }
     }
 
     /// Its sentence.
@@ -430,7 +441,9 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
         }
         return Err(Problem::NotCalendar);
     }
-    if text.lines().filter(|l| l.trim().eq_ignore_ascii_case("BEGIN:VEVENT")).count() > MOST_EVENTS {
+    // A whole calendar, its events counted as the reader reads them (F8, F9).
+    let Some(events) = shape(text) else { return Err(Problem::Cut) };
+    if events > MOST_EVENTS {
         return Err(Problem::TooMany);
     }
     // Each event with what it needs, the whole weighed against what came (F7).
@@ -467,6 +480,43 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
     items.dedup_by(|a, b| a.0 == b.0);
     let hash = steady(&items);
     Ok(Feed { items, name, refresh: refresh.or(ttl), hash })
+}
+
+/// How many events a whole calendar holds, as the reader reads them
+/// (lines unfolded, a name read apart from its parameters: `BEGIN:VEV` folded
+/// or `BEGIN;X=1:VEVENT` count, F8); none when it is not whole (F9): a
+/// component left open or closed out of order, a line outside the calendar,
+/// or no end of the calendar, as a server whose script stops half-way
+/// answers with a 200 (the parser accepts an unterminated component).
+fn shape(text: &str) -> Option<usize> {
+    let mut open: Vec<String> = Vec::new();
+    let (mut ended, mut events) = (false, 0usize);
+    for line in crate::lines::unfold(text) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let name = crate::lines::name(&line);
+        let value = crate::lines::value(&line).trim().to_ascii_uppercase();
+        match name.as_str() {
+            "BEGIN" => {
+                if open.is_empty() && value != "VCALENDAR" {
+                    return None;
+                }
+                events += usize::from(value == "VEVENT");
+                open.push(value);
+                ended = false;
+            }
+            "END" => {
+                if open.pop().as_deref() != Some(value.as_str()) {
+                    return None;
+                }
+                ended = open.is_empty();
+            }
+            _ if open.is_empty() => return None,
+            _ => {}
+        }
+    }
+    ended.then_some(events)
 }
 
 /// A UID for an event written without one: made from what it says, its
@@ -609,6 +659,8 @@ impl Fetched {
             "subscribe-too-large" => Problem::TooLarge,
             "subscribe-too-many" => Problem::TooMany,
             "subscribe-too-large-kept" => Problem::TooLargeKept,
+            "subscribe-cut" => Problem::Cut,
+            "subscribe-no-event" => Problem::NoEvent,
             "subscribe-page" => Problem::Page,
             "subscribe-text" => Problem::Text(self.said.clone()),
             "subscribe-empty" => Problem::Empty,
@@ -732,6 +784,11 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
                 Ok(feed) => feed,
                 Err(problem) => return refused(state, problem),
             };
+            // No event, where the copy of this address had some: it stays (F10;
+            // a generator's bad day must not empty the holidays nor un-pause the series).
+            if feed.items.is_empty() && same_address && state.events > 0 {
+                return refused(state, Problem::NoEvent);
+            }
             (state.etag, state.last_modified, state.refresh, state.name) = (etag, last_modified, feed.refresh.unwrap_or(0), feed.name.clone());
             clear(&mut state);
             if same_address && feed.hash == state.hash {
@@ -922,8 +979,10 @@ fn line_of(state: &Fetched, now: &jiff::Zoned, tr: &crate::i18n::Translator) -> 
         Some(problem) => {
             args.set("why", problem.said(tr));
             args.set("since", when(state.since.max(state.tried)));
+            // Since when the copy kept stands (F10).
             args.set("kept", if state.checked > 0 { "yes" } else { "no" });
-            tr.text(if problem.no_calendar() { "subscribe-line-no-calendar" } else { "subscribe-line-unreached" }, Some(&args))
+            args.set("when", when(state.changed.max(state.checked)));
+            tr.text(problem.line_id(), Some(&args))
         }
     }
 }

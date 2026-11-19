@@ -122,7 +122,7 @@ fn unchanged_but_for_its_stamps_writes_nothing() {
     let tr = crate::i18n::Translator::new("en");
     let now = jiff::Timestamp::from_second(5_000).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
     let line = line(id, &now, &tr);
-    assert!(line.contains("no longer gives a calendar") && line.contains("last copy stays"), "{line}");
+    assert!(line.contains("no longer gives a calendar") && line.contains("The copy read") && line.contains("stays"), "{line}");
     assert!(!line.contains("authtoken") && !line.contains("example.org"), "never the address: {line}");
     // A line of text keeps the server's words; the network's failure is said as such.
     assert_eq!(take(id, &s, Answer::Refused(Problem::Network), 6_000).unwrap(), Taken::Kept(Problem::Network));
@@ -327,4 +327,61 @@ fn a_subscribed_calendar_marks_you_busy_only_when_you_say_so() {
     assert!(!holiday.holds_time());
     let own = crate::agenda::Occurrence { opaque: true, transparent: false, ..holiday };
     assert_eq!(crate::busy::stretches_of(&[own], None, 0, 86_400), [(0, 86_400)], "the same event of an agenda of yours");
+}
+
+/// The review's F8: twenty thousand and one events whose BEGIN line is
+/// folded, or carries a parameter, are too many all the same: counted as
+/// the reader reads them.
+#[test]
+fn folded_begin_lines_are_counted() {
+    for begin in ["BEGIN:VEV\r\n ENT", "BEGIN;X=1:VEVENT"] {
+        let mut many = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n");
+        for n in 0..=MOST_EVENTS {
+            many.push_str(&format!("{begin}\r\nUID:{n}\r\nDTSTART:20300101T000000Z\r\nEND:VEVENT\r\n"));
+        }
+        many.push_str("END:VCALENDAR\r\n");
+        assert_eq!(read(many.as_bytes()), Err(Problem::TooMany), "{begin}");
+    }
+}
+
+/// The review's F9: an answer that does not end as a calendar ends (a
+/// server whose script stopped half-way, with a 200) replaces nothing.
+#[test]
+fn an_answer_cut_short_is_not_a_calendar() {
+    let cut = PUBLIC.split("BEGIN:VEVENT\r\nSUMMARY:1er janvier").next().unwrap().to_string() + "BEGIN:VEVENT\r\nSUMMARY:1er jan";
+    assert_eq!(read(cut.as_bytes()), Err(Problem::Cut), "an event left open, no END:VCALENDAR");
+    let no_end = PUBLIC.trim_end().trim_end_matches("END:VCALENDAR");
+    assert_eq!(read(no_end.as_bytes()), Err(Problem::Cut), "every event closed, the calendar not");
+    let crossed = PUBLIC.replacen("END:VEVENT", "END:VTODO", 1);
+    assert_eq!(read(crossed.as_bytes()), Err(Problem::Cut), "closed out of order");
+    assert!(read(PUBLIC.as_bytes()).is_ok());
+    assert!(read(format!("{PUBLIC}\r\n\r\n").as_bytes()).is_ok(), "blank lines after its end are nothing");
+}
+
+/// The review's F10: a calendar that comes back with no event, where the
+/// copy of this address had some, replaces nothing: the holidays stay days
+/// off, and the line says since when the copy stands; one that never had
+/// any is current as it is (Moodle's coming weeks).
+#[test]
+fn an_answer_without_events_keeps_a_copy_that_had_some() {
+    crate::config::stand_ins_only();
+    let empty = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Example//EN\r\nEND:VCALENDAR\r\n";
+    let id = "noevent-test";
+    let s = subscription("https://calendar.example.org/holidays.ics", Some("public"), None);
+    vdir::prepare_subscribed(id, "Holidays", None).unwrap();
+    assert_eq!(take(id, &s, calendar(PUBLIC), 1_000).unwrap(), Taken::Changed);
+    assert_eq!(take(id, &s, calendar(empty), 2_000).unwrap(), Taken::Kept(Problem::NoEvent));
+    assert_eq!(folder(id).read_dir().unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count(), 2, "the copy stays");
+    let tr = crate::i18n::Translator::new("en");
+    let now = jiff::Timestamp::from_second(3_000).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
+    let said = line(id, &now, &tr);
+    assert!(said.contains("without any event") && said.contains("The copy read") && said.contains("stays"), "{said}");
+    vdir::remove_subscribed(id).unwrap();
+    // A calendar that never had an event: an empty answer is current, nothing kept back.
+    let moodle = "noevent-moodle-test";
+    let m = subscription("https://school.example.org/calendar.ics", None, None);
+    vdir::prepare_subscribed(moodle, "Moodle", None).unwrap();
+    assert_eq!(take(moodle, &m, calendar(empty), 1_000).unwrap(), Taken::Changed);
+    assert_eq!(take(moodle, &m, calendar(empty), 2_000).unwrap(), Taken::Unchanged);
+    vdir::remove_subscribed(moodle).unwrap();
 }
