@@ -130,7 +130,7 @@ ColumnLayout {
     }
     // What the list does, an item per sentence rather than one paragraph (the pictures' review, point 6).
     Repeater {
-        model: setup.listShown ? setup.sioul.text("dnd-setup-list-help").split(/(?<=[.!?])\s+(?=\S)/) : []
+        model: setup.listShown ? (setup.sioul.text("dnd-setup-list-help").match(/[^.!?]+[.!?]*/g) || []).map(t => t.trim()).filter(t => t !== "") : []
 
         delegate: Label {
             required property string modelData
