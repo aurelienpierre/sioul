@@ -169,6 +169,17 @@ from = "2026-01-01"
 
 Everything Settings ▸ Invoices shows is kept in that same table, `[invoice]`, which you can still read and change by hand: [the developers' notes](../dev/projects.md#invoices) list every key. The rates and thresholds are France's for 2026, as URSSAF and the tax administration publish them, each with its day: an update of Sioul brings the next ones, and yours stay over them.
 
+## Extensions {#extensions}
+
+An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable on a school platform. Settings ▸ Extensions lists what the extensions' signed list offers, and says for each, before you enable anything, what it brings, the sites it talks to and whether it keeps a sign-in.
+
+- **Enable** downloads its file and checks it against the signed list; **Sign in…** opens the site's own page in a window of Sioul's (on a phone, a screen of Sioul's), its name always shown above it: you type your password there, never in Sioul. The sign-in stays in this device's keyring.
+- It then refreshes by itself every three hours, and brings each agenda **read only**. The agendas reach your other devices through the sharing; a device that does not run the extension shows them all the same.
+- Its line says when it last ran, what it brought, and its last problem in one sentence. **Disable** stops it on this device; **Remove** forgets its sign-in and asks whether to keep its agendas.
+- An extension runs apart from Sioul and is given only what its list says: the sites it names, its own entry in the keyring. An update that asks for more waits for your yes.
+
+The extensions are unofficial: a service can change and stop one. [The developers' notes](../dev/extensions.md) describe the interface and every check.
+
 ## Each page's own settings
 
 One setting, one place. What belongs to a page is behind the ⚙ at the end of that page's first row:

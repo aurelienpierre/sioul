@@ -10,7 +10,7 @@ The interface's version is **1**. A change that an extension built for version 1
 
 - A WebAssembly **core module** (not a component), built for `wasm32-unknown-unknown`, 8 MiB at most.
 - It imports nothing but the functions of the module `sioul` below; no WASI. A module that imports anything else, or a function its manifest does not grant, is not started: "This extension asks for more than its list says."
-- Sioul runs it with the pure-Rust interpreter **wasmi** (MIT or Apache-2.0): no code is generated at run time, so it runs the same on Linux, inside the Flatpak, on Windows, on macOS and on Android.
+- Sioul runs it with the pure-Rust interpreter **wasmi** 2.0 (MIT or Apache-2.0, with `std` and `validate` only): no code is generated at run time, so it runs the same on Linux, inside the Flatpak, on Windows, on macOS and on Android (built for `aarch64-linux-android` on 18 November 2026). A program that embeds it grows by about 1.6 MB (a minimal embedding, x86_64, release, stripped: 2.0 MB against 0.36 MB without it).
 
 ## What it exports
 

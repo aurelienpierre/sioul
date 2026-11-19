@@ -169,6 +169,17 @@ from = "2026-01-01"
 
 Tout ce que montre Paramètres ▸ Factures est gardé dans cette même table, `[invoice]`, que vous pouvez toujours lire et changer à la main : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/projects.html#invoices) en listent chaque clé. Les taux et les seuils sont ceux de la France pour 2026, tels que l’URSSAF et l’administration fiscale les publient, chacun avec son jour : une mise à jour de Sioul apporte les suivants, et les vôtres restent par-dessus.
 
+## Extensions {#extensions}
+
+Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’un élève sur un ENT. Paramètres ▸ Extensions liste ce que propose la liste signée des extensions, et dit pour chacune, avant que vous n’activiez quoi que ce soit, ce qu’elle apporte, les sites auxquels elle parle et si elle garde une connexion.
+
+- **Activer** télécharge son fichier et le vérifie d’après la liste signée ; **Se connecter…** ouvre la page du site lui-même dans une fenêtre de Sioul (sur un téléphone, un écran de Sioul), son nom toujours affiché au-dessus : vous y tapez votre mot de passe, jamais dans Sioul. La connexion reste dans le trousseau de cet appareil.
+- Elle se met ensuite à jour d’elle-même toutes les trois heures, et apporte chaque agenda **en lecture seule**. Les agendas rejoignent vos autres appareils par le partage ; un appareil qui ne fait pas tourner l’extension les montre tout de même.
+- Sa ligne dit quand elle a tourné, ce qu’elle a apporté, et son dernier problème en une phrase. **Désactiver** l’arrête sur cet appareil ; **Retirer** oublie sa connexion et demande s’il faut garder ses agendas.
+- Une extension tourne à part de Sioul et ne reçoit que ce que dit sa liste : les sites qu’elle nomme, sa propre entrée dans le trousseau. Une mise à jour qui demande plus attend votre accord.
+
+Les extensions ne sont pas officielles : un service peut changer et en arrêter une. [Les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/extensions.html) décrivent l’interface et chaque vérification.
+
 ## Les réglages propres à chaque page {#each-pages-own-settings}
 
 Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙ au bout de la première rangée de cette page :
