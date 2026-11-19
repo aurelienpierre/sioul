@@ -68,12 +68,14 @@ Item {
             },
             elsewhere: { line: "Set elsewhere: one site in real time.", links: [{ id: "sites", label: "Sites" }] },
             calls: "Calls are set for each phone in Settings ▸ Devices.",
-            rows: ["mail.safe", "doses"],
+            rows: ["mail.safe", "calls.neutral", "doses"],
+            calls_grid: { text: "reach-calls-grid", door_label: "reach-calls-grid-open", door: "settings:devices.calls" },
             grid: {
                 columns: [{ id: "work", label: "Work" }, { id: "sleep", label: "Sleep" }],
                 marks: [],
                 rows: [
                     { id: "mail.safe", label: "Safe", group: "Mail", group_id: "mail", help: "Only you put someone on this list.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "quiet", label: "Shown, not told", word: "Shown" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now", "quiet"], said: "Mail, Safe, at Work: At once." }, { column: "sleep", value: "quiet", word: "Shown", choices: ["now", "quiet"], said: "Mail, Safe, at Sleep: Shown, not told." }] },
+                    { id: "calls.neutral", label: "Your contacts", group: "Calls", group_id: "calls", help: "Everyone in your address books.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "later", label: "Voicemail", word: "Voicemail" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now", "later"], said: "Calls, Your contacts, at Work: At once." }, { column: "sleep", value: "later", word: "Voicemail", choices: ["now", "later"], said: "Calls, Your contacts, at Sleep: Voicemail." }] },
                     { id: "doses", label: "Doses", group: "What you set or asked for", group_id: "asked", help: "A dose's reminder at its time.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "later", label: "Later", word: "Later" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now"], locked: "Fixed: a dose comes at its time.", said: "Doses, at Work: At once." }, { column: "sleep", value: "now", word: "Now", choices: ["now", "later"], said: "Doses, at Sleep: At once." }] }
                 ]
             },
@@ -187,6 +189,21 @@ Item {
                 page.view = "rules"
                 page.rowOpen = ""
             }
+        }
+
+        // The calls' rows in What comes when, and under them the line that a phone's own table
+        // replaces them but in a pause and during do-not-disturb, with its door (review of `phones`).
+        function test_the_calls_rows_in_the_full_ledger() {
+            find(wide, "reachesTabs:table").clicked()
+            verify(find(wide, "cell-calls.neutral-work") !== null, "a calls' row, every column")
+            verify(find(wide, "groupNote-calls") !== null, "its line under it")
+            mock.opened = []
+            find(wide, "groupDoor-calls").clicked()
+            compare(mock.opened, ["settings:devices.calls"])
+            find(narrow, "reachesTabs:table").clicked()
+            verify(find(narrow, "row-calls.neutral") !== null && find(narrow, "callsGridNote") !== null)
+            find(wide, "reachesTabs:rules").clicked()
+            find(narrow, "reachesTabs:rules").clicked()
         }
 
         // A phone's top in three rows before the tabs (the pictures' review, point 1): the

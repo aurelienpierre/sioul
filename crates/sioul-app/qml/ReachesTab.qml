@@ -1136,6 +1136,7 @@ ColumnLayout {
                 theme: tab.theme
                 words: true
                 now: tab.shown.now_columns
+                groupNotes: tab.shown.calls_grid ? { "calls": tab.shown.calls_grid } : ({})
                 onSave: (key, value, shown) => {
                     tab.problem = tab.sioul.reachesSet(key.slice("attention.".length), JSON.stringify(value), JSON.stringify(shown))
                     tab.reload()
@@ -1147,59 +1148,82 @@ ColumnLayout {
     Repeater {
         model: tab.view === "table" && tab.narrow && tab.openRowData === null ? tab.gridRows : []
 
-        delegate: BareButton {
-            id: rowButton
+        delegate: ColumnLayout {
+            id: rowLine
 
             required property var modelData
             required property int index
-            readonly property bool newGroup: rowButton.index === 0 || tab.gridRows[rowButton.index - 1].group !== rowButton.modelData.group
+            // The last of the calls' rows: the line that a phone's own table replaces them, and its door.
+            readonly property bool callsEnd: rowLine.modelData.group_id === "calls" && (rowLine.index === tab.gridRows.length - 1 || tab.gridRows[rowLine.index + 1].group_id !== "calls")
 
-            objectName: "row-" + rowButton.modelData.id
             Layout.fillWidth: true
-            Layout.topMargin: rowButton.newGroup && rowButton.index > 0 ? 10 : 0
-            implicitHeight: rowCol.implicitHeight + 10
-            Accessible.name: tab.theme.plain(rowButton.modelData.group + ", " + rowButton.modelData.label)
-            contentItem: ColumnLayout {
-                id: rowCol
+            spacing: 2
 
-                spacing: 1
+            BareButton {
+                id: rowButton
 
-                Label {
-                    visible: rowButton.newGroup
-                    Layout.fillWidth: true
-                    text: rowButton.modelData.group
-                    textFormat: Text.PlainText
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    color: tab.theme.accent
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
+                readonly property var modelData: rowLine.modelData
+                readonly property int index: rowLine.index
+                readonly property bool newGroup: rowButton.index === 0 || tab.gridRows[rowButton.index - 1].group !== rowButton.modelData.group
+
+                objectName: "row-" + rowButton.modelData.id
+                Layout.fillWidth: true
+                Layout.topMargin: rowButton.newGroup && rowButton.index > 0 ? 10 : 0
+                implicitHeight: rowCol.implicitHeight + 10
+                Accessible.name: tab.theme.plain(rowButton.modelData.group + ", " + rowButton.modelData.label)
+                contentItem: ColumnLayout {
+                    id: rowCol
+
+                    spacing: 1
 
                     Label {
+                        visible: rowButton.newGroup
                         Layout.fillWidth: true
-                        text: rowButton.modelData.label + (rowButton.modelData.changed ? "  •" : "")
+                        text: rowButton.modelData.group
                         textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: tab.theme.text
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: tab.theme.accent
                     }
-                    Label {
-                        text: {
-                            const now = tab.shown.now_columns
-                            const cell = rowButton.modelData.cells.find(c => now.indexOf(c.column) >= 0)
-                            return cell ? cell.word : ""
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: rowButton.modelData.label + (rowButton.modelData.changed ? "  •" : "")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: tab.theme.text
                         }
-                        textFormat: Text.PlainText
-                        color: tab.theme.muted
-                    }
-                    Label {
-                        text: "›"
-                        color: tab.theme.muted
+                        Label {
+                            text: {
+                                const now = tab.shown.now_columns
+                                const cell = rowButton.modelData.cells.find(c => now.indexOf(c.column) >= 0)
+                                return cell ? cell.word : ""
+                            }
+                            textFormat: Text.PlainText
+                            color: tab.theme.muted
+                        }
+                        Label {
+                            text: "›"
+                            color: tab.theme.muted
+                        }
                     }
                 }
+                onClicked: tab.rowOpen = rowButton.modelData.id
             }
-            onClicked: tab.rowOpen = rowButton.modelData.id
+
+            Note {
+                objectName: rowLine.callsEnd ? "callsGridNote" : ""
+                visible: rowLine.callsEnd
+                text: tab.shown.calls_grid ? tab.shown.calls_grid.text : ""
+            }
+            GoButton {
+                visible: rowLine.callsEnd
+                text: tab.shown.calls_grid ? tab.theme.plain(tab.shown.calls_grid.door_label) : ""
+                onClicked: tab.sioul.reminderOpened("settings:devices.calls", "", "")
+            }
         }
     }
     ColumnLayout {

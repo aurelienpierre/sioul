@@ -86,7 +86,7 @@ Choosing one while you have changes of your own asks first: "Quieter replaces yo
   <figcaption>What comes when: every row at every time, a word in each cell.</figcaption>
 </figure>
 
-The whole table: down, each row (mail's and messages' circles, then Sioul's own kinds that act on this device); across, the seven times and the two layers, the ones now in bold. Each cell is a word; a press opens its choices in full words, the one it has in bold. A greyed one is fixed, for your safety, and says why. A dot marks what you changed from As Sioul does now. On a phone, a line per row with its word for now; a press opens its nine values. One line under the table says what each word means.
+The whole table: down, each row (mail's, calls' and messages' circles, then Sioul's own kinds that act on this device); across, the seven times and the two layers, the ones now in bold. Each cell is a word; a press opens its choices in full words, the one it has in bold. A greyed one is fixed, for your safety, and says why. A dot marks what you changed from As Sioul does now. On a phone, a line per row with its word for now; a press opens its nine values. One line under the table says what each word means. The calls' rows are the table every phone follows until it has its own: a phone with its own table (Settings ▸ Devices) follows it instead, except in a pause and during do-not-disturb, where these rows still decide; a line under them says so, with a button to each phone's table.
 
 ### The times {#the-times}
 

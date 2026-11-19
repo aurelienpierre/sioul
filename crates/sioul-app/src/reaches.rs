@@ -347,7 +347,7 @@ pub(crate) fn view(realtime: bool) -> String {
     let usual = Attention::usual();
     let rows = table_rows(reach.phone);
     // What the page shows, alone, is compared (review R3): a row this device's
-    // table does not show, and the calls' rows, are not counted.
+    // table does not show is not counted; the calls' rows are, What comes when showing them.
     let presets: Vec<Value> = Preset::ALL
         .iter()
         .map(|p| {
@@ -375,6 +375,9 @@ pub(crate) fn view(realtime: bool) -> String {
         "moments": moments(),
         "elsewhere": elsewhere(&attention, &config, reach),
         "calls": text("reach-calls"),
+        // Under the calls' rows of What comes when: a phone's own table replaces them, but in a
+        // pause and during do-not-disturb; its door opens that table (`settings:devices.calls`).
+        "calls_grid": { "text": text("reach-calls-grid"), "door_label": text("reach-calls-grid-open"), "door": "settings:devices.calls" },
         "rows": rows.iter().map(|r| r.id()).collect::<Vec<_>>(),
         "grid": grid,
         "phone": reach.phone,
@@ -384,12 +387,14 @@ pub(crate) fn view(realtime: bool) -> String {
     .to_string()
 }
 
-/// The rows of What comes when, by id: mail's and messages', but the blocked
-/// (never, said once); Sioul's own that act on this device. Calls are set
-/// for each phone in Settings ▸ Devices: their rows stay in the store and
-/// the engine, never on this page.
+/// The rows of What comes when, by id: mail's, calls' and messages', but the
+/// blocked (never, said once); Sioul's own that act on this device. The
+/// calls' rows are the table every phone follows until it has a table of its
+/// own (Settings ▸ Devices), and still decide there in a pause and during
+/// do-not-disturb: the full ledger shows them, changeable as every row
+/// (review of `phones`, "For `reach`"); Your rules has no calls' column.
 fn table_rows(phone: bool) -> Vec<Row> {
-    shown_rows(phone).into_iter().filter(|r| !matches!(r, Row::People(Channel::Calls, _))).collect()
+    shown_rows(phone)
 }
 
 /// A behaviour, or "Your own", in words.
@@ -536,7 +541,7 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
         (events, "reach-elsewhere-events", "agenda", "agenda"),
         (health, "reach-elsewhere-health", "health", "health"),
         (persons, "reach-elsewhere-persons", "contacts", "contacts"),
-        (sources, "reach-elsewhere-sources", "settings:devices", "devices"),
+        (sources, "reach-elsewhere-sources", "settings:devices.apps", "devices"),
     ] {
         if n > 0 {
             parts.push(counted(id, n));
@@ -1324,7 +1329,8 @@ mod tests {
         assert_eq!(sites(&table_rows(false))["value"], "own");
         assert_eq!(sites(&table_rows(false))["own_help"], text("reach-own-help-elsewhere"));
         assert_eq!(sites(&table_rows(true))["own_help"], text("reach-own-help"));
-        assert!(table_rows(true).iter().all(|r| !matches!(r, Row::People(Channel::Calls, _))));
+        // The calls' rows in the full ledger, as the table every phone follows until it has its own.
+        assert!(table_rows(false).contains(&Row::People(Channel::Calls, Person::Neutral)) && table_rows(true).contains(&Row::People(Channel::Calls, Person::Neutral)));
         assert!(table_rows(false).contains(&Row::Own(Kind::Sites)) && table_rows(true).contains(&Row::Own(Kind::AppAutomatons)));
         // A row changed in the grid: "Your own", in words.
         let mut own = Attention::usual();

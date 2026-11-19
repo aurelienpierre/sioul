@@ -207,7 +207,7 @@ Item {
     function showSetting(key) {
         // Calls are set up where they are screened (telephony); an app's and a conversation's
         // own times in its phone's card, in Devices, from every device (review R4).
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": "devices" }
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": "devices.apps" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)
@@ -229,6 +229,9 @@ Item {
         // A tab without settings of its own (Calls): the tab itself.
         else if (page.sections.includes(key))
             page.section = key
+        // A part of a tab by its name ("devices.calls", "devices.apps"): the tab, the part brought into view by it.
+        else if (page.sections.includes(key.split(".")[0]))
+            page.section = key.split(".")[0]
         page.listShown = false
         page.linked = true
         toSetting.key = key
