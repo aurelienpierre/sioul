@@ -120,9 +120,19 @@ pub fn log_path(id: &str) -> PathBuf {
     crate::config::state_dir().join("extensions").join(format!("{id}.log"))
 }
 
-/// The state at `path`; an absent or unreadable one is empty.
+/// The state at `path`; an absent or unreadable one is empty. Each offer it
+/// keeps is checked as a manifest's are (its id above all, which names a
+/// file, a log and a keyring entry): one that fails is left out, as if never
+/// installed (M2: nothing signs this record).
 pub fn load(path: &Path) -> State {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    let mut state: State = std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
+    state.extensions.retain(|i| super::manifest::check(&i.offer).is_ok());
+    for installed in &mut state.extensions {
+        if installed.waiting.as_ref().is_some_and(|w| super::manifest::check(w).is_err() || w.id != installed.offer.id) {
+            installed.waiting = None;
+        }
+    }
+    state
 }
 
 /// The state at `path` changed by `f`, read and written under its lock (the
@@ -192,6 +202,19 @@ mod tests {
         assert_eq!(kept.lines().last(), Some("2-199"));
         assert_eq!(kept.lines().next(), Some("1-0"));
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// M2: an offer kept in the record is checked as a manifest's are when the record is read.
+    #[test]
+    fn a_kept_offer_that_is_not_one_is_left_out() {
+        let path = std::env::temp_dir().join(format!("sioul-extensions-kept-{}.toml", std::process::id()));
+        let offer = crate::extensions::manifest::parse(crate::extensions::manifest::SAMPLE).unwrap().offers.remove(0);
+        let wrong = crate::extensions::manifest::Offer { id: "../x".into(), ..offer.clone() };
+        let state = State { extensions: vec![Installed::new(offer.clone()), Installed::new(wrong)], ..State::default() };
+        std::fs::write(&path, toml::to_string(&state).unwrap()).unwrap();
+        let read = load(&path);
+        assert_eq!(read.extensions.iter().map(|i| i.offer.id.as_str()).collect::<Vec<_>>(), vec!["timetable"]);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// S2: a fresh device, or one whose record was lost or no longer reads,

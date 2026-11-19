@@ -308,6 +308,15 @@ struct Plan {
     taken: Vec<Offer>,
     /// A newer offer that asks for more: waiting for the person's yes.
     waiting: Vec<Offer>,
+    /// An update waiting that the manifest no longer offers: dropped.
+    unwaited: Vec<String>,
+}
+
+/// Versions compared part by part (`0.10.0` after `0.9.1`), numbers as
+/// numbers, any other part as text.
+fn version_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let parts = |v: &str| v.split(['.', '-', '+']).map(|p| p.parse::<u64>().map_or_else(|_| (1, 0, p.to_string()), |n| (0, n, String::new()))).collect::<Vec<_>>();
+    parts(a).cmp(&parts(b))
 }
 
 /// What the offer accepted here may still be given under `listed`: its hosts
@@ -321,9 +330,12 @@ fn narrowed(accepted: &Offer, listed: &Offer) -> Offer {
 /// The changes `manifest` brings to `state` (M1): an installed extension it
 /// no longer lists stops; one it lists is given at once no more than the
 /// manifest says; a newer offer is taken when it asks for no more, else waits.
+/// Never an older version than the one in use (M3); an update waiting that
+/// the manifest no longer offers is dropped; and nothing is fetched for an
+/// extension disabled here (M4): it takes its update when enabled again.
 fn plan(state: &State, manifest: &Manifest) -> Plan {
     let mut plan = Plan::default();
-    for installed in &state.extensions {
+    for installed in state.extensions.iter().filter(|i| !i.leaving) {
         let id = &installed.offer.id;
         let Some(offer) = manifest.offers.iter().find(|o| o.id == *id) else {
             if installed.enabled || installed.problem.as_deref() != Some("withdrawn") || installed.waiting.is_some() {
@@ -333,6 +345,9 @@ fn plan(state: &State, manifest: &Manifest) -> Plan {
         };
         if installed.problem.as_deref() == Some("withdrawn") {
             plan.listed_again.push(id.clone());
+        }
+        if installed.waiting.as_ref().is_some_and(|w| w.sha256 != offer.sha256 || !offer.grants().asks_more_than(&installed.offer.grants())) {
+            plan.unwaited.push(id.clone());
         }
         if offer.sha256 == installed.offer.sha256 && !offer.grants().asks_more_than(&installed.offer.grants()) {
             // The same file, asking no more: the manifest's offer as it is now.
@@ -345,7 +360,7 @@ fn plan(state: &State, manifest: &Manifest) -> Plan {
         if less != installed.offer {
             plan.narrowed.push(less);
         }
-        if !offer.usable() {
+        if !offer.usable() || !installed.enabled || version_order(&offer.version, &installed.offer.version) == std::cmp::Ordering::Less {
             continue;
         }
         if offer.grants().asks_more_than(&installed.offer.grants()) {
@@ -402,6 +417,11 @@ fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
                 && installed.problem.as_deref() == Some("withdrawn")
             {
                 installed.problem = None;
+            }
+        }
+        for id in &plan.unwaited {
+            if let Some(installed) = state.get_mut(id) {
+                installed.waiting = None;
             }
         }
         for offer in &plan.narrowed {
@@ -1138,6 +1158,34 @@ mod tests {
         gone.extensions[1].problem = Some("withdrawn".into());
         assert!(plan(&gone, &after).withdrawn.is_empty());
         assert_eq!(plan(&gone, &before).listed_again, vec!["b".to_string()]);
+    }
+
+    /// M3, M4: never an older version; a waiting update the manifest no
+    /// longer offers is dropped; nothing is fetched for one disabled here.
+    #[test]
+    fn versions_are_ordered_and_a_stale_wait_is_dropped() {
+        assert_eq!(version_order("0.10.0", "0.9.1"), std::cmp::Ordering::Greater);
+        assert_eq!(version_order("1.0.0", "1.0.0"), std::cmp::Ordering::Equal);
+        let installed = |version: &str| {
+            let mut offer = manifest_of(&[("a", "1", &["api.example.org"], None)]).offers.remove(0);
+            offer.version = version.into();
+            State { extensions: vec![Installed::new(offer)], ..State::default() }
+        };
+        let mut older = manifest_of(&[("a", "2", &["api.example.org"], None)]);
+        older.offers[0].version = "0.0.1".into();
+        let planned = plan(&installed("1"), &older);
+        assert!(planned.taken.is_empty() && planned.waiting.is_empty(), "an older version never replaces the one in use: {planned:?}");
+        // An update asking for more waits; the next manifest goes back to the file in use: the wait is dropped.
+        let mut waiting = installed("1");
+        waiting.extensions[0].waiting = Some(manifest_of(&[("a", "3", &["api.example.org", "more.example.org"], None)]).offers.remove(0));
+        assert_eq!(plan(&waiting, &manifest_of(&[("a", "1", &["api.example.org"], None)])).unwaited, vec!["a".to_string()]);
+        // Disabled here: no download.
+        let mut disabled = installed("1");
+        disabled.extensions[0].enabled = false;
+        let mut newer = manifest_of(&[("a", "4", &["api.example.org"], None)]);
+        newer.offers[0].version = "2".into();
+        assert!(plan(&disabled, &newer).taken.is_empty());
+        assert_eq!(plan(&installed("1"), &newer).taken.len(), 1);
     }
 
     /// K2: a phone's window and its background service never run one

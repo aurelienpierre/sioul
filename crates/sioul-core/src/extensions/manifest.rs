@@ -113,7 +113,9 @@ pub fn parse(text: &str) -> Result<Manifest, String> {
     Ok(Manifest { serial: raw.serial, sha256, offers: raw.extensions })
 }
 
-fn check(offer: &Offer) -> Result<(), String> {
+/// An offer checked as the manifest's own are: also each offer this device
+/// kept in its record, which nothing signs (`state::load`).
+pub fn check(offer: &Offer) -> Result<(), String> {
     let id = &offer.id;
     if !super::valid_id(id) {
         return Err(format!("an id that is not one: {id:?}"));
