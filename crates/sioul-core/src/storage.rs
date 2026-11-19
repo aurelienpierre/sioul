@@ -561,31 +561,71 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
     Ok(())
 }
 
-/// The folders of a move, checked: each its own, none inside another, none
-/// inside the notes folder or the notes folder inside it, none inside
-/// Sioul's own records nor the place of its dated copies.
+/// The folders of a move, checked as the system resolves them (rule 4: the
+/// same folder under another spelling, through a link or another case, is
+/// the same folder): each its own, none inside another nor holding it, none
+/// inside the notes folder or holding it, none inside Sioul's own records,
+/// state or dated copies nor holding them.
 pub fn check_folders(folders: &Folders) -> Result<(), Fault> {
-    let named = [("papers", &folders.papers), ("letters", &folders.letters)];
-    for (what, folder) in named {
-        if folder.as_os_str().is_empty() || !folder.is_absolute() {
+    let real = |path: &Path| if path.as_os_str().is_empty() { PathBuf::new() } else { resolved(path) };
+    let places = [("notes", real(&folders.notes)), ("records", real(&folders.records)), ("kept", real(&folders.kept)), ("state", real(&folders.state))];
+    let (papers, letters) = (real(&folders.papers), real(&folders.letters));
+    for (what, given, folder) in [("papers", &folders.papers, &papers), ("letters", &folders.letters, &letters)] {
+        if given.as_os_str().is_empty() || !given.is_absolute() {
             return Err(Fault::new("folder-not-absolute", what));
         }
-        for (other, place) in [("notes", &folders.notes), ("records", &folders.records), ("kept", &folders.kept), ("state", &folders.state)] {
+        for (other, place) in &places {
             if place.as_os_str().is_empty() {
                 continue;
             }
-            if folder.starts_with(place) || (other == "notes" && place.starts_with(folder)) {
-                return Err(Fault::new(if other == "notes" { "folder-in-notes" } else { "folder-in-sioul" }, folder.display()));
+            if folder.starts_with(place) || place.starts_with(folder) {
+                return Err(Fault::new(if *other == "notes" { "folder-in-notes" } else { "folder-in-sioul" }, given.display()));
             }
         }
     }
-    if folders.papers.starts_with(&folders.letters) || folders.letters.starts_with(&folders.papers) {
+    if papers.starts_with(&letters) || letters.starts_with(&papers) {
         return Err(Fault::new("folders-same", folders.papers.display()));
     }
-    if !folders.notes.as_os_str().is_empty() && folders.records.starts_with(&folders.notes) {
+    let (notes, records) = (&places[0].1, &places[1].1);
+    if !notes.as_os_str().is_empty() && (records.starts_with(notes) || notes.starts_with(records)) {
         return Err(Fault::new("folder-in-notes", folders.records.display()));
     }
     Ok(())
+}
+
+/// A folder as the system resolves it: its longest part that exists made
+/// real (links followed, `..` and the case a folder that folds it keeps),
+/// the rest as written. Two spellings of one folder resolve alike.
+pub fn resolved(path: &Path) -> PathBuf {
+    let mut existing = path.to_path_buf();
+    let mut rest: Vec<std::ffi::OsString> = Vec::new();
+    loop {
+        if let Ok(real) = std::fs::canonicalize(&existing) {
+            return rest.iter().rev().fold(real, |path, part| path.join(part));
+        }
+        match (existing.file_name().map(std::ffi::OsStr::to_os_string), existing.parent().map(Path::to_path_buf)) {
+            (Some(name), Some(parent)) => {
+                rest.push(name);
+                existing = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// Whether two names lead to one file (a folder that folds case, a link
+/// above them, a hard link): never copied over itself, never removed as
+/// its own copy.
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        matches!((std::fs::metadata(a), std::fs::metadata(b)), (Ok(x), Ok(y)) if x.dev() == y.dev() && x.ino() == y.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+    }
 }
 
 /// A file's bytes' SHA-256, read a piece at a time.
@@ -800,17 +840,18 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
         let source = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
         let mut to = PathBuf::from(&entry.to);
         let _ = std::fs::remove_file(passing(&to));
-        // What is at its place: this move's (as it wrote it, or named), the same bytes, or the person's.
+        // The place it goes is the file itself under another name (a link above it, a
+        // folder that folds case): never copied over itself, never cleaned as its own copy.
+        if to.exists() && same_file(&from, &to) {
+            return Err(Fault::new("folder-in-notes", to.display()));
+        }
+        // What is at its place: this move's, as it wrote it or named it (the journal of this
+        // move says so), or the person's, whatever its bytes: never adopted on a guess.
         let there = if to.exists() { Some(sha_of(&to).map_err(|e| Fault::new("unreadable", format!("{}: {e}", to.display())))?) } else { None };
         let (made, copied, named) = (entry.made, entry.sha.clone(), entry.rewritten.clone());
         let ours = |sha: &str| made && (sha == copied || (!named.is_empty() && sha == named));
         match there.as_deref() {
-            Some(sha) if sha == source && !entry.made => {
-                moved.found += 1;
-                entry.made = false;
-            }
-            Some(sha) if sha == source => {}
-            Some(sha) if ours(sha) => {}
+            Some(sha) if made && (sha == source || ours(sha)) => {}
             Some(_) => {
                 // The person's file at its place: a list's is refused; a paper's or a letter's goes beside under a free name.
                 if matches!(entry.kind, Some(Kind::List | Kind::LetterRecord)) {
@@ -1297,6 +1338,11 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
                 cleaned.kept.push((entry.from.clone(), "not-removed"));
                 continue;
             }
+        }
+        // Its copy the same file under another name: it is the only one.
+        if same_file(&from, Path::new(&entry.to)) {
+            cleaned.kept.push((entry.from.clone(), "same-file"));
+            continue;
         }
         let removed = match sha_of(&from) {
             Ok(sha) if sha == entry.sha => {

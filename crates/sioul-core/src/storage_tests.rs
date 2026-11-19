@@ -638,3 +638,59 @@ fn clean_never_deletes_through_a_link_put_in_the_notes_folder() {
     assert!(std::fs::symlink_metadata(&old).is_ok_and(|m| m.file_type().is_symlink()), "the link itself left alone");
     assert_eq!(Storage::read(&stand.folders.state).cleaned, 0, "not said done while something stays");
 }
+
+/// The papers' folder chosen is the notes folder's own `papers/` under
+/// another spelling (the notes folder reached through a link): refused,
+/// as the same folder spelled alike is (review S23).
+#[cfg(unix)]
+#[test]
+fn the_same_folder_under_another_spelling_is_refused() {
+    let stand = stand("same-folder");
+    let link = stand.base.join("NotesLink");
+    std::os::unix::fs::symlink(&stand.folders.notes, &link).unwrap();
+    let folders = Folders { papers: link.join("papers"), ..stand.folders.clone() };
+    let before = tree(&stand.folders.notes);
+    assert_eq!(move_now(&folders, NOW, || Ok(())).unwrap_err().code, "folder-in-notes");
+    assert!(!Storage::read(&folders.state).is_moved());
+    assert_eq!(tree(&stand.folders.notes), before);
+    // A folder around Sioul's own data, through a link: refused too.
+    let data = stand.base.join("DataLink");
+    std::os::unix::fs::symlink(stand.folders.records.parent().unwrap().parent().unwrap(), &data).unwrap();
+    std::fs::create_dir_all(&stand.folders.records).unwrap();
+    let around = Folders { letters: data, ..stand.folders.clone() };
+    assert!(check_folders(&around).is_err());
+}
+
+/// A file found at its place that is the paper itself (a hard link, as a
+/// folder that folds case or a link above it would make it): never copied
+/// over itself, never taken for "found there already"; and a file of the
+/// same bytes the journal does not name is never adopted (review S23).
+#[cfg(unix)]
+#[test]
+fn a_file_at_its_place_is_the_moves_only_when_the_journal_says_so() {
+    let stand = stand("same-file");
+    std::fs::create_dir_all(&stand.folders.records).unwrap();
+    std::fs::hard_link(stand.folders.notes.join(crate::bank::MANIFEST), stand.folders.records.join(crate::bank::MANIFEST)).unwrap();
+    assert_eq!(move_now(&stand.folders, NOW, || Ok(())).unwrap_err().code, "folder-in-notes");
+    assert!(!Storage::read(&stand.folders.state).is_moved());
+    assert!(stand.folders.notes.join(crate::bank::MANIFEST).is_file());
+    std::fs::remove_file(stand.folders.records.join(crate::bank::MANIFEST)).unwrap();
+    // The same bytes, another file the journal does not name: never the move's own.
+    std::fs::create_dir_all(&stand.folders.papers).unwrap();
+    std::fs::copy(stand.folders.notes.join("papers").join("Passport.pdf"), stand.folders.papers.join("Passport.pdf")).unwrap();
+    let _ = move_now(&stand.folders, NOW, || Ok(()));
+    let adopted = Journal::read(&stand.folders.state).is_some_and(|j| j.files.iter().any(|e| Path::new(&e.to) == stand.folders.papers.join("Passport.pdf") && !e.made));
+    assert!(!adopted, "never taken for the move's own");
+    // Moved on a folder of its own, then the copy made the same file as the old one: the take-out leaves it.
+    let _ = std::fs::remove_dir_all(&stand.folders.papers);
+    let _ = std::fs::remove_dir_all(&stand.folders.records);
+    let _ = std::fs::remove_dir_all(&stand.folders.letters);
+    let _ = std::fs::remove_dir_all(&stand.folders.state);
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    let copy = stand.folders.papers.join("Power.pdf");
+    std::fs::remove_file(&copy).unwrap();
+    std::fs::hard_link(stand.folders.notes.join("papers").join("Power.pdf"), &copy).unwrap();
+    let cleaned = clean(&stand.folders.state, NOW + 86_400).unwrap();
+    assert!(cleaned.kept.contains(&("papers/Power.pdf".to_string(), "same-file")), "{cleaned:?}");
+    assert!(stand.folders.notes.join("papers").join("Power.pdf").is_file());
+}
