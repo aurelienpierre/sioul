@@ -284,7 +284,7 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
             numbers: numbers(),
             from: &from,
             until: &until,
-            busy: &sioul_core::busy::stretches,
+            busy: &busy_stretches,
             press: switch.latest().as_ref(),
             busy_is_dnd: busy_turns_dnd(config),
             sleep_is_dnd: config.dnd.sleep,
@@ -298,6 +298,23 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
 /// what turns it on (`[dnd] focus`, its key of before, `everywhere::sources_for`):
 /// then a busy stretch is do-not-disturb on this phone's line, else its
 /// column "while busy" holds.
+/// The busy stretches of a phone's table, from and to (Unix seconds), as
+/// do-not-disturb reads them (`busy::stretches`; review of `phones`, H1): one
+/// begun before the table's first day keeps its real start (`reach`'s B1,
+/// `busy::holding`), so that "As usual" pressed during it holds it off for
+/// calls as for do-not-disturb (`calls::build` reads `everywhere::pressed_off`
+/// against that start). An invitation not answered is no busy stretch there
+/// either (B2).
+fn busy_stretches(from: i64, to: i64) -> Vec<(i64, i64)> {
+    let mut stretches = sioul_core::busy::stretches(from, to);
+    if let Some(first) = stretches.first_mut().filter(|s| s.0 <= from)
+        && let Some((start, _)) = sioul_core::busy::holding(from)
+    {
+        first.0 = first.0.min(start);
+    }
+    stretches
+}
+
 pub(crate) fn busy_turns_dnd(config: &Config) -> bool {
     config.dnd.focus
 }
