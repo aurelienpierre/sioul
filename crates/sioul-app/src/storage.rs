@@ -381,4 +381,13 @@ mod tests {
         assert!(move_gate(Some(&one_to_move)).is_ok());
         assert!(take_out_gate(Some(&one_to_move)).is_err_and(|line| line.contains("Phone")), "the device still to move named");
     }
+
+    /// Every sentence of a move that did not happen names what it is about (review S21).
+    #[test]
+    fn a_fault_names_its_file() {
+        for code in ["link", "unreadable", "changed", "copy", "keep", "records-taken", "list-unreadable", "journal", "switch", "folder-in-notes", "folder-in-sioul", "folder-not-empty", "notes-unreadable", "notes-empty"] {
+            let line = said(storage::Fault { code, what: "/stand-in/Notes/papers/Passport.pdf".into() });
+            assert!(line.contains("/stand-in/Notes/papers/Passport.pdf"), "{code}: {line}");
+        }
+    }
 }

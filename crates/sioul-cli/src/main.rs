@@ -692,7 +692,12 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
     use sioul_core::storage;
     let absolute = |p: PathBuf| std::path::absolute(&p).map_err(|e| format!("{}: {e}", p.display()));
     let folders = storage::Folders { notes: absolute(folders.notes)?, records: absolute(folders.records)?, papers: absolute(folders.papers)?, letters: absolute(folders.letters)?, kept: absolute(folders.kept)?, state: absolute(folders.state)? };
-    let said = |fault: storage::Fault| format!("{}: {}", s.tr.text(&format!("storage-{}", fault.code), None), fault.what);
+    // One sentence naming what it is about (`$what`), as the window says it.
+    let said = |fault: storage::Fault| {
+        let mut args = i18n::args();
+        args.set("what", fault.what.clone());
+        s.tr.text(&format!("storage-{}", fault.code), Some(&args))
+    };
     // A trial on copies only (review S20): no folder given is, holds or sits inside this
     // device's own configuration, data or state folder, nor its notes, papers or letters folder.
     let own: Vec<(&'static str, PathBuf)> = [("configuration", config::config_dir()), ("data", config::data_dir()), ("state", config::state_dir()), ("notes", s.config.notes_root_path().unwrap_or_default()), ("papers", s.config.papers_folder()), ("letters", s.config.letters_folder())].into_iter().collect();
