@@ -76,6 +76,9 @@ pub struct Memory {
     /// The last look (Unix seconds).
     #[serde(default)]
     pub looked: i64,
+    /// How many contacts the last look could not match to one person (M8), for the list's block.
+    #[serde(default)]
+    pub unmatched: usize,
 }
 
 impl Memory {
@@ -153,6 +156,9 @@ pub struct Plan {
     pub unstar: Vec<String>,
     /// The memory once the plan is done.
     pub memory: Memory,
+    /// Contacts that could not be matched to one person: a number or an
+    /// address two contacts or two people share (M8), by the place's ids.
+    pub unmatched: BTreeSet<String>,
 }
 
 impl Plan {
@@ -188,17 +194,68 @@ fn address_key(text: &str) -> String {
     inner.trim().trim_start_matches("mailto:").to_lowercase()
 }
 
-/// Whether a contact of a place is this person: their card, a whole number, an address.
-fn same(person: &Person, seen: &Seen, region: Option<&crate::phones::Region>) -> bool {
-    if !seen.uid.trim().is_empty() && person.contact.trim() == seen.uid.trim() {
-        return true;
-    }
-    let keys: Vec<String> = seen.phones.iter().map(|n| crate::phones::key(n, region)).filter(|k| crate::phones::is_whole(k)).collect();
-    if person.phones.iter().any(|n| keys.contains(&crate::phones::key(n, region))) {
-        return true;
-    }
-    let addresses: Vec<String> = seen.emails.iter().map(|e| address_key(e)).filter(|a| a.contains('@')).collect();
-    person.emails.iter().any(|e| addresses.contains(&address_key(e)))
+/// Each contact's person, when one contact and one person meet (review of
+/// `phones`, M8): their card, or a whole number or an address that no other
+/// contact of the place and no other person on the list holds. A number
+/// shared by two contacts (a landline, a switchboard) or by two people
+/// matches nobody; a contact that would meet two people meets none. Answers
+/// the people each contact matches (none or one), and the contacts left
+/// unmatched for those reasons.
+fn matched(people: &People, seen: &[Seen], region: Option<&crate::phones::Region>) -> (Vec<Vec<usize>>, BTreeSet<String>) {
+    let (matches, _, unmatched) = matched_and_near(people, seen, region);
+    (matches, unmatched)
+}
+
+/// `matched`, with the people each contact comes near through any of its
+/// keys, shared or not: what keeps someone on the list while such a contact
+/// is starred (a doubt keeps: M7).
+fn matched_and_near(people: &People, seen: &[Seen], region: Option<&crate::phones::Region>) -> (Vec<Vec<usize>>, Vec<Vec<usize>>, BTreeSet<String>) {
+    let keys_of_seen = |c: &Seen| -> Vec<String> {
+        let mut keys: Vec<String> = c.phones.iter().map(|n| crate::phones::key(n, region)).filter(|k| crate::phones::is_whole(k)).map(|k| format!("tel:{k}")).collect();
+        keys.extend(c.emails.iter().map(|e| address_key(e)).filter(|a| a.contains('@')).map(|a| format!("mail:{a}")));
+        keys.sort();
+        keys.dedup();
+        keys
+    };
+    let keys_of_person = |p: &Person| -> Vec<String> {
+        let mut keys: Vec<String> = p.phones.iter().map(|n| crate::phones::key(n, region)).filter(|k| crate::phones::is_whole(k)).map(|k| format!("tel:{k}")).collect();
+        keys.extend(p.emails.iter().map(|e| address_key(e)).filter(|a| a.contains('@')).map(|a| format!("mail:{a}")));
+        keys.sort();
+        keys.dedup();
+        keys
+    };
+    let seen_keys: Vec<Vec<String>> = seen.iter().map(|c| keys_of_seen(c)).collect();
+    let people_keys: Vec<Vec<String>> = people.people.iter().map(|p| keys_of_person(p)).collect();
+    let count = |lists: &[Vec<String>], key: &str| lists.iter().filter(|l| l.iter().any(|k| k == key)).count();
+    let mut unmatched = BTreeSet::new();
+    let near: Vec<Vec<usize>> = seen
+        .iter()
+        .zip(&seen_keys)
+        .map(|(c, keys)| people_keys.iter().enumerate().filter(|(i, pk)| pk.iter().any(|k| keys.contains(k)) || (!c.uid.trim().is_empty() && people.people[*i].contact.trim() == c.uid.trim())).map(|(i, _)| i).collect())
+        .collect();
+    let matches = seen
+        .iter()
+        .zip(&seen_keys)
+        .map(|(c, keys)| {
+            let by_card: Vec<usize> = people.people.iter().enumerate().filter(|(_, p)| !c.uid.trim().is_empty() && p.contact.trim() == c.uid.trim()).map(|(i, _)| i).collect();
+            if by_card.len() == 1 {
+                return by_card;
+            }
+            let candidates: Vec<usize> = people_keys.iter().enumerate().filter(|(_, pk)| pk.iter().any(|k| keys.contains(k))).map(|(i, _)| i).collect();
+            // Through the keys no other contact and no other person holds.
+            let unique: Vec<usize> = people_keys.iter().enumerate().filter(|(_, pk)| pk.iter().any(|k| keys.contains(k) && count(&seen_keys, k) == 1 && count(&people_keys, k) == 1)).map(|(i, _)| i).collect();
+            match unique.as_slice() {
+                [one] => vec![*one],
+                _ => {
+                    if !candidates.is_empty() || !by_card.is_empty() {
+                        unmatched.insert(c.id.clone());
+                    }
+                    Vec::new()
+                }
+            }
+        })
+        .collect();
+    (matches, near, unmatched)
 }
 
 /// Someone for the list from a starred contact.
@@ -218,10 +275,16 @@ fn person_of(seen: &Seen) -> Person {
 /// the place holds now, and its memory. `blocked`: whether a contact is
 /// blocked (never added).
 pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool) -> Plan {
-    let matches: Vec<Vec<usize>> = seen.iter().map(|c| people.people.iter().enumerate().filter(|(_, p)| same(p, c, region)).map(|(i, _)| i).collect()).collect();
+    // A look that read nothing: nothing changes, the memory kept (M9).
+    if seen.is_empty() {
+        return Plan { memory: memory.clone(), ..Plan::default() };
+    }
+    let (matches, near, unmatched) = matched_and_near(people, seen, region);
+    // A contact that would match through a number or an address two contacts or two people share: nobody (M8).
+    let ambiguous = |c: &Seen| unmatched.contains(&c.id);
     let on_list = |id: &str| people.people.iter().any(|p| p.id == id);
-    // Someone a contact of this place still stars: never lost (M7).
-    let still_starred = |person: &str| seen.iter().zip(&matches).any(|(c, m)| c.starred && m.iter().any(|&i| people.people[i].id == person));
+    // Someone a contact of this place still stars, even through a number another shares: never lost (M7).
+    let still_starred = |person: &str| seen.iter().zip(&near).any(|(c, m)| c.starred && m.iter().any(|&i| people.people[i].id == person));
     // A star Sioul wrote, read there present and unstarred: its person, still on the list, leaves it.
     let mut leaving: Vec<String> = Vec::new();
     for c in seen.iter().filter(|c| !c.starred) {
@@ -234,7 +297,7 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
         }
     }
     // Absence proves nothing: what a contact not read this time was is kept.
-    let mut plan = Plan { memory: memory.clone(), ..Plan::default() };
+    let mut plan = Plan { memory: memory.clone(), unmatched, ..Plan::default() };
     // Two or more at once: no hand does that; nobody leaves, and it is said (H3).
     if leaving.len() >= 2 {
         plan.kept = leaving;
@@ -246,7 +309,7 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
     for (c, m) in seen.iter().zip(&matches) {
         let written_for = memory.written.get(&c.id);
         if c.starred {
-            if m.is_empty() && !memory.seen.contains(&c.id) && written_for.is_none() {
+            if m.is_empty() && !ambiguous(c) && !memory.seen.contains(&c.id) && written_for.is_none() {
                 // Starred since the last look, on the list nowhere: added; a blocked one is left as it is.
                 if !blocked(c) {
                     plan.add.push(person_of(c));
@@ -303,11 +366,13 @@ pub fn apply_to_list(path: &Path, plan: &Plan, region: Option<&crate::phones::Re
 /// name with "starred", "not-starred" (held there without a star), or
 /// "absent" (no contact of that place holds them).
 pub fn where_starred(people: &People, seen: &[Seen], region: Option<&crate::phones::Region>) -> Vec<(String, &'static str)> {
+    let (matches, _) = matched(people, seen, region);
     people
         .people
         .iter()
-        .map(|p| {
-            let held: Vec<&Seen> = seen.iter().filter(|c| same(p, c, region)).collect();
+        .enumerate()
+        .map(|(i, p)| {
+            let held: Vec<&Seen> = seen.iter().zip(&matches).filter(|(_, m)| m.contains(&i)).map(|(c, _)| c).collect();
             let state = if held.iter().any(|c| c.starred) {
                 "starred"
             } else if held.is_empty() {
@@ -338,6 +403,11 @@ pub struct Looked {
 /// look), `memory` brought to what the place holds now (its caller saves
 /// it), and where each person is starred there recorded in their entries.
 pub fn look(list: &Path, memory: &mut Memory, place: &str, seen: &[Seen], region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool, write: Option<Write>) -> Result<Looked, String> {
+    // A look that read nothing (a provider restarting, an answer naming no card): nothing changes,
+    // the memory and where each is starred included (review of `phones`, M9).
+    if seen.is_empty() {
+        return Ok(Looked::default());
+    }
     let people = People::read(list)?;
     let plan = plan(&people, seen, memory, region, blocked);
     let changed = apply_to_list(list, &plan, region)?;
@@ -348,6 +418,7 @@ pub fn look(list: &Path, memory: &mut Memory, place: &str, seen: &[Seen], region
     };
     let before = memory.clone();
     *memory = plan.memory_after(&failed, &before);
+    memory.unmatched = plan.unmatched.len();
     // What the place holds now, for where each person is starred.
     let now: Vec<Seen> = seen.iter().map(|c| Seen { starred: memory.seen.contains(&c.id), ..c.clone() }).collect();
     let recorded = record(list, place, &now, region)?;
@@ -565,6 +636,72 @@ mod tests {
         let after = step(&mut a, &on_a(true));
         assert!(after.unstar.is_empty(), "A's star is the person's own: left");
         assert!(People::load(&list).people.is_empty(), "and adds no one back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A starred contact whose number changed keeps its star: it matches
+    /// nobody now, but its person is still on the list (M6, the reviewer's).
+    #[test]
+    fn a_contact_whose_number_changed_keeps_its_star() {
+        let mut people = People::default();
+        let claire = listed(&mut people, "Claire", "01 99 00 00 06");
+        let place = [seen("claire", "01 99 00 00 12", true)];
+        let plan = plan(&people, &place, &wrote(&[("claire", &claire)]), fr(), &nobody);
+        assert!(plan.unstar.is_empty() && plan.add.is_empty() && plan.remove.is_empty(), "nobody took Claire off in Sioul: {plan:?}");
+    }
+
+    /// Two contacts of one person: unstarring one keeps the person while the
+    /// other is starred, and Sioul takes no star off (M7, the reviewer's).
+    #[test]
+    fn a_second_star_of_the_same_person_keeps_them() {
+        let mut people = People::default();
+        let mum = listed(&mut people, "Mum", "01 99 00 00 06");
+        let mut memory = wrote(&[("sim", &mum)]);
+        memory.seen.insert("account".into());
+        let place = [seen("sim", "01 99 00 00 06", false), seen("account", "01 99 00 00 06", true)];
+        let plan = plan(&people, &place, &memory, fr(), &nobody);
+        assert!(plan.remove.is_empty(), "a star is still seen there: {plan:?}");
+        assert!(plan.unstar.is_empty(), "and Sioul takes no star off: {plan:?}");
+    }
+
+    /// A match needs one contact and one person (M8): a landline that Mum's
+    /// contact and Dad's share matches nobody; Dad is never starred nor
+    /// added for it, and is counted; Mum matches by her own mobile.
+    #[test]
+    fn a_shared_number_matches_nobody() {
+        let mut people = People::default();
+        let mum = people.add(Person { name: "Mum".into(), phones: vec!["06 39 98 99 01".into(), "01 99 00 00 20".into()], ..Person::default() }, fr());
+        let place = [Seen { id: "mum".into(), name: "Mum".into(), phones: vec!["06 39 98 99 01".into(), "01 99 00 00 20".into()], starred: true, ..Seen::default() }, seen("dad", "01 99 00 00 20", false)];
+        let plan = plan(&people, &place, &Memory::default(), fr(), &nobody);
+        assert!(plan.star.is_empty() && plan.add.is_empty(), "Dad is not Mum: {plan:?}");
+        assert_eq!(ids(&plan.unmatched), ["dad"], "counted, for the list's block");
+        let states = where_starred(&people, &place, fr());
+        assert_eq!(states, [(mum, "starred")]);
+        // Two people sharing a switchboard: a contact holding only it matches neither.
+        let mut colleagues = People::default();
+        listed(&mut colleagues, "Ann", "01 99 00 00 30");
+        listed(&mut colleagues, "Ben", "01 99 00 00 30");
+        let plan = super::plan(&colleagues, &[seen("desk", "01 99 00 00 30", false)], &Memory::default(), fr(), &nobody);
+        assert!(plan.star.is_empty() && plan.unmatched.contains("desk"));
+    }
+
+    /// A look that read nothing keeps the memory and changes nothing (M9,
+    /// the reviewer's): someone taken off in Sioul is not added back later.
+    #[test]
+    fn a_look_that_read_nothing_keeps_the_memory() {
+        let dir = std::env::temp_dir().join(format!("sioul-stars-m9-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let list = dir.join("dnd-people.toml");
+        let claire = crate::everywhere::change_people(&list, |people| {
+            people.add(Person { name: "Claire".into(), phones: vec!["01 99 00 00 06".into()], ..Person::default() }, fr());
+        })
+        .map(|people| people.people[0].id.clone())
+        .unwrap();
+        let mut memory = wrote(&[("claire", &claire)]);
+        let before = memory.clone();
+        let looked = look(&list, &mut memory, "phone", &[], fr(), &nobody, None).unwrap();
+        assert_eq!((memory, looked), (before, Looked::default()), "nothing read: nothing forgotten, nothing changed");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -208,12 +208,17 @@ pub(crate) fn without_stars(config: &sioul_core::config::Config, books: &[sioul_
 pub(crate) fn switch_view(config: &sioul_core::config::Config) -> serde_json::Value {
     let tr = crate::backend::tr();
     let books = sioul_core::vdir::collections(sioul_core::vdir::Kind::Contacts);
+    // The contacts this device's places could not match to one person at their last look (M8).
+    let unmatched: usize = std::iter::once(memory_path()).chain(books.iter().map(|b| stars::folder().join(&b.account).join(format!("{}.json", b.id)))).map(|path| Memory::load(&path).unmatched).sum();
+    let mut args = sioul_core::i18n::args();
+    args.set("n", unmatched);
     serde_json::json!({
         "on": config.dnd.stars,
         "label": tr.text("stars-switch", None),
         "said": tr.text("stars-switch-said", None),
         "why": if cfg!(target_os = "android") { tr.text("phone-stars-why", None) } else { String::new() },
         "servers": without_stars(config, &books, tr),
+        "unmatched": if config.dnd.stars && unmatched > 0 { tr.text("stars-unmatched", Some(&args)) } else { String::new() },
     })
 }
 

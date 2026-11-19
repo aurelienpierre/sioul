@@ -182,6 +182,17 @@ ColumnLayout {
         color: setup.theme.muted
     }
     // The books of yours whose favourites cannot be kept in step yet.
+    // Contacts no single person matches: a number or an address two contacts or two people share (M8).
+    Label {
+        objectName: "starsUnmatched"
+        visible: setup.listShown && setup.shown.starring !== undefined && (setup.shown.starring.unmatched || "") !== ""
+        Layout.fillWidth: true
+        text: setup.shown.starring ? setup.shown.starring.unmatched || "" : ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: setup.theme.muted
+    }
     Repeater {
         model: setup.listShown && setup.shown.starring && setup.shown.starring.on ? setup.shown.starring.servers || [] : []
 

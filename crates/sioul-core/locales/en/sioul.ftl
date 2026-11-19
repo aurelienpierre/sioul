@@ -7303,6 +7303,10 @@ stars-switch = Starred contacts are Always through, both ways
 stars-switch-said = A contact starred on a phone, or marked favourite on a server that keeps favourites, is on this list on every device; everyone on it is starred where their contact is. Sioul writes the star and nothing else.
 stars-kept-title = Always through: nobody taken off
 stars-kept = { $names } lost their star on { $place } at the same time. No hand does that at once, so Sioul took nobody off Always through; if you meant to, take them off the list yourself.
+stars-unmatched = { $n ->
+    [one] One contact could not be matched to one person: a number or an address that two contacts or two people share. Sioul stars nobody for it.
+   *[other] { $n } contacts could not be matched to one person: a number or an address that two contacts or two people share. Sioul stars nobody for them.
+}
 stars-place-this-phone = this phone
 stars-place-phone = a phone of yours
 stars-place-book = { $book } ({ $account })

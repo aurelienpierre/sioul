@@ -7364,6 +7364,10 @@ stars-switch = Les contacts étoilés passent toujours, dans les deux sens
 stars-switch-said = Un contact étoilé sur un téléphone, ou mis en favori sur un serveur qui garde les favoris, est sur cette liste sur chaque appareil ; chaque personne de la liste reçoit une étoile là où se trouve son contact. Sioul écrit l’étoile, rien d’autre.
 stars-kept-title = Passent toujours : personne n’a été retiré
 stars-kept = { $names } ont perdu leur favori sur { $place } en même temps. Personne ne le fait d’un seul geste : Sioul n’a retiré personne de Passent toujours ; si c’était voulu, retirez-les vous-même de la liste.
+stars-unmatched = { $n ->
+    [one] Un contact n’a pu être rattaché à une seule personne : un numéro ou une adresse que deux contacts ou deux personnes partagent. Sioul ne met de favori à personne pour lui.
+   *[other] { $n } contacts n’ont pu être rattachés à une seule personne : un numéro ou une adresse que deux contacts ou deux personnes partagent. Sioul ne met de favori à personne pour eux.
+}
 stars-place-this-phone = ce téléphone
 stars-place-phone = un de vos téléphones
 stars-place-book = { $book } ({ $account })
