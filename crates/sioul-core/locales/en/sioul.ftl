@@ -366,7 +366,7 @@ scout-app-bookmarks = Bookmarks
 scout-app-tables = Tables
 scout-app-forms = Forms
 scout-app-photos = Photos
-senders-help = Each address, number, card or group is on one list at most. Everyone in your address books is among your contacts; strangers are in none of them and on no list; the blocked never reach you. Someone blocked from a message lands here too.
+senders-help = Each address, number, card or group is on one list at most. Everyone in your address books is among your contacts; everyone else is in none of them and on no list; the blocked never reach you. Someone blocked from a message lands here too.
 ui-sync-now = Fetch mail now
 ui-syncing = Fetching mail…
 ui-synced-at = Mail fetched at { $time }.
@@ -3629,7 +3629,7 @@ rule-public-ai = An AI reads it too, as you allowed, and says its tone and topic
 rule-hostile = Insults aimed at you, harassment and threats come here. The sender's name, the subject and the text stay hidden until you choose to read them.
 rule-where-shield = An address’s shield is set on its card in Accounts.
 rule-where-rank = An address’s rank is set on its card in Accounts.
-rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ By person.
+rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ Who is in which circle.
 rule-where-routes = Its routes are set on its page in Projects.
 hostile-someone = Someone
 hostile-someone-at = Someone at { $domain }
@@ -5690,6 +5690,11 @@ sender-from-default = { $list }: in none of your address books, on no list.
 sender-now-restricted = { $entry } is restricted: their mail comes only as the Restricted row says, in What reaches you.
 sender-now-categories = { $entry }: as their groups say.
 set-restricted = Restricted
+set-sender-named-contacts = { $n ->
+    [one] One address, number or domain you named as a contact
+   *[other] { $n } addresses, numbers and domains you named as contacts
+}
+set-sender-named-contacts-help = Named in an older version, from a person's sheet or when unblocking: they come as your contacts do, even outside your address books. Remove one to have it judged as everyone else.
 set-restricted-help = Those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs. They reach you only as the Restricted row above says. An address, a number, or a pattern with *.
 set-sender-categories-group = Groups
 set-sender-categories-note = A person's own choice comes first, then their groups, then a domain. Everyone in your address books is among your contacts.
@@ -6247,10 +6252,10 @@ appnotes-why-answered = A conversation you answered from a computer in the last 
 appnotes-why-times = As you chose for this time: let through.
 appnotes-why-times-held = As you chose for this time: held until { $when }.
 appnotes-title = Notifications from other apps
-appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their rows in Settings ▸ What reaches you ▸ By person (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
+appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their circle's choice in Settings ▸ What reaches you ▸ People (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
 appnotes-never = Sioul never keeps or sends what they say, never answers, never marks anything as read, and never touches read receipts or typing: the apps and the people in them see nothing of it. A held notification comes back whole, with its own tap and actions; none is ever deleted.
 appnotes-access-on = Notification access: given.
-appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and focus sessions when What reaches you ▸ Do not disturb says so).
+appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and your busy stretches when What reaches you ▸ Moments says so).
 appnotes-steps = Sioul installed from a file (an APK) takes two steps in Android's settings:
 appnotes-step-restricted = 1. Notification access (Device and app notifications) ▸ Sioul: tap it once; Android may answer "Restricted setting". Then Android ▸ Apps ▸ Sioul ▸ ⋮ (at the top) ▸ Allow restricted settings, and confirm with your PIN: until then, Sioul's switch there stays grey (Android 13 and later).
 appnotes-step-access = 2. Notification access (Device and app notifications) ▸ Sioul ▸ on, and confirm.
@@ -6261,7 +6266,7 @@ appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
-appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and focus sessions too when What reaches you ▸ Do not disturb says so), Sioul's own mode lets through only what their rows let come then.
+appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
 appnotes-rang = These rang before Sioul held them:
 appnotes-rang-line = { $app }: { $channel }
 appnotes-make-silent = Make it silent
@@ -6311,7 +6316,7 @@ appnotes-privacy = Sioul reads the words of every notification of the apps you l
 appnotes-contacts-off = To know who wrote when an app gives a number or a contact, Sioul reads your contacts (it never writes them).
 appnotes-contacts-ask = Read contacts
 appnotes-heard = Android last handed Sioul a notification { $when }.
-appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own.
+appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own notices.
 
 ## Calls screened on a phone (docs/android.md, "Calls"; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = a hidden number
@@ -6840,9 +6845,13 @@ reach-behaviour-work = In work hours
 reach-behaviour-gathered = At the gathered times
 reach-behaviour-never = Never told
 reach-behaviour-never-help-mail = Mail stays on the Porch, without a word.
-reach-behaviour-never-help-messages = A message is held, at every time.
+reach-behaviour-never-help-messages = A message is held at every time, on your phone: it stays in its own app, and the card What reaches you now counts what the phone holds.
 reach-own = Your own
+reach-free-time = In Free time
+reach-grid-key = Now: told at once. Shown: in Sioul, without a notification. Silent: a message in the shade, without a sound. Later: waits for its time. Held: a message kept on the phone until its time. Voicemail: a call goes to voicemail. Gathered: at the gathered times. At its event: when its event falls then. Porch: on the Porch only. Through: passes do-not-disturb, at their times. Never: not at all.
+reach-state-now = on now
 reach-own-help = Set cell by cell, in What comes when.
+reach-own-help-elsewhere = Set cell by cell on another device: What comes when does not show that row here.
 reach-people-automatic = A message is told only while what it was written to, an address or an app, is for now.
 reach-people-mail-off = Outside its times, your safe senders' mail waits on the Porch, the others' out of sight.
 reach-people-groups-note = Your contacts' messages set group conversations too.
@@ -6850,7 +6859,7 @@ reach-circles = Who is in which circle
 reach-circles-help = Everyone in your address books is among your contacts, with nothing to set.
 reach-own-notices = Sioul's own notices
 reach-group-asked = What you set or asked for
-reach-group-asked-holds = Codes, doses, the alarm at waking and an event's alarms always come at once.
+reach-group-asked-holds = Codes and links you asked for, doses, the alarm at waking and an event's alarms. Doses and the alarm at waking come at once; codes wait on the Porch while you sleep; an event's alarms come during sleep and Free time when their event falls then.
 reach-choice-asked-sleep = Doses while you sleep
 reach-choice-asked-waking = Doses at waking
 reach-group-reminders = Reminders
@@ -6896,8 +6905,11 @@ reach-hold-modes = Your own modes: Bedtime, driving
 reach-hold-modes-sioul = Read as a press of the switch
 reach-hold-modes-android = Yours alone
 reach-principle = Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound.
+reach-presets-calls = A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices.
 reach-calls = Calls are set for each phone in Settings ▸ Devices.
 reach-calls-open = Open Devices
+reach-calls-grid = These rows are the table every phone follows until it has its own. A phone that has its own table (Settings ▸ Devices) follows it instead, except in a pause and during do-not-disturb, where these rows still decide.
+reach-calls-grid-open = Each phone's table
 reach-elsewhere = Set elsewhere: { $what }.
 reach-elsewhere-none = Nothing is set elsewhere.
 reach-elsewhere-sites-live = { $n ->
@@ -6920,7 +6932,12 @@ reach-elsewhere-persons = { $n ->
     [one] one person's own times
    *[other] { $n } people's own times
 }
+reach-elsewhere-sources = { $n ->
+    [one] one app's or conversation's own times
+   *[other] { $n } apps' and conversations' own times
+}
 reach-elsewhere-open-sites = Sites
+reach-elsewhere-open-devices = Devices
 reach-elsewhere-open-agenda = Agenda
 reach-elsewhere-open-health = Health
 reach-elsewhere-open-contacts = Contacts
@@ -6929,6 +6946,14 @@ busy = Busy
 busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.
 busy-task = Busy while I work on it
 busy-task-help = Its time counts in the availability you share where it is known (a time block, a start time, the plan's time before its date), and while its timer runs your rules for busy time apply.
+busy-calendar-free = Its calendar is free as a whole: none of its events marks you busy, whatever each says.
+busy-dnd-first-title = Do not disturb, while you are busy
+busy-dnd-first-body = An event or a task marked busy turned do-not-disturb on, as "While busy" asks. Change it in Settings ▸ What reaches you ▸ Moments.
+busy-time-holds = { $more ->
+    [0] In the availability you share: { $spans }.
+   *[other] In the availability you share: { $spans }, and { $more } more.
+}
+busy-time-not-known = Its time is not known yet: the availability you share holds nothing for it until it has a time block, a start time, or a date asked that the plan lays it before.
 busy-with-others = A meeting with others keeps its organizer's busy or free: Sioul never writes it.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = At once
@@ -6962,7 +6987,7 @@ attention-person-neutral = Your contacts
 attention-person-neutral-help = Everyone in your address books, or let in from the screener.
 attention-person-restricted = Restricted
 attention-person-restricted-help = Known, heard from only at the times you choose.
-attention-person-stranger = Strangers
+attention-person-stranger = Everyone else
 attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs.
 attention-person-hidden = Hidden numbers
 attention-person-hidden-help = Calls that show no number: someone who hides it, a hospital's switchboard.
@@ -7738,7 +7763,7 @@ attention-site-muted = silenced, its notifications never come
 attention-site-gathered = its notifications come at the gathered times
 attention-own-help-list = Each kind of notification Sioul sends. Press one to see what it does at each time, and to change it.
 attention-person-list-help = Each list of people on this channel. Press one to see what it does at each time, and to change it.
-attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through row says, in What reaches you ▸ Exceptions.
+attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through line says, in What reaches you ▸ People.
 
 ## The words Sioul looks for: Settings ▸ Words (docs/words.md)
 
@@ -8080,6 +8105,7 @@ agenda-open-task = Open the task
 appointment-made = Now an appointment, in { $calendar }.
 appointment-has-steps = This task has steps of its own: it stays a task.
 task-made-from-event = Now a task, in { $list }.
+task-made-from-event-busy = Now a task, in { $list }, busy while you work on it, as the event was.
 task-made-already = This is a task's time already.
 task-from-invitation = An invitation stays an event: others expect you there.
 task-from-odd-repeat = Its repeat cannot be a task's: it stays an event.

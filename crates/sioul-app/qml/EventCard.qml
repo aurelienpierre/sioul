@@ -568,7 +568,8 @@ CardFrame {
         text: card.sioul.text("busy")
         checked: card.there && card.event.marked_busy === true
         onToggled: {
-            const problem = card.sioul.setEventBusy(card.event.key, busySwitch.checked)
+            // One changed time of a series: that time alone (its RECURRENCE-ID, review B7).
+            const problem = card.sioul.setEventBusy(card.event.key, busySwitch.checked, card.event.rid || "")
             if (problem !== "")
                 card.sioul.status = problem
             card.read()
@@ -578,7 +579,8 @@ CardFrame {
     Label {
         visible: busySwitch.visible
         Layout.fillWidth: true
-        text: card.sioul.text(card.there && card.event.with_others === true ? "busy-with-others" : "busy-help")
+        // Why it is greyed, when its calendar is free as a whole (review B7); else what it does.
+        text: card.there && (card.event.busy_why || "") !== "" ? card.event.busy_why : card.sioul.text(card.there && card.event.with_others === true ? "busy-with-others" : "busy-help")
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 12

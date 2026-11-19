@@ -233,9 +233,10 @@ Item {
         // A tab without settings of its own (Calls): the tab itself.
         else if (page.sections.includes(key))
             page.section = key
-        // This device's own card in Devices (`setting:devices.here`, DevicesTab.qml).
-        else if (key.startsWith("devices."))
-            page.section = "devices"
+        // A part of a tab by its name ("devices.here", "devices.calls", "devices.apps"): the tab, the
+        // part brought into view by it (DevicesTab.reveal for a phone's card).
+        else if (page.sections.includes(key.split(".")[0]))
+            page.section = key.split(".")[0]
         page.listShown = false
         page.linked = true
         toSetting.key = key
@@ -401,13 +402,14 @@ Item {
             contentWidth: availableWidth
             clip: true
 
-            // The section's rows in a legible column, centred; What reaches you and Devices, the whole width.
+            // The section's rows in a legible column, centred; Devices, and What reaches you's What
+            // comes when, the whole width (Your rules in the column: the pictures' review, point 2).
             PageColumn {
                 id: column
 
                 theme: page.theme
                 room: scroll.availableWidth
-                wide: page.section === "attention" || page.section === "devices"
+                wide: page.section === "devices" || (page.section === "attention" && (reaches.item as ReachesTab) !== null && (reaches.item as ReachesTab).view === "table")
                 spacing: 6
 
                 Label {

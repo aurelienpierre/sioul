@@ -260,10 +260,11 @@ pub(crate) fn pairing(shared: &Shared, key: &str) -> String {
 pub(crate) fn event_to_task(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
     let old = pim::ours(key).map(|p| appointments::uid_in(&p)).unwrap_or_default();
     match work::target_list("").and_then(|list| make_task(key, &list)) {
-        Ok((gone, made, list)) => {
+        Ok((gone, made, list, busy)) => {
             let retied = if old.is_empty() { Vec::new() } else { appointments::retie(&work::loaded(shared).tasks, &old, &appointments::uid_in(&made[0]), false, &sioul_core::zone::now()) };
             nudge_all(shared, &[vec![gone], made, retied].concat());
-            tell(qt, shared, say("task-made-from-event", &[("list", list)]));
+            // Busy as the event was, said with it (review B14): its timer will make you busy.
+            tell(qt, shared, say(if busy { "task-made-from-event-busy" } else { "task-made-from-event" }, &[("list", list)]));
             shown_again(qt, shared);
             String::new()
         }
@@ -272,16 +273,18 @@ pub(crate) fn event_to_task(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> S
 }
 
 /// The event `key` made a task in `list`: the event's file, what was written
-/// (the task, its block), and the list's name.
-fn make_task(key: &str, list: &Collection) -> Result<(PathBuf, Vec<PathBuf>, String), String> {
+/// (the task, its block), the list's name, and whether the task is busy, as
+/// the event was (`appointments::task_of`).
+fn make_task(key: &str, list: &Collection) -> Result<(PathBuf, Vec<PathBuf>, String, bool), String> {
     let path = pim::ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
     if pim::collection_of(&path).is_none_or(|c| c.read_only) {
         return Err(tr().text("agenda-read-only", None));
     }
+    let busy = std::fs::read_to_string(&path).ok().and_then(|text| sioul_core::agenda::edit_of_text(&text, &sioul_core::zone::current())).is_some_and(|e| sioul_core::appointments::task_of(&e).busy);
     let plan = appointments::event_to_task(&path, list, &crate::blocks::calendar_for, load_config().tasks.block_alarms, &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
     plan.write()?;
     let written: Vec<PathBuf> = std::iter::once(plan.to.clone()).chain(plan.made.iter().map(|(p, _)| p.clone())).collect();
-    Ok((path, written, list.label(&load_config(), tr())))
+    Ok((path, written, list.label(&load_config(), tr()), busy))
 }
 
 #[cfg(test)]
@@ -364,7 +367,9 @@ mod tests {
         // Back: a task in the list, an hour, its time its block's; its links with it.
         let linked = std::fs::read_to_string(&made).unwrap().replace("END:VEVENT", "LINK;LINKREL=via;VALUE=URI:mid:letter@example.org\r\nEND:VEVENT");
         std::fs::write(&made, linked).unwrap();
-        let (gone, written, _) = make_task(made.to_str().unwrap(), &list).unwrap();
+        let (gone, written, _, busy) = make_task(made.to_str().unwrap(), &list).unwrap();
+        // An appointment with a time, its file saying no TRANSP: busy, and said so (review B14).
+        assert!(busy, "busy as the event was");
         assert!(std::fs::read_to_string(&written[0]).unwrap().contains("mid:letter@example.org"), "the event's links go along");
         assert_eq!(gone, made);
         assert!(!made.exists(), "the event gone");

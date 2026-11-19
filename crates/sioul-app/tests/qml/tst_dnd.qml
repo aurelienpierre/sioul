@@ -38,7 +38,8 @@ Item {
             { id: "a", name: "Alice", phones: ["+33 1 99 00 12 34"], emails: ["alice@example.org"], notes: [] },
             { id: "b", name: "", phones: [], emails: ["bob@example.org"], notes: ["dnd-setup-no-number"] },
         ]
-        function text(key) { return key }
+        // What the list does, in sentences: shown an item each (the pictures' review, point 6).
+        function text(key) { return key === "dnd-setup-list-help" ? "The same list on every device. What reaches you is its row, above; the blocked never. On a phone, their messages ring." : key }
         function textWith(key, name, value) { return key + "(" + value + ")" }
         function textArgs(key, args) { return key + JSON.stringify(JSON.parse(args)) }
         function dndToggle(on, minutes) { mock.toggles = mock.toggles.concat([[on, minutes]]) }
@@ -335,7 +336,7 @@ Item {
             const setup = createTemporaryObject(setupComponent, root, { part: "list" })
             tryVerify(() => setup.shown.people.length === 2)
             const seen = texts(setup, [])
-            verify(seen.indexOf("dnd-setup-list-help") >= 0, seen)
+            verify(seen.indexOf("The same list on every device.") >= 0 && seen.indexOf("What reaches you is its row, above; the blocked never.") >= 0 && seen.indexOf("On a phone, their messages ring.") >= 0, seen)
             verify(seen.indexOf("Alice") >= 0, seen)
             verify(seen.indexOf("+33 1 99 00 12 34 · alice@example.org") >= 0, seen)
             verify(seen.indexOf("bob@example.org") >= 0, "a person without a name shows by their address")

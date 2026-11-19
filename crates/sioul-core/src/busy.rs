@@ -23,15 +23,22 @@
 //! event declined or cancelled, nor a task's time block, which is its
 //! task's time) and a busy task's timer: what turns do-not-disturb on "While
 //! busy" (`everywhere::Sources::busy`) and what each phone's calls table
-//! reads for its column "While busy".
+//! reads for its column "While busy". **An invitation counts there only once
+//! accepted, or accepted as tentative** (`Occurrence::needs_you`, review
+//! B2): nobody can hold the person's messages and calls by sending one. The
+//! availability shared with others keeps Google's reading, where an
+//! invitation not answered is busy (`availability::blocks`, `event_marked`).
 
 use crate::agenda::Occurrence;
 
 /// A task's mark, on its VTODO: `X-SIOUL-BUSY:TRUE`; absent, not busy.
 pub const TASK_MARK: &str = "X-SIOUL-BUSY";
 
-/// A day, in seconds: how far back and ahead `holding` reads.
+/// A day, in seconds: how far back and ahead `holding` reads at first.
 const DAY: i64 = 86_400;
+
+/// How far back `holding` reads at most for a stretch's real start: a year.
+const REACH: i64 = 366 * DAY;
 
 /// Whether an event marks you busy, read as Google does: an event with a
 /// time is busy unless it says free; a whole-day event is free unless it
@@ -47,6 +54,12 @@ pub fn own_event(event: &Occurrence) -> bool {
     !event.theirs && !event.busy && event.task.is_empty()
 }
 
+/// Whether an event holds the person busy for do-not-disturb: their own,
+/// marked busy, and, for an invitation, accepted or accepted as tentative.
+pub fn holds_you(event: &Occurrence) -> bool {
+    own_event(event) && event_marked(event) && event.needs_you()
+}
+
 /// A running timer as a busy stretch: from its start until it stops holding
 /// (`everywhere::focus`), when its task is marked busy; none otherwise, or paused.
 pub fn timer(running: &crate::timelog::Running, now: i64) -> Option<(i64, i64)> {
@@ -59,7 +72,7 @@ pub fn timer(running: &crate::timelog::Running, now: i64) -> Option<(i64, i64)> 
 /// task's timer, when one runs; each cut to the window, sorted, and those
 /// that touch or overlap made one.
 pub fn stretches_of(events: &[Occurrence], timer: Option<(i64, i64)>, from: i64, to: i64) -> Vec<(i64, i64)> {
-    let mut spans: Vec<(i64, i64)> = events.iter().filter(|e| own_event(e) && event_marked(e)).map(|e| (e.start, e.end)).collect();
+    let mut spans: Vec<(i64, i64)> = events.iter().filter(|e| holds_you(e)).map(|e| (e.start, e.end)).collect();
     spans.extend(timer);
     merged(spans, from, to)
 }
@@ -91,10 +104,62 @@ pub fn stretches(from: i64, to: i64) -> Vec<(i64, i64)> {
     stretches_of(&events, timer, from, to)
 }
 
-/// The busy stretch holding at `now`, if one does: from its start (read a
-/// day back at most) to its end (a day ahead at most).
+/// The busy stretch holding at `now`, if one does, from its real start to
+/// its real end (review B1): the calendars are read a day around `now`, and
+/// further back while the stretch found reaches the start of what was read
+/// (an event of three days, or events that touch, read as one), a year at
+/// most. "As usual" pressed during a stretch then holds it off until it
+/// ends, however long it lasts (`everywhere::now`, `pressed_off_after`).
 pub fn holding(now: i64) -> Option<(i64, i64)> {
-    holding_in(&stretches(now - DAY, now + DAY), now)
+    let timer = crate::timelog::running().and_then(|r| timer(&r, now));
+    let mut from = now - DAY;
+    loop {
+        let found = holding_of(&holding_events(from, now + DAY, now), timer, now);
+        match found {
+            Some((start, _)) if start <= from && now - from < REACH => from = (start - DAY).max(now - REACH),
+            other => return other,
+        }
+    }
+}
+
+/// The stretch holding at `now` among `events` and the busy task's timer
+/// (the pure part of `holding`): the spans merged as they are, never cut,
+/// so that a stretch keeps its real start and end.
+pub fn holding_of(events: &[Occurrence], timer: Option<(i64, i64)>, now: i64) -> Option<(i64, i64)> {
+    holding_in(&stretches_of(events, timer, i64::MIN, i64::MAX), now)
+}
+
+/// When the next busy stretch begins within a day of `now`, so that a
+/// phone's do-not-disturb wakes at an event's start rather than at its
+/// background service's next step (review B11).
+pub fn next_start(now: i64) -> Option<i64> {
+    let timer = crate::timelog::running().and_then(|r| timer(&r, now));
+    next_start_in(&stretches_of(&holding_events(now - DAY, now + DAY, now), timer, now, now + DAY), now)
+}
+
+/// The events that hold the person busy (`holds_you`) between `from` and
+/// `to`, read from the calendars once a minute at most for do-not-disturb
+/// (review B9), not at each reading: kept with the minute and the window
+/// read, and read again for another minute or a wider window.
+fn holding_events(from: i64, to: i64, now: i64) -> Vec<Occurrence> {
+    static READ: std::sync::Mutex<Option<(i64, i64, i64, Vec<Occurrence>)>> = std::sync::Mutex::new(None);
+    let minute = now.div_euclid(60);
+    let mut kept = READ.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, read_from, read_to, events)) = kept.as_ref()
+        && *at == minute
+        && *read_from <= from
+        && to <= *read_to
+    {
+        return events.clone();
+    }
+    let events: Vec<Occurrence> = crate::agenda::occurrences(from, to).into_iter().filter(holds_you).collect();
+    *kept = Some((minute, from, to, events.clone()));
+    events
+}
+
+/// The first start of `stretches` after `now`.
+pub fn next_start_in(stretches: &[(i64, i64)], now: i64) -> Option<i64> {
+    stretches.iter().map(|(a, _)| *a).filter(|a| *a > now).min()
 }
 
 /// The stretch of `stretches` that holds at `now`.
@@ -129,6 +194,20 @@ mod tests {
         assert_eq!(stretches_of(&events, None, 0, 400_000), vec![(1_000, 2_000), (200_000, 200_000 + DAY)]);
     }
 
+    /// An invitation holds you only once accepted or accepted as tentative
+    /// (review B2); unanswered, it is still busy for the availability shared.
+    #[test]
+    fn an_invitation_holds_you_once_accepted() {
+        // `accepted`: the guest that is you answered accepted, or tentative (`agenda::mark_answers`).
+        let invited = |uid: &str, accepted: bool| Occurrence { invited: true, accepted, ..event(uid, 1_000, 2_000) };
+        let unanswered = invited("asked", false);
+        assert!(!holds_you(&unanswered) && event_marked(&unanswered), "busy for the availability, not for do-not-disturb");
+        assert!(stretches_of(std::slice::from_ref(&unanswered), None, 0, 10_000).is_empty());
+        assert!(holds_you(&invited("yes", true)));
+        assert_eq!(holding_of(&[invited("yes", true)], None, 1_500), Some((1_000, 2_000)));
+        assert_eq!(holding_of(&[unanswered], None, 1_500), None);
+    }
+
     /// A busy task's timer counts from its start until it stops holding, as
     /// a focus session did; a task not marked busy, or a paused timer, never.
     #[test]
@@ -144,6 +223,29 @@ mod tests {
         assert_eq!(stretches_of(&events, timer(&running, 1_100), 0, 100_000), vec![(1_000, 1_000 + 25 * 60 + 60 * 60)]);
     }
 
+    /// A stretch of three days keeps its real start whatever now is, and two
+    /// that touch read as one (review B1): "As usual" pressed on its second
+    /// day still holds it off on its third.
+    #[test]
+    fn a_long_stretch_keeps_its_real_start() {
+        let monday = 1_000 * DAY;
+        let away = Occurrence { all_day: true, opaque: true, ..event("away", monday, monday + 3 * DAY) };
+        for now in [monday + DAY / 2, monday + DAY + 3_600, monday + 2 * DAY + 36_000] {
+            assert_eq!(holding_of(std::slice::from_ref(&away), None, now), Some((monday, monday + 3 * DAY)), "{now}");
+        }
+        // Two events that touch: one stretch, from the first's start.
+        let touching = vec![event("first", monday, monday + 2 * DAY), event("second", monday + 2 * DAY, monday + 4 * DAY)];
+        assert_eq!(holding_of(&touching, None, monday + 3 * DAY), Some((monday, monday + 4 * DAY)));
+        assert_eq!(holding_of(&touching, None, monday + 5 * DAY), None);
+        // Do-not-disturb: pressed off on the second day, still off on the third.
+        let settings = crate::everywhere::DndSettings { focus: true, ..crate::everywhere::DndSettings::default() };
+        let press = crate::everywhere::Press { at: (monday + DAY + 3_600) * 1000, on: false, until: 0, from: "phone".into(), via: String::new(), state: crate::everywhere::State::of(false), open: false, held_off: 0, gone: false };
+        let on_third_day = monday + 2 * DAY + 36_000;
+        let sources = crate::everywhere::Sources { busy: holding_of(std::slice::from_ref(&away), None, on_third_day), ..crate::everywhere::Sources::default() };
+        assert!(!crate::everywhere::now(&settings, &sources, Some(&press), on_third_day).on(), "held off until the stretch ends");
+        assert!(crate::everywhere::now(&settings, &sources, None, on_third_day).on(), "without the press, it holds");
+    }
+
     /// Cut to the window, sorted, touching ones merged; the stretch holding now found.
     #[test]
     fn stretches_are_cut_sorted_and_merged() {
@@ -151,5 +253,8 @@ mod tests {
         assert_eq!(holding_in(&[(5, 20), (30, 45)], 30), Some((30, 45)));
         assert_eq!(holding_in(&[(5, 20), (30, 45)], 20), None);
         assert!(stretches(10, 10).is_empty());
+        // The next start after now: one under way (cut at now) is no start to wake for.
+        assert_eq!(next_start_in(&merged(vec![(0, 50), (70, 90), (120, 130)], 30, 200), 30), Some(70));
+        assert_eq!(next_start_in(&[(30, 45)], 30), None);
     }
 }

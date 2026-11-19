@@ -25,16 +25,30 @@
 //!   and as every preset moves it. Calls leave the page: their rows stay in
 //!   the store and the engine.
 //! - **Sioul's own notices, in four groups** (`Group`): what you set or
-//!   asked for (one choice: doses while you sleep or at waking), reminders
+//!   asked for (one choice, the doses' cell for sleep alone: while you sleep
+//!   or at waking; codes, the alarm at waking and an event's alarms are never
+//!   written by it), reminders
 //!   (when awake or off), care (four switches), sites and apps (at once or at
 //!   the gathered times). A group whose rows match no choice reads "Your own".
 //!
-//! Every write goes through `attention::apply_rows`: the rows whole, under
-//! the configuration's lock, a fixed cell never moved.
+//! Every write goes through `attention::apply_rows`: per row, the cells a
+//! choice names (`Cells`: a cell it does not name stays as the file has it),
+//! under the configuration's lock, a fixed cell never moved.
 
 use crate::attention::{self, Attention, Column, Kind, Level, Person, Row};
 use crate::reach::Channel;
 use serde::Serialize;
+
+/// What a choice writes on a row: each cell set, or kept as the file has it (none).
+pub type Cells = [Option<Level>; 9];
+
+/// A whole row's cells, as a write.
+fn whole(cells: [Level; 9]) -> Cells {
+    cells.map(Some)
+}
+
+/// The doses' cell a choice of "What you set or asked for" names: sleep.
+const DOSES_CELL: Column = Column::Sleep;
 
 // ---------------------------------------------------------------- behaviours
 
@@ -241,10 +255,10 @@ pub fn reading(attention: &Attention, channel: Channel, circle: Circle) -> Optio
 }
 
 /// The cells a behaviour writes for a circle on a channel; refused when it is not offered there.
-pub fn writes(channel: Channel, circle: Circle, behaviour: Behaviour) -> Result<Vec<(Row, [Level; 9])>, String> {
+pub fn writes(channel: Channel, circle: Circle, behaviour: Behaviour) -> Result<Vec<(Row, Cells)>, String> {
     rows(channel, circle)
         .into_iter()
-        .map(|row| pattern(row, behaviour).map(|cells| (row, cells)).ok_or_else(|| format!("{}: {}: not offered", row.id(), behaviour.id())))
+        .map(|row| pattern(row, behaviour).map(|cells| (row, whole(cells))).ok_or_else(|| format!("{}: {}: not offered", row.id(), behaviour.id())))
         .collect()
 }
 
@@ -254,8 +268,8 @@ pub fn writes(channel: Channel, circle: Circle, behaviour: Behaviour) -> Result<
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Group {
-    /// Codes, doses, the alarm at waking, an event's alarms: at once; one
-    /// choice, doses while you sleep or at waking.
+    /// Codes, doses, the alarm at waking, an event's alarms; one choice, the
+    /// doses' cell for sleep alone: while you sleep or at waking.
     Asked,
     /// Before an event, the working day before, dates and waits: when awake, or off.
     Reminders,
@@ -282,7 +296,9 @@ impl Group {
         Group::ALL.into_iter().find(|g| g.id() == text.trim())
     }
 
-    /// The kinds its choice reads and writes.
+    /// The kinds it holds; its choice reads and writes all of them, but
+    /// What you set or asked for's, which reads and writes the doses' cell
+    /// for sleep alone (`group_reading`, `group_writes`).
     pub fn kinds(self) -> &'static [Kind] {
         match self {
             Group::Asked => &[Kind::Codes, Kind::Doses, Kind::Wake, Kind::Alarms],
@@ -312,20 +328,10 @@ pub fn own_pattern(kind: Kind, choice: &str) -> Option<[Level; 9]> {
     if !group.choices().contains(&choice) {
         return None;
     }
-    let sleep = Column::ALL.iter().position(|c| *c == Column::Sleep).unwrap_or(4);
     let cells = match (group, choice) {
-        // Doses alone change: their sleep cell, the rest as Sioul ships it.
-        (Group::Asked, "sleep") if kind == Kind::Doses => {
-            let mut cells = usual;
-            cells[sleep] = Now;
-            cells
-        }
-        (Group::Asked, "waking") if kind == Kind::Doses => {
-            let mut cells = usual;
-            cells[sleep] = Later;
-            cells
-        }
-        (Group::Asked, _) | (Group::Reminders, "awake") | (Group::Care, "on") | (Group::Sites, "gathered") => usual,
+        // Read and written by the doses' sleep cell alone (`doses_choice`).
+        (Group::Asked, _) => return None,
+        (Group::Reminders, "awake") | (Group::Care, "on") | (Group::Sites, "gathered") => usual,
         (Group::Reminders, _) => [Later; 9],
         (Group::Care, _) => [Never; 9],
         (Group::Sites, _) => {
@@ -339,6 +345,14 @@ pub fn own_pattern(kind: Kind, choice: &str) -> Option<[Level; 9]> {
 /// What a group reads: the choice every one of its kinds acts as; none,
 /// "Your own", otherwise. Care is read switch by switch (`care`).
 pub fn group_reading(attention: &Attention, group: Group) -> Option<&'static str> {
+    if group == Group::Asked {
+        // The doses' cell for sleep alone: the group's other rows and the doses' other cells are not read.
+        return match attention.cell(Row::Own(Kind::Doses), DOSES_CELL) {
+            Level::Now => Some("sleep"),
+            Level::Later => Some("waking"),
+            _ => None,
+        };
+    }
     if group == Group::Care {
         let all: Vec<Option<bool>> = group.kinds().iter().map(|k| care(attention, *k)).collect();
         return match all.as_slice() {
@@ -357,13 +371,25 @@ pub fn care(attention: &Attention, kind: Kind) -> Option<bool> {
 }
 
 /// The cells a group's choice writes, every kind of it; for care, one switch (`kind`).
-pub fn group_writes(group: Group, choice: &str, kind: Option<Kind>) -> Result<Vec<(Row, [Level; 9])>, String> {
+pub fn group_writes(group: Group, choice: &str, kind: Option<Kind>) -> Result<Vec<(Row, Cells)>, String> {
+    if group == Group::Asked {
+        // One cell: the doses' for sleep; nothing else of the group, nothing else of the doses.
+        let level = match choice {
+            "sleep" => Level::Now,
+            "waking" => Level::Later,
+            _ => return Err(format!("{}: {choice}: not offered", group.id())),
+        };
+        let mut cells: Cells = [None; 9];
+        let at = Column::ALL.iter().position(|c| *c == DOSES_CELL).unwrap_or(4);
+        cells[at] = Some(level);
+        return Ok(vec![(Row::Own(Kind::Doses), cells)]);
+    }
     let kinds: Vec<Kind> = match (group, kind) {
         (Group::Care, Some(kind)) if group.kinds().contains(&kind) => vec![kind],
         (Group::Care, _) => return Err(format!("{}: which switch?", group.id())),
         _ => group.kinds().to_vec(),
     };
-    kinds.into_iter().map(|k| own_pattern(k, choice).map(|cells| (Row::Own(k), cells)).ok_or_else(|| format!("{}: {choice}: not offered", group.id()))).collect()
+    kinds.into_iter().map(|k| own_pattern(k, choice).map(|cells| (Row::Own(k), whole(cells))).ok_or_else(|| format!("{}: {choice}: not offered", group.id()))).collect()
 }
 
 #[cfg(test)]
@@ -459,20 +485,31 @@ mod tests {
         // A layer's cell that holds nothing more, on a row that waits at every time: still Never told.
         let mut never = Attention::usual();
         for (row, cells) in writes(Channel::Messages, Circle::Others, Behaviour::Never).unwrap() {
-            for (column, level) in Column::ALL.iter().zip(cells) {
+            for (column, level) in Column::ALL.iter().zip(cells).filter_map(|(c, l)| l.map(|l| (c, l))) {
                 never.set(row, *column, level).unwrap();
             }
         }
         never.set(Row::People(Channel::Messages, Person::Stranger), Column::Slot, Level::Now).unwrap();
         assert_eq!(reading(&never, Channel::Messages, Circle::Others), Some(Behaviour::Never));
-        // Doses held in a pause: the group's choice is no more theirs.
+        // A mail row out of sight everywhere (○) or shown always, the address's hours not read
+        // (–): neither is Never told (◑ everywhere), each reads "Your own" (review T2).
+        for level in [Level::Later, Level::Never] {
+            let mut hidden = Attention::usual();
+            for column in Column::ALL {
+                let _ = hidden.set(Row::People(Channel::Mail, Person::Stranger), column, level);
+            }
+            assert_eq!(reading(&hidden, Channel::Mail, Circle::Others), None, "{level:?}");
+        }
+        // Doses held in a pause: the group's choice reads the doses' sleep cell alone, still theirs.
         let mut doses = Attention::usual();
         doses.set(Row::Own(Kind::Doses), Column::Pause, Level::Later).unwrap();
-        assert_eq!(group_reading(&doses, Group::Asked), None);
+        assert_eq!(group_reading(&doses, Group::Asked), Some("sleep"));
+        doses.set(Row::Own(Kind::Doses), Column::Sleep, Level::Later).unwrap();
+        assert_eq!(group_reading(&doses, Group::Asked), Some("waking"));
         // One care switch off, the others on: the group is yours, each switch says its own.
         let mut care_off = Attention::usual();
         for (row, cells) in group_writes(Group::Care, "off", Some(Kind::Move)).unwrap() {
-            for (column, level) in Column::ALL.iter().zip(cells) {
+            for (column, level) in Column::ALL.iter().zip(cells).filter_map(|(c, l)| l.map(|l| (c, l))) {
                 care_off.set(row, *column, level).unwrap();
             }
         }
@@ -489,7 +526,7 @@ mod tests {
                 for behaviour in offered(channel, circle) {
                     let mut attention = Attention::usual();
                     for (row, cells) in writes(channel, circle, behaviour).unwrap() {
-                        for (column, level) in Column::ALL.iter().zip(cells) {
+                        for (column, level) in Column::ALL.iter().zip(cells).filter_map(|(c, l)| l.map(|l| (c, l))) {
                             attention.set(row, *column, level).unwrap_or_else(|e| panic!("{channel:?} {circle:?} {behaviour:?}: {e}"));
                         }
                     }
@@ -503,7 +540,7 @@ mod tests {
                 let kinds: Vec<Option<Kind>> = if group == Group::Care { group.kinds().iter().map(|k| Some(*k)).collect() } else { vec![None] };
                 for kind in kinds {
                     for (row, cells) in group_writes(group, choice, kind).unwrap() {
-                        for (column, level) in Column::ALL.iter().zip(cells) {
+                        for (column, level) in Column::ALL.iter().zip(cells).filter_map(|(c, l)| l.map(|l| (c, l))) {
                             attention.set(row, *column, level).unwrap_or_else(|e| panic!("{group:?} {choice}: {e}"));
                         }
                     }
@@ -513,12 +550,65 @@ mod tests {
         }
         // Writing never moves a fixed cell: the doses, codes, the alarm at waking and the blocked.
         for (row, cells) in group_writes(Group::Asked, "waking", None).unwrap() {
-            for (column, level) in Column::ALL.iter().zip(cells) {
+            for (column, level) in Column::ALL.iter().zip(cells).filter_map(|(c, l)| l.map(|l| (c, l))) {
                 if attention::lock(row, *column).is_some() {
                     assert_eq!(level, Attention::usual().cell(row, *column), "{row:?} {column:?}");
                 }
             }
         }
+    }
+
+    /// "Doses while you sleep / at waking" writes the doses' cell for sleep and
+    /// nothing else, through the page's writer, on a file (review R2): codes
+    /// set to come at night, an event's alarms set to ring at night, and doses
+    /// held in a pause all stay as they were set.
+    #[test]
+    fn the_doses_choice_writes_their_sleep_cell_alone() {
+        use crate::config::{Config, SettingValue};
+        let dir = std::env::temp_dir().join(format!("sioul-behaviours-doses-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|w| w.to_string()).collect());
+        let set = |key: &str, w: &[&str]| attention::apply(&path, &Config::load(&path).unwrap(), key, &words(w)).unwrap();
+        let choose = |choice: &str| attention::apply_rows(&path, &Config::load(&path).unwrap(), &group_writes(Group::Asked, choice, None).unwrap()).unwrap();
+        let read = || Attention::of(&Config::load(&path).unwrap());
+        // The one write names one cell.
+        let written = group_writes(Group::Asked, "waking", None).unwrap();
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].0, Row::Own(Kind::Doses));
+        assert_eq!(written[0].1.iter().filter(|c| c.is_some()).count(), 1);
+        // 1. Codes at once while asleep, then "Doses at waking": codes stay.
+        set("attention.codes", &["sleep"]);
+        choose("waking");
+        let a = read();
+        assert_eq!(a.cell(Row::Own(Kind::Codes), Column::Sleep), Level::Now, "codes kept");
+        assert_eq!(a.cell(Row::Own(Kind::Doses), Column::Sleep), Level::Later);
+        assert_eq!(group_reading(&a, Group::Asked), Some("waking"));
+        // 2. An event's alarms ringing at night whatever the event: kept through either choice.
+        set("attention.alarms", &["sleep"]);
+        choose("sleep");
+        choose("waking");
+        let a = read();
+        assert_eq!(a.cell(Row::Own(Kind::Alarms), Column::Sleep), Level::Now, "alarms kept");
+        assert_eq!(a.cell(Row::Own(Kind::Codes), Column::Sleep), Level::Now, "codes still kept");
+        // 3. Doses held in a pause, then "Doses while you sleep": the pause's cell stays.
+        set("attention.doses", &["pause:later"]);
+        choose("sleep");
+        let a = read();
+        assert_eq!(a.cell(Row::Own(Kind::Doses), Column::Pause), Level::Later, "the pause's cell kept");
+        assert_eq!(a.cell(Row::Own(Kind::Doses), Column::Sleep), Level::Now);
+        assert_eq!(group_reading(&a, Group::Asked), Some("sleep"));
+        // The doses' other cells, codes' and the alarm at waking's never moved.
+        for column in Column::ALL {
+            if !matches!(column, Column::Sleep | Column::Pause) {
+                assert_eq!(a.cell(Row::Own(Kind::Doses), column), Attention::usual().cell(Row::Own(Kind::Doses), column), "{column:?}");
+            }
+            assert_eq!(a.cell(Row::Own(Kind::Wake), column), Attention::usual().cell(Row::Own(Kind::Wake), column), "{column:?}");
+        }
+        assert!(group_writes(Group::Asked, "now", None).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The offers per circle: what each line of the page proposes.

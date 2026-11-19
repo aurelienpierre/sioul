@@ -39,6 +39,7 @@ Item {
             column: "work",
             now_columns: ["work"],
             presets: [{ id: "usual", label: "As Sioul does now", current: true, changes: 0 }, { id: "quieter", label: "Quieter", current: false, changes: 12 }, { id: "reachable", label: "More reachable", current: false, changes: 6 }],
+            presets_note: "A preset leaves calls as they are.",
             changed: "",
             people: {
                 channels: [{ id: "mail", label: "Mail", note: "" }, { id: "messages", label: "Messages", note: "" }],
@@ -67,12 +68,14 @@ Item {
             },
             elsewhere: { line: "Set elsewhere: one site in real time.", links: [{ id: "sites", label: "Sites" }] },
             calls: "Calls are set for each phone in Settings ▸ Devices.",
-            rows: ["mail.safe", "doses"],
+            rows: ["mail.safe", "calls.neutral", "doses"],
+            calls_grid: { text: "reach-calls-grid", door_label: "reach-calls-grid-open", door: "settings:devices.calls" },
             grid: {
                 columns: [{ id: "work", label: "Work" }, { id: "sleep", label: "Sleep" }],
                 marks: [],
                 rows: [
                     { id: "mail.safe", label: "Safe", group: "Mail", group_id: "mail", help: "Only you put someone on this list.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "quiet", label: "Shown, not told", word: "Shown" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now", "quiet"], said: "Mail, Safe, at Work: At once." }, { column: "sleep", value: "quiet", word: "Shown", choices: ["now", "quiet"], said: "Mail, Safe, at Sleep: Shown, not told." }] },
+                    { id: "calls.neutral", label: "Your contacts", group: "Calls", group_id: "calls", help: "Everyone in your address books.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "later", label: "Voicemail", word: "Voicemail" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now", "later"], said: "Calls, Your contacts, at Work: At once." }, { column: "sleep", value: "later", word: "Voicemail", choices: ["now", "later"], said: "Calls, Your contacts, at Sleep: Voicemail." }] },
                     { id: "doses", label: "Doses", group: "What you set or asked for", group_id: "asked", help: "A dose's reminder at its time.", changed: false, choices: [{ id: "now", label: "At once", word: "Now" }, { id: "later", label: "Later", word: "Later" }], cells: [{ column: "work", value: "now", word: "Now", choices: ["now"], locked: "Fixed: a dose comes at its time.", said: "Doses, at Work: At once." }, { column: "sleep", value: "now", word: "Now", choices: ["now", "later"], said: "Doses, at Sleep: At once." }] }
                 ]
             },
@@ -92,8 +95,18 @@ Item {
         function reachesView() {
             return JSON.stringify(mock.view)
         }
+        // Who is in which circle (`settings::for_view("senders")`): a list, the line of
+        // what was named as your contacts (review C1), a group on that list.
         function settings(view) {
-            return "[]"
+            if (view !== "senders")
+                return "[]"
+            const row = (key, kind, label, value, choices, group) => ({ key: key, kind: kind, label: label, help: "", value: value, choices: choices, min: 0, max: 0, step: 1, unit: "", group: group })
+            const lists = [{ value: "", label: "No list" }, { value: "safe", label: "Safe" }, { value: "neutral", label: "Your contacts" }]
+            return JSON.stringify([
+                row("safe", "senders", "Safe", ["camille@example.org"], [], ""),
+                row("neutral", "senders", "2 addresses, numbers and domains you named as contacts", ["*@school.example.org", "+33 1 99 00 12 34"], [], ""),
+                row("category:Clients", "choice", "Clients", "neutral", lists, "Groups")
+            ])
         }
         function reachesChoose(what, value) {
             mock.chosen = mock.chosen.concat([[what, value]])
@@ -178,6 +191,70 @@ Item {
             }
         }
 
+        // The calls' rows in What comes when, and under them the line that a phone's own table
+        // replaces them but in a pause and during do-not-disturb, with its door (review of `phones`).
+        function test_the_calls_rows_in_the_full_ledger() {
+            find(wide, "reachesTabs:table").clicked()
+            verify(find(wide, "cell-calls.neutral-work") !== null, "a calls' row, every column")
+            verify(find(wide, "groupNote-calls") !== null, "its line under it")
+            mock.opened = []
+            find(wide, "groupDoor-calls").clicked()
+            compare(mock.opened, ["settings:devices.calls"])
+            find(narrow, "reachesTabs:table").clicked()
+            verify(find(narrow, "row-calls.neutral") !== null && find(narrow, "callsGridNote") !== null)
+            find(wide, "reachesTabs:rules").clicked()
+            find(narrow, "reachesTabs:rules").clicked()
+        }
+
+        // A phone's top in three rows before the tabs (the pictures' review, point 1): the
+        // sentence, the states (pressed, the card), Start from as one button opening the presets
+        // with the calls' line; a computer keeps Change… and the presets side by side.
+        function test_a_phone_s_top_in_three_rows() {
+            verify(find(narrow, "reachesStates") === null, "no Change… on a phone: the row opens the card")
+            verify(find(wide, "reachesStates") !== null)
+            const start = find(narrow, "reachesStartFrom")
+            verify(start !== null && start.text.indexOf("As Sioul does now") >= 0, start ? start.text : "none")
+            verify(find(narrow, "preset-quieter") === null && find(wide, "preset-quieter") !== null)
+            verify(find(narrow, "reachesPresetsNote") === null, "the calls' line is in the phone's menu")
+        }
+
+        // Nothing at all under its own heading; the grid's words said under it (points 4 and 5).
+        function test_free_time_and_the_grid_s_key() {
+            verify(find(wide, "reachesGridKey") === null, "the key with the grid only")
+            find(wide, "reachesTabs:table").clicked()
+            verify(find(wide, "reachesGridKey") !== null)
+            find(wide, "reachesTabs:rules").clicked()
+        }
+
+        // The state on is said by a mark and to a screen reader, not by colour alone (review W1).
+        function test_the_state_on_is_said() {
+            const usual = find(wide, "state-usual")
+            verify(usual.text.indexOf("✓") === 0, usual.text)
+            compare(usual.Accessible.name, "reach-moment-usual, reach-state-now")
+            const dnd = find(wide, "state-dnd")
+            compare(dnd.Accessible.name, "reach-moment-dnd")
+        }
+
+        // What was named as your contacts (review C1): one line, opened to read and remove, never
+        // to add to; a group on that list says so, not "No list".
+        function test_what_was_named_as_contacts() {
+            wide.readLists()
+            const line = find(wide, "namedContacts")
+            verify(line, "the line")
+            verify(line.text.indexOf("2 addresses, numbers and domains you named as contacts") >= 0, line.text)
+            verify(line.width > 100 && line.height > 10, "drawn: " + line.width + " × " + line.height)
+            verify(!find(wide, "namedContactsList"), "folded at first")
+            line.clicked()
+            const list = find(wide, "namedContactsList")
+            verify(list, "opened")
+            const named = wide.lists.find(l => l.key === "neutral")
+            compare(named.value.length, 2)
+            const group = wide.lists.find(l => l.key === "category:Clients")
+            compare(group.value, "neutral", "the group shows its list")
+            line.clicked()
+            verify(!find(wide, "namedContactsList"), "folded again")
+        }
+
         // A computer: a table, the circles down, mail and messages across, each cell its behaviour in words.
         function test_the_people_s_table_on_a_computer() {
             verify(!wide.narrow && narrow.narrow)
@@ -245,6 +322,16 @@ Item {
             compare(wide.view, "table")
             wide.show("rules", "mail")
             compare(wide.view, "rules")
+            // A door to a row lands on the row (review W4): in sight on a computer, opened on a phone.
+            revealed.clear()
+            wide.show("time", "doses")
+            compare(wide.view, "table")
+            tryCompare(revealed, "count", 1)
+            compare(revealed.signalArguments[0][0].objectName, "cell-doses-work")
+            narrow.show("time", "doses")
+            compare(narrow.rowOpen, "doses")
+            narrow.show("time", "pause")
+            compare(narrow.rowOpen, "", "a time is no row")
         }
 
         // What comes when, on a computer: the grid in words, now's column marked; a cell changed by its row.
