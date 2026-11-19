@@ -218,7 +218,11 @@ public final class SignInCheck
             SignIn.wipe(folders);
             SignIn.wipe(SignIn.folders(base.resolve("absent").toFile(), base.resolve("absent").toFile()));
             read += 4;
-            if (mine.toFile().list().length != 0 || mineCache.toFile().list().length != 0 || !java.nio.file.Files.isDirectory(mine) || !java.nio.file.Files.isDirectory(mineCache)) {
+            // A file the wipe took that was not its own is a failure, never a check skipped.
+            String siteCookie = java.nio.file.Files.exists(sites.resolve("Cookies")) ? java.nio.file.Files.readString(sites.resolve("Cookies")) : "";
+            String[] left = mine.toFile().list();
+            String[] leftCache = mineCache.toFile().list();
+            if (left == null || leftCache == null || left.length != 0 || leftCache.length != 0) {
                 failed++;
                 System.out.println("FAIL the sign-in's folders emptied, themselves kept");
             }
@@ -226,7 +230,7 @@ public final class SignInCheck
                 failed++;
                 System.out.println("FAIL a link followed out of the web view's folder");
             }
-            if (!java.nio.file.Files.readString(sites.resolve("Cookies")).equals("a site's cookie") || !java.nio.file.Files.exists(sitesCache.resolve("entry"))) {
+            if (!siteCookie.equals("a site's cookie") || !java.nio.file.Files.exists(sitesCache.resolve("entry"))) {
                 failed++;
                 System.out.println("FAIL the sites' store touched by the sign-in");
             }
