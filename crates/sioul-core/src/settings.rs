@@ -470,26 +470,42 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who is on which list, under Settings ▸ What reaches you ▸ By person
-        // (its grids say when each list reaches you): the four lists; the
-        // people placed on them; your contacts' categories, each on a list or none.
+        // Who is in which circle, under Settings ▸ What reaches you ▸ People:
+        // three lists (Safe, Restricted, Blocked); the people placed on them; the
+        // groups of your contacts (their cards' categories), each on a list or none.
+        // Your contacts are everyone in your address books, with nothing to set:
+        // the list of them and the choice of them leave the page. The lines
+        // `neutral-senders.txt` holds keep being read (`porch::Senders`), so that
+        // nothing changes for someone set so, and stay in view (review C1): the
+        // addresses, numbers and domains named there in one line, shown only
+        // when there are some, to read and remove; a card or a group on it shows
+        // as what it is, "Your contacts", never "No list". A sheet and unblocking
+        // may still write there (`reaches::person_change`, `porch::unblock`):
+        // what they write appears in that line.
         "senders" => {
-            for (key, id, path) in [
-                ("safe", "safe", config.safe_senders_path()),
-                ("neutral", "neutral", config.neutral_senders_path()),
-                ("restricted", "restricted", config.restricted_senders_path()),
-                ("blocked", "blocked-all", config.blocked_senders_path()),
-            ] {
+            for (key, id, path) in [("safe", "safe", config.safe_senders_path()), ("restricted", "restricted", config.restricted_senders_path()), ("blocked", "blocked-all", config.blocked_senders_path())] {
                 // Addresses and patterns, then numbers as written.
                 let list = SenderList::load(&path);
                 b.push(key, id, Kind::Senders, SettingValue::Texts(list.entries().into_iter().chain(list.numbers().iter().cloned()).collect()));
             }
+            let named = SenderList::load(&config.neutral_senders_path());
+            let named: Vec<String> = named.entries().into_iter().chain(named.numbers().iter().cloned()).collect();
+            if !named.is_empty() {
+                let mut args = crate::i18n::args();
+                args.set("n", named.len());
+                let s = b.push("neutral", "sender-named-contacts", Kind::Senders, SettingValue::Texts(named));
+                s.label = tr.text("set-sender-named-contacts", Some(&args));
+            }
             let senders = crate::porch::Senders::load(config);
-            let choices = |none: &str| -> Vec<Choice> {
+            // No list, Safe, Restricted, Blocked: your contacts are no choice. A group or a card
+            // on the list of your contacts (an older page, a sheet) shows so, with that choice
+            // too, so that No list takes it off.
+            let choices = |none: &str, named: bool| -> Vec<Choice> {
                 std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text(none, None) })
-                    .chain(crate::porch::Standing::ALL.iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
+                    .chain(crate::porch::Standing::ALL.iter().filter(|l| named || **l != crate::porch::Standing::Neutral).map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
                     .collect()
             };
+            let shown = |standing: Option<crate::porch::Standing>| standing.map_or("", |s| s.as_str());
             // The people placed on a list themselves (their card): changed here or on their card.
             let mut cards: Vec<String> = Vec::new();
             for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
@@ -511,14 +527,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                     .collect();
                 named.sort_by_key(|(name, _)| crate::text::fold(name).into_iter().collect::<String>().to_lowercase());
                 for (name, uid) in named {
-                    let standing = senders.card_standing(&uid).map_or("", |s| s.as_str());
+                    let standing = shown(senders.card_standing(&uid));
                     let s = b.push(&format!("{}{uid}", crate::porch::CONTACT), "sender-person", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices("sender-no-choice");
+                    s.choices = choices("sender-no-choice", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
-            // Your contacts' categories, those in use and those on a list.
+            // The groups of your contacts, those in use and those on a list.
             let mut names = senders.contacts.names();
             for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
                 for name in list.categories() {
@@ -530,13 +546,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             if !names.is_empty() {
                 b.group = tr.text("set-sender-categories-group", None);
                 b.note(tr.text("set-sender-categories-note", None), Vec::new());
-                let choices = choices("sender-no-list");
                 for name in names {
-                    let standing = senders.category_standing(&name).map_or("", |s| s.as_str());
+                    let standing = shown(senders.category_standing(&name));
                     let s = b.push(&format!("{}{name}", crate::porch::CATEGORY), "sender-category", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices.clone();
+                    s.choices = choices("sender-no-list", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
         }
@@ -727,10 +742,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
             // The sites' colours are the Sites page's own, behind its ⚙ (only it reads them).
             // What this device is for what follows you (`device_kind`, docs/android.md,
-            // "Tablets"), this device's own: in its own tab on Android (Settings ▸ This
-            // phone, or This tablet), in Display elsewhere. "" as the system says, which
-            // the window names (backend.rs: Android's width is the app's to read).
-            b.section = if cfg!(target_os = "android") { "phone".into() } else { "look".into() };
+            // "Tablets"), this device's own: in Settings ▸ Devices on Android (its card there
+            // reads the row by its key: review of `phones`, L20), in Display elsewhere. "" as
+            // the system says, which the window names (backend.rs: Android's width is the app's to read).
+            b.section = if cfg!(target_os = "android") { "devices".into() } else { "look".into() };
             b.group = tr.text("set-device-group", None);
             let s = b.push("device_kind", "device-kind", Kind::Choice, SettingValue::Text(config.device_kind.clone().unwrap_or_default()));
             let found = crate::device_kind::DeviceKind::guessed(cfg!(target_os = "android"), None);
@@ -766,6 +781,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long informative notices last, one length for all (docs/notifications.md).
             let s = b.push("notices.informative_minutes", "notices-informative", Kind::Int, SettingValue::Int(i64::from(config.notices.minutes())));
             Builder::range(s, f64::from(crate::notice::SHORTEST), f64::from(crate::notice::LONGEST), 1.0, "min");
+            // The times sites and other apps' automatons are gathered at (their cells say "gathered"):
+            // under Sioul's own notices ▸ Sites and apps, on the page.
+            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // Free time's "Nothing at all": its card's switch.
             b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
@@ -784,8 +802,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
-            // The times sites and other apps' automatons are gathered at: their cells say "gathered".
-            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
@@ -1518,7 +1534,7 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             }
             set_value(config_path, key, &SettingValue::Float(wanted))
         }
-        // The call screening (Settings ▸ This phone ▸ Call screening): a key at a time, its words checked.
+        // The call screening (Settings ▸ Devices ▸ this phone's card ▸ Call screening): a key at a time, its words checked.
         _ if key.starts_with("screening.") => crate::screening::set(config_path, key, value),
         // How long informative notices last: written within what is read (one to sixty minutes).
         "notices.informative_minutes" => {
@@ -1679,8 +1695,8 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
@@ -1708,7 +1724,7 @@ mod tests {
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
-        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
@@ -1717,7 +1733,7 @@ mod tests {
         let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
-        assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
+        assert_eq!(keys("senders"), vec!["safe", "restricted", "blocked"]);
         // The address books' own block first (wave D), whatever this computer holds.
         assert_eq!(keys("contacts"), vec!["addressbooks", "contacts.batches", "map.geocode", "map.tiles", "contacts.region"]);
         // The sites' colours, which only the Sites page reads, then where Bitwarden is set.

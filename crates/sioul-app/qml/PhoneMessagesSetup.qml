@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ This phone ▸ On your computers (« Sur vos ordinateurs »), on a
+// Settings ▸ Devices ▸ this phone's card ▸ On your computers (« Sur vos ordinateurs »), on a
 // phone (docs/android.md, "Messages on your computers"): what this phone's
 // notifications send to your computers' Porch, sealed through your sharing.
 // The part's switch (off until you turn it on, here and on each computer

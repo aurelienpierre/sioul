@@ -995,6 +995,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
 
+        /// An event marked busy or free from its card (`pim::set_event_busy`):
+        /// what went wrong, else "".
+        #[qinvokable]
+        fn set_event_busy(self: Pin<&mut Sioul>, key: &QString, busy: bool, rid: &QString) -> QString;
+
         /// Deletes an event, or only the occurrence starting at `start`, after ten
         /// seconds to undo; never a meeting with others nor one of a calendar
         /// you only read. Returns what went wrong, else "".
@@ -1586,6 +1591,29 @@ pub mod qobject {
         /// Returns what went wrong, else "".
         #[qinvokable]
         fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// This phone's own card in Settings ▸ Devices, as JSON (`phonecard::view`):
+        /// `{ phone, allow, restricted }`, what Android must allow and its restricted
+        /// settings' card; `{ phone: false }` elsewhere.
+        #[qinvokable]
+        fn phone_card(self: Pin<&mut Sioul>) -> QString;
+
+        /// The same, read when the window comes back: back from Sioul's page in
+        /// Android, the accesses still held asked again by themselves first
+        /// (`phonecard::back`); never in answer to a step of the card.
+        #[qinvokable]
+        fn phone_card_back(self: Pin<&mut Sioul>) -> QString;
+
+        /// A line of what Android must allow pressed (`phonecard::ask`): "role",
+        /// "contacts", "history", "notifications", "texts", "dnd", "alarms",
+        /// "battery", "stars": Android's question or its page. The card again.
+        #[qinvokable]
+        fn phone_allow(self: Pin<&mut Sioul>, what: &QString) -> QString;
+
+        /// A step of the restricted settings' card pressed (`access::restricted_step`):
+        /// "notice", "info", "back". The card again, as `phone_card`.
+        #[qinvokable]
+        fn restricted_step(self: Pin<&mut Sioul>, step: &QString) -> QString;
 
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
@@ -2651,6 +2679,12 @@ pub mod qobject {
         /// A preset chosen ("usual", "quieter", "reachable"): what went wrong, else "".
         #[qinvokable]
         fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A choice of Settings ▸ What reaches you (`reaches::choose`; `what`:
+        /// "people.mail.safe", "group.reminders", "care.move"; `value`: a
+        /// behaviour's or a choice's id), its rows written whole: what went wrong, else "".
+        #[qinvokable]
+        fn reaches_choose(self: Pin<&mut Sioul>, what: &QString, value: &QString) -> QString;
 
         /// How someone reaches you, as JSON (`reaches::person`): a card's file or
         /// UID, or a sender's addresses (a JSON array, or one).
@@ -6267,6 +6301,10 @@ impl qobject::Sioul {
         QString::from(&result.err().unwrap_or_default())
     }
 
+    fn set_event_busy(self: Pin<&mut Self>, key: &QString, busy: bool, rid: &QString) -> QString {
+        QString::from(&pim::set_event_busy(&self.qt_thread(), &self.shared(), &key.to_string(), busy, &rid.to_string()))
+    }
+
     fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
         QString::from(&pim::move_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, new_start as i64, new_end as i64, only_this))
     }
@@ -7294,6 +7332,10 @@ impl qobject::Sioul {
     }
 
     fn device_forget(self: Pin<&mut Self>, id: &QString) -> QString {
+        // A phone forgotten: its word on where each person is starred taken out of the list (review of `phones`, L8).
+        if let Err(e) = sioul_core::stars::forget_place(&sioul_core::everywhere::People::default_path(), &id.to_string()) {
+            eprintln!("sioul: stars: {e}");
+        }
         QString::from(&crate::health::device_forget(&id.to_string()))
     }
 
@@ -7301,12 +7343,42 @@ impl qobject::Sioul {
         QString::from(&crate::share::devices())
     }
 
+    fn phone_card(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::view())
+    }
+
+    fn phone_card_back(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::back())
+    }
+
+    fn phone_allow(self: Pin<&mut Self>, what: &QString) -> QString {
+        QString::from(&crate::phonecard::ask(&what.to_string()))
+    }
+
+    fn restricted_step(self: Pin<&mut Self>, step: &QString) -> QString {
+        crate::access::restricted_step(&step.to_string());
+        QString::from(&crate::phonecard::view())
+    }
+
     fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
-        let field = field.to_string();
-        let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
+        let (id, field) = (id.to_string(), field.to_string());
+        // A phone's calls: their value before, for Undo.
+        let before = field.starts_with("calls.").then(|| sioul_core::calls_line::raw(&config_path(), &id)).flatten();
+        let (problem, undo) = crate::share::say_of_device_said(&id, &field, &value.to_string());
+        // A change that did more than the cell pressed, or replaced a table of your own: said with Undo, which
+        // puts the phone's value back as it was (`calls_line::put_raw`) and its table again.
+        if let Some(line) = undo {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            crate::mail::offer_back(&qt, &shared, line, move |_, _| {
+                let problem = sioul_core::calls_line::put_raw(&config_path(), &id, before.as_deref()).err().unwrap_or_default();
+                std::thread::spawn(|| crate::calls::refresh(true));
+                problem
+            });
+        }
         // What a device is for, or a cell of its line: what now brings on this device is said and
         // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
-        if problem.is_empty() && field != "name" {
+        // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device`).
+        if problem.is_empty() && field != "name" && !field.starts_with("calls.") {
             self.as_mut().set_mode(QString::from(&mode_json()));
             let (qt, shared) = (self.qt_thread(), self.shared());
             show(&qt, &shared);
@@ -8238,6 +8310,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn reaches_choose(self: Pin<&mut Self>, what: &QString, value: &QString) -> QString {
+        let problem = crate::reaches::choose(&what.to_string(), &value.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
     fn person_sheet(&self, key: &QString, addresses: &QString) -> QString {
         QString::from(&crate::reaches::person(&key.to_string(), &addresses.to_string()))
     }
@@ -8844,7 +8924,7 @@ impl qobject::Sioul {
         // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

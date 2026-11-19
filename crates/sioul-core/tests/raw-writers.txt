@@ -6,6 +6,9 @@
 # it came. A new raw write fails the test until it goes through a door
 # (vdir::write_item, remove_item, move_item, replace_items) or is named here.
 
+# sioul-app/src/access.rs: the steps of the restricted settings' card pressed on this phone (state, its own): no item.
+sioul-app/src/access.rs	save	1	sioul_core::filelock::replace(&path, text.as_bytes())
+
 # sioul-app/src/agenda.rs: what the agenda's Day and Week show on this device (state): no item.
 sioul-app/src/agenda.rs	write_view	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
@@ -104,7 +107,7 @@ sioul-app/src/mail.rs	mark_read_here	1	sioul_core::filelock::replace(&path, text
 
 # sioul-app/src/organized.rs: the mark of the once-only pass over meetings you organize (state): no item.
 sioul-app/src/organized.rs	tidy_once	1	std::fs::write(&mark, VERSION)
-# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities (state): no item.
+# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities, and of the plan's time for busy tasks (state): no item.
 sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
 
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
@@ -326,6 +329,8 @@ sioul-core/src/duplicates.rs	done	2	std::fs::remove_file(&path)
 sioul-core/src/duplicates.rs	undo	1	std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default())
 sioul-core/src/duplicates.rs	undo	1	std::fs::remove_file(&record)
 
+# sioul-core/src/stars.rs: what a phone or a book starred at its last look (state, that place's own): no item.
+sioul-core/src/stars.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 # sioul-core/src/everywhere.rs: the notes of what went everywhere: no item.
 sioul-core/src/everywhere.rs	save	2	write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
@@ -950,3 +955,11 @@ sioul-sync/src/verify.rs	write_in_place	1	std::fs::remove_file(&temporary)
 
 # sioul-core/src/changes.rs: the time another program changed a kind of thing, for the window to read (state): no item.
 sioul-core/src/changes.rs	stamp_in	1	std::fs::write(dir.join(kind.id()), jiff::Timestamp::now().as_millisecond().to_string())
+
+# sioul-app/src/stars.rs: starred people both ways turned off, the memories of this device's places forgotten (state, its own): no item.
+sioul-app/src/stars.rs	turn	1	std::fs::remove_dir_all(stars::folder())
+
+# sioul-core/src/stars.rs: a place's memory forgotten when starred people both ways is off, and the people kept on the list waiting to be told (state, this device's own): no item.
+sioul-core/src/stars.rs	forget	1	std::fs::remove_file(path)
+sioul-core/src/stars.rs	note_kept	1	crate::filelock::replace(&path, text.as_bytes())
+sioul-core/src/stars.rs	take_kept	1	std::fs::remove_file(&path)

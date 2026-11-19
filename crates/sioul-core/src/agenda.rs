@@ -1539,6 +1539,27 @@ pub struct EventEdit {
     /// without a point drops it, since it no longer holds.
     #[serde(default)]
     pub geo: String,
+    /// Busy (`TRANSP:OPAQUE`) or free (`TRANSP:TRANSPARENT`), as its file
+    /// says it; none when its file says neither, so that its kind's own
+    /// holds (a time busy, a whole day free, as Google reads it), and from a
+    /// caller that does not say it (an agent, an older window, a form whose
+    /// switch was not pressed): the file's kept as it is, said or unsaid, so
+    /// that no mark is frozen when the event's kind changes (review B6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busy: Option<bool>,
+}
+
+/// Busy or free as an event's main VEVENT says it (its TRANSP); none when it
+/// says neither, its kind's own then holding (a time busy, a whole day free).
+fn busy_said(component: &ICalendarComponent) -> Option<bool> {
+    let transp = text_of(component, &ICalendarProperty::Transp);
+    if transp.eq_ignore_ascii_case("TRANSPARENT") {
+        Some(false)
+    } else if transp.eq_ignore_ascii_case("OPAQUE") {
+        Some(true)
+    } else {
+        None
+    }
 }
 
 /// An event's own clock, as its first DTSTART writes it (`EventEdit::clock`):
@@ -1717,6 +1738,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
         clock: if all_day { String::new() } else { clock },
         geo: geo_of(text).map(|(lat, lon)| geo_value(lat, lon)).unwrap_or_default(),
+        busy: busy_said(master),
     })
 }
 
@@ -2052,7 +2074,9 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&crate::zone::now()))]);
     out.extend(times);
-    out.extend(content_lines(edit, Changed::ALL, None));
+    // Its mark written only where it is not its kind's own (a time busy, a whole day free).
+    let transp = edit.busy.is_some_and(|busy| busy == edit.all_day);
+    out.extend(content_lines(edit, Changed { transp, ..Changed::ALL }, None));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
 }
@@ -2068,10 +2092,12 @@ struct Changed {
     demands: bool,
     remind: bool,
     geo: bool,
+    /// Busy or free (TRANSP).
+    transp: bool,
 }
 
 impl Changed {
-    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true };
+    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true, transp: true };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
@@ -2115,6 +2141,11 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> 
     {
         out.push(format!("{}:{value}", crate::reminders::REMIND));
     }
+    if changed.transp
+        && let Some(busy) = edit.busy
+    {
+        out.push(format!("TRANSP:{}", if busy { "OPAQUE" } else { "TRANSPARENT" }));
+    }
     out
 }
 
@@ -2150,10 +2181,11 @@ const TIMES: &[&str] = &["DTSTART", "DTEND", "DURATION"];
 /// more than Sioul's own lines changed.
 pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, String> {
     let zone = zone.clone();
-    // Each time is 1, whether said 0 (unsaid, from an agent) or 1; one that
-    // does not repeat has none.
-    let edit = &EventEdit { every: if edit.repeat.is_empty() { 1 } else { edit.every.max(1) }, ..edit.clone() };
     let before = edit_of_text(text, &zone);
+    // Busy unsaid (an agent, an older window): as the file says it. Each time
+    // is 1, whether said 0 (unsaid, from an agent) or 1; one that does not repeat has none.
+    let busy = edit.busy.or_else(|| before.as_ref().and_then(|b| b.busy));
+    let edit = &EventEdit { every: if edit.repeat.is_empty() { 1 } else { edit.every.max(1) }, busy, ..edit.clone() };
     // Nothing changed: nothing is written, not even the stamps.
     if before.as_ref() == Some(edit) {
         return Ok(text.to_string());
@@ -2172,12 +2204,16 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             // A title, a place or notes as the form gives them back (a no-break space as a
             // space, a line separator as a line end): the file's own kept, byte for byte,
             // when the person changed nothing of them (second review of the organizer's door, N2).
-            Changed { title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo }
+            // Busy or free said again when it changed, or, said, when the event became a time or a
+            // whole day, whose own default differs: written then, so that it stays what was said.
+            // Unsaid, it stays unsaid: the new kind's own holds (review B6).
+            let transp = b.busy != edit.busy || (b.all_day != edit.all_day && edit.busy.is_some());
+            Changed { title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo, transp }
         }
         None => Changed::ALL,
     };
     // Nothing changed but how the form gives text back: nothing is written, not even the stamps (N2).
-    if before.is_some() && !times_changed && !rule_changed && !(changed.title || changed.location || changed.notes || changed.margins || changed.demands || changed.remind || changed.geo) {
+    if before.is_some() && !times_changed && !rule_changed && !(changed.title || changed.location || changed.notes || changed.margins || changed.demands || changed.remind || changed.geo || changed.transp) {
         return Ok(text.to_string());
     }
     // Its place changed without a point: written with none.
@@ -2201,6 +2237,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             || (changed.demands && (name == crate::demands::COST || name == crate::demands::GAIN))
             || (changed.remind && name == crate::reminders::REMIND)
             || (changed.geo && name == "GEO")
+            || (changed.transp && name == "TRANSP")
     };
     let source = lines::unfold(text);
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 8);
@@ -2732,6 +2769,63 @@ pub fn remove_lines(text: &str, drop: impl Fn(&str) -> bool) -> Option<String> {
         return Some(text.to_string());
     }
     source.splice(master, kept);
+    Some(lines::fold(&source))
+}
+
+/// One changed time of a series (its own VEVENT, whose RECURRENCE-ID is
+/// `rid`) marked busy or free, that time alone (review B7): its TRANSP lines
+/// written again, every other line and every other VEVENT as they were, its
+/// SEQUENCE untouched. None when the file holds no such changed time.
+pub fn set_busy_of_time(text: &str, rid: &str, busy: bool) -> Option<String> {
+    let rid = rid.trim();
+    if rid.is_empty() {
+        return None;
+    }
+    let mut source = lines::unfold(text);
+    let mut start = None;
+    let mut nested = 0;
+    let mut matches = false;
+    let mut range = None;
+    for (i, line) in source.iter().enumerate() {
+        let name = lines::name(line);
+        let value = lines::value(line).trim().to_string();
+        match (name.as_str(), start) {
+            ("BEGIN", None) if value.eq_ignore_ascii_case("VEVENT") => {
+                start = Some(i);
+                matches = false;
+            }
+            ("BEGIN", Some(_)) => nested += 1,
+            ("END", Some(_)) if nested > 0 => nested -= 1,
+            ("RECURRENCE-ID", Some(_)) if nested == 0 => matches = value == rid,
+            ("END", Some(begin)) if value.eq_ignore_ascii_case("VEVENT") => {
+                if matches {
+                    range = Some(begin..i + 1);
+                    break;
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    let range = range?;
+    let mut kept: Vec<String> = Vec::new();
+    let mut depth = 0;
+    for (i, line) in source[range.clone()].iter().enumerate() {
+        let name = lines::name(line);
+        if name == "BEGIN" && i > 0 {
+            depth += 1;
+        }
+        if name == "END" && depth > 0 {
+            depth -= 1;
+        }
+        if depth == 0 && name == "TRANSP" {
+            continue;
+        }
+        kept.push(line.clone());
+    }
+    let end = kept.len() - 1;
+    kept.insert(end, format!("TRANSP:{}", if busy { "OPAQUE" } else { "TRANSPARENT" }));
+    source.splice(range, kept);
     Some(lines::fold(&source))
 }
 
@@ -5299,6 +5393,68 @@ mod tests {
         let retimed = apply(theirs, &edit("2025-07-03T09:30", "2025-07-03T10:30", ""), &paris()).unwrap();
         assert!(retimed.contains("DTSTART;TZID=Europe/Paris:20250703T093000"), "{retimed}");
         assert_eq!(ical4j_offset(&retimed, "2025-07-03T09:30".parse().unwrap()), "+0200", "{retimed}");
+    }
+
+    /// Busy is the standard TRANSP (`busy`), read as Google reads it: an event
+    /// another program wrote keeps its TRANSP byte for byte through an edit
+    /// that leaves Busy alone, from the window or an agent that does not say
+    /// it; the form's Busy writes it when it changes, or when the event
+    /// becomes a time or a whole day, and never moves its SEQUENCE; a new
+    /// event writes it only where it is not its kind's own.
+    #[test]
+    fn an_event_keeps_its_transp() {
+        let zone = paris();
+        let theirs = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other//EN\r\nBEGIN:VEVENT\r\nUID:theirs-free\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261120T080000Z\r\nDTEND:20261120T090000Z\r\nSUMMARY:Reading\r\nTRANSP:TRANSPARENT\r\nX-OTHER:keep\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let edit = edit_of_text(theirs, &zone).unwrap();
+        assert_eq!(edit.busy, Some(false));
+        for said in [None, Some(false)] {
+            let retitled = apply(theirs, &EventEdit { title: "Reading, quietly".into(), busy: said, ..edit.clone() }, &zone).unwrap();
+            assert!(retitled.contains("\r\nTRANSP:TRANSPARENT\r\n") && retitled.contains("SUMMARY:Reading\\, quietly") && retitled.contains("X-OTHER:keep"), "{said:?}: {retitled}");
+            assert_eq!(retitled.matches("\nTRANSP:").count(), 1, "{retitled}");
+        }
+        let busy = apply(theirs, &EventEdit { busy: Some(true), ..edit.clone() }, &zone).unwrap();
+        assert!(busy.contains("TRANSP:OPAQUE") && !busy.contains("TRANSPARENT") && !busy.contains("SEQUENCE"), "{busy}");
+        assert_eq!(edit_of_text(&busy, &zone).unwrap().busy, Some(true));
+        // Unsaid by its file: none, its kind's own holding (a time busy, a whole day free).
+        let timed = new_event(&EventEdit { title: "Dentist".into(), start: "2026-11-20T09:00".into(), end: "2026-11-20T09:30".into(), ..EventEdit::default() }, &zone).unwrap();
+        assert!(!timed.contains("TRANSP"), "{timed}");
+        assert_eq!(edit_of_text(&timed, &zone).unwrap().busy, None);
+        let free = new_event(&EventEdit { title: "Lunch".into(), start: "2026-11-20T12:00".into(), end: "2026-11-20T13:00".into(), busy: Some(false), ..EventEdit::default() }, &zone).unwrap();
+        assert!(free.contains("TRANSP:TRANSPARENT"), "{free}");
+        let day = EventEdit { title: "Away".into(), start: "2026-11-24".into(), end: "2026-11-24".into(), all_day: true, ..EventEdit::default() };
+        let unsaid = new_event(&day, &zone).unwrap();
+        assert!(!unsaid.contains("TRANSP") && edit_of_text(&unsaid, &zone).unwrap().busy.is_none(), "{unsaid}");
+        let away = new_event(&EventEdit { busy: Some(true), ..day }, &zone).unwrap();
+        assert!(away.contains("TRANSP:OPAQUE") && edit_of_text(&away, &zone).unwrap().busy == Some(true), "{away}");
+        // A time made a whole day, busy said: kept said, since a whole day's own is free.
+        let whole = apply(&timed, &EventEdit { start: "2026-11-20".into(), end: "2026-11-20".into(), all_day: true, busy: Some(true), ..edit_of_text(&timed, &zone).unwrap() }, &zone).unwrap();
+        assert!(whole.contains("TRANSP:OPAQUE") && edit_of_text(&whole, &zone).unwrap().busy == Some(true), "{whole}");
+        // A caller that says nothing of Busy freezes no mark when the kind changes (review B6):
+        // a whole day with none, given a time, is busy by a time's own; a time with none, made
+        // whole days, is free by a whole day's own; a mark said stays said.
+        let dinner = new_event(&EventEdit { title: "Birthday dinner".into(), start: "2026-11-21".into(), end: "2026-11-21".into(), all_day: true, ..EventEdit::default() }, &zone).unwrap();
+        let timed_dinner = apply(&dinner, &EventEdit { start: "2026-11-21T19:00".into(), end: "2026-11-21T22:00".into(), all_day: false, ..edit_of_text(&dinner, &zone).unwrap() }, &zone).unwrap();
+        assert!(!timed_dinner.contains("TRANSP"), "{timed_dinner}");
+        let conference = new_event(&EventEdit { title: "Conference".into(), start: "2026-11-23T09:00".into(), end: "2026-11-25T18:00".into(), ..EventEdit::default() }, &zone).unwrap();
+        let days = apply(&conference, &EventEdit { start: "2026-11-23".into(), end: "2026-11-25".into(), all_day: true, ..edit_of_text(&conference, &zone).unwrap() }, &zone).unwrap();
+        assert!(!days.contains("TRANSP"), "{days}");
+        let timed_away = apply(&away, &EventEdit { start: "2026-11-24T09:00".into(), end: "2026-11-24T17:00".into(), all_day: false, ..edit_of_text(&away, &zone).unwrap() }, &zone).unwrap();
+        assert!(timed_away.contains("TRANSP:OPAQUE"), "said busy, kept: {timed_away}");
+    }
+
+    /// Busy on one changed time of a series writes that time alone (review
+    /// B7): its own VEVENT's TRANSP, the series' and every other line as they were.
+    #[test]
+    fn one_changed_time_is_marked_alone() {
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261102T090000Z\r\nDTEND:20261102T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly\r\nRECURRENCE-ID:20261109T090000Z\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261109T110000Z\r\nDTEND:20261109T120000Z\r\nSUMMARY:Choir\r\nTRANSP:OPAQUE\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let free = set_busy_of_time(series, "20261109T090000Z", false).unwrap();
+        assert_eq!(free.matches("TRANSP:").count(), 1, "{free}");
+        let at = free.find("TRANSP:TRANSPARENT").unwrap();
+        assert!(at > free.find("RECURRENCE-ID").unwrap(), "that time's own: {free}");
+        assert!(free.contains("RRULE:FREQ=WEEKLY") && free.contains("TRIGGER:-PT10M") && !free.contains("SEQUENCE"), "{free}");
+        assert_eq!(set_busy_of_time(&free, "20261109T090000Z", true).unwrap().matches("TRANSP:OPAQUE").count(), 1);
+        assert!(set_busy_of_time(series, "20261116T090000Z", false).is_none(), "an unchanged time has no VEVENT of its own");
+        assert!(set_busy_of_time(series, "", false).is_none());
     }
 
     /// A phone whose system zone has no name writes the same lines, on the

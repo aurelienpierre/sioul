@@ -556,6 +556,36 @@ CardFrame {
                 card.sioul.status = problem
         }
     }
+    // Busy (« Indisponible », its TRANSP): changed here at once; a meeting with
+    // others, a calendar you only read, keeps it as it is; a task's block says
+    // its task's, on the task.
+    Switch {
+        id: busySwitch
+
+        objectName: "eventCardBusy"
+        visible: card.there && !card.isTask
+        enabled: card.there && card.event.busy_writable === true
+        text: card.sioul.text("busy")
+        checked: card.there && card.event.marked_busy === true
+        onToggled: {
+            // One changed time of a series: that time alone (its RECURRENCE-ID, review B7).
+            const problem = card.sioul.setEventBusy(card.event.key, busySwitch.checked, card.event.rid || "")
+            if (problem !== "")
+                card.sioul.status = problem
+            card.read()
+            busySwitch.checked = Qt.binding(() => card.there && card.event.marked_busy === true)
+        }
+    }
+    Label {
+        visible: busySwitch.visible
+        Layout.fillWidth: true
+        // Why it is greyed, when its calendar is free as a whole (review B7); else what it does.
+        text: card.there && (card.event.busy_why || "") !== "" ? card.event.busy_why : card.sioul.text(card.there && card.event.with_others === true ? "busy-with-others" : "busy-help")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 12
+        color: card.theme.muted
+    }
     BareButton {
         readonly property bool any: card.there && (card.event.notes || "") !== ""
 

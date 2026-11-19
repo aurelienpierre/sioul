@@ -210,6 +210,11 @@ pub struct Task {
     /// Its time billed or not (`X-SIOUL-BILLABLE`); None: as its project says
     /// (work for a client is billed).
     pub billable: Option<bool>,
+    /// Busy while you work on it (`busy::TASK_MARK`, `X-SIOUL-BUSY:TRUE`):
+    /// its timer turns do-not-disturb on "While busy", and its fixed time,
+    /// or the plan's time before its date asked, counts in the availability
+    /// you share. Unsaid, not busy.
+    pub busy: bool,
     /// What it takes (`X-SIOUL-ENERGY`): "light", "heavy", or "rest" for what
     /// gives back (a walk, music); "" for the usual.
     pub energy: String,
@@ -666,6 +671,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
                 }
             }
             "X-SIOUL-BILLABLE" => task.billable = Some(value.trim().eq_ignore_ascii_case("TRUE")),
+            crate::busy::TASK_MARK => task.busy = value.trim().eq_ignore_ascii_case("TRUE"),
             "X-SIOUL-ENERGY" => task.energy = energy_of(value),
             "X-SIOUL-OFFICE-HOURS" => task.office_times = crate::window::ranges_text(&crate::window::parse_ranges(&lines::unescape(value))),
             "X-SIOUL-AREA" => task.area = crate::areas::Area::parse(value).map(|a| a.id()).unwrap_or_default(),
@@ -790,6 +796,9 @@ pub struct TaskEdit {
     /// Billed or not; None: as its project says.
     #[serde(default)]
     pub billable: Option<bool>,
+    /// Busy while you work on it (`Task::busy`).
+    #[serde(default)]
+    pub busy: bool,
     /// "light", "heavy", "rest", or "" for the usual.
     #[serde(default)]
     pub energy: String,
@@ -886,6 +895,7 @@ impl TaskEdit {
             office_times: task.office_times.clone(),
             area: task.area.clone(),
             billable: task.billable,
+            busy: task.busy,
             energy: task.energy.clone(),
             margins: task.margins,
             demands: task.demands,
@@ -1093,6 +1103,7 @@ struct Changed {
     office_times: bool,
     area: bool,
     billable: bool,
+    busy: bool,
     energy: bool,
     margins: bool,
     demands: bool,
@@ -1117,6 +1128,7 @@ impl Changed {
             office_times: old.office_times != new.office_times || old.office_hours != new.office_hours,
             area: old.area != new.area,
             billable: old.billable != new.billable,
+            busy: old.busy != new.busy,
             energy: old.energy != new.energy,
             margins: old.margins != new.margins,
             demands: old.demands != new.demands,
@@ -1124,7 +1136,7 @@ impl Changed {
         }
     }
 
-    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, at: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, energy: true, margins: true, demands: true, repeat: true };
+    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, at: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, busy: true, energy: true, margins: true, demands: true, repeat: true };
 
     /// Whether a line of this name is written again.
     fn rewrites(&self, name: &str) -> bool {
@@ -1140,6 +1152,7 @@ impl Changed {
             "PRIORITY" => self.priority,
             "CATEGORIES" => self.categories,
             "X-SIOUL-BILLABLE" => self.billable,
+            crate::busy::TASK_MARK => self.busy,
             "X-SIOUL-ENERGY" => self.energy,
             "X-SIOUL-OFFICE-HOURS" => self.office_times,
             "X-SIOUL-AREA" => self.area,
@@ -1193,6 +1206,9 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     }
     if changed.billable && let Some(billable) = edit.billable {
         out.push(format!("X-SIOUL-BILLABLE:{}", if billable { "TRUE" } else { "FALSE" }));
+    }
+    if changed.busy && edit.busy {
+        out.push(format!("{}:TRUE", crate::busy::TASK_MARK));
     }
     if changed.energy && !energy_of(&edit.energy).is_empty() {
         out.push(format!("X-SIOUL-ENERGY:{}", energy_of(&edit.energy).to_ascii_uppercase()));
@@ -1564,6 +1580,18 @@ mod tests {
         let open = apply(&office, &TaskEdit { office_hours: false, ..TaskEdit::of(&read) }, &zone, &now).unwrap();
         let read = task_of_text(&open, &zone).unwrap();
         assert!(!read.office_hours && read.kind == "call");
+        // Busy while you work on it: its own line, said TRUE, read back; off, the line goes; another
+        // field changed, it stays; written by another program in small letters, read all the same.
+        let busy = apply(&unsaid, &TaskEdit { busy: true, ..TaskEdit::of(&task) }, &zone, &now).unwrap();
+        assert!(busy.contains("X-SIOUL-BUSY:TRUE"), "{busy}");
+        let read = task_of_text(&busy, &zone).unwrap();
+        assert!(read.busy);
+        let retitled = apply(&busy, &TaskEdit { title: "Send it, registered".into(), ..TaskEdit::of(&read) }, &zone, &now).unwrap();
+        assert!(retitled.contains("X-SIOUL-BUSY:TRUE"), "{retitled}");
+        let free = apply(&busy, &TaskEdit { busy: false, ..TaskEdit::of(&read) }, &zone, &now).unwrap();
+        assert!(!free.contains("X-SIOUL-BUSY") && !task_of_text(&free, &zone).unwrap().busy, "{free}");
+        assert!(task_of_text(&unsaid.replace("END:VTODO", "X-SIOUL-BUSY:true\r\nEND:VTODO"), &zone).unwrap().busy);
+        assert!(!task.busy, "unsaid, not busy");
     }
 
     const LETTER: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other//EN\r\nBEGIN:VTODO\r\nUID:letter-1\r\nDTSTAMP:20261001T080000Z\r\n\

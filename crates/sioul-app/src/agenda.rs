@@ -328,6 +328,8 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     // Invited: your own answer, as you gave it (none yet: "needs-action").
     let own_answer = if o.with_others { people.iter().find(|p| p["you"] == true && p["organizer"] == false).and_then(|p| p["answer"].as_str()).unwrap_or_default().to_string() } else { String::new() };
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
+    // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
+    let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
     json(&serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
@@ -359,6 +361,14 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // One person in two places, said once on the card (research on several agendas, §5.3).
         "conflicts": pim::conflicts_known(&o.key, o.start),
         "busy": o.busy,
+        // Busy or free (the mark of `busy`, its TRANSP read as Google reads it), changed here
+        // but on a meeting with others, a calendar you only read, or a task's block (its task's own).
+        "marked_busy": sioul_core::busy::event_marked(&o),
+        // A calendar free as a whole marks no event busy: greyed, saying why (review B7).
+        "busy_writable": !o.read_only && !o.with_others && o.task.is_empty() && !o.busy && !calendar_free,
+        "busy_why": if calendar_free { tr().text("busy-calendar-free", None) } else { String::new() },
+        // One changed time of a series: its Busy is that time's alone (review B7).
+        "rid": o.rid,
         // A child's event: who takes it, its kind, what you may answer (part 3).
         "child": crate::children::card(&path, if o.recurring { o.start } else { 0 }),
         "status": agenda::status_of(&text),

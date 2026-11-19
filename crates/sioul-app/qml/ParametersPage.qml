@@ -4,8 +4,8 @@
 // What belongs to Sioul as a whole rather than to one page: language and
 // colours, working hours, the usual meals and sleep and days off, what
 // reaches you and when (ReachesTab.qml), the words Sioul looks for
-// (WordsTab.qml), reminders, the pauses, on a phone what sets it up
-// (PhoneSetup.qml), your folder and sharing, your devices (DevicesTab.qml),
+// (WordsTab.qml), reminders, the pauses, your folder and sharing, your
+// devices (DevicesTab.qml: each phone's card, with what sets it up),
 // invoices. What one page alone reads is behind that page's ⚙ (SettingDoor.qml
 // opens it by its key). Each setting says in a sentence what it changes and
 // is saved at once.
@@ -48,17 +48,16 @@ Item {
     // folder and sharing, your devices, invoices; what AI agents may use (each
     // project closed to them until opened). The texts a device without
     // telephony sends through the phone are the Texts page's ⚙.
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(page.android ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
-    // On Android: its own tab (This phone). The system's; the layout test of the
-    // tabs sets it to measure a phone's row (tst_settingstabs.qml).
+    // What a phone sets up (its calls, what Android must allow, other apps'
+    // notifications, its texts) is in its own card in Devices (design of 18
+    // November 2026: the tab "This phone" merged into it).
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses", "files", "devices", "invoices", "ai"]
+    // On Android. The system's; the layout test of the tabs sets it to
+    // measure a phone's row (tst_settingstabs.qml).
     property bool android: Qt.platform.os === "android"
-    // A tab's name's key: Android's own tab named by what the device is ("This
-    // phone", "This tablet", else "This device"), never by its system.
+    // A tab's name's key.
     function tabKey(section) {
-        if (section !== "phone")
-            return "settings-tab-" + section
-        const kind = page.sioul.deviceKind
-        return kind === "tablet" ? "settings-tab-tablet" : kind === "computer" ? "settings-tab-device" : "settings-tab-phone"
+        return "settings-tab-" + section
     }
     // What a section holds, in one line, for the phone's list: each key written out, so that the
     // messages' check finds every one in each language.
@@ -76,8 +75,6 @@ Item {
             return page.sioul.text("settings-about-reminders")
         case "pauses":
             return page.sioul.text("settings-about-pauses")
-        case "phone":
-            return page.sioul.text("settings-about-phone")
         case "files":
             return page.sioul.text("settings-about-files")
         case "devices":
@@ -154,6 +151,13 @@ Item {
             page.back()
     }
 
+    // An item of the page brought to the top of its view (the pictures' steps).
+    function bringIntoView(item) {
+        const flick = scroll.contentItem as Flickable
+        if (item && flick)
+            flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
+    }
+
     // Further down by a part of the page.
     function scrollBy(part) {
         const bar = scroll.ScrollBar.vertical
@@ -182,24 +186,32 @@ Item {
             words.show(asked)
     }
 
+    // What reaches you's tab or part asked (ReachesTab.show): Your rules at a
+    // part ("person", a channel, "own", "exceptions", "dnd", "calls"), What
+    // comes when for a time or a layer ("pause", "sleep") and "table".
     function showAsked() {
         const asked = page.reachesAsked
         page.reachesAsked = ""
-        const views = ["time", "person", "own", "exceptions", "dnd"]
-        if (views.includes(asked))
-            reaches.item.show(asked, "")
+        const tab = reaches.item as ReachesTab
+        if (!tab)
+            return
+        const parts = ["rules", "person", "own", "exceptions", "dnd", "table"]
+        if (parts.includes(asked))
+            tab.show(asked, "")
         else if (["mail", "calls", "messages"].includes(asked))
-            reaches.item.show("person", asked)
+            tab.show("rules", asked)
+        else if (asked === "time" || asked === "")
+            tab.show("rules", "")
         else
-            reaches.item.show("time", asked)
+            tab.show("time", asked)
     }
 
     // One setting in view: where the Porch sends you for the hours. Once the
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
-        // Calls are set up where they are screened (telephony); other apps' notifications on Android.
-        const android = page.android
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
+        // What the tab "This phone" held is this device's card in Devices ("phone"); who rings
+        // when, each phone's section Calls ("calls"); each app by time, a phone's card ("apps").
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "phone": "devices.here", "calls": "devices.calls", "apps": "devices.apps" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)
@@ -221,6 +233,10 @@ Item {
         // A tab without settings of its own (Calls): the tab itself.
         else if (page.sections.includes(key))
             page.section = key
+        // A part of a tab by its name ("devices.here", "devices.calls", "devices.apps"): the tab, the
+        // part brought into view by it (DevicesTab.reveal for a phone's card).
+        else if (page.sections.includes(key.split(".")[0]))
+            page.section = key.split(".")[0]
         page.listShown = false
         page.linked = true
         toSetting.key = key
@@ -234,7 +250,11 @@ Item {
 
         interval: 150
         onTriggered: {
-            const item = page.rowItem(column, toSetting.key)
+            let item = page.rowItem(column, toSetting.key)
+            // A door into a phone's card: its section unfolded (DevicesTab.reveal), else the tab.
+            const devices = devicesLoader.item as DevicesTab
+            if (!item && devices && (toSetting.key === "devices.calls" || toSetting.key === "devices.apps"))
+                item = devices.reveal(toSetting.key.slice("devices.".length))
             const flick = scroll.contentItem as Flickable
             if (item && flick)
                 flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
@@ -382,13 +402,14 @@ Item {
             contentWidth: availableWidth
             clip: true
 
-            // The section's rows in a legible column, centred; What reaches you and Devices, the whole width.
+            // The section's rows in a legible column, centred; Devices, and What reaches you's What
+            // comes when, the whole width (Your rules in the column: the pictures' review, point 2).
             PageColumn {
                 id: column
 
                 theme: page.theme
                 room: scroll.availableWidth
-                wide: page.section === "attention" || page.section === "devices"
+                wide: page.section === "devices" || (page.section === "attention" && (reaches.item as ReachesTab) !== null && (reaches.item as ReachesTab).view === "table")
                 spacing: 6
 
                 Label {
@@ -473,6 +494,12 @@ Item {
                                 reachesTab.reload()
                             }
                             onToTop: scroll.ScrollBar.vertical.position = 0
+                            // A part asked for: its heading at the top of the page.
+                            onReveal: item => {
+                                const flick = scroll.contentItem as Flickable
+                                if (item && flick)
+                                    flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
+                            }
                         }
                     }
                 }
@@ -496,20 +523,6 @@ Item {
                             rows: page.rows.filter(r => r.section === "words")
                             onSave: (key, value, shown) => page.save(key, value, shown)
                             onToTop: scroll.ScrollBar.vertical.position = 0
-                        }
-                    }
-                }
-
-                // This phone: what sets it up, nothing that decides when (docs/android.md).
-                Loader {
-                    active: page.section === "phone"
-                    visible: active
-                    Layout.fillWidth: true
-
-                    sourceComponent: Component {
-                        PhoneSetup {
-                            sioul: page.sioul
-                            theme: page.theme
                         }
                     }
                 }

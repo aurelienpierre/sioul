@@ -16,6 +16,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.content.res.Configuration;
@@ -179,15 +180,24 @@ public final class StepService extends Service
                 return DndContacts.add(context, asked) ? "true" : "false";
             case "contacts-allowed":
                 return DndContacts.allowed(context) ? "true" : "false";
+            case "stars-look":
+                // Starred people both ways: what this phone's contacts star, and hold of the list's people.
+                return DndContacts.look(context, asked).toString();
+            case "stars-write":
+                // The stars Rust decided (stars.rs's plan): written alone, never a contact.
+                return DndContacts.write(context, asked).toString();
             case "device":
                 // What this device is (devicekind.rs): its smallest width and whether it has telephony.
                 return device(context);
+            case "install-source":
+                // Where Sioul was installed from (access.rs, Android's restricted settings).
+                return installSource(context);
             case "keyboard":
                 // A hardware keyboard attached now; Rust told of each change from here on (devicekind.rs).
                 watchKeyboard(context);
                 return keyboard(context.getResources().getConfiguration()) ? "true" : "false";
             case "sms-app":
-                // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
+                // The phone's SMS app, for Settings ▸ Devices ▸ this phone's card ▸ On your computers.
                 return JSONObject.quote(PhoneMessages.smsApp(context));
             case "mail-withdraw":
                 // New mail's notification, each of its messages dealt with on some device (Rust's notices).
@@ -239,6 +249,46 @@ public final class StepService extends Service
         JSONObject said = new JSONObject();
         said.put("smallest_dp", context.getResources().getConfiguration().smallestScreenWidthDp);
         said.put("telephony", context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY));
+        return said.toString();
+    }
+
+    /**
+     * Where Sioul was installed from, as Android 13 and later say it
+     * (PackageManager.getInstallSourceInfo, InstallSourceInfo.getPackageSource):
+     * {api, source}: "file" (a local or downloaded file: Android keeps
+     * restricted settings from it), "store", "other" (adb among them),
+     * "unspecified"; "" before Android 13, or when Android does not say. It
+     * says nothing of whether you allowed restricted settings since: no app
+     * can read that.
+     */
+    static String installSource(Context context) throws JSONException
+    {
+        JSONObject said = new JSONObject();
+        said.put("api", Build.VERSION.SDK_INT);
+        String source = "";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                int kind = context.getPackageManager().getInstallSourceInfo(context.getPackageName()).getPackageSource();
+                switch (kind) {
+                    case PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE:
+                    case PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE:
+                        source = "file";
+                        break;
+                    case PackageInstaller.PACKAGE_SOURCE_STORE:
+                        source = "store";
+                        break;
+                    case PackageInstaller.PACKAGE_SOURCE_OTHER:
+                        source = "other";
+                        break;
+                    default:
+                        source = "unspecified";
+                        break;
+                }
+            } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+                Log.w(TAG, "Where Sioul was installed from: not said: " + e);
+            }
+        }
+        said.put("source", source);
         return said.toString();
     }
 

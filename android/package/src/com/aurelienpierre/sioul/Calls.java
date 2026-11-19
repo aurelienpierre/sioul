@@ -307,6 +307,14 @@ final class Calls
         final List<String[]> prefixes = new ArrayList<>();
         /** A person's own row by each number it covers ("own-0"), read before their list's (decision 16). */
         final Map<String, String> own = new HashMap<>();
+        /**
+         * Made from this phone's own line (calls_line.rs, 18 November 2026):
+         * numbers nobody knows and hidden numbers are rows of the frames
+         * ("stranger", "hidden"), read in place of the screening's rule.
+         */
+        boolean line;
+        /** From this phone's own line: a group's row by each number of its cards ("group-0"), after their own row, before their list's. */
+        final Map<String, String> groups = new HashMap<>();
         /** Who a number in this phone's contacts is when the table does not know it. */
         String phoneContacts = "neutral";
         /** Numbers that always ring: emergency numbers and callbacks; `people`, from an older table only (the do-not-disturb list's). */
@@ -364,6 +372,14 @@ final class Calls
                 for (Iterator<String> keys = own.keys(); keys.hasNext();) {
                     String key = keys.next();
                     table.own.put(key, own.optString(key, ""));
+                }
+            }
+            table.line = json.optBoolean("line", false);
+            JSONObject groups = json.optJSONObject("groups");
+            if (groups != null) {
+                for (Iterator<String> keys = groups.keys(); keys.hasNext();) {
+                    String key = keys.next();
+                    table.groups.put(key, groups.optString(key, ""));
                 }
             }
             JSONArray prefixes = json.optJSONArray("prefixes");
@@ -627,7 +643,7 @@ final class Calls
         boolean refuse;
         /**
          * "emergency", "after-emergency", "people", "blocked", "repeat",
-         * "matrix", "no-table", "no-frame", "no-row", "error", "outgoing";
+         * "matrix", "own", "group", "no-table", "no-frame", "no-row", "error", "outgoing";
          * the screening's (version 2): "screening-off", "work-hours",
          * "impossible", "unverified", "automated", "expecting", "screening";
          * version 1's "through".
@@ -776,7 +792,8 @@ final class Calls
         // 2. Blocked: refused, whenever and however often they call, Expecting a call or not.
         if ("blocked".equals(who))
             return said(decision, true, "blocked");
-        boolean repeat = !hidden && lastCall > 0 && now - lastCall <= table.repeatMs;
+        // A second call: never while this phone's own line says it does not ring (repeat_minutes 0).
+        boolean repeat = !hidden && table.repeatMs > 0 && lastCall > 0 && now - lastCall <= table.repeatMs;
         Frame frame = table.frameAt(now);
         if (screening == null) {
             // Version 1: Let every call through, the later press of this phone's and the table's (all devices'); a second call; the frame.
@@ -812,7 +829,11 @@ final class Calls
         if (!"stranger".equals(who) && !"hidden".equals(who)) {
             // Their own row, by this number, before their list's (decision 16; calls.rs's `own`).
             String own = hidden || decision.called ? null : table.own.get(key);
-            byFrame(decision, frame, who, own == null || own.isEmpty() ? null : own);
+            // A group's row on this phone's own line, after their own and before their list's, for your
+            // contacts alone: someone placed on Safe or Restricted by hand follows that circle's row
+            // (review of `phones`, M11; calls.rs's `decide`).
+            String group = hidden || decision.called || !"neutral".equals(who) ? null : table.groups.get(key);
+            byFrame(decision, frame, who, own == null || own.isEmpty() ? null : own, group == null || group.isEmpty() ? null : group);
             if (!(decision.called && decision.refuse && expecting))
                 return decision;
             if (screening.on && "voicemail".equals(screening.unverified) && "failed".equals(verified))
@@ -826,6 +847,13 @@ final class Calls
         decision.column = frame.column;
         if (expecting)
             return said(decision, false, "expecting");
+        // This phone's own line: numbers nobody knows and hidden numbers by their rows, as the person set them.
+        if (table.line) {
+            Boolean rings = frame.ring.get(hidden ? "hidden" : "stranger");
+            if (rings == null)
+                return said(decision, false, "no-row");
+            return said(decision, !rings, "matrix");
+        }
         // What the screening lets ring by itself: off, resting in your work and admin hours, its rule.
         String opened = !screening.on ? "screening-off" : "outside-work".equals(screening.hours) && frame.hours ? "work-hours" : screening.rings(hidden, frame.hours) ? "screening" : null;
         if (opened == null)
@@ -857,14 +885,15 @@ final class Calls
     /** Who rings now, as the frame for now says; past the frames, nothing to decide from. */
     private static Decision byFrame(Decision decision, Frame frame, String who)
     {
-        return byFrame(decision, frame, who, null);
+        return byFrame(decision, frame, who, null, null);
     }
 
     /**
      * As above, a person's own row (`own`, "own-0") read first when the frame
-     * has it: then "own", for the Porch's sentence (calls.rs's `decide`; review of part 6, F7).
+     * has it: then "own", for the Porch's sentence (calls.rs's `decide`; review of part 6, F7);
+     * then their group's row on this phone's own line (`group`, "group-0"): then "group".
      */
-    private static Decision byFrame(Decision decision, Frame frame, String who, String own)
+    private static Decision byFrame(Decision decision, Frame frame, String who, String own, String group)
     {
         if (frame == null)
             return said(decision, false, "no-frame");
@@ -872,6 +901,9 @@ final class Calls
         Boolean mine = own == null ? null : frame.ring.get(own);
         if (mine != null)
             return said(decision, !mine, "own");
+        Boolean theirs = group == null ? null : frame.ring.get(group);
+        if (theirs != null)
+            return said(decision, !theirs, "group");
         Boolean rings = frame.ring.get(who);
         if (rings == null)
             return said(decision, false, "no-row");
@@ -1157,6 +1189,12 @@ final class Calls
         case "calls-ask-history":
             // Android's question for reading the call history, from a hidden activity.
             return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.HISTORY)) ? "true" : "false";
+        case "calls-open-sims":
+            // Android's page of the SIMs (calls per phone: Sioul cannot screen by SIM; a SIM is turned off there).
+            return openSims(context) ? "true" : "false";
+        case "calls-ask-stars":
+            // Android's questions for reading contacts and writing their stars (starred people both ways).
+            return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.STARS)) ? "true" : "false";
         case "calls-history":
             return history(context, asked.optLong("since", 0), asked.optInt("max", HISTORY_MAX)).toString();
         case "calls-open-roles":
@@ -1265,6 +1303,19 @@ final class Calls
         TelecomManager telecom = context.getSystemService(TelecomManager.class);
         Intent page = telecom == null ? null : telecom.createManageBlockedNumbersIntent();
         return page != null && start(context, page);
+    }
+
+    /**
+     * Android's page of the SIMs, where one is turned off: the page of every
+     * SIM (Android 12 and later), else the mobile network's, else the
+     * wireless settings. A screening service is never told which SIM a call
+     * comes on (docs/research/call-screening.md), so Sioul screens by phone.
+     */
+    private static boolean openSims(Context context)
+    {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && start(context, new Intent(Settings.ACTION_MANAGE_ALL_SIM_PROFILES_SETTINGS)))
+            return true;
+        return start(context, new Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS)) || start(context, new Intent(Settings.ACTION_WIRELESS_SETTINGS));
     }
 
     private static boolean start(Context context, Intent intent)

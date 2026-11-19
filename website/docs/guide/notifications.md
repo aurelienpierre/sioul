@@ -4,38 +4,96 @@ description: When each thing reaches you, in one place - mail, calls and other a
 
 # What reaches you, and when {#what-reaches-you-and-when}
 
-Sioul decides in one place when each thing reaches you: mail, calls and other apps' messages by who writes them, Sioul's own notifications by what they are, at each time of your day. **Settings ▸ What reaches you** says it in sentences first, and lets you change it after. What may come now comes; the rest waits for its time, never lost.
+Sioul decides in one place when each thing reaches you: mail and other apps' messages by who writes them, Sioul's own notifications by what they are, at each time of your day. **Settings ▸ What reaches you** asks three questions, who, what, and in which moment, each in a small table. What may come now comes; the rest waits for its time, never lost.
+
+**Sioul decides what gets through, and when. Android's do-not-disturb only decides whether what got through makes a sound.**
 
 <figure markdown="span">
-  [![Settings, the tab What reaches you: on top, a sentence on now ("Now: work, until 17:00. Mail from everyone comes at once…") and Start from, with As Sioul does now, Quieter and More reachable; then five buttons, By time, By person, Sioul's own, Exceptions, Do not disturb; below, By time's cards, Work first, marked now, each saying in sentences what comes at once, what waits and until when, and what the computer silences then, with Change… at its end.](../assets/screens/settings-attention.png){ loading=lazy }](../assets/screens/settings-attention.png "Open the picture at full size")
-  <figcaption>What reaches you, by time: a card per time, in sentences.</figcaption>
+  [![Settings, What reaches you: on top, the sentence for now ("Now: work, until 17:00."), the three states with As usual marked and Change…, and Start from with As Sioul does now, Quieter and More reachable; two tabs, Your rules and What comes when; under Your rules, People: the circles down (Always through, Safe, Your contacts, Restricted, Everyone else, Blocked), Mail and Messages across, each cell a choice in words such as When awake or In work and admin hours.](../assets/screens/settings-attention.png){ loading=lazy }](../assets/screens/settings-attention.png "Open the picture at full size")
+  <figcaption>What reaches you: Your rules, a choice per circle of people.</figcaption>
 </figure>
 
-## One place {#one-place}
+## One page, two tabs {#one-place}
 
-In Settings ▸ **What reaches you**, always on top:
+On top, always:
 
-- **Now**: what holds at this moment, in a few sentences: "Now: leisure, until 22:00. Mail from your safe senders comes at once. The codes and links you ask for, your doses and your reminders come at once. Mail from everyone else waits."
-- **Start from**: **As Sioul does now**, **Quieter** or **More reachable** ([Presets](#presets)). Once you change a cell, a line says so, "Yours: 3 changes from As Sioul does now.", with **Back to As Sioul does now**.
+- **Now**, in a sentence: "Now: leisure, until 22:00. Mail from your safe senders comes at once."
+- **The three states**, As usual, Do not disturb and Reachable, the one now marked; **Change…** opens the card of the status line's button, where each is pressed for a length ([below](#the-button-and-its-card)). The one on carries a ✓. On a phone the row of states opens the card itself, and **Start from** is one button that opens the three presets, so that the top of the page keeps to three rows.
+- **Start from**: **As Sioul does now**, **Quieter** or **More reachable** ([Presets](#presets)). Once you change something, a line says so, "Yours: 3 changes from As Sioul does now.", with **Back to As Sioul does now**.
 
-Then five views:
+Then two tabs:
 
-- **By time** (the default): a card per time of your day, in sentences ([below](#by-time)).
-- **By person**: what mail, calls and messages do with each list of people, and who is on which list ([below](#by-person)).
-- **Sioul's own**: what Sioul tells you itself: codes, doses, reminders, Health's notices, your sites, other apps ([below](#sioul-s-own)).
-- **Exceptions**: your Always through people, and each conversation, app or site with a choice of its own ([below](#exceptions)).
-- **Do not disturb**: what turns it on, what holds while it does, what each device does ([below](#do-not-disturb-on-every-device)).
+- **Your rules**, first: People, Sioul's own notices and Moments, each a small table ([below](#by-person)).
+- **What comes when**: every row at every time, a word in each cell ([below](#by-time)). Your rules write the same table: nothing is kept twice.
 
-A press on a mark, or on a row's value, opens its choices in words, the one it has in bold. A greyed one is fixed, for your safety, and says why when pressed. A dot marks what you changed from As Sioul does now. What you set travels with your settings to your other devices ([Sharing](sharing.md)): one matrix for all of them.
+What you set travels with your settings to your other devices ([Sharing](sharing.md)). On a phone, each table is a list: a press on a line opens its choices.
 
-On a small screen the whole grid never shows: the cards first, then one time's rows, or one row's times, each value in words.
+## People {#by-person}
 
-## The times {#the-times}
+One choice for each circle of people, for **mail** and for **messages** (texts and chats from other apps, on a phone). Calls are set for each phone, in Settings ▸ Devices.
+
+| | Mail | Messages |
+|---|---|---|
+| Always through | Always | Always |
+| Safe | When awake | When awake |
+| Your contacts | In work and admin hours | When awake |
+| Restricted | In work hours | In work hours |
+| Everyone else | In work and admin hours | In work and admin hours |
+| Blocked | Never | Never |
+
+That is what Sioul does unless you change it. The choices, the same on every line:
+
+- **Always**: at every time, the night, a pause and do-not-disturb included. Mail is shown on the Porch without a sound at night and in a pause.
+- **When awake**: in work, admin, leisure and meals; held while you sleep or pause; under do-not-disturb, mail is shown without a sound and a text comes in the shade, silent. In Free time, your safe people's messages still come.
+- **In work and admin hours**, **In work hours**.
+- **Never told**: mail stays on the Porch without a word; a message is held at every time, on your phone, in its own app, and the card What reaches you now counts what the phone holds.
+
+Outside a line's times, your safe senders' mail waits on the Porch, shown; everyone else's waits out of sight. A message is told only while what it was written to, an address or an app, is for now ([Hours](hours.md)). Your contacts' choice for messages also sets group conversations.
+
+**Your own**, in italics, says that a line was set cell by cell, in What comes when. Choose one of the others to set it whole again.
+
+**Mail's own switches**, under the table: **Tell me of new mail**, one quiet notification for each batch of mail that comes now, a click opening its message; **Include newsletters**, off unless you turn it on.
+
+### Who is in which circle {#who-is-on-which-list}
+
+<figure markdown="span">
+  [![What reaches you, Who is in which circle: "Everyone in your address books is among your contacts, with nothing to set."; Always through and its list, with Add your safe senders and Add a contact…; then the lists Safe, Restricted and Blocked, the people placed on a list, and the groups of your contacts, each with No list or a list.](../assets/screens/attention-circles.png){ loading=lazy }](../assets/screens/attention-circles.png "Open the picture at full size")
+  <figcaption>Who is in which circle: Always through, three lists, people and groups.</figcaption>
+</figure>
+
+- **Your contacts** is everyone in your address books, and anyone you let in from the screener: nothing to set.
+- **Always through**: the people who must always reach you ([below](#always-through)).
+- **Safe**, **Restricted** and **Blocked**: three lists. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
+- **People on a list**: everyone you placed on a list from their card or their sheet, each with **As their groups say**, **Safe**, **Restricted** or **Blocked**.
+- **Groups**: one line for each group your contacts belong to (Friends, Family, Clients…), with **No list** or one of the three. Everyone in the group takes it, unless their own choice says otherwise.
+- **One person kept a plain contact** inside a restricted group: on their sheet, **Your contacts** ([below](#a-persons-sheet)).
+- **Addresses, numbers and domains you named as contacts**: one line, shown only when there are some, for what an older version, a sheet or unblocking named as your contacts outside your address books (`*@school.example.org`, say). Press it to read them; remove one to have it judged as everyone else. A group or a person named so says **Your contacts**, never **No list**; **No list** takes it off.
+
+**From the person to the list**: a person's own choice comes first (their address or number, then their card), then their groups, then a domain or the start of a number; then your contacts; everyone else is a stranger. **Proof comes first**: mail that fails its checks is weighed as a stranger's, and forged mail is set aside, even when it claims a safe sender's address.
+
+## Where you start from {#presets}
+
+- **As Sioul does now**: what this page describes.
+- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; your contacts' and groups' messages held in leisure and meals; your safe senders' messages held in Free time; under do-not-disturb, every text held; reminders of dates, and sites in real time, wait in leisure and meals.
+- **More reachable**: your contacts' mail at once in leisure and meals; everyone else's mail shown in leisure; other apps' automatons at once in work and admin.
+
+Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are." A line a preset sets cell by cell reads **Your own**. A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices, and the count of your changes counts only what this page shows.
+
+## What comes when {#by-time}
+
+<figure markdown="span">
+  [![What reaches you, What comes when: one table, the rows down in their groups (Mail, Calls with the line that a phone's own table replaces them, Messages, What you set or asked for, Reminders, Your day, Sites), the seven times and the two layers across, Work marked as now, each cell a word: Now, Shown, Later, Held, Silent, Gathered, At its event, Porch.](../assets/screens/attention-table.png){ loading=lazy }](../assets/screens/attention-table.png "Open the picture at full size")
+  <figcaption>What comes when: every row at every time, a word in each cell.</figcaption>
+</figure>
+
+The whole table: down, each row (mail's, calls' and messages' circles, then Sioul's own kinds that act on this device); across, the seven times and the two layers, the ones now in bold. Each cell is a word; a press opens its choices in full words, the one it has in bold. A greyed one is fixed, for your safety, and says why. A dot marks what you changed from As Sioul does now. On a phone, a line per row with its word for now; a press opens its nine values. One line under the table says what each word means. The calls' rows are the table every phone follows until it has its own: a phone with its own table (Settings ▸ Devices) follows it instead, except in a pause and during do-not-disturb, where these rows still decide; a line under them says so, with a button to each phone's table.
+
+### The times {#the-times}
 
 One time holds at any moment, the first of these that applies ([Hours](hours.md)):
 
 1. **Pause**: from pressing Pause until you come back ([Pauses](pauses.md#pause)).
-2. **Sleep**: from winding down to waking, and naps ([Health](health.md#meals-rest-and-sleep)).
+2. **Sleep**: from winding down to waking, and naps ([Hours](hours.md#sleep)).
 3. **Free time**: from pressing Free time until you come back, the night or midnight ([Pauses](pauses.md#free-time)).
 4. **Meals**: from getting a meal ready to its end.
 5. **Work**, **Admin** and **Leisure**, as your hours say. Without any hours set, work and admin together: the more open of their two cells.
@@ -43,125 +101,41 @@ One time holds at any moment, the first of these that applies ([Hours](hours.md)
 Two **layers** hold on top of the time, never instead of it; of the time and a layer, the stricter wins:
 
 - **Time for you**: a slot of today's plan kept for you ([Tasks](tasks.md#the-day)).
-- **Do not disturb**, from its switch or a focus session ([below](#do-not-disturb-on-every-device)). Do-not-disturb held for a pause, Free time or sleep changes nothing: their own columns say it.
+- **Do not disturb**, from its switch, or while you are busy ([below](#do-not-disturb-on-every-device)). Do-not-disturb held for a pause, Free time or sleep changes nothing: their own columns say it.
 
-Two more switches have a line each under the cards: **Expecting a call** and **Mail every minute** (once the Porch's Real time), both in the card **What reaches you now**, behind the status line's button ([below](#the-button-and-its-card); [Calls](calls.md#expecting-a-call)).
+### What each word says {#the-levels}
 
-## What each mark says {#the-levels}
-
-| Mark | In words | What happens |
+| Word | In full | What happens |
 |---|---|---|
-| ● | **At once** | It comes now: shown, told, let through, it rings. On a layer: the layer changes nothing. |
-| ◑ | **Shown, not told** | It is in Sioul if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. For a text under do-not-disturb, **in the shade, without a sound**: it reaches your phone's notifications silently while the phone is silenced, and waits otherwise. |
-| ◐ | **When its event falls then** | An event's alarms and Sioul's reminder before it: at once when the event falls in this time; else later. |
-| ◎ | **At the gathered times** | It comes at the next gathered time: 09:00, 13:00 and 18:00 unless you set others. |
-| ○ | **Later** | It waits out of sight, and comes when a time it may come in begins: mail off the Porch, a message held, a call sent to voicemail and listed then. |
-| – | **Not at all** | Never told. A code stays on the Porch, mail in its lane, a meal on Health. |
-| ★ | **At once, whatever their list** | Your Always through people. |
-| = | **As their list** | Your Always through people get no more than their own list gives them. |
-| ☆ | **Through do-not-disturb, at their times** | On a layer: it does not hold your Always through people; their own list's times do. |
+| **Now** | At once | It comes now: shown, told, let through, it rings. On a layer: the layer changes nothing. |
+| **Shown** | Shown, not told | It is in Sioul if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. |
+| **Silent** | In the shade, without a sound | A text under do-not-disturb: it reaches your phone's notifications silently while the phone is silenced, and waits otherwise. |
+| **At its event** | When its event falls then | An event's alarms and Sioul's reminder before it: at once when the event falls in this time; else later. |
+| **Gathered** | At the gathered times | It comes at the next gathered time: 09:00, 13:00 and 18:00 unless you set others. |
+| **Later**, **Held**, **Voicemail** | Later | It waits out of sight, and comes when a time it may come in begins: mail off the Porch, a message held, a call sent to voicemail and listed then. |
+| **Never**, **Porch** | Not at all | Never told. A code stays on the Porch, mail in its lane, a meal on Health. |
+| **As their list** | As their list | Your Always through people get no more than their own list gives them. |
+| **Through** | Through do-not-disturb, at their times | On a layer: it does not hold your Always through people; their own list's times do. |
 
-## Where you start from {#presets}
+**Free time** has its own choice, under Moments: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come. It stands under its own heading, **In Free time**, since it turns nothing on: it makes Free time stricter.
 
-- **As Sioul does now**: what this page describes.
-- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; neutral contacts' calls to voicemail in admin time, leisure and meals, and their messages held in leisure and meals; your safe senders' messages held in Free time; reminders of dates, and sites in real time, wait in leisure and meals.
-- **More reachable**: neutral contacts' mail at once in leisure and meals (their calls and messages come then already); strangers' mail shown in leisure; other apps' automatons at once in work and admin. No preset changes the call screening ([Calls](calls.md#the-call-screening)).
+**What a thing is for** holds too, whatever the cells: mail to an address for work, a site or an app for work, a work task's dates wait for work time, but your Always through people's ([Hours](hours.md)). During a meeting, no meal's notice and no "Work hours are over". After a pause, the Porch rests until your next admin hours.
 
-A preset never touches a fixed cell. Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are."
-
-## By time {#by-time}
-
-A card per time, the time now first and marked **now**, then the two layers. Each card says when the time holds ("Monday to Friday, 09:00 to 12:00 and 14:00 to 17:00."), then in sentences, grouped: what comes at once; what comes when its event falls then; at the gathered times; what is shown without a notification; what waits, and until when ("for a work or admin time", "until you wake"); what does not come. Then what the phone or the computer silences then, and what else holds in that time: "After the pause, the Porch rests until your next admin hours." **Change…** opens the time's rows, each with its value in words.
-
-As Sioul does now, unless you change it:
-
-| Time | Comes at once | Shown, not told | Waits |
-|---|---|---|---|
-| **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts; your reminders, doses, codes; Health's notices, the pause to move; a site in real time | | your sites and other apps' automatons come at the gathered times |
-| **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
-| **Leisure** | your safe senders' mail; calls and messages from your safe and neutral contacts; reminders, doses, codes, Health's notices | | everyone else's mail, and the messages of your restricted contacts, strangers and groups, for work or admin time; calls from your restricted contacts go to voicemail, listed then; what is for work |
-| **Meals** | as leisure | | as leisure |
-| **Sleep** | doses; an event's alarms and Sioul's reminder before it when the event is in the night; the alarm at waking | your safe senders' mail; the codes you asked for | messages and calls, but your Always through people's; dates, until you wake; Health's notices do not come |
-| **Pause** | doses; codes; an event's alarms and Sioul's reminder before it; your Always through people's calls and messages | your safe senders' and Always through people's mail | everything else, until you come back; after it, the Porch rests until your next admin hours |
-| **Free time** | your safe senders' calls and messages; doses; codes; an event's own reminders when it falls in it | your safe senders' mail | everyone else, until Free time ends; reminders of dates; sites; Health's notices do not come |
-
-The two layers hold on top of the time, and only ever hold more:
-
-- **Time for you**: mail is shown at most, untold; your sites and other apps' automatons wait; the pause to move does not come. Calls, messages, reminders, doses and codes follow the time.
-- **Do not disturb**: your Always through people's mail, calls and messages come at once; everyone else's mail is shown at most, untold; their calls go to voicemail and their messages wait; your sites, a call in a site and other apps' automatons wait; the pause to move does not come. Reminders, doses, codes and Health's notices follow the time. On a computer, only what is to do comes while it holds: doses, codes, an event's alarms; your Always through people's mail, reminders and Health's notices wait on the Porch, on Health and in the agenda ([To know, or to do](#to-know-or-to-do)).
-
-Calls from numbers nobody knows and hidden numbers are in none of these rows: the call screening decides them, apart from the times, and each card says so in a line of its own. Where your contacts wait (sleep, a pause, Free time, do-not-disturb), they wait too, unless you expect a call ([The call screening](calls.md#the-call-screening)).
-
-**Free time** has its own choice, on its card: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come. Free time's menu in the status line offers it too ([Pauses](pauses.md#free-time)).
-
-**What a thing is for** holds too, whatever the cells: mail to an address for work, a site or an app for work, a work task's dates wait for work time, but your Always through people ([Hours](hours.md)). Your safe senders' mail to such an address shows on the Porch meanwhile, and is told when that address's hours begin. During a meeting, no meal's notice and no "Work hours are over". After a pause, the Porch rests until your next admin hours: new mail is shown there, untold. The cards say each where it acts.
-
-## By person {#by-person}
+## Sioul's own notices {#sioul-s-own}
 
 <figure markdown="span">
-  [![What reaches you, By person: three buttons, Mail, Calls and Messages, Mail chosen; Tell me of new mail and Include newsletters; a sentence on what your own spam filter holds; then a grid, the rows down (Always through, Safe, Your contacts, Restricted, Strangers, Blocked) and nine columns across (Work, Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you, Do not disturb), a mark in each cell, the blocked row greyed; under it the legend in words, then who is on which list.](../assets/screens/attention-person-mail.png){ loading=lazy }](../assets/screens/attention-person-mail.png "Open the picture at full size")
-  <figcaption>By person: each list of people, at each time.</figcaption>
+  [![What reaches you, Sioul's own notices: four groups, each with what it holds and its choice: What you set or asked for, Doses while you sleep or Doses at waking; Reminders, When awake or Off; Care, a switch each for meals, naps and the night, the pause to move, Work hours are over and the time running; Sites and apps, At once or At the gathered times, with the gathered times.](../assets/screens/attention-own.png){ loading=lazy }](../assets/screens/attention-own.png "Open the picture at full size")
+  <figcaption>Sioul's own notices, in four groups.</figcaption>
 </figure>
 
-Mail, calls and other apps' messages follow who wrote, whatever the address or the number they use. **Mail**, **Calls** and **Messages** (texts, and chats from other apps, on a phone or a tablet) each have a grid: who down, the times and the layers across. Calls and messages act through a phone of yours: until one screens your calls, or holds other apps' notifications (a phone with this version of Sioul tells your other devices whether you gave Sioul notification access there), a sentence says so above their grid.
+| Group | What it holds | Your choice |
+|---|---|---|
+| What you set or asked for | codes and links, doses, the alarm at waking, an event's alarms | doses and the alarm at waking at once; codes on the Porch while you sleep; an event's alarms during sleep and Free time when their event falls then. **Doses while you sleep** or **Doses at waking** sets the doses' cell for sleep, nothing else |
+| Reminders | before an event, the working day before, dates, waits, payments, papers | **When awake** or **Off** |
+| Care | meals, naps and the night; the pause to move; "Work hours are over"; the time running | a switch each |
+| Sites and apps | your sites' news on a computer, apps' automatic notifications on a phone | **At once** or **At the gathered times**, and the gathered times |
 
-**Who**, a row each:
-
-- **Always through**: the people on your Always through list ([below](#always-through)). ★ at once whatever their own list says; = as their own list.
-- **Safe**: friends, chosen colleagues, chosen family. Only you put someone there.
-- **Your contacts** ("Neutral" in older versions, and in the files): anyone in your address books, or let in from the screener, until you choose otherwise.
-- **Restricted**: those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs.
-- **Strangers**: in none of your address books, and on no list; and mail nothing proves is theirs. Their calls are the call screening's, apart ([Calls](calls.md#the-call-screening)).
-- **Hidden numbers** (calls): a call that shows no number, someone who hides theirs or a hospital's switchboard. The call screening decides them too, ringing in work and admin time as usual.
-- **Groups** (messages): a conversation where several people write, as strangers until you change their row.
-- **Blocked**: never, on any channel, even on your Always through list: their mail set aside for good, never shown, never counted; their calls declined and never listed. Nothing is deleted.
-
-As Sioul does now:
-
-| Mail | Work | Admin | Leisure | Meals | Sleep | Pause | Free time | Time for you | Do not disturb |
-|---|---|---|---|---|---|---|---|---|---|
-| Always through | ★ | ★ | ★ | ★ | ◑ | ◑ | ★ | ★ | ★ |
-| Safe | ● | ● | ● | ● | ◑ | ◑ | ◑ | ◑ | ◑ |
-| Your contacts | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
-| Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
-| Strangers | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
-
-| Calls | Work | Admin | Leisure | Meals | Sleep | Pause | Free time | Time for you | Do not disturb |
-|---|---|---|---|---|---|---|---|---|---|
-| Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
-| Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Your contacts | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
-| Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-
-Calls from numbers not in your contacts and from hidden numbers left this grid on 19 October 2026: the call screening decides them, apart ([Calls](calls.md#the-call-screening)).
-
-Messages go as calls, but strangers' messages come at once in work and admin time, and groups' at once in work, admin, leisure and meals; under do-not-disturb, the texts of your safe people, your contacts and groups come in the shade, without a sound (◑), while their calls go to voicemail. A mail app's notification on Android follows the Mail grid, and is held where mail would be shown, not told: Android cannot show what it holds. A call that goes to voicemail is listed on the Porch when its caller may reach you, or in work and admin time for a row that never rings ([Calls](calls.md#afterwards-on-the-porch)).
-
-**Mail's own switches**, above its grid:
-
-- **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many e-mails and the first senders with their subjects; on a computer, each with its own button that opens that message, and a click on the notification opens the first. A message sent to two of your addresses is told once. Mail that waited is told once, when its time comes: "The Porch opens: three e-mails wait for you."; so is mail that came while your computer was off, fetched when it starts. On unless you turn it off. With a phone and a computer, the one you used last tells, and the other does not tell again what it told, once your sharing has carried it: a message told on one just before the other fetches it may still come on both.
-- **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Off unless you turn it on.
-- What your own spam filter holds, in a sentence: maybe spam and probably spam from strangers wait on the Porch, in “Caught by your own spam filter”, never told ([Settings](settings.md#your-own-spam-filter)).
-- What an address is for: mail to an address for another time waits for that time, your safe senders' too, which shows on the Porch meanwhile and is told when the address's hours begin; your Always through people's comes anyway, and everyone's while you are Reachable. An address with nothing ticked keeps your safe senders' times; only the others wait for work's hours. Each address's "What this address is for" is on its card in [Accounts](accounts.md#a-mail-address).
-
-### Who is on which list {#who-is-on-which-list}
-
-Under the grid:
-
-- **Four lists**: Safe, Your contacts, Restricted and Blocked. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
-- **People on a list**: everyone you placed on a list from their card or their sheet ([below](#a-persons-sheet)), each with **As their categories say**, **Safe**, **Your contacts**, **Restricted** or **Blocked**. The card decides for all its addresses and numbers, those added later too.
-- **Your contacts' categories**: one row for each category your contacts use (Friends, Family, Clients…), with **No list** or one of the four. Everyone whose card is in the category takes it, at each of their addresses and numbers. Nothing goes on a list by itself, family and friends included.
-
-**From the person to the list**: a person's own choice comes first (their address or number, then their card), then the categories on their card, then a domain or the start of a number; then, neutral: anyone in your address books, and anyone you let in from the screener; everyone else is a stranger. So one friend can be neutral while the category Friends is safe. When one level gives two answers (a person in two categories on two lists), blocked wins, then restricted, then neutral, then safe.
-
-**Proof comes first**: mail that fails its checks is weighed as a stranger's, and forged mail, or mail borrowing a name, is set aside, even when it claims a safe sender's address.
-
-## Sioul's own {#sioul-s-own}
-
-<figure markdown="span">
-  [![What reaches you, Sioul's own: a grid, the kinds down in four groups (What you set or asked for: codes and links, doses, an event's alarms; Reminders; Your day: meals, naps and the night, the pause to move, Work hours are over, the time running; Sites, on a computer) and the nine columns across, the fixed marks greyed; above it, Sites' notifications gathered and the gathered times.](../assets/screens/attention-own.png){ loading=lazy }](../assets/screens/attention-own.png "Open the picture at full size")
-  <figcaption>Sioul's own notifications, each kind at each time.</figcaption>
-</figure>
+A group set cell by cell in What comes when says **Your own**, and no choice is ticked; choose one to set it whole again.
 
 Each notification comes once, never repeated. What each kind does, unless you change its row:
 
@@ -208,29 +182,26 @@ On a phone, Sioul's notifications are the same two kinds, each in its own channe
 
 From winding down to waking, and during a nap, doses come unless you change it: you set their times, and a dose at 05:00 is meant to wake you.
 
-- **During sleep and a pause**: the **Doses** row, in Sioul's own: **At once** (unless you change it) or **Later**. Later, each dose's reminder comes when you wake or come back, once, and so does the question on doses due while Sioul was closed. Every other cell is fixed at once: Sioul never holds a dose without that choice.
+- **During sleep**: **Doses while you sleep** (unless you change it) or **Doses at waking**, under What you set or asked for; during a pause, the **Doses** row of What comes when. Later, each dose's reminder comes when you wake or come back, once, and so does the question on doses due while Sioul was closed. Every other cell is fixed at once: Sioul never holds a dose without that choice.
 - **Without a night set** in Settings ▸ Hours, nothing keeps notifications away at night: the Porch asks for it in a card ([Hours](hours.md#sleep)).
 
 ### The gathered times {#the-gathered-times}
 
-Settings ▸ Reminders ▸ **Gathered at**: 09:00, 13:00 and 18:00, unless you set others. Three a day helped most in a field trial (Fitz et al. 2019).
+What reaches you ▸ Sioul's own notices ▸ Sites and apps ▸ **Gathered at**: 09:00, 13:00 and 18:00, unless you set others. Three a day helped most in a field trial (Fitz et al. 2019).
 
 - **On a computer**, one notification then says which of your sites have news, for the sites of those hours, on the computer you are at, with **Open the Porch**. With **Sites' notifications gathered** unticked (in Sioul's own), their news waits on the Porch only.
 - **On Android**, other apps' notifications from automatons come back then.
 - **A gathered time** that falls while their row says later is skipped: what waits comes at the next one.
 
-## Exceptions {#exceptions}
+## Each person's and each source's own {#exceptions}
 
-<figure markdown="span">
-  [![What reaches you, Exceptions: Always through, a sentence saying what mail from your Always through people does at each time (calls and messages too, where a phone of yours screens or holds them), then the list: each person with their numbers and addresses, Change and Take off the list, Add your safe senders, Add someone by hand and a field to add a contact; then your sites, each with its own choice; an event's own reminder, with Open the Agenda; a meal, a nap, the night, one day, with Open Health.](../assets/screens/attention-exceptions.png){ loading=lazy }](../assets/screens/attention-exceptions.png "Open the picture at full size")
-  <figcaption>Exceptions: Always through, and each source with a choice of its own.</figcaption>
-</figure>
+Some people and some sources have choices of their own, beside your circles: your Always through people, a person's own times (on their sheet), each other app and conversation on a phone, a site's Real time, an event's reminder, a meal's day. What reaches you counts those set elsewhere in one line, "Set elsewhere: one site in real time, 2 events' own reminders.", with a button to each place; an app's or a conversation's own times open Settings ▸ Devices, where each phone's card lists them, on a computer too.
 
 ### Always through {#always-through}
 
 The people who must always reach you: a carer, your doctor's office, your child's school. One list for all your devices, kept sealed in your sharing folder: your address books may differ from one device to another; the list does not.
 
-Above the list, each channel's Always through row in a sentence. As Sioul does now: their calls ring and their messages come at any time, sleep and pauses included; their mail comes at once, but is shown without a notification while you sleep or pause; do-not-disturb does not hold them. You can make them less: = gives them their own list's times, cell by cell.
+It sits under What reaches you ▸ **Who is in which circle**, beside your three lists. Each channel's Always through line is in People, Always unless you change it. As Sioul does now: their calls ring and their messages come at any time, sleep and pauses included; their mail comes at once, but is shown without a notification while you sleep or pause; do-not-disturb does not hold them. You can make them less: = gives them their own list's times, cell by cell.
 
 - **Add your safe senders**: everyone on your Safe list, with their card's name and numbers when a card has them. A pattern such as `*@example.org` names nobody: it is left out, and said so.
 - **Add a contact…**: from your address books, by a name, a number or an address.
@@ -239,11 +210,18 @@ Above the list, each channel's Always through row in a sentence. As Sioul does n
 
 Someone added again by one of their addresses, numbers or their card stays one person. Under each name, Sioul says what is missing: "No number: their calls and messages cannot ring through."; "No address: their mail is not notified during do-not-disturb." **Blocked beats Always through**: blocking someone takes them off the list, and putting someone blocked on it takes them off the blocked list; the status line says so. A person's sheet does both in one place ([below](#a-persons-sheet)).
 
-On Android, its own do-not-disturb names no list: Sioul's modes let through, as far as Android can say it, what the matrix lets through then ([What each system does](#what-each-system-does)). Under **Starred on this phone**, in Settings ▸ This phone, Sioul says who on your list is not starred there, with **Open their contact**, to star it, or **Add to contacts**.
+On Android, its own do-not-disturb names no list: Sioul's modes let through, as far as Android can say it, what the matrix lets through then ([What each system does](#what-each-system-does)). Under **Starred on this phone**, in Settings ▸ Devices, this phone's card, Sioul says who on your list is not starred there, with **Open their contact**, to star it, or **Add to contacts**.
+
+**Starred contacts are Always through, both ways** (a switch under the list, off until you turn it on): a contact starred on a phone, or marked favourite on a server that keeps favourites (Nextcloud does), joins the list on every device, and everyone on the list is starred where their contact is. Sioul writes the star and nothing else of a contact. Nothing changes until you change it, and Sioul never guesses:
+
+- Someone leaves the list only when you unstar a star Sioul set, while no other of their contacts there is still starred. A star you set yourself and take off takes nobody off; take them off the list in Sioul.
+- Stars that go two or more at once (an account synced again, a phone restored) take nobody off: a notice names them, and the list is yours to change.
+- A contact Sioul could not read this time, a number two contacts or two people share, a contact whose number changed: nothing changes, and the list says how many contacts it could not match to one person.
+- Turned off, the switch forgets what each place held; turned on again, it adds and stars, and takes nobody off.
 
 ### Other apps' notifications, on Android {#other-apps-on-a-phone}
 
-On Android, Sioul can hold other apps' notifications until their time, as it holds your mail. Settings ▸ **This phone** (**This tablet** on a tablet) sets it up: Android's notification access, holding on or off, and the apps that rang before Sioul held them ([This phone](settings.md#this-phone)).
+On Android, Sioul can hold other apps' notifications until their time, as it holds your mail. This phone's card in Settings ▸ **Devices** sets it up: Android's notification access, holding on or off, and the apps that rang before Sioul held them ([This phone](settings.md#this-phone)).
 
 - **Messages between people** (texts, chats, mail apps, a missed call) come when the person who wrote may reach you now: their **Messages** row; **Mail**'s for a mail app, **Calls**' for a missed call.
 - **Notifications from automatons** (shops, news, social networks, your browser's sites, a text from a short number) come back at the gathered times.
@@ -251,10 +229,10 @@ On Android, Sioul can hold other apps' notifications until their time, as it hol
 - **A held notification comes back whole**, with its own tap and actions. Sioul deletes none and never touches typing; it answers, or marks as read, only what you ask from a computer, through the notification's own Reply or Mark as read ([below](#messages-on-your-computers)).
 - **On the Porch**, one line says what waits: "Notifications held until 13:00: Discord, Le Monde and two other apps."
 - **What Sioul gathers comes back without a sound.** From Android 13 QPR1 (December 2022) on, and on Android 10, a held notification rings again when it comes back. So at each gathered time Sioul brings the automatons' notifications back itself, under Android's own hint that silences notifications, for a few seconds at most, and never at the time of one of its own reminders or doses, read again just before. On Android 11, 12 and the first release of 13, a return makes no sound anyway, and nothing changes there. The same for what you let through yourself (Reachable, **Let what your phone holds through**). A person's message comes back at their time ringing as its app says, since they may reach you then. If Sioul's alarm never comes, Android brings them back a few minutes later, with their sound: nothing is lost.
-- **The first sound**: Android rings a notification before Sioul sees it. Linked to your computer, Sioul makes the apps it gathers silent itself: Settings ▸ This phone ▸ **Let Sioul make them silent**, then choose in Android's list of devices the computer, paired by Bluetooth, to which Sioul relays your phone's notifications. Only the channels that rang while Sioul held an automaton's notification, and those you name with **Make it silent**; chats, texts and mail keep their sound, so that the people let through still ring, and a channel that ever carried a code, a payment or sign-in to approve or a reminder keeps it too. Android ties two more things to the link: Sioul may open its window from the background, and, from Android 15, Android stops hiding one-time codes from Sioul; Sioul reads them on your phone only, to let them through at once, and never sends their words to your computers. Each change shows in Android's settings as yours. **Give its sound back** beside an app returns its channels as they were; **Stop, and give every sound back** returns them all and lets the link go. Without the link (a phone that does not offer it, or you prefer not), **Make it silent** opens each channel's page in Android, for you to set it silent there.
+- **The first sound**: Android rings a notification before Sioul sees it. Linked to your computer, Sioul makes the apps it gathers silent itself: Settings ▸ Devices ▸ this phone's card ▸ **Let Sioul make them silent**, then choose in Android's list of devices the computer, paired by Bluetooth, to which Sioul relays your phone's notifications. Only the channels that rang while Sioul held an automaton's notification, and those you name with **Make it silent**; chats, texts and mail keep their sound, so that the people let through still ring, and a channel that ever carried a code, a payment or sign-in to approve or a reminder keeps it too. Android ties two more things to the link: Sioul may open its window from the background, and, from Android 15, Android stops hiding one-time codes from Sioul; Sioul reads them on your phone only, to let them through at once, and never sends their words to your computers. Each change shows in Android's settings as yours. **Give its sound back** beside an app returns its channels as they were; **Stop, and give every sound back** returns them all and lets the link go. Without the link (a phone that does not offer it, or you prefer not), **Make it silent** opens each channel's page in Android, for you to set it silent there.
 - **Before you uninstall Sioul**, press **Stop**, then wait until the tab says every sound is given back (Sioul needs Notification access for it): Android tells no app that it is being uninstalled, so the channels Sioul made silent would stay silent. To undo it by hand: Android's settings ▸ Apps ▸ the app ▸ Notifications, then each channel's sound.
 
-In Exceptions, as each app, conversation and site shows up:
+In this phone's card in Settings ▸ Devices, as each app, conversation and site shows up:
 
 - **Each app**: **Notification by notification** (the usual: messages by who wrote them, the rest gathered), **Messages between people**, **An automaton: gathered**, or **At once**, as its row in Sioul's own says. An app whose notifications cannot wait (a ride, a delivery at your door, a doctor's or a pharmacy's app): **At once**. **For**: work, your admin or leisure, as for an address; any time unless you choose.
 - **Each conversation**: **By who writes**; **Always through**, at any time, sleep, pauses and do-not-disturb included (the school's group, say); **Gathered with the automatons**; or **Never**, held for good. A group is judged by its own row until you choose. Sioul lets a conversation through, never a name: in chats, anyone can choose their name.
@@ -263,15 +241,15 @@ In Exceptions, as each app, conversation and site shows up:
 
 #### Other apps, by time {#other-apps-by-time}
 
-**Other apps, by time**, on top of the phone's part of Exceptions, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in the grids of [By person](#by-person). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time.
+**Other apps, by time**, in this phone's card in Settings ▸ Devices, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in [What comes when](#by-time). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time. On a computer, each phone's card in Settings ▸ Devices lists the apps and conversations given times of their own, read and changed there as on the phone.
 
 - **As usual** follows what the notification is: a message by who wrote it, an automaton at the gathered times, an app set to **At once** at once. Nothing changes for an app until you set one of its cells.
 - **A conversation's** cell, where set, wins over its app's; where it says **As usual**, the app's counts.
 - **Under a layer**: **At once** under Do not disturb lets the app through while do-not-disturb holds, at the times its row lets it through; **As usual** holds it as do-not-disturb holds everyone else's messages.
 - **As before**: your Always through people still come; the blocked never do; codes and approvals, calls, alarms and what runs are never held.
 - **Each app's line** says its row in one sentence: "At once: Work; held: Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you and Do not disturb."
-- **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ This phone, **Make it silent**), or let Sioul do it for the apps it gathers. During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
-- **On a computer**, Exceptions shows the apps' rows set on your phone or tablet, by name, and changes them: they travel with your settings.
+- **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ Devices, this phone's card, **Make it silent**), or let Sioul do it for the apps it gathers. During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
+- **On a computer**, the apps' rows set on your phone or tablet travel with your settings; each phone's card in Settings ▸ Devices lists them, read and changed there as on the phone.
 
 **What Sioul keeps**, on that device only, never shared with your other devices: your choices of each app's kind, each conversation's way through and each site's, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says, unless you send an app's messages to your computers ([below](#messages-on-your-computers)). The rows by time travel with your settings: an app's with its name, a conversation's by a number made from it, never its title.
 
@@ -299,7 +277,7 @@ As of November 2026, from Apple's and Google's own pages, and for Android itself
 
 #### On your computers {#messages-on-your-computers}
 
-Your phone can show your computers the messages its notifications bring, texts first, on their Porch under **From your phone**: "While you slept, Dr Martin's office wrote: 09:41 Your appointment is moved to Thursday 10:30." It is off until you turn it on, on the phone and on each computer that should show them: Settings ▸ This phone ▸ **On your computers** on the phone, the part **Messages from your phone** under Settings ▸ Sharing on a computer ([Sharing](sharing.md#what-travels-from-this-device)).
+Your phone can show your computers the messages its notifications bring, texts first, on their Porch under **From your phone**: "While you slept, Dr Martin's office wrote: 09:41 Your appointment is moved to Thursday 10:30." It is off until you turn it on, on the phone and on each computer that should show them: Settings ▸ Devices ▸ this phone's card ▸ **On your computers** on the phone, the part **Messages from your phone** under Settings ▸ Sharing on a computer ([Sharing](sharing.md#what-travels-from-this-device)).
 
 - **Which apps**: the phone's SMS app sends its words unless you say otherwise; every other app (Signal, WhatsApp, Discord…) sends nothing until you choose it. For each: **Not on your computers**, **Who and when**, or **Who, when and the words**.
 - **When they show**: once the phone let the notification through, and while the person who wrote may reach you, as on the phone; a text from a service (a short number, "AMELI") at the automatons' times. Never as a notification on the computer, never counted.
@@ -308,15 +286,18 @@ Your phone can show your computers the messages its notifications bring, texts f
 - **What else you can do**: **Call back** for a text, through your computer's app for such links (KDE Connect hands them to your phone), else **Copy the number**; **Text back** where no Reply is offered; **Mark read** and **Dismiss** take the row away on every device, with ten seconds to undo. Neither touches the phone's notification; Mark read on a text marks it read on the Texts page too. In the line's menu (**⋮**), **Mark as read in Signal**, where the notification offers it, asks first: "Signal may tell them that you read it."
 - **Their answer to your answer** comes at once for 20 minutes, on the phone and on the computer you answered from, unless you are in a pause.
 - **Who may ask your phone**: a reply travels sealed with your passphrase and names the computer that wrote it, and your phone takes it only from a device your sharing counts. That rests on the passphrase: any device that knows it can ask, and a device you forgot counts again as soon as it shares anything new. Only a new passphrase cuts a device off ([Sharing](sharing.md)).
-- **On the phone**, under each app in Settings ▸ This phone ▸ On your computers, **Answer from your computers** is on unless you switch it off.
+- **On the phone**, under each app in Settings ▸ Devices ▸ this phone's card ▸ On your computers, **Answer from your computers** is on unless you switch it off.
 - **Never sent**: codes and approvals ("A code came from your bank at 09:12. It stays on your phone."), pictures ("a picture"), a blocked sender's messages, a conversation set to **Never**, notifications an app keeps secret, ongoing ones, Sioul's own.
 - **Kept** a week. The words travel encrypted with your passphrase and sit in Sioul's files on each computer that shows them: choose the apps with that in mind.
 
 ### Sites, events, Health's days {#sites-events-health}
 
-- **Your sites**, on a computer: each site's **Real time** or **Silenced**, said here and changed in its menu on the [Sites](sites.md) page.
+Counted in What reaches you's line of what is set elsewhere, each changed in its own place:
+
+- **Your sites**, on a computer: each site's **Real time** or **Silenced**, in its menu on the [Sites](sites.md) page.
 - **An event's own reminder**: **Remind**, in its form and its details, as usual, not this one, or minutes before ([Agenda](agenda.md#reminders)).
 - **A meal, a nap, the night, one day**: each can go without its notices, for one day or for good, on the [Health](health.md#meals-rest-and-sleep) page.
+- **A person's own times**: on their sheet ([below](#their-own-times)).
 
 ## The button and its card {#the-button-and-its-card}
 
@@ -331,7 +312,7 @@ One button in the status line says what reaches you now: at the bottom on Androi
 2. **Reachable**, **As usual** and **Do not disturb**, side by side. **As usual** applies at once. Reachable or Do not disturb shows its lengths first: **30 min**, **1 h**, **2 h**, **Until 17:00** (the hours you are in), **Until tonight** (at night, **Until I wake**), **Until I turn it off**; Do not disturb also **Until 17:00** when the time you are in has an end.
 3. **What your phone holds**, on Android, by app: "Notifications held until 12:00: Signal and Messages.", with **Let them through now**; then the conversations it holds, by their titles, each with **Let it through now** and **Let them through then** ([A person's own times](#their-own-times)). Their titles never leave the phone. On a computer, **Let what your phone holds through**, without saying what it holds.
 4. **Mail every minute**: every folder of every address, each minute, and the Porch open, for a code or a password you are waiting for; it switches itself off when the hours you ticked it in end, never later than the night's start (midnight if no night is set), and after an hour when ticked at night.
-5. **Call screening**, apart, while a phone of yours screens calls: its rule in a sentence ("Numbers nobody knows go to your voicemail, at all hours."), **Expecting a call, 1 h** (or **Screen calls again**), and on the phone **Call screening settings…**. Its on/off switch stays in Settings ▸ This phone, so that a card you open often never turns spam protection off.
+5. **Call screening**, apart, while a phone of yours screens calls: its rule in a sentence ("Numbers nobody knows go to your voicemail, at all hours."), **Expecting a call, 1 h** (or **Screen calls again**), and on the phone **Call screening settings…**. Its on/off switch stays in Settings ▸ Devices, this phone's card, so that a card you open often never turns spam protection off.
 
 A right click, or a long press, on the button opens a short menu: **Reachable for an hour**, **Do not disturb for an hour**, **As usual**. On a computer, the tray's menu has the same three, the state now ticked.
 
@@ -342,37 +323,46 @@ A right click, or a long press, on the button opens a short menu: **Reachable fo
   <figcaption>Reachable, and how long.</figcaption>
 </figure>
 
-While it lasts, on each of your devices that has this version of Sioul, everyone not blocked who writes, and the people you know who call, reach you at once, their own times included ([below](#their-own-times)); a conversation you set to never stays held. The Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a focus session, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). Whichever length you choose ends at the latest at the night's start (pressed at night, when you wake), and the card says so when a length meets it. **As usual** ends it, and so does a pause; it is not offered during one. Two devices pressed within a minute, neither knowing of the other: the quieter wins (Do not disturb, then As usual, then Reachable).
+While it lasts, on each of your devices that has this version of Sioul, everyone not blocked who writes, and the people you know who call, reach you at once, their own times included ([below](#their-own-times)); a conversation you set to never stays held. The Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a busy time, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). Whichever length you choose ends at the latest at the night's start (pressed at night, when you wake), and the card says so when a length meets it. **As usual** ends it, and so does a pause; it is not offered during one. Two devices pressed within a minute, neither knowing of the other: the quieter wins (Do not disturb, then As usual, then Reachable).
 
 ## Do not disturb on every device {#do-not-disturb-on-every-device}
 
 <figure markdown="span">
-  [![What reaches you, Do not disturb: What turns it on, four switches (The switch in the status line, While I focus on a task, During the pauses, While I sleep), each with its sentence; While it holds, the sentences of the Do not disturb card; then On this device, what this computer's system lets Sioul do.](../assets/screens/attention-dnd.png){ loading=lazy }](../assets/screens/attention-dnd.png "Open the picture at full size")
-  <figcaption>Do not disturb: what turns it on, what it holds, what each device does.</figcaption>
+  [![What reaches you, Moments: "Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound."; a table of As usual, Do not disturb and Reachable, each with who passes, what turns it on and what your phone does; What turns do-not-disturb on, a box each for the switch, the pauses, the night and While busy; Who holds what on a phone, Sioul's part and Android's for a call, a message, do not disturb and your own modes.](../assets/screens/attention-dnd.png){ loading=lazy }](../assets/screens/attention-dnd.png "Open the picture at full size")
+  <figcaption>Moments: who passes, what turns do-not-disturb on, who holds what on a phone.</figcaption>
 </figure>
 
 Do-not-disturb is one switch for all your devices: turned on or off on one, it holds on all, as soon as each one hears of it through your [sharing folder](sharing.md). While it holds, its column of the matrix applies on top of the time, and each device silences its system as far as the system lets an application do it.
 
 ### The switch {#the-switch}
 
-Do not disturb is one of the button's three states ([above](#the-button-and-its-card)): in its card, **Do not disturb**, then **30 min**, **1 h**, **2 h**, **Until 17:00** (until the time you are in ends) or **Until I turn it off**; or **Do not disturb for an hour** in the button's menu. **As usual** turns it off, on every device, whatever turned it on; while it holds for a focus session or a night, that one stays off until it ends. The card says why it holds ("While you focus on a task."), and **Silence this device again** when you turned this device's own do-not-disturb off while Sioul could not hear it.
+Do not disturb is one of the button's three states ([above](#the-button-and-its-card)): in its card, **Do not disturb**, then **30 min**, **1 h**, **2 h**, **Until 17:00** (until the time you are in ends) or **Until I turn it off**; or **Do not disturb for an hour** in the button's menu. **As usual** turns it off, on every device, whatever turned it on; while it holds for a busy time or a night, that one stays off until it ends. The card says why it holds ("While you are busy."), and **Silence this device again** when you turned this device's own do-not-disturb off while Sioul could not hear it.
 
 ### What turns it on {#what-turns-it-on-by-itself}
 
-In What reaches you ▸ **Do not disturb**:
+In What reaches you ▸ Your rules ▸ **Moments**:
 
 - **The switch in the status line** (on): kept from the switch before version 0.0.7; the button of what reaches you shows whatever it says.
-- **While I focus on a task** (off): while a focus session counts ([Tasks](tasks.md#starting-and-stopping)), until half an hour past the time you chose, three hours for a session without one: a session left running never keeps you unreachable for long.
+- **While busy** (off): during an event marked **Busy**, and while a task marked **Busy while I work on it** has its timer running ([below](#busy)). A timer left running lets go half an hour past the time you chose, three hours for a timer without one. A timer on a task not marked busy no longer turns it on, as **While I focus on a task** did before 18 November 2026: mark the tasks you want to be left alone for. An invitation counts there only once you accepted it, or accepted it as tentative: nobody holds your messages and calls by sending you one. In the availability you share, an invitation you have not answered is busy, as Google reads it.
 - **During the pauses** (on): Free time and the pause silence your devices too ([Pauses](pauses.md)). Unticked, they hold Sioul's own notifications only.
 - **While I sleep** (off): from winding down to waking, and during naps ([Health](health.md#meals-rest-and-sleep)).
 
-**The latest change wins.** Turned off while a focus session counts, it stays off until that session ends, and the next one turns it on again; the same for a night. Turned off during a pause, only your devices' own do-not-disturb is lifted: the pause still holds Sioul's own notifications. Turning it on never holds a reason off. Two devices pressed within a minute, neither knowing of the other: on wins, the quieter choice; one more press settles it.
+**The latest change wins.** Turned off while you are busy, it stays off until that busy time ends, and the next one turns it on again; the same for a night. Turned off during a pause, only your devices' own do-not-disturb is lifted: the pause still holds Sioul's own notifications. Turning it on never holds a reason off. Two devices pressed within a minute, neither knowing of the other: on wins, the quieter choice; one more press settles it.
 
 **While it holds**, as Sioul does now: your Always through people's mail, calls and messages come at once; everyone else's mail is shown, not told; their calls go to voicemail and their messages wait; doses, codes and an event's alarms still come, and on a phone reminders and Health's notices too (on a computer they wait on the Porch, Health and the agenda: [To know, or to do](#to-know-or-to-do)); your sites, other apps' automatons and the pause to move wait. The view says it in the same sentences as the Do not disturb card, with **Change…**.
 
+### Busy {#busy}
+
+An event's card and form, and a task's panel, have a switch **Busy** (« Indisponible »; on a task, **Busy while I work on it**). While it lasts:
+
+- it counts in the availability you share ([Agenda](agenda.md#your-availability));
+- with **While busy** ticked, do-not-disturb holds, on every device.
+
+An event with a time is busy unless you say otherwise, a whole-day event free unless you say busy, as Google and every calendar app keep it: the mark is the event's own, so it travels to your server and back. Ticking **All day** in the form moves the mark to the new kind's own (a time busy, a whole day free) only while nobody set it: once you pressed the switch, or when the event's file says busy or free, it stays as said; an agent that changes an event's times without saying Busy sets no mark either. A meeting with others keeps its organizer's mark: shown, never written. A task is never busy unless you say so, or unless it was made from an event that was busy, which the sentence saying the change says too; on a list Google keeps, the switch is greyed, as Google keeps no such mark. On one time of a repeating event that you moved or changed on its own, the card's switch marks that time alone. On a calendar free as a whole, the switch is greyed, with a line saying why.
+
 ### What each system does {#what-each-system-does}
 
-Each device turns on a do-not-disturb of its own for Sioul's three modes: the pause, Free time, and do-not-disturb from its switch, a focus session or your sleep. It does so as far as its system lets an application do it. Its line says what was silenced and what could not be: in the switch's menu, and in What reaches you ▸ Do not disturb ▸ **On this device**. Turned off from Sioul, a device's own do-not-disturb goes off too, where Sioul can ([Both ways](#both-ways)).
+Each device turns on a do-not-disturb of its own for Sioul's three modes: the pause, Free time, and do-not-disturb from its switch, a busy time or your sleep. It does so as far as its system lets an application do it. Its line says what was silenced and what could not be: in the switch's menu, and in What reaches you ▸ Moments ▸ **On this device**. Turned off from Sioul, a device's own do-not-disturb goes off too, where Sioul can ([Both ways](#both-ways)).
 
 - **Android** (10 and later): a mode of Sioul's own for each, "Pause", "Free time" and "Do not disturb (Sioul)", among Android's do-not-disturb schedules (its modes, from Android 15). Each lets through what the matrix lets through then, as far as Android can say it:
     - **Calls**: while this phone screens calls ([Calls](calls.md)), your contacts' calls ring through the mode, Sioul having sent the others to your voicemail already; anyone's, when the call screening lets numbers nobody knows ring then and your contacts may ring then, or while you expect a call. Without the screening, your starred contacts' only. Nobody, when the matrix lets no one call then (Free time's **Nothing at all**, say), but Always through.
@@ -382,10 +372,10 @@ Each device turns on a do-not-disturb of its own for Sioul's three modes: the pa
     - **Alarms**, always. **Dose reminders** and **Sioul's notifications to act on** (a code), each in a channel of its own made to pass the mode ("Doses during a pause", "To act on during a pause"), when the matrix lets them come then; their usual channels never pass, so that your own do-not-disturb holds them as before. **An event's alarms**, rung by your calendar app, where the matrix says they come at once then; else Sioul's own, in their channel. **New mail from someone Always through**, in its own channel too ("New mail from people always let through"), with a sound.
     - The rest waits in the notification shade, silent.
 
-    Sioul needs Android's "Do Not Disturb access" for this ("Modes access" from Android 15): **Open Android's page**, in Settings ▸ This phone. The line says what each mode lets through, as Android has it. From Android 15, what you change in a mode in Android's settings wins. Turned off in the quick settings or in Android's settings, a mode of Sioul's turns Sioul's switch off on every device ([Both ways](#both-ways)). Android 10 has no priority conversations: a conversation Always through rings there from a starred contact only, and the line says so.
+    Sioul needs Android's "Do Not Disturb access" for this ("Modes access" from Android 15): **Open Android's page**, in Settings ▸ Devices, this phone's card. The line says what each mode lets through, as Android has it. From Android 15, what you change in a mode in Android's settings wins. Turned off in the quick settings or in Android's settings, a mode of Sioul's turns Sioul's switch off on every device ([Both ways](#both-ways)). Android 10 has no priority conversations: a conversation Always through rings there from a starred contact only, and the line says so.
     - Emergency services may call back from a number you do not know (in France, 0 800 112 112): a second call within 15 minutes gets through, and you can star that number, or add it to your contacts while the phone screens calls.
 - **Plasma**: Plasma's own do-not-disturb, shown among its notifications as "While Sioul is active", with the mode's name ("While Sioul is active (Pause)"). Sioul's doses, codes and an event's alarms still show, at critical urgency, unless Plasma is set to hide even critical notifications in do-not-disturb: Sioul then says so, and **Plasma's notification settings** opens the page where Sioul may "Show in do not disturb mode". Sioul's other notifications are not sent meanwhile: the Porch keeps them. Quitting Sioul ends it. Turned on or off in Plasma's notifications, Plasma's do-not-disturb turns Sioul's switch on or off ([Both ways](#both-ways)).
-- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Do not disturb, and Sioul does just that; turned off from Sioul, it goes off even when you turned it on yourself. Turned on or off in the top bar, it turns Sioul's switch on or off ([Both ways](#both-ways)). Sioul's doses, codes and an event's alarms still show; the rest waits on the Porch. Not from a Flatpak.
+- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Moments, and Sioul does just that; turned off from Sioul, it goes off even when you turned it on yourself. Turned on or off in the top bar, it turns Sioul's switch on or off ([Both ways](#both-ways)). Sioul's doses, codes and an event's alarms still show; the rest waits on the Porch. Not from a Flatpak.
 - **Mac**: make two shortcuts in the Shortcuts app, "Sioul pause on", which turns on a Focus (Do Not Disturb, say), and "Sioul pause off", which turns it off. Sioul runs the first as one of its modes starts, and the second as the last one ends.
 - **Windows** does not let Sioul do it: its switch is in the notification centre (Windows key + N).
 - **Other desktops** (dunst, mako, Xfce…) give applications no way to do it: the line names the notification server.
@@ -405,12 +395,12 @@ Do-not-disturb is yours, not a device's: each device's own do-not-disturb and Si
 
 - **The device you press it on** applies it at once, and sends it to the sharing folder at once.
 - **Your other devices** apply it at their next look at the folder, each minute while Sioul is open, once your sync app has brought the change: about a minute with a Nextcloud server. A sync app on Android may take half an hour or more. When the folder lives on a Nextcloud that one of your accounts reaches, Sioul also reads the other devices' files from the server, and a phone or a tablet follows within about a minute ([When the sync app is late](sharing.md#when-the-sync-app-is-late)).
-- **With Sioul closed on Android**, Sioul keeps your devices in step in the background, with one quiet notification, "Sioul keeps your devices in step", which never says the time of day; while your calls are screened, it says so, with its buttons, within a second or two of each change. Do-not-disturb turned on at your computer follows within a few minutes: the phone looks every two minutes while another of your devices runs Sioul (while you sleep, only a computer someone is at counts, unless a dose is due and not marked), every five otherwise, every fifteen while you sleep, and as soon as the sync app writes another device's file. While you sleep, turned on at a computer nobody was at, it comes at the phone's next look, within fifteen minutes. **Keep this phone in step in the background**, in Settings ▸ This phone: off, changes come when you open Sioul. There too, **Allow in the background**, or Android may stop Sioul to save the battery.
+- **With Sioul closed on Android**, Sioul keeps your devices in step in the background, with one quiet notification, "Sioul keeps your devices in step", which never says the time of day; while your calls are screened, it says so, with its buttons, within a second or two of each change. Do-not-disturb turned on at your computer follows within a few minutes: the phone looks every two minutes while another of your devices runs Sioul (while you sleep, only a computer someone is at counts, unless a dose is due and not marked), every five otherwise, every fifteen while you sleep, and as soon as the sync app writes another device's file. While you sleep, turned on at a computer nobody was at, it comes at the phone's next look, within fifteen minutes. **Keep this phone in step in the background**, in Settings ▸ Devices, this phone's card: off, changes come when you open Sioul. There too, **Allow in the background**, or Android may stop Sioul to save the battery.
 - **Without sharing**, it holds on this device only.
 
 ### What the status line says {#what-the-status-line-says}
 
-While do-not-disturb holds, the button says where, and until when once every reason that holds has an end (a focus session's limit is never said):
+While do-not-disturb holds, the button says where, and until when once every reason that holds has an end (a busy time's end is never said):
 
 - "Do not disturb, on every device, until 15:00.": every other device heard from in the last week holds it, its system silenced, and this one too.
 - "Do not disturb here; your other devices' news is on its way.": the others have not been heard from since it began.
@@ -419,7 +409,7 @@ While do-not-disturb holds, the button says where, and until when once every rea
 - "Do not disturb: this device keeps only Sioul's own notifications back.": this device's system cannot be silenced (Windows, a desktop without a way, Android without the access). With "on your other devices" when others are silenced.
 - "Do not disturb on your other devices; you turned it off here.": you turned this device's own do-not-disturb off while Sioul could not hear it, or turned Sioul's mode off in Android's settings. **Silence this device again**, in its menu, silences it again.
 
-Its card says why ("Turned on from your phone.", "While you focus on a task."). A computer where Sioul quit is closed until Sioul starts there again; one not heard from for half an hour (Sioul stopped without a word) is waiting for its news. A device with an older Sioul does not follow; its own pauses still silence it. On Android, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a focus session.
+Its card says why ("Turned on from your phone.", "While you are busy."). A computer where Sioul quit is closed until Sioul starts there again; one not heard from for half an hour (Sioul stopped without a word) is waiting for its news. A device with an older Sioul does not follow; its own pauses still silence it. On Android, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a busy time.
 
 ## A person's sheet {#a-persons-sheet}
 
@@ -466,17 +456,22 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 
 ## Where to change each thing {#where-to-change-each-thing}
 
-- **Settings ▸ What reaches you**: the matrix, by time, by person and Sioul's own; **Tell me of new mail**, **Include newsletters**, **Sites' notifications gathered**, **Informative notices last**; Free time's **Nothing at all**; your lists; Always through and its list; on Android, each app, conversation and browser site; what turns do-not-disturb on, and what this device's system lets Sioul do.
-- **Settings ▸ Reminders**: **Dates asked: working days before**, **With Sioul's window closed**, **Gathered at** ([Settings](settings.md#reminders)); **Before an event** in the Agenda's ⚙, **A wait over** in the Tasks' ⚙, **Payments planned: working days before** in the Budgets page's ⚙.
-- **Settings ▸ This phone** (**This tablet** on a tablet), on Android: call screening, other apps' notification access and holding, Do Not Disturb's access, who is starred, keeping in step in the background, exact alarms ([Settings](settings.md#this-phone)).
+- **Settings ▸ What reaches you**: People (a choice per circle, **Tell me of new mail**, **Include newsletters**), who is in which circle (Always through, your lists, your groups), Sioul's own notices (with **Gathered at** and **Informative notices last**), Moments (what turns do-not-disturb on, **While busy** among them, Free time's **Nothing at all**), and What comes when, every cell.
+- **Settings ▸ Reminders**: **Dates asked: working days before**, **With Sioul's window closed** ([Settings](settings.md#reminders)); **Before an event** in the Agenda's ⚙, **A wait over** in the Tasks' ⚙, **Payments planned: working days before** in the Budgets page's ⚙.
+- **Settings ▸ Devices**, this phone's card, on Android: call screening, other apps' notification access and holding, each app, conversation and browser site, Do Not Disturb's access, who is starred, keeping in step in the background, exact alarms ([Settings](settings.md#this-phone)).
 - **A person's sheet**, from their card or a message: their list, Always through ([above](#a-persons-sheet)).
-- **An event**: **Remind**, in its form and its details ([Agenda](agenda.md#reminders)).
+- **An event**: **Remind** and **Busy**, in its form and its details ([Agenda](agenda.md#reminders)); **a task**: **Busy while I work on it**, on its panel ([Tasks](tasks.md)).
 - **A site**: **Real time**, and its menu ([Sites](sites.md)).
 - **Settings ▸ Hours**: the notices of meals, naps and the night ([Meals, rest and sleep](health.md#meals-rest-and-sleep)); **Health ⚙**: the pause to move ([Health](health.md#moving)).
 - **Tasks ⚙**: **Time for you** ([Tasks](tasks.md#the-tasks-settings)).
 - **Android's settings**: each of Sioul's channels, its sound included: "Doses" and "Doses during a pause", "Notices" (what is to know), "To act on" and "To act on during a pause" (a code), "New mail from people always let through", "Waking", "Focus timer", "Devices in step". The channels of an older Sioul ("Events", "An event's alarms", "New mail", "End of the day") are gone. A channel "during a pause" passes Sioul's modes while you have not changed it there; the conversations you let through always, **Priority** in each one's page.
 
 ## Why it works this way {#why-it-works-this-way}
+
+- **Three small tables, not one grid.** The page was a grid of 253 cells and nine cards of a dozen sentences each, read as daunting. Most rows say one of a few things, which now have names; the grid stays one tab away, a word per cell, for the rest. Nothing moved underneath: your settings read as they were, and a line set cell by cell says so.
+- **Your contacts set themselves.** Your address books already say who your contacts are: a list of them, and a choice of them on every group, only confused. A contact's category is called a group, the word your address book uses.
+- **Sioul decides, Android sounds.** Both hold things on a phone, by different means: Sioul declines a call or holds a notification; Android's do-not-disturb decides whether what got through makes a sound. The page says each part in those words.
+- **Busy is the standard mark.** Google's "Busy / Free" writes it, and every server and calendar app keeps it, so an event marked busy on your phone is busy everywhere. What you share follows that mark from the update on: a whole-day event that another program wrote as busy now counts, and a task's time block counts only once its task is marked busy. A task has no such mark: Sioul keeps its own, and counts a busy task only where its time is known, since a task with neither a date nor a time could be anywhere.
 
 - Batching notifications three times a day improved attention, mood and stress, while people given none at all felt more anxious than controls (Fitz et al. 2019). So what can wait comes gathered, at times you can read in advance, and it does not vanish.
 - A notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So each comes once, mail without a sound, and no badge counts them.

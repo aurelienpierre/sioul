@@ -302,9 +302,10 @@ Item {
         }
 
         // A name being typed survives anything else pressed in the tab, which
-        // reads the devices again and makes every card anew; saving then
+        // reads the devices again; each card is kept while the devices are the
+        // same, and the draft is the tab's in any case; saving then
         // writes what was typed, never an emptied field (the review of phase 1, R5).
-        function test_a_name_being_typed_survives_the_cards_made_anew() {
+        function test_a_name_being_typed_survives_a_reload() {
             named(card("laptop"), "deviceRename").clicked()
             const field = named(card("laptop"), "deviceNameField")
             compare(field.text, "", "no name given yet")
@@ -314,7 +315,9 @@ Item {
             const before = card("laptop")
             boxes(card("phone"))[2].toggle()
             boxes(card("phone"))[2].toggled()
-            tryVerify(() => card("laptop") !== before, 2000, "every card made anew")
+            wait(50)
+            // The devices are the same: each card kept, its own draft with it.
+            verify(card("laptop") === before, "the card kept")
             const again = named(card("laptop"), "deviceNameField")
             verify(showing(again), "still renaming")
             compare(again.text, "Attic laptop", "what was typed, kept")

@@ -381,7 +381,7 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
     let ledger_path = private.join(sioul_core::texts::LEDGER);
     let decided = sioul_core::filelock::with_lock(&ledger_path, || -> Result<(Vec<rules::Due>, Vec<Outcome>), String> {
         let mut ledger = rules::open_ledger(private, now)?;
-        // The phone's switch per app, "Answer from your computers" (Settings ▸ This phone ▸ On your computers).
+        // The phone's switch per app, "Answer from your computers" (Settings ▸ Devices ▸ this phone's card ▸ On your computers).
         let choices = phonemsgs::Choices::load(&phonemsgs::Choices::default_path());
         let answers = |app: &str| choices.answers(app);
         let (mut lines_out, mut due, mut said) = (Vec::new(), Vec::new(), Vec::new());

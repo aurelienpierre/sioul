@@ -66,6 +66,7 @@ NAMED = {
     "HealthSettings": "settings", "SharePanel": "settings", "NeedsSection": "settings",
     "SettingDoor": "settings", "SitesWeb": "window", "VaultCard": "settings", "VaultForm": "settings", "VaultHeld": "settings",
     "ContactBatches": "settings",
+    "PhoneCard": "settings", "CallsLine": "settings", "AllowList": "settings", "RestrictedCard": "settings", "CardFold": "settings",
     "ActionButton": "controls", "AddressField": "controls", "AudioPlayer": "controls",
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",

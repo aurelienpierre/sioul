@@ -100,6 +100,7 @@ The focus window stays on top while you work elsewhere. A disc drains, in a neut
 - Two minutes before the end: "Two minutes left: time to find a stopping point."
 - At the end: **Keep going**, or **Stop here, it counts**.
 - Stopping offers one line, **Next time, start by…**, shown when the task comes back.
+- **Busy while I work on it**, on the task's panel: while its timer runs you are busy, and with **While busy** ticked do-not-disturb holds on every device; its time counts in the availability you share ([Busy](notifications.md#busy)). Off unless you turn it on. On a task with steps, a step's timer makes you busy too. Under the switch, a line says what the availability you share holds for the task, or that its time is not known yet.
 
 The time is noted for the task, and for its project: to bill it, and to learn how long things really take ([Time](time.md)). A timer you forgot is cut when you stop it, and the stretch says so ([Time](time.md#where-time-comes-from)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
 
@@ -212,7 +213,7 @@ Then a short screen, read in ten seconds, says:
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
-**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux and on Android, the notification has **Close the work day** too; on a Mac and on Windows it has no button, and a click on it brings Sioul forward (on Windows, opens the same sheet). Pressed once the day turned (05:00), it opens nothing. On Android it comes on time only with "Alarms & reminders" allowed (Settings ▸ This phone, or This tablet): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
+**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux and on Android, the notification has **Close the work day** too; on a Mac and on Windows it has no button, and a click on it brings Sioul forward (on Windows, opens the same sheet). Pressed once the day turned (05:00), it opens nothing. On Android it comes on time only with "Alarms & reminders" allowed (Settings ▸ Devices, this phone's card, or This tablet): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
 
 **At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a small screen in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
 

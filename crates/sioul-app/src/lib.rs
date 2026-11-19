@@ -195,6 +195,7 @@ mod papers;
 mod persons;
 mod payments;
 mod pauses;
+mod phonecard;
 mod phonemsgs;
 // texts: SMS phase (b).
 mod texts;
@@ -212,6 +213,7 @@ mod servers;
 mod share;
 mod sites;
 mod spam;
+mod stars;
 mod steps;
 // tell: the window's notices, one call about one thing (docs/notifications.md).
 mod tell;

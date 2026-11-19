@@ -70,6 +70,8 @@ pub fn event_of(task: &Task, time: Option<(i64, i64)>, today: Date, zone: &TimeZ
         remind: String::new(),
         clock: String::new(),
         geo: String::new(),
+        // A task marked busy stays busy; one that is not keeps its kind's own (a time busy).
+        busy: task.busy.then_some(true),
     }
 }
 
@@ -95,6 +97,8 @@ pub fn task_of(event: &EventEdit) -> TaskEdit {
         repeat: event.repeat.clone(),
         margins: event.margins,
         demands: event.demands,
+        // Busy as an event, busy as a task: its block keeps counting in the availability you share.
+        busy: event.busy.unwrap_or(!event.all_day),
         ..TaskEdit::default()
     }
 }

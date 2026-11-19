@@ -194,6 +194,14 @@ pub struct Entry {
     /// entry as before, the field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub learns: u32,
+    /// Whether its Sioul reads a phone's own calls' table (`[device."<id>"]
+    /// calls`, `sioul_core::calls_line`, format `CALLS_LINES`): 1 from a
+    /// build that does, 0 from an older one, which keeps the shared
+    /// screening whatever its card says; the card says so (review of
+    /// `phones`, M12). An older Sioul reads the entry as before, the field
+    /// unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub calls_lines: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
@@ -285,6 +293,21 @@ pub struct Entry {
     /// Sioul passes over it.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub mirrors: std::collections::BTreeMap<String, i64>,
+    /// The same mirrors, by id: the freshest pull of the task lists their
+    /// tasks' part was worked out from (`sioul_core::availability::BusyTimes::as_of`;
+    /// review of `reach`, B3). A device whose task lists are older neither
+    /// adds, changes nor removes a task's block (`task_writers`). Sealed with
+    /// the rest; an older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub mirror_tasks: std::collections::BTreeMap<String, i64>,
+    /// The busy tasks' times as this device last worked them out from fresh
+    /// task lists (`sioul_core::availability::busy_times`): one record for
+    /// all devices, the freshest winning (`BusyTimes::freshest`), so that a
+    /// device without a plan uses it and a span once shared stays put while it
+    /// holds (review of `reach`, B3 and B4). Sealed with the rest, never on any
+    /// calendar's server; an older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "sioul_core::availability::BusyTimes::is_empty")]
+    pub busy_tasks: sioul_core::availability::BusyTimes,
     /// Its size changed at each writing (`share::pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pad: String,
@@ -319,6 +342,9 @@ fn is_zero(n: &u32) -> bool {
 
 /// What a device's entry says once its Sioul follows what devices are for (`Entry::areas`).
 pub const AREAS: u32 = 1;
+
+/// What a device's entry says once its Sioul reads a phone's own calls' table (`Entry::calls_lines`).
+pub const CALLS_LINES: u32 = 1;
 
 fn is_zero_i64(n: &i64) -> bool {
     *n == 0
@@ -533,6 +559,20 @@ pub fn computer_in_use(entries: &[Entry], own: &str, now: i64) -> bool {
 /// set wrong) is passed over, so that it never holds every other device back.
 pub fn mirror_writers(entries: &[Entry], own: &str, availability: &str, now: i64) -> Vec<i64> {
     entries.iter().filter(|e| e.id != own && !e.left).filter_map(|e| e.mirrors.get(availability).copied()).filter(|at| *at <= now + 600).collect()
+}
+
+/// What the other devices last worked the busy tasks' times out from
+/// (`Entry::mirror_tasks` for `availability`, and `Entry::busy_tasks`), for
+/// whether this device's task lists are as fresh (`availability::tasks_fresh`):
+/// as `mirror_writers` reads them, this device's own left out, one that left
+/// too, a time more than ten minutes ahead of `now` passed over.
+pub fn task_writers(entries: &[Entry], own: &str, availability: &str, now: i64) -> Vec<i64> {
+    entries
+        .iter()
+        .filter(|e| e.id != own && !e.left)
+        .flat_map(|e| e.mirror_tasks.get(availability).copied().into_iter().chain((e.busy_tasks.as_of > 0).then_some(e.busy_tasks.as_of)))
+        .filter(|at| *at <= now + 600)
+        .collect()
 }
 
 /// What this device last wrote into the folder, kept beside its own entry and

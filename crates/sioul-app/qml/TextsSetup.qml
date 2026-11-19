@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ This phone ▸ Texts (« SMS »), on a phone (docs/texts.md): what
+// Settings ▸ Devices ▸ this phone's card ▸ Texts (« SMS »), on a phone (docs/texts.md): what
 // Sioul does with the phone's texts once you allow it, each permission with
 // the sentence that says why, Android's question for them, and the
 // sharing's part "Texts" (off until you turn it on, here and on each computer

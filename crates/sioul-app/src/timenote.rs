@@ -276,6 +276,7 @@ pub unsafe extern "C" fn sioul_time_action(action: *const c_char) -> *mut c_char
         let window = WINDOW.lock().ok().and_then(|w| w.clone());
         let window = window.as_ref().map(|(qt, shared)| (qt, shared));
         act(&action, window);
+        crate::calls::timer_changed();
         let _ = crate::share::exchange_here(false);
         post(window).map(|note| crate::backend::json(&note)).unwrap_or_default()
     })

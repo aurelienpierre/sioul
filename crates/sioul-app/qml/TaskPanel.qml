@@ -911,6 +911,42 @@ Panel {
                     onClicked: panel.sioul.setTaskStatus(panel.uid, "cancelled")
                 }
             }
+            // Busy while you work on it (« Indisponible pendant que j'y travaille »): its timer
+            // makes you busy; its time counts in the availability you share. A list
+            // that keeps no such mark (Google Tasks) greys it, as its other fields.
+            Switch {
+                id: busySwitch
+
+                objectName: "taskBusy"
+                visible: panel.detail !== null && panel.card !== null && panel.card.status !== "completed" && panel.card.status !== "cancelled"
+                enabled: panel.canEdit && panel.keeps("busy")
+                opacity: panel.keeps("busy") ? 1 : 0.45
+                text: panel.sioul.text("busy-task")
+                checked: panel.detail !== null && panel.detail.edit.busy === true
+                onToggled: {
+                    panel.change("busy", busySwitch.checked)
+                    busySwitch.checked = Qt.binding(() => panel.detail !== null && panel.detail.edit.busy === true)
+                }
+            }
+            Label {
+                visible: busySwitch.visible
+                Layout.fillWidth: true
+                text: panel.sioul.text("busy-task-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: panel.theme.muted
+            }
+            // What the availability you share holds for it, or that its time is not known yet.
+            Label {
+                objectName: "taskBusyLine"
+                visible: busySwitch.visible && text !== ""
+                Layout.fillWidth: true
+                text: panel.detail !== null && panel.detail.busy_line ? panel.detail.busy_line : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: panel.theme.muted
+            }
             Button {
                 visible: panel.card !== null && (panel.card.status === "completed" || panel.card.status === "cancelled")
                 flat: true

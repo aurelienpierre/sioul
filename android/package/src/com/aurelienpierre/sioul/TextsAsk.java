@@ -11,7 +11,7 @@ import android.util.Log;
 
 /**
  * Android's question for the texts' permissions (docs/texts.md), asked from
- * Settings ▸ This phone ▸ Texts: reading the texts (READ_SMS), hearing a new
+ * Settings ▸ Devices ▸ this phone's card ▸ Texts: reading the texts (READ_SMS), hearing a new
  * one (RECEIVE_SMS), sending one written on a computer (SEND_SMS), then,
  * apart, the SIMs' names (READ_PHONE_STATE), which Android never keeps
  * behind restricted settings: the first question's answer, timed, says
