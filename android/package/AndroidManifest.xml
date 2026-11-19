@@ -367,6 +367,16 @@
                 <data android:mimeType="text/x-vcalendar" />
             </intent-filter>
         </activity>
+        <!-- An extension's sign-in page (SignIn.java; docs/extensions.md): the
+             system's web view on a screen of Sioul's own, the site's name
+             above it. Started by Sioul alone; it answers no address and
+             registers no scheme. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.SignIn"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
         <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/
              client.md, "Antivirus"): Android's own question where to save it,
              asked by this activity, never shown itself, then the copy there.
