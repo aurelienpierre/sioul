@@ -82,7 +82,7 @@ Choosing one while you have changes of your own asks first: "Quieter replaces yo
 ## What comes when {#by-time}
 
 <figure markdown="span">
-  [![What reaches you, What comes when: one table, the rows down in their groups (Mail, Messages, What you set or asked for, Reminders, Your day, Sites), the seven times and the two layers across, Work marked as now, each cell a word: Now, Shown, Later, Held, Silent, Gathered, At its event, Porch.](../assets/screens/attention-table.png){ loading=lazy }](../assets/screens/attention-table.png "Open the picture at full size")
+  [![What reaches you, What comes when: one table, the rows down in their groups (Mail, Calls with the line that a phone's own table replaces them, Messages, What you set or asked for, Reminders, Your day, Sites), the seven times and the two layers across, Work marked as now, each cell a word: Now, Shown, Later, Held, Silent, Gathered, At its event, Porch.](../assets/screens/attention-table.png){ loading=lazy }](../assets/screens/attention-table.png "Open the picture at full size")
   <figcaption>What comes when: every row at every time, a word in each cell.</figcaption>
 </figure>
 
