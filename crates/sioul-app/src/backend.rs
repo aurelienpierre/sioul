@@ -8419,6 +8419,8 @@ impl qobject::Sioul {
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
             // The papers' or letters' folder (Papers ▸ ⚙, Letters ▸ ⚙): once Sioul's lists moved, the files follow, off this thread.
             ("papers.folder" | "letters.folder", config::SettingValue::Text(folder)) => crate::storage::change_folder(&self.qt_thread(), &self.shared(), &key, &folder),
+            // The notes folder: once the lists moved, never in or around their folders (`storage::check_notes_folder`).
+            ("case_store", config::SettingValue::Text(folder)) => crate::storage::check_notes_folder(&folder).and_then(|()| sioul_core::settings::change(&config_path(), &key, shown.as_ref(), &config::SettingValue::Text(folder))),
             ("passwords_shown", config::SettingValue::Bool(on)) => {
                 work::set_view_flag(&self.shared(), "passwords-shown", on);
                 Ok(())

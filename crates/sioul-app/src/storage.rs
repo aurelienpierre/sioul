@@ -92,6 +92,20 @@ fn moved_now(papers: &str, letters: &str, carry: bool) -> Result<String, String>
     Ok(line.join(" "))
 }
 
+/// The notes folder chosen again (Notes ▸ ⚙, or the Notes page that asks
+/// for it), once this device's lists moved: never in or around the papers'
+/// or letters' folder nor Sioul's own (review S25), as each resolves. None
+/// chosen: as it was.
+pub(crate) fn check_notes_folder(folder: &str) -> Result<(), String> {
+    let config = load_config();
+    if folder.trim().is_empty() || !config.storage.is_moved() {
+        return Ok(());
+    }
+    let data = sioul_core::config::data_dir();
+    let folders = Folders { notes: crate::backend::local_path(folder.trim()), records: data.join(storage::RECORDS), papers: config.papers_folder(), letters: config.letters_folder(), kept: data.join(storage::KEPT), state: sioul_core::config::state_dir() };
+    storage::check_folders(&folders).map_err(said)
+}
+
 /// A move's fault in one sentence, naming what it is about (`storage-<code>`, `$what`).
 pub(crate) fn said(fault: storage::Fault) -> String {
     say(&format!("storage-{}", fault.code), &[("what", fault.what)])
@@ -304,10 +318,20 @@ pub(crate) fn view_json() -> String {
 /// thread, said in the status line.
 pub(crate) fn change_folder(qt: &QtThread, shared: &Arc<Shared>, key: &str, folder: &str) -> Result<(), String> {
     let config = load_config();
+    // An emptied row is refused: the folder would change with none of its files (review S25).
+    if folder.trim().is_empty() {
+        return Err(tr().text("storage-folder-empty", None));
+    }
     let chosen = crate::backend::local_path(folder.trim());
     let path = crate::backend::config_path();
     let text = |p: &std::path::Path| sioul_core::config::SettingValue::Text(p.display().to_string());
-    if !config.storage.is_moved() || folder.trim().is_empty() {
+    // The same checks as the move's (rule 4): never in or around the notes folder, Sioul's own
+    // folders or the other documents' folder, as each resolves.
+    let data = sioul_core::config::data_dir();
+    let (papers, letters) = if key == "papers.folder" { (chosen.clone(), config.letters_folder()) } else { (config.papers_folder(), chosen.clone()) };
+    let folders = Folders { notes: config.notes_root_path().unwrap_or_default(), records: data.join(storage::RECORDS), papers, letters, kept: data.join(storage::KEPT), state: sioul_core::config::state_dir() };
+    storage::check_folders(&folders).map_err(said)?;
+    if !config.storage.is_moved() {
         return sioul_core::config::set_value(&path, key, &text(&chosen));
     }
     let Some(records) = config.records_root() else { return sioul_core::config::set_value(&path, key, &text(&chosen)) };
@@ -327,7 +351,7 @@ pub(crate) fn change_folder(qt: &QtThread, shared: &Arc<Shared>, key: &str, fold
         });
         let line = match moved {
             Ok(_) => say("storage-folder-moved", &[("folder", chosen.display().to_string())]),
-            Err(fault) => tr().text(&format!("storage-{}", fault.code), None),
+            Err(fault) => said(fault),
         };
         let qt_again = qt.clone();
         let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));

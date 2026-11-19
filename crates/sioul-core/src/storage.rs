@@ -1340,8 +1340,15 @@ pub fn move_documents(from: &Path, to: &Path, list: &Path, table: &str, switch: 
     if !to.is_absolute() {
         return Err(Fault::new("folder-not-absolute", to.display()));
     }
-    if to.starts_with(from) || from.starts_with(to) {
+    let (real_from, real_to) = (resolved(from), resolved(to));
+    if real_to.starts_with(&real_from) || real_from.starts_with(&real_to) {
         return Err(Fault::new("folders-same", to.display()));
+    }
+    // Empty, or not there yet: everything in it is shared by Sioul (review S3, S25).
+    let mut there = Vec::new();
+    walk(to, to, &mut there)?;
+    if !there.is_empty() {
+        return Err(Fault::new("folder-not-empty", to.display()));
     }
     let mut found = Vec::new();
     walk(from, from, &mut found)?;

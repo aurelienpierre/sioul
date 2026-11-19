@@ -460,19 +460,26 @@ fn a_folder_chosen_again_moves_its_files_with_the_same_care() {
     let list = records.join(crate::papers::MANIFEST);
     std::fs::write(&list, format!("# kept\n[[paper]]\nid = \"passport\"\nkind = \"passport\"\ntitle = \"Passport\"\nfile = \"Passport.pdf\"\n\n[[paper]]\nid = \"card\"\nkind = \"identity\"\ntitle = \"Card\"\nfile = \"{}\"\n", from.join("ids").join("Card.png").display().to_string().replace('\\', "/"))).unwrap();
     let before = tree(&from);
-    // A file of the person's in the way: nothing switched, nothing left.
+    // A folder that holds a file already: refused, nothing switched, nothing left (review S25).
     std::fs::create_dir_all(&to).unwrap();
-    std::fs::write(to.join("Passport.pdf"), "another").unwrap();
+    std::fs::write(to.join("Other.pdf"), "another").unwrap();
     let mut switched = false;
     let fault = move_documents(&from, &to, &list, "paper", || {
         switched = true;
         Ok(())
     })
     .unwrap_err();
-    assert_eq!(fault.code, "records-taken");
-    assert!(!switched && !to.join("ids").join("Card.png").exists() && text(&to.join("Passport.pdf")) == "another");
-    // Out of the way: it goes.
-    std::fs::remove_file(to.join("Passport.pdf")).unwrap();
+    assert_eq!(fault.code, "folder-not-empty");
+    assert!(!switched && !to.join("ids").join("Card.png").exists() && text(&to.join("Other.pdf")) == "another");
+    // The same folder under another spelling: refused.
+    #[cfg(unix)]
+    {
+        let link = base.join("PapersLink");
+        std::os::unix::fs::symlink(&from, &link).unwrap();
+        assert_eq!(move_documents(&from, &link.join("ids"), &list, "paper", || Ok(())).unwrap_err().code, "folders-same");
+    }
+    // Emptied: it goes.
+    std::fs::remove_file(to.join("Other.pdf")).unwrap();
     let moved = move_documents(&from, &to, &list, "paper", || {
         switched = true;
         Ok(())
