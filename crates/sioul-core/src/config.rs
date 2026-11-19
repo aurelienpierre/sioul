@@ -157,6 +157,9 @@ pub struct Config {
     /// What an AI agent connected to `sioul mcp` may use (`[mcp]`, docs/mcp.md).
     #[serde(default)]
     pub mcp: McpSettings,
+    /// Where the extensions' signed list is read (`[extensions]`, docs/extensions.md).
+    #[serde(default)]
+    pub extensions: ExtensionSettings,
     /// Your accounts, those switched on (`Config::load` sets the others aside).
     #[serde(rename = "account", default)]
     pub accounts: Vec<Account>,
@@ -852,6 +855,26 @@ pub struct GithubSettings {
 
 fn yes() -> bool {
     true
+}
+
+/// Where the extensions' signed list is read (`[extensions]`, docs/extensions.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ExtensionSettings {
+    /// The manifest's address: `https://…`, or a file on this device (a path
+    /// or `file://…`) for trials before the repository is public; its
+    /// signature is checked all the same. None: the repository's.
+    #[serde(default)]
+    pub manifest: Option<String>,
+}
+
+/// The extensions' repository's manifest, when the configuration names none.
+pub const EXTENSIONS_MANIFEST: &str = "https://raw.githubusercontent.com/aurelienpierre/sioul-extensions/main/manifest.toml";
+
+impl ExtensionSettings {
+    /// The manifest's address: the one set, else the repository's.
+    pub fn manifest_address(&self) -> &str {
+        self.manifest.as_deref().map(str::trim).filter(|m| !m.is_empty()).unwrap_or(EXTENSIONS_MANIFEST)
+    }
 }
 
 /// What an AI agent connected to `sioul mcp` may use, beyond reading and
