@@ -240,6 +240,7 @@ Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to wh
 - **Share with…** asks only who: **A person** (a user name, `user@server` or an address), **A group**, **Anyone with a link**, or **A booking tool**. Sioul then says which way it will use and why, in one sentence; **Another way** shows the next one. **Share** makes it.
 - **Your server's own way comes first**, because it needs no Sioul running and never goes out of date: on Google, your calendars shared busy only, or their public free/busy for a link; Fastmail's own link of busy times; a booking page on your own server, Nextcloud's Appointments or Google's appointment schedules, which Sioul opens for you and whose link you paste back. Google then shows the events' exact times, without the time you keep around them, and the line says so.
 - **Elsewhere, a calendar of busy blocks**, kept by Sioul in one of your accounts and named after you ("Alex, busy times"): shared with someone on your Nextcloud, with a group, with someone on another Nextcloud, or by its link. It says only the day it was last brought up to date, never the time. In Your agendas it shows as kept for its availability, and pressing it opens Your availability.
+- **Your days off are busy all day** for those you share with: your vacations and the holidays that count as your days off, each a whole day "Busy", never saying why. They hold nothing of what reaches you: do-not-disturb does not follow them. Only a calendar of busy blocks kept by Sioul shows them; a server's own way shows only your calendars' events.
 - **The wider the audience, the coarser the view**: a person or a group sees your exact busy times for the next two months; a link sees them rounded to the quarter hour, for the next two weeks; a booking tool sees two months, and then nothing it could offer.
 - **Each share's line** says who sees what, its link with **Copy**, **Open** for a booking page, and who keeps it up to date: your server, or your devices, the phone in the background and a computer while Sioul runs. When a calendar of blocks has not been brought up to date for a day, Sioul says so once, at your next admin time. **Stop** takes that share back, with Undo.
 - **Each Nextcloud** you use shows your busy times to its users when they invite you; Agenda ⚙ says so, with **Send my working hours to cloud.example.org**, off at first, so that they also see when you work.
@@ -326,7 +327,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files; more than one reminder of Sioul's for an event; a day off busy in the availability you share.
+Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files; more than one reminder of Sioul's for an event.
 
 ## Going further {#going-further}
 

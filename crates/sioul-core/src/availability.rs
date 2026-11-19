@@ -456,6 +456,22 @@ pub fn plan_spans(plan: &crate::plan::Plan, settings: &crate::plan::Settings, ta
     out
 }
 
+/// Your days off as busy time (18 November 2026; design-calendars §2, the
+/// owner's decision 3): each day that counts as a day off, as the one
+/// function says it (`vacations::DaysOff`: a vacation you typed, a holiday
+/// of a calendar that counts), busy from its midnight to the next in `zone`,
+/// within `window`; they go with the busy tasks' times (`TaskTime::spans`),
+/// said "Busy" as those are, and days in a row make one block. Only the
+/// availability you share reads them: a day off is busy for others, never a
+/// reason to hold what reaches you (`busy::stretches`, which do-not-disturb
+/// reads, knows nothing of it).
+pub fn days_off_spans(days_off: &crate::vacations::DaysOff, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
+    let day_of = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
+    let (Some(first), Some(last)) = (day_of(window.0), day_of(window.1)) else { return Vec::new() };
+    let midnight = |date: jiff::civil::Date| date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    days_off.days(first, last).into_iter().map(|date| (midnight(date), date.tomorrow().map_or(midnight(date) + DAY, midnight))).filter(|(start, end)| end > start && *end > window.0 && *start < window.1).collect()
+}
+
 /// The blocks of `events` within `window` (those of the agendas picked that
 /// mark you busy, `busy::event_marked`: not cancelled, free or declined; a
 /// whole day only when said busy), and the busy tasks' times (`tasks`), each
@@ -890,6 +906,29 @@ mod tests {
 
     fn mine(agendas: &[&str]) -> Availability {
         Availability { id: "a1".into(), agendas: agendas.iter().map(|a| a.to_string()).collect(), ..Availability::default() }
+    }
+
+    /// A day off is busy all day in the availability you share (decision 3
+    /// of design-calendars), whatever its source: a vacation typed, a public
+    /// holiday of a calendar that counts; days in a row one block, said
+    /// "Busy"; a holiday of a calendar that does not count, nothing. The
+    /// busy stretches do-not-disturb reads know nothing of it.
+    #[test]
+    fn a_day_off_is_busy_all_day_for_others_alone() {
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let midnight = |text: &str| text.parse::<jiff::civil::Date>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let typed = [crate::config::TimeOff { id: String::new(), from: "2030-12-23".parse().unwrap(), until: "2030-12-24".parse().unwrap(), label: "Away".into(), kind: "sick".into() }];
+        let public = crate::subscribed::HolidayDays { id: "fr".into(), name: "Jours fériés".into(), holidays: crate::subscribed::Holidays::Public, days_off: true, periods: vec![("2030-12-25".parse().unwrap(), "2030-12-25".parse().unwrap(), "Noël".into())], as_of: Some(1) };
+        let school = crate::subscribed::HolidayDays { id: "zone".into(), name: "Zone A".into(), holidays: crate::subscribed::Holidays::School, days_off: false, periods: vec![("2030-12-28".parse().unwrap(), "2031-01-03".parse().unwrap(), String::new())], as_of: Some(1) };
+        let off = crate::vacations::DaysOff::with_holidays(&typed, &[public, school]);
+        let window = (midnight("2030-12-01"), midnight("2031-01-31"));
+        let spans = days_off_spans(&off, window, &zone);
+        assert_eq!(spans.len(), 3, "three days off, the school holidays not counted");
+        let time = TaskTime { spans, ..TaskTime::default() };
+        let found = blocks(&[], &mine(&["me/personal"]), &WORDS, &BTreeSet::new(), &time, window);
+        assert_eq!(found, [Block { start: midnight("2030-12-23"), end: midnight("2030-12-26"), word: "Busy".into() }], "one block, all day, saying nothing of why");
+        assert!(days_off_spans(&off, (midnight("2031-02-01"), midnight("2031-03-01")), &zone).is_empty(), "outside the window: nothing");
+        assert!(crate::busy::stretches_of(&[], None, window.0, window.1).is_empty(), "do-not-disturb's busy stretches: nothing of it");
     }
 
     /// The blocks: the agendas picked alone, what takes time alone, each

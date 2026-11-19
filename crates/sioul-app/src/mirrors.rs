@@ -273,7 +273,10 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
     let health = av::health_events(&events, &av::errand_tasks(&tasks, &recorded));
     // Only what is marked busy: a task's own time where it is fixed, else the plan's before its date asked.
     let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
-    let task_time = av::task_time(&tasks, &events, &planned(), estimate, &zone, now);
+    let mut task_time = av::task_time(&tasks, &events, &planned(), estimate, &zone, now);
+    // Your days off, busy all day for others (decision 3 of design-calendars), from the one
+    // function that says them (`vacations::DaysOff`); never for do-not-disturb (`busy::stretches`).
+    task_time.spans.extend(av::days_off_spans(&sioul_core::vacations::DaysOff::of(config), widest, &zone));
     let (busy, not_known) = (tr().text("availability-busy", None), tr().text("availability-not-known", None));
     let words = av::Words { busy: &busy, not_known: &not_known };
     let mut changed: Vec<String> = Vec::new();
