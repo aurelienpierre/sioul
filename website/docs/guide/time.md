@@ -227,7 +227,7 @@ These choices are in [Settings ▸ Invoices](settings.md#invoices): your country
 
 ### Your clients {#your-clients}
 
-A client can have a profile, tied to their contact and kept in `sioul-clients.toml` in your notes folder: a business, a person or a public body; the legal name; the billing address and, when it differs, the delivery address; their identifiers (a SIREN, a VAT number); the language, currency and payment terms of their invoices; the address invoices are mailed to; a purchase order to print.
+A client can have a profile, tied to their contact and kept in `sioul-clients.toml`, among Sioul's own lists (in your notes folder until you move them: [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)): a business, a person or a public body; the legal name; the billing address and, when it differs, the delivery address; their identifiers (a SIREN, a VAT number); the language, currency and payment terms of their invoices; the address invoices are mailed to; a purchase order to print.
 
 <figure markdown="span">
   [![A client's project on the Projects page: under its title, the client's profile in one line, with Client profile… beside it; Make the invoice among the project's buttons; its time and its invoices below.](../assets/screens/project-client.png){ loading=lazy }](../assets/screens/project-client.png "Open the picture at full size")
@@ -259,7 +259,7 @@ The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and s
 - Quotes.
 - Merging a draft changed on two devices before they exchange: for now the later version replaces the other whole, Sioul says so on the device whose changes were replaced, and keeps that version among its earlier versions ([On several devices](#on-several-computers)).
 - Saying in the window what a payment in another currency came to in euros: for now, `sioul invoices received` says it ([Paid, and credit notes](#paid-and-credit-notes)).
-- Taking a client profile out from the window: for now, delete it from `sioul-clients.toml` in your notes folder.
+- Taking a client profile out from the window: for now, delete it from `sioul-clients.toml`, among Sioul's own lists (`~/.local/share/sioul/records/` on Linux, or your notes folder until Sioul's lists move).
 - The time running in the notifications of Windows and macOS: the focus window alone shows it there.
 
 ## Going further {#going-further}

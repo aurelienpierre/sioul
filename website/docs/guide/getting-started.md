@@ -166,7 +166,7 @@ Each device keeps all of its data, and works without the others. Three things ke
 | What | How it reaches your other devices |
 |---|---|
 | Mail, contacts, events and tasks | through their own servers, as with any program |
-| What Sioul keeps on the device: your settings, your accounts (never their passwords), your hours, who may reach you, the ties between things, drafts | through Sioul's **sharing**: a folder that carries sealed changes |
+| What Sioul keeps on the device: your settings, your accounts (never their passwords), your hours, who may reach you, the ties between things, drafts, and its own lists (projects, budgets…) once they have left your notes folder | through Sioul's **sharing**: a folder that carries sealed changes |
 | Your notes folder | by its own sync app, or through the sharing once you switch it on |
 
 A sync app you already use carries the sharing folder (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive or another), or Sioul carries it itself when you have a Nextcloud account. Every change is encrypted on your device before it is written there, with a key made from a passphrase you choose: the folder and its server can read nothing. There is no server of ours.

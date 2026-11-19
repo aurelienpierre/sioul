@@ -2867,7 +2867,7 @@ label = {toml_string(t("Leave", "Congés"))}
 
 language = "{LANG}"
 
-# The folder of notes, beside them the projects, budgets, the bank, the papers.
+# The folder of notes (Sioul's lists, papers and letters in folders of their own: below).
 case_store = {toml_string(p.notes_at)}
 
 # Minutes for tasks on each weekday, Monday first.
@@ -3102,6 +3102,48 @@ def as_written_before(p: Profile):
         p.write(ledger, ledger.read_text(encoding="utf-8").replace("sioul:project/", "sioul:case/"), moment)
 
 
+def move_lists(p: Profile, documents_at: str):
+    """Sioul's lists out of the notes folder, as a device that moved keeps them
+    (docs/notes-folder.md, "What lives where"): the lists in the data folder's
+    records/, the papers' files in Documents/Papers, the letters' scans and
+    their inbox in Documents/Letters, the lists' paths named from there, the
+    state folder saying so, the two folders this device's own in config.toml.
+    Each file keeps its time. The notes folder holds the notes alone."""
+    records, documents = p.data / "records", p.root / "documents"
+    lists = ["sioul-projects.toml", "sioul-cases.toml", "sioul-clients.toml", "sioul-budgets.toml", "sioul-bank.toml",
+             "sioul-movements.toml", "sioul-contracts.toml", "sioul-papers.toml"]
+    def move(source: Path, target: Path):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+    for name in lists:
+        if (p.notes / name).is_file():
+            move(p.notes / name, records / name)
+    for old, folder in (("papers", "Papers"), ("letters", "Letters")):
+        top = p.notes / old
+        for path in sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else []:
+            relative = path.relative_to(top)
+            own = old == "letters" and len(relative.parts) == 1 and (path.name == "letters.toml" or path.suffix == ".txt")
+            move(path, records / "letters" / relative if own else documents / folder / relative)
+        for folder_left in sorted((d for d in top.rglob("*") if d.is_dir()), reverse=True) if top.is_dir() else []:
+            folder_left.rmdir()
+        if top.is_dir():
+            top.rmdir()
+    for list_file, prefix in ((records / "sioul-papers.toml", "papers/"), (records / "letters" / "letters.toml", "letters/")):
+        if list_file.is_file():
+            moment = datetime.fromtimestamp(list_file.stat().st_mtime).astimezone()
+            p.write(list_file, list_file.read_text(encoding="utf-8").replace(f'file = "{prefix}', 'file = "'), moment)
+    p.write(p.state / "storage.toml", f"moved = {int(unix(p.clock.now))}\nfrom = {toml_string(p.notes_at)}\ncleaned = 0\n")
+    config = p.config / "config.toml"
+    p.write(config, config.read_text(encoding="utf-8") + f"""
+# This device's own folders for papers and letters (docs/papers.md): Sioul's lists are in its own folder.
+[papers]
+folder = {toml_string(documents_at + "/Papers")}
+
+[letters]
+folder = {toml_string(documents_at + "/Letters")}
+""")
+
+
 def main():
     global LANG, W, ONGOING, DAYS_OFF, CONFLICT, SHORTFALL
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -3124,6 +3166,9 @@ def main():
                         help="two letters you said are spam, from proven senders offering one click (SIOUL_DEMO_LEAVE_SPAM=1 too)")
     parser.add_argument("--compose", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_COMPOSE")),
                         help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
+    parser.add_argument("--old-layout", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_LAYOUT")),
+                        help="Sioul's lists left in the notes folder, as before they moved to its own folder (SIOUL_DEMO_OLD_LAYOUT=1 too)")
+    parser.add_argument("--documents-at", help="where Sioul finds DIR/documents when it runs (default: beside the notes, Documents)")
     parser.add_argument("--old-projects", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_PROJECTS")),
                         help="the projects' file under its first name, sioul-cases.toml with [[case]], and the budgets' ties as sioul:case/: Settings offers to rename it (SIOUL_DEMO_OLD_PROJECTS=1 too)")
     parser.add_argument("--doses-asked", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DOSES_ASKED")),
@@ -3180,6 +3225,8 @@ def main():
     write_health(profile, args.doses_asked)
     write_weather(profile)
     write_site_news(profile)
+    if not args.old_layout:
+        move_lists(profile, args.documents_at or str(Path(profile.notes_at).parent / "Documents"))
     print(f"{root}: a demo profile for {clock.now.isoformat()}, in {'French' if LANG == 'fr' else 'English'}" + ("" if profile.hours else ", without hours"))
 
 

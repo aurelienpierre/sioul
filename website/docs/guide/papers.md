@@ -10,10 +10,10 @@ Papers keeps the documents you are asked for again and again (an identity card, 
 
 ## Protected by default {#what-is-protected}
 
-- Your papers and your letters stay in your notes folder, on your devices. There is no server of Sioul's.
+- Your papers and your letters stay on your devices: their files in a papers' folder and a letters' folder of your own, their lists among Sioul's own lists (until you move those lists, everything is in your notes folder: [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). There is no server of Sioul's.
 - Letters are read on your own computer, by programs of your system: no scan is sent anywhere to be read.
 - An attachment becomes a paper only after your antivirus checked it (Android has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
-- Between your devices, papers travel by your folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents ([Sharing](sharing.md)).
+- Between your devices, the papers' and letters' files travel by their folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents. Their lists travel sealed in the part **Projects and money** ([Sharing](sharing.md)).
 - The tasks made from a letter or a renewal go to your task list: if that list is on your calendar server, their titles are there too. Choose a list kept on this device if you would rather not.
 - An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold. Papers for one of your people reach it only once you open that person, and nobody's health papers but yours ever do.
 
@@ -72,7 +72,7 @@ Rent receipts, payslips and attestations have no end: they are said older than t
 
 ### Where papers live {#where-papers-live}
 
-`sioul-papers.toml` at the root of your notes folder, and the files in its `papers` folder: they travel with your notes folder, or through Sioul's sharing once you switch **Papers** on in it ([Sharing](sharing.md)). **Take out** removes a paper from the wallet; its file stays where it is.
+The list, `sioul-papers.toml`, is one of Sioul's own lists, a plain text file in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), which you may edit by hand. The files are in the papers' folder, `Documents/Papers` unless you choose another in the page's ⚙ (**The papers' folder**, this device's own); a paper names its file from that folder. Until you move Sioul's lists, the list is at the root of your notes folder and the files in its `papers` folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Choosing another papers' folder afterwards copies the files there, each checked, and leaves the old folder as it was. The list travels sealed through Sioul's sharing, in **Projects and money**; the files by the papers' folder's own sync, or through the sharing once you switch **Papers** on ([Sharing](sharing.md)). **Take out** removes a paper from the wallet; its file stays where it is.
 
 ## Paper letters {#paper-letters}
 
@@ -82,7 +82,7 @@ The letters have their own page, **Letters** in the sidebar. It opens on the let
 
 ### Setting it up {#setting-it-up}
 
-1. In the Letters page's ⚙, **Where scans arrive**: the folder your scans come to. Unset, it is `letters/inbox` in your notes folder. A phone's scanner app syncing into it works too. A folder you chose earlier in the Porch's settings stays the one used.
+1. In the Letters page's ⚙, **Where scans arrive**: the folder your scans come to. Unset, it is `inbox` in the letters' folder (above it, **The letters' folder**: `Documents/Letters` unless you choose another; `letters/inbox` in your notes folder until you move Sioul's lists, [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). A phone's scanner app syncing into it works too. A folder you chose earlier in the Porch's settings stays the one used.
 2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the page says how to install them, under its bar and in its ⚙ ([Install](install.md#the-packages)).
 3. On the page's bar, **Add a scan…** copies a PDF or a picture into that folder; **Link scans…** links scans you keep elsewhere, where they are: they are read like the others and never copied, and if one is later moved or deleted, its card says so; **Open the folder** opens it. The **New** menu's **A paper letter (scan)…** adds a scan from any page.
 
@@ -105,7 +105,7 @@ Then:
 - **Into the agenda**, for an appointment;
 - **For…**: whom it is for, when it is one of your people: its address block's name is read ("For Léa"), and you can tick others;
 - the project it belongs to;
-- **Done, filed**: the scan moves to `letters/<year>/`, named by its day, its sender and its kind; its text is kept. A linked scan stays where it is. The letter then shows among those filed, under its year, its scan one click away.
+- **Done, filed**: the scan moves to `<year>/` in the letters' folder, named by its day, its sender and its kind; its text is kept. A linked scan stays where it is. The letter then shows among those filed, under its year, its scan one click away.
 
 ### Not there yet {#not-there-yet}
 
@@ -119,7 +119,7 @@ The rules read French first, and English too, by rules rather than guesses. They
 
 ### Filed, with its text {#filed-with-its-text}
 
-**Done, filed** moves the scan to `letters/<year>/`, named by its day, its sender and its kind. What Sioul read of it is kept too, as a text file in the `letters` folder.
+**Done, filed** moves the scan to `<year>/` in the letters' folder, named by its day, its sender and its kind. What Sioul read of it is kept too, as a text file beside the letters' list, among Sioul's own lists (`records/letters/`; in the notes folder's `letters` folder until Sioul's lists move).
 
 ### Where the tasks go {#where-the-tasks-go}
 
@@ -193,7 +193,7 @@ As of October 2026, from each app's own documentation.
 |---|---|---|---|---|---|---|
 | Where the text is read | your computer | your server; Azure AI if you choose it | your server | not stated | not stated | not stated |
 | How letters are sorted | written rules, French and English | matching rules and machine learning; a language model if you turn it on (OpenAI-compatible, or Ollama on your machine) | machine learning and language rules (German, English, French, Spanish) | — | — | — |
-| Where documents are kept | your notes folder | your server, "in clear text without encryption" | your server | Adobe Document Cloud | Google Cloud, in the United States | La Poste's servers, in France |
+| Where documents are kept | folders of your own, on your device | your server, "in clear text without encryption" | your server | Adobe Document Cloud | Google Cloud, in the United States | La Poste's servers, in France |
 | Encrypted end to end between your devices | ✓¹ | —² | —² | ✗ | ✗³ | ✗ |
 | Needs an account with the maker | no | no | no | yes, across devices | yes | yes |
 | Free software | ✓ GPL-3.0+ | ✓ GPL-3.0 | ✓ AGPL-3.0+ | ✗ | ✗ | ✗ |
@@ -217,13 +217,13 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 **Reading a scan.** A PDF that holds its text is read by Poppler's `pdftotext`; otherwise its pages are made images by `pdftoppm` and read by Tesseract, as photos and images are, in French and English (`fra+eng`) when those languages are installed. These are your system's own programs, run as local processes on your computer; their pages are written in Sioul's cache while read, then emptied. Nothing leaves the computer. When they are missing, the scans wait, and the Porch says how to install them.
 
-**The inbox.** `letters/inbox` in the notes folder, or a folder you choose; PDF, PNG, JPEG, TIFF and WebP. A file changed in the last 20 seconds waits for the next minute, and each file is read once (by its name, size and time).
+**The inbox.** `inbox` in the letters' folder (`letters/inbox` in the notes folder until Sioul's lists move), or a folder you choose; PDF, PNG, JPEG, TIFF and WebP. A file changed in the last 20 seconds waits for the next minute, and each file is read once (by its name, size and time).
 
 **Understanding it.** Written rules, no machine learning: the sender by the words of its letterhead; the kind by its phrases; the amount on the line that asks for it ("à payer", "montant dû", "amount due"), else the first amount after a word that names one; the deadline, a date within six words after words that ask by when ("avant le", "au plus tard le", "date limite", "échéance", "no later than", "due by"), never more than 30 days before the scan's day; a delay ("dans un délai de deux mois à compter de la notification", "sous huitaine", "within 30 days") counted from the day the scan came, or from the letter's own date.
 
-**Files.** `sioul-papers.toml` and the `papers` folder at the root of your notes folder, each written whole beside its place, then moved into it; `letters/letters.toml`, each letter's text in `letters/<id>.txt`, the scans filed in `letters/<year>/`. Plain files, readable by other programs.
+**Files.** Each written whole beside its place, then moved into it: `sioul-papers.toml` in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), each paper's `file` named from the papers' folder (`passport.pdf`); the letters' list, `records/letters/letters.toml`, each letter's text in `records/letters/<id>.txt`, the scans filed in `<year>/` of the letters' folder, each letter's `file` named from it (`2026/…`). The papers' and letters' folders are `papers.folder` and `letters.folder` in `config.toml`, each device's own. Before the move, everything was in the notes folder: `sioul-papers.toml` and `papers/` at its root, `letters/letters.toml`, `letters/<id>.txt`, `letters/<year>/`; a device not moved yet and one moved read each other's paths. Plain files, readable by other programs.
 
-**Sealed between devices.** With **Papers** on in Sioul's sharing, `sioul-papers.toml` travels sealed like every record, and each file of the `papers` folder compressed and sealed apart, in pieces of 1 MiB, each sealed with XChaCha20-Poly1305 with the file's name, its index and an end flag as associated data, so that pieces cannot be swapped, cut or added. Their names in the folder are HMAC-SHA-256 of the content's hash, under a sub-key derived by HKDF-SHA-256 from the sharing key: the folder sees neither the files' names nor their contents. Files over 64 MiB stay on the device that has them ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)). Letters travel with the notes.
+**Sealed between devices.** `sioul-papers.toml` travels sealed like every record, in **Projects and money** once Sioul's lists have moved (in **Papers** before). With **Papers** on in Sioul's sharing, each file of the papers' folder is compressed and sealed apart, in pieces of 1 MiB, each sealed with XChaCha20-Poly1305 with the file's name, its index and an end flag as associated data, so that pieces cannot be swapped, cut or added. Their names in the folder are HMAC-SHA-256 of the content's hash, under a sub-key derived by HKDF-SHA-256 from the sharing key: the folder sees neither the files' names nor their contents. Files over 64 MiB stay on the device that has them ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)). Once Sioul's lists have moved, the letters' list and texts travel in **Projects and money** and their scans in **Papers**; before, letters travel with the notes.
 
 **The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first; Android has none Sioul can call, and there the file is kept unchecked. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
 
