@@ -482,3 +482,21 @@ fn a_counted_series_says_how_many_take_place() {
     let fr = crate::i18n::Translator::new("fr");
     assert!(count_words(&paused, &now, &fr).contains("10 dates, dont 2 en pause"), "{}", count_words(&paused, &now, &fr));
 }
+
+/// The review's F38 and F39: a rule another program wrote with more than
+/// 999 times keeps its count through a save that changes the title alone;
+/// a series that would end before its first date is said, never written.
+#[test]
+fn a_long_count_is_kept_and_an_end_before_the_start_is_said() {
+    let zone = paris();
+    let ten = agenda::new_event(&EventEdit { title: "Lessons".into(), start: "2030-10-02T17:00".into(), end: "2030-10-02T18:00".into(), repeat: "daily".into(), every: 1, ends: "count".into(), count: 10, ..EventEdit::default() }, &zone).unwrap();
+    let long = ten.replace("COUNT=10", "COUNT=1095");
+    let form = agenda::edit_of_text(&long, &zone).unwrap();
+    assert_eq!(form.count, 1095);
+    let renamed = agenda::apply(&long, &EventEdit { title: "Daily lessons".into(), ..form }, &zone).unwrap();
+    assert!(renamed.contains("COUNT=1095"), "{renamed}");
+    let early = EventEdit { title: "Class".into(), start: "2030-10-02T17:00".into(), end: "2030-10-02T18:00".into(), repeat: "weekly".into(), every: 1, ends: "until".into(), until: "2030-09-01".into(), ..EventEdit::default() };
+    assert!(agenda::ends_before_it_starts(&early));
+    assert!(!agenda::ends_before_it_starts(&EventEdit { until: "2030-10-02".into(), ..early.clone() }), "its first day is no end before it");
+    assert!(!agenda::ends_before_it_starts(&EventEdit { repeat: String::new(), ..early }));
+}

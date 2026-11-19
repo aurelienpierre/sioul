@@ -509,3 +509,64 @@ fn a_former_address_s_copy_never_stands_for_a_new_one() {
     assert!(line(id, &now, &tr).contains("Nothing was read from it yet"), "{}", line(id, &now, &tr));
     vdir::remove_subscribed(id).unwrap();
 }
+
+/// The review's F18: a subscribed calendar is read only by its account,
+/// whatever state file there is or is not.
+#[test]
+fn a_subscribed_calendar_is_read_only_without_its_state() {
+    crate::config::stand_ins_only();
+    let id = "nostate-test";
+    vdir::replace_subscribed(id, "Copy", None, &[("a.ics".into(), PUBLIC.into())]).unwrap();
+    assert_eq!(vdir::calendar_read_only(&folder(id).join("a.ics")), Some(true));
+    vdir::remove_subscribed(id).unwrap();
+}
+
+/// The review's F25 and F29: a holiday counts as far as the agenda shows
+/// (any year from 1970 to 2200, whatever today is); a whole day is its own
+/// day even where its midnight does not exist.
+#[test]
+fn holidays_count_whatever_the_year_and_the_missing_midnight() {
+    crate::config::stand_ins_only();
+    let santiago = jiff::tz::TimeZone::get("America/Santiago").unwrap();
+    // A day of 2030 whose midnight does not exist there (the clocks go forward at midnight).
+    let skipped = (0..365).filter_map(|n| jiff::civil::date(2030, 1, 1).checked_add(jiff::Span::new().days(n)).ok()).find(|d| d.to_zoned(santiago.clone()).is_ok_and(|z| z.time() != jiff::civil::Time::midnight()));
+    let day_of = |d: Date| d.strftime("%Y%m%d").to_string();
+    let mut events = vec![("1990-07-14".parse::<Date>().unwrap(), "Old"), ("2190-07-14".parse::<Date>().unwrap(), "Far")];
+    if let Some(day) = skipped {
+        events.push((day, "Skipped midnight"));
+    }
+    let mut text = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n");
+    for (n, (day, name)) in events.iter().enumerate() {
+        text.push_str(&format!("BEGIN:VEVENT\r\nUID:{n}@example.org\r\nDTSTART;VALUE=DATE:{}\r\nDTEND;VALUE=DATE:{}\r\nSUMMARY:{name}\r\nEND:VEVENT\r\n", day_of(*day), day_of(day.tomorrow().unwrap())));
+    }
+    text.push_str("END:VCALENDAR\r\n");
+    let config: Config = toml::from_str("[agenda.subscriptions.years-test]\nurl = \"https://calendar.example.org/years.ics\"\nholidays = \"public\"\n").unwrap();
+    let id = "years-test";
+    vdir::prepare_subscribed(id, "Years", None).unwrap();
+    assert_eq!(take(id, &config.agenda.subscriptions[id], calendar(&text), 1_000).unwrap(), Taken::Changed);
+    let all = holidays(&config, &santiago);
+    let periods: Vec<(Date, Date)> = all[0].periods.iter().map(|(a, b, _)| (*a, *b)).collect();
+    for (day, _) in &events {
+        assert!(periods.contains(&(*day, *day)), "{day}: {periods:?}");
+    }
+    vdir::remove_subscribed(id).unwrap();
+}
+
+/// The same address twice is refused (every event would show twice); a
+/// subscription stopped leaves the sets, the availabilities and the pairs
+/// that warn when they overlap.
+#[test]
+fn twice_refused_and_a_stopped_place_forgotten() {
+    crate::config::stand_ins_only();
+    let dir = crate::config::data_dir().join(format!("subscribed-forget-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[agenda.subscriptions.forget-test]\nurl = \"https://calendar.example.org/f.ics\"\n\n[agenda.overlaps]\n\"local/home|subscribed/forget-test\" = true\n\"local/home|local/work\" = true\n\n[agenda.sets.school]\nagendas = [\"subscribed/forget-test\", \"local/home\"]\n\n[[agenda.availabilities]]\nid = \"a1\"\nagendas = [\"subscribed/forget-test\", \"local/work\"]\n").unwrap();
+    let tr = crate::i18n::Translator::new("en");
+    let config = Config::load(&path).unwrap();
+    assert_eq!(subscribe(&path, &config, &New { url: "webcal://calendar.example.org/f.ics".into(), ..New::default() }, &tr), Err(tr.text("subscribe-taken", None)));
+    stop(&path, "forget-test").unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("subscribed/forget-test") && text.contains("local/home|local/work") && text.contains("local/home") && text.contains("local/work"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -232,8 +232,8 @@ Item {
         }
 
         // The review's F41: "These are my own engagements" offered on a calendar of events,
-        // never on one of holidays, off until ticked, then sent.
-        function test_own_engagements() {
+        // never on one of holidays, off until ticked, then sent; its colour chosen here.
+        function test_own_engagements_and_its_colour() {
             const setup = createTemporaryObject(setupComponent, root)
             setup.toggle("subscribed/timetable")
             const boxes = root.named(setup, "subscriptionEngagements").filter(b => b.visible)
@@ -241,6 +241,10 @@ Item {
             verify(!boxes[0].checked, "off unless ticked")
             mouseClick(boxes[0])
             verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "engagements" && c[3] === "true"), JSON.stringify(mock.calls))
+            const dots = root.named(setup, "subscriptionColour").filter(d => d.visible)
+            verify(dots.length > 0)
+            mouseClick(dots[1])
+            verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "colour"), JSON.stringify(mock.calls))
             setup.toggle("subscribed/timetable")
             setup.toggle("subscribed/zone-a")
             compare(root.named(setup, "subscriptionEngagements").filter(b => b.visible).length, 0, "holidays act through the days off alone")

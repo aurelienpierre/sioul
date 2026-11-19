@@ -1003,7 +1003,10 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     // A calendar of holidays that counts as your days off: its whole days are
     // drawn as days off (`timeline::days_off`), never twice.
     let counted = sioul_core::subscribed::counted_folders(&load_config());
-    let shown: Vec<Occurrence> = occurrences.iter().filter(|o| !(o.all_day && counted.iter().any(|f| std::path::Path::new(&o.key).starts_with(f)))).cloned().collect();
+    // Within the years its days are read for (`subscribed::HOLIDAYS_FROM`), else shown as the event it is (F25).
+    let year_of = |year: i16| jiff::civil::Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
+    let read_for = year_of(sioul_core::subscribed::HOLIDAYS_FROM)..year_of(sioul_core::subscribed::HOLIDAYS_UNTIL);
+    let shown: Vec<Occurrence> = occurrences.iter().filter(|o| !(o.all_day && read_for.contains(&o.start) && counted.iter().any(|f| std::path::Path::new(&o.key).starts_with(f)))).cloned().collect();
     let mut items = agenda::items(&shown, &zone, &errand);
     // Legs as events of their own when Show says so (D25); else quiet lines in their appointment's lead.
     if read_view().legs {

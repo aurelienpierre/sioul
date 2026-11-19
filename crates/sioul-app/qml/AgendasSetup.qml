@@ -584,6 +584,36 @@ ColumnLayout {
                         checked: feed.sub !== null && feed.sub.after_class === true
                         onToggled: setup.saveSubscription(feed.sub.id, "after_class", checked ? "true" : "false")
                     }
+                    // Its colour in the agenda, kept with its settings (`colour`): no server to ask.
+                    Flow {
+                        visible: !feed.unread
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Repeater {
+                            model: setup.colours
+
+                            delegate: Rectangle {
+                                id: subDot
+
+                                required property string modelData
+
+                                objectName: "subscriptionColour"
+                                width: 22
+                                height: 22
+                                radius: 11
+                                color: subDot.modelData
+                                border.width: (one.modelData.colour || "").toLowerCase().startsWith(subDot.modelData) ? 3 : 0
+                                border.color: setup.theme.text
+                                Accessible.role: Accessible.Button
+                                Accessible.name: setup.sioul.text("agenda-colour") + " " + subDot.modelData
+
+                                TapHandler {
+                                    onTapped: setup.saveSubscription(feed.sub.id, "colour", subDot.modelData)
+                                }
+                            }
+                        }
+                    }
                 }
                 // On its server (part 5): yours renamed, recoloured, removed; someone else's stopped showing.
                 TextField {

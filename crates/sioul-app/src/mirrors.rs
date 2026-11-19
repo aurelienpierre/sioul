@@ -245,6 +245,19 @@ fn note_written(id: &str, as_of: i64) {
     });
 }
 
+/// Your days off within `window`, busy all day for others (decision 3 of
+/// design-calendars), from the one function that says them
+/// (`vacations::DaysOff`); never for do-not-disturb (`busy::stretches`).
+/// Added to the busy tasks' times, so that they go through the same rule of
+/// which device writes as those times do: on `reach` (its review's B3), the
+/// busy times become one sealed record, the freshest device's (`BusyTimes`);
+/// once `reach` is merged, this is laid into that record where it is worked
+/// out (`busy_times_now`), never written by a device that carries the
+/// record over (the calendars' review, F43).
+fn days_off(config: &Config, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
+    av::days_off_spans(&sioul_core::vacations::DaysOff::of(config), window, zone)
+}
+
 /// Every mirror written from this device's view, when it is the freshest
 /// (`availability::may_write`, against the other devices' sealed entries):
 /// the coming days' blocks with their margins, health never named
@@ -274,9 +287,7 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
     // Only what is marked busy: a task's own time where it is fixed, else the plan's before its date asked.
     let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
     let mut task_time = av::task_time(&tasks, &events, &planned(), estimate, &zone, now);
-    // Your days off, busy all day for others (decision 3 of design-calendars), from the one
-    // function that says them (`vacations::DaysOff`); never for do-not-disturb (`busy::stretches`).
-    task_time.spans.extend(av::days_off_spans(&sioul_core::vacations::DaysOff::of(config), widest, &zone));
+    task_time.spans.extend(days_off(config, widest, &zone));
     let (busy, not_known) = (tr().text("availability-busy", None), tr().text("availability-not-known", None));
     let words = av::Words { busy: &busy, not_known: &not_known };
     let mut changed: Vec<String> = Vec::new();

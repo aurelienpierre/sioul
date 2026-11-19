@@ -1391,6 +1391,7 @@ event-repeat-ends-times = { $n ->
         [one] time
        *[other] times
     }
+event-until-before-start = This series would end before its first date: choose a later last day.
 event-pauses = Pauses during
 event-pauses-help = Each date that falls in them is left out of the series, in every calendar program; a date you left out yourself stays out.
 series-pause-vacations = my vacations
@@ -4725,6 +4726,7 @@ subscribe-days-off = Its days count as my days off
 subscribe-engagements = These are my own engagements: busy during them, and they take my time
 subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
 subscribe-make = Subscribe
+subscribe-taken = This calendar is subscribed already.
 subscribe-reading = A calendar is being read. Try again in a moment.
 subscribe-refreshed = Calendar read: its events are up to date.
 subscribe-unchanged = Calendar read: nothing changed.

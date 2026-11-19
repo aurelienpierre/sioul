@@ -988,6 +988,10 @@ pub struct New {
 /// one not taken. Fetched by each device by itself.
 pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Translator) -> Result<String, String> {
     let url = address(&new.url).map_err(|p| p.said(tr))?;
+    // The same address twice would show every event twice.
+    if config.agenda.subscriptions.values().any(|s| address(&s.url).is_ok_and(|u| u == url)) {
+        return Err(tr.text("subscribe-taken", None));
+    }
     let host = crate::sites::host_of(&url);
     let base = if valid_id(new.id.trim()) { new.id.trim().to_string() } else { crate::config::slug(if new.name.trim().is_empty() { &host } else { new.name.trim() }) };
     let base: String = if base.is_empty() { "calendar".to_string() } else { base.chars().take(60).collect() };
@@ -1066,9 +1070,43 @@ pub fn stop(path: &Path, id: &str) -> Result<(), String> {
         table.remove(&place(id));
         Ok(())
     })?;
+    forget_place(path, &place(id))?;
     vdir::remove_subscribed(id)?;
     let _ = std::fs::remove_file(Fetched::path(id));
     Ok(())
+}
+
+/// A stopped calendar's place taken out of whatever names it in the
+/// settings: the filter's sets, each availability's agendas, the pairs of
+/// agendas that warn when they overlap.
+fn forget_place(path: &Path, place: &str) -> Result<(), String> {
+    use toml_edit::Item;
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let Some(agenda) = doc.get_mut("agenda").and_then(Item::as_table_like_mut) else { return Ok(()) };
+        let named = |value: &toml_edit::Value| value.as_str() == Some(place);
+        if let Some(pairs) = agenda.get_mut("overlaps").and_then(Item::as_table_like_mut) {
+            let gone: Vec<String> = pairs.iter().map(|(key, _)| key.to_string()).filter(|key| key.split('|').any(|p| p == place)).collect();
+            for key in gone {
+                pairs.remove(&key);
+            }
+        }
+        if let Some(sets) = agenda.get_mut("sets").and_then(Item::as_table_like_mut) {
+            for (_, set) in sets.iter_mut() {
+                if let Some(list) = set.get_mut("agendas").and_then(Item::as_array_mut) {
+                    list.retain(|v| !named(v));
+                }
+            }
+        }
+        if let Some(list) = agenda.get_mut("availabilities").and_then(Item::as_array_of_tables_mut) {
+            for availability in list.iter_mut() {
+                if let Some(agendas) = availability.get_mut("agendas").and_then(Item::as_array_mut) {
+                    agendas.retain(|v| !named(v));
+                }
+            }
+        }
+        crate::config::write_document(path, &doc)
+    })
 }
 
 // ---------------------------------------------------------------- the agenda's line
@@ -1182,17 +1220,37 @@ fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff
     let at = |year: i16| Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
     let (from, to) = (at(HOLIDAYS_FROM), at(HOLIDAYS_UNTIL));
     let mut out = Vec::new();
+    let shaped = |first: Date, after: Date| if after_class { (first.tomorrow().unwrap_or(first), after) } else { (first, after) };
     for file in files {
+        // Whole days that do not repeat (every holidays' file Sioul knows): their own
+        // dates, as written; the calendar library gives none for a day whose midnight
+        // does not exist (Santiago, Havana, Beirut some years: F29).
+        if let Some(days) = std::fs::read_to_string(file).ok().and_then(|text| whole_days(&text)) {
+            for (first, after, name) in days {
+                let (first, after) = shaped(first, after);
+                if let Ok(last) = after.yesterday()
+                    && last >= first
+                {
+                    out.push((first, last, name));
+                }
+            }
+            continue;
+        }
         for event in crate::agenda::file_occurrences(file, &collection, from, to, zone) {
             if event.cancelled {
                 continue;
             }
             let day = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
             let (Some(start), Some(end)) = (day(event.start), day(event.end)) else { continue };
-            // Its first whole day and the day after its last (exclusive).
-            let first = if start.time() == jiff::civil::Time::midnight() { start.date() } else { start.date().tomorrow().unwrap_or(start.date()) };
-            let after = end.date();
-            let (first, after) = if after_class { (first.tomorrow().unwrap_or(first), after) } else { (first, after) };
+            // Its first whole day and the day after its last (exclusive). A whole
+            // day's are its own dates, read at its middle: its start is an hour off
+            // its midnight where that midnight does not exist (Santiago, Havana,
+            // Beirut some years: F29), or where the calendar library's time zone
+            // rules and Sioul's differ by an hour (a far year).
+            let noon = |at: &jiff::Zoned| at.checked_add(jiff::Span::new().hours(12)).map_or(at.date(), |z| z.date());
+            let first = if event.all_day { noon(&start) } else if start.time() == jiff::civil::Time::midnight() { start.date() } else { start.date().tomorrow().unwrap_or(start.date()) };
+            let after = if event.all_day { noon(&end) } else { end.date() };
+            let (first, after) = shaped(first, after);
             let Ok(last) = after.yesterday() else { continue };
             if last >= first {
                 out.push((first, last, event.summary.trim().to_string()));
@@ -1202,6 +1260,49 @@ fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff
     out.sort();
     out.dedup();
     out
+}
+
+/// A file's whole-day events, each its first day, the day after its last and
+/// its name, read from their own lines; none when one of its events has a
+/// time, repeats, or names a time of a series (those are read by expansion).
+/// One cancelled is left out; one of no length is a day, as the agenda shows it.
+fn whole_days(text: &str) -> Option<Vec<(Date, Date, String)>> {
+    let lines = crate::lines::unfold(text);
+    let mut out = Vec::new();
+    let (mut inside, mut nested) = (false, 0usize);
+    let (mut start, mut end, mut length, mut name, mut cancelled) = (None, None, None, String::new(), false);
+    let date = |line: &str| Date::strptime("%Y%m%d", crate::lines::value(line).trim()).ok();
+    for line in &lines {
+        let field = crate::lines::name(line);
+        let value = crate::lines::value(line).trim().to_ascii_uppercase();
+        if !inside {
+            if field == "BEGIN" && value == "VEVENT" {
+                (inside, nested, start, end, length, name, cancelled) = (true, 0, None, None, None, String::new(), false);
+            }
+            continue;
+        }
+        match field.as_str() {
+            "BEGIN" => nested += 1,
+            "END" if nested > 0 => nested -= 1,
+            "END" => {
+                inside = false;
+                let first: Date = start?;
+                let after = end.or_else(|| length.and_then(|days: i64| first.checked_add(jiff::Span::new().days(days)).ok())).filter(|a| *a > first).unwrap_or(first.tomorrow().ok()?);
+                if !cancelled {
+                    out.push((first, after, name.clone()));
+                }
+            }
+            _ if nested > 0 => {}
+            "RRULE" | "RDATE" | "RECURRENCE-ID" | "EXRULE" => return None,
+            "DTSTART" => start = Some(date(line)?),
+            "DTEND" => end = Some(date(line)?),
+            "DURATION" => length = Some(value.strip_prefix('P').and_then(|d| d.strip_suffix('D').and_then(|n| n.parse().ok()).or_else(|| d.strip_suffix('W').and_then(|n| n.parse::<i64>().ok()).map(|w| w * 7)))?),
+            "STATUS" => cancelled = value == "CANCELLED",
+            "SUMMARY" => name = crate::lines::unescape(crate::lines::value(line)).trim().to_string(),
+            _ => {}
+        }
+    }
+    Some(out)
 }
 
 #[cfg(test)]

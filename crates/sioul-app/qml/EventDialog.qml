@@ -1239,7 +1239,8 @@ SafeDialog {
                         visible: ends.currentIndex === 2
                         enabled: !dialog.withOthers
                         from: 1
-                        to: 999
+                        // As many as a rule another program wrote may say, so that a save keeps it (F38).
+                        to: 99999
                         value: 10
                         editable: true
                     }

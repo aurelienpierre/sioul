@@ -317,8 +317,15 @@ pub struct TimeOff {
     pub label: String,
     /// "vacation", "sick" or "other" (18 November 2026); unsaid, or a word
     /// this Sioul does not know, a vacation. An older Sioul passes over it.
-    #[serde(default)]
+    /// One that is not a word reads as unsaid, never the whole vacation (F30).
+    #[serde(default, deserialize_with = "word_or_unsaid")]
     pub kind: String,
+}
+
+/// A word, or "" for anything else (a number, a table): one field that does
+/// not read never takes its entry with it.
+fn word_or_unsaid<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(toml::Value::deserialize(d).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default())
 }
 
 /// Your vacations' own marks (`[vacations]`), shared with the settings.
@@ -1715,7 +1722,9 @@ impl Config {
             .into_iter()
             .chain((2..).map(|n| format!("{label}-{n}")))
             .map(|id| slug(&id))
-            .find(|id| self.every_account().all(|a| &a.id != id))
+            // Never the name of a folder of Sioul's own beside the accounts' (F24):
+            // `local`, this device's calendars; `subscribed`, those read by their address.
+            .find(|id| id != crate::vdir::LOCAL && id != crate::vdir::SUBSCRIBED && self.every_account().all(|a| &a.id != id))
             .unwrap_or_default()
     }
 }
@@ -2396,7 +2405,10 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                     continue;
                 }
                 let mut table = Table::new();
-                if with_ids {
+                // A sick leave or another kind takes an id even before the sharing's format 2:
+                // a Sioul 0.0.11 changes an entry named by its id in its own table, its kind
+                // kept, where it rewrote one without an id whole, the kind lost (F31).
+                if with_ids || kind.is_some() {
                     table["id"] = value(crate::ids::new());
                 }
                 table["from"] = value(from);
@@ -3132,6 +3144,12 @@ mod tests {
         let empty: SettingValue = serde_json::from_str("[]").unwrap();
         set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new(), kind: String::new() }])).unwrap();
         set_value(&path, "time_off", &empty).unwrap();
+        // F31: a sick leave takes an id even before the sharing's format 2, so that an older Sioul keeps its kind.
+        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new(), kind: "sick".into() }])).unwrap();
+        let sick = Config::load(&path).unwrap();
+        assert!(!sick.time_off[0].id.is_empty() && sick.time_off[0].kind == "sick");
+        assert!(!sick.vacations.stamp.is_empty(), "the vacations' days changed: stamped");
+        set_value(&path, "time_off", &empty).unwrap();
         set_value(&path, "window.admin", &empty).unwrap();
         let config = Config::load(&path).unwrap();
         assert!(config.time_off.is_empty() && config.week_hours().iter().all(|w| w.kind() != "admin"));
@@ -3598,5 +3616,19 @@ mod train_here_tests {
         assert!(shared_from_older.spam.trains_here(), "unset: on, whatever the shared switch says");
         let off: super::Config = toml::from_str("[spam]\ntrain_by_itself = true\ntrain_here = false\n").unwrap();
         assert!(!off.spam.trains_here());
+    }
+
+    /// The calendars' review, F24 and F30: an account is never named as a
+    /// folder of Sioul's own beside the accounts (`local`, `subscribed`); a
+    /// vacation whose kind is not a word reads, its kind unsaid.
+    #[test]
+    fn reserved_ids_and_a_kind_that_is_no_word() {
+        let config = super::Config::default();
+        assert_eq!(config.free_id("me@subscribed.example"), "subscribed-me");
+        assert_eq!(config.free_id("me@local.example"), "local-me");
+        let read: super::Config = toml::from_str("[[time_off]]\nfrom = 2030-08-01\nuntil = 2030-08-15\nkind = 2\n").unwrap();
+        assert_eq!((read.time_off.len(), read.time_off[0].kind.as_str()), (1, ""));
+        let mark: super::Config = toml::from_str("vacations = 3\n").unwrap();
+        assert_eq!(mark.vacations, super::VacationsMark::default(), "a mark that is no table is nothing said");
     }
 }

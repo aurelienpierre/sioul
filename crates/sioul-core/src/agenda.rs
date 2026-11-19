@@ -2067,7 +2067,7 @@ fn with_end(rule: &str, edit: &EventEdit, start: Option<&str>, zone: &TimeZone, 
     }
     let mut parts: Vec<String> = rule.trim_start_matches("RRULE:").split(';').map(str::trim).filter(|p| !p.is_empty() && !p.to_ascii_uppercase().starts_with("UNTIL=") && !p.to_ascii_uppercase().starts_with("COUNT=")).map(str::to_string).collect();
     match edit.ends.as_str() {
-        "count" if edit.count > 0 => parts.push(format!("COUNT={}", edit.count.min(9999))),
+        "count" if edit.count > 0 => parts.push(format!("COUNT={}", edit.count.min(99_999))),
         "until" => {
             if let Ok(day) = edit.until.trim().parse::<Date>() {
                 let value = if edit.all_day {
@@ -2086,6 +2086,13 @@ fn with_end(rule: &str, edit: &EventEdit, start: Option<&str>, zone: &TimeZone, 
         _ => {}
     }
     format!("RRULE:{}", parts.join(";"))
+}
+
+/// Whether the form's series ends on a day before its first (F39): the
+/// rule would give no time at all, or another program would read it otherwise.
+pub fn ends_before_it_starts(edit: &EventEdit) -> bool {
+    let first = edit.start.get(..10).and_then(|d| d.parse::<Date>().ok());
+    !edit.repeat.is_empty() && edit.ends == "until" && edit.until.trim().parse::<Date>().ok().zip(first).is_some_and(|(until, first)| until < first)
 }
 
 /// The form's repeat as it is compared and written: no end nor pause for

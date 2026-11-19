@@ -928,7 +928,14 @@ mod tests {
         let found = blocks(&[], &mine(&["me/personal"]), &WORDS, &BTreeSet::new(), &time, window);
         assert_eq!(found, [Block { start: midnight("2030-12-23"), end: midnight("2030-12-26"), word: "Busy".into() }], "one block, all day, saying nothing of why");
         assert!(days_off_spans(&off, (midnight("2031-02-01"), midnight("2031-03-01")), &zone).is_empty(), "outside the window: nothing");
-        assert!(crate::busy::stretches_of(&[], None, window.0, window.1).is_empty(), "do-not-disturb's busy stretches: nothing of it");
+        // Do-not-disturb's busy stretches (F42): they read events alone, and a day off is none.
+        // The holidays as their calendar's reader gives them, said busy by their publisher
+        // (TRANSP:OPAQUE), on a subscribed agenda that takes none of your time (F41), with the
+        // events of that month: only the dentist marks you busy.
+        let holiday = |day: &str| Occurrence { all_day: true, opaque: false, transparent: true, ..event("subscribed/fr", day, midnight(day), midnight(day) + 86_400, "Noël") };
+        let dentist = event("me/personal", "d", midnight("2030-12-23") + 10 * 3600, midnight("2030-12-23") + 11 * 3600, "Dentist");
+        let read = [holiday("2030-12-25"), dentist.clone()];
+        assert_eq!(crate::busy::stretches_of(&read, None, window.0, window.1), [(dentist.start, dentist.end)], "do-not-disturb's busy stretches: nothing of the days off");
     }
 
     /// The blocks: the agendas picked alone, what takes time alone, each

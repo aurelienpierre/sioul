@@ -889,6 +889,10 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     }
     // "My vacations" chosen: named yours, your settings' owner id made first if need be.
     crate::series::mine_named(&mut edit.pauses)?;
+    // A series that would end before it starts is said, never written (F39).
+    if agenda::ends_before_it_starts(&edit) {
+        return Err(tr().text("event-until-before-start", None));
+    }
     let zone = sioul_core::zone::current();
     let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
@@ -1808,7 +1812,11 @@ fn find_uid(uid: &str) -> Option<PathBuf> {
     if uid.is_empty() {
         return None;
     }
-    vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|path| {
+    // A calendar you may write first: a twin in a subscribed copy (your own
+    // agenda also read by its public address) is never the one an answer lands on.
+    let mut calendars = vdir::collections(Kind::Calendars);
+    calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
+    calendars.into_iter().flat_map(|c| c.items()).find(|path| {
         std::fs::read_to_string(path).ok().is_some_and(|text| sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
     })
 }

@@ -187,8 +187,9 @@ impl Builder<'_> {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does).
-            .filter(|c| (holding.is_empty() || c.holds(holding)) && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
+            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does);
+            // nor a calendar subscribed by its address, renamed and stopped on its own line in Your agendas.
+            .filter(|c| (holding.is_empty() || c.holds(holding)) && c.account != crate::vdir::SUBSCRIBED && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars change through its Calendar API (part 5);

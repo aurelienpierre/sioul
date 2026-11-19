@@ -1243,8 +1243,10 @@ fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
     let marks = marks_of(&state_path(account, Kind::Calendars, id));
-    // Your word on its agenda counts as its server's: read only, or its availability only (`agendas`).
-    Some((marks.read_only || crate::agendas::chosen_read_only(account, id), marks.components))
+    // A calendar subscribed by its address is read only by its account, never
+    // by a state file that can go missing (F18). Your word on its agenda
+    // counts as its server's: read only, or its availability only (`agendas`).
+    Some((account == SUBSCRIBED || marks.read_only || crate::agendas::chosen_read_only(account, id), marks.components))
 }
 
 /// Whether a calendar's server lets you read it only, as its last sync said

@@ -49,7 +49,10 @@ pub(super) fn find_event(consent: &Consent, wanted: &str) -> Result<Found, Strin
     let wanted = wanted.trim();
     let uid = if wanted.starts_with("sioul:event/") { links::id_of(wanted) } else { wanted.to_string() };
     let gone = || format!("No event “{}” here: agenda and find give events' addresses (sioul:event/…).", one_line(wanted));
-    for calendar in vdir::collections(Kind::Calendars) {
+    // A calendar you may write first: a twin in a subscribed copy, read only, is never the one changed.
+    let mut calendars = vdir::collections(Kind::Calendars);
+    calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
+    for calendar in calendars {
         for path in calendar.items() {
             let Ok(text) = std::fs::read_to_string(&path) else { continue };
             if !text.contains("BEGIN:VEVENT") || appointments::uid_in(&path) != uid {
