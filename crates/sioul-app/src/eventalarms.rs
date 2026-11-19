@@ -606,7 +606,8 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
 /// (`notice::address`, the links'), never a file: an event's
 /// (`is_event_address`), a message's (`is_mail_address`; a code's is its
 /// message's), the mailbox, the Porch, a need (`sioul:need/<block>`), the end
-/// of the work day or of the whole day (`sioul:day/work:2026-10-14`), or
+/// of the work day or of the whole day (`sioul:day/work:2026-10-14`), a site
+/// and the web notice's key (`sioul:site/<id>#<key>`: its screen opens), or
 /// another thing of Sioul's by its kind and id (a task, a paper, a contract,
 /// a budget's line: a tablet's dates), its parts never "." nor "..".
 /// ReminderOpener.isNoticeAddress reads the same (EventOpenCheck).
@@ -621,6 +622,12 @@ pub(crate) fn is_notice_address(key: &str) -> bool {
     if let Some(day) = key.strip_prefix("sioul:day/") {
         let Some((sheet, date)) = day.split_once(':') else { return false };
         return matches!(sheet, "work" | "night") && date.len() == 10 && date.parse::<jiff::civil::Date>().is_ok();
+    }
+    // A site, and the web notice's own key when it has one (`notice::address::site`): its screen opens.
+    if let Some(rest) = key.strip_prefix("sioul:site/") {
+        let (id, tag) = rest.split_once('#').unwrap_or((rest, ""));
+        let id_plain = !id.is_empty() && id != "." && id != ".." && id.bytes().all(|b| b.is_ascii_graphic() && b != b'\\' && b != b'/');
+        return id_plain && !tag.chars().any(|c| matches!(c, '/' | '\\' | '#') || c.is_control());
     }
     let Some((kind, rest)) = key.strip_prefix("sioul:").and_then(|rest| rest.split_once('/')) else { return false };
     let plain = |part: &str| !part.is_empty() && part != "." && part != ".." && part.bytes().all(|b| b.is_ascii_graphic() && b != b'\\');
@@ -859,7 +866,7 @@ mod tests {
     /// A tapped notification opens only what Sioul's own open: a thing by
     /// its address (a notice of this Sioul: an event, a message, a code's
     /// message, the mailbox, the Porch, a need, the end of the work day or of
-    /// the whole day, a tablet's task or paper); as an older Sioul's notice
+    /// the whole day, a tablet's task or paper, a site); as an older Sioul's notice
     /// said it, an event, the Porch, a closing sheet, a block's question;
     /// nothing else, never a file.
     #[test]
@@ -877,10 +884,10 @@ mod tests {
         assert_eq!(of(r#"{"kind":"settings:words","key":""}"#), None);
         assert_eq!(of(r#"{"key":"work"}"#), None);
         let notice = |key: &str| of(&serde_json::json!({ "kind": "notice", "key": key }).to_string());
-        for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport"] {
+        for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport", "sioul:site/chat#1", "sioul:site/element", "sioul:site/element#room%2F1"] {
             assert_eq!(notice(taken), Some(("notice".into(), taken.into())), "{taken}");
         }
-        for refused in ["/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1", "file:///sdcard/x.eml", "sioul:need/", "sioul:need/../x", "sioul:need/a/b", "sioul:day/work:yesterday", "sioul:day/lunch:2026-11-14", "sioul:day/work", "sioul:task/..", "sioul:task/a/../b", "sioul:settings/words", "sioul:move", "sioul:site/chat#1", "sioul:dose/a", "mid:../../etc/passwd", "sioul:task/a\\b", ""] {
+        for refused in ["/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1", "file:///sdcard/x.eml", "sioul:need/", "sioul:need/../x", "sioul:need/a/b", "sioul:day/work:yesterday", "sioul:day/lunch:2026-11-14", "sioul:day/work", "sioul:task/..", "sioul:task/a/../b", "sioul:settings/words", "sioul:move", "sioul:site/", "sioul:site/..", "sioul:site/a/b", "sioul:site/a#b/c", "sioul:site/a#b#c", "sioul:dose/a", "mid:../../etc/passwd", "sioul:task/a\\b", ""] {
             assert_eq!(notice(refused), None, "{refused}");
         }
     }
