@@ -2831,7 +2831,10 @@ mod tests {
         let put = |local: &str, uid: u32, from: &str, proof: &str, flags: &str, arrived: i64| -> PathBuf {
             let path = root.join(local).join("cur").join(format!("{arrived}.U7-{uid}.sioul{}2,{flags}", maildir::INFO));
             let domain = from.rsplit_once('@').unwrap().1.trim_end_matches('>');
-            let raw = format!("Authentication-Results: mx.example.org; spf=pass smtp.mailfrom={domain}; dkim={proof} header.d={domain}; dmarc={proof} header.from={domain}\r\nMessage-ID: <m{uid}@{domain}>\r\nFrom: {from}\r\nTo: noa@home.example\r\nSubject: Notice {uid}\r\nDate: Wed, 04 Nov 2026 09:00:00 +0100\r\n\r\nText.\r\n");
+            // Sent when it arrived: the mailbox's window reads the Date (`mailcache::sent_at`), so a
+            // Date written once ran out of it two weeks later, whatever the code (18 November 2026, 09:00).
+            let date = jiff::Timestamp::from_second(arrived).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000");
+            let raw = format!("Authentication-Results: mx.example.org; spf=pass smtp.mailfrom={domain}; dkim={proof} header.d={domain}; dmarc={proof} header.from={domain}\r\nMessage-ID: <m{uid}@{domain}>\r\nFrom: {from}\r\nTo: noa@home.example\r\nSubject: Notice {uid}\r\nDate: {date}\r\n\r\nText.\r\n");
             std::fs::write(&path, raw).unwrap();
             std::fs::File::options().write(true).open(&path).unwrap().set_modified(UNIX_EPOCH + Duration::from_secs(arrived as u64)).unwrap();
             path
