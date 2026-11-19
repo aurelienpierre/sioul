@@ -203,7 +203,8 @@ SafeDialog {
                             Layout.leftMargin: radio.indicator ? radio.indicator.width + radio.spacing + radio.leftPadding : 0
                             text: choice.modelData.detail
                             textFormat: Text.PlainText
-                            wrapMode: Text.WrapAnywhere
+                            // At words; a long folder's path anywhere it must.
+                            wrapMode: Text.Wrap
                             font.pixelSize: 12
                             color: card.theme.muted
                             opacity: radio.enabled ? 1 : 0.8
