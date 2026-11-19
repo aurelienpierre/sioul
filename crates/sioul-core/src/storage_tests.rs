@@ -768,3 +768,22 @@ fn the_dated_copy_is_a_copy_of_its_own() {
     drop(file);
     assert_eq!(std::fs::read(&dated).unwrap(), before, "the dated copy as it was");
 }
+
+/// A paper added to the notes folder and its list between the copies and
+/// the switch (an exchange brought it, the person added it): moved too,
+/// checked, its record named from the new folder; never left behind
+/// (review S2).
+#[test]
+fn a_file_that_came_during_the_copy_is_not_left_behind() {
+    let stand = stand("came-late");
+    let (mut journal, _) = prepare(&stand.folders, NOW).unwrap();
+    std::fs::write(stand.folders.notes.join("papers").join("Late.pdf"), "%PDF late").unwrap();
+    let list = stand.folders.notes.join(crate::papers::MANIFEST);
+    std::fs::write(&list, format!("{}\n[[paper]]\nid = \"late\"\nkind = \"other\"\ntitle = \"Late\"\nfile = \"papers/Late.pdf\"\n", text(&list))).unwrap();
+    switch(&stand.folders, &mut journal, NOW).unwrap();
+    assert!(stand.folders.papers.join("Late.pdf").is_file(), "moved with the rest");
+    let wallet = crate::papers::Wallet::load_at(&places_of(&stand)).unwrap();
+    assert_eq!(wallet.get("late").unwrap().file, "Late.pdf");
+    assert!(journal.files.iter().any(|e| e.from == "papers/Late.pdf" && e.made));
+    assert!(check(&stand.folders, &journal).is_ok());
+}

@@ -1089,6 +1089,29 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
     let locks: Vec<PathBuf> = journal.files.iter().filter(|e| matches!(e.kind, Some(Kind::List | Kind::LetterRecord))).map(|e| join(&folders.notes, &e.from)).filter(|p| crate::filelock::has_lock(p)).collect();
     with_locks(&locks, &mut || {
         let mut changed = false;
+        // Planned again: what came since the plan (an exchange, the person, a sync: a paper,
+        // a scan, a letter's text, a first list) is copied and checked here too, never left
+        // behind while the lists are named from the new folders (review S2).
+        let came: Vec<Entry> = plan(folders)?.into_iter().filter(|planned| !journal.files.iter().any(|e| e.from == planned.from)).collect();
+        for entry in came {
+            let from = join(&folders.notes, &entry.from);
+            let to = PathBuf::from(&entry.to);
+            if to.exists() {
+                return Err(Fault::new("records-taken", to.display()));
+            }
+            let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
+            let sha = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
+            let fresh = Entry { size, time, sha, made: true, this_run: true, ..entry };
+            let state = folders.state.clone();
+            let noted = fresh.clone();
+            let mut note = || -> Result<(), Fault> {
+                upsert(journal, noted.clone());
+                journal.write(&state).map_err(|e| Fault::new("journal", e))
+            };
+            copy_into(&from, &to, &mut note)?;
+            upsert(journal, fresh);
+            changed = true;
+        }
         for i in 0..journal.files.len() {
             let entry = journal.files[i].clone();
             if entry.alone {
