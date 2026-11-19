@@ -122,7 +122,9 @@ Sioul wants the extension's data now. The reply:
 The one kind of data in version 1.
 
 - `id`: the agenda's identifier among the extension's, lower-case letters, digits and `-`, 48 characters at most, stable from one refresh to the next. `name`: what the agenda is called, in the call's language, 80 characters at most.
-- `calendar`: an iCalendar text (RFC 5545) holding events only (`VEVENT`), each with a `UID` unique in the agenda and a `DTSTART`; 20,000 events and 8 MiB at most. A cancelled event says `STATUS:CANCELLED`.
+- `calendar`: an iCalendar text (RFC 5545) holding events only (`VEVENT`), each with a `UID` unique in the agenda and a `DTSTART`; 20,000 events, 250,000 lines and 8 MiB at most. A cancelled event says `STATUS:CANCELLED`.
+- A reply names 32 agendas at most.
+- **Every bound is applied before anything is built** (`reply::refresh_reply`): the agendas are counted on the reply, the bytes and lines of each calendar on its text, its events once the text is parsed as Sioul parses every calendar. A reply past a bound is nonsense, nothing of it taken in. Nothing here makes a file: the agenda goes whole to the door of read-only agendas, which alone writes its files, one per event with the time zones that event needs, through the subscribed calendars' writer (that writer weighs the whole against what came). Before, each event's file got a copy of the calendar's whole head: 8 MiB of reply could make some 136 GB.
 - `unread`: the periods the extension could not read this time (a day the server failed on). What the last copy held there **stays**: an event of the last copy that overlaps such a period is kept, and nothing else of the last copy.
 - Sioul takes each agenda in as a **read-only agenda**, replaced whole at each refresh. It travels to the person's other devices through the sharing (its part "lists"), read only there too. When two devices both run the extension, the one whose fetch is the freshest writes.
 - An agenda the reply does not name is left as it is; removing the extension asks whether to keep its agendas.

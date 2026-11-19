@@ -31,7 +31,7 @@ use crate::backend::{QtThread, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde_json::{Value, json};
 use sioul_core::extensions::manifest::{Manifest, Offer};
-use sioul_core::extensions::reply::{self, ProblemKind, RefreshReply, SignInReply};
+use sioul_core::extensions::reply::{self, AgendaReply, ProblemKind, RefreshReply, SignInReply};
 use sioul_core::extensions::state::{self, Brought, Installed, State};
 use sioul_sync::extensions::{self as store, Call, Real, SignInPage, engine::Outcome};
 use std::collections::{BTreeMap, BTreeSet};
@@ -75,13 +75,15 @@ fn french() -> bool {
 // ---------------------------------------------------------------- the agendas' door
 
 /// The door of read-only agendas an extension writes through: one guarded
-/// write that replaces an agenda whole. Until the subscribed calendars' door
-/// is merged, `Waiting` stands for it and writes nothing.
+/// write that replaces an agenda whole. It alone writes an agenda's files,
+/// through the subscribed calendars' writer (one file per event, each with
+/// the time zones it needs, the whole weighed against what came), and keeps
+/// from the last copy what the agenda could not read (`reply::files_after`).
+/// Until that door is merged, `Waiting` stands for it and writes nothing.
 pub(crate) trait AgendaDoor {
-    /// The files the agenda in `folder` holds now, by name; none when it does not exist.
-    fn files(&self, folder: &str) -> BTreeMap<String, String>;
-    /// The read-only agenda in `folder`, named `name`, replaced whole by `files`, made if new; whether anything changed.
-    fn replace(&self, folder: &str, name: &str, files: &BTreeMap<String, String>) -> Result<bool, String>;
+    /// The read-only agenda in `folder` replaced whole by `agenda` (made if
+    /// new); how many events it holds now.
+    fn take(&self, folder: &str, agenda: &AgendaReply) -> Result<usize, String>;
     /// The agenda in `folder` taken away.
     fn remove(&self, folder: &str) -> Result<(), String>;
 }
@@ -91,11 +93,7 @@ pub(crate) trait AgendaDoor {
 pub(crate) struct Waiting;
 
 impl AgendaDoor for Waiting {
-    fn files(&self, _: &str) -> BTreeMap<String, String> {
-        BTreeMap::new()
-    }
-
-    fn replace(&self, _: &str, _: &str, _: &BTreeMap<String, String>) -> Result<bool, String> {
+    fn take(&self, _: &str, _: &AgendaReply) -> Result<usize, String> {
         Err("the read-only agendas' door is not in this build yet".into())
     }
 
@@ -129,17 +127,14 @@ fn note_written(id: &str, fetched: i64) {
     });
 }
 
-/// A refresh's agendas taken in through `door` when `write`: each one's
-/// files, what it could not read kept from the last copy. What each holds now.
+/// A refresh's agendas taken in through `door` when `write`, each whole (the
+/// door writes its files). What each holds now.
 pub(crate) fn take_in(door: &dyn AgendaDoor, extension: &str, reply: &RefreshReply, write: bool) -> Result<Vec<Brought>, String> {
     let mut brought = Vec::new();
     for agenda in &reply.agendas {
         let folder = sioul_core::extensions::agenda_folder(extension, &agenda.id);
-        let files = reply::files_after(&agenda.events, &door.files(&folder), &agenda.unread);
-        if write {
-            door.replace(&folder, &agenda.name, &files)?;
-        }
-        brought.push(Brought { id: agenda.id.clone(), name: agenda.name.clone(), events: files.len() });
+        let events = if write { door.take(&folder, agenda)? } else { agenda.events };
+        brought.push(Brought { id: agenda.id.clone(), name: agenda.name.clone(), events });
     }
     Ok(brought)
 }
@@ -954,18 +949,14 @@ mod tests {
     use sioul_core::extensions::reply::refresh_reply;
     use std::cell::RefCell;
 
-    /// A door in memory, as the read-only agendas' will be.
+    /// A door in memory: what it was handed, by folder.
     #[derive(Default)]
-    struct Memory(RefCell<BTreeMap<String, (String, BTreeMap<String, String>)>>);
+    struct Memory(RefCell<BTreeMap<String, AgendaReply>>);
 
     impl AgendaDoor for Memory {
-        fn files(&self, folder: &str) -> BTreeMap<String, String> {
-            self.0.borrow().get(folder).map(|(_, f)| f.clone()).unwrap_or_default()
-        }
-        fn replace(&self, folder: &str, name: &str, files: &BTreeMap<String, String>) -> Result<bool, String> {
-            let changed = self.0.borrow().get(folder) != Some(&(name.to_string(), files.clone()));
-            self.0.borrow_mut().insert(folder.to_string(), (name.to_string(), files.clone()));
-            Ok(changed)
+        fn take(&self, folder: &str, agenda: &AgendaReply) -> Result<usize, String> {
+            self.0.borrow_mut().insert(folder.to_string(), agenda.clone());
+            Ok(agenda.events)
         }
         fn remove(&self, folder: &str) -> Result<(), String> {
             self.0.borrow_mut().remove(folder);
@@ -983,24 +974,23 @@ mod tests {
         refresh_reply(&json!({ "agendas": [{ "id": "pupil-1", "name": "Timetable: Alex", "calendar": calendar(events), "unread": unread }] }).to_string()).unwrap()
     }
 
+    /// X2: an agenda goes to the door whole, read and counted; the door alone writes its files.
     #[test]
-    fn an_agenda_is_replaced_whole_but_for_what_was_not_read() {
+    fn an_agenda_goes_to_the_door_whole() {
         let door = Memory::default();
         let first = refreshed(&[("A", "20261119T080000Z"), ("B", "20261120T080000Z"), ("C", "20261123T080000Z")], &[]);
         let brought = take_in(&door, "timetable", &first, true).unwrap();
         assert_eq!(brought, vec![Brought { id: "pupil-1".into(), name: "Timetable: Alex".into(), events: 3 }]);
-        assert_eq!(door.files("ext-timetable-pupil-1").len(), 3);
-        // The 20th answered 500: B stays; C was read and is gone.
+        let handed = door.0.borrow()["ext-timetable-pupil-1"].clone();
+        assert_eq!((handed.events, handed.calendar.matches("BEGIN:VEVENT").count()), (3, 3));
+        // The 20th answered 500: the door is told, to keep B from the last copy.
         let second = refreshed(&[("A", "20261119T090000Z")], &[("2026-11-19T23:00:00Z", "2026-11-20T23:00:00Z")]);
         take_in(&door, "timetable", &second, true).unwrap();
-        let files = door.files("ext-timetable-pupil-1");
-        assert_eq!(files.len(), 2);
-        assert!(files.values().any(|t| t.contains("UID:B")) && !files.values().any(|t| t.contains("UID:C")));
-        assert!(files.values().any(|t| t.contains("DTSTART:20261119T090000Z")));
-        // A device whose fetch is not the freshest writes nothing.
+        assert_eq!(door.0.borrow()["ext-timetable-pupil-1"].unread, vec![(1_795_129_200, 1_795_215_600)]);
+        // A device whose fetch is not the freshest hands nothing to the door.
         let third = refreshed(&[], &[]);
         take_in(&door, "timetable", &third, false).unwrap();
-        assert_eq!(door.files("ext-timetable-pupil-1").len(), 2);
+        assert_eq!(door.0.borrow()["ext-timetable-pupil-1"].events, 1);
         // Until the door is merged, nothing is written and the reason is said.
         assert!(take_in(&Waiting, "timetable", &first, true).is_err());
     }
