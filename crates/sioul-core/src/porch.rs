@@ -950,20 +950,32 @@ impl Senders {
 
     /// The list a card stands on through these groups, as the lists' own step
     /// for groups decides it (`by_category`: the first list, in the order
-    /// ties are decided, naming one of them), when nothing more precise of
-    /// its own decides first: its card's line, one of its addresses or
-    /// numbers on a list. With the group that decided. What each act that
-    /// moves a card or gives it a group counts with, so that what it says is
-    /// what the lists will do (review V1).
+    /// ties are decided, naming one of them), for any one of its addresses
+    /// or numbers that nothing more precise decides first. The lists judge
+    /// each address and each number apart (`judge`, `judge_number`): its own
+    /// entry on a list, then the card's own choice (`contact:<UID>`, or one
+    /// list holding every address of it, `card_choice`), then the groups; so
+    /// a card with one address on a list by itself still has its other
+    /// addresses and its numbers let through by its group (review L1). None
+    /// when its groups decide none of them. With the group that decided.
+    /// What each act that moves a card or gives it a group counts with, so
+    /// that what it says is what the lists will do (review V1).
     pub fn standing_by_groups(&self, contact: &crate::contacts::Contact, groups: &[String]) -> Option<(Standing, String)> {
         let region = self.region();
-        let own_address = contact.emails.iter().map(|e| e.value.trim().strip_prefix("mailto:").unwrap_or(e.value.trim()).trim().to_ascii_lowercase()).any(|a| !a.is_empty() && self.lists().iter().any(|(_, l)| l.holds(&a)));
-        let own_number = contact.phones.iter().filter_map(|p| number_key(&p.value, region)).any(|k| self.lists().iter().any(|(_, l)| l.holds_number(&k, region)));
-        if self.card_standing(&contact.uid).is_some() || own_address || own_number {
-            return None;
-        }
         let keys: Vec<String> = groups.iter().map(|g| category_key(g)).filter(|k| !k.is_empty()).collect();
         if keys.is_empty() {
+            return None;
+        }
+        let addresses: Vec<String> = contact.emails.iter().map(|e| e.value.trim().strip_prefix("mailto:").unwrap_or(e.value.trim()).trim().to_ascii_lowercase()).filter(|a| !a.is_empty()).collect();
+        let numbers: Vec<String> = contact.phones.iter().filter_map(|p| number_key(&p.value, region)).filter(|k| !k.contains('*')).collect();
+        // The card's own choice decides every address and number its own entries leave.
+        let every_address_on_one = !addresses.is_empty() && self.lists().iter().any(|(_, l)| addresses.iter().all(|a| l.holds(a)));
+        if self.card_standing(&contact.uid).is_some() || every_address_on_one {
+            return None;
+        }
+        // Each address and each number apart: one its own entry leaves is the groups' to decide.
+        let left_to_groups = addresses.iter().any(|a| !self.lists().iter().any(|(_, l)| l.holds(a))) || numbers.iter().any(|k| !self.lists().iter().any(|(_, l)| l.holds_number(k, region)));
+        if !left_to_groups && !(addresses.is_empty() && numbers.is_empty()) {
             return None;
         }
         self.lists().into_iter().find_map(|(standing, list)| list.names_category(&keys).map(|name| (standing, name.to_string())))

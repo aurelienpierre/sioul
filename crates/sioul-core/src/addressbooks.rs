@@ -611,6 +611,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
+    /// Review L1: the count judges each address and number apart, as the
+    /// lists do. A client whose personal address is blocked by itself still
+    /// has the work address and the number let through by the group: the
+    /// move into a book whose groups are held back is said to change that,
+    /// and it does.
+    #[test]
+    fn the_count_judges_each_address_and_number_apart() {
+        use crate::porch::{Book, SenderList, Senders};
+        use crate::reach::Who;
+        crate::config::stand_ins_only();
+        let tr = Translator::new("en");
+        let account = "apart-cloud";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        let made = |id: &str, writers: &[&str]| {
+            vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            State { url: format!("https://cloud.example.org/{id}/"), owned: Some(true), writers: writers.iter().map(|w| w.to_string()).collect(), writers_known: true, ..State::default() }.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+            find(&format!("{account}/{id}")).unwrap()
+        };
+        let (mine, team) = (made("mine", &[]), made("team", &["sam"]));
+        std::fs::write(mine.dir.join("lou.vcf"), "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:apart-1\r\nFN:Lou Client\r\nEMAIL:lou.perso@example.org\r\nEMAIL:lou.travail@example.org\r\nTEL:+33465710011\r\nCATEGORIES:Clients\r\nEND:VCARD\r\n").unwrap();
+        let config = Config::default();
+        let senders = || {
+            let cards: Vec<crate::contacts::Contact> = crate::contacts::all().into_iter().filter(|c| c.place.starts_with("apart-cloud/")).collect();
+            Senders { safe: SenderList::parse("category:Clients"), blocked: SenderList::parse("lou.perso@example.org"), contacts: std::sync::Arc::new(Book::trusting(&cards, None, &groups_held_back(&config))), ..Senders::default() }
+        };
+        let judged = |s: &Senders| (s.judge("lou.perso@example.org").who, s.judge("lou.travail@example.org").who, s.judge_number("+33465710011").who);
+        assert_eq!(judged(&senders()), (Who::Blocked, Who::Safe, Who::Safe));
+        let cards: Vec<crate::contacts::Contact> = mine.items().iter().filter_map(|p| crate::contacts::read(p, &mine)).collect();
+        let said = reach_of_move(&cards.iter().collect::<Vec<_>>(), &team, &config, &senders(), &tr);
+        assert!(said.crosses && said.said[0].starts_with("One of these is on your Safe list through a group"), "{:?}", said.said);
+        vdir::move_item(std::path::Path::new(&cards[0].key), &crate::contacts::new_path(&team)).unwrap();
+        assert_eq!(judged(&senders()), (Who::Blocked, Who::Neutral, Who::Neutral), "what the question said");
+        // Every address of it on one list: its own choice decides, the groups nothing.
+        let every = Senders { safe: SenderList::parse("category:Clients"), blocked: SenderList::parse("lou.perso@example.org\nlou.travail@example.org"), ..Senders::default() };
+        assert!(every.standing_by_groups(&cards[0], &cards[0].categories).is_none());
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+    }
+
     /// "Its groups decide who may reach me" (the owner's answer of 18
     /// November 2026): on for a book only you write; off, its line saying
     /// why, for one someone else can write (shared to write, or someone
