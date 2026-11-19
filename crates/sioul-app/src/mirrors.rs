@@ -263,6 +263,22 @@ fn note_written(id: &str, as_of: i64, tasks_as_of: i64) {
     });
 }
 
+/// How far ahead the days off are laid into the busy times: past any availability's window.
+const DAYS_OFF_AHEAD: i64 = 400 * 86_400;
+
+/// Your days off within `window`, busy all day for others (decision 3 of
+/// design-calendars), from the one function that says them
+/// (`vacations::DaysOff`); never for do-not-disturb (`busy::stretches`).
+/// Laid into the busy tasks' times where they are worked out
+/// (`busy_times_now`), so that they follow the same rule of which device
+/// writes: one sealed record, the freshest device's (`BusyTimes`, the review
+/// of `reach`, B3); a device whose view is behind carries over what it found,
+/// and two devices that know different days never write the mirror in turn
+/// (the calendars' review, F43).
+fn days_off(config: &Config, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
+    av::days_off_spans(&sioul_core::vacations::DaysOff::of(config), window, zone)
+}
+
 /// The busy tasks' times worked out here kept in this device's own entry,
 /// when they changed (`devices::Entry::busy_tasks`).
 fn keep_times(times: &av::BusyTimes) {
@@ -304,8 +320,13 @@ fn busy_times_now(config: &Config, availability: Option<&str>, tasks: &[sioul_co
     let zone = sioul_core::zone::current();
     let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
     let plan = PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-    let times = av::tasks_part(fresh, tasks, events, plan.as_ref(), &shared, estimate, &zone, now, view.map_or(0, av::as_of));
+    let mut times = av::tasks_part(fresh, tasks, events, plan.as_ref(), &shared, estimate, &zone, now, view.map_or(0, av::as_of));
     if fresh {
+        // Your days off, laid into the record where it is worked out (F43); a device
+        // behind carries them over with the rest, as it found them.
+        // From yesterday's midnight: the same spans all day long, the record written again only when they change.
+        let midnight = sioul_core::timeline::midnight(sioul_core::zone::now().date(), &zone) - 86_400;
+        av::lay_days_off(&mut times, days_off(config, (midnight, midnight + DAYS_OFF_AHEAD), &zone));
         keep_times(&times);
     }
     *LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(times.clone());
