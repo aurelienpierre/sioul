@@ -641,10 +641,14 @@ ColumnLayout {
                 // A phone's own sections: its calls, from any device; on the phone itself what
                 // Android must allow and the tab "This phone"'s blocks (PhoneCard.qml). This
                 // device's own is where a door to the phone's setup lands (`setting:devices.here`).
+                // In a centred column of legible width, as a page's text and forms (PageColumn.qml): on a
+                // computer the table's four columns stay near their rows (the pictures' review, point 1).
                 Loader {
                     active: tab.calls[device.deviceId] !== undefined || (device.row.here === true && tab.own.phone === true)
                     visible: active
                     Layout.fillWidth: true
+                    Layout.maximumWidth: tab.theme.readable
+                    Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 6
 
                     sourceComponent: Component {

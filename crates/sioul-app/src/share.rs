@@ -676,7 +676,12 @@ pub(crate) fn devices() -> String {
     grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
     // Every device of the table, and a device whose line says what it lets ring but that the table
     // does not hold (yet): the window shows only those it has a row for.
-    let listed: Vec<(String, String, bool)> = rows.iter().map(|r| (r.id.clone(), r.form.clone(), r.no_lines)).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new(), false))).collect();
+    let mut listed: Vec<(String, String, bool)> = rows.iter().map(|r| (r.id.clone(), r.form.clone(), r.no_lines)).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new(), false))).collect();
+    // The demo profile's pictures (`SIOUL_DEMO`, tools/demo/run.sh): a phone stood in when none
+    // shares, "phone-id", so that a phone's card is pictured, its table as today's (main.qml's steps `phones`).
+    if !cfg!(target_os = "android") && std::env::var_os("SIOUL_DEMO").is_some() && !listed.iter().any(|(id, form, _)| form == "phone" || id == "phone-id") {
+        listed.push(("phone-id".to_string(), "phone".to_string(), false));
+    }
     let calls = calls_views(&config, listed.iter().map(|(id, form, old)| (id.as_str(), form.as_str(), *old)));
     json(&Devices { on: vault.is_some(), why, stays, rows, grid, calls })
 }

@@ -3464,7 +3464,8 @@ SioulWindow {
             // outline, a text area with its ground; the release's Flatpak job reads that line.
             // Calls per phone, starred people and the phone's permissions (SIOUL_GRAB_STEPS=phones;
             // the demo with SIOUL_DEMO_STARS=1): on a computer, a phone stood in beside this device,
-            // its section Calls set Personal with a group's row, then the Always through list saying
+            // its section Calls first while its line says nothing (today's table, Varies), then set
+            // Personal with a group's row, then the Always through list saying
             // where each is starred; on a phone, this device stood in as the phone, its card's
             // sections unfolded one by one: Calls, what Android must allow, the restricted settings'
             // three steps (`phonecard::demo`).
@@ -3475,6 +3476,28 @@ SioulWindow {
                     fold.open = open
                 return fold
             }
+            // The phone's card: on a computer, the demo's stand-in phone ("phone-id", `share::devices`);
+            // on a phone's layout, this device. `say`: a Personal table with the group School said first.
+            function phonesShow(say) {
+                const devices = parametersPage.devices
+                const own = (devices.view.rows || []).filter(row => row.here === true)
+                grabber.phonesId = window.phoneGrab && own.length > 0 ? own[0].id : "phone-id"
+                if (say) {
+                    sioul.deviceSay(grabber.phonesId, "calls.profile", "personal")
+                    sioul.deviceSay(grabber.phonesId, "calls.group.add", grabber.demoFrench ? "École" : "School")
+                }
+                devices.reloadAll()
+                const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                const mine = (devices.view.rows || []).filter(row => row.here === true)
+                if (window.phoneGrab) {
+                    // This device, a phone.
+                    const rows = (devices.view.rows || []).map(row => row.here === true ? Object.assign({}, row, { form: "phone", form_words: sioul.text("set-device-kind-phone") }) : row)
+                    devices.view = Object.assign({}, devices.view, { rows: rows })
+                } else {
+                    const phone = { id: "phone-id", here: false, name: "Moss", given: "Moss", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "admin+leisure", area_words: "", parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: false }
+                    devices.view = Object.assign({}, devices.view, { on: true, rows: mine.concat([phone]) })
+                }
+            }
             readonly property var phonesSteps: [
                 () => {
                     if (!window.phoneGrab) {
@@ -3484,23 +3507,24 @@ SioulWindow {
                     window.showParameters("devices")
                 },
                 () => {},
+                // On a computer, the phone's card while its line says nothing: what it does today, Varies.
                 () => {
-                    const devices = parametersPage.devices
-                    const own = (devices.view.rows || []).filter(row => row.here === true)
-                    grabber.phonesId = window.phoneGrab && own.length > 0 ? own[0].id : "phone-id"
-                    sioul.deviceSay(grabber.phonesId, "calls.profile", "personal")
-                    sioul.deviceSay(grabber.phonesId, "calls.group.add", grabber.demoFrench ? "École" : "School")
-                    devices.reloadAll()
-                    const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
-                    if (window.phoneGrab) {
-                        // This device, a phone.
-                        const rows = (devices.view.rows || []).map(row => row.here === true ? Object.assign({}, row, { form: "phone", form_words: sioul.text("set-device-kind-phone") }) : row)
-                        devices.view = Object.assign({}, devices.view, { rows: rows })
-                    } else {
-                        const phone = { id: "phone-id", here: false, name: "Moss", given: "Moss", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "admin+leisure", area_words: "", parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: false }
-                        devices.view = Object.assign({}, devices.view, { on: true, rows: own.concat([phone]) })
-                    }
+                    if (!window.phoneGrab)
+                        grabber.phonesShow(false)
                 },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldCalls", true)
+                    parametersPage.bringIntoView(grabber.named(parametersPage, "phoneCard-phone-id"))
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.save("devices-calls-today")
+                },
+                () => grabber.phonesShow(true),
                 () => {},
                 () => {
                     grabber.phonesFold("foldCalls", true)
