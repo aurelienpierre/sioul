@@ -1216,7 +1216,9 @@ impl Loaded {
             events: crate::agenda::event_refs(),
             contacts: crate::contacts::all(),
             projects: root.as_deref().and_then(|r| crate::projects::ProjectStore::load(r).ok()).map(|s| s.projects).unwrap_or_default(),
-            vault: root.as_deref().map(Vault::open),
+            // The notes are the notes folder's, wherever Sioul's own lists live: read from
+            // `root`, where the lists went once moved, the window showed no note at all.
+            vault: config.notes_root_path().as_deref().map(Vault::open),
             places: config.places(),
             drafts: Draft::all(),
             mail: MailIndex::build_ranked(&MailIndex::roots_of(config)),
@@ -1257,6 +1259,28 @@ impl Loaded {
 mod tests {
     use super::*;
     use crate::tasks::{ContactRef, Link, Relation};
+
+    /// Once Sioul's lists moved out of the notes folder (docs/notes-folder.md), the notes
+    /// are still read from the notes folder (found on a real session, 19 November 2026:
+    /// they were read from where the lists went, and the Notes page showed none).
+    #[test]
+    fn the_notes_are_the_notes_folder_s_once_the_lists_moved() {
+        crate::config::stand_ins_only();
+        let dir = std::env::temp_dir().join(format!("sioul-links-moved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let notes = dir.join("Notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::write(notes.join("Plan.md"), "# Plan\n").unwrap();
+        let mut config: crate::config::Config = toml::from_str(&format!("case_store = \"{}\"\n", notes.display().to_string().replace('\\', "/"))).unwrap();
+        let before = Loaded::read(&config);
+        assert_eq!(before.vault.as_ref().map(|v| v.notes.len()), Some(1), "before the move");
+        config.storage = crate::storage::Storage { moved: 1, from: notes.display().to_string(), ..Default::default() };
+        assert!(config.storage.is_moved() && config.records_root().is_some_and(|records| records != notes), "the lists live elsewhere");
+        let after = Loaded::read(&config);
+        assert_eq!(after.vault.as_ref().map(|v| v.root.clone()), Some(notes.clone()), "the notes folder, not where the lists went");
+        assert_eq!(after.vault.as_ref().map(|v| v.notes.len()), Some(1), "its notes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn ties_go_where_they_can_be_written() {

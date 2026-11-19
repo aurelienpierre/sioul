@@ -13,7 +13,7 @@ import android.util.Log;
  * A notice of Sioul's tapped, or one of its buttons pressed (Notices): what
  * it opens, its thing by its address ("notice": an event, a message, a
  * code's message, the mailbox, a need, the end of the work day or of the
- * whole day), kept for Sioul ({@link EventAlarms#takeOpened}, which Rust
+ * whole day, a site), kept for Sioul ({@link EventAlarms#takeOpened}, which Rust
  * reads as the window comes up or starts), the notice taken away, then Sioul
  * brought up as by its icon. A notice an older Sioul posted opens as it
  * said: an event, the Porch, the mailbox, a closing sheet, a block's
@@ -63,7 +63,7 @@ public final class ReminderOpener extends Activity
      * (`isEventAddress`), a message's (`isMailAddress`; a code's is its
      * message's), the mailbox, the Porch, a need ({@code sioul:need/meal:0}),
      * the end of the work day or of the whole day
-     * ({@code sioul:day/work:2026-10-14}), or another thing of Sioul's by its
+     * ({@code sioul:day/work:2026-10-14}), a site ({@link #isSiteAddress}), or another thing of Sioul's by its
      * kind and id (a task, a paper, a contract, a budget's line: a tablet's
      * dates), its parts never "." nor "..". Rust's {@code is_notice_address}
      * (eventalarms.rs), on the same addresses (EventOpenCheck).
@@ -79,6 +79,8 @@ public final class ReminderOpener extends Activity
             return true;
         if (key.startsWith("sioul:day/"))
             return key.matches("sioul:day/(work|night):\\d{4}-\\d{2}-\\d{2}") && validDate(key.substring(key.indexOf(':', "sioul:day/".length()) + 1));
+        if (key.startsWith("sioul:site/"))
+            return isSiteAddress(key);
         java.util.regex.Matcher thing = java.util.regex.Pattern.compile("sioul:(need|task|paper|contract|budget|movement|letter)/(.+)").matcher(key);
         if (!thing.matches())
             return false;
@@ -88,6 +90,34 @@ public final class ReminderOpener extends Activity
         for (String part : rest.split("/", -1))
             if (part.isEmpty() || part.equals(".") || part.equals("..") || !part.matches("[\\x21-\\x5b\\x5d-\\x7e]+"))
                 return false;
+        return true;
+    }
+
+    /**
+     * A site's address as a notice of Sioul's carries it (Rust's
+     * notice::address::site): {@code sioul:site/<id>}, then "#" and the
+     * web notice's own key when it has one; the id one plain part, never
+     * "." nor "..", the key without a slash, a backslash, a "#" or a control
+     * character. Opened, the site opens in its screen, or in the browser
+     * where this device's web view cannot carry it (siteview.rs). Rust's
+     * {@code is_notice_address} reads the same (EventOpenCheck).
+     *
+     * @param key what a notice carries, starting with {@code sioul:site/}
+     * @return whether it is a site's address
+     */
+    static boolean isSiteAddress(String key)
+    {
+        String rest = key.substring("sioul:site/".length());
+        int hash = rest.indexOf('#');
+        String id = hash < 0 ? rest : rest.substring(0, hash);
+        String tag = hash < 0 ? "" : rest.substring(hash + 1);
+        if (id.isEmpty() || id.equals(".") || id.equals("..") || id.indexOf('/') >= 0 || !id.matches("[\\x21-\\x5b\\x5d-\\x7e]+"))
+            return false;
+        for (int i = 0; i < tag.length(); i++) {
+            char c = tag.charAt(i);
+            if (c == '/' || c == '\\' || c == '#' || Character.isISOControl(c))
+                return false;
+        }
         return true;
     }
 

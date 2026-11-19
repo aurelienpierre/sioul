@@ -11,7 +11,7 @@
 // Android's accesses said to be set on that phone. This phone's own card, at
 // a phone's width (412 points): every section folded to one line, Calls
 // opened as a list of rows, a row opening its four choices, no grid, nothing
-// past the edge; what Android must allow in the design's order, each line
+// past the edge; this device's web view in one line; what Android must allow in the design's order, each line
 // its state and one button (`phoneAllow`); the restricted settings' card,
 // its three steps each a button ticked when done (`restrictedStep`), the
 // drawing of ⋮ under the second; the blocks of the tab "This phone", made
@@ -133,6 +133,7 @@ Item {
             return JSON.stringify({
                 phone: true,
                 allow: [line("role", "given"), line("contacts", "given"), line("history", "not-given"), line("notifications", "not-given"), line("texts", "not-given"), line("dnd", "given"), line("alarms", "given"), line("battery", "unknown")],
+                webview: "Web view: Android System WebView 142.0.7444.90. Sites open in Sioul.",
                 restricted: { intro: "Sioul was installed from a file.", steps: [{ step: "notice", said: "Let Android show its notice.", button: "Show Android's notice", done: mock.steps.notice }, { step: "info", said: "Open Sioul's page in Android.", button: "Open Sioul's page", done: mock.steps.info }, { step: "back", said: "Come back to Sioul.", button: "Ask again now", done: mock.steps.back }], works: mock.steps.back, cannot: "Sioul cannot see the setting itself." }
             })
         }
@@ -327,6 +328,7 @@ Item {
             named("callsBack").clicked()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.clear")
             verify(named("foldAllow") === null || !showing(named("foldAllow")), "another phone's checklist is not shown here")
+            verify(named("webviewLine") === null || !showing(named("webviewLine")), "nor this device's web view")
             for (const cell of walk(card, i => i.objectName.indexOf("callsCell-") === 0 && showing(i), []))
                 verify(within(cell), cell.objectName + ": within the page")
             save("phone-card-computer")
@@ -343,6 +345,8 @@ Item {
                 verify(within(line), line.text + ": within the page")
             verify(!showing(named("callsGrid")), "no grid on a phone")
             verify(!showing(named("callsProfile-personal")), "Calls folded")
+            // This device's web view, in one line (siteview.rs).
+            verify(showing(named("webviewLine")) && named("webviewLine").text.indexOf("142.0.7444.90") > 0 && within(named("webviewLine")), "the web view's line")
             verify(["apps", "messages", "texts", "dnd"].every(b => named("block-" + b).item === null), "the tab's blocks made only once unfolded")
             // Calls unfolded: the rows, each opening its four choices.
             named("foldCalls").open = true

@@ -294,7 +294,9 @@ if [ "$api" = yes ]; then
     # Java: the Android side (../android/package/src), its private members
     # included, made in a folder of its own. Android's classes link to
     # Android's reference by android.jar's package names, nothing fetched;
-    # the JDK's own link to Oracle's, as javadoc does by itself.
+    # the JDK's own link to Oracle's, as javadoc does by itself. The Android
+    # libraries the code names beside android.jar (androidx.webkit) are read
+    # from the JVM checks' stand-ins, never documented here.
     java="$(mktemp -d)"
     trap 'rm -rf "$java"' EXIT
     jar="${ANDROID_JAR:-}"
@@ -312,7 +314,7 @@ if [ "$api" = yes ]; then
     fi
     options=(-private -encoding UTF-8 -docencoding UTF-8 -charset UTF-8 -notimestamp -quiet -linksource
         -windowtitle "Sioul's Android code" -doctitle "Sioul's Android code"
-        -sourcepath "$root/android/package/src" -d "$java/html")
+        -sourcepath "$root/android/package/src:$root/android/jvm-checks/androidx" -d "$java/html")
     if [ -n "$jar" ]; then
         mkdir "$java/android"
         python3 - "$jar" "$java/android/element-list" <<'LIST'

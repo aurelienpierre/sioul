@@ -520,6 +520,24 @@ SafeDialog {
         dialog.measureLength()
     }
 
+    // The leg put on one side of its appointment, its length kept: ending five minutes
+    // before the appointment starts ("before", to get there), or starting five minutes
+    // after it ends ("after", to come back), as "Add a ride or a walk…" first places it.
+    // Its side stays its times' (`legSide`): this only moves them there.
+    function placeLeg(side) {
+        const minutes = dialog.keptLength > 0 ? dialog.keptLength : 25
+        const begin = side === "after" ? dialog.legUntil + 5 * 60 : dialog.legAt - 5 * 60 - minutes * 60
+        const from = dialog.wall(begin * 1000)
+        const to = dialog.wall((begin + minutes * 60) * 1000)
+        const day = d => d.getFullYear() + "-" + dialog.pad(d.getMonth() + 1) + "-" + dialog.pad(d.getDate())
+        const clock = d => dialog.pad(d.getHours()) + ":" + dialog.pad(d.getMinutes())
+        startDay.date = day(from)
+        startTime.text = clock(from)
+        endDay.date = day(to)
+        endTime.text = clock(to)
+        dialog.measureLength()
+    }
+
     // For the window's pictures: the repeat's end and its pauses in view.
     function showRepeat() {
         Qt.callLater(() => {
@@ -662,6 +680,26 @@ SafeDialog {
                 Layout.fillWidth: true
                 spacing: 4
 
+                // Which way: to get there, or to come back. A press moves the leg to that side of
+                // its appointment; the one that shows as chosen is the side its times say now.
+                RowLayout {
+                    spacing: 6
+
+                    Repeater {
+                        model: ["before", "after"]
+
+                        delegate: Button {
+                            required property string modelData
+
+                            objectName: "legSide-" + modelData
+                            highlighted: dialog.legSide === modelData
+                            text: dialog.sioul.text(modelData === "after" ? "leg-side-after" : "leg-side-before")
+                            Accessible.checkable: true
+                            Accessible.checked: dialog.legSide === modelData
+                            onClicked: dialog.placeLeg(modelData)
+                        }
+                    }
+                }
                 Label {
                     Layout.fillWidth: true
                     text: dialog.legLine

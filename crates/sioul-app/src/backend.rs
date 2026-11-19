@@ -2474,6 +2474,14 @@ pub mod qobject {
         #[qinvokable]
         fn remove_site(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// Android: a site opened in Sioul's own screen around the system's
+        /// web view, or its address for the browser where this device's web
+        /// view cannot carry it (siteview.rs); `look`, Sioul's colours for the
+        /// screen's bar (JSON). {"here": true}, {"browser": address,
+        /// "problem"}, or {"problem"} for a site gone.
+        #[qinvokable]
+        fn site_open(self: &Sioul, id: &QString, look: &QString) -> QString;
+
         /// Whether this build carries Sioul's own Google key: then no key of your own is needed.
         #[qinvokable]
         fn google_built_in(self: &Sioul) -> bool;
@@ -7994,6 +8002,10 @@ impl qobject::Sioul {
         let problem = crate::sites::remove(&id.to_string());
         self.as_mut().sites_changed();
         QString::from(&problem)
+    }
+
+    fn site_open(&self, id: &QString, look: &QString) -> QString {
+        QString::from(&crate::siteview::open(&id.to_string(), &look.to_string()))
     }
 
     fn app_password_for(&self, host: &QString) -> QString {

@@ -68,8 +68,12 @@ Item {
         function appPasswordFor(host) {
             return "{}"
         }
+        // The real backend's answer is a call, not a property: nothing tells a binding that
+        // it changed. `quiet.vault`, changed in place, stands for that (a property read here
+        // would wake every binding that called this, and hide a row that never reads again).
+        property var quiet: ({ vault: "" })
         function bitwardenState() {
-            return mock.vault
+            return mock.quiet.vault !== "" ? mock.quiet.vault : mock.vault
         }
         // As the backend does: the vault emptied, then said.
         function bitwardenLock() {
@@ -176,6 +180,28 @@ Item {
             tryCompare(shown.unlockDialog, "opened", true, 2000, "the vault's dialog")
             shown.unlockDialog.close()
             tryCompare(shown.unlockDialog, "visible", false, 2000)
+        }
+
+        // Unlocked through the card's own dialog, the row says so at once: open, with Lock,
+        // never "locked" still (found on a real session, 19 November 2026: the row read the
+        // vault's state once, when it was made, and its rows were not made again).
+        function test_unlocked_by_the_dialog_the_row_says_open() {
+            mock.quiet.vault = "locked"
+            set("locked", "camille@example.org")
+            const shown = card()
+            tryVerify(() => named(shown, "vaultUnlock") !== null && named(shown, "vaultUnlock").visible)
+            compare(named(shown, "vaultState").text, "set-bitwarden-vault-locked")
+            // As the dialog does once the vault opened: the backend's state changed, said by no property.
+            mock.quiet.vault = "unlocked"
+            shown.unlockDialog.unlocked()
+            tryCompare(named(shown, "vaultState"), "text", "set-bitwarden-vault-open", 2000, "the row follows the vault")
+            verify(named(shown, "vaultLock").visible && !named(shown, "vaultUnlock").visible)
+            // And locked again by its time without use, told by the backend.
+            mock.quiet.vault = "locked"
+            mock.bitwardenLocked()
+            tryCompare(named(shown, "vaultState"), "text", "set-bitwarden-vault-locked", 2000)
+            verify(named(shown, "vaultUnlock").visible && !named(shown, "vaultLock").visible)
+            mock.quiet.vault = ""
         }
 
         // Every password field of the forms that add an account offers "From Bitwarden…"

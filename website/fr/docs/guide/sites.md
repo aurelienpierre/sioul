@@ -31,7 +31,7 @@ Ces messageries sécurisées existent parce que le courriel ordinaire n’était
 
 Vous vous connectez une fois, sur le site lui-même. Sioul garde la connexion ; il ne garde jamais lui-même le mot de passe du site.
 
-Sur Android, la page Sites liste vos sites et ouvre chacun dans votre navigateur : Sioul n’y garde aucune connexion et n’y regroupe aucune notification. Les sites épinglés sur un ordinateur viennent avec les réglages quand vous [partagez entre vos appareils](sharing.md).
+Sur Android aussi, un site s’ouvre dans Sioul, dans un écran à lui, ou dans votre navigateur là où l’appareil ne peut pas le porter : voir [Sur un téléphone ou une tablette](#on-a-phone-or-a-tablet). Les sites épinglés sur un ordinateur viennent avec les réglages quand vous [partagez entre vos appareils](sharing.md).
 
 ## La liste {#the-list}
 
@@ -62,6 +62,24 @@ Le ⋮ du site ouvert, ou un clic droit sur n’importe quel site de la liste 
   [![Le menu d’un site ouvert, de haut en bas : les six types, « Discussions » coché ; Le garder ouvert, pour en être prévenu ; Pour ; Micro, Caméra et Partage de l’écran, pour les appels, cochés tous les trois ; Périphériques d’appel… ; Monter ; Descendre ; Lier à… ; Nom et adresse… ; Retirer ce site.](../assets/screens/fr/sites-menu.png){ loading=lazy }](../assets/screens/fr/sites-menu.png "Ouvrir l’image en grand")
   <figcaption>Tout ce qui concerne un site, dans son menu.</figcaption>
 </figure>
+
+## Sur un téléphone ou une tablette {#on-a-phone-or-a-tablet}
+
+Sur Android, la page Sites est celle de l’ordinateur : **Épingler un site**, **Sites courants ▾**, les sites de ces heures d’abord, l’entonnoir et l’ordre, l’icône de chaque site et ses nouvelles, et le menu d’un site par un appui long (son type, ce à quoi il sert, sa place dans votre ordre, **Lier à…**, **Nom et adresse…**, **Retirer ce site**). Sous le nom de chaque site, une ligne dit où il s’ouvre.
+
+- **Dans Sioul** : un toucher ouvre le site dans un écran de Sioul, par-dessus la fenêtre, un site à la fois. Une barre fine reste en vue : retour, le nom du site et l’hôte de la page affichée (la page réellement chargée, jamais une page seulement demandée), recharger, et un menu avec **Ouvrir dans le navigateur**, **Partager l’adresse de la page**, **Chercher dans la page** et **Fermer**. Quand la page affichée est celle d’un autre site (un fournisseur de connexion, un lien parti ailleurs), son hôte vient en premier, en gras, et le nom du site passe dessous : « depuis *votre site* ». Retour revient en arrière dans le site, puis le ferme. Une notification, un rappel, un partage, la carte de l’écran d’accueil ou l’icône de Sioul ferme le site et montre aussitôt ce que vous avez touché ; le site reste connecté, et se rouvre depuis la liste. Revenir par les applications récentes montre au contraire le site tel que vous l’avez laissé. Tourner la tablette, ou partager son écran avec une autre application, garde la page. Un message ou une question de la page s’affiche par-dessus avec l’adresse du site pour titre, et **Fermer ce site** est toujours là.
+- **Connecté une fois** : tous les sites partagent une seule réserve sur cet appareil, comme sur un ordinateur ; ce qu’un site intègre d’autres sites ne garde aucun cookie, si bien qu’ils ne peuvent pas vous suivre d’un site à l’autre. Un site quitté puis rouvert est toujours connecté, même après qu’Android a fermé Sioul. Les connexions ne quittent jamais l’appareil : ni une sauvegarde ni le passage à un nouveau téléphone ne les emportent. Un site qui ne vous garde connecté que tant que sa page est ouverte redemande la connexion une fois son écran fermé.
+- **Fichiers** : l’envoi d’un fichier passe par le sélecteur de fichiers d’Android, et seul un fichier qu’une autre application prête parvient au site : jamais les fichiers de Sioul ; Avant tout téléchargement, Sioul demande : le nom du fichier (vous pouvez le changer), sa taille quand le site la dit, le site d’où il vient, et où il va, **Téléchargements** ou **Un dossier que je choisis…** ; **Annuler** n’enregistre rien. Puis Sioul le récupère lui-même, avec la connexion du site : une ligne sous la barre le suit, avec **Ouvrir** une fois qu’il y est. Votre connexion ne va jamais à une autre application, ni à une autre adresse d’où le fichier serait envoyé. Un fichier qu’un site fabrique pour un formulaire, un lien valable une seule fois, ou un fichier que la page fabrique elle-même ne peuvent pas être redemandés : la ligne le dit, avec **Ouvrir dans le navigateur**.
+- **Fenêtres et liens** : une fenêtre de connexion qu’un site ouvre quand vous touchez s’affiche par-dessus sa page, et s’en va une fois la connexion faite. Un lien vers un autre site, touché, s’ouvre dans votre navigateur, de même qu’un lien qui ouvre un nouvel onglet sur un autre site. Un lien que le site fait d’abord passer par sa propre adresse (comme beaucoup de messageries) reste dans Sioul : l’adresse de l’autre site s’affiche alors en gras au-dessus de la page, avec « depuis *votre site* » dessous.
+- **Retirer ce site** oublie aussi sa connexion sur cet appareil. Là où la vue web de l’appareil ne peut pas tout effacer pour un seul site, une ligne dit ce qui reste et comment l’effacer.
+- **Dans votre navigateur, et pourquoi** : là où la vue web de l’appareil (le moteur d’Android pour les pages dans les applications) manque, est antérieure à la version 120, ou dessine les pages dans Sioul lui-même (où le plantage d’une page fermerait Sioul), un site s’ouvre dans votre navigateur, comme avant, et sa ligne dit pourquoi. Réglages ▸ Appareils, la carte de cet appareil, dit la version de la vue web et ce qu’elle ne peut pas porter.
+
+Ce qu’Android ne donne pas, quoi que fasse Sioul :
+
+- **Les nouvelles d’un site** viennent de sa propre application, ou de Sioul sur un ordinateur. Un site dans Sioul ne dit rien tant que son écran est fermé ou derrière une autre application, et cette version ne recueille encore aucune de ses notifications.
+- **La caméra, le micro et votre position** sont refusés dans cette version ; le menu au-dessus du site dit que le site les a demandés. Une prochaine version vous le demandera, site par site.
+- **Pas de clé de sécurité, pas de clé d’accès** dans Sioul, et **pas de partage d’écran** dans un appel : cela passe par **Ouvrir dans le navigateur**, comme un site qui refuse de s’ouvrir dans une application (Sioul dit honnêtement aux sites qu’il en est une, sans le modèle de votre appareil).
+- **Remplir l’identifiant** depuis Bitwarden, **Couper ses sons** et les couleurs plus calmes restent ceux d’un ordinateur pour l’instant ; Bitwarden, les appels et les pages plus sombres viennent dans une prochaine version.
 
 ## Les notifications à votre rythme {#notifications-at-your-pace}
 
@@ -151,7 +169,7 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurel
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Des notifications pour vos heures, et les organismes prêts à épingler.** Les applications qui réunissent des services web dans une fenêtre, et un navigateur avec des conteneurs, comparés. Aucune autre documentation ne décrit des notifications retenues jusqu’à vos heures puis données ensemble à heures fixes : Ferdium et Rambox les coupent selon un horaire, Wavebox pendant un temps fixé. Sioul a les espaces sécurisés des banques, des assurances et des organismes publics prêts à épingler pour la France, le Canada et les États-Unis ; il remplit les identifiants de Bitwarden sans rien à installer ; sa propre boîte de dialogue demande le code PIN d’une clé de sécurité sous Linux, là où Electron, sur lequel Ferdium et Rambox sont construits, refuse une telle demande ; et il garde vos sites à jour entre vos ordinateurs sans compte chez une entreprise. D’autres font plus ailleurs : ils ouvrent deux comptes d’un même service côte à côte, prennent les extensions de navigateur et les bloqueurs de publicité, et le téléphone de Sioul ne fait qu’ouvrir vos sites dans son navigateur.
+**Des notifications pour vos heures, et les organismes prêts à épingler.** Les applications qui réunissent des services web dans une fenêtre, et un navigateur avec des conteneurs, comparés. Aucune autre documentation ne décrit des notifications retenues jusqu’à vos heures puis données ensemble à heures fixes : Ferdium et Rambox les coupent selon un horaire, Wavebox pendant un temps fixé. Sioul a les espaces sécurisés des banques, des assurances et des organismes publics prêts à épingler pour la France, le Canada et les États-Unis ; il remplit les identifiants de Bitwarden sans rien à installer ; sa propre boîte de dialogue demande le code PIN d’une clé de sécurité sous Linux, là où Electron, sur lequel Ferdium et Rambox sont construits, refuse une telle demande ; et il garde vos sites à jour entre vos ordinateurs sans compte chez une entreprise. D’autres font plus ailleurs : ils ouvrent deux comptes d’un même service côte à côte, prennent les extensions de navigateur et les bloqueurs de publicité, et sur Android Sioul montre vos sites sans leurs notifications.
 
 En octobre 2026, d’après la documentation de chaque application.
 
@@ -181,7 +199,7 @@ En octobre 2026, d’après la documentation de chaque application.
     10. Un seul profil de navigateur garde tous les sites : chacun garde sa propre connexion, mais pas deux comptes du même service.
     11. Avec la formule Pro.
     12. N’importe quelle extension de Chrome ; pas de bloqueur de publicité à lui.
-    13. Vos sites sont listés, et chacun s’ouvre dans le navigateur de votre téléphone.
+    13. Vos sites, ajoutés et modifiés là aussi, s’ouvrent dans Sioul là où la vue web de l’appareil peut les porter, sinon dans son navigateur ; sans leurs notifications, ni clé de sécurité, ni caméra, ni micro pour l’instant.
     14. Firefox tourne sous Android et iOS ; ses conteneurs non.
 
 === "Technique"

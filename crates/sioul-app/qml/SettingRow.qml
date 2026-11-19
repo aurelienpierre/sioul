@@ -34,6 +34,9 @@ ColumnLayout {
     signal goTo(string key)
     // What the panel shows changed behind its back (lists left, the vault locked): its rows read again.
     signal changedElsewhere()
+    // The vault's state as the card that holds a "vault" row reads it ("locked", "unlocked"),
+    // read again by the card at each change; "" where no card says it.
+    property string vaultState: ""
     // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
     signal unlockAsked()
     // A link's button pressed: the panel it is in closes, its place shown (SettingsPanel.qml).
@@ -115,7 +118,11 @@ ColumnLayout {
             RowLayout {
                 id: vault
 
-                property string open: field.sioul.bitwardenState()
+                // Asked of the backend when the row is made; then as the card that holds the row
+                // says (`vaultState`), since nothing tells a binding that the backend's answer
+                // changed: a row that asked once went on saying "locked" after the vault opened.
+                property string asked: field.sioul.bitwardenState()
+                readonly property string open: field.vaultState !== "" ? field.vaultState : vault.asked
 
                 spacing: 8
 
@@ -146,7 +153,7 @@ ColumnLayout {
                     text: field.theme.plain(field.sioul.text("set-bitwarden-lock"))
                     onClicked: {
                         field.sioul.bitwardenLock()
-                        vault.open = field.sioul.bitwardenState()
+                        vault.asked = field.sioul.bitwardenState()
                         field.changedElsewhere()
                     }
                 }

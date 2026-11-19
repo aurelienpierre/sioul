@@ -78,6 +78,11 @@ public final class RecentsCheck
                 String name = source.getFileName().toString();
                 if (!name.equals("SecurityKeyLink.java"))
                     expect(name + ": no FLAG_SECURE", !text.contains("FLAG_SECURE"));
+                if (name.equals("SiteScreen.java")) {
+                    // A site's page, never pictured: its own screen, from Android 13, once (section 10 of the review of 19 November 2026).
+                    expect("SiteScreen: Recents' picture off from Android 13, never on", text.contains("if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)\n            setRecentsScreenshotEnabled(false);") && !text.contains("setRecentsScreenshotEnabled(true)"));
+                    continue;
+                }
                 expect(name + ": Recents' picture is the bridge's alone", !text.contains("setRecentsScreenshotEnabled"));
             }
         }
