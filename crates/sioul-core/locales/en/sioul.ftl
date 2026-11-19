@@ -6051,14 +6051,14 @@ dnd-stars-missing = { $n ->
     [one] One person on your list is not starred on { device-this }.
    *[other] { $Count } people on your list are not starred on { device-this }.
 }
-dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul never changes your contacts.
+dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul changes nothing of your contacts but their star.
 dnd-stars-starred = Starred
 dnd-stars-not-starred = Not starred
 dnd-stars-unknown = Not among { device-this-s } contacts
 dnd-stars-no-number = No number
 dnd-stars-open = Open their contact
 dnd-stars-add = Add to contacts
-dnd-stars-permission = To say who on your list is starred on { device-this }, Sioul needs to read your contacts. It never changes them.
+dnd-stars-permission = To say who on your list is starred on { device-this }, Sioul needs to read your contacts. It changes nothing of them but their star.
 dnd-stars-allow = Allow reading contacts
 dnd-stars-again = Look again
 dnd-stars-repeat = A second call from the same number within 15 minutes rings too, whoever calls: emergency services may call back from a number you do not know.

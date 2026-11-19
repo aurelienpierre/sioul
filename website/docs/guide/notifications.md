@@ -241,7 +241,7 @@ In this phone's card in Settings ▸ Devices, as each app, conversation and site
 - **As before**: your Always through people still come; the blocked never do; codes and approvals, calls, alarms and what runs are never held.
 - **Each app's line** says its row in one sentence: "At once: Work; held: Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you and Do not disturb."
 - **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ Devices, this phone's card, **Make it silent**), or let Sioul do it for the apps it gathers. During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
-- **On a computer**, the apps' rows set on your phone or tablet travel with your settings; they are changed on the phone.
+- **On a computer**, the apps' rows set on your phone or tablet travel with your settings; each phone's card in Settings ▸ Devices lists them, read and changed there as on the phone.
 
 **What Sioul keeps**, on that device only, never shared with your other devices: your choices of each app's kind, each conversation's way through and each site's, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says, unless you send an app's messages to your computers ([below](#messages-on-your-computers)). The rows by time travel with your settings: an app's with its name, a conversation's by a number made from it, never its title.
 

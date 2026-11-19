@@ -80,7 +80,7 @@ Ce qui règle un téléphone est sur sa propre carte dans [Appareils](#devices),
     - **Messages sur vos ordinateurs** : la partie **Messages de votre téléphone**, et pour chaque application si ses messages vont sur le Porche de vos ordinateurs ; **Répondre depuis vos ordinateurs**. Voir [Sur vos ordinateurs](notifications.md#messages-on-your-computers).
     - **SMS** : ce que Sioul fait de vos SMS une fois que vous l’autorisez, la partie **SMS**, ce que garde votre téléphone et ce qui est parti vers vos ordinateurs, ce que prend son opérateur pour un message multimédia. Voir [Les SMS](texts.md).
     - **Le filtrage des appels sur ce téléphone** : le filtrage qu’un téléphone garde tant que ses Appels ne disent rien, où va un appel refusé, et les numéros bloqués d’Android ([Le filtrage des appels](calls.md#the-call-screening)).
-    - **« Ne pas déranger » sur ce téléphone** : l’accès « Ne pas déranger » d’Android et ce que chaque mode laisse passer ; qui, parmi les personnes qui passent toujours, y est étoilé ; **Garder ce téléphone à jour en arrière-plan**. Voir [Ce que fait chaque système](notifications.md#what-each-system-does).
+    - **« Ne pas déranger » sur ce téléphone** : l’accès « Ne pas déranger » d’Android et ce que chaque mode laisse passer ; qui, parmi les personnes qui passent toujours, y est en favori ; **Garder ce téléphone à jour en arrière-plan**. Voir [Ce que fait chaque système](notifications.md#what-each-system-does).
 - La carte d’un autre téléphone dit que ce qu’Android permet se règle sur ce téléphone-là.
 
 ## Partage {#your-folder-and-sharing}
