@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub(crate) fn store() -> Result<ProjectStore, String> {
-    let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
+    let root = load_config().records_root().ok_or_else(|| tr().text("error-no-store", None))?;
     ProjectStore::load(&root)
 }
 
@@ -175,7 +175,7 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
 /// A budget made (`id` empty) or changed; returns {"id"} or {"error"}.
 pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<budget::BudgetEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
+        let root = load_config().records_root().ok_or_else(|| tr().text("error-no-store", None))?;
         budget::save_budget(&root.join(budget::LEDGER), id, &edit)
     });
     crate::backend::show(qt, shared);
@@ -188,7 +188,7 @@ pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &
 /// A budget taken out, by its id (its lines stay in the file); returns what
 /// went wrong, else "". A line is taken out by `remove_line`.
 pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let result = budget::remove_budget(&root.join(budget::LEDGER), id);
     crate::backend::show(qt, shared);
     result.err().unwrap_or_default()
@@ -209,7 +209,7 @@ fn line_said(result: Result<bool, String>) -> String {
 /// only when it is still the line the page showed (`shown`: its row, JSON);
 /// returns what went wrong, else "".
 pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let result = match budget::SeenLine::from_page(uri, shown) {
         Some((place, seen)) => budget::remove_line(&path, place, &seen),
@@ -223,7 +223,7 @@ pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
 /// still the line the page showed (`shown`: its row, JSON). Returns what went
 /// wrong, else "".
 pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str, label: &str, amount: f64, date: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let today = sioul_core::zone::now().date();
     let result = match budget::SeenLine::from_page(uri, shown) {
@@ -687,7 +687,7 @@ pub(crate) fn say_matched_payments(qt: &QtThread, shared: &Arc<Shared>, paid: cr
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
         let folder = invoice::folder();
         let device = crate::notices::here_id();
-        let root = load_config().notes_root_path();
+        let root = load_config().records_root();
         let mut problem = String::new();
         for matched in &paid {
             if let Err(e) = life::take_back(&folder, &device, &matched.taken.ids()) {

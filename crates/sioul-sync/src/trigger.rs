@@ -366,7 +366,7 @@ mod tests {
         for dir in [calendars.join("cloud/work"), calendars.join("cloud/.hidden"), base.join("config")] {
             std::fs::create_dir_all(dir).unwrap();
         }
-        let store = |name: &str, path: PathBuf, folder: bool| Store { name: name.into(), path, folder, shape: Shape::Whole, skip: &[], part: "settings" };
+        let store = |name: &str, path: PathBuf, folder: bool| Store { name: name.into(), path, folder, shape: Shape::Whole, skip: &[], part: "settings", flat: false, was: None };
         let stores = [
             store("data/calendars/", calendars.clone(), true),
             store("config/config.toml", base.join("config/config.toml"), false),

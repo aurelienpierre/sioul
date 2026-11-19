@@ -1,0 +1,16 @@
+# Paper letters, read from their scans (docs/porch.md). Their texts are beside: <id>.txt.
+
+[[letter]]
+id = "2026-10-12-caf"
+file = "letters/2026/2026-10-12 caf other.pdf"
+sender = "CAF"
+kind = "other"
+status = "new"
+received = 2026-10-12
+
+[[letter]]
+id = "2026-10-20-linked"
+file = "ABSOLUTE-LINKED"
+kind = "other"
+status = "new"
+linked = true

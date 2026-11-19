@@ -874,7 +874,7 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let stamp = now.timestamp().as_second();
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let tasks = crate::tasks::all(now.time_zone());
-    let store = config.notes_root_path();
+    let store = config.records_root();
     let looked = crate::words::Words::of(config);
     // The money once (`movements::books`, made again only when a file changed): the budget file counted, its movements, each account's stretch.
     let books = store.as_deref().filter(|root| Ledger::load(root).is_ok()).map(|root| crate::movements::books(root, &looked, now.date()));

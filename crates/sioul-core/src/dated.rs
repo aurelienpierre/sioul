@@ -142,7 +142,7 @@ pub struct EventSeen {
 pub fn letter_event(letters: &Letters, letter: &crate::letters::Letter, at: Option<i64>, events: &[EventSeen]) -> Option<usize> {
     let address = crate::links::letter_uri(&letter.id);
     let scan = letter.file.replace('\\', "/");
-    let names_scan = |text: &str| !scan.is_empty() && crate::lines::unfold(text).iter().filter(|l| crate::lines::name(l) == "LINK").any(|l| links_scan(crate::lines::value(l).trim(), &scan, &letters.root));
+    let names_scan = |text: &str| !scan.is_empty() && crate::lines::unfold(text).iter().filter(|l| crate::lines::name(l) == "LINK").any(|l| links_scan(crate::lines::value(l).trim(), &scan, &letters.docs.base));
     events
         .iter()
         .position(|e| crate::lines::unfold(&e.text).iter().any(|l| crate::lines::name(l) == "LINK" && crate::lines::value(l).trim() == address))
@@ -280,8 +280,9 @@ pub fn of_prescriptions(prescriptions: &[crate::health::Prescription], today: Da
 /// Health's dates are not here (`of_prescriptions`).
 pub fn read_all(config: &crate::config::Config, tasks: &[Task], events_on: &dyn Fn(Date) -> Vec<EventSeen>, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<Dated> {
     let mut out = of_tasks(tasks, today, zone);
-    if let Some(root) = config.notes_root_path() {
-        if let Ok(letters) = Letters::load(&root) {
+    if let Some(places) = config.places() {
+        let root = places.records.clone();
+        if let Ok(letters) = Letters::load_at(&places) {
             out.extend(of_letters(&letters, tasks, events_on, today, zone, tr));
         }
         if let Ok(contracts) = crate::contracts::Contracts::load(&root) {
@@ -414,7 +415,7 @@ mod tests {
         tasked.task = "t1".into();
         let mut done = letter("done", Some("2026-10-30"), None);
         done.status = "done".into();
-        let letters = Letters { root: "/home/a/Notes".into(), list: vec![letter("plain", Some("2026-10-30"), Some(("2026-11-02", Some((14, 0))))), tasked, done] };
+        let letters = Letters { docs: crate::storage::Places::under(std::path::Path::new("/home/a/Notes")).letters, root: "/home/a/Notes".into(), list: vec![letter("plain", Some("2026-10-30"), Some(("2026-11-02", Some((14, 0))))), tasked, done] };
         let none = |_: Date| Vec::new();
         let mut done_task = task("t1", "");
         done_task.status = Status::Completed;

@@ -11,12 +11,12 @@ use sioul_core::budget::Ledger;
 use sioul_core::contracts::{Contract, Contracts, Kind};
 
 fn contracts() -> Result<Contracts, String> {
-    let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+    let root = load_config().records_root().ok_or_else(|| tr().text("papers-no-store", None))?;
     Contracts::load(&root)
 }
 
 fn ledger() -> Option<Ledger> {
-    load_config().notes_root_path().and_then(|root| Ledger::load(&root).ok())
+    load_config().records_root().and_then(|root| Ledger::load(&root).ok())
 }
 
 #[derive(Serialize)]
@@ -184,7 +184,7 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         Ok(e) => e,
         Err(e) => return e.to_string(),
     };
-    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("papers-no-store", None) };
     if edit.title.trim().is_empty() {
         return tr().text("papers-no-title", None);
     }
@@ -223,7 +223,7 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
 }
 
 pub(crate) fn remove(id: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("papers-no-store", None) };
     Contracts::change(&root, |contracts| contracts.remove(id)).err().unwrap_or_default()
 }
 

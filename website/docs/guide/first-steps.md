@@ -175,7 +175,7 @@ Google's mail is added in the mail form, above: with an app password, or signed 
 
 ## Choose your notes folder
 
-Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul also keeps your projects, budgets, papers and scanned letters in that folder, so that they travel with it to your other devices.
+Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) apart from your notes, as plain text files in its own folder, and your papers' and letters' files in folders of their own. Until you move them there, once, they are in your notes folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
 
 Open **Notes**: as long as this device has no notes folder, the page asks for one, with **Choose a folder…**. Sioul reads it and links to it; it never owns it. Its settings (⚙) change it later. See [Your notes folder](notes.md#your-notes-folder).
 

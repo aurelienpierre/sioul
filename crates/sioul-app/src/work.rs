@@ -2964,7 +2964,7 @@ fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
     }
     edit.contacts.extend(sender_contact(&loaded, &card));
     let config = load_config();
-    if let Some(store) = config.notes_root_path().and_then(|r| ProjectStore::load(&r).ok()) {
+    if let Some(store) = config.places().and_then(|places| ProjectStore::open(&places).ok()) {
         // Its project as the Porch would file it: none for mail it sets
         // aside, none by its sender's address when nothing authenticates it.
         let stored = Card { path: Some(path), ..card };

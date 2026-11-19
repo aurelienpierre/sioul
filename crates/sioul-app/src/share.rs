@@ -182,7 +182,9 @@ pub(crate) fn set_notes_carried(carried: bool) -> String {
         // Said of the notes folder of now: asked again once it moves.
         here.notes_carried_for = load_config().notes_root_path().map(|notes| notes.display().to_string());
         if carried {
-            for part in ["notes", "papers"] {
+            // Once Sioul's lists left the notes folder, the papers have folders of their own.
+            let parts: &[&str] = if load_config().storage.is_moved() { &["notes"] } else { &["notes", "papers"] };
+            for part in parts.iter().copied() {
                 if here.parts.get(part) == Some(&true) {
                     here.parts.insert(part.to_string(), false);
                 }
@@ -214,10 +216,48 @@ fn same_top(a: &Path, b: &Path, storage: &Path) -> bool {
 
 /// Why a part cannot be shared from here, when it cannot: notes and papers while a sync app carries the notes folder.
 fn refused(part: &str, config: &Config, here: &share::Here) -> Option<String> {
-    if !matches!(part, "notes" | "papers") {
+    carried_for(part, config, here).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
+}
+
+/// The folder a sync app carries that keeps a part from travelling through
+/// the sharing too (one carrier for a file, never two): the notes folder for
+/// the notes; for the papers, the notes folder while Sioul's lists are in
+/// it, and once they left it (docs/notes-folder.md, "What lives where") the
+/// papers' or the letters' folder, the notes folder then speaking of the
+/// notes alone. Sioul's own lists, private, travel by the sharing alone.
+fn carried_for(part: &str, config: &Config, here: &share::Here) -> Option<PathBuf> {
+    match part {
+        "notes" => notes_carried(config, here),
+        "papers" if config.storage.is_moved() => [config.papers_folder(), config.letters_folder()].into_iter().find(|folder| folder_carried(folder, here)),
+        "papers" => notes_carried(config, here),
+        _ => None,
+    }
+}
+
+/// The folder a sync program is known to carry that holds `folder`, said
+/// shortly (`~/Nextcloud`): its files would travel there too, unsealed (the
+/// window of the move says so before the press, review S26). On a phone,
+/// guessed as `folder_carried` guesses. None when none is known.
+pub(crate) fn carrier_of(folder: &Path) -> Option<String> {
+    if folder.as_os_str().is_empty() {
         return None;
     }
-    notes_carried(config, here).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
+    if cfg!(target_os = "android") {
+        return folder_carried(folder, &here()).then(|| shorten(folder));
+    }
+    let real = sioul_core::storage::resolved(folder);
+    synced_roots().into_iter().find(|root| folder.starts_with(root) || real.starts_with(sioul_core::storage::resolved(root))).map(|root| shorten(&root))
+}
+
+/// Whether a sync app carries a folder of papers or letters: on a computer,
+/// as for the notes folder; on a phone, guessed as the notes folder is (in
+/// the same top folder of its storage as the sharing folder).
+fn folder_carried(folder: &Path, here: &share::Here) -> bool {
+    if cfg!(target_os = "android") {
+        here.folder_path().is_some_and(|sharing| same_top(&on_storage(folder), &on_storage(&sharing), Path::new(STORAGE)))
+    } else {
+        carried(folder, &synced_roots())
+    }
 }
 
 /// The parts this device shares now (`share::PARTS`), as its entry tells
@@ -227,15 +267,14 @@ fn refused(part: &str, config: &Config, here: &share::Here) -> Option<String> {
 pub(crate) fn parts_shared() -> Vec<String> {
     let here = here();
     let config = load_config();
-    let carried = notes_carried(&config, &here).is_some();
-    share::PARTS.iter().filter(|part| here.shares(part, &config) && !(carried && matches!(**part, "notes" | "papers"))).map(|part| (*part).to_string()).collect()
+    share::PARTS.iter().filter(|part| here.shares(part, &config) && carried_for(part, &config, &here).is_none()).map(|part| (*part).to_string()).collect()
 }
 
 /// What this device shares: each part as switched here, else as before parts had switches.
 fn stores_here(here: &share::Here) -> Vec<share::Store> {
     let config = load_config();
-    let carried = notes_carried(&config, here).is_some();
-    share::stores_of(&config, &share::Roots::here(), &|part| here.shares(part, &config) && !(carried && matches!(part, "notes" | "papers")))
+    let carried: Vec<&str> = ["notes", "papers"].into_iter().filter(|part| carried_for(part, &config, here).is_some()).collect();
+    share::stores_of(&config, &share::Roots::here(), &|part| here.shares(part, &config) && !carried.contains(&part))
 }
 
 /// A part's name and what it carries, in a line.
@@ -884,7 +923,7 @@ fn problem_text(code: &str) -> String {
         Some(("share-refused", name)) => say("share-refused", &[("file", file(name))]),
         Some(("share-not-text", name)) => say("share-not-text", &[("file", file(name))]),
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
-        Some((code @ ("share-not-medicines" | "share-medicines-emptied" | "share-medicines-emptied-there"), name)) => say(code, &[("file", file(name))]),
+        Some((code @ ("share-list-back" | "share-list-held" | "share-not-medicines" | "share-medicines-emptied" | "share-medicines-emptied-there"), name)) => say(code, &[("file", file(name))]),
         Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
         None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut" | "share-device-counts" | "share-device-unknown") => tr().text(code, None),
@@ -1795,6 +1834,8 @@ fn exchanged(outcome: &share::Outcome, began_ms: i64) {
     crate::devices::exported(outcome);
     // What the others say of legs that are a step's time, kept for the window and `sioul mcp` (part 7).
     let _ = legs_as_steps();
+    // The old files of Sioul's lists out of the notes folder once every device moved; the dated copies after their days.
+    crate::storage::tidy();
     if crate::alarms::health_written(outcome) {
         crate::alarms::schedule();
     } else if crate::wake::written(outcome) {
@@ -1806,6 +1847,68 @@ fn exchanged(outcome: &share::Outcome, began_ms: i64) {
 
 /// When the last exchange that went through whole began (Unix seconds), since Sioul started.
 static WHOLE: Mutex<Option<i64>> = Mutex::new(None);
+
+/// Where the move of Sioul's lists out of the notes folder stands among
+/// your devices (`share::storage_stand`); none while sharing is not set up
+/// here. Set up and not readable now (the keyring did not give its key): a
+/// stand that opens nothing, never "no sharing" (rule 3).
+pub(crate) fn storage_stand() -> Option<share::StorageStand> {
+    let here = here();
+    let folder = attached(&here)?;
+    let Some((folder, key)) = sealed(Some(folder)) else { return Some(share::StorageStand { unreadable: true, ..share::StorageStand::default() }) };
+    Some(share::storage_stand(&folder, &key, &memory_path(), &here.id, jiff::Timestamp::now().as_millisecond()))
+}
+
+/// What the move's switch holds (`sioul_core::storage::switch`): no
+/// exchange of this Sioul running (the one running told to hurry, then
+/// waited for), nor of another (the exchanges' lock).
+pub(crate) fn hold_exchanges() -> Result<Box<dyn std::any::Any>, String> {
+    use std::sync::atomic::Ordering;
+    HURRY.store(true, Ordering::Relaxed);
+    let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    HURRY.store(false, Ordering::Relaxed);
+    let running = share::exchange_lock(&memory_path(), true)?;
+    Ok(Box::new((busy, running)))
+}
+
+/// Whether a sync app carries this device's notes folder now (`notes_carried`).
+pub(crate) fn notes_carried_now() -> bool {
+    notes_carried(&load_config(), &here()).is_some()
+}
+
+/// Where the letters' scans travel from this device before the move and
+/// after it (review S27): before, with the notes (part "notes", unless a
+/// sync app carries the notes folder); after, in "papers" (unless a sync
+/// app carries the letters' folder). (before, after); never without sharing.
+pub(crate) fn scans_travel(letters: &Path) -> (bool, bool) {
+    let here = here();
+    let config = load_config();
+    if here.folder_path().is_none() {
+        return (false, false);
+    }
+    let before = here.shares("notes", &config) && notes_carried(&config, &here).is_none();
+    let after = here.shares("papers", &config) && !folder_carried(letters, &here);
+    (before, after)
+}
+
+/// Whether this device shares the part that carries Sioul's lists ("projects").
+pub(crate) fn carries_lists() -> bool {
+    let here = here();
+    here.folder_path().is_some() && here.shares("projects", &load_config())
+}
+
+/// The part that carries Sioul's lists switched on here, as you said in the
+/// window of the move; its entry says it.
+pub(crate) fn carry_lists() -> String {
+    let problem = {
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut here = share::Here::load(&state_dir());
+        here.parts.insert("projects".into(), true);
+        here.save(&state_dir()).err().unwrap_or_default()
+    };
+    crate::devices::parts_now();
+    problem
+}
 
 /// What a calendar or a list of this device's own reads as its pull, for
 /// what follows an appointment and what closes once it is over

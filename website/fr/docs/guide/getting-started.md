@@ -166,7 +166,7 @@ Chaque appareil garde toutes ses données, et fonctionne sans les autres. Trois 
 | Quoi | Comment cela parvient à vos autres appareils |
 |---|---|
 | Les courriels, les contacts, les événements et les tâches | par leurs propres serveurs, comme avec n’importe quel logiciel |
-| Ce que Sioul garde sur l’appareil : vos paramètres, vos comptes (jamais leurs mots de passe), vos heures, qui peut vous joindre, les liens entre les choses, les brouillons | par le **partage** de Sioul : un dossier qui porte des changements scellés |
+| Ce que Sioul garde sur l’appareil : vos paramètres, vos comptes (jamais leurs mots de passe), vos heures, qui peut vous joindre, les liens entre les choses, les brouillons, et ses propres listes (projets, budgets…) une fois sorties de votre dossier de notes | par le **partage** de Sioul : un dossier qui porte des changements scellés |
 | Votre dossier de notes | par sa propre application de synchronisation, ou par le partage une fois que vous l’activez |
 
 Une application de synchronisation que vous utilisez déjà porte le dossier du partage (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive, ou une autre), ou bien Sioul le porte lui-même quand vous avez un compte Nextcloud. Chaque changement est chiffré sur votre appareil avant d’y être écrit, avec une clé faite d’une phrase de passe que vous choisissez : le dossier et son serveur ne peuvent rien lire. Il n’y a aucun serveur à nous.

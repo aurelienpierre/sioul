@@ -247,7 +247,7 @@ impl Seen {
 
     fn world(&self) -> (Option<sioul_core::projects::ProjectStore>, porch::SenderList) {
         let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-        let store = self.config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+        let store = self.config.places().and_then(|places| sioul_core::projects::ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
         (store, porch::KnownSenders::load(&self.config.known_senders_path()))
     }
 }

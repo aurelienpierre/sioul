@@ -136,9 +136,17 @@ pub struct Config {
     /// unsaid at its first value; none while never written.
     #[serde(default)]
     pub screening: Option<crate::screening::Settings>,
-    /// Paper letters: where their scans arrive (docs/porch.md).
+    /// Paper letters: where their scans arrive, and their folder once Sioul's
+    /// lists left the notes folder (docs/porch.md, docs/notes-folder.md).
     #[serde(default)]
     pub letters: LetterSettings,
+    /// Papers: their folder once Sioul's lists left the notes folder (docs/papers.md).
+    #[serde(default)]
+    pub papers: PaperSettings,
+    /// Where this device keeps Sioul's own lists (`storage::Storage`): read
+    /// from the state folder by `load`, never from this file, which travels.
+    #[serde(skip)]
+    pub storage: crate::storage::Storage,
     /// Routines: timed steps played one at a time (docs/tasks.md).
     #[serde(rename = "routine", default)]
     pub routines: Vec<crate::routines::Routine>,
@@ -880,9 +888,24 @@ pub struct BookSaid {
 /// Paper letters (docs/porch.md): the folder their scans arrive in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct LetterSettings {
-    /// Unset: `letters/inbox` in the notes folder.
+    /// Unset: `inbox` in the letters' folder (`letters/inbox` in the notes folder before the move).
     #[serde(default)]
     pub inbox: Option<String>,
+    /// The letters' folder, its scans filed by year (`letters.folder`, this
+    /// device's own, never shared); read once Sioul's lists left the notes
+    /// folder. Unset: `Letters` in the documents folder (`storage::default_letters`).
+    #[serde(default)]
+    pub folder: Option<String>,
+}
+
+/// Papers (docs/papers.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct PaperSettings {
+    /// The papers' folder (`papers.folder`, this device's own, never
+    /// shared); read once Sioul's lists left the notes folder. Unset:
+    /// `Papers` in the documents folder (`storage::default_papers`).
+    #[serde(default)]
+    pub folder: Option<String>,
 }
 
 /// Reminders before dates (docs/reminders.md): one quiet notification each, never again.
@@ -1605,6 +1628,7 @@ impl Config {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut config: Config = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         config.settle();
+        config.storage = crate::storage::Storage::here();
         Ok(config)
     }
 
@@ -1648,6 +1672,64 @@ impl Config {
     /// of the app's own storage, which no other app, nor any sync, reads.
     pub fn notes_root_path(&self) -> Option<PathBuf> {
         self.notes_root.as_deref().map(expand_home).or_else(|| cfg!(target_os = "android").then(|| expand_home("~/Notes")))
+    }
+
+    /// Where Sioul's stores read and write on this device (docs/notes-folder.md,
+    /// "What lives where"): all under the notes folder until this device's
+    /// lists moved (`storage::Places::under`; none without a notes folder),
+    /// then the lists in the data folder's `records/`, the papers and the
+    /// letters in their own folders (`storage::Places::apart`); none while
+    /// the state of the move is lost (`storage::Storage::lost`).
+    pub fn places(&self) -> Option<crate::storage::Places> {
+        // Where the lists are is not known now (`Storage::lost`): none read nor written anywhere.
+        if self.storage.lost.is_some() {
+            return None;
+        }
+        if self.storage.is_moved() {
+            let notes = self.notes_root_path();
+            return Some(crate::storage::Places::apart(&data_dir().join(crate::storage::RECORDS), notes.as_deref(), &self.papers_folder(), &self.letters_folder()));
+        }
+        self.notes_root_path().map(|root| crate::storage::Places::under(&root))
+    }
+
+    /// Where Sioul's own lists are: the notes folder until they moved, then
+    /// the data folder's `records/` (`places`).
+    pub fn records_root(&self) -> Option<PathBuf> {
+        self.places().map(|places| places.records)
+    }
+
+    /// The papers' folder once the lists moved: `papers.folder`, else `Papers` in the documents folder.
+    pub fn papers_folder(&self) -> PathBuf {
+        self.papers.folder.as_deref().filter(|f| !f.trim().is_empty()).map_or_else(|| crate::storage::default_papers(self.notes_root_path().as_deref()), expand_home)
+    }
+
+    /// The letters' folder once the lists moved: `letters.folder`, else `Letters` in the documents folder.
+    pub fn letters_folder(&self) -> PathBuf {
+        self.letters.folder.as_deref().filter(|f| !f.trim().is_empty()).map_or_else(|| crate::storage::default_letters(self.notes_root_path().as_deref()), expand_home)
+    }
+
+    /// Where scans arrive: `letters.inbox`, else `inbox` in the letters' folder of now.
+    pub fn letters_inbox(&self) -> Option<PathBuf> {
+        match self.letters.inbox.as_deref().filter(|f| !f.trim().is_empty()) {
+            Some(inbox) => Some(expand_home(inbox)),
+            None => self.places().map(|places| places.letters.folder.join("inbox")),
+        }
+    }
+
+    /// Where scans arrive to be read: the arrival folder (`letters_inbox`),
+    /// and, once the lists moved and no arrival folder is set by hand, the
+    /// old one in the notes folder too while it is there: a scanner app or a
+    /// helper set on it goes on writing there (review S40).
+    pub fn letters_inboxes(&self) -> Vec<PathBuf> {
+        let mut inboxes: Vec<PathBuf> = self.letters_inbox().into_iter().collect();
+        if self.letters.inbox.as_deref().is_none_or(|inbox| inbox.trim().is_empty())
+            && let Some(old) = self.storage.from_path().map(|from| from.join(crate::storage::OLD_LETTERS).join("inbox"))
+            && old.is_dir()
+            && !inboxes.contains(&old)
+        {
+            inboxes.push(old);
+        }
+        inboxes
     }
 
     /// The notes folder as this device finds it (docs/notes-folder.md): one

@@ -28,6 +28,7 @@ fn main() {
         "qml/PlainComboBox.qml",
         "qml/SafeDialog.qml",
         "qml/SafePopup.qml",
+        "qml/StorageMove.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
         "qml/RailButton.qml",

@@ -1201,7 +1201,7 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
 // Money.
 
 pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
-    let root = s.config.notes_root_path().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
+    let root = s.config.records_root().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     budget::Ledger::load(&root)?;
     let today = sioul_core::zone::now().date();
     // Each money movement counted once: the bank accounts' lines read from the
@@ -1352,7 +1352,7 @@ pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
-    if s.config.notes_root_path().is_none() {
+    if s.config.records_root().is_none() {
         return Err(s.tr.text("error-no-store", None));
     }
     let id = args.text("id")?;

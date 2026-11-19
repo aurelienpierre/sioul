@@ -85,7 +85,7 @@ What sets a phone up is on its own card in [Devices](#devices), under its name.
 
 ## Sharing {#your-folder-and-sharing}
 
-The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it.
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
 
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
@@ -177,13 +177,15 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 
 | Page | Behind its ⚙ |
 |---|---|
-| [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, the calls your phones declined, how a message reads, how mail is sorted |
+| [Porch](porch.md#the-porchs-settings) | the projects shown there, the calls your phones declined, how a message reads, how mail is sorted |
 | [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, whether saying Spam also leaves a list, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, the reminder when a wait is over, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the reminder before an event, the time zone shown |
 | [Budgets](budgets.md#the-bank-watch) | the reminder before a planned payment |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
+| [Papers](papers.md#where-papers-live) | the papers' folder |
+| [Letters](papers.md#setting-it-up) | the letters' folder, where scans arrive |
 | [Texts](texts.md#pictures-and-files) | the multimedia messages sent from here, on a device without telephony |
 | [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager) |
 | [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
@@ -204,7 +206,7 @@ In the Mail page's ⚙, under **Your own spam filter**: what it does with each o
 
 When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting. What you say of each device in [Devices](#devices), its name and what it is for, travels with them, so that you can say it once, from the device in your hand.
 
-What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
+What stays on each device: where its folders are (the notes folder, the papers' and the letters' folders, where scans arrive), whether Sioul's lists have moved out of its notes folder, how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 
@@ -237,6 +239,6 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **Secrets**: account passwords, the AI shield's key and the GitHub token go to the system's keyring (the Secret Service, the macOS Keychain, the Windows Credential Manager, Android's KeyStore), never to `config.toml`.
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **What you said of each device** (`[device."<id>"]`, `<id>` being the device's id in the sharing, as `sioul devices` prints it): `name`, and `area` (`work`, `admin`, `leisure`, joined by `+`); each one entry, so a name given on one device and an area set on another both stay. Under it, `[device."<id>".at]` holds the cells you changed, a key per time (`work`, `admin`, `leisure`, `meals`, `sleep`): areas joined by `+`, or `none` for nothing; each cell one entry too. A device without a table is for everything, under its system's name.
-- **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
+- **Kept on each device**: `case_store` (the notes folder), `papers.folder` and `letters.folder` (the papers' and the letters' folders, read once Sioul's lists have moved), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`. Whether this device's lists have moved is never a setting: it is `storage.toml` in Sioul's state folder (`~/.local/state/sioul/` on Linux), which nothing that travels can change.
 - **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone, a narrow window: the window's size decides, never the system), the whole width. Settings' tabs span the page; each section reads 720 pixels wide at most, centred, while What reaches you's cards and Devices take the whole width, the devices' fields lining up as a table from 900 pixels.
 - **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).

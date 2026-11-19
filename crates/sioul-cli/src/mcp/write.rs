@@ -447,7 +447,7 @@ pub fn draft_invoice(s: &Session, args: &Args) -> Result<Answer, String> {
         None => None,
     };
     may_write(&consent, &project.iter().map(|p| p.id.clone()).collect::<Vec<_>>())?;
-    let root = s.config.notes_root_path();
+    let root = s.config.records_root();
     let clients = root.as_deref().and_then(|r| sioul_core::clients::Clients::load(r).ok()).unwrap_or_default();
     let reference = args.line("client")?.or_else(|| project.as_ref().and_then(|p| p.client.clone())).unwrap_or_default();
     let mut draft = life::for_client(settings, &reference, &clients, &loaded.contacts, s.tr.language(), today);

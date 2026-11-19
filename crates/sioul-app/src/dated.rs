@@ -91,7 +91,8 @@ pub(crate) fn card(shared: &Shared, kind: &str, key: &str) -> String {
     let gone = || json(&serde_json::json!({ "there": false, "kind": kind, "key": key }));
     let Some(kind) = kind_of(kind) else { return gone() };
     let config = load_config();
-    let root = config.notes_root_path();
+    let places = config.places();
+    let root = places.as_ref().map(|p| p.records.clone());
     let mark = |d: &Dated| dated::item(d, today, tr()).line;
     let head = |d: &Dated| serde_json::json!({ "there": true, "kind": kind, "key": key, "title": d.title, "mark": mark(d), "when": when(d.date, d.at, today, &zone), "filled": dated::filled(d, today), "read": matches!(kind, Kind::Letter | Kind::LetterAppointment) });
     // A paper or a contract with no date to come (none written, or gone by): its card all the same, as its row opens it.
@@ -104,7 +105,7 @@ pub(crate) fn card(shared: &Shared, kind: &str, key: &str) -> String {
     };
     match kind {
         Kind::Letter | Kind::LetterAppointment => {
-            let Some(letters) = root.as_deref().and_then(|r| Letters::load(r).ok()) else { return gone() };
+            let Some(letters) = places.as_ref().and_then(|p| Letters::load_at(p).ok()) else { return gone() };
             let Some(letter) = letters.get(key).cloned() else { return gone() };
             let shown = letter_card(shared, &letters, &letter, kind, today, &zone);
             json(&shown)
@@ -250,7 +251,7 @@ fn letter_card(shared: &Shared, letters: &Letters, letter: &Letter, kind: Kind, 
 /// its event (decision 19); written through `Letters::change`, its other
 /// fields as the file holds them then. Returns what went wrong, else "".
 pub(crate) fn letter_dates(id: &str, edit: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("papers-no-store", None) };
     letter_dates_in(&root, id, edit)
 }
 
@@ -319,7 +320,7 @@ mod tests {
         let zone = TimeZone::get("Europe/Paris").unwrap();
         let today: Date = "2026-10-26".parse().unwrap();
         let reading = sioul_core::letters::Reading { sender: "CAF".into(), appointment: Some(("2026-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
-        let letters = Letters { root: "/nowhere/Notes".into(), list: vec![Letter { id: "caf-1".into(), status: "new".into(), reading, ..Default::default() }] };
+        let letters = Letters { docs: sioul_core::storage::Places::under(std::path::Path::new("/nowhere/Notes")).letters, root: "/nowhere/Notes".into(), list: vec![Letter { id: "caf-1".into(), status: "new".into(), reading, ..Default::default() }] };
         let at = |time: &str| format!("2026-10-29T{time}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let block = Occurrence { key: "/nowhere/block.ics".into(), uid: "block".into(), summary: "Gather the papers".into(), task: "gather".into(), start: at("13:30"), end: at("14:00"), ..Occurrence::default() };
         let cancelled = Occurrence { key: "/nowhere/gone.ics".into(), uid: "gone".into(), summary: "Doctor".into(), cancelled: true, start: at("14:00"), end: at("14:30"), ..Occurrence::default() };

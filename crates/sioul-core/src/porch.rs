@@ -2250,7 +2250,7 @@ impl Gate {
     /// tied to them (`links.toml`), the senders you let in, the four lists.
     pub fn load(config: &crate::config::Config, now: i64) -> Gate {
         let ties = crate::links::LocalLinks::load(&crate::links::LocalLinks::default_path());
-        let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+        let store = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
         Gate::new(config.mail_sources(), store, SenderList::load(&config.known_senders_path()), Senders::load(config), now)
     }
 
@@ -2823,7 +2823,7 @@ mod tests {
         let senders = Senders { safe: SenderList::parse("jane@example.org"), neutral: SenderList::parse("@partner.example"), ..Senders::default() };
         let none = SenderList::default();
         let taxes = Project { id: "taxes".into(), title: "Taxes".into(), routes: vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }], ..Project::default() };
-        let store = ProjectStore { root: PathBuf::from("."), projects: vec![taxes], ties: Default::default() };
+        let store = ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects: vec![taxes], ties: Default::default() };
         let ctx = Context { projects: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let stranger = triage(flagged("Prize <win@lottery.test>", "You won", "Claim it."), &ctx);
         assert_eq!((stranger.lane.clone(), stranger.reasons.last()), (Lane::SetAside, Some(&Reason::Spam { source: "SpamAssassin", score: None })));
@@ -3004,7 +3004,7 @@ mod tests {
         let senders = Senders::default();
         let state = PorchState::default();
         let garden = crate::projects::Project { id: "garden".into(), title: "Garden".into(), ..Default::default() };
-        let mut store = ProjectStore { root: PathBuf::from("."), projects: vec![garden], ties: Default::default() };
+        let mut store = ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects: vec![garden], ties: Default::default() };
         let made = |known: &SenderList, store: &ProjectStore| {
             TRIAGES.with(|n| n.set(0));
             let mut items: Vec<(String, Lane, Vec<Reason>)> = gather(std::slice::from_ref(&src), Some(store), known, &senders, &state, now).into_iter().map(|t| (t.card.subject.clone(), t.lane, t.reasons)).collect();
@@ -3287,7 +3287,7 @@ mod tests {
         let state = PorchState::default();
         let now = jiff::Timestamp::now().as_second();
         let bench = crate::projects::Project { id: "bench".into(), title: "Bench".into(), ..Default::default() };
-        let mut store = ProjectStore { root: PathBuf::from("."), projects: vec![bench], ties: Default::default() };
+        let mut store = ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects: vec![bench], ties: Default::default() };
         let (mut known, mut senders) = (SenderList::default(), Senders::default());
         let run = |what: &str, store: &ProjectStore, known: &SenderList, senders: &Senders| {
             let (cpu, wall) = (cpu_ns(), std::time::Instant::now());
@@ -3349,7 +3349,7 @@ mod tests {
         let ids = ["mx.provider.example".to_string()];
         let by_sender = Project { id: "jane".into(), title: "With Jane".into(), routes: vec![Route { from_addresses: vec!["jane@example.org".into()], ..Route::default() }], ..Project::default() };
         let by_subject = Project { id: "trip".into(), title: "The trip".into(), routes: vec![Route { subject_contains: vec!["the trip".into()], ..Route::default() }], ..Project::default() };
-        let store = ProjectStore { root: PathBuf::from("."), projects: vec![by_sender, by_subject], ties: Default::default() };
+        let store = ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects: vec![by_sender, by_subject], ties: Default::default() };
         let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let mail = |from: &str, results: &str, above: &str, subject: &str| {
             let raw = format!("{above}Authentication-Results: mx.provider.example; {results}\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{subject}?\r\n");
@@ -3404,7 +3404,7 @@ mod tests {
         std::fs::create_dir_all(root.join("cur")).unwrap();
         let ids = ["mx.provider.example".to_string()];
         let lumen = Project { id: "lumen".into(), title: "Studio Lumen".into(), routes: vec![Route { from_domains: vec!["lumen.example.net".into()], ..Route::default() }], ..Project::default() };
-        let store = ProjectStore { root: root.clone(), projects: vec![lumen], ties: Default::default() };
+        let store = ProjectStore { root: root.clone(), notes: root.clone(), projects: vec![lumen], ties: Default::default() };
         let senders = Senders { blocked: SenderList::parse("pest@lumen.example.net"), ..Senders::default() };
         let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: ids.to_vec(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
         let gate = Gate::new(vec![source], Some(store), SenderList::default(), senders, 1_791_000_000);

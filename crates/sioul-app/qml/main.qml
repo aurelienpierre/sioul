@@ -724,6 +724,19 @@ SioulWindow {
         doseTaken.item.ask(key)
     }
 
+    // The window of the move of Sioul's lists out of the notes folder
+    // (StorageMove.qml, made the first time): by itself once, when every
+    // device knows the new places; from Settings ▸ Sharing at any time.
+    function showStorageMove() {
+        if (storageMove.item === null) {
+            storageMove.setSource("StorageMove.qml", { sioul: sioul, theme: theme })
+        }
+        const shown = storageMove.item as StorageMove
+        if (shown !== null) {
+            shown.show()
+        }
+    }
+
     // A meal's, a nap's or the night's question (later, at another time, not
     // today), or "" to note where you stopped alone (Interruption.qml, made
     // the first time); the pages showing them read again.
@@ -889,6 +902,9 @@ SioulWindow {
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
+        // Where Sioul keeps its lists (Settings ▸ Sharing): the window of the move.
+        else if (item.kind === "storage-move")
+            window.showStorageMove()
         else if (item.kind === "agenda")
             window.page = 4
         else if (item.kind === "sites")
@@ -933,8 +949,12 @@ SioulWindow {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
         }
-        else if (item.key !== "")
-            Qt.openUrlExternally(item.key)
+        // Anything else, outside Sioul; a link to a paper's or a scan's old place in the notes
+        // folder (a task's or an event's, never rewritten) opens the moved file (`storage::moved_to`).
+        else if (item.key !== "") {
+            const moved = item.key.startsWith("file:") ? sioul.movedFile(item.key) : ""
+            Qt.openUrlExternally(moved !== "" ? moved : item.key)
+        }
     }
 
     // A message, from anywhere but Mail's own list and the Porch's own rows (the
@@ -1415,7 +1435,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -4799,6 +4819,61 @@ SioulWindow {
                 () => grabber.save("share-on"),
                 () => window.close()
             ]
+            // Where Sioul keeps its lists, on a demo profile of the old layout
+            // (SIOUL_DEMO_OLD_LAYOUT=1 SIOUL_GRAB_STEPS=storage, a phone's with
+            // SIOUL_GRAB_PHONE): the window of the move before the press, top and
+            // end; the move made on the demo profile; then Settings ▸ Sharing's line
+            // of the old files with "Take them out", and what the press said.
+            readonly property var storageSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.showStorageMove()
+                },
+                () => {},
+                () => {},
+                () => grabber.saveWindow("storage-move"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.toEnd()
+                },
+                () => {},
+                () => grabber.saveWindow("storage-move-end"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.moveNow()
+                },
+                () => {},
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("storage-moved"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.close()
+                },
+                () => {
+                    window.page = 12
+                    parametersPage.section = "files"
+                },
+                () => {},
+                () => parametersPage.revealNamed("shareStorage"),
+                () => {},
+                () => grabber.save("storage-old-files"),
+                () => sioul.takeOutOldFiles(),
+                () => {},
+                () => {},
+                () => {},
+                () => parametersPage.revealNamed("shareStorage"),
+                () => {},
+                () => grabber.save("storage-taken"),
+                () => window.close()
+            ]
             // Settings ▸ Your folder and sharing before sharing, pictures only
             // (SIOUL_GRAB_STEPS=share-panel, a phone's with SIOUL_GRAB_PHONE): how
             // a device reaches the folder, then the form for a Nextcloud Sioul
@@ -5984,6 +6059,19 @@ SioulWindow {
     }
     Loader {
         id: doseTaken
+    }
+    Loader {
+        id: storageMove
+    }
+    // Every device knows the new places, nothing moved here yet: the window of the move, once.
+    Connections {
+        target: sioul
+
+        function onStorageMoveChanged() {
+            const view = sioul.storageMove ? JSON.parse(sioul.storageMove) : ({})
+            if (view.offer === true && !sioul.viewFlag("storage-move-said"))
+                window.showStorageMove()
+        }
     }
     // Recents' picture of Sioul kept out while a health card is open (Android
     // 13 and later; RecentsGuard.qml): the Health page, a dose's question, a

@@ -273,6 +273,24 @@ Item {
         return null
     }
 
+    // An item of the page by its name, scrolled to the top of the view (the window's pictures).
+    function revealNamed(name) {
+        const find = item => {
+            if (item.objectName === name)
+                return item
+            for (let i = 0; i < item.children.length; i++) {
+                const found = find(item.children[i])
+                if (found)
+                    return found
+            }
+            return null
+        }
+        const item = find(column)
+        const flick = scroll.contentItem as Flickable
+        if (item && flick)
+            flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
+    }
+
     // Sharing, at the end of the files' tab.
     function toEnd() {
         page.section = "files"

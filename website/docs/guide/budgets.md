@@ -24,8 +24,8 @@ Each payment keeps what the payer paid, the fees kept on the way, and what reach
 ## Protected by default {#what-is-protected}
 
 - **Sioul never logs in to your bank** and holds no bank password: you download your bank's file, and Sioul reads it on your device.
-- **Your budgets, your bank's movements and your contracts are plain files** in your own notes folder. There is no server of Sioul's.
-- **Between your devices**, they travel by your folder's own sync, or sealed through Sioul's sharing once you switch **Projects and money** on: the folder and its server can read nothing of them ([Sharing](sharing.md)).
+- **Your budgets, your bank's movements and your contracts are plain files** on your device, in Sioul's own folder; until you move Sioul's lists there, they are in your notes folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). There is no server of Sioul's.
+- **Between your devices**, they travel sealed through Sioul's sharing, in its part **Projects and money**: the folder and its server can read nothing of them. Before the move, your notes folder's own sync may carry them instead ([Sharing](sharing.md)).
 - **Mail is read as a payment only once it passed Sioul's checks**: forged mail, spam, a sender borrowing a bank's or a shop's name, and blocked senders are never read as payments. A payment from someone new and not verified says to check it first: a fake "your payment" is a common trick.
 - **An AI agent**, only if you connect one, reads a summary of your budgets, never moves money, and sees account numbers masked.
 - **No offers**, no comparisons, no "better deals", no advertising, no analytics.
@@ -172,7 +172,7 @@ Sioul never shows offers, comparisons or "better deals": only facts about your c
 
 ## Where it is kept {#where-it-is-kept}
 
-In plain files at the root of your notes folder: `sioul-budgets.toml` (budgets, reserves, lines, rules, bank accounts), `sioul-bank.toml` (the bank's movements), `sioul-movements.toml` (what Sioul learnt of your payments: which ones are the same, the holds not final yet, your answers), `sioul-contracts.toml`. Readable, editable by hand, versioned with git if you like. They travel with your notes folder, or sealed through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)); nothing is sent anywhere else.
+In plain files among Sioul's own lists, in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux): `sioul-budgets.toml` (budgets, reserves, lines, rules, bank accounts), `sioul-bank.toml` (the bank's movements), `sioul-movements.toml` (what Sioul learnt of your payments: which ones are the same, the holds not final yet, your answers), `sioul-contracts.toml`. Readable, editable by hand, versioned with git if you like. Until you move Sioul's lists out of your notes folder, they are at its root ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). They travel sealed through Sioul's sharing, in its part **Projects and money** (before the move, your notes folder's own sync may carry them instead: [Sharing](sharing.md)); nothing is sent anywhere else.
 
 Budgets show by area as your hours say, as in Mail ([At a glance](#at-a-glance)); every budget can still be chosen for a payment, at any hour. See [Hours](hours.md).
 
@@ -294,7 +294,7 @@ As of November 2026, from each app's own documentation.
 
 | | Sioul | YNAB | Actual | Firefly III | GnuCash | Bankin' |
 |---|---|---|---|---|---|---|
-| Where your money's data lives | plain files in your notes folder | YNAB's servers | your device and your server | your server | a file on your computer | Bankin's servers, in Europe |
+| Where your money's data lives | plain files on your device | YNAB's servers | your device and your server | your server | a file on your computer | Bankin's servers, in Europe |
 | Needs an account with the maker | no | yes | no | no | no | yes |
 | Encrypted end to end between your devices | ✓¹ | ✗² | partly³ | — | — | ✗ |
 | Export formats read | OFX, QFX, CAMT.053, CSV, PayPal, Stripe | CSV, OFX, QFX, QIF | CSV, QIF, OFX, QFX, CAMT | CSV, CAMT.053 | QIF, OFX, QFX, CSV, MT940, MT942, CAMT.052 and more | — |
@@ -341,7 +341,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 
 ## For technical readers {#for-technical-readers}
 
-**Files.** `sioul-budgets.toml` (budgets, recurring payments, lines, reserves, covers, mail rules, bank accounts, their rules and your single choices), `sioul-bank.toml` (each account's movements by the bank's own id, its newest balance), `sioul-contracts.toml`: TOML at the root of your notes folder, written with their comments kept. Messages you said are not payments are listed in `~/.local/state/sioul/money.toml` on Linux. Amounts are kept in whole cents, so sums never drift, and amounts written in every national style are read ("1 234,56 €", "€1,234.56", "(62.00)").
+**Files.** `sioul-budgets.toml` (budgets, recurring payments, lines, reserves, covers, mail rules, bank accounts, their rules and your single choices), `sioul-bank.toml` (each account's movements by the bank's own id, its newest balance), `sioul-contracts.toml`: TOML in `records/` of Sioul's data folder (at the root of your notes folder until Sioul's lists move), written with their comments kept. Messages you said are not payments are listed in `~/.local/state/sioul/money.toml` on Linux. Amounts are kept in whole cents, so sums never drift, and amounts written in every national style are read ("1 234,56 €", "€1,234.56", "(62.00)").
 
 **Exports.** OFX 1.x (SGML) and 2.x (XML), by each movement's `FITID`; ISO 20022 camt.053, versions 001.02 to 001.08 (booked entries, the closing booked balance, names under `Pty`); a bank's CSV, its header found by its words, with `;` or `,`, decimal commas, debit and credit apart or not, and a balance written above the table; PayPal's activity (each row's net, with its gross and its fee when they add up, kept beside it in `sioul-movements.toml`; pending, refused and memo rows left out, and rows in another currency than most of the file's); Stripe's balance history (its Amount and Fee too); Revolut's statement (its fee on top of its amount) and Wise's (its total fees inside it), as each file's running balance shows; CAMT.053's charges when the bank says they are inside the entry. A movement without an id gets one made from its day, amount and label: a file read twice adds nothing.
 

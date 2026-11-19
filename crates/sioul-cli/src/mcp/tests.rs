@@ -203,9 +203,9 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
         reading: sioul_core::letters::Reading { sender: "Zeugma Office".into(), deadline: Zoned::now().date().tomorrow().ok(), ..Default::default() },
         ..Default::default()
     };
-    sioul_core::letters::Letters { root: store.to_path_buf(), list: vec![letter], ..Default::default() }.save().unwrap();
+    sioul_core::letters::Letters { docs: sioul_core::storage::Places::under(store).letters, root: store.to_path_buf(), list: vec![letter] }.save().unwrap();
     // In no project: a paper, the phone's messages, a call.
-    let mut wallet = sioul_core::papers::Wallet { root: store.to_path_buf(), ..Default::default() };
+    let mut wallet = sioul_core::papers::Wallet { docs: sioul_core::storage::Places::under(store).papers, root: store.to_path_buf(), papers: Vec::new() };
     wallet.put(sioul_core::papers::Paper { title: "Identity card".into(), kind: sioul_core::papers::Kind::of("identity"), until: Some(jiff::civil::date(2031, 5, 1)), ..Default::default() });
     wallet.save().unwrap();
     let at = (now - 3600) * 1000;

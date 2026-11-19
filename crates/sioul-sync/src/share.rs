@@ -285,7 +285,7 @@ const fn with_ids(list: &'static str, by: &'static [&'static str]) -> Keyed {
 
 /// Where things are on this computer, how text reads on its screen, the time
 /// zone it shows, and what it is (a phone, a tablet or a computer).
-const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network", "device_kind"];
+const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "letters.folder", "papers.folder", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network", "device_kind"];
 static CONFIG_RULES: Rules = Rules { keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"], also: &[], ids: false }], whole: &[], local: CONFIG_LOCAL, next: Some(&CONFIG_RULES_2) };
 /// Format 2: pinned sites, routines and task kinds one each, by their ids;
 /// days off one each; the words you added to a list and those you took
@@ -395,6 +395,60 @@ pub const LEGS_AS_STEPS: u32 = 1;
 pub fn legs_as_steps(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> bool {
     let state = Memory::load(memory, computer);
     present(folder, key, computer, &state, now_ms).iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.legs >= LEGS_AS_STEPS))
+}
+
+/// A device of the sharing, as the move of Sioul's lists says it: its id, its name, its kind.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Named {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+}
+
+/// Where the move of Sioul's lists out of the notes folder stands among
+/// your devices (docs/notes-folder.md, "What lives where"), by their sealed
+/// entries (`devices::Entry::storage`) and the rules that say which devices
+/// count (`present`): one left, forgotten, said replaced, or silent
+/// `SILENT_DAYS` holds nobody.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StorageStand {
+    /// The sharing is set up here and cannot be read now (its key not given
+    /// by the keyring): as if a device were missing, nothing opens (rule 3).
+    pub unreadable: bool,
+    /// No other device counts: nothing to wait for (no sharing, or alone in it).
+    pub alone: bool,
+    /// Every other device that counts knows the new places: this device may move.
+    pub open: bool,
+    /// Those that do not, waited for: an older Sioul, or a device known by its records alone.
+    pub waiting: Vec<Named>,
+    /// Those that know the new places and have not moved yet.
+    pub unmoved: Vec<Named>,
+    /// Every other device that counts moved: the old files may leave the
+    /// notes folder, on the person's press on each device (no device is
+    /// chosen to do it, nothing guesses who else reads that folder).
+    pub all_moved: bool,
+}
+
+/// Where the move stands for this device (`StorageStand`).
+pub fn storage_stand(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> StorageStand {
+    let state = Memory::load(memory, computer);
+    stand_of(&present(folder, key, computer, &state, now_ms), computer)
+}
+
+/// `storage_stand` from the devices that count.
+fn stand_of(present: &[(String, Option<crate::devices::Entry>, bool)], _computer: &str) -> StorageStand {
+    let named = |id: &str, entry: Option<&crate::devices::Entry>| Named { id: id.to_string(), name: entry.map(|e| e.name.clone()).unwrap_or_default(), kind: entry.map(|e| e.form_or_kind().to_string()).unwrap_or_default() };
+    let said = |entry: &Option<crate::devices::Entry>| entry.as_ref().map_or(0, |e| e.storage);
+    let waiting: Vec<Named> = present.iter().filter(|(_, entry, _)| said(entry) < crate::devices::STORAGE_KNOWS).map(|(id, entry, _)| named(id, entry.as_ref())).collect();
+    let unmoved: Vec<Named> = present.iter().filter(|(_, entry, _)| said(entry) == crate::devices::STORAGE_KNOWS).map(|(id, entry, _)| named(id, entry.as_ref())).collect();
+    StorageStand {
+        unreadable: false,
+        alone: present.is_empty(),
+        open: waiting.is_empty(),
+        all_moved: waiting.is_empty() && unmoved.is_empty(),
+        waiting,
+        unmoved,
+    }
 }
 
 /// The notices' words (`sioul_core::notices`, docs/porch.md, "Notices"):
@@ -690,6 +744,42 @@ const NOT_NOTES: &[&str] = &[
     sioul_core::papers::FOLDER,
 ];
 
+/// In the notes folder once this device's lists left it: what is no note,
+/// the old files that stay there until every device moved
+/// (`sioul_core::storage::clean`), the letters' folder too.
+const NOT_NOTES_MOVED: &[&str] = &[
+    sioul_core::projects::FILE,
+    sioul_core::projects::OLD_FILE,
+    sioul_core::projects::BEFORE_RENAME,
+    sioul_core::clients::FILE,
+    sioul_core::budget::LEDGER,
+    sioul_core::bank::MANIFEST,
+    sioul_core::contracts::MANIFEST,
+    sioul_core::movements::STORE,
+    sioul_core::papers::MANIFEST,
+    sioul_core::papers::FOLDER,
+    sioul_core::letters::FOLDER,
+];
+
+/// What a store of a folder's top alone (`Store::flat`, the letters' list
+/// and texts once moved) holds: the list and the `.txt` texts at its top,
+/// never a file below, nor another file there (a scan dropped at the top of
+/// `letters/` by hand stays a scan: review S33).
+fn flat_own(relative: &str) -> bool {
+    !relative.contains('/') && (relative == sioul_core::letters::MANIFEST || relative.ends_with(".txt"))
+}
+
+/// The letters' list and texts, by the name every version gives them in the
+/// records (the notes folder's `letters/`), wherever this device keeps them.
+pub const LETTERS_RECORDS: &str = "files/notes/letters/";
+
+/// The letters' scans, once a device's lists left the notes folder: a name
+/// of their own in the records, since their list and texts went to Sioul's
+/// own folder under the old one. Only written once every device knows it
+/// (`storage_stand`: no device moves before), so that no Sioul keeps such a
+/// record waiting.
+pub const LETTERS_FILES: &str = "files/letters/";
+
 /// The parts of what is shared, each switched on or off on each device
 /// (docs/database.md, "Parts"): settings and accounts, senders, the calls
 /// your phones screened, the messages from your phones' notifications, the
@@ -815,7 +905,8 @@ pub const SPAM_FLAGGED: &str = "state/spam/flagged/";
 /// newer than the switches: each device shares them once you turn them on there.
 pub fn shared_by_default(part: &str, config: &Config) -> bool {
     match part {
-        "projects" => config.share_projects,
+        // Once this device's lists left the notes folder, the sharing alone carries them.
+        "projects" => config.share_projects || config.storage.is_moved(),
         "notes" | "papers" => false,
         // A notification's words leave the phone only once you say so, on each device.
         sioul_core::phonemsgs::PART => false,
@@ -838,6 +929,16 @@ pub struct Store {
     pub skip: &'static [&'static str],
     /// The part it belongs to (`PARTS`).
     pub part: &'static str,
+    /// In a folder: its files at its top alone, never one below (the
+    /// letters' list and texts, once moved: the scans keep their own store).
+    pub flat: bool,
+    /// Once this device's lists moved out of the notes folder
+    /// (`sioul_core::storage`): the store, by its name, and the place, the
+    /// memory knew these files by before, and when they moved
+    /// (milliseconds). The first exchange after the move takes them as
+    /// known there, never as a store new here to rebuild from the records
+    /// (`known_place`), since they are the same bytes, checked.
+    pub was: Option<(String, String, i64)>,
 }
 
 /// The folders Sioul keeps its files in.
@@ -885,8 +986,8 @@ pub fn part_format(part: &str) -> u32 {
 /// they were made on).
 pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) -> Vec<Store> {
     let (c, d, s) = (&roots.config, &roots.data, &roots.state);
-    let file = |part: &'static str, name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[], part };
-    let folder = |part: &'static str, name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip, part };
+    let file = |part: &'static str, name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[], part, flat: false, was: None };
+    let folder = |part: &'static str, name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip, part, flat: false, was: None };
     let senders = |chosen: &Option<String>, name: &str| chosen.as_deref().map_or_else(|| c.join(name), sioul_core::config::expand_home);
     let local = sioul_core::vdir::LOCAL;
     let mut stores = vec![
@@ -982,10 +1083,61 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder(sioul_core::texts::PART, TEXTS_OUTCOME, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::OUTCOME), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_MARKS, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::MARKS), Shape::Lines, &[]),
     ];
+    // Once this device's lists left the notes folder (docs/notes-folder.md,
+    // "What lives where"): the same records, each where this device keeps
+    // it now. Sioul's own lists in the data folder's `records/`, all in the
+    // part "projects", which a sync app carrying a folder never refuses: the
+    // projects' and money's lists, the papers' list, the letters' list and
+    // texts (`files/notes/letters/…` at its top, as every version names
+    // them). The papers' files in the papers' folder and the letters' scans
+    // in the letters' folder, in the part "papers": the scans under a name
+    // of their own (`LETTERS_FILES`), every device reading it by then. The
+    // notes alone in the notes folder.
+    // Where this device's lists are is not known now (the state of its move
+    // lost, `Storage::lost`): neither layout's lists, papers, letters nor
+    // notes are read or written until it is.
+    if config.storage.lost.is_some() {
+    } else if config.storage.is_moved() {
+        let records = d.join(sioul_core::storage::RECORDS);
+        let from = config.storage.from_path();
+        let since = config.storage.moved * 1000;
+        let was = |name: &str, place: Option<PathBuf>| place.map(|place| (name.to_string(), place.display().to_string(), since));
+        let old = |file: &str| from.as_ref().map(|from| from.join(file));
+        let mut list = |part: &'static str, name: &str, path: PathBuf, rules: &'static Rules, before: Option<PathBuf>| {
+            let mut store = file(part, name, path, Shape::Toml(rules));
+            store.was = was(name, before);
+            stores.push(store);
+        };
+        list("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&records), &PROJECTS_RULES, old(sioul_core::projects::OLD_FILE));
+        list("projects", CLIENTS, records.join(sioul_core::clients::FILE), &CLIENTS_RULES, old(sioul_core::clients::FILE));
+        list("projects", "notes/sioul-budgets.toml", records.join(sioul_core::budget::LEDGER), &LEDGER_RULES, old(sioul_core::budget::LEDGER));
+        list("projects", "notes/sioul-bank.toml", records.join(sioul_core::bank::MANIFEST), &BANK_RULES, old(sioul_core::bank::MANIFEST));
+        list("projects", "notes/sioul-contracts.toml", records.join(sioul_core::contracts::MANIFEST), &CONTRACTS_RULES, old(sioul_core::contracts::MANIFEST));
+        list("projects", MOVEMENTS, records.join(sioul_core::movements::STORE), &MOVEMENTS_RULES, old(sioul_core::movements::STORE));
+        list("projects", "notes/sioul-papers.toml", records.join(sioul_core::papers::MANIFEST), &PAPERS_RULES, old(sioul_core::papers::MANIFEST));
+        let mut letters = folder("projects", LETTERS_RECORDS, records.join(sioul_core::letters::FOLDER), Shape::Files, &[]);
+        letters.flat = true;
+        letters.was = was("files/notes/", from.clone());
+        stores.push(letters);
+        let mut papers = folder("papers", "files/papers/", config.papers_folder(), Shape::Files, &[]);
+        papers.was = was("files/papers/", old(sioul_core::papers::FOLDER));
+        stores.push(papers);
+        stores.push(folder("papers", LETTERS_FILES, config.letters_folder(), Shape::Files, &[]));
+        if let Some(notes) = config.notes_root_path() {
+            // The notes' own store carries the move's mark too (where it is, since the move):
+            // read in the first exchange after it, it takes the move in even where no moved
+            // store is shared then ("Projects and money" and "Papers" off), so that the letters'
+            // store, known before by the notes' place, joins when its part comes on later
+            // instead of taking that old memory for its own (review S30).
+            let mut notes_store = folder("notes", "files/notes/", notes.clone(), Shape::Files, NOT_NOTES_MOVED);
+            notes_store.was = was("files/notes/", Some(notes));
+            stores.push(notes_store);
+        }
+    }
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its
     // files; the notes themselves, each file sealed apart.
-    if let Some(notes) = config.notes_root_path() {
+    else if let Some(notes) = config.notes_root_path() {
         stores.push(file("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&notes), Shape::Toml(&PROJECTS_RULES)));
         // The client profiles: travel once every other device says it has the store (`clients_shared`).
         stores.push(file("projects", CLIENTS, notes.join(sioul_core::clients::FILE), Shape::Toml(&CLIENTS_RULES)));
@@ -1036,7 +1188,19 @@ fn known_part(file: &str) -> Option<&'static str> {
     let known = KNOWN.get_or_init(|| {
         let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
         let config = Config { notes_root: Some("notes".into()), ..Config::default() };
-        stores_of(&config, &roots, &|_| true).into_iter().map(|store| (store.name, store.folder, store.part)).collect()
+        let mut known: Vec<(String, bool, &'static str)> = stores_of(&config, &roots, &|_| true).into_iter().map(|store| (store.name, store.folder, store.part)).collect();
+        // The names only a device whose lists moved gives (the scans'): known,
+        // by their part there. A name the notes folder's layout already
+        // covers (the letters' list and texts, in `files/notes/`) keeps its
+        // part, which its format follows (`part_format`), on every device.
+        let moved = Config { storage: sioul_core::storage::Storage { moved: 1, from: "notes".into(), ..Default::default() }, papers: sioul_core::config::PaperSettings { folder: Some("/papers".into()) }, letters: sioul_core::config::LetterSettings { folder: Some("/letters".into()), inbox: None }, ..config };
+        let covered = |known: &[(String, bool, &'static str)], name: &str| known.iter().any(|(k, folder, _)| k == name || (*folder && name.starts_with(k.as_str())));
+        for store in stores_of(&moved, &roots, &|_| true) {
+            if !covered(&known, &store.name) {
+                known.push((store.name, store.folder, store.part));
+            }
+        }
+        known
     });
     #[cfg(test)]
     if tests::OLDER.with(|older| older.borrow().iter().any(|store| file.starts_with(store.as_str()))) {
@@ -1327,6 +1491,12 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
                 }
             } else {
                 list_files(&store.path, &store.path, store.skip, &mut files);
+            }
+            // A store of a folder's top alone (`Store::flat`): never a file below it, and only
+            // the list and the letters' texts there (review S33).
+            if store.flat {
+                files.retain(|(relative, _)| flat_own(relative));
+                carried.retain(|(relative, _)| flat_own(relative));
             }
             for (relative, path) in files {
                 read_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
@@ -1835,6 +2005,86 @@ fn entries_of(store: &Store, bytes: &[u8]) -> Option<Vec<(String, String)>> {
 /// The health file's store: what reaches your other devices as medicines alone.
 fn of_medicines(store: &Store) -> bool {
     store.name == "data/health.toml"
+}
+
+/// The letters' list, by its name in the records: a file of the notes
+/// folder's records (`files/notes/`) as every version names it, wherever it is.
+pub const LETTERS_LIST: &str = "files/notes/letters/letters.toml";
+
+/// Sioul's own lists, by their names in the records: projects, client
+/// profiles, budgets, the bank's lines, movements, contracts, the papers'
+/// list and the letters' list. One read here before that is gone, or blank,
+/// is never read as "everything taken out" (`lists_lost`): two rules of the
+/// sharing would otherwise take every entry out on every device, a file of
+/// no bytes taken as emptied after `EMPTIED_WAIT`, a file gone written again
+/// from the one change that comes next. Until 18 November 2026 the health
+/// file alone was guarded so (docs/database.md, "Sioul's own lists").
+pub const LISTS: &[&str] = &["notes/sioul-cases.toml", CLIENTS, "notes/sioul-budgets.toml", "notes/sioul-bank.toml", "notes/sioul-contracts.toml", MOVEMENTS, "notes/sioul-papers.toml", LETTERS_LIST];
+
+/// How long a list written of no bytes is left to its writer before the
+/// guard takes it for lost (`lists_lost`).
+const LIST_SETTLES: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whether a file of the records is one of Sioul's own lists (`LISTS`).
+fn is_list(file: &str) -> bool {
+    LISTS.contains(&file)
+}
+
+/// Whether this device's memory holds an entry of `file` with a value: it read the file here before, or wrote it from the others' records.
+fn known_here(memory: &Memory, file: &str) -> bool {
+    let prefix = format!("{file}#");
+    memory.entries.range(prefix.clone()..).take_while(|(key, _)| key.starts_with(&prefix)).any(|(_, known)| !known.h.is_empty())
+}
+
+/// A file there of no bytes, or of blanks alone (read only when small).
+fn blank(path: &Path) -> bool {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.len() == 0 => true,
+        Ok(meta) if meta.len() > 64 * 1024 => false,
+        Ok(_) => std::fs::read(path).is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace)),
+        Err(_) => false,
+    }
+}
+
+/// Sioul's own lists (`LISTS`) of the stores read now that this device knew
+/// and that are gone, or of no bytes but blanks, their folder there (a
+/// notes folder not mounted is unknown, never written into: `gather`).
+fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory) -> Vec<String> {
+    LISTS
+        .iter()
+        .filter_map(|file| {
+            let (store, path) = locate(stores, file)?;
+            if !reads(store) || !known_here(memory, file) || !path.parent().is_some_and(Path::is_dir) {
+                return None;
+            }
+            let gone = std::fs::metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+            // A save in place caught between its truncation and its writing looks blank for an
+            // instant: one written in the last seconds is looked at again at the next exchange,
+            // never rebuilt over what its editor writes then (review S34).
+            let settling = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age < LIST_SETTLES);
+            (gone || (blank(&path) && !settling)).then(|| (*file).to_string())
+        })
+        .collect()
+}
+
+/// Of another device's changes to one of Sioul's own lists (`LISTS`, a
+/// list of entries), on a device whose lists moved: the removals of its
+/// elements, come from devices that have not said they know the new places
+/// (`unknowing`: an older Sioul, or one forgotten or silent that comes
+/// back), that would take every element here out but one at most, two or
+/// more being here. An older Sioul takes a list it can no longer follow
+/// for one emptied, or written again with the one change that came, and
+/// sends every other element out as removed (review S17): never obeyed
+/// here. Held before (`before`): held still while it comes with no value.
+fn list_removals_held<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)], unknowing: &dyn Fn(&str) -> bool, before: &BTreeSet<String>) -> BTreeSet<&'a str> {
+    let element = |entry: &str| entry.contains(&format!("{SEP}{MARK}"));
+    let mut held: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && before.contains(*entry)).map(|(entry, _)| *entry).collect();
+    let here: BTreeSet<String> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default().into_iter().map(|(entry, _)| entry).filter(|entry| element(entry)).collect();
+    let removals: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && element(entry) && unknowing(entry) && here.contains(*entry)).map(|(entry, _)| *entry).collect();
+    if here.len() >= 2 && !removals.is_empty() && here.iter().filter(|entry| !removals.contains(entry.as_str())).count() <= 1 {
+        held.extend(removals);
+    }
+    held
 }
 
 /// Whether a health file's bytes read as its reader reads them
@@ -2488,6 +2738,14 @@ fn set_path(table: &mut toml_edit::Table, path: &[&str], value: Option<&toml_edi
     }
 }
 
+/// Whether the memory knows a store where it is: at its place, or, in the
+/// first exchange after this device's lists moved (`Store::was`), where it
+/// was before. A store new here or moved otherwise joins as a new device
+/// does (its files rebuilt from the records first).
+fn known_place(memory: &Memory, store: &Store) -> bool {
+    memory.places.get(&store.name) == Some(&place_of(store)) || store.was.as_ref().is_some_and(|(name, place, since)| *since > memory.relocated && memory.places.get(name) == Some(place))
+}
+
 /// Where a store is read, as the memory keeps it (`Memory::places`): its
 /// path, the projects' file under its first name whichever it has, so that
 /// renaming it (`sioul_core::projects::rename_file`) is no move: a move
@@ -3033,6 +3291,12 @@ struct Memory {
     /// notes folder), joins as a new computer would (`exchange`).
     #[serde(default)]
     places: BTreeMap<String, String>,
+    /// When this device's lists moved out of the notes folder, as the
+    /// exchange that first read every moved store at its new place took it
+    /// in (milliseconds; `Store::was`): from then on they are known at their
+    /// new places alone. 0: never. An older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    relocated: i64,
     /// Files found empty or gone after holding entries, since when (milliseconds):
     /// their entries count as taken out only once that has lasted (`EMPTIED_WAIT`).
     #[serde(default)]
@@ -3151,6 +3415,12 @@ struct Memory {
     medicines_held: BTreeMap<String, BTreeSet<String>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     medicines_held_there: BTreeMap<String, BTreeSet<String>>,
+    /// Of each of Sioul's own lists, on a device whose lists moved, the
+    /// elements whose removal came from a device that had not said it knows
+    /// the new places and would have emptied the list (`list_removals_held`):
+    /// held for good while their removal comes with no value, never obeyed.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    lists_held_there: BTreeMap<String, BTreeSet<String>>,
     /// What this device takes out of the folder, and why it waits, as the
     /// last exchange found it (`Leaving`), for Settings.
     #[serde(default, skip_serializing_if = "Leaving::is_empty")]
@@ -5572,7 +5842,7 @@ fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) 
     // Not a store joining in this exchange (switched on, or moved: it joins as
     // a new device would, its file rebuilt from the records first), nor a part
     // held under a newer format (nothing of it goes out from here).
-    let joining = |store: &Store| !memory.places.is_empty() && memory.places.get(&store.name) != Some(&place_of(store));
+    let joining = |store: &Store| !memory.places.is_empty() && !known_place(&memory, store);
     let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some()) && !joining(s) && !memory.newer.contains_key(s.part)).cloned().collect();
     let confirmed = BTreeSet::new();
     let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new(), quiet: false });
@@ -6238,12 +6508,56 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if memory.joined && memory.places.is_empty() {
         memory.places = stores.iter().map(|s| (s.name.clone(), place(s))).collect();
     }
-    let joining: BTreeSet<String> = if memory.joined { stores.iter().filter(|s| reads(s) && memory.places.get(&s.name) != Some(&place(s))).map(|s| s.name.clone()).collect() } else { BTreeSet::new() };
+    let joining: BTreeSet<String> = if memory.joined { stores.iter().filter(|s| reads(s) && !known_place(&memory, s)).map(|s| s.name.clone()).collect() } else { BTreeSet::new() };
+    // The move of this device's lists out of the notes folder, taken in once
+    // every store it moved was read at its new place (`Store::was`).
+    let relocated = stores.iter().filter_map(|s| s.was.as_ref().map(|(_, _, since)| (*since, reads(s)))).filter(|(since, _)| *since > memory.relocated).collect::<Vec<_>>();
     let joins_store = |key: &str| locate(stores, file_of(key)).is_some_and(|(store, _)| joining.contains(&store.name));
     if !joining.is_empty() {
         memory.entries.retain(|key, _| !joins_store(key));
         memory.read.clear();
         memory.rebuild.extend(joining.iter().cloned());
+    }
+    // Sioul's own lists (`LISTS`) read here before, now gone or blank: never
+    // read as "everything taken out". Written again whole from every
+    // device's records in this exchange, as the health file is (`rebuild`'s
+    // way), only what the records lack going out afterwards.
+    if memory.joined {
+        for file in lists_lost(stores, &reads, &memory) {
+            outcome.problems.push(format!("share-list-back:{file}"));
+            found.hashes.retain(|key, _| file_of(key) != file.as_str());
+            memory.entries.retain(|key, _| file_of(key) != file.as_str());
+            memory.files.remove(file.as_str());
+            memory.emptied.remove(file.as_str());
+            memory.sealed.gone.remove(file.as_str());
+            // A list sealed apart (the letters'): its last record written over a
+            // file of no bytes, never a copy of that kept beside as a conflict;
+            // one gone given that empty place first, so that it is written again.
+            if file.starts_with(FILES)
+                && let Some((_, path)) = locate(stores, &file)
+            {
+                if !path.exists() {
+                    let _ = sioul_core::filelock::replace(&path, b"");
+                }
+                if let Some(h) = content_hash(&path) {
+                    memory.sealed.named.entry(format!("{file}#")).or_default().insert(h);
+                }
+            }
+            memory.rebuild.insert(file.clone());
+            memory.rejoin.insert(file);
+            memory.read.clear();
+        }
+    }
+    // A list sealed apart (the letters') of no bytes or blanks never goes out:
+    // the later file replaces the other whole, so it would empty the list on
+    // every device. It waits for its records to be written over it.
+    for file in LISTS.iter().filter(|file| file.starts_with(FILES)) {
+        if let Some((store, path)) = locate(stores, file)
+            && reads(store)
+            && blank(&path)
+        {
+            found.hashes.remove(&format!("{file}#"));
+        }
     }
     // Files rebuilt without being set aside (`rebuild`, `Memory::rejoin`)
     // join as the stores joining do: read from the records first, then only
@@ -6906,6 +7220,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let history = crate::history::root(sharing.memory);
     let mut kept = false;
     let mut names: Option<Names> = None;
+    // Where each other device says its lists stand (`devices::Entry::storage`), read once when needed.
+    let mut storage_said: Option<BTreeMap<String, u32>> = None;
     let receiving = Receiving { sharing, history: &history, now_ms, clock, copied: std::cell::Cell::new(0) };
     // Sealed files the others' changes name: not here yet (their content's hash and size), or here.
     let mut wanted: BTreeMap<String, (String, u64)> = BTreeMap::new();
@@ -7046,8 +7362,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // other out everywhere at the next look; rebuilt whole from every
         // device's records at the next exchange (`rebuild`'s way), what came
         // waiting meanwhile (the check of 1b6795e, M3).
-        if of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file) {
-            outcome.problems.push(format!("share-not-medicines:{file}"));
+        // One of Sioul's own lists (`LISTS`) gone since this exchange looked
+        // (`lists_lost` took it before): the same, never written from what came alone.
+        let list_gone = is_list(file) && !path.exists() && known_here(&memory, file) && !rebuilt(file);
+        if (of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file)) || list_gone {
+            outcome.problems.push(format!("{}:{file}", if list_gone { "share-list-back" } else { "share-not-medicines" }));
             if !memory.rebuild.contains(file.as_str()) {
                 memory.entries.retain(|key, _| file_of(key) != file.as_str());
                 memory.files.remove(file.as_str());
@@ -7058,6 +7377,34 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             continue;
         }
         let mut entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (entry_of(key), value.as_deref())).collect();
+        // A device whose lists moved (the store knows where they were): removals that would
+        // empty one of Sioul's own lists, come from a device that has not said it knows the new
+        // places, never obeyed; held among what came (`list_removals_held`, review S17).
+        let held_lists: BTreeSet<&str> = if is_list(file) && store.was.is_some() && matches!(store.shape, Shape::Toml(_)) {
+            let said = storage_said.get_or_insert_with(|| crate::devices::all(sharing.folder, sharing.key).0.into_iter().map(|e| (e.id.clone(), e.storage)).collect());
+            let writer: BTreeMap<&str, &str> = changes.iter().map(|(key, _)| (entry_of(key), winners.get(key).map_or("", |(_, _, w)| w.as_str()))).collect();
+            let unknowing = |entry: &str| writer.get(entry).is_some_and(|w| *w != sharing.computer && said.get(*w).copied().unwrap_or(0) < crate::devices::STORAGE_KNOWS);
+            let before = memory.lists_held_there.get(file.as_str()).cloned().unwrap_or_default();
+            let held = list_removals_held(store, &path, &entries, &unknowing, &before);
+            // What came with a value for one held (it is back) ends its hold.
+            let back: BTreeSet<&str> = entries.iter().filter(|(_, value)| value.is_some()).map(|(entry, _)| *entry).collect();
+            let kept: BTreeSet<String> = before.into_iter().filter(|entry| !back.contains(entry.as_str())).chain(held.iter().map(|e| (*e).to_string())).collect();
+            if kept.is_empty() {
+                memory.lists_held_there.remove(file.as_str());
+            } else {
+                memory.lists_held_there.insert(file.clone(), kept);
+            }
+            held
+        } else {
+            BTreeSet::new()
+        };
+        if !held_lists.is_empty() {
+            entries.retain(|(entry, _)| !held_lists.contains(*entry));
+            outcome.problems.push(format!("share-list-held:{file}"));
+            if entries.is_empty() {
+                continue;
+            }
+        }
         // The health file: another device's removals that would take every
         // medicine out here (two or more, none left) though its Sioul took
         // none out (no mark came with them, `removed`): held, said, until you
@@ -7102,7 +7449,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         match write_entries(store, &path, &entries, memory.medicines_released.contains(file), keep) {
             Ok(hashes) => {
                 outcome.written.insert(store.name.clone());
-                for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key))) {
+                for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key)) && !held_lists.contains(entry_of(key))) {
                     outcome.received += 1;
                     written_keys.insert(key.clone());
                     written_hashes.insert(key.clone(), hashes.get(entry_of(key)).cloned().unwrap_or_default());
@@ -7462,6 +7809,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Where each store was read; one not read this time where it was.
     let places: BTreeMap<String, String> = stores.iter().filter_map(|s| if reads(s) { Some((s.name.clone(), place(s))) } else { memory.places.get(&s.name).map(|p| (s.name.clone(), p.clone())) }).collect();
     memory.places = places;
+    if !relocated.is_empty() && relocated.iter().all(|(_, read)| *read) {
+        memory.relocated = relocated.iter().map(|(since, _)| *since).max().unwrap_or(memory.relocated);
+    }
     // What you said to take out went with this exchange; what waited and no longer does is forgotten.
     memory.sealed.confirmed.retain(|folder| !stores.iter().any(|s| folder.starts_with(s.name.as_str()) && reads(s)));
     memory.sealed.missing.retain(|key, _| memory.pending.contains_key(key));
@@ -8227,6 +8577,11 @@ fn locate<'a>(stores: &'a [Store], file: &str) -> Option<(&'a Store, PathBuf)> {
     // Never outside its folder, on Windows too, where "\" also separates and
     // "C:" starts another place.
     if relative.is_empty() || relative.split('/').any(|part| part.is_empty() || part == ".." || part == "." || part.contains(['\\', ':'])) {
+        return None;
+    }
+    // A store of a folder's top alone: what is below it is none of its own, nor
+    // a file there that is no list and no text (a scan dropped there by hand).
+    if store.flat && !flat_own(relative) {
         return None;
     }
     // Files sealed apart: never what tools make, nor what another part carries
@@ -12326,8 +12681,8 @@ mod tests {
         let (older, desk) = (Computer::new(&base, "older"), Computer::new(&base, "desk"));
         // The older Sioul's stores: this version's, and the watch's as it shared them.
         let mut with_watch = stores(&Config::default(), &older.roots);
-        with_watch.push(Store { name: "data/watch/".into(), path: older.roots.data.join("watch"), folder: true, shape: Shape::Whole, skip: &["imported.json"], part: "watch" });
-        with_watch.push(Store { name: "state/watch-offers.json".into(), path: older.roots.state.join("watch-offers.json"), folder: false, shape: Shape::Whole, skip: &[], part: "watch" });
+        with_watch.push(Store { name: "data/watch/".into(), path: older.roots.data.join("watch"), folder: true, shape: Shape::Whole, skip: &["imported.json"], part: "watch", flat: false, was: None });
+        with_watch.push(Store { name: "state/watch-offers.json".into(), path: older.roots.state.join("watch-offers.json"), folder: false, shape: Shape::Whole, skip: &[], part: "watch", flat: false, was: None });
         let older_exchange = |now: i64| exchange(&Sharing { folder: &folder, computer: &older.id, key: &key, memory: &older.memory, files: true, hurry: None }, &with_watch, now).unwrap();
         older.write("data/watch/2026-10-07.json", "{\"steps\": 4200}");
         older.write("state/watch-offers.json", "{\"declined\": {}}");
@@ -13829,6 +14184,14 @@ mod gc_tests;
 #[cfg(test)]
 #[path = "share_drafts_tests.rs"]
 mod drafts_tests;
+
+#[cfg(test)]
+#[path = "share_lists_tests.rs"]
+mod lists_tests;
+
+#[cfg(test)]
+#[path = "share_move_tests.rs"]
+mod move_tests;
 
 #[cfg(test)]
 mod probe {

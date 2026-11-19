@@ -1,0 +1,16 @@
+# Your projects (docs/projects.md).
+
+[[project]]
+id = "taxes"
+title = "Taxes"
+status = "open"
+files = ["admin/taxes-2025.md"]
+
+[[project.route]]
+from_domains = ["impots.example.org"]
+
+[[project]]
+id = "lumen"
+title = "Studio Lumen site"
+client = "lumen"
+files = ["admin/lease.md"]

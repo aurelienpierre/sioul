@@ -227,7 +227,7 @@ Ces choix sont dans [Paramètres ▸ Factures](settings.md#invoices) : votre p
 
 ### Vos clients {#your-clients}
 
-Un client peut avoir une fiche, liée à son contact et gardée dans `sioul-clients.toml` dans votre dossier de notes : une entreprise, un particulier ou un organisme public ; la dénomination ; l’adresse de facturation et, quand elle est autre, l’adresse de livraison ; ses identifiants (un SIREN, un numéro de TVA) ; la langue, la devise et le délai de paiement de ses factures ; l’adresse où elles sont envoyées ; un bon de commande à imprimer.
+Un client peut avoir une fiche, liée à son contact et gardée dans `sioul-clients.toml`, parmi les propres listes de Sioul (dans votre dossier de notes tant que vous ne les avez pas déplacées : [Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)) : une entreprise, un particulier ou un organisme public ; la dénomination ; l’adresse de facturation et, quand elle est autre, l’adresse de livraison ; ses identifiants (un SIREN, un numéro de TVA) ; la langue, la devise et le délai de paiement de ses factures ; l’adresse où elles sont envoyées ; un bon de commande à imprimer.
 
 <figure markdown="span">
   [![Le projet d’un client sur la page Projets : sous son titre, la fiche du client en une ligne, avec Fiche client… à côté ; Faire la facture parmi les boutons du projet ; son temps et ses factures plus bas.](../assets/screens/fr/project-client.png){ loading=lazy }](../assets/screens/fr/project-client.png "Ouvrir l’image en grand")
@@ -259,7 +259,7 @@ La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et pa
 - Les devis.
 - Fusionner un brouillon changé sur deux appareils avant qu’ils échangent : pour l’instant la version la plus récente remplace l’autre en entier, Sioul le dit sur l’appareil dont les changements ont été remplacés, et garde cette version parmi ses versions précédentes ([Sur plusieurs appareils](#on-several-computers)).
 - Dire dans la fenêtre ce qu’un paiement dans une autre devise a donné en euros : pour l’instant, `sioul invoices received` le dit ([Payée, et les avoirs](#paid-and-credit-notes)).
-- Retirer la fiche d’un client depuis la fenêtre : pour l’instant, supprimez-la de `sioul-clients.toml` dans votre dossier de notes.
+- Retirer la fiche d’un client depuis la fenêtre : pour l’instant, supprimez-la de `sioul-clients.toml`, parmi les propres listes de Sioul (`~/.local/share/sioul/records/` sous Linux, ou votre dossier de notes tant que les listes de Sioul n’ont pas été déplacées).
 - Le temps qui court dans les notifications de Windows et de macOS : seule la fenêtre de concentration le montre là.
 
 ## Pour aller plus loin {#going-further}

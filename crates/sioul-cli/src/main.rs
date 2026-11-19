@@ -103,6 +103,36 @@ enum Command {
     Done,
     /// One message: its card, its lane and the reasons (a developer's view).
     Card { file: PathBuf },
+    /// Moves Sioul's lists out of a notes folder, its papers and letters to
+    /// folders of their own, without the window and without the sharing
+    /// (docs/notes-folder.md, "What lives where"): a trial on a copy of real
+    /// files. Every folder is given; nothing of this device's own is moved.
+    MoveLists {
+        /// The notes folder the lists leave.
+        #[arg(long)]
+        notes: PathBuf,
+        /// Where the lists go (a device's own: the data folder's records).
+        #[arg(long)]
+        records: PathBuf,
+        /// Where the papers' files go.
+        #[arg(long)]
+        papers: PathBuf,
+        /// Where the letters' scans go.
+        #[arg(long)]
+        letters: PathBuf,
+        /// Where the dated copy of everything moved goes.
+        #[arg(long)]
+        kept: PathBuf,
+        /// Where the move's journal and its state file go.
+        #[arg(long)]
+        state: PathBuf,
+        /// Only list what would move, and where.
+        #[arg(long)]
+        plan: bool,
+        /// Then take the old files out of the notes folder, as once every device moved.
+        #[arg(long)]
+        clean: bool,
+    },
     /// The projects of the notes folder, and the files they name.
     #[command(alias = "cases")]
     Projects {
@@ -420,6 +450,7 @@ fn main() -> ExitCode {
         Command::Card { file } => card_command(&session, &file),
         Command::Projects { store } => projects_command(&session, store),
         Command::Window => window_command(&session),
+        Command::MoveLists { notes, records, papers, letters, kept, state, plan, clean } => move_lists_command(&session, sioul_core::storage::Folders { notes, records, papers, letters, kept, state }, plan, clean),
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
         Command::Movements(args) => money::list(&session, args),
         Command::Movement(command) => money::run(&session, command),
@@ -484,10 +515,10 @@ fn sources(config: &Config, maildirs: &[PathBuf]) -> Vec<Source> {
 }
 
 pub(crate) fn load_store(config: &Config) -> Option<ProjectStore> {
-    let root = config.notes_root_path()?;
+    let places = config.places()?;
     // With the mail tied to projects, so their conversations follow.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    ProjectStore::load(&root).map_err(|e| eprintln!("{}", plain_lines(&e))).ok().map(|s| s.with_ties(&ties))
+    ProjectStore::open(&places).map_err(|e| eprintln!("{}", plain_lines(&e))).ok().map(|s| s.with_ties(&ties))
 }
 
 fn porch_command(s: &Session, maildirs: &[PathBuf], open: bool, all: bool) -> Result<(), String> {
@@ -656,9 +687,70 @@ fn card_command(s: &Session, file: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The move of Sioul's lists on folders given (`sioul_core::storage::move_now`), no sharing held.
+fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: bool, clean: bool) -> Result<(), String> {
+    use sioul_core::storage;
+    let absolute = |p: PathBuf| std::path::absolute(&p).map_err(|e| format!("{}: {e}", p.display()));
+    let folders = storage::Folders { notes: absolute(folders.notes)?, records: absolute(folders.records)?, papers: absolute(folders.papers)?, letters: absolute(folders.letters)?, kept: absolute(folders.kept)?, state: absolute(folders.state)? };
+    // One sentence naming what it is about (`$what`), as the window says it.
+    let said = |fault: storage::Fault| {
+        let mut args = i18n::args();
+        args.set("what", fault.what.clone());
+        s.tr.text(&format!("storage-{}", fault.code), Some(&args))
+    };
+    // A trial on copies only (review S20): no folder given is, holds or sits inside this
+    // device's own configuration, data or state folder, nor its notes, papers or letters folder.
+    let own: Vec<(&'static str, PathBuf)> = [("configuration", config::config_dir()), ("data", config::data_dir()), ("state", config::state_dir()), ("notes", s.config.notes_root_path().unwrap_or_default()), ("papers", s.config.papers_folder()), ("letters", s.config.letters_folder())].into_iter().collect();
+    if let Some((flag, what)) = storage::clash(&folders, &own) {
+        let mut args = sioul_core::i18n::args();
+        args.set("flag", format!("--{flag}"));
+        args.set("own", what);
+        return Err(s.tr.text("storage-trial-own", Some(&args)));
+    }
+    if plan {
+        storage::check_folders(&folders).map_err(said)?;
+        let survey = storage::survey(&folders).map_err(said)?;
+        for entry in &survey.entries {
+            println!("{}  →  {}", one_line(&entry.from), one_line(&entry.to));
+        }
+        for file in &survey.left {
+            println!("left in the notes folder, no list naming it: {}", one_line(file));
+        }
+        return Ok(());
+    }
+    let now = jiff::Timestamp::now().as_second();
+    if storage::Storage::read(&folders.state).is_moved() {
+        println!("{}", s.tr.text("storage-moved-already", None));
+    } else {
+        let moved = storage::move_now(&folders, now, || Ok::<(), String>(())).map_err(said)?;
+        println!("lists {} · papers {} · letters {} · bytes {} · paths named anew {}", moved.lists, moved.papers, moved.letters, moved.bytes, moved.named);
+        for to in &moved.alone {
+            println!("kept, its source no longer in the notes folder: {}", one_line(to));
+        }
+        for to in &moved.earlier {
+            println!("left by an earlier try in folders chosen otherwise since: {}", one_line(to));
+        }
+    }
+    if clean {
+        let cleaned = storage::clean(&folders.state, now)?;
+        println!("taken out of the notes folder: {}", cleaned.removed);
+        for file in &cleaned.changed {
+            println!("kept, changed since its copy: {}", one_line(file));
+        }
+        // Kept for another reason, each with its code (a link on its way, its copy missing or
+        // different, the same file, the system refusing): the trial says why.
+        for (file, why) in &cleaned.kept {
+            println!("kept ({why}): {}", one_line(file));
+        }
+    }
+    Ok(())
+}
+
 fn projects_command(s: &Session, store: Option<PathBuf>) -> Result<(), String> {
-    let root = store.or_else(|| s.config.notes_root_path()).ok_or_else(|| s.tr.text("error-no-store", None))?;
-    let store = ProjectStore::load(&root)?;
+    let store = match store {
+        Some(root) => ProjectStore::load(&root)?,
+        None => ProjectStore::open(&s.config.places().ok_or_else(|| s.tr.text("error-no-store", None))?)?,
+    };
     let missing = store.missing_files();
     for project in &store.projects {
         let status = project.status.as_deref().map_or(String::new(), |st| format!(" [{}]", one_line(st)));
@@ -695,7 +787,7 @@ fn window_command(s: &Session) -> Result<(), String> {
 
 fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> Result<(), String> {
     let path = file
-        .or_else(|| s.config.notes_root_path().map(|root| root.join(budget::LEDGER)))
+        .or_else(|| s.config.records_root().map(|root| root.join(budget::LEDGER)))
         .ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = Ledger::load_file(&path)?;
     let today = sioul_core::zone::now().date();

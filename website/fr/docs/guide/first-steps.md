@@ -175,7 +175,7 @@ Les courriels de Google s’ajoutent dans le formulaire des courriels, plus haut
 
 ## Choisir votre dossier de notes {#choose-your-notes-folder}
 
-Vos notes sont un dossier de fichiers Markdown : un coffre Obsidian fonctionne tel quel. Sioul garde aussi vos projets, vos budgets, vos papiers et vos lettres scannées dans ce dossier, pour qu’ils voyagent avec lui jusqu’à vos autres appareils.
+Vos notes sont un dossier de fichiers Markdown : un coffre Obsidian fonctionne tel quel. Sioul garde ses propres listes (les projets, les budgets, les listes de vos papiers et de vos courriers) à part de vos notes, en fichiers texte simples dans son propre dossier, et les fichiers de vos papiers et de vos courriers dans des dossiers à eux. Tant que vous ne les y avez pas déplacés, une fois, ils sont dans votre dossier de notes ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)).
 
 Ouvrez **Notes** : tant que cet appareil n’a pas de dossier de notes, la page en demande un, avec **Choisir un dossier…**. Sioul le lit et y fait des liens ; il ne se l’approprie jamais. Ses réglages (⚙) le changent ensuite. Voir [Votre dossier de notes](notes.md#your-notes-folder).
 

@@ -100,6 +100,8 @@ runtime=$(mktemp -d /tmp/sioul-run.XXXXXX)
 trap 'rm -rf "$runtime"' EXIT
 home=/home/demo
 python3 "$repo/tools/demo/make-demo.py" --into "$profile" --now "$now" --language "$language" --notes-at "$home/Notes" > /dev/null
+# Papers' and letters' folders (none in a profile of the old layout: SIOUL_DEMO_OLD_LAYOUT).
+mkdir -p "$profile/documents"
 
 env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$shots" SIOUL_GRAB_STEPS="$steps" SIOUL_TEST_PASSWORD=x SIOUL_THEME="${DEMO_THEME:-light}"
      FONTCONFIG_FILE="$repo/tools/demo/fonts.conf" QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
@@ -125,7 +127,7 @@ env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS
     bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" "${built[@]}" \
     --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
     --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
-    --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \
+    --bind "$profile/notes" "$home/Notes" --bind "$profile/documents" "$home/Documents" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \
     env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
         XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
         timeout 400 dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$shots/log" 2>&1 || status=$?

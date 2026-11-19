@@ -53,7 +53,7 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
 fn agendas_for_persons(s: &Session) -> (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>) {
     use sioul_core::agendas::{self, Whose};
     use sioul_core::persons::Persons;
-    let papers = s.config.notes_root_path().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
+    let papers = s.config.records_root().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
     let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
     let persons = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &papers, &own);
     let all: Vec<agendas::Agenda> = agendas::all(&s.config).into_iter().map(|a| a.with_persons(&persons)).collect();
@@ -68,10 +68,10 @@ fn agendas_for_persons(s: &Session) -> (std::collections::BTreeSet<String>, std:
 /// given either (`records::papers` fails).
 fn kept_for_persons(s: &Session, loaded: &Loaded) -> std::collections::BTreeSet<String> {
     use sioul_core::persons::Persons;
-    let papers = s.config.notes_root_path().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
+    let papers = s.config.records_root().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
     let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
     let persons = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &papers, &own);
-    let letters: Vec<(String, String)> = s.config.notes_root_path().and_then(|root| sioul_core::letters::Letters::load(&root).ok()).map(|l| l.list.into_iter().map(|l| (l.id, l.reading.addressee)).collect()).unwrap_or_default();
+    let letters: Vec<(String, String)> = s.config.records_root().and_then(|root| sioul_core::letters::Letters::load(&root).ok()).map(|l| l.list.into_iter().map(|l| (l.id, l.reading.addressee)).collect()).unwrap_or_default();
     let mut kept = persons.kept_from_agents(&papers, &loaded.local, &own);
     kept.extend(persons.kept_letters(&letters, &loaded.local, &own));
     kept
@@ -98,7 +98,7 @@ pub fn kept_accounts(config: &sioul_core::config::Config) -> Vec<(String, std::p
 /// The same for mail alone, lighter: the projects, Sioul's own ties, and
 /// `index` (the mail's headers), which comes back with it.
 pub fn for_mail(s: &Session, index: MailIndex) -> (Consent, MailIndex) {
-    let projects = s.config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+    let projects = s.config.records_root().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
     let loaded = Loaded { projects, mail: index, local: LocalLinks::load(&LocalLinks::default_path()), ..Loaded::default() };
     let consent = of(s, &loaded);
     (consent, loaded.mail)

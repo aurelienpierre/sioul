@@ -334,6 +334,7 @@ pub mod sounds;
 pub mod spam;
 pub mod sites;
 pub mod state;
+pub mod storage;
 pub mod stopped;
 // Calendars subscribed by their web address (docs/client.md, "Calendars by their address").
 pub mod subscribed;

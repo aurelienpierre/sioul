@@ -126,7 +126,7 @@ struct RuleView {
 pub(crate) fn view() -> String {
     let config = load_config();
     let looked = sioul_core::words::Words::of(&config);
-    let Some(root) = config.notes_root_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
+    let Some(root) = config.records_root() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
     if let Err(problem) = Bank::load(&root) {
         return json(&View { store: true, problem, ..View::default() });
     }
@@ -199,7 +199,7 @@ fn accounts_into(view: &mut View, books: &sioul_core::movements::Books, aheads: 
         .iter()
         .map(|r| ReserveView { id: r.id.clone(), title: r.title.clone(), balance: r.balance.cents() as f64 / 100.0, as_of: r.as_of.to_string(), floor: r.floor.cents() as f64 / 100.0, delay_days: r.delay_days })
         .collect();
-    let imports = sioul_core::movements::Store::load(&load_config().notes_root_path().unwrap_or_default()).map(|s| s.imports).unwrap_or_default();
+    let imports = sioul_core::movements::Store::load(&load_config().records_root().unwrap_or_default()).map(|s| s.imports).unwrap_or_default();
     for account in &ledger.bank_accounts {
         let fresh = sioul_core::moneyview::freshness(&account.id, &imports, accounts::balance_of(bank, account).map(|(day, _)| day), tr(), today);
         let balance = accounts::balance_of(bank, account).map(|(date, amount)| say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))])).unwrap_or_default();
@@ -342,7 +342,7 @@ fn payout_sentence(ledger: &Ledger, account: &sioul_core::budget::BankAccount) -
 
 /// The budget file, where bank accounts, rules and choices are written.
 fn ledger_path() -> Result<std::path::PathBuf, String> {
-    load_config().notes_root_path().map(|root| root.join(sioul_core::budget::LEDGER)).ok_or_else(|| tr().text("papers-no-store", None))
+    load_config().records_root().map(|root| root.join(sioul_core::budget::LEDGER)).ok_or_else(|| tr().text("papers-no-store", None))
 }
 
 pub(crate) fn save_account(id: &str, edit: &str) -> String {
@@ -410,7 +410,7 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String, Paid) {
 fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
     let path = crate::backend::local_path(file);
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return (false, tr().text("papers-no-store", None)) };
+    let Some(root) = config.records_root() else { return (false, tr().text("papers-no-store", None)) };
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => return (false, format!("{}: {e}", path.display())),

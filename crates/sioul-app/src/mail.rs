@@ -1855,7 +1855,7 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             match sioul_core::vdir::remove_item(file) {
                 Ok(()) => {
                     crate::pim::nudge(shared, account);
-                    if let (Some(text), Some(root)) = (before, load_config().notes_root_path()) {
+                    if let (Some(text), Some(root)) = (before, load_config().records_root()) {
                         crate::letters::untie_removed(&root, &text);
                     }
                     None

@@ -1716,7 +1716,7 @@ pub(crate) fn mail_came() {
     let now = sioul_core::zone::now();
     // The Porch as the window gathers it (`backend::World`): the projects and their ties, the senders let in.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let store = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = Senders::load(&config);
     let state = sioul_core::state::PorchState::load(&sioul_core::state::PorchState::default_path());

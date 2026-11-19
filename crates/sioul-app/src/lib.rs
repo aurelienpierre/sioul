@@ -215,6 +215,7 @@ mod share;
 mod sites;
 mod spam;
 mod stars;
+mod storage;
 mod steps;
 mod subscriptions;
 // tell: the window's notices, one call about one thing (docs/notifications.md).

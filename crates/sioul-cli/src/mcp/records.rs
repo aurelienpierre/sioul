@@ -37,9 +37,9 @@ fn instant(seconds: i64) -> String {
     Timestamp::from_second(seconds).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
-/// The notes folder, where papers, contracts and letters are kept.
+/// Where Sioul's lists are: papers, contracts and letters among them.
 fn store(s: &Session) -> Result<std::path::PathBuf, String> {
-    s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))
+    s.config.records_root().ok_or_else(|| s.tr.text("error-no-store", None))
 }
 
 /// Lines of an answer: each one line, whatever was written in it.
@@ -108,7 +108,7 @@ pub fn persons(s: &Session, _args: &Args) -> Result<Answer, String> {
     use sioul_core::persons::{self, Persons, Relation};
     let (consent, loaded) = consent(s);
     let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
-    let root = s.config.notes_root_path();
+    let root = s.config.records_root();
     let wallet = root.as_deref().and_then(|r| papers::Wallet::load(r).ok()).map(|w| w.papers).unwrap_or_default();
     let store = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &wallet, &own);
     let letters = root.as_deref().and_then(|r| letters::Letters::load(r).ok()).map(|l| l.list).unwrap_or_default();

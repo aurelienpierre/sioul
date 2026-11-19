@@ -1,0 +1,5 @@
+[[contract]]
+id = "power"
+title = "Power"
+party = "Power Example"
+paper = "power-contract"

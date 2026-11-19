@@ -36,6 +36,8 @@ Item {
         property string language: "en"
         // The notes folder as the backend says it (the sharing's line to the Notes page).
         property string notesFolder: JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
+        // Where Sioul's lists are (`storage::view_json`): "" until known.
+        property string storageMove: ""
         // What the sharing's line to the notes folder asked the window to open.
         property var opened: []
         property var sends: []
@@ -94,6 +96,10 @@ Item {
         signal shareEstimated(string estimate)
         signal shareStarted(string problem)
 
+        property int takenOut: 0
+        function takeOutOldFiles() {
+            mock.takenOut += 1
+        }
         function reminderOpened(kind, uri, key) {
             mock.opened = mock.opened.concat([kind])
         }
@@ -102,6 +108,9 @@ Item {
         }
         function textWith(key, name, value) {
             return mock.text(key) + " " + value
+        }
+        function textArgs(key, args) {
+            return mock.text(key) + " " + args
         }
         function filesAccess() {
             return true
@@ -233,6 +242,43 @@ Item {
 
         // The notes folder is the Notes page's: one line says which it is (or that there
         // is none), with a button to its row there, by its key.
+        // Where Sioul keeps its lists: one line, and the window of the move from it at any time.
+        function test_the_lists_line_opens_the_window_of_the_move() {
+            mock.opened = []
+            const line = walk(panel, i => i.objectName === "shareStorage", [])[0]
+            compare(line.text, mock.text("storage-line-not"))
+            mock.storageMove = JSON.stringify({ moved: true, papers: "/stand-in/Papers", letters: "/stand-in/Letters" })
+            verify(line.text.indexOf("/stand-in/Papers") >= 0 && line.text.indexOf("/stand-in/Letters") >= 0, line.text)
+            walk(panel, i => i.objectName === "shareStorageOpen", [])[0].clicked()
+            compare(mock.opened, ["storage-move"])
+            mock.storageMove = ""
+        }
+
+        // The old files: never taken out by themselves; the line, its count, greyed and naming
+        // who is still to move until every device moved; then the press asks it, once.
+        function test_the_old_files_leave_on_the_press_alone() {
+            mock.takenOut = 0
+            const line = walk(panel, i => i.objectName === "shareOldFiles", [])[0]
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 0 })
+            verify(!line.visible, "nothing left: no line")
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 12, take_out_open: false, take_out_waiting: "storage-old-files-waiting Laptop" })
+            verify(line.visible)
+            compare(walk(panel, i => i.objectName === "shareOldFilesLine", [])[0].text, mock.text("storage-old-files") + " " + JSON.stringify({ count: 12 }))
+            const waiting = walk(panel, i => i.objectName === "shareOldFilesWaiting", [])[0]
+            verify(waiting.visible && waiting.text.indexOf("Laptop") >= 0, waiting.text)
+            const button = walk(panel, i => i.objectName === "shareOldFilesTakeOut", [])[0]
+            verify(!button.enabled, "greyed until every device moved")
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 12, take_out_open: true, take_out_waiting: "" })
+            verify(button.enabled && !waiting.visible)
+            compare(mock.takenOut, 0, "nothing by itself")
+            button.clicked()
+            compare(mock.takenOut, 1)
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 0, taken: "storage-taken-out" })
+            verify(!line.visible)
+            verify(walk(panel, i => i.objectName === "shareOldFilesTaken", [])[0].visible)
+            mock.storageMove = ""
+        }
+
         function test_the_notes_folder_line_leads_to_the_notes_page() {
             mock.opened = []
             const line = walk(panel, i => i.objectName === "shareNotesFolder", [])[0]
