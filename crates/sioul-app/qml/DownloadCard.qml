@@ -222,27 +222,33 @@ SafeDialog {
                 wrapMode: Text.Wrap
                 color: card.theme.warm
             }
+        }
+    }
 
-            RowLayout {
+    // Save and Cancel under what scrolls, always in view, a phone's height too.
+    footer: Pane {
+        background: null
+
+        RowLayout {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 8
+
+            Item {
                 Layout.fillWidth: true
-                spacing: 8
-
-                Item {
-                    Layout.fillWidth: true
-                }
-                Button {
-                    objectName: "downloadCancel"
-                    text: card.sioul.text("ui-cancel")
-                    onClicked: card.cancel()
-                }
-                Button {
-                    objectName: "downloadSave"
-                    highlighted: true
-                    text: card.sioul.text("ui-save")
-                    onClicked: card.save()
-                    Keys.onReturnPressed: card.save()
-                    Keys.onEnterPressed: card.save()
-                }
+            }
+            Button {
+                objectName: "downloadCancel"
+                text: card.sioul.text("ui-cancel")
+                onClicked: card.cancel()
+            }
+            Button {
+                objectName: "downloadSave"
+                highlighted: true
+                text: card.sioul.text("ui-save")
+                onClicked: card.save()
+                Keys.onReturnPressed: card.save()
+                Keys.onEnterPressed: card.save()
             }
         }
     }

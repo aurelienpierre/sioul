@@ -140,6 +140,9 @@ Item {
                 walk(kids[i], test, found)
             if (item.contentItem && item.contentItem !== item && kids.indexOf(item.contentItem) < 0)
                 walk(item.contentItem, test, found)
+            // A dialog's buttons, in its footer.
+            if (item.footer && kids.indexOf(item.footer) < 0)
+                walk(item.footer, test, found)
             return found
         }
         // The control shown now: a card asked again makes its places anew, the old ones going later.
@@ -195,6 +198,10 @@ Item {
             compare(walk(downloads.card, i => i.objectName === "downloadCaution", [])[0].visible, false, "no caution for a PDF")
             verify(named("downloadPlace:downloads").checked)
             verify(downloads.card.width <= root.width - 16, "at a phone's width: " + downloads.card.width)
+            // Save in view whatever scrolls above it: under the card's top, within the window.
+            const save = named("downloadSave")
+            const at = save.mapToItem(root, 0, 0)
+            verify(at.y >= 0 && at.y + save.height <= root.height, "Save in view: " + at.y)
             downloads.card.cancel()
         }
 
