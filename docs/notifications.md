@@ -38,6 +38,7 @@ Before this, about fifteen files each built their own notifications, each with i
 | The sites' news gathered | `sioul:porch` |
 | New mail | its first message's address; each message it names its own button (phase 2, [below](#mail)); `sioul:mailbox`, the mailbox at its top, only when none of them has an address |
 | A setting | `sioul:settings/<key>` (the language offer: `sioul:settings/words.languages`) |
+| A file a site offered | in a folder of the system's, its `file:` address (its folder's for a program); in Papers, `sioul:paper-file/<path>`, the paper that holds it once its form was saved, else its form again |
 
 Ids and tags inside an address are percent-encoded (`/`, `#`, `%`, `?`, spaces…), as the window's `decodeURIComponent` reads them back.
 
@@ -107,6 +108,7 @@ A source may say its notice is to do though its kind's row is to know (`Notice::
 | New mail | mailnote.rs `show`, `mail_notice` | mail, to know | its first message, a button for each it names | its minutes, or each message settled |
 | A language found in your mail | languages.rs | minor, to know | `sioul:settings/words.languages` | its minutes |
 | Calendar files for an older Sioul | outside.rs `to_older` | minor, to know | none (the process leaves) | its minutes |
+| A file a site offered, placed ([sites.md](sites.md#downloads)) | downloads.rs `done` | minor, to know | in a folder of the system's, the file (its folder for a program), with Open and Show in its folder; in Notes the note, in Papers `sioul:paper-file/<path>` (its paper, else its form again), in Letters the letter | its minutes |
 
 **Sites**: every message a site notifies is kept for the Porch and the next gathering, told or not. The Sites page keeps a web notice (`QWebEngineNotification`, which Qt gives to JavaScript and would collect) only when Sioul told it (`siteNotified` answers whether it posted or waits), by its site and its key (`webNotices`): its tag, "" without one, so that the next takes the last one's place, as the same tag does; it goes once its site is opened, or after an hour. A click on Sioul's notice opens the site, then calls the kept notice's `click()`. Its `closed` (the site withdrew it) settles Sioul's notice for a call alone (answered, or over: `sites::withdrawn`); a message's stays its minutes, since some sites close their own after a few seconds. The notice carries the site's own icon from the cache of icons. **"Your sites have news"** names what is new since it last rang: each site's notification is marked told once named, as the notice is posted (`sites::Notice::told`, a key an older Sioul passes over); the Porch keeps them all until the site is seen. A call in a site pierces whenever its cell lets it come (`Kind::pierces`), as what you set or asked for does.
 

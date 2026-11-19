@@ -90,6 +90,23 @@ When a device cannot be opened, because another program holds it or it is unplug
 
 **Share in the call** lets you choose a whole screen, one window, or nothing. When a site asks for the microphone while it is off, the status line says so, with where to turn it on. The place where you are is never given to any site.
 
+## Files a site offers {#downloads}
+
+On a computer, a site that offers a file (a statement, an invoice, a form) saves nothing by itself: a card opens over the site and asks where the file goes.
+
+- **The file**: its name, which you may change; its size when the site says it; the site it comes from. A program (an installer, a script) is said to be one, with a word of caution: keep it only if you trust the site. Sioul never starts one.
+- **Where**, one of five:
+    - **Downloads**: your system's Downloads folder.
+    - **A folder I choose…**: your system's "Save as" window, for the folder and the name.
+    - **Notes**: the folder new notes go into. The file shows in [Notes](notes.md#pictures-pdfs-and-sounds) as a picture, a PDF or a file, and can be tied like any note.
+    - **Papers**: the papers' folder; then [the paper's form](papers.md) opens with the file attached, to say what it is, whose, and its dates.
+    - **Letters**: where scans arrive, as a letter received. It is read within a minute, and its card comes into view on the Letters page. PDFs and pictures only.
+- **Save**, or **Cancel**: nothing is saved, and the site learns that the file was refused.
+
+The place you chose last for a site is offered first the next time: a bank's statements that always go to Papers take one press. Several files at once are asked one after the other. A file offered while you are on another page waits in Sites, and the status line says so.
+
+While a file comes, the status line says so. Once it is there, one notification names it, with **Open** and **Show in its folder** for your system's folders; for Notes, Papers and Letters, it opens the file there, in Sioul. A file that fails or is cut short is said to have failed, and nothing half-written is left anywhere: it waits in Sioul's own cache until it is whole. A name already there gets a number ("statement (2).pdf"): no file is ever replaced.
+
 <!-- colour: the sites' colours (docs/colour.md). -->
 ## Colours {#colours}
 
@@ -279,6 +296,7 @@ As of October 2026, from each app's own documentation.
 - **Security keys**: WebAuthn through Qt WebEngine's own request (Chromium's FIDO code, over USB HID). On Linux it works with Qt WebEngine built with udev and systemd's rules for keys, with no rule to add; the Flatpak needs `--device=all`. A one-line script takes `PublicKeyCredential.getClientCapabilities()` away from every page, since Qt 6.10 and 6.11 never answer it (QTBUG-149575) and sites would wait forever. On Windows, Windows' own dialog handles the key.
 - **Colours**: each site's picture goes through a shader that looks every pixel up in a table made for the screen: 33 × 33 × 33 entries of the screen's linear values, then its tone curve in 1,024 entries, in half floats, made with Little CMS from the screen's ICC profile (the X11 `_ICC_PROFILE` atoms, matched to screens through colord); calmer colours limit chroma softly in OKLCh before that. Within one 8-bit code of Little CMS's own transform. Details: [colour.md](https://sioul.aurelienpierre.com/dev/colour.html).
 - **Devices for calls**: a script runs in every page and frame of a site. For each call, it gives the page a relay track for its camera and one for its microphone (Chromium's `MediaStreamTrackGenerator`, fed from the real device through a `MediaStreamTrackProcessor`). A change replaces what feeds the relay, never the call's own tracks, so the site's mute button, its voice meter, its effects and hanging up keep working. Devices are asked for by their names, since the browser's ids are each site's own. Before a site was first allowed a device, its names are unknown: the call is moved to the chosen device right after that first grant, before the page sees it. The speaker is given, with `setSinkId`, to every element and audio context the page plays through. A site allowed no microphone and no camera never receives the names. It is checked with Chromium's fake devices, in a sandbox where no real camera or microphone can be opened.
+- **Downloads**: Qt WebEngine's request is held unanswered while the card asks; nothing reaches the disk before **Save** (checked with Qt WebEngine 6.11). The file then comes into a folder of its own in Sioul's cache (`~/.cache/sioul/downloads/`), under the name you gave, made one plain file name: no separator, no "..", no leading dot, no character a file system refuses, no mark that turns text right to left, 120 characters at most, its extension kept. Whole, it is placed: written beside its place under a hidden name, synced, then given its name by a link that fails when the name is taken, so that no file is ever replaced. Papers and Letters take it through their own ways in, as a paper added from a file and a scan arriving. The place chosen last for each site is kept on this computer, in `~/.local/state/sioul/downloads.toml`.
 - **Icons**: the site's own `<link rel="icon">`, the largest, else `/favicon.ico`, over HTTPS only, redirects included; kept a week in `~/.cache/sioul/favicons/`.
 - **Notifications**: kept in `~/.local/state/sioul/site-notices.toml`, the newest 200, 300 characters each; what reaches you and when follows [What reaches you, and when](notifications.md).
 - **Bitwarden, as Bitwarden's own clients do it**: the master key is made from your master password by PBKDF2-SHA256 or Argon2id, as your account says, with the server's settings held to Bitwarden's own bounds (PBKDF2, 5,000 to 2,000,000 iterations; Argon2id, at least 2 passes, 16 to 1,024 MiB, 1 to 16 lanes), so that a server cannot make your password cheaper to guess. The login sends a hash of it, never the password. The user key is opened through HKDF-stretched keys; each AES-256-CBC item is checked by its HMAC-SHA256 before anything is decrypted, and newer accounts' items are read too (COSE: XChaCha20-Poly1305, AES-256-GCM); an organisation's key comes through your RSA key (RSA-OAEP).
