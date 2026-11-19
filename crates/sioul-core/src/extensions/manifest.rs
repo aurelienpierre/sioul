@@ -81,6 +81,8 @@ impl Grants {
 pub struct Manifest {
     /// Grows with each manifest signed (`state::State::serial`).
     pub serial: u64,
+    /// The SHA-256 of its exact bytes, hexadecimal: two manifests under one serial differ by it.
+    pub sha256: String,
     pub offers: Vec<Offer>,
 }
 
@@ -106,7 +108,9 @@ pub fn parse(text: &str) -> Result<Manifest, String> {
             return Err(format!("{} is offered twice", offer.id));
         }
     }
-    Ok(Manifest { serial: raw.serial, offers: raw.extensions })
+    use sha2::Digest;
+    let sha256 = sha2::Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    Ok(Manifest { serial: raw.serial, sha256, offers: raw.extensions })
 }
 
 fn check(offer: &Offer) -> Result<(), String> {

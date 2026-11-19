@@ -200,9 +200,12 @@ The manifest is accepted only when:
 5. it was made no later than now (a minute of difference allowed), and has not expired if it says when it does;
 6. it verifies cryptographically, with the compiled key, over the manifest's **exact bytes**, as they were downloaded;
 7. the compiled packet's own fingerprint is the compiled fingerprint (a check of Sioul's build);
-8. the manifest's `serial` is not lower than the last one this device accepted (kept in `$XDG_STATE_HOME/sioul/extensions.toml`): an older signed manifest cannot be served again.
+8. the manifest's `serial` is not lower than the last one this device accepted (kept in `$XDG_STATE_HOME/sioul/extensions.toml`), nor than the lowest this release of Sioul accepts (`LOWEST_SERIAL`, compiled in): an older signed manifest cannot be served again, to a fresh device or one whose record was lost either;
+9. under the serial this device accepted last, it is the same manifest (the SHA-256 of its bytes): two manifests signed with one number cannot be alternated.
 
-**Not checked**, since no certificate is read: the key's expiry, its revocation, its capabilities (the "sign" flag), its user ids. A change of key is a new release of Sioul. The serial number guards against an older manifest only on a device that saw a newer one.
+**Not checked**, since no certificate is read: the key's expiry, its revocation, its capabilities (the "sign" flag), its user ids. A change of key is a new release of Sioul.
+
+**What the serial leaves open.** No expiry is asked of a signature: the publisher would have to sign again on a timer. So, between two releases of Sioul, a manifest signed after the release's `LOWEST_SERIAL` and since replaced can still be served to a device that never saw the newer one (a new phone, a record lost); and a device whose address serves nothing new (an account taken over, an address changed on that device) hears of no update and no withdrawal, without a word. Each release of Sioul raises `LOWEST_SERIAL` to the serial of the manifest published then; a manifest signed for a trial stays valid until a higher serial is known (S5), so trial manifests are signed with serials below the published ones.
 
 The command that makes the signature, on the publisher's computer with the key's security key plugged in (the `!` makes GnuPG use the primary key itself, not a signing subkey):
 

@@ -364,7 +364,7 @@ fn plan(state: &State, manifest: &Manifest) -> Plan {
 fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
     let path = state::path();
     state::change(&path, |state| {
-        state.accept_serial(manifest.serial)?;
+        state.accept(manifest.serial, &manifest.sha256)?;
         state.checked = now();
         Ok::<(), String>(())
     })??;

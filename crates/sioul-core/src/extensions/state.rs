@@ -19,6 +19,10 @@ pub struct State {
     /// The highest serial of a manifest accepted here: a lower one is refused.
     #[serde(default)]
     pub serial: u64,
+    /// The SHA-256 of the manifest accepted under `serial`: another one under
+    /// the same serial is refused. Empty before the first.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub manifest: String,
     /// When the manifest was last read (seconds since 1970).
     #[serde(default)]
     pub checked: i64,
@@ -76,13 +80,23 @@ impl State {
         self.extensions.iter_mut().find(|e| e.offer.id == id)
     }
 
-    /// A manifest's serial taken: refused when lower than the last accepted
-    /// here, so that an older signed manifest cannot be served again.
-    pub fn accept_serial(&mut self, serial: u64) -> Result<(), String> {
-        if serial < self.serial {
-            return Err(format!("an older manifest (serial {serial}, {} accepted before)", self.serial));
+    /// A manifest taken, by its serial and the SHA-256 of its bytes: refused
+    /// when its serial is lower than the last accepted here or than the
+    /// lowest this release of Sioul accepts (`LOWEST_SERIAL`, so that a
+    /// fresh device, or one whose record was lost, cannot be served an older
+    /// signed manifest either), and when it is another manifest under the
+    /// serial accepted last (two manifests signed with one number cannot be
+    /// alternated). The same manifest read again is taken.
+    pub fn accept(&mut self, serial: u64, sha256: &str) -> Result<(), String> {
+        let lowest = self.serial.max(super::LOWEST_SERIAL);
+        if serial < lowest {
+            return Err(format!("an older manifest (serial {serial}, {lowest} at least)"));
+        }
+        if serial == self.serial && !self.manifest.is_empty() && self.manifest != sha256 {
+            return Err(format!("another manifest under serial {serial}"));
         }
         self.serial = serial;
+        self.manifest = sha256.to_string();
         Ok(())
     }
 }
@@ -154,16 +168,17 @@ mod tests {
         let path = folder.join("extensions.toml");
         let offer = crate::extensions::manifest::parse(crate::extensions::manifest::SAMPLE).unwrap().offers.remove(0);
         change(&path, |state| {
-            state.accept_serial(7).unwrap();
+            state.accept(7, "a7").unwrap();
             state.extensions.push(Installed::new(offer.clone()));
         })
         .unwrap();
         let mut state = load(&path);
-        assert_eq!(state.serial, 7);
+        assert_eq!((state.serial, state.manifest.as_str()), (7, "a7"));
         assert!(state.get("timetable").unwrap().enabled);
-        assert!(state.accept_serial(6).is_err(), "an older manifest");
-        assert!(state.accept_serial(7).is_ok(), "the same one again");
-        assert!(state.accept_serial(8).is_ok());
+        assert!(state.accept(6, "a6").is_err(), "an older manifest");
+        assert!(state.accept(7, "a7").is_ok(), "the same one again");
+        assert!(state.accept(7, "b7").is_err(), "another manifest under the same serial");
+        assert!(state.accept(8, "a8").is_ok());
         let log = folder.join("timetable.log");
         for round in 0..3 {
             append_log(&log, &(0..200).map(|i| format!("{round}-{i}")).collect::<Vec<_>>()).unwrap();
@@ -173,5 +188,18 @@ mod tests {
         assert_eq!(kept.lines().last(), Some("2-199"));
         assert_eq!(kept.lines().next(), Some("1-0"));
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// S2: a fresh device, or one whose record was lost or no longer reads,
+    /// still refuses a manifest older than the lowest this release accepts.
+    #[test]
+    fn an_older_manifest_is_refused_on_a_fresh_device_too() {
+        let fresh = || State::default();
+        assert!(fresh().accept(super::super::LOWEST_SERIAL - 1, "old").is_err(), "below the floor compiled in");
+        assert!(fresh().accept(super::super::LOWEST_SERIAL, "now").is_ok());
+        let unreadable = std::env::temp_dir().join(format!("sioul-extensions-unreadable-{}.toml", std::process::id()));
+        std::fs::write(&unreadable, "serial = [").unwrap();
+        assert!(load(&unreadable).accept(super::super::LOWEST_SERIAL - 1, "old").is_err(), "a record that no longer reads gives no way back");
+        let _ = std::fs::remove_file(&unreadable);
     }
 }

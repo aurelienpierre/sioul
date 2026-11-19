@@ -23,6 +23,14 @@ pub mod state;
 /// The interface's version Sioul speaks (docs/extensions.md).
 pub const INTERFACE: u32 = 1;
 
+/// The lowest serial of a manifest this release of Sioul accepts, on any
+/// device, its record lost or new (docs/extensions.md, "The signature"):
+/// raised at each release of Sioul to the serial of the manifest published
+/// then, so that an older signed manifest cannot be served again to a fresh
+/// device. No expiry is asked of a signature (the publisher would have to
+/// sign again on a timer): what this leaves open is said in the docs.
+pub const LOWEST_SERIAL: u64 = 1;
+
 /// The most an extension's secret holds: what every system's keyring keeps
 /// (Windows' 2560 bytes, less a margin; `sioul_sync::secret::ENTRY_BYTES`).
 pub const SECRET_BYTES: usize = 2400;
