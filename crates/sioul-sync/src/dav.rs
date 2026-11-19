@@ -3396,7 +3396,7 @@ mod tests {
         let (dav, home) = Dav::start(&["classes"]);
         let client = client();
         sync_one(&client, "series-pauses", &home, "classes").unwrap();
-        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VEVENT\r\nUID:swimming\r\nDTSTAMP:20301001T080000Z\r\nDTSTART:20301002T150000Z\r\nDTEND:20301002T160000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20310625T215959Z\r\nSUMMARY:Swimming\r\nX-SIOUL-PAUSE-DURING:public\r\nX-SIOUL-PAUSE-DURING:school/zone-a\r\nEXDATE:20301023T150000Z\r\nEXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=school/zone-a:20301023T150000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-AS-OF:20301001T070000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VEVENT\r\nUID:swimming\r\nDTSTAMP:20301001T080000Z\r\nDTSTART:20301002T150000Z\r\nDTEND:20301002T160000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20310625T215959Z\r\nSUMMARY:Swimming\r\nX-SIOUL-PAUSE-DURING:public\r\nX-SIOUL-PAUSE-DURING:school/zone-a\r\nEXDATE:20301023T150000Z\r\nEXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=school/zone-a:20301023T150000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=public:0123456789abcdef\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=school/zone-a:fedcba9876543210\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         std::fs::write(folder("series-pauses", "classes").join("swimming.ics"), series).unwrap();
         let report = sync_one(&client, "series-pauses", &home, "classes").unwrap();
         assert_eq!(report.sent, 1, "{report:?}");
@@ -3405,7 +3405,7 @@ mod tests {
         let there = dav.items("classes").values().next().cloned().unwrap();
         assert_eq!(sioul_core::series::sources_of(&there).len(), 2);
         assert_eq!(sioul_core::series::paused_of(&there, &zone).values().map(std::collections::BTreeSet::len).sum::<usize>(), 2);
-        assert!(sioul_core::series::as_of(&there).is_some());
+        assert_eq!(sioul_core::series::versions_of(&there).len(), 2, "each source's version, kept as sent");
     }
 
     /// F1: an event made here is sent, then the network drops before the

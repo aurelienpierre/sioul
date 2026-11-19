@@ -88,9 +88,7 @@ impl DaysOff {
     /// calendars of holidays say them now (`subscribed::holidays`), in the
     /// time zone shown.
     pub fn of(config: &Config) -> DaysOff {
-        let zone = crate::zone::current();
-        let today = crate::zone::now().date();
-        DaysOff::with_holidays(&config.time_off, &crate::subscribed::holidays(config, &zone, today))
+        DaysOff::with_holidays(&config.time_off, &crate::subscribed::holidays(config, &crate::zone::current()))
     }
 
     /// Your typed periods alone, from the configuration: what a series pausing

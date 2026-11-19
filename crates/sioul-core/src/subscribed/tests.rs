@@ -173,7 +173,7 @@ fn the_official_files_shapes_give_their_days() {
         let s = config.agenda.subscriptions.get(id).unwrap();
         assert_eq!(take(id, s, calendar(text), 1_000).unwrap(), Taken::Changed);
     }
-    let all = holidays(&config, &zone, day("2030-11-01"));
+    let all = holidays(&config, &zone);
     let of = |id: &str| all.iter().find(|h| h.id == id).unwrap();
     let after = of("zone-test");
     assert_eq!((after.holidays, after.days_off, after.as_of), (Holidays::School, false, Some(1_000)));

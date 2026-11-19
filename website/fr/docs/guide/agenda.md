@@ -72,7 +72,9 @@ Dans le formulaire de l’événement, sous **Répétition** et **Tous les** :
 - **Les vacances scolaires commencent après la classe** : pour les agendas officiels français, le jour où commencent les vacances est encore un jour de classe, et le jour de la reprise n’est pas une pause.
 - **La fiche dit** comment elle se répète (« Chaque semaine jusqu’au mercredi 25 juin ») et sa prochaine pause : « En pause à partir du vendredi 19 décembre (les jours fériés), reprend le lundi 5 janvier. »
 
-Les pauses ne sont pas proposées sur une réunion avec d’autres, puisque chaque date retirée serait envoyée à chaque invité, ni sur les tâches répétées. Quand deux de vos appareils connaissent un agenda de vacances à des moments différents, celui dont la copie est la plus fraîche écrit les pauses, et une copie plus ancienne ne défait jamais une plus récente.
+Les pauses ne sont pas proposées sur une réunion avec d’autres, puisque chaque date retirée serait envoyée à chaque invité, ni sur les tâches répétées. Une série qui reçoit des invités plus tard garde les dates déjà retirées, et Sioul cesse de tenir ses pauses ; sa carte le dit.
+
+Chaque pause est tenue pour elle-même. Un appareil qui ne connaît pas un agenda de vacances (il ne l’a pas encore lu, ou vous ne vous y êtes jamais abonné) ou qui en connaît une copie plus ancienne laisse les dates de cet agenda telles qu’elles sont, et tient toujours celles de vos vacances ; une copie plus récente de l’agenda, ou des vacances changées plus tard, remettent les dates en ordre. Vos vacances sont nommées comme les vôtres sur la série : le Sioul de quelqu’un d’autre qui peut écrire dans un agenda partagé ne les prend jamais pour les siennes. Deux appareils qui savent la même chose ne se défont jamais l’un l’autre.
 
 ### Un jour et une heure {#a-day-and-an-hour}
 

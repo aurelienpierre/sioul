@@ -880,6 +880,8 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     if guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty()) {
         edit.pauses.clear();
     }
+    // "My vacations" chosen: named yours, your settings' owner id made first if need be.
+    crate::series::mine_named(&mut edit.pauses)?;
     let zone = sioul_core::zone::current();
     let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").

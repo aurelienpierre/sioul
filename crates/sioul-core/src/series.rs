@@ -15,21 +15,37 @@
 //! Each time of the series that falls in a pause is left out by the standard
 //! means (`EXDATE`), so the phone's calendar and anyone the agenda is shared
 //! with see the same; Sioul notes on the series, in lines of its own, what it
-//! pauses for and which times it left out for which source:
+//! pauses for, which times it left out for which source, and from which
+//! version of each source:
 //!
-//! - `X-SIOUL-PAUSE-DURING:vacations` (`public`, `school/<id>`), one line each;
+//! - `X-SIOUL-PAUSE-DURING:vacations/<owner>` (`public`, `school/<id>`), one
+//!   line each; `<owner>` is an opaque id of the settings whose vacations
+//!   they are (`config::VacationsMark::owner`), so that another person's
+//!   Sioul that can write the same calendar sees a source it does not know;
 //! - `X-SIOUL-PAUSED;X-SOURCE=public:20261225T090000Z,20270101T090000Z`, one
-//!   line per source, each time as an instant in UTC (a day for a whole-day series);
-//! - `X-SIOUL-PAUSED-AS-OF:20261118T100000Z`: how fresh the copy of the
-//!   holidays was that last wrote them.
+//!   line per source, each time as an instant in UTC (a day for a whole-day
+//!   series, a local time for a floating one);
+//! - `X-SIOUL-PAUSED-VERSION;X-SOURCE=public:<stamp>`, one line per source:
+//!   the version of that source its left-out times were computed from.
+//!
+//! **Each source is judged by itself** (19 November 2026, the review of the
+//! first rule): a source has a stamp of its own, the same on every device
+//! that holds the same version of it (`Version`): your vacations, when they
+//! were last edited (written in the shared settings with them) and the days
+//! they hold; a calendar of holidays, the days it gives. A device acts on a
+//! source only when it knows it, at a version at least as new as the one the
+//! series notes: it leaves out a time the source covers, and puts back a
+//! time only when that source left it out and no longer covers it. A device
+//! that does not know a source (no copy of that calendar here, someone
+//! else's vacations, settings that do not read), or knows an older version,
+//! touches none of that source's times, and still keeps those of the
+//! sources it knows. Nothing is written when nothing differs: two devices
+//! holding the same versions compute the same times and write nothing.
 //!
 //! A time left out by hand (an EXDATE Sioul did not note) is never put back.
 //! The pauses are kept for the eighteen months ahead (`keep`), when a
 //! vacation is typed, moved or removed, when a calendar of holidays changes,
-//! and as the days pass; the times before today stay as they were. Between
-//! two devices the one whose copy of the holidays is the freshest writes, and
-//! an older copy never undoes a newer one (`may_write`, the busy calendars'
-//! rule, `availability::may_write`).
+//! and as the days pass; the times before today stay as they were.
 //!
 //! A CalDAV server that drops lines it does not know (none of those Sioul
 //! names in docs/compatibility.md does) keeps the EXDATEs, which are
@@ -48,16 +64,22 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const PAUSE_DURING: &str = "X-SIOUL-PAUSE-DURING";
 /// The times Sioul left out, one line per source.
 pub const PAUSED: &str = "X-SIOUL-PAUSED";
-/// How fresh the copy of the holidays was that last wrote them.
-pub const PAUSED_AS_OF: &str = "X-SIOUL-PAUSED-AS-OF";
+/// The version of each source the times it left out were computed from, one line per source.
+pub const PAUSED_VERSION: &str = "X-SIOUL-PAUSED-VERSION";
 /// How far ahead the pauses are kept: eighteen months.
 pub const AHEAD_DAYS: i64 = 548;
+/// The form's word for your own vacations, before they are named yours
+/// (`Source::Vacations` with your settings' owner id, `config::vacations_owner`).
+pub const MY_VACATIONS: &str = "vacations";
+/// How many former versions of each calendar of holidays a device remembers (`Days::remember`).
+const HELD_KEPT: usize = 16;
 
 /// What a series pauses during.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Source {
-    /// The periods you type (vacations, sick leave, other).
-    Vacations,
+    /// The periods typed in the settings whose owner id this is (vacations,
+    /// sick leave, other): yours when it is your settings' own.
+    Vacations(String),
     /// Every subscribed calendar of public holidays.
     Public,
     /// One subscribed calendar of school holidays, by its id.
@@ -65,10 +87,10 @@ pub enum Source {
 }
 
 impl Source {
-    /// Its word in the series' lines and the form: "vacations", "public", `school/<id>`.
+    /// Its word in the series' lines and the form: `vacations/<owner>`, "public", `school/<id>`.
     pub fn id(&self) -> String {
         match self {
-            Source::Vacations => "vacations".into(),
+            Source::Vacations(owner) => format!("vacations/{owner}"),
             Source::Public => "public".into(),
             Source::School(id) => format!("school/{id}"),
         }
@@ -76,81 +98,208 @@ impl Source {
 
     pub fn parse(text: &str) -> Option<Source> {
         match text.trim() {
-            "vacations" => Some(Source::Vacations),
             "public" => Some(Source::Public),
-            other => other.strip_prefix("school/").filter(|id| crate::subscribed::valid_id(id)).map(|id| Source::School(id.to_string())),
+            other => {
+                if let Some(owner) = other.strip_prefix("vacations/") {
+                    return crate::subscribed::valid_id(owner).then(|| Source::Vacations(owner.to_string()));
+                }
+                other.strip_prefix("school/").filter(|id| crate::subscribed::valid_id(id)).map(|id| Source::School(id.to_string()))
+            }
+        }
+    }
+
+    /// Your own vacations, as `config` names them; none before an owner id is made.
+    pub fn mine(config: &Config) -> Option<Source> {
+        let owner = config.vacations.owner.trim();
+        crate::subscribed::valid_id(owner).then(|| Source::Vacations(owner.to_string()))
+    }
+}
+
+/// The days a source pauses, as spans of days, both ends included, sorted,
+/// apart and not touching (`spans`).
+pub type Spans = Vec<(Date, Date)>;
+
+/// Spans of days made one: sorted, those that overlap or touch joined, so
+/// that the same days give the same spans whatever periods they came from.
+pub fn spans(periods: impl IntoIterator<Item = (Date, Date)>) -> Spans {
+    let mut all: Vec<(Date, Date)> = periods.into_iter().filter(|(from, until)| until >= from).collect();
+    all.sort();
+    let mut out: Spans = Vec::with_capacity(all.len());
+    for (from, until) in all {
+        match out.last_mut() {
+            Some(last) if last.1.tomorrow().map_or(true, |next| from <= next) => last.1 = last.1.max(until),
+            _ => out.push((from, until)),
+        }
+    }
+    out
+}
+
+/// What a source's days are, as a stamp: the same days, the same stamp.
+pub fn held(spans: &Spans) -> String {
+    let said: String = spans.iter().map(|(from, until)| format!("{from}/{until}\n")).collect();
+    crate::vdir::content_hash(said.as_bytes())
+}
+
+/// A source's version, as this device knows it (19 November 2026).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Version {
+    /// Your vacations: when they were last edited (the shared settings'
+    /// stamp, `config::VacationsMark::stamp`, 0 unsaid) and the days they hold (`held`).
+    Edited { at: i64, held: String },
+    /// A calendar of holidays: the days this device's copy gives (`held`),
+    /// and the versions it held before, oldest first.
+    Held { held: String, before: Vec<String> },
+}
+
+impl Version {
+    /// Its stamp, as a series notes it: `20261119T100000Z.<held>` for your
+    /// vacations, `<held>` for a calendar of holidays.
+    pub fn stamp(&self) -> String {
+        match self {
+            Version::Edited { at, held } => format!("{}.{held}", Timestamp::from_second(*at).unwrap_or(Timestamp::UNIX_EPOCH).strftime("%Y%m%dT%H%M%SZ")),
+            Version::Held { held, .. } => held.clone(),
+        }
+    }
+
+    /// Whether this version is at least as new as `noted`, a series' stamp:
+    /// the same days; your vacations edited later; a calendar's version
+    /// this device held before the one it holds. Anything else (a version
+    /// it never held, a stamp that does not read) is not known to be older.
+    pub fn at_least(&self, noted: &str) -> bool {
+        let noted = noted.trim();
+        match self {
+            Version::Edited { at, held } => {
+                let Some((when, days)) = noted.split_once('.') else { return false };
+                days == held || jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", when.trim_end_matches(['Z', 'z'])).ok().and_then(|d| d.to_zoned(TimeZone::UTC).ok()).is_some_and(|z| *at > z.timestamp().as_second())
+            }
+            Version::Held { held, before } => noted == held || before.iter().any(|b| b == noted),
         }
     }
 }
 
-/// The days each source pauses, as this device knows them now, and how fresh each copy is.
+/// What this device knows of one source: the days it pauses, and their version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Known {
+    pub spans: Spans,
+    pub version: Version,
+}
+
+impl Known {
+    /// Whether it pauses `date`.
+    pub fn pauses(&self, date: Date) -> bool {
+        let at = self.spans.partition_point(|(from, _)| *from <= date);
+        at > 0 && self.spans[at - 1].1 >= date
+    }
+}
+
+/// The sources this device knows, each with its days and version; a source
+/// it does not know is not here (no copy of that calendar read here, someone
+/// else's vacations).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Days {
-    days: BTreeMap<Source, BTreeSet<Date>>,
-    /// When this device last found each calendar of holidays current (`subscribed::Fetched::checked`);
-    /// none while it never read it. Your vacations: when the settings last changed here.
-    as_of: BTreeMap<Source, Option<i64>>,
-    /// The sources this device has no word of at all (a school calendar stopped): no day, known.
-    now: i64,
+    known: BTreeMap<Source, Known>,
+}
+
+/// The versions of each calendar of holidays this device held, by source
+/// (`state/series-held.toml`): what tells it that a version a series notes
+/// is older than its own.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HeldBefore {
+    #[serde(default)]
+    pub held: BTreeMap<String, Vec<String>>,
+}
+
+impl HeldBefore {
+    fn path() -> std::path::PathBuf {
+        crate::config::state_dir().join("series-held.toml")
+    }
+
+    pub fn load() -> HeldBefore {
+        std::fs::read_to_string(HeldBefore::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
 }
 
 impl Days {
-    /// What this device knows of each source, around `today`, in `zone`.
-    pub fn of(config: &Config, zone: &TimeZone, today: Date) -> Days {
-        let settings = std::fs::metadata(crate::config::default_path()).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
-        Days::with(config, &crate::subscribed::holidays(config, zone, today), settings, Timestamp::now().as_second())
+    /// What this device knows of each source, in `zone`.
+    pub fn of(config: &Config, zone: &TimeZone) -> Days {
+        Days::with(config, &crate::subscribed::holidays(config, zone), &HeldBefore::load())
     }
 
-    /// From the typed periods of `config`, the holidays' copies given, the
-    /// settings' last change and now (the tests').
-    pub fn with(config: &Config, holidays: &[crate::subscribed::HolidayDays], settings: i64, now: i64) -> Days {
-        let mut out = Days { now, ..Days::default() };
-        // Your typed periods, every kind (`vacations::DaysOff::typed_of`), whatever their years.
-        out.days.insert(Source::Vacations, crate::vacations::DaysOff::typed_of(config).days(Date::MIN, Date::MAX));
-        out.as_of.insert(Source::Vacations, Some(settings));
-        let mut public = BTreeSet::new();
-        let mut public_as_of: Vec<Option<i64>> = Vec::new();
+    /// From the typed periods of `config`, the holidays' copies given and
+    /// the versions held before (the tests').
+    pub fn with(config: &Config, holidays: &[crate::subscribed::HolidayDays], before: &HeldBefore) -> Days {
+        let mut out = Days::default();
+        // Your typed periods, every kind (`vacations::DaysOff::typed_of`), once your settings are named.
+        if let Some(mine) = Source::mine(config) {
+            let typed = spans(crate::vacations::DaysOff::typed_of(config).periods().iter().map(|p| (p.from, p.until)));
+            let version = Version::Edited { at: config.vacations.edited(), held: held(&typed) };
+            out.known.insert(mine, Known { spans: typed, version });
+        }
+        let former = |source: &Source| before.held.get(&source.id()).cloned().unwrap_or_default();
+        // A calendar never read here gives nothing known; public holidays, only when each of theirs was read here.
+        let mut public: Vec<(Date, Date)> = Vec::new();
+        let mut public_known = true;
+        let mut any_public = false;
         for calendar in holidays {
-            let mut days = BTreeSet::new();
-            for (from, until, _) in &calendar.periods {
-                let mut day = *from;
-                while day <= *until {
-                    days.insert(day);
-                    let Ok(next) = day.tomorrow() else { break };
-                    day = next;
-                }
-            }
+            let periods = calendar.periods.iter().map(|(from, until, _)| (*from, *until));
             match calendar.holidays {
                 Holidays::Public => {
-                    public.extend(days);
-                    public_as_of.push(calendar.as_of);
+                    any_public = true;
+                    public_known &= calendar.as_of.is_some();
+                    public.extend(periods);
                 }
-                Holidays::School => {
+                Holidays::School if calendar.as_of.is_some() => {
                     let source = Source::School(calendar.id.clone());
-                    out.days.insert(source.clone(), days);
-                    out.as_of.insert(source, calendar.as_of);
+                    let days = spans(periods);
+                    let version = Version::Held { held: held(&days), before: former(&source) };
+                    out.known.insert(source, Known { spans: days, version });
                 }
+                Holidays::School => {}
             }
         }
-        out.days.insert(Source::Public, public);
-        // The oldest copy among them, none if one was never read here; no
-        // calendar of public holidays at all: none of their days, known now.
-        let public_as_of = if public_as_of.is_empty() { Some(now) } else if public_as_of.iter().any(Option::is_none) { None } else { public_as_of.iter().flatten().copied().min() };
-        out.as_of.insert(Source::Public, public_as_of);
+        if any_public && public_known {
+            let days = spans(public);
+            let version = Version::Held { held: held(&days), before: former(&Source::Public) };
+            out.known.insert(Source::Public, Known { spans: days, version });
+        }
         out
     }
 
-    /// Whether `source` pauses `date`.
-    pub fn pauses(&self, source: &Source, date: Date) -> bool {
-        self.days.get(source).is_some_and(|days| days.contains(&date))
+    /// What this device knows of `source`; none when it does not know it.
+    pub fn known(&self, source: &Source) -> Option<&Known> {
+        self.known.get(source)
     }
 
-    /// This device's view of `sources` (`availability::view`): their copies'
-    /// oldest and newest times found current; none while one was never read
-    /// here. A school calendar this device has no word of (stopped) is no day, known now.
-    pub fn view(&self, sources: &[Source]) -> Option<(i64, i64)> {
-        let times: Vec<Option<i64>> = sources.iter().map(|s| self.as_of.get(s).copied().unwrap_or(Some(self.now))).collect();
-        crate::availability::view(&times)
+    /// Whether `source` pauses `date`, as this device knows it.
+    pub fn pauses(&self, source: &Source, date: Date) -> bool {
+        self.known(source).is_some_and(|k| k.pauses(date))
+    }
+
+    /// The versions of the calendars of holidays held now remembered on
+    /// this device (`HeldBefore`), the latest last, a few each.
+    pub fn remember(&self) -> Result<(), String> {
+        let mut kept = HeldBefore::load();
+        let mut changed = false;
+        for (source, known) in &self.known {
+            if let Version::Held { held, .. } = &known.version {
+                let list = kept.held.entry(source.id()).or_default();
+                if list.last() != Some(held) {
+                    list.retain(|h| h != held);
+                    list.push(held.clone());
+                    let extra = list.len().saturating_sub(HELD_KEPT);
+                    list.drain(..extra);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return Ok(());
+        }
+        let path = HeldBefore::path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        crate::filelock::replace(&path, toml::to_string(&kept).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 
@@ -182,25 +331,53 @@ pub fn paused_of(text: &str, zone: &TimeZone) -> BTreeMap<Source, BTreeSet<i64>>
     out
 }
 
-/// How fresh the copy was that last wrote a series' pauses (`PAUSED_AS_OF`).
-pub fn as_of(text: &str) -> Option<i64> {
-    master_lines(text).iter().find(|l| crate::lines::name(l) == PAUSED_AS_OF).and_then(|l| instant_of(crate::lines::value(l), &TimeZone::UTC))
+/// The version of each source a series' pauses were computed from (`PAUSED_VERSION`).
+pub fn versions_of(text: &str) -> BTreeMap<Source, String> {
+    let mut out = BTreeMap::new();
+    for line in master_lines(text) {
+        if crate::lines::name(&line) == PAUSED_VERSION
+            && let Some(source) = crate::lines::param(&line, "X-SOURCE").and_then(|s| Source::parse(&s))
+        {
+            out.entry(source).or_insert_with(|| crate::lines::value(&line).trim().to_string());
+        }
+    }
+    out
 }
 
-/// An instant as Sioul writes it here: `20261225T090000Z`, or a day `20261225` (at midnight in `zone`).
+/// An instant as Sioul writes it here: `20261225T090000Z`; a day `20261225`
+/// (at midnight in `zone`); a local time `20261225T090000` (a floating
+/// series', in `zone`).
 fn instant_of(value: &str, zone: &TimeZone) -> Option<i64> {
     let value = value.trim();
     if value.len() == 8 {
         return Date::strptime("%Y%m%d", value).ok()?.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second());
     }
-    let utc = value.strip_suffix(['Z', 'z'])?;
-    jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", utc).ok()?.to_zoned(TimeZone::UTC).ok().map(|z| z.timestamp().as_second())
+    let (local, clock) = match value.strip_suffix(['Z', 'z']) {
+        Some(utc) => (utc, TimeZone::UTC),
+        None => (value, zone.clone()),
+    };
+    jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", local).ok()?.to_zoned(clock).ok().map(|z| z.timestamp().as_second())
 }
 
-/// An instant written as Sioul notes it: a day for a whole-day series.
-fn written(at: i64, whole_day: bool, zone: &TimeZone) -> String {
+/// How a series' start is written, which its noted times follow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Form {
+    /// A whole day: a day.
+    Day,
+    /// A time without a zone: a local time, the same on every device.
+    Floating,
+    /// A time with a zone, or in UTC: an instant in UTC.
+    Instant,
+}
+
+/// An instant written as Sioul notes it, in the form of the series' start.
+fn written(at: i64, form: Form, zone: &TimeZone) -> String {
     let Ok(t) = Timestamp::from_second(at) else { return String::new() };
-    if whole_day { t.to_zoned(zone.clone()).strftime("%Y%m%d").to_string() } else { t.strftime("%Y%m%dT%H%M%SZ").to_string() }
+    match form {
+        Form::Day => t.to_zoned(zone.clone()).strftime("%Y%m%d").to_string(),
+        Form::Floating => t.to_zoned(zone.clone()).strftime("%Y%m%dT%H%M%S").to_string(),
+        Form::Instant => t.strftime("%Y%m%dT%H%M%SZ").to_string(),
+    }
 }
 
 /// The main VEVENT's own lines (its alarms left out).
@@ -237,9 +414,17 @@ fn master_lines(text: &str) -> Vec<String> {
     out
 }
 
-/// Whether the series' DTSTART is a whole day.
-fn whole_day(text: &str) -> bool {
-    master_lines(text).iter().find(|l| crate::lines::name(l) == "DTSTART").is_some_and(|l| crate::lines::value(l).trim().len() == 8)
+/// The form of the series' DTSTART: a day, a local time, an instant.
+fn start_form(text: &str) -> Form {
+    let Some(line) = master_lines(text).into_iter().find(|l| crate::lines::name(l) == "DTSTART") else { return Form::Instant };
+    let value = crate::lines::value(&line).trim().to_string();
+    if value.len() == 8 {
+        Form::Day
+    } else if !value.ends_with(['Z', 'z']) && crate::lines::param(&line, "TZID").is_none() {
+        Form::Floating
+    } else {
+        Form::Instant
+    }
 }
 
 /// A series' pause lines written as `sources` say (none: taken out), the
@@ -251,82 +436,111 @@ pub fn with_sources(text: &str, sources: &[Source]) -> Option<String> {
 }
 
 /// A series' pauses settled for the times from `from` to `to` (Unix
-/// seconds; today and the eighteen months ahead): each time that falls in a
-/// day of a source it pauses for, and is not left out yet, is left out and
-/// noted; each time Sioul left out that no longer falls in one is put back;
-/// a time left out by hand is never put back, nor noted; a time with a
-/// changed occurrence of its own is left as it is; what lies outside the
-/// stretch is left as it was. `as_of`: how fresh this device's copy of the
-/// holidays is, noted. The new text, or none when nothing changes.
-pub fn keep(text: &str, days: &Days, from: i64, to: i64, zone: &TimeZone, as_of: i64) -> Option<String> {
+/// seconds; today and the eighteen months ahead), each source by itself
+/// (`Days::known`, `Version::at_least`):
+///
+/// - a source this device knows at a version at least as new as the
+///   series notes (or that the series does not note yet) acts: each time it
+///   covers is left out and noted for it; each time it left out that it no
+///   longer covers, or that the series no longer pauses for, is put back
+///   unless another source still holds it;
+/// - a source this device does not know, or knows at an older version,
+///   keeps its noted times and its version as they are, and its times stay
+///   left out;
+/// - a source the series no longer pauses for has its times put back by
+///   any device: the series' own lines say so, the same everywhere;
+/// - a time left out by hand is never put back, nor noted; a time with a
+///   changed occurrence of its own is left as it is; what lies outside the
+///   stretch is left as it was; a time the rule no longer gives (the series
+///   moved, or ended) is forgotten with its EXDATE.
+///
+/// The new text, or none when nothing differs (nor when the rule does not
+/// expand here: nothing is taken back on that account).
+pub fn keep(text: &str, days: &Days, from: i64, to: i64, zone: &TimeZone) -> Option<String> {
     let wanted = sources_of(text);
     let paused = paused_of(text, zone);
-    if wanted.is_empty() && paused.is_empty() {
+    let versions = versions_of(text);
+    if wanted.is_empty() && paused.is_empty() && versions.is_empty() {
         return None;
     }
-    let times = crate::agenda::rule_times(text, from, to, zone).unwrap_or_default();
+    // The sources this device acts on: known here, at a version at least as new as the series notes.
+    let acting = |source: &Source| days.known(source).filter(|k| versions.get(source).is_none_or(|noted| k.version.at_least(noted)));
+    let times = crate::agenda::rule_times(text, from, to, zone)?;
     let left_out: BTreeSet<i64> = crate::agenda::left_out_times(text, zone).into_iter().collect();
     let ours: BTreeSet<i64> = paused.values().flatten().copied().collect();
     let in_stretch = |at: &i64| *at >= from && *at < to;
-    // What stays noted: the times outside the stretch as they were.
+    let given: BTreeSet<i64> = times.iter().map(|(at, _)| *at).collect();
+    // What stays noted: the times outside the stretch as they were; in it, as settled below.
     let mut noted: BTreeMap<Source, BTreeSet<i64>> = paused.iter().map(|(s, at)| (s.clone(), at.iter().copied().filter(|t| !in_stretch(t)).collect())).collect();
     let (mut add, mut back) = (Vec::new(), Vec::new());
-    let given: BTreeSet<i64> = times.iter().map(|(at, _)| *at).collect();
     for (at, changed) in &times {
+        let by: Vec<&Source> = paused.iter().filter(|(_, set)| set.contains(at)).map(|(s, _)| s).collect();
+        // A time changed by hand is the person's own: left as it is, noted as it was.
+        if *changed {
+            for source in by {
+                noted.entry(source.clone()).or_default().insert(*at);
+            }
+            continue;
+        }
+        // Left out by hand already: the person's own, never noted as Sioul's.
+        let by_hand = left_out.contains(at) && by.is_empty();
         let Ok(when) = Timestamp::from_second(*at) else { continue };
         let date = when.to_zoned(zone.clone()).date();
-        let by = wanted.iter().find(|s| days.pauses(s, date));
-        match by {
-            // A time changed by hand is the person's own: left as it is, noted as it was.
-            _ if *changed => {
-                if let Some((source, _)) = paused.iter().find(|(_, set)| set.contains(at)) {
-                    noted.entry(source.clone()).or_default().insert(*at);
-                }
+        let mut holds = false;
+        // Each source that noted it keeps it, unless it acts here and lets it go.
+        for source in &by {
+            let lets_go = !wanted.contains(source) || acting(source).is_some_and(|k| !k.pauses(date));
+            if !lets_go {
+                noted.entry((*source).clone()).or_default().insert(*at);
+                holds = true;
             }
-            Some(source) if ours.contains(at) => {
+        }
+        // Each source it pauses for that acts here and covers it takes it.
+        if !by_hand {
+            for source in wanted.iter().filter(|s| acting(s).is_some_and(|k| k.pauses(date))) {
                 noted.entry(source.clone()).or_default().insert(*at);
+                holds = true;
             }
-            // Left out by hand already: the person's own, never noted as Sioul's.
-            Some(_) if left_out.contains(at) => {}
-            Some(source) => {
-                add.push(*at);
-                noted.entry(source.clone()).or_default().insert(*at);
-            }
-            None if ours.contains(at) => back.push(*at),
-            None => {}
+        }
+        match (holds, left_out.contains(at)) {
+            // Noted already but not left out: put back by hand elsewhere, and left so.
+            (true, false) if by.is_empty() => add.push(*at),
+            (false, true) if !by.is_empty() => back.push(*at),
+            _ => {}
         }
     }
     // Noted in the stretch, but no time of the rule now (the series moved, or ended): forgotten, its EXDATE with it.
-    back.extend(ours.iter().copied().filter(|at| in_stretch(at) && !given.contains(at)));
+    back.extend(ours.iter().copied().filter(|at| in_stretch(at) && !given.contains(at) && left_out.contains(at)));
     noted.retain(|_, set| !set.is_empty());
-    let whole = whole_day(text);
-    let lines: Vec<String> = noted.iter().map(|(source, set)| format!("{PAUSED};X-SOURCE={}:{}", source.id(), set.iter().map(|at| written(*at, whole, zone)).collect::<Vec<_>>().join(","))).collect();
-    let unchanged = add.is_empty() && back.is_empty() && noted == paused;
-    if unchanged {
+    // Each source's version, for those it pauses for or still notes times
+    // for: this device's own where it acts; else kept as the series says it.
+    let mut stamps: BTreeMap<Source, String> = BTreeMap::new();
+    for source in wanted.iter().chain(noted.keys()) {
+        if let Some(stamp) = acting(source).map(|k| k.version.stamp()).or_else(|| versions.get(source).cloned()) {
+            stamps.insert(source.clone(), stamp);
+        }
+    }
+    // Nothing differs: the same times left out and noted, and every source
+    // it pauses for that acts here already has a version (a version alone
+    // newer is not written: the times it gives are the same).
+    let unversioned = wanted.iter().any(|s| acting(s).is_some() && !versions.contains_key(s));
+    let dropped = versions.keys().any(|s| !stamps.contains_key(s));
+    if add.is_empty() && back.is_empty() && noted == paused && !unversioned && !dropped {
         return None;
     }
+    let form = start_form(text);
+    let mut extra: Vec<String> = noted.iter().map(|(source, set)| format!("{PAUSED};X-SOURCE={}:{}", source.id(), set.iter().map(|at| written(*at, form, zone)).collect::<Vec<_>>().join(","))).collect();
+    extra.extend(stamps.iter().map(|(source, stamp)| format!("{PAUSED_VERSION};X-SOURCE={}:{stamp}", source.id())));
     let left = crate::agenda::leave_out(text, &add, &back, zone)?;
-    let cleared = crate::agenda::remove_lines(&left, |l| matches!(crate::lines::name(l).as_str(), PAUSED | PAUSED_AS_OF))?;
-    let mut extra = lines;
-    if !extra.is_empty() {
-        extra.push(format!("{PAUSED_AS_OF}:{}", Timestamp::from_second(as_of).map(|t| t.strftime("%Y%m%dT%H%M%SZ").to_string()).unwrap_or_default()));
-    }
+    let cleared = crate::agenda::remove_lines(&left, |l| matches!(crate::lines::name(l).as_str(), PAUSED | PAUSED_VERSION))?;
     let out = if extra.is_empty() { cleared } else { crate::agenda::add_lines(&cleared, &extra)? };
     (out != text).then_some(out)
 }
 
-/// Whether this device writes a series' pauses (`availability::may_write`):
-/// its view of what the series pauses for is newer than what any other
-/// device last wrote pauses from (`others`, their sealed entries) and than
-/// what the series says it was written from; an older copy never undoes a newer one.
-pub fn may_write(view: Option<(i64, i64)>, others: &[i64], text: &str) -> bool {
-    crate::availability::may_write(view, others.iter().copied().chain(as_of(text)))
-}
-
-/// Every source a series names, those it pauses for and those it noted times for.
+/// Every source a series names, those it pauses for and those it noted times or a version for.
 pub fn all_sources(text: &str, zone: &TimeZone) -> Vec<Source> {
     let mut out = sources_of(text);
-    for source in paused_of(text, zone).into_keys() {
+    for source in paused_of(text, zone).into_keys().chain(versions_of(text).into_keys()) {
         if !out.contains(&source) {
             out.push(source);
         }

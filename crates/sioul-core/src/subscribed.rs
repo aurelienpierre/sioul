@@ -864,37 +864,48 @@ pub struct HolidayDays {
     pub as_of: Option<i64>,
 }
 
-/// Every calendar of holidays subscribed, with its days around `today`
-/// (a year before to two after), from this device's copy, in `zone`; read
-/// again only when its folder changed, or the day.
-pub fn holidays(config: &Config, zone: &jiff::tz::TimeZone, today: Date) -> Vec<HolidayDays> {
-    type Seen = BTreeMap<String, ((Option<std::time::SystemTime>, usize, bool, Date, String), Vec<(Date, Date, String)>)>;
+/// The days a calendar of holidays is read for, the same on every device
+/// and every day (`HOLIDAYS_FROM` to `HOLIDAYS_UNTIL`, years): the days a
+/// copy gives are its version (`series::Version::Held`), which must not
+/// depend on the day it is read; and a holiday counted as a day off shows
+/// as far as the agenda shows (the review's F25).
+pub const HOLIDAYS_FROM: i16 = 1970;
+pub const HOLIDAYS_UNTIL: i16 = 2200;
+
+/// Every calendar of holidays subscribed, with its days (`HOLIDAYS_FROM` to
+/// `HOLIDAYS_UNTIL`), from this device's copy, in `zone`; read again only
+/// when its copy or its state changed (two looks at their times, never a
+/// listing nor a parse: asked by every question "is this a day off", F28).
+pub fn holidays(config: &Config, zone: &jiff::tz::TimeZone) -> Vec<HolidayDays> {
+    type Key = (Option<std::time::SystemTime>, Option<std::time::SystemTime>, bool, String);
+    type Seen = BTreeMap<String, (Key, Vec<(Date, Date, String)>, String, Option<i64>)>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(BTreeMap::new());
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
     let mut out = Vec::new();
     for (id, subscription) in &config.agenda.subscriptions {
         let Some(kind) = subscription.holidays() else { continue };
         let dir = folder(id);
-        let state = Fetched::load(id);
-        let files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
-        let stamp = (std::fs::metadata(&dir).and_then(|m| m.modified()).ok(), files.len(), subscription.after_class(), today, crate::zone::name_of(zone, jiff::Timestamp::now()));
-        let known = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).filter(|(s, _)| *s == stamp).map(|(_, p)| p.clone());
-        let periods = known.unwrap_or_else(|| {
-            let periods = holiday_periods(&dir, &files, subscription.after_class(), zone, today);
-            SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.clone(), (stamp, periods.clone()));
-            periods
+        let key: Key = (modified(&dir), modified(&Fetched::path(id)), subscription.after_class(), crate::zone::name_of(zone, jiff::Timestamp::now()));
+        let known = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).filter(|(k, ..)| *k == key).map(|(_, p, name, as_of)| (p.clone(), name.clone(), *as_of));
+        let (periods, own_name, as_of) = known.unwrap_or_else(|| {
+            let state = Fetched::load(id);
+            let files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
+            let periods = holiday_periods(&dir, &files, subscription.after_class(), zone);
+            SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.clone(), (key, periods.clone(), state.name.clone(), state.as_of()));
+            let as_of = state.as_of();
+            (periods, state.name, as_of)
         });
-        out.push(HolidayDays { id: id.clone(), name: display_name(subscription, &state.name), holidays: kind, days_off: subscription.days_off(), periods, as_of: state.as_of() });
+        out.push(HolidayDays { id: id.clone(), name: display_name(subscription, &own_name), holidays: kind, days_off: subscription.days_off(), periods, as_of });
     }
     out
 }
 
 /// The holidays a copy holds: each event's whole days (a timed one, the
 /// days it covers whole), cancelled ones aside.
-fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff::tz::TimeZone, today: Date) -> Vec<(Date, Date, String)> {
+fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff::tz::TimeZone) -> Vec<(Date, Date, String)> {
     let Some(collection) = vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir) else { return Vec::new() };
-    let at = |date: Date| date.to_zoned(zone.clone()).map(|z| z.timestamp().as_second()).unwrap_or(0);
-    let from = at(today.checked_sub(jiff::Span::new().days(400)).unwrap_or(today));
-    let to = at(today.checked_add(jiff::Span::new().days(800)).unwrap_or(today));
+    let at = |year: i16| Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
+    let (from, to) = (at(HOLIDAYS_FROM), at(HOLIDAYS_UNTIL));
     let mut out = Vec::new();
     for file in files {
         for event in crate::agenda::file_occurrences(file, &collection, from, to, zone) {

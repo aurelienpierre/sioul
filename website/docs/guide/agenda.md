@@ -72,7 +72,9 @@ In the event's form, under **Repeats** and **Every**:
 - **School holidays begin after class**: for the official French calendars, the day the holidays start is still a class day, and the day classes resume is no pause.
 - **The card says** how it repeats ("Every week until Wednesday 25 June") and its next pause: "Paused from Friday 19 December (public holidays), back on Monday 5 January."
 
-Pauses are not offered on a meeting with others, since each date left out would be sent to every guest, nor on repeating tasks. When two of your devices know a calendar of holidays at different times, the one whose copy is the freshest writes the pauses, and an older copy never undoes a newer one.
+Pauses are not offered on a meeting with others, since each date left out would be sent to every guest, nor on repeating tasks. A series given guests later keeps the dates already left out, and Sioul stops keeping its pauses; its card says so.
+
+Each pause is kept by itself. A device that does not know a calendar of holidays (it has not read it yet, or you never subscribed there) or knows an older copy of it leaves that calendar's dates as they are, and still keeps those of your vacations; a newer copy of the calendar, or vacations changed later, put the dates right. Your vacations are named as yours on the series: someone else's Sioul that can write a shared agenda never takes them for theirs. Two devices that know the same never undo each other.
 
 ### A day and an hour {#a-day-and-an-hour}
 

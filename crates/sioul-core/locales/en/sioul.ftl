@@ -1394,6 +1394,7 @@ event-repeat-ends-times = { $n ->
 event-pauses = Pauses during
 event-pauses-help = Each date that falls in them is left out of the series, in every calendar program; a date you left out yourself stays out.
 series-pause-vacations = my vacations
+series-pause-vacations-other = someone else's vacations
 series-pause-public = public holidays
 series-paused-back = Paused from { $from } ({ $why }), back on { $back }.
 series-paused = Paused from { $from } ({ $why }).

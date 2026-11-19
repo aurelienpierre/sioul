@@ -3363,31 +3363,48 @@ thread_local! {
 }
 
 pub(crate) fn load_config() -> Config {
+    config_parsed().0
+}
+
+/// The settings, only when their file is there and reads: what takes
+/// something away on their word (a subscribed calendar's copy, a series'
+/// pauses) asks this, never the defaults a file that does not read gives
+/// (the calendars' review, F19, F27).
+pub(crate) fn config_read() -> Option<Config> {
+    let (config, reads) = config_parsed();
+    reads.then_some(config)
+}
+
+/// The settings as `load_config` gives them, and whether their file is
+/// there and reads.
+fn config_parsed() -> (Config, bool) {
     // Read a hundred times a minute: parsed again only when the file changed
     // (its size or its time), as the sharing or another window may change it.
     // A time younger than two seconds is not trusted: two writings of one size
     // within a tick of the clock look alike.
-    type Parsed = (PathBuf, u64, std::time::SystemTime, Config);
+    type Parsed = (PathBuf, u64, std::time::SystemTime, Config, bool);
     static PARSED: Mutex<Option<Parsed>> = Mutex::new(None);
     let path = config_path();
     let settled = |time: &std::time::SystemTime| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2));
     let stamp = std::fs::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
     if let Some((size, time)) = stamp
         && let Ok(parsed) = PARSED.lock()
-        && let Some((p, s, t, config)) = parsed.as_ref()
+        && let Some((p, s, t, config, reads)) = parsed.as_ref()
         && *p == path
         && *s == size
         && *t == time
     {
-        return config.clone();
+        return (config.clone(), *reads);
     }
-    let config = Config::load(&path).unwrap_or_default();
+    let loaded = Config::load(&path);
+    let reads = loaded.is_ok();
+    let config = loaded.unwrap_or_default();
     // The words this program looks for, said once each time the file is read (`words::current`).
     sioul_core::words::set_current(sioul_core::words::Words::of(&config));
     if let (Some((size, time)), Ok(mut parsed)) = (stamp, PARSED.lock()) {
-        *parsed = Some((path, size, time, config.clone()));
+        *parsed = Some((path, size, time, config.clone(), reads));
     }
-    config
+    (config, reads)
 }
 
 /// One translator for the session: the configuration's language, else the session's.

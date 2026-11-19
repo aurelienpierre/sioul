@@ -592,6 +592,9 @@ sioul-core/src/today.rs	save	1	crate::filelock::save_merged(path, &self.read, se
 # sioul-core/src/unsubscribe.rs: unsubscriptions asked: no item.
 sioul-core/src/unsubscribe.rs	add	1	std::fs::write(&temporary, text)
 
+# sioul-core/src/series.rs: the versions of each calendar of holidays this device held (state/series-held.toml): no item.
+sioul-core/src/series.rs	remember	1	crate::filelock::replace(&path, toml::to_string(&kept).map_err(|e| e.to_string())?.as_bytes())
+
 # sioul-core/src/subscribed.rs: what this device last read of a subscribed calendar (state/subscribed/), and its note taken out with the calendar: no item.
 sioul-core/src/subscribed.rs	save	1	crate::filelock::replace(&path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
 sioul-core/src/subscribed.rs	settle	1	std::fs::remove_file(Fetched::path(id))

@@ -1421,6 +1421,7 @@ event-repeat-ends-times = fois
 event-pauses = En pause pendant
 event-pauses-help = Chaque date qui y tombe est retirée de la série, dans tous les logiciels d’agenda ; une date que vous avez retirée vous-même le reste.
 series-pause-vacations = mes vacances
+series-pause-vacations-other = les vacances de quelqu’un d’autre
 series-pause-public = les jours fériés
 series-paused-back = En pause à partir du { $from } ({ $why }), reprend le { $back }.
 series-paused = En pause à partir du { $from } ({ $why }).

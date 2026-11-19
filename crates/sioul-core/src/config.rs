@@ -185,6 +185,12 @@ pub struct Config {
     /// passed over (`time_off_entries`), the rest still read.
     #[serde(rename = "time_off", default, deserialize_with = "time_off_entries")]
     pub time_off: Vec<TimeOff>,
+    /// Whose your vacations are and when they last changed (`[vacations]`,
+    /// 19 November 2026): what a series that pauses during them notes
+    /// (`series::Source::Vacations`, `series::Version::Edited`). Shared with
+    /// the settings; read leniently (a field that does not read is unsaid).
+    #[serde(default, deserialize_with = "vacations_mark")]
+    pub vacations: VacationsMark,
     #[serde(default)]
     pub quiet: QuietSettings,
     /// The Porch's own choices (docs/porch.md).
@@ -313,6 +319,68 @@ pub struct TimeOff {
     /// this Sioul does not know, a vacation. An older Sioul passes over it.
     #[serde(default)]
     pub kind: String,
+}
+
+/// Your vacations' own marks (`[vacations]`), shared with the settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VacationsMark {
+    /// An opaque id of your settings, random, made once (`vacations_owner`):
+    /// a series pausing during your vacations names them by it, so that
+    /// another person's Sioul that writes the same calendar does not take
+    /// them for its own. Nothing personal.
+    pub owner: String,
+    /// When Sioul last changed the days of your vacations, as an instant
+    /// ("2026-11-19T10:00:00Z"); the same on every device that has the
+    /// settings of that change. Unsaid: never.
+    pub stamp: String,
+}
+
+impl VacationsMark {
+    /// When your vacations were last changed, Unix seconds; 0 unsaid.
+    pub fn edited(&self) -> i64 {
+        let stamp = self.stamp.trim();
+        stamp
+            .parse::<jiff::Timestamp>()
+            .ok()
+            .or_else(|| jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", stamp.trim_end_matches(['Z', 'z'])).ok().and_then(|d| d.to_zoned(jiff::tz::TimeZone::UTC).ok()).map(|z| z.timestamp()))
+            .map_or(0, |t| t.as_second())
+    }
+}
+
+/// `[vacations]` read leniently: a field that is not a word reads as unsaid,
+/// a value that is not a table as nothing said.
+fn vacations_mark<'de, D: serde::Deserializer<'de>>(d: D) -> Result<VacationsMark, D::Error> {
+    let value = toml::Value::deserialize(d).ok();
+    let word = |field: &str| value.as_ref().and_then(|v| v.get(field)).and_then(toml::Value::as_str).unwrap_or_default().to_string();
+    Ok(VacationsMark { owner: word("owner"), stamp: word("stamp") })
+}
+
+/// Your vacations' owner id (`VacationsMark::owner`), made and written into
+/// the settings at `path` when there is none yet, with a stamp of now when
+/// none was said. Asked when a series is first made to pause during your vacations.
+pub fn vacations_owner(path: &Path) -> Result<String, String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let said = doc.get("vacations").and_then(|v| v.get("owner")).and_then(Item::as_str).map(str::trim).filter(|o| crate::subscribed::valid_id(o)).map(str::to_string);
+        if let Some(owner) = said {
+            return Ok(owner);
+        }
+        let owner = crate::ids::new();
+        let table = doc.entry("vacations").or_insert(Item::Table(Table::new()));
+        let Some(table) = table.as_table_like_mut() else { return Err("vacations: not a table".into()) };
+        table.insert("owner", value(owner.as_str()));
+        if table.get("stamp").and_then(Item::as_str).is_none() {
+            table.insert("stamp", value(jiff::Timestamp::now().to_string()));
+        }
+        write_document(path, &doc)?;
+        Ok(owner)
+    })
+}
+
+/// The days of the vacations a settings document holds, as spans (`series::spans`).
+fn vacation_spans(doc: &DocumentMut) -> crate::series::Spans {
+    let list: Vec<TimeOff> = doc.get("time_off").and_then(Item::as_array_of_tables).map(|tables| tables.iter().filter_map(|t| toml::from_str::<TimeOff>(&t.to_string()).ok()).collect()).unwrap_or_default();
+    crate::series::spans(list.iter().map(|t| (t.from, t.until)))
 }
 
 /// The `[[time_off]]` entries that read: one without its two days, or whose
@@ -2342,10 +2410,19 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
             for table in unread {
                 tables.push(table);
             }
+            let before = vacation_spans(&doc);
             if tables.is_empty() {
                 doc.remove(key);
             } else {
                 doc[key] = Item::ArrayOfTables(tables);
+            }
+            // Their days changed: stamped now, in the shared settings, for the
+            // series that pause during them (`series::Version::Edited`).
+            if vacation_spans(&doc) != before {
+                let mark = doc.entry("vacations").or_insert(Item::Table(Table::new()));
+                if let Some(mark) = mark.as_table_like_mut() {
+                    mark.insert("stamp", value(jiff::Timestamp::now().to_string()));
+                }
             }
             return write_document(path, &doc);
         }

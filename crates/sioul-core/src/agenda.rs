@@ -1528,8 +1528,10 @@ pub struct EventEdit {
     /// How many times in all, its first included, for "count".
     #[serde(default)]
     pub count: u32,
-    /// What it pauses during (`series::Source`): "vacations", "public",
-    /// `school/<id>`; none, it pauses for nothing. Sorted, once each.
+    /// What it pauses during (`series::Source`): `vacations/<owner>`,
+    /// "public", `school/<id>`; none, it pauses for nothing. Sorted, once
+    /// each. The window names "my vacations" yours before saving
+    /// (`series::MY_VACATIONS`); a word that does not read is passed over.
     #[serde(default)]
     pub pauses: Vec<String>,
     /// Minutes kept before and after it.
