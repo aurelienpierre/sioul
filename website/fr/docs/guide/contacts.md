@@ -26,7 +26,7 @@ Les contacts réunissent les personnes à qui vous avez affaire : leur nom d�
 
 Les noms viennent d’abord, avec une ligne sous chacun, et un champ de recherche est en haut : quelques lettres d’un nom, d’une organisation, d’une adresse électronique ou d’un numéro de téléphone suffisent à trouver un contact. La recherche ne regarde pas les adresses postales.
 
-Au-dessus de la liste, des filtres la resserrent, chacun gardé sur cet appareil jusqu’à ce que vous le changiez : les carnets d’adresses montrés (tous, un ou plusieurs), un groupe ou **Dans aucun groupe**, et si une fiche a ou n’a pas de numéro de téléphone, d’adresse électronique, d’adresse postale ou de civilité (M., Mme…). Ils s’ajoutent à la recherche, et la ligne dit combien se montrent : « 132 sur 840 ». **Tout montrer** retire les filtres ; la recherche reste jusqu’à ce que vous l’effaciez, et n’est jamais gardée sur le disque.
+Au-dessus de la liste, des filtres la resserrent, chacun gardé sur cet appareil jusqu’à ce que vous le changiez : les carnets d’adresses montrés (tous, un ou plusieurs), un groupe ou **Dans aucun groupe**, et si une fiche a ou n’a pas de numéro de téléphone, d’adresse électronique, d’adresse postale ou de civilité (M., Mme…). Ils s’ajoutent à la recherche, et la ligne dit combien se montrent : « 132 sur 840 ». **Tout montrer** retire les filtres ; la recherche reste jusqu’à ce que vous l’effaciez, et n’est jamais gardée sur le disque. Sur un téléphone, les filtres se replient derrière un seul bouton **Filtres**, qui dit combien sont mis (« Filtres (2) »), avec **Tout montrer** et le compte à côté : le premier contact vient juste après une ligne.
 
 Une civilité que la fiche garde dans son propre champ se montre en grisé avant le nom.
 
@@ -112,7 +112,7 @@ Google garde un seul carnet d’adresses : Sioul le dit sur sa ligne et ne pro
 
 ## Plusieurs contacts à la fois {#many-at-once}
 
-**Sélectionner**, au-dessus de la liste, donne une case à chaque ligne ; **Sélectionner les 132 montrés** prend tout ce que montrent les filtres. Puis **Avec eux…** :
+**Sélectionner**, au-dessus de la liste, donne une case à chaque ligne ; **Sélectionner les 132 montrés** prend tout ce que montrent les filtres. Sur un téléphone, la barre tient en une ligne : le compte est lui-même une case, qui prend tout ce que montrent les filtres, ou rien une fois tous cochés. Puis **Avec eux…** :
 
 - **Déplacer vers un carnet d’adresses…** : chaque fiche garde son identifiant, et rien de ce qui la désigne ne change (une tâche, une personne, une liste qui la nomme) ; deux fiches d’un même identifiant n’arrivent jamais dans un même carnet. La question dit qui voit ce carnet. Là où son serveur a son propre déplacement, la fiche y est déplacée, un changement pas encore envoyé partant d’abord ; sinon elle est copiée, et l’ancienne copie n’est supprimée qu’une fois la nouvelle arrivée. Une fiche que quelqu’un a changée sur le serveur avant que votre déplacement l’atteigne est gardée dans les deux carnets, telle que vous l’avez laissée et telle qu’il l’a changée, et c’est dit.
 - **Ajouter à un groupe…** et **Retirer d’un groupe…** : un groupe déjà utilisé, ou un nouveau tapé.

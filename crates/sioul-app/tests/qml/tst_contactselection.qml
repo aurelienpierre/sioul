@@ -8,8 +8,10 @@
 // title's before and after shown card by card, each with its own box,
 // ticked only when sure, only the ticked sent (review F18), its group box
 // sent with it; Go runs it; while it runs, its progress and Stop; at its
-// end, what it could not do, card by card. Fiction only. Run by
-// tools/qml-test.sh.
+// end, what it could not do, card by card; at a phone's width (`compact`),
+// one row in English and in French: the count a box that selects the ones
+// shown, or none once they all are, then "With them…" and "Done". Fiction
+// only. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -34,9 +36,11 @@ Item {
         property var asked: []
         property var ran: []
         property int stopped: 0
+        // The words of one language, for a test that measures them; else each key stands for its words.
+        property var words: ({})
 
-        function text(key) { return key }
-        function textArgs(key, args) { return key + ":" + args }
+        function text(key) { return mock.words[key] !== undefined ? mock.words[key] : key }
+        function textArgs(key, args) { return mock.words[key] !== undefined ? mock.words[key].replace("{n}", JSON.parse(args).n) : key + ":" + args }
         function contactsBatchPlan(text) {
             mock.asked = mock.asked.concat([JSON.parse(text)])
             const a = JSON.parse(text)
@@ -84,6 +88,7 @@ Item {
         when: windowShown
 
         function init() {
+            mock.words = {}
             mock.asked = []
             mock.ran = []
             mock.stopped = 0
@@ -169,6 +174,53 @@ Item {
             wait(30)
             again.accept()
             compare(JSON.stringify(mock.ran[1].ticked), JSON.stringify(["/b.vcf"]))
+        }
+
+        // A phone (`compact`, the column 392 points wide): one row, in English and in French.
+        // The count is a box: partly ticked for some, ticked for all shown, empty for none;
+        // it selects the ones shown, or none once they all are. The buttons it stands for hide.
+        function test_a_phone_s_one_row() {
+            const languages = [
+                { "contacts-selected": "{n} selected", "contacts-select-shown": "Select the {n} shown", "contacts-select-none": "Select none", "batch-actions": "With them…", "contacts-select-done": "Done" },
+                { "contacts-selected": "{n} sélectionnés", "contacts-select-shown": "Sélectionner les {n} montrés", "contacts-select-none": "Ne rien sélectionner", "batch-actions": "Avec eux…", "contacts-select-done": "Terminé" }
+            ]
+            for (const words of languages) {
+                mock.words = words
+                const bar = test.createTemporaryObject(barComponent, root, { width: 392, compact: true, keys: ["/a.vcf", "/b.vcf"], shownCount: 132 })
+                test.waitForRendering(bar)
+                const box = root.named(bar, "contactSelectAll")[0]
+                const actions = root.named(bar, "contactSelectionActions")[0]
+                const done = root.named(bar, "contactSelectionDone")[0]
+                verify(box.visible && actions.visible && done.visible)
+                for (const name of ["contactSelectionCount", "contactSelectShown", "contactSelectNone"])
+                    verify(!root.named(bar, name)[0].visible, name + ": the box stands for it")
+                compare(box.text, words["contacts-selected"].replace("{n}", "2"))
+                compare(box.checkState, Qt.PartiallyChecked, "2 of the 132 shown")
+                compare(box.Accessible.name, words["contacts-select-shown"].replace("{n}", "132"))
+                compare([actions.y, done.y], [box.y, box.y], "one row: " + [box.width, actions.width, done.width])
+                verify(done.x + done.width <= 392 + 1, "within the edge: " + (done.x + done.width))
+
+                let shown = 0
+                let none = 0
+                bar.selectShown.connect(() => shown++)
+                bar.selectNone.connect(() => none++)
+                mouseClick(box)
+                compare([shown, none], [1, 0], "some ticked: the ones shown")
+                compare(box.checkState, Qt.PartiallyChecked, "what the page ticks decides, not the click")
+                bar.keys = ["/a.vcf", "/b.vcf", "/c.vcf"]
+                bar.shownCount = 3
+                compare(box.checkState, Qt.Checked, "all shown ticked")
+                compare(box.Accessible.name, words["contacts-select-none"])
+                mouseClick(box)
+                compare([shown, none], [1, 1], "all ticked: none")
+                bar.keys = []
+                compare(box.checkState, Qt.Unchecked)
+                compare(box.text, words["contacts-selected"].replace("{n}", "0"))
+                mouseClick(box)
+                compare([shown, none], [2, 1], "none ticked: the ones shown")
+                bar.shownCount = 0
+                verify(!box.enabled, "nothing shown: nothing to select")
+            }
         }
 
         // Running: its progress and Stop; ended: what it could not do, card by card.

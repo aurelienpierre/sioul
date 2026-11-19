@@ -11,8 +11,9 @@
 // in the place of a card too. A contact you bill shows its client profile
 // (what its invoices print, ClientProfileDialog.qml) and "Bill this client".
 // Above the list, the filters combined (ContactFilters.qml: books, group, has
-// or lacks, how many show); "Select" gives each row a box, and the selection
-// bar acts on many at once (ContactSelection.qml); "Import…" reads a vCard or
+// or lacks, how many show; folded behind one Filters button on a phone);
+// "Select" gives each row a box, and the selection bar acts on many at once
+// (ContactSelection.qml; one row on a phone); "Import…" reads a vCard or
 // a CSV file (ContactImport.qml, in the window). A card of an address book
 // you only read says so wherever it would be written (wave D).
 
@@ -492,22 +493,25 @@ Item {
                 }
             }
 
-            // The filters, combined: books, a group or none, has or lacks, how many show.
+            // The filters, combined: books, a group or none, has or lacks, how many show;
+            // on a phone, folded behind one Filters button, the count beside it.
             ContactFilters {
                 visible: !page.mapShown && page.shown.total > 0
                 Layout.fillWidth: true
                 sioul: page.sioul
                 theme: page.theme
+                compact: page.window.compact
                 view: page.shown
                 onAsked: filter => page.sioul.setContactsFilter(JSON.stringify(Object.assign({}, filter, { name: search.text })))
             }
 
-            // The selection: how many, all shown, what to do with them.
+            // The selection: how many, all shown, what to do with them; one row on a phone.
             ContactSelection {
                 visible: page.selecting && !page.mapShown
                 Layout.fillWidth: true
                 sioul: page.sioul
                 theme: page.theme
+                compact: page.window.compact
                 keys: page.selectedKeys
                 shownCount: page.shown.contacts.length
                 books: page.writableBooks

@@ -11,6 +11,9 @@
 // thread with its progress and a Stop (`contactsBatch`); ends by naming
 // what it could not do, card by card, and is undone as a whole from the
 // status line, or for thirty days from Contacts ⚙ ▸ Address books.
+// On a phone (`compact`), one row: the count is a box that selects the ones
+// shown, or none once they all are, then "With them…" and "Done"; the two
+// buttons it stands for would not leave room for the others on that row.
 
 pragma ComponentBehavior: Bound
 
@@ -34,6 +37,10 @@ ColumnLayout {
     property var books: []
     // The groups in use, to choose from.
     property var groups: []
+    // A phone's width (the window's `compact`): the bar in one row.
+    property bool compact: false
+    // Every card shown is ticked (the selection keeps only cards in sight: ContactsPage.qml).
+    readonly property bool allShown: bar.shownCount > 0 && bar.keys.length >= bar.shownCount
     // The batch running or last ended (`contactsBatch`): {running, done, total, line, failed}.
     readonly property var batch: bar.sioul.contactsBatch ? JSON.parse(bar.sioul.contactsBatch) : ({ running: false, failed: [] })
 
@@ -64,8 +71,35 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 6
 
+        // On a phone: the count as a box, ticked when every card shown is, partly when some
+        // are; it selects the ones shown, or none when they all are ("Select the 132 shown",
+        // "Select none", its name for a screen reader).
+        CheckBox {
+            id: allBox
+
+            objectName: "contactSelectAll"
+            visible: bar.compact
+            height: actionsButton.height
+            enabled: bar.shownCount > 0 && !bar.batch.running
+            tristate: true
+            checkState: bar.allShown ? Qt.Checked : bar.keys.length > 0 ? Qt.PartiallyChecked : Qt.Unchecked
+            nextCheckState: function() { return bar.allShown ? Qt.Unchecked : Qt.Checked }
+            text: bar.sioul.textArgs("contacts-selected", JSON.stringify({ n: bar.keys.length }))
+            font.weight: Font.DemiBold
+            Accessible.name: bar.allShown ? bar.sioul.text("contacts-select-none") : bar.sioul.textArgs("contacts-select-shown", JSON.stringify({ n: bar.shownCount }))
+            Accessible.description: allBox.text
+            onClicked: {
+                if (bar.allShown)
+                    bar.selectNone()
+                else
+                    bar.selectShown()
+                // A click sets the box itself: it stays the selection's.
+                allBox.checkState = Qt.binding(() => bar.allShown ? Qt.Checked : bar.keys.length > 0 ? Qt.PartiallyChecked : Qt.Unchecked)
+            }
+        }
         Label {
             objectName: "contactSelectionCount"
+            visible: !bar.compact
             height: selectShownButton.height
             verticalAlignment: Text.AlignVCenter
             text: bar.sioul.textArgs("contacts-selected", JSON.stringify({ n: bar.keys.length }))
@@ -76,13 +110,15 @@ ColumnLayout {
             id: selectShownButton
 
             objectName: "contactSelectShown"
+            visible: !bar.compact
             flat: true
             enabled: !bar.batch.running
             text: bar.theme.plain(bar.sioul.textArgs("contacts-select-shown", JSON.stringify({ n: bar.shownCount })))
             onClicked: bar.selectShown()
         }
         Button {
-            visible: bar.keys.length > 0
+            objectName: "contactSelectNone"
+            visible: bar.keys.length > 0 && !bar.compact
             flat: true
             enabled: !bar.batch.running
             text: bar.sioul.text("contacts-select-none")
@@ -100,6 +136,8 @@ ColumnLayout {
         }
         Button {
             objectName: "contactSelectionDone"
+            // On a phone as wide as its word: the style's buttons are 100 pixels at least.
+            implicitWidth: Math.max(bar.compact ? 0 : implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
             flat: true
             enabled: !bar.batch.running
             text: bar.sioul.text("contacts-select-done")

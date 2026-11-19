@@ -26,7 +26,7 @@ Contacts holds the people you deal with: their names first, their details folded
 
 Names come first, with one line under each, and a search field sits on top: a few letters of a name, an organisation, an e-mail address or a phone number find a contact. The search does not look into postal addresses.
 
-Above the list, filters narrow it, each kept on this device until you change it: the address books shown (all, one or several), a group or **In no group**, and whether a card has or lacks a phone number, an e-mail address, a postal address or a title (Mr, Mrs…). They combine with the search, and the row says how many show: "132 of 840". **Show all** takes the filters off; the search stays until you clear it, and is never kept on disk.
+Above the list, filters narrow it, each kept on this device until you change it: the address books shown (all, one or several), a group or **In no group**, and whether a card has or lacks a phone number, an e-mail address, a postal address or a title (Mr, Mrs…). They combine with the search, and the row says how many show: "132 of 840". **Show all** takes the filters off; the search stays until you clear it, and is never kept on disk. On a phone, the filters fold behind one **Filters** button, which says how many are set ("Filters (2)"), with **Show all** and the count beside it: the first contact comes right after one row.
 
 A title the card keeps in its own field shows greyed before the name.
 
@@ -112,7 +112,7 @@ Google keeps one address book: Sioul says so on its line and offers nothing it w
 
 ## Many contacts at once {#many-at-once}
 
-**Select**, above the list, gives each row a box; **Select the 132 shown** takes all that the filters show. Then **With them…**:
+**Select**, above the list, gives each row a box; **Select the 132 shown** takes all that the filters show. On a phone, the bar keeps to one row: the count is itself a box, which takes all that the filters show, or none once they are all ticked. Then **With them…**:
 
 - **Move to an address book…**: each card keeps its identifier, so that nothing that points at it changes (a task, a person, a list naming it), and two cards with one identifier never land in one book. The question says who sees that book. Where its server has its own move, the card is moved there, a change not yet sent going first; else it is copied, and the old copy deleted only once the new one is there. A card someone changed on the server before your move reached it is kept in both books, as you left it and as they changed it, and said.
 - **Add to a group…** and **Remove from a group…**: a group in use, or a new one typed.

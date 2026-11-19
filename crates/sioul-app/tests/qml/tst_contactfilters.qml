@@ -6,7 +6,10 @@
 // core says shows (how many of how many, the group, has or lacks); each
 // change gives back the whole filter, one book ticked among several, a group
 // or none, has or lacks; "Show all" clears all but the search; nothing passes
-// the right edge on a phone. Fiction only. Run by tools/qml-test.sh.
+// the right edge on a phone; at a phone's width (`compact`) the filters fold
+// behind one Filters button that counts those set, "Show all" and the count
+// beside it in one row, unfolded and folded again by it. Fiction only. Run by
+// tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -28,6 +31,7 @@ Item {
 
         function text(key) { return key }
         function textArgs(key, args) { return key + ":" + args }
+        function textCounted(key, n) { return key + ":" + n }
     }
 
     readonly property var view: ({
@@ -72,8 +76,8 @@ Item {
 
         property var given: []
 
-        function make(width) {
-            const row = test.createTemporaryObject(rowComponent, root, { width: width })
+        function make(width, compact) {
+            const row = test.createTemporaryObject(rowComponent, root, { width: width, compact: compact === true })
             test.given = []
             row.asked.connect(f => test.given = test.given.concat([JSON.parse(JSON.stringify(f))]))
             test.waitForRendering(row)
@@ -90,6 +94,7 @@ Item {
                 compare(wants[0].currentText, "contacts-filter-phone-any")
                 verify(root.named(row, "contactFiltersClear")[0].visible, "narrowed: Show all offered")
                 compare(root.named(row, "contactFiltersBooks")[0].text, "contacts-filter-books-all")
+                verify(!root.named(row, "contactFiltersFold")[0].visible, "no Filters button unless compact")
             }
         }
 
@@ -139,6 +144,52 @@ Item {
                 verify(x >= 0 && x + item.width <= 412 + 1, item.objectName + " at " + x + " + " + item.width)
             }
             verify(row.height > 60, "wrapped on several lines: " + row.height)
+        }
+
+        // A phone (`compact`, the column 392 points wide): the filters folded behind one
+        // button that counts those set, "Show all" and the count beside it, one row; the
+        // button unfolds them, every one within the edge, and folds them again.
+        function test_a_phone_folds_them_behind_one_button() {
+            const row = make(392, true)
+            const fold = root.named(row, "contactFiltersFold")[0]
+            const clear = root.named(row, "contactFiltersClear")[0]
+            const count = root.named(row, "contactFiltersCount")[0]
+            verify(fold.visible && !fold.checked && !row.unfolded)
+            compare(fold.text, "task-filters:1", "one set: has an e-mail address")
+            verify(!root.named(row, "contactFiltersBooks")[0].visible, "the books folded")
+            verify(!root.named(row, "contactFiltersGroup")[0].visible, "the group folded")
+            compare(root.named(row, "contactFiltersWant").filter(w => w.visible).length, 0, "has or lacks folded")
+            verify(clear.visible && count.visible)
+            compare(count.text, "132 of 840")
+            compare([clear.y, count.y], [fold.y, fold.y], "one row: the button, Show all, the count")
+            verify(count.x + count.width <= 392 + 1, "within the edge: " + (count.x + count.width))
+            compare(row.height, fold.height, "one row high")
+
+            mouseClick(fold)
+            verify(row.unfolded && fold.checked, "unfolded")
+            test.waitForRendering(row)
+            verify(root.named(row, "contactFiltersBooks")[0].visible && root.named(row, "contactFiltersGroup")[0].visible)
+            compare(root.named(row, "contactFiltersWant").filter(w => w.visible).length, 4)
+            for (const item of root.all(row, c => c.visible && c.width > 0 && c.objectName.startsWith("contactFilters"))) {
+                const x = item.mapToItem(row, 0, 0).x
+                verify(x >= 0 && x + item.width <= 392 + 1, item.objectName + " at " + x + " + " + item.width)
+            }
+            verify(row.height > 3 * fold.height, "unfolded, the row wraps: " + row.height)
+            // A change made unfolded keeps the fold as it is.
+            root.named(row, "contactFiltersWant")[3].activated(2)
+            compare(test.given[0].title, "lacks")
+            verify(row.unfolded)
+
+            mouseClick(fold)
+            verify(!row.unfolded && !fold.checked, "folded again")
+            // The count follows the filters: four set; none set, the word alone and no Show all.
+            row.view = Object.assign({}, root.view, { filter: Object.assign({}, root.view.filter, { books: ["cloud/pro"], ungrouped: true, title: "lacks" }) })
+            compare(fold.text, "task-filters:4")
+            row.view = Object.assign({}, root.view, { filter: { books: [], group: "", ungrouped: false, phone: "any", email: "any", address: "any", title: "any", name: "" }, counted: "840 contacts" })
+            compare(fold.text, "task-filters:0")
+            verify(!clear.visible, "nothing set: no Show all")
+            test.waitForRendering(row)
+            compare(count.y, fold.y, "the count beside the button")
         }
     }
 }

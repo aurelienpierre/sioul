@@ -3521,7 +3521,7 @@ SioulWindow {
                 () => window.close()
             ]
             // Address books and contacts in bulk (wave D; SIOUL_GRAB_STEPS=address-books, SIOUL_GRAB_PHONE
-            // for a phone's): the filter row, a selection and its bar, the title's preview on the
+            // for a phone's): the filter row (on a phone, folded, then unfolded), a selection and its bar, the title's preview on the
             // co-workers' cards, Contacts ⚙ with a book a co-worker can write and its switch, and the
             // import's three steps on the demo's small file of invented people.
             readonly property var addressBookSteps: [
@@ -3535,6 +3535,19 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("contacts-filters"),
+                // On a phone, the filters unfolded by their button, then folded again.
+                () => {
+                    if (window.phoneGrab)
+                        grabber.named(contactsPage, "contactFilters").unfolded = true
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("contacts-filters-open")
+                },
+                () => {
+                    grabber.named(contactsPage, "contactFilters").unfolded = false
+                },
                 () => {
                     contactsPage.selecting = true
                     contactsPage.selectShown()
