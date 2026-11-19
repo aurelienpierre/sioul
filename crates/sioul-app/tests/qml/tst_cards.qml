@@ -1400,6 +1400,20 @@ Item {
             dialog.applyForm({ start: local(4000003600 + 600), end: local(4000003600 + 1800) })
             compare(dialog.legSide, "after")
             verify(dialog.legLine.indexOf("leg-after") === 0, dialog.legLine)
+            // Said outright: "To get there" puts it back before the appointment, "To come back"
+            // after it, the same length; the button of the side its times say shows as chosen.
+            const there = root.find(dialog.contentItem, "legSide-before")
+            const back = root.find(dialog.contentItem, "legSide-after")
+            verify(there.visible && back.visible && back.highlighted && !there.highlighted)
+            there.clicked()
+            compare(dialog.legSide, "before")
+            // Times are kept to the minute: within one of twenty minutes ending five before it starts.
+            verify(Math.abs(dialog.legStart() - (4000000000 - 25 * 60)) < 60, "twenty minutes, ending five minutes before it starts: " + dialog.legStart())
+            verify(there.highlighted && !back.highlighted)
+            back.clicked()
+            compare(dialog.legSide, "after")
+            verify(Math.abs(dialog.legStart() - (4000003600 + 5 * 60)) < 60 && dialog.legStart() >= 4000003600, "starting five minutes after it ends: " + dialog.legStart())
+            verify(dialog.legLine.indexOf("leg-after") === 0, dialog.legLine)
             dialog.save()
             const saved = mock.calls.filter(c => c.what === "saveLeg")
             compare(saved.length, 1, JSON.stringify(mock.calls))
