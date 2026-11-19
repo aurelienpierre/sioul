@@ -737,6 +737,11 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
         for file in &cleaned.changed {
             println!("kept, changed since its copy: {}", one_line(file));
         }
+        // Kept for another reason, each with its code (a link on its way, its copy missing or
+        // different, the same file, the system refusing): the trial says why.
+        for (file, why) in &cleaned.kept {
+            println!("kept ({why}): {}", one_line(file));
+        }
     }
     Ok(())
 }
