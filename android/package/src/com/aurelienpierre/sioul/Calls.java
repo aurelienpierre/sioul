@@ -829,8 +829,10 @@ final class Calls
         if (!"stranger".equals(who) && !"hidden".equals(who)) {
             // Their own row, by this number, before their list's (decision 16; calls.rs's `own`).
             String own = hidden || decision.called ? null : table.own.get(key);
-            // A group's row on this phone's own line, after their own and before their list's.
-            String group = hidden || decision.called ? null : table.groups.get(key);
+            // A group's row on this phone's own line, after their own and before their list's, for your
+            // contacts alone: someone placed on Safe or Restricted by hand follows that circle's row
+            // (review of `phones`, M11; calls.rs's `decide`).
+            String group = hidden || decision.called || !"neutral".equals(who) ? null : table.groups.get(key);
             byFrame(decision, frame, who, own == null || own.isEmpty() ? null : own, group == null || group.isEmpty() ? null : group);
             if (!(decision.called && decision.refuse && expecting))
                 return decision;

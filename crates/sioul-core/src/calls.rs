@@ -585,8 +585,9 @@ pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
     });
     made.line = true;
     made.repeat_minutes = if grid.switches.twice { REPEAT_MINUTES } else { 0 };
-    // A group's row for a number its list knows, neither blocked nor Always through, as a person's own row.
-    made.groups = group_numbers.into_iter().filter(|(key, _)| made.numbers.get(key).is_some_and(|who| !who.starts_with("always-") && who != "blocked")).collect();
+    // A group's row for a number of your contacts (neither on Safe or Restricted by hand, nor blocked, nor
+    // Always through), read after a person's own row (M11).
+    made.groups = group_numbers.into_iter().filter(|(key, _)| made.numbers.get(key).is_some_and(|who| who == "neutral")).collect();
     made
 }
 
@@ -903,8 +904,9 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
     let frame = table.frame_at(call.now);
     // A person's own row, by this number, before their list's (from version 2, decision 16).
     let own = if call.hidden || called { None } else { table.own.get(&key) };
-    // A group's row on this phone's own line, after their own and before their list's.
-    let group = if call.hidden || called { None } else { table.groups.get(&key) };
+    // A group's row on this phone's own line, after their own and before their list's, for your contacts
+    // alone: someone you placed on Safe or Restricted by hand follows that circle's row (review of `phones`, M11).
+    let group = if call.hidden || called || who != "neutral" { None } else { table.groups.get(&key) };
     let by_frame = |frame: Option<&Frame>| match frame {
         None => decided(false, "no-frame", ""),
         // Decided by their own row: "own", for the Porch's sentence (review of part 6, F7); by their group's: "group".
@@ -3974,11 +3976,11 @@ mod line_tests {
         let table = Table {
             line: true,
             repeat_minutes: 0,
-            numbers: [("+33199000002", "neutral"), ("+33199000003", "neutral"), ("+33199000004", "blocked")].into_iter().map(|(k, w)| (k.to_string(), w.to_string())).collect(),
-            groups: [("+33199000003".to_string(), "group-0".to_string())].into_iter().collect(),
+            numbers: [("+33199000001", "safe"), ("+33199000002", "neutral"), ("+33199000003", "neutral"), ("+33199000004", "blocked")].into_iter().map(|(k, w)| (k.to_string(), w.to_string())).collect(),
+            groups: [("+33199000001".to_string(), "group-0".to_string()), ("+33199000003".to_string(), "group-0".to_string())].into_iter().collect(),
             frames: vec![
-                Frame { from: work.0, until: work.1, column: "work".into(), hours: true, ring: ring(&[("neutral", true), ("stranger", true), ("hidden", false), ("group-0", true)]) },
-                Frame { from: night.0, until: night.1, column: "sleep".into(), hours: false, ring: ring(&[("neutral", false), ("stranger", false), ("hidden", false), ("group-0", true)]) },
+                Frame { from: work.0, until: work.1, column: "work".into(), hours: true, ring: ring(&[("safe", true), ("neutral", true), ("stranger", true), ("hidden", false), ("group-0", true)]) },
+                Frame { from: night.0, until: night.1, column: "sleep".into(), hours: false, ring: ring(&[("safe", false), ("neutral", false), ("stranger", false), ("hidden", false), ("group-0", true)]) },
             ],
             ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), own: Vec::new(), expecting: None, screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), "2026-10-05".parse().unwrap())), frames: Vec::new() })
         };
@@ -3992,6 +3994,7 @@ mod line_tests {
         assert_eq!(said(&on("", "10:00")), (true, "matrix", "hidden".to_string()));
         assert_eq!(said(&on("01 99 00 00 02", "20:00")), (true, "matrix", "neutral".to_string()));
         assert_eq!(said(&on("01 99 00 00 03", "20:00")), (false, "group", "neutral".to_string()));
+        assert_eq!(said(&on("01 99 00 00 01", "20:00")), (true, "matrix", "safe".to_string()), "Safe by hand in a group: Safe's row (M11)");
         assert_eq!(said(&on("01 99 00 00 04", "10:00")), (true, "blocked", "blocked".to_string()));
         assert_eq!(said(&Incoming { last_call: ms("2026-10-05T19:58"), ..on("01 99 00 55 55", "20:00") }), (true, "matrix", "stranger".to_string()), "no second call on this line");
         assert_eq!(said(&on("01 99 00 55 55", "08:00")), (false, "no-frame", "stranger".to_string()));
@@ -4029,5 +4032,24 @@ mod line_tests {
         assert!(rings(&table, "01 99 00 00 02", "15:30"), "held off by As usual: the contact rings");
         let tomorrow = Incoming { now: ms("2026-11-17T15:30"), ..call("01 99 00 00 02", "15:30") };
         assert!(decide(Some(&table), &tomorrow).refuse, "the next stretch, begun after the press, holds");
+    }
+
+    /// Someone you placed on Safe by hand follows Safe's row, never a
+    /// group's that rings less (review of `phones`, M11): Sam is Safe and in
+    /// the group Family, which does not ring at night; Safe rings at night.
+    #[test]
+    fn a_person_placed_by_hand_comes_before_a_group_s_row() {
+        let cards = [card("sam", "01 99 00 00 01", &["Family"]), card("fred", "01 99 00 00 02", &["Family"])];
+        let senders = Senders { safe: SenderList::parse("contact:sam"), contacts: std::sync::Arc::new(Book::of(&cards, fr())), ..Senders::default() };
+        let world = World { senders, ..World::new() };
+        let mut said = line(Profile::Personal);
+        said.grid.fixed[0][2] = Cell::Rings;
+        said.grid.groups.push(("Family".into(), crate::calls_line::GROUP_CELLS));
+        let (table, _) = world.build(Some(&said));
+        let sam = decide(Some(&table), &call("01 99 00 00 01", "23:00"));
+        assert_eq!((sam.refuse, sam.why), (false, "matrix"), "Safe by hand: Safe's row");
+        let fred = decide(Some(&table), &call("01 99 00 00 02", "23:00"));
+        assert_eq!((fred.refuse, fred.why), (true, "group"), "a plain contact: the group's row");
+        assert!(!table.groups.contains_key("+33199000001"), "no group's row for someone placed by hand");
     }
 }

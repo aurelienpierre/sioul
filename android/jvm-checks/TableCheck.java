@@ -233,13 +233,13 @@ public final class TableCheck
         String line = "{\"v\":2,\"made\":0"
             + ",\"region\":{\"code\":\"FR\",\"calling\":\"33\",\"trunk\":\"0\",\"international\":\"00\",\"digits\":[10,10],\"french\":true}"
             + ",\"trunk_zero\":[\"33\"]"
-            + ",\"numbers\":{\"+33199000002\":\"neutral\",\"+33199000003\":\"neutral\",\"+33199000004\":\"blocked\"}"
+            + ",\"numbers\":{\"+33199000001\":\"safe\",\"+33199000002\":\"neutral\",\"+33199000003\":\"neutral\",\"+33199000004\":\"blocked\"}"
             + ",\"prefixes\":[],\"phone_contacts\":\"neutral\",\"floors\":{\"emergency\":[\"112\"],\"people\":[]}"
             + ",\"screening\":{\"on\":true,\"hours\":\"always\",\"unknown\":\"voicemail\",\"hidden\":\"voicemail\",\"automated\":\"voicemail\",\"impossible\":\"voicemail\",\"unverified\":\"voicemail\",\"called_days\":14,\"automated_prefixes\":[],\"impossible_prefixes\":[]}"
-            + ",\"line\":true,\"groups\":{\"+33199000003\":\"group-0\"}"
+            + ",\"line\":true,\"groups\":{\"+33199000001\":\"group-0\",\"+33199000003\":\"group-0\"}"
             + ",\"frames\":["
-            + frame2(work0, work1, "work", true, new String[] { "neutral", "stranger", "hidden", "group-0" }, "neutral", "stranger", "group-0") + ","
-            + frame2(work1, sleep1, "sleep", false, new String[] { "neutral", "stranger", "hidden", "group-0" }, "group-0")
+            + frame2(work0, work1, "work", true, new String[] { "safe", "neutral", "stranger", "hidden", "group-0" }, "safe", "neutral", "stranger", "group-0") + ","
+            + frame2(work1, sleep1, "sleep", false, new String[] { "safe", "neutral", "stranger", "hidden", "group-0" }, "group-0")
             + "],\"repeat_minutes\":0,\"emergency_hours\":24}";
         Calls.Table own = Calls.Table.of(new JSONObject(line));
         checked++;
@@ -252,6 +252,8 @@ public final class TableCheck
         expect("line: hidden at work", Calls.decideFor(own, "", true, ms(day, "10:00"), 0, null, 0, none), true, "matrix", "hidden", "work");
         expect("line: a contact at night", Calls.decideFor(own, "01 99 00 00 02", false, ms(day, "20:00"), 0, null, 0, none), true, "matrix", "neutral", "sleep");
         expect("line: the group at night", Calls.decideFor(own, "01 99 00 00 03", false, ms(day, "20:00"), 0, null, 0, none), false, "group", "neutral", "sleep");
+        // Someone placed on Safe by hand in a group: Safe's row, never the group's (review of `phones`, M11).
+        expect("line: safe in a group at night", Calls.decideFor(own, "01 99 00 00 01", false, ms(day, "20:00"), 0, null, 0, none), true, "matrix", "safe", "sleep");
         expect("line: blocked", Calls.decideFor(own, "01 99 00 00 04", false, ms(day, "10:00"), 0, null, 0, none), true, "blocked", "blocked", "");
         expect("line: no second call", Calls.decideFor(own, "01 99 00 55 55", false, ms(day, "20:00"), 0, null, ms(day, "19:58"), none), true, "matrix", "stranger", "sleep");
         expect("line: before its frames", Calls.decideFor(own, "01 99 00 55 55", false, ms(day, "08:00"), 0, null, 0, none), false, "no-frame", "stranger", "");
