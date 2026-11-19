@@ -1190,6 +1190,13 @@ Item {
                                 sioul: page.sioul
                                 theme: page.theme
                                 known: page.shown.categories || []
+                                // The card's book (a new one's: the first that can be written), when its groups are held back.
+                                heldBook: {
+                                    const place = page.person ? page.person.place : (page.writableBooks.length > 0 ? page.writableBooks[0].place : "")
+                                    const book = (page.shown.books || []).find(b => b.place === place)
+                                    return book && book.groups === false ? book.name : ""
+                                }
+                                onAskedSwitch: page.openSettings(true, "addressbooks")
                             }
                         }
                         Label {

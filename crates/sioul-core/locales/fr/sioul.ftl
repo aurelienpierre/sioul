@@ -9222,6 +9222,8 @@ contact-name-prefix = Civilité (M., Mme…)
 contact-name-given = Prénoms
 contact-name-family = Nom de famille
 contact-name-suffix = Suffixe
+contact-groups-held = Dans « { $book } », les groupes d’un contact ne décident pas qui peut vous joindre.
+contact-groups-held-door = Ses groupes…
 contacts-none-filtered = Aucun contact ne répond à ces filtres.
 contacts-counted-all = { $total ->
     [one] Un contact

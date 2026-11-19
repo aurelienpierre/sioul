@@ -8837,6 +8837,8 @@ contact-name-prefix = Title (Mr, Mrs…)
 contact-name-given = Given names
 contact-name-family = Family name
 contact-name-suffix = Suffix
+contact-groups-held = In “{ $book }”, a contact's groups do not decide who may reach you.
+contact-groups-held-door = Its groups…
 contacts-none-filtered = No contact matches these filters.
 contacts-counted-all = { $total ->
     [one] One contact

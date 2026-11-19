@@ -1894,6 +1894,8 @@ pub struct BookChoice {
     /// "Professional · example.org".
     pub name: String,
     pub read_only: bool,
+    /// Its groups decide who may reach the person (`addressbooks::groups_count`).
+    pub groups: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1930,7 +1932,7 @@ pub fn contacts(all: &[crate::contacts::Contact], query: &str, category: &str, t
 /// filters as they apply now and how many show of how many.
 pub fn contacts_filtered(all: &[crate::contacts::Contact], filter: &crate::contactfilter::Filter, config: &Config, tr: &Translator) -> ContactsView {
     let collections = crate::vdir::collections(crate::vdir::Kind::Contacts);
-    let books: Vec<BookChoice> = collections.iter().map(|c| BookChoice { place: format!("{}/{}", c.account, c.id), name: c.label(config, tr), read_only: c.read_only }).collect();
+    let books: Vec<BookChoice> = collections.iter().map(|c| BookChoice { place: format!("{}/{}", c.account, c.id), name: c.label(config, tr), read_only: c.read_only, groups: crate::addressbooks::groups_count(c, config).count }).collect();
     let categories = crate::contacts::categories_in_use(all);
     let filter = filter.fitted(&books.iter().map(|b| b.place.clone()).collect::<Vec<_>>(), &categories);
     let category = filter.group.clone();
