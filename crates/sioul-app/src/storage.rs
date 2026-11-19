@@ -107,7 +107,7 @@ fn names(devices: &[sioul_sync::share::Named]) -> String {
 /// themselves: on the person's press alone (`take_out`).
 pub(crate) fn tidy() {
     let now = jiff::Timestamp::now().as_second();
-    storage::sweep_kept(&sioul_core::config::data_dir().join(storage::KEPT), now);
+    storage::sweep_kept(&sioul_core::config::data_dir().join(storage::KEPT), Storage::here().cleaned, now);
 }
 
 /// Whether this device may move now: every other device that counts knows

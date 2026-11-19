@@ -1491,14 +1491,19 @@ fn remove_empty(dir: &Path) {
     let _ = std::fs::remove_dir(dir);
 }
 
-/// The dated copies older than `KEEP_DAYS`, taken out of `kept`.
-pub fn sweep_kept(kept: &Path, now: i64) {
+/// The dated copies taken out of `kept` `KEEP_DAYS` after the old files
+/// left the notes folder (`cleaned`, the take-out that left nothing): never
+/// while they are still there (0), never counted from the move itself
+/// (the take-out may come months later). Only folders named as a day,
+/// never through a link.
+pub fn sweep_kept(kept: &Path, cleaned: i64, now: i64) {
+    if cleaned <= 0 || now - cleaned <= KEEP_DAYS * 86_400 {
+        return;
+    }
     let Ok(read) = std::fs::read_dir(kept) else { return };
-    let today = jiff::Timestamp::from_second(now).map(|t| t.to_zoned(jiff::tz::TimeZone::UTC).date()).ok();
     for entry in read.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        let Ok(day) = name.parse::<jiff::civil::Date>() else { continue };
-        if today.is_some_and(|today| day.until(today).is_ok_and(|span| span.get_days() > KEEP_DAYS as i32)) {
+        if name.parse::<jiff::civil::Date>().is_ok() && entry.file_type().is_ok_and(|t| t.is_dir()) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }

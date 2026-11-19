@@ -379,18 +379,26 @@ fn both_layouts_read_each_others_paths() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// Dated copies go after thirty days, never before.
+/// Dated copies go thirty days after the old files were taken out, never
+/// before, never while the old files are still there, however old the move
+/// (review S13).
 #[test]
-fn dated_copies_go_after_thirty_days() {
+fn dated_copies_go_thirty_days_after_the_take_out() {
     let base = std::env::temp_dir().join(format!("sioul-storage-kept-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
-    for day in ["2026-10-01", "2026-10-20", "not-a-day"] {
+    for day in ["2026-01-01", "2026-10-20", "not-a-day"] {
         std::fs::create_dir_all(base.join(day)).unwrap();
         std::fs::write(base.join(day).join("sioul-bank.toml"), "x").unwrap();
     }
-    // 18 November 2026.
-    sweep_kept(&base, 1_795_046_400);
-    assert!(!base.join("2026-10-01").exists() && base.join("2026-10-20").exists() && base.join("not-a-day").exists());
+    // 18 November 2026: the old files never taken out; then taken out ten days ago.
+    let now = 1_795_046_400;
+    sweep_kept(&base, 0, now);
+    assert!(base.join("2026-01-01").exists(), "a move made long ago, its old files still there: kept");
+    sweep_kept(&base, now - 10 * 86_400, now);
+    assert!(base.join("2026-01-01").exists() && base.join("2026-10-20").exists());
+    // Taken out thirty-one days ago: every dated copy goes; what is no day stays.
+    sweep_kept(&base, now - 31 * 86_400, now);
+    assert!(!base.join("2026-01-01").exists() && !base.join("2026-10-20").exists() && base.join("not-a-day").exists());
     let _ = std::fs::remove_dir_all(&base);
 }
 
