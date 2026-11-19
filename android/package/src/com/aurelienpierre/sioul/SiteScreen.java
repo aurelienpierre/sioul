@@ -870,11 +870,16 @@ public final class SiteScreen extends Activity
             answer.accept(false);
             dialogShown = false;
             promptField = null;
+            pageShown = null;
             dialogGone = android.os.SystemClock.elapsedRealtime();
         });
+        pageShown = shown;
         shown.show();
         return true;
     }
+
+    /** A page's dialog while it shows. */
+    private AlertDialog pageShown;
 
     /** The prompt's field while its dialog shows. */
     private EditText promptField;
@@ -961,7 +966,6 @@ public final class SiteScreen extends Activity
     {
         if (page == popup && popup != null && SiteWeb.isEmptyWindow(popupCommitted))
             closeEmpty(page);
-        String name = SiteWeb.fileName(URLUtil.guessFileName(url, disposition, type));
         if (url == null || !SiteWeb.isHttps(url)) {
             if (url != null && (url.startsWith("blob:") || url.startsWith("data:")))
                 fetchSaid(site.word("download_page"), true);
@@ -969,6 +973,7 @@ public final class SiteScreen extends Activity
                 say(site.word("not_https"));
             return;
         }
+        String name = SiteWeb.fileName(URLUtil.guessFileName(url, disposition, type));
         if (SiteWeb.wasPosted(url, System.currentTimeMillis())) {
             fetchFailed(name, SiteDownload.Why.FORM);
             return;
@@ -1292,6 +1297,8 @@ public final class SiteScreen extends Activity
         offers.clear();
         if (asking != null)
             asking.dismiss();
+        if (pageShown != null)
+            pageShown.dismiss();
         if (files != null) {
             files.onReceiveValue(null);
             files = null;
