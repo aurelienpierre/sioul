@@ -289,6 +289,48 @@ pub(crate) fn open(id: &str, look: &str) -> String {
     }
 }
 
+/// What this device's web view forgot of a site removed (verb
+/// "site-forget", SiteWeb.forget): everything stored for its site, its
+/// cookies alone, or nothing (Java silent, or the web view not loading).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Forgot {
+    All,
+    Cookies,
+    Nothing,
+}
+
+/// Java's answer read: {"forgot": "all" | "cookies" | "none"}.
+pub(crate) fn forgot_of(said: &serde_json::Value) -> Forgot {
+    match said.get("forgot").and_then(|v| v.as_str()) {
+        Some("all") => Forgot::All,
+        Some("cookies") => Forgot::Cookies,
+        _ => Forgot::Nothing,
+    }
+}
+
+/// The line a removal says on Android: nothing when the site's sign-in
+/// on this device is forgotten whole; else what stays, and how to clear it.
+pub(crate) fn forgot_line(forgot: Forgot, name: &str, tr: &Translator) -> String {
+    let mut args = sioul_core::i18n::args();
+    args.set("name", name.to_string());
+    match forgot {
+        Forgot::All => String::new(),
+        Forgot::Cookies => tr.text("site-forget-cookies", Some(&args)),
+        Forgot::Nothing => tr.text("site-forget-none", Some(&args)),
+    }
+}
+
+/// A site removed on Android forgets its sign-in on this device (review
+/// K1): Java asks the web view, on Android's main thread; the line says
+/// what stays. "" on a computer, where each site's profile is its own.
+pub(crate) fn forget_line(url: &str, name: &str) -> String {
+    if !cfg!(target_os = "android") {
+        return String::new();
+    }
+    let said = crate::steps::java("site-forget", &serde_json::json!({ "url": url, "domain": sites::domain_of(&sites::host_of(url)) }).to_string());
+    forgot_line(forgot_of(&said), name, tr())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,6 +405,28 @@ mod tests {
         for (host, domain) in [("secure.bank.example.co.uk", "example.co.uk"), ("app.franceconnect.gouv.fr", "franceconnect.gouv.fr"), ("mail.proton.me", "proton.me"), ("proton.me", "proton.me"), ("localhost", "localhost"), ("a.b.c.example.org", "example.org"), ("www.service-public.fr", "service-public.fr")] {
             assert_eq!(sites::domain_of(host), domain, "{host}");
         }
+    }
+
+    /// A site removed on Android: nothing said when its sign-in on this
+    /// device is forgotten whole; what stays, and how to clear it, when
+    /// only its cookies were, or nothing; in English and French.
+    #[test]
+    fn a_removed_site_says_what_of_its_sign_in_stays() {
+        assert_eq!(forgot_of(&serde_json::json!({ "forgot": "all" })), Forgot::All);
+        assert_eq!(forgot_of(&serde_json::json!({ "forgot": "cookies" })), Forgot::Cookies);
+        assert_eq!(forgot_of(&serde_json::json!({ "forgot": "none" })), Forgot::Nothing);
+        assert_eq!(forgot_of(&serde_json::Value::Null), Forgot::Nothing, "Java silent");
+        for language in ["en", "fr"] {
+            let tr = Translator::new(language);
+            assert_eq!(forgot_line(Forgot::All, "My bank", &tr), "");
+            let cookies = forgot_line(Forgot::Cookies, "My bank", &tr);
+            let nothing = forgot_line(Forgot::Nothing, "My bank", &tr);
+            for line in [&cookies, &nothing] {
+                assert!(line.contains("My bank") && !line.starts_with("site-forget"), "{language}: {line}");
+            }
+            assert_ne!(cookies, nothing);
+        }
+        assert_eq!(forget_line("https://bank.example.org", "My bank"), "", "nothing to forget on a computer");
     }
 
     /// The screen is given the site, the domain its links stay in, Sioul's

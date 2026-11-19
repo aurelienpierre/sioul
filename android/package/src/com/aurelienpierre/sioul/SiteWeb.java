@@ -8,9 +8,15 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.webkit.CookieManager;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 
+import androidx.webkit.CookieManagerCompat;
+import androidx.webkit.WebStorageCompat;
 import androidx.webkit.WebViewFeature;
 
 import org.json.JSONException;
@@ -54,7 +60,9 @@ final class SiteWeb
     /**
      * Rust's question ({@link StepService#call}): "site-webview" {features},
      * this device's web view; "site-open" {id, name, url, domain, look,
-     * words}, the site's screen shown, answered true or false. Any thread.
+     * words, places}, the site's screen shown, answered true or false;
+     * "site-forget" {url, domain}, a removed site's sign-in forgotten
+     * ({@link #forget}). Any thread.
      *
      * @param context the application's context
      * @param verb what Rust asks
@@ -69,6 +77,8 @@ final class SiteWeb
             return webView(context, asked.optBoolean("features", false)).toString();
         case "site-open":
             return open(context, asked) ? "true" : "false";
+        case "site-forget":
+            return forget(asked.optString("url", ""), asked.optString("domain", "")).toString();
         default:
             return null;
         }
@@ -150,6 +160,159 @@ final class SiteWeb
             Log.w(DoseAlarms.TAG, "Sites: the site's screen could not be shown: " + e.getClass().getSimpleName());
             return false;
         }
+    }
+
+    /**
+     * A site removed from Sioul forgets its sign-in on this device (review
+     * K1), on Android's main thread, waited for a few seconds: where the web
+     * view can delete a site's data alone (androidx.webkit's
+     * DELETE_BROWSING_DATA), everything it stored for the site of
+     * {@code url} (cookies, the cache, the pages' own storage), answered
+     * {forgot: "all"}; else its cookies for its address and its domain,
+     * each set expired with its own attributes where the web view gives
+     * them (GET_COOKIE_INFO), and its address's own storage
+     * ({@code WebStorage.deleteOrigin}), answered {forgot: "cookies"}: the
+     * cache, and what it kept under its other addresses, stay. {forgot:
+     * "none"} when nothing could be asked. Loads the web view into this
+     * process.
+     *
+     * @param url the site's address
+     * @param domain its domain, as Rust reads it
+     * @return the answer
+     * @throws JSONException never in practice: the answer's own keys
+     */
+    static JSONObject forget(String url, String domain) throws JSONException
+    {
+        JSONObject said = new JSONObject();
+        said.put("forgot", "none");
+        if (!isHttps(url))
+            return said;
+        String[] forgot = { "none" };
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        Runnable work = () -> {
+            try {
+                forgot[0] = forgetHere(url, domain, done);
+            } catch (RuntimeException e) {
+                Log.w(DoseAlarms.TAG, "Sites: a removed site's sign-in could not be forgotten: " + e.getClass().getSimpleName());
+                done.countDown();
+            }
+        };
+        if (Looper.myLooper() == Looper.getMainLooper())
+            work.run();
+        else
+            new Handler(Looper.getMainLooper()).post(work);
+        try {
+            if (!done.await(8, java.util.concurrent.TimeUnit.SECONDS))
+                Log.w(DoseAlarms.TAG, "Sites: a removed site's sign-in still being forgotten after 8 s.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        said.put("forgot", forgot[0]);
+        return said;
+    }
+
+    /** {@link #forget}'s work, on Android's main thread: what was forgotten. */
+    private static String forgetHere(String url, String domain, java.util.concurrent.CountDownLatch done)
+    {
+        CookieManager cookies = CookieManager.getInstance();
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+            WebStorageCompat.deleteBrowsingDataForSite(WebStorage.getInstance(), url, () -> {
+                cookies.flush();
+                done.countDown();
+            });
+            return "all";
+        }
+        java.util.List<String> addresses = new java.util.ArrayList<>(java.util.Arrays.asList(url));
+        if (domain != null && domain.matches("[a-z0-9.-]{1,253}") && !host(url).equals(domain))
+            addresses.add("https://" + domain + "/");
+        boolean info = WebViewFeature.isFeatureSupported(WebViewFeature.GET_COOKIE_INFO);
+        for (String address : addresses) {
+            java.util.List<String> expired = info ? expiries(CookieManagerCompat.getCookieInfo(cookies, address)) : expiriesOf(cookies.getCookie(address), host(address), domain);
+            for (String cookie : expired)
+                cookies.setCookie(address, cookie);
+            WebStorage.getInstance().deleteOrigin("https://" + host(address));
+        }
+        cookies.flush();
+        done.countDown();
+        return "cookies";
+    }
+
+    /** The date every expired cookie is set to. */
+    private static final String EPOCH = "Thu, 01 Jan 1970 00:00:00 GMT";
+
+    /**
+     * Each cookie the web view gave with its attributes ("name=value;
+     * domain=.example.org; path=/; Secure"), as a Set-Cookie that expires it:
+     * the same name, domain and path, Secure kept (a "__Host-" name keeps
+     * no domain, as it must).
+     *
+     * @param infos the cookies, as CookieManagerCompat.getCookieInfo gives them; null for none
+     * @return the Set-Cookie lines that expire them
+     */
+    static java.util.List<String> expiries(java.util.List<String> infos)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (infos == null)
+            return out;
+        for (String info : infos) {
+            if (info == null)
+                continue;
+            String[] parts = info.split(";");
+            int eq = parts[0].indexOf('=');
+            String name = (eq >= 0 ? parts[0].substring(0, eq) : parts[0]).trim();
+            if (name.isEmpty())
+                continue;
+            String domain = null;
+            String path = "/";
+            for (int i = 1; i < parts.length; i++) {
+                String part = parts[i].trim();
+                int at = part.indexOf('=');
+                String key = (at >= 0 ? part.substring(0, at) : part).trim().toLowerCase(Locale.ROOT);
+                String value = at >= 0 ? part.substring(at + 1).trim() : "";
+                if (key.equals("domain") && !value.isEmpty())
+                    domain = value;
+                else if (key.equals("path") && value.startsWith("/"))
+                    path = value;
+            }
+            StringBuilder line = new StringBuilder(name).append("=; Max-Age=0; Expires=").append(EPOCH).append("; Path=").append(path).append("; Secure");
+            if (domain != null && !name.startsWith("__Host-"))
+                line.append("; Domain=").append(domain);
+            out.add(line.toString());
+        }
+        return out;
+    }
+
+    /**
+     * A Cookie header's names ("a=1; b=2"), each as the Set-Cookie lines
+     * that expire it where the web view does not say its attributes: kept
+     * by its host alone, and under the site's domain, at the root.
+     *
+     * @param header the web view's Cookie header for an address, or null
+     * @param host the address's host
+     * @param domain the site's domain
+     * @return the Set-Cookie lines
+     */
+    static java.util.List<String> expiriesOf(String header, String host, String domain)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (header == null)
+            return out;
+        for (String pair : header.split(";")) {
+            int eq = pair.indexOf('=');
+            String name = (eq >= 0 ? pair.substring(0, eq) : pair).trim();
+            if (name.isEmpty())
+                continue;
+            String base = name + "=; Max-Age=0; Expires=" + EPOCH + "; Path=/; Secure";
+            out.add(base);
+            if (!name.startsWith("__Host-")) {
+                for (String under : new String[] { host, domain }) {
+                    String line = base + "; Domain=" + under;
+                    if (under != null && !under.isEmpty() && !out.contains(line))
+                        out.add(line);
+                }
+            }
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- What the screen is given

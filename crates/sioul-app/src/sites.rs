@@ -207,9 +207,16 @@ pub(crate) fn move_site(id: &str, delta: i64) -> String {
     sioul_core::config::move_site(&crate::backend::config_path(), id, delta, crate::share::writes_format_2()).err().unwrap_or_default()
 }
 
-/// A site taken out of Sioul; its sign-ins stay in its profile until cleared. Returns what went wrong, else "".
+/// A site taken out of Sioul. On a computer its sign-ins stay in its
+/// profile until cleared; on Android its sign-in on this device is
+/// forgotten as far as the web view can (`siteview::forget_line`, review
+/// K1). Returns what went wrong, or what stays on this device, else "".
 pub(crate) fn remove(id: &str) -> String {
-    sioul_core::config::remove_site(&crate::backend::config_path(), id).err().unwrap_or_default()
+    let site = sites::sites(&load_config()).into_iter().find(|s| s.id == id);
+    match sioul_core::config::remove_site(&crate::backend::config_path(), id) {
+        Err(e) => e,
+        Ok(()) => site.map(|s| crate::siteview::forget_line(&s.url, &s.name)).unwrap_or_default(),
+    }
 }
 
 /// Where sites' icons are kept.

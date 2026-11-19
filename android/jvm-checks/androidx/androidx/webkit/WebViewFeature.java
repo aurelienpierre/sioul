@@ -29,6 +29,12 @@ public final class WebViewFeature
     public static final String ALGORITHMIC_DARKENING = "ALGORITHMIC_DARKENING";
     /** Profiles, each with its own store. */
     public static final String MULTI_PROFILE = "MULTI_PROFILE";
+    /** Pages drawn in a process of their own (WebViewCompat.isMultiProcessEnabled). */
+    public static final String MULTI_PROCESS = "MULTI_PROCESS";
+    /** A site's data deleted alone (WebStorageCompat.deleteBrowsingDataForSite). */
+    public static final String DELETE_BROWSING_DATA = "DELETE_BROWSING_DATA";
+    /** The cookies with their attributes (CookieManagerCompat.getCookieInfo). */
+    public static final String GET_COOKIE_INFO = "GET_COOKIE_INFO";
 
     /**
      * Whether this device's web view has a feature: never, on a computer.

@@ -92,7 +92,8 @@ Item {
         }
         function removeSite(id) {
             mock.note("remove " + id)
-            return ""
+            // What stays of its sign-in on this device, when the web view could not forget it all.
+            return "site-forget-cookies"
         }
         function sitePresets(country, region) {
             return JSON.stringify({ country: "", region: "", countries: [], types: ["mailbox"], categories: [], sites: [{ name: "Health insurance", url: "https://health.example.org", host: "health.example.org", kind: "mailbox", categories: ["Health"], area: "admin", about: "", announced_by: ["example.org"], calls: null, kept: false }] })
@@ -279,8 +280,11 @@ Item {
             wait(50)
             const removing = page.children.map(c => c.item).find(i => i && i.hasOwnProperty("commands"))
             verify(removing && removing.visible)
+            compare(removing.sentence, "site-remove-ask-android", "the question says its sign-in on this device goes too")
             removing.confirmed()
             verify(mock.asked.indexOf("remove bank") >= 0)
+            compare(page.problem, "site-forget-cookies", "what stays said under the title")
         }
+
     }
 }

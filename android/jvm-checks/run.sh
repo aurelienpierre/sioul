@@ -273,7 +273,7 @@ androidx_sources=()
 while IFS= read -r -d '' file; do
     androidx_sources+=("$file")
 done < <(find "$here/androidx" -name '*.java' -print0 | sort -z)
-if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -d "$work/androidx" "${androidx_sources[@]}" > "$work/javac-androidx.log" 2>&1; then
+if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$android_jar" -d "$work/androidx" "${androidx_sources[@]}" > "$work/javac-androidx.log" 2>&1; then
     sed "s|^|  |" "$work/javac-androidx.log"
     echo "jvm-checks: javac failed on the stand-ins for androidx (above)." >&2
     exit 1

@@ -303,6 +303,18 @@ public final class SiteScreenCheck
         for (String place : SiteDownload.PLACES)
             expect("each place has its words: " + place, SiteWeb.ENGLISH.containsKey("place_" + place));
 
+        // ------------------------------------------------ A removed site's sign-in forgotten (review K1)
+        List<String> expired = SiteWeb.expiries(java.util.Arrays.asList("sid=abc; domain=.example.org; path=/; Secure; HttpOnly", "pref=dark; path=/account", "__Host-token=x; path=/; Secure", "=nameless", "lang=fr; Domain=app.example.org"));
+        expect("each cookie expired with its own domain and path: " + expired, expired.size() == 4
+            && expired.get(0).equals("sid=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure; Domain=.example.org")
+            && expired.get(1).equals("pref=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/account; Secure")
+            && expired.get(2).equals("__Host-token=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure")
+            && expired.get(3).endsWith("; Domain=app.example.org"));
+        expect("no cookie, nothing to expire", SiteWeb.expiries(null).isEmpty() && SiteWeb.expiriesOf(null, "app.example.org", "example.org").isEmpty());
+        List<String> byName = SiteWeb.expiriesOf("sid=abc; pref=dark; __Host-t=1", "app.example.org", "example.org");
+        expect("without their attributes: each name expired on its host and under the site's domain: " + byName, byName.size() == 7 && byName.contains("sid=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure; Domain=example.org")
+            && byName.contains("pref=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure") && byName.contains("__Host-t=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure"));
+
         // ------------------------------------------------ As Rust names them
         Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
         expect("Rust's features found", features.find());
@@ -416,6 +428,19 @@ public final class SiteScreenCheck
         expect("no web view: the browser, then the screen closes, nothing else asked", create.contains("browse(site.url);\n            finish();\n            return;"));
         expect("the cookie manager asked in one place, behind that note, its failure caught", screen.split("CookieManager\\.getInstance\\(\\)", -1).length - 1 == 2 && body(screen, "private void flushCookies()", "    ").contains("if (!madeView)") && body(screen, "private void flushCookies()", "    ").contains("catch (RuntimeException e)"));
         expect("pausing and closing write the cookies through it", body(screen, "protected void onPause()", "    ").contains("flushCookies();") && body(screen, "protected void onDestroy()", "    ").contains("flushCookies();") && !body(screen, "protected void onDestroy()", "    ").contains("CookieManager"));
+        String forgetting = body(web, "private static String forgetHere(", "    ");
+        expect("a site's data deleted alone where the web view can", forgetting.indexOf("WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)") >= 0 && forgetting.indexOf("WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)") < forgetting.indexOf("WebStorageCompat.deleteBrowsingDataForSite(WebStorage.getInstance(), url,"));
+        expect("else its cookies and its address's storage", forgetting.contains("cookies.setCookie(address, cookie);") && forgetting.contains("WebStorage.getInstance().deleteOrigin(") && forgetting.contains("return \"cookies\";"));
+        expect("on Android's main thread, waited for a while", body(web, "static JSONObject forget(", "    ").contains("new Handler(Looper.getMainLooper()).post(work);") && body(web, "static JSONObject forget(", "    ").contains("done.await(8, java.util.concurrent.TimeUnit.SECONDS)"));
+        expect("StepService's door hands it on", web.contains("case \"site-forget\":"));
+        boolean wipes = false;
+        try (java.util.stream.Stream<Path> all = Files.list(java)) {
+            for (Path source : (Iterable<Path>) all::iterator) {
+                String text = code(read(source));
+                wipes |= text.contains("removeAllCookies") || text.contains("deleteAllData") || text.contains("getDir(\"webview\"") || text.contains("clearCache(true)") || text.contains("deleteBrowsingData(");
+            }
+        }
+        expect("nothing of Sioul's Java empties every site's store (review K2's rule, kept here)", !wipes);
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");

@@ -125,7 +125,7 @@ Item {
         onSaid: problem => page.problem = problem
         onChanged: page.reload()
         onEditAsked: editing.now().begin(page.menuSite)
-        onRemoveAsked: removing.now().ask(page.menuSite ? page.menuSite.name : "", page.sioul.text("site-remove-ask"), page.sioul.text("site-remove"))
+        onRemoveAsked: removing.now().ask(page.menuSite ? page.menuSite.name : "", page.sioul.text("site-remove-ask-android"), page.sioul.text("site-remove"))
     }
 
     // The forms, made the first time they are asked for (Later.qml).
@@ -157,7 +157,8 @@ Item {
             }
         }
     }
-    // Out of Sioul: its sign-in stays on this device until Android's data of Sioul is cleared.
+    // Out of Sioul, and its sign-in on this device forgotten as far as the
+    // web view can: the line under the title says what stays (review K1).
     Later {
         id: removing
 
