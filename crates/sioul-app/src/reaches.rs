@@ -107,7 +107,7 @@ fn kinds(phone: bool) -> Vec<Kind> {
 
 /// The rows the tab shows here, by id: every channel's (By person says when
 /// one does not apply yet), but the call screening's (numbers nobody knows and
-/// hidden numbers on calls: Settings ▸ This phone), and the kinds that act on this device.
+/// hidden numbers on calls: Settings ▸ Devices ▸ this phone's card), and the kinds that act on this device.
 fn shown_rows(phone: bool) -> Vec<Row> {
     let mut rows: Vec<Row> = Channel::ALL.iter().flat_map(|c| attention::channel_rows(*c)).filter(|r| !attention::screened(*r)).collect();
     let mut own = kinds(phone);
@@ -1339,7 +1339,7 @@ mod tests {
         speak("en");
         let computer = |phones: Phones| Reach { messages: phones == Phones::Holding, phones, ..Reach::default() };
         assert_eq!(channel_note(Channel::Messages, computer(Phones::None)), text("attention-channel-messages-none"));
-        assert_eq!(channel_note(Channel::Messages, computer(Phones::WithoutAccess)), "None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ This phone, on the phone).");
+        assert_eq!(channel_note(Channel::Messages, computer(Phones::WithoutAccess)), "None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ Devices, the phone's card, on the phone).");
         assert_eq!(channel_note(Channel::Messages, computer(Phones::Holding)), text("attention-channel-messages-phone"));
         assert_eq!(channel_note(Channel::Mail, computer(Phones::WithoutAccess)), "");
         // The moment and the channels said: messages only from a phone that holds them.

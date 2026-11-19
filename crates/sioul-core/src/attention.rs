@@ -2252,7 +2252,7 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Level; 9])]) -> R
 
 /// The refusal said when a write would set one of the call screening's rows.
 fn screened_refusal(key: &str) -> String {
-    format!("{key}: the call screening's own (Settings ▸ This phone ▸ Calls ▸ Call screening: screening.unknown, screening.hidden)")
+    format!("{key}: the call screening's own (Settings ▸ Devices ▸ this phone's card ▸ The call screening on this phone: screening.unknown, screening.hidden)")
 }
 
 /// A preset chosen: every row written as it says (the usual taken out),

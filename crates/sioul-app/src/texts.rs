@@ -2813,7 +2813,7 @@ pub(crate) fn kept_words() -> String {
     tr().text("texts-kept", Some(&args))
 }
 
-// ---------------------------------------------------------------- Settings ▸ This phone ▸ Texts
+// ---------------------------------------------------------------- Settings ▸ Devices ▸ this phone's card ▸ Texts
 
 /// The phone's tab (TextsSetup.qml): {android, state (each permission, the
 /// SIMs), on (the part here), sharing, progress (what the phone holds and how

@@ -18,13 +18,13 @@
 //!   press; it is carried into the shared switch here, `carry`); said in the
 //!   status line (`moment`) and the notification (`step`).
 //! - **The call screening** (`sioul_core::screening`): its settings in
-//!   Settings ▸ This phone ▸ Calls (`setup`, "set"), written into the table
+//!   Settings ▸ Devices ▸ this phone's card ▸ Calls (`setup`, "set"), written into the table
 //!   with the numbers it knows by their kind (`make`); whether it lets numbers
 //!   nobody knows ring at a time, for the phone's modes (`unknown_rings`).
 //! - **The log**: on a phone, Java's calls copied into this phone's own log,
 //!   which the sharing carries to your other devices (`before_exchange`); on
 //!   every device, its own lines taken out after their month.
-//! - **The call history**, once Settings ▸ This phone ▸ Calls let Sioul read
+//! - **The call history**, once Settings ▸ Devices ▸ this phone's card ▸ Calls let Sioul read
 //!   it: the phone's calls since the last kept copied into its own history,
 //!   carried as the log is (`carry_history`); each new one given once to the
 //!   call-back rules, which write their tasks (`call_back`).
@@ -468,7 +468,7 @@ static HISTORY_READ: Mutex<i64> = Mutex::new(0);
 /// The call history is read again at most this often (ms).
 const HISTORY_EVERY_MS: i64 = 30_000;
 
-/// On a phone that may read its call history (Settings ▸ This phone ▸
+/// On a phone that may read its call history (Settings ▸ Devices ▸ this phone's card ▸
 /// Calls): the calls since the last kept copied into its own history
 /// (`calls::carry_history`), at most every half minute; each new one, once,
 /// to the call-back rules (`call_back`). Two processes reading at once copy
@@ -953,7 +953,7 @@ fn row(key: &str, kind: &str, label: &str, help: &str, value: serde_json::Value,
     })
 }
 
-/// Settings ▸ This phone ▸ Calls ▸ Call screening: {title, intro, rows,
+/// Settings ▸ Devices ▸ this phone's card ▸ Calls ▸ Call screening: {title, intro, rows,
 /// hears, expecting}; each row at its value now (`Screening::of`: the
 /// first values while unsaid); numbers nobody knows said with ARCEP's list of
 /// the blocks it gave to no operator, its day, and until when a call's line
