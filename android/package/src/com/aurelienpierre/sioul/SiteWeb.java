@@ -586,6 +586,7 @@ final class SiteWeb
         ENGLISH.put("open", "Open");
         ENGLISH.put("stop", "Stop");
         ENGLISH.put("no_app", "No application on this device opens this file.");
+        ENGLISH.put("no_chooser", "No application on this device lets you choose a file to send.");
         ENGLISH.put("save_failed", "{file} was not saved: {why}");
         ENGLISH.put("why_form", "the site made it for a form, which Sioul cannot send again. Open the page in your browser to save it.");
         ENGLISH.put("why_elsewhere", "the site sends it from another address, where Sioul does not take its sign-in. Open the page in your browser to save it.");
@@ -1033,8 +1034,8 @@ final class SiteWeb
     /**
      * A downloaded file's name, as the web view guessed it, made safe for
      * Downloads: no folder in it, no control character, never "." or ".."
-     * nor hidden, 120 characters at most (its extension kept); "download"
-     * when nothing is left.
+     * nor hidden, 120 characters and 240 bytes at most (its extension
+     * kept); "download" when nothing is left.
      */
     static String fileName(String guessed)
     {
@@ -1048,12 +1049,17 @@ final class SiteWeb
         name = out.toString().trim();
         while (name.startsWith("."))
             name = name.substring(1);
-        if (name.length() > 120) {
-            int dot = name.lastIndexOf('.');
-            String ext = dot > 0 && name.length() - dot <= 10 ? name.substring(dot) : "";
-            name = name.substring(0, 120 - ext.length()) + ext;
-        }
-        return name.isEmpty() ? "download" : name;
+        int dot = name.lastIndexOf('.');
+        String ext = dot > 0 && name.length() - dot <= 10 ? name.substring(dot) : "";
+        String stem = ext.isEmpty() ? name : name.substring(0, dot);
+        if (name.length() > 120)
+            stem = stem.substring(0, Math.max(0, 120 - ext.length()));
+        // A file system's names hold 255 bytes: 240 at most in UTF-8, cut between characters (section 10).
+        while (!stem.isEmpty() && (stem + ext).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 240)
+            stem = stem.substring(0, Character.isLowSurrogate(stem.charAt(stem.length() - 1)) && stem.length() > 1 ? stem.length() - 2 : stem.length() - 1);
+        if (stem.trim().isEmpty())
+            return "download" + ext;
+        return (stem + ext).trim();
     }
 
     /**
@@ -1081,6 +1087,36 @@ final class SiteWeb
         if (media)
             what.add(site.word("asked_media"));
         return what.isEmpty() ? null : site.word("asked").replace("{what}", String.join(", ", what));
+    }
+
+    /**
+     * The types Android's file chooser offers for a page's field: each type
+     * it names, and each extension (".pdf") as its type, through
+     * {@code byExtension} (Android's MimeTypeMap); doubles and unknowns
+     * left out; none when the field takes anything. The web view's own
+     * intent takes the field's first entry as a type, which is none for an
+     * extension (review F5).
+     *
+     * @param accepted the field's accept entries, or null
+     * @param byExtension a type for an extension without its dot, or null
+     * @return the types, none for any
+     */
+    static String[] acceptTypes(String[] accepted, java.util.function.Function<String, String> byExtension)
+    {
+        java.util.List<String> types = new java.util.ArrayList<>();
+        for (String entry : accepted == null ? new String[0] : accepted) {
+            for (String part : entry == null ? new String[0] : entry.split(",")) {
+                String given = part.trim().toLowerCase(Locale.ROOT);
+                String type = given.startsWith(".") ? byExtension.apply(given.substring(1)) : given;
+                if (type != null && type.equals("*" + '/' + "*"))
+                    return new String[0];
+                if (type == null || !type.matches("[a-z0-9.+-]+/[a-z0-9.+*-]+"))
+                    continue;
+                if (!types.contains(type))
+                    types.add(type);
+            }
+        }
+        return types.toArray(new String[0]);
     }
 
     /**

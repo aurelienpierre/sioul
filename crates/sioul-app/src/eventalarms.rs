@@ -884,7 +884,7 @@ mod tests {
         assert_eq!(of(r#"{"kind":"settings:words","key":""}"#), None);
         assert_eq!(of(r#"{"key":"work"}"#), None);
         let notice = |key: &str| of(&serde_json::json!({ "kind": "notice", "key": key }).to_string());
-        for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport", "sioul:site/chat#1", "sioul:site/element", "sioul:site/element#room%2F1"] {
+        for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport", "sioul:site/chat#1", "sioul:site/team-chat", "sioul:site/team-chat#room%2F1"] {
             assert_eq!(notice(taken), Some(("notice".into(), taken.into())), "{taken}");
         }
         for refused in ["/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1", "file:///sdcard/x.eml", "sioul:need/", "sioul:need/../x", "sioul:need/a/b", "sioul:day/work:yesterday", "sioul:day/lunch:2026-11-14", "sioul:day/work", "sioul:task/..", "sioul:task/a/../b", "sioul:settings/words", "sioul:move", "sioul:site/", "sioul:site/..", "sioul:site/a/b", "sioul:site/a#b/c", "sioul:site/a#b#c", "sioul:dose/a", "mid:../../etc/passwd", "sioul:task/a\\b", ""] {

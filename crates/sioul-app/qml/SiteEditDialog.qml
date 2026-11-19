@@ -39,7 +39,7 @@ SafeDialog {
         editUrl.text = site ? site.url : ""
         editKind.currentIndex = site ? Math.max(0, editing.kinds.indexOf(site.kind)) : 0
         editCategories.text = site ? (site.categories || []).join(", ") : ""
-        // Whom you open it for ("Odile's ameli account"): a person of the household, or nobody said.
+        // Whom you open it for ("Odile's health insurance account"): a person of the household, or nobody said.
         editing.persons = (JSON.parse(editing.sioul.household() || "{}").persons || []).filter(p => p.id !== "me")
         editing.personId = ((site ? JSON.parse(editing.sioul.sitePerson(site.id) || "null") : null) || { id: "" }).id
         editing.problem = ""

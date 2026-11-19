@@ -171,6 +171,9 @@ public final class SiteScreen extends Activity
             return;
         }
         setContentView(layout());
+        // A site's page is not pictured in Recents, as a health card is not (section 10): banks, mail.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            setRecentsScreenshotEnabled(false);
         try {
             // A web view drawing inside Sioul's process would take Sioul with a page's crash (review V1).
             if (SiteWeb.drawsInside()) {
@@ -278,6 +281,12 @@ public final class SiteScreen extends Activity
             if (bars != null) {
                 int both = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
                 bars.setSystemBarsAppearance(light ? both : 0, both);
+            }
+            // Android 11 to 14 still draw the theme's own colour under the bars: Sioul's (section 10).
+            // From 15 the bars are clear, over the screen's own background.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                getWindow().setStatusBarColor(site.surface);
+                getWindow().setNavigationBarColor(site.surface);
             }
         } else {
             getWindow().setStatusBarColor(site.surface);
@@ -706,7 +715,12 @@ public final class SiteScreen extends Activity
                 return true;
             }
             files = callback;
-            Intent pick = params.createIntent();
+            // Android's chooser for the field's types, extensions (".pdf") taken as their types (review F5).
+            String[] types = SiteWeb.acceptTypes(params.getAcceptTypes(), extension -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension));
+            Intent pick = new Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE);
+            pick.setType(types.length == 1 ? types[0] : "*" + '/' + "*");
+            if (types.length > 1)
+                pick.putExtra(Intent.EXTRA_MIME_TYPES, types);
             if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE)
                 pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             // Each request its own code: a late answer to an earlier one never reaches this one.
@@ -716,6 +730,7 @@ public final class SiteScreen extends Activity
             } catch (ActivityNotFoundException e) {
                 files = null;
                 callback.onReceiveValue(null);
+                say(site.word("no_chooser"));
             }
             return true;
         }

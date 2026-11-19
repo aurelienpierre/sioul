@@ -3233,6 +3233,7 @@ site-screen-too-many = Cette page a proposé plus de fichiers à la fois que Sio
 site-screen-open = Ouvrir
 site-screen-stop = Arrêter
 site-screen-no-app = Aucune application de cet appareil n’ouvre ce fichier.
+site-screen-no-chooser = Aucune application de cet appareil ne permet de choisir un fichier à envoyer.
 site-screen-save-failed = { $file } n’a pas été enregistré : { $why }
 site-screen-why-form = le site l’a fait pour un formulaire, que Sioul ne peut pas renvoyer. Ouvrez la page dans votre navigateur pour l’enregistrer.
 site-screen-why-elsewhere = le site l’envoie depuis une autre adresse, où Sioul n’emporte pas sa connexion. Ouvrez la page dans votre navigateur pour l’enregistrer.

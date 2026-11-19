@@ -245,6 +245,7 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("open", "site-screen-open"),
         ("stop", "site-screen-stop"),
         ("no_app", "site-screen-no-app"),
+        ("no_chooser", "site-screen-no-chooser"),
         ("why_form", "site-screen-why-form"),
         ("why_elsewhere", "site-screen-why-elsewhere"),
         ("why_page", "site-screen-why-page"),
@@ -484,7 +485,7 @@ mod tests {
     /// (SiteWeb.domainOf; SiteScreenCheck holds these same pairs).
     #[test]
     fn the_domain_a_site_s_links_stay_in() {
-        for (host, domain) in [("secure.bank.example.co.uk", "example.co.uk"), ("app.franceconnect.gouv.fr", "franceconnect.gouv.fr"), ("mail.proton.me", "proton.me"), ("proton.me", "proton.me"), ("localhost", "localhost"), ("a.b.c.example.org", "example.org"), ("www.service-public.fr", "service-public.fr")] {
+        for (host, domain) in [("secure.bank.example.co.uk", "example.co.uk"), ("id.example.gouv.fr", "example.gouv.fr"), ("mail.example.me", "example.me"), ("example.me", "example.me"), ("localhost", "localhost"), ("a.b.c.example.org", "example.org"), ("www.example-public.fr", "example-public.fr")] {
             assert_eq!(sites::domain_of(host), domain, "{host}");
         }
     }

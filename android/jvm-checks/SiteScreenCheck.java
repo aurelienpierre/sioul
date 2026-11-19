@@ -144,7 +144,7 @@ public final class SiteScreenCheck
         expect("the word given by Rust: from", bank.word("from").equals("from {name}"));
 
         // ------------------------------------------------ The domain, as Rust's domain_of
-        String[][] domains = { { "secure.bank.example.co.uk", "example.co.uk" }, { "app.franceconnect.gouv.fr", "franceconnect.gouv.fr" }, { "mail.proton.me", "proton.me" }, { "proton.me", "proton.me" }, { "localhost", "localhost" }, { "a.b.c.example.org", "example.org" }, { "www.service-public.fr", "service-public.fr" } };
+        String[][] domains = { { "secure.bank.example.co.uk", "example.co.uk" }, { "id.example.gouv.fr", "example.gouv.fr" }, { "mail.example.me", "example.me" }, { "example.me", "example.me" }, { "localhost", "localhost" }, { "a.b.c.example.org", "example.org" }, { "www.example-public.fr", "example-public.fr" } };
         for (String[] pair : domains)
             expect("the domain of " + pair[0], SiteWeb.domainOf(pair[0]).equals(pair[1]));
         String rust = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "siteview.rs"));
@@ -218,13 +218,22 @@ public final class SiteScreenCheck
         String agent = "Mozilla/5.0 (Linux; Android 14; Tablet Build/AP2A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.90 Safari/537.36";
         String cleaned = SiteWeb.userAgent(agent);
         expect("the user agent says it is a web view, without the device's model (review S1): " + cleaned, cleaned.equals("Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.90 Safari/537.36"));
-        expect("a tablet's agent without wv keeps its Android, drops its model", SiteWeb.userAgent("Mozilla/5.0 (Linux; Android 9; SM-T000 Build/PPR1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36").startsWith("Mozilla/5.0 (Linux; Android 9) AppleWebKit"));
+        expect("a tablet's agent without wv keeps its Android, drops its model", SiteWeb.userAgent("Mozilla/5.0 (Linux; Android 9; Tablet-9 Build/PPR1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36").startsWith("Mozilla/5.0 (Linux; Android 9) AppleWebKit"));
         expect("an agent that names no Android: unchanged", SiteWeb.userAgent("Mozilla/5.0 (X11; Linux x86_64)").equals("Mozilla/5.0 (X11; Linux x86_64)") && SiteWeb.userAgent(null) == null);
         String[][] names = { { "../../etc/passwd", "passwd" }, { "..\\..\\x.pdf", "x.pdf" }, { ".hidden", "hidden" }, { "a:b*c?.pdf", "a_b_c_.pdf" }, { "report\n.pdf", "report_.pdf" }, { "", "download" }, { null, "download" }, { "...", "download" }, { "Relevé de compte.pdf", "Relevé de compte.pdf" } };
         for (String[] pair : names)
             expect("a file's name: " + pair[0] + " → " + SiteWeb.fileName(pair[0]), SiteWeb.fileName(pair[0]).equals(pair[1]));
         String long_ = SiteWeb.fileName("a".repeat(300) + ".pdf");
         expect("a long name cut, its extension kept", long_.length() == 120 && long_.endsWith(".pdf"));
+        String wide = SiteWeb.fileName("\u00e9".repeat(119) + ".pdf");
+        expect("a name cut to 240 bytes in UTF-8, between characters (section 10): " + wide.length(), wide.getBytes(StandardCharsets.UTF_8).length <= 240 && wide.endsWith(".pdf") && wide.startsWith("\u00e9\u00e9"));
+        String emoji = SiteWeb.fileName("\ud83d\udcc4".repeat(70) + ".pdf");
+        expect("never half a character", emoji.getBytes(StandardCharsets.UTF_8).length <= 240 && !Character.isHighSurrogate(emoji.charAt(emoji.length() - 5)) && emoji.endsWith(".pdf"));
+        // The chooser's types (review F5): extensions as their types, none for any.
+        java.util.function.Function<String, String> map = ext -> ext.equals("pdf") ? "application/pdf" : ext.equals("jpg") ? "image/jpeg" : null;
+        expect("extensions as their types", java.util.Arrays.equals(SiteWeb.acceptTypes(new String[] { ".pdf,.JPG", "image/jpeg" }, map), new String[] { "application/pdf", "image/jpeg" }));
+        expect("types kept, unknown left out", java.util.Arrays.equals(SiteWeb.acceptTypes(new String[] { "image/*", ".xyz", "", null }, map), new String[] { "image/*" }));
+        expect("anything: no type", SiteWeb.acceptTypes(new String[] { "" }, map).length == 0 && SiteWeb.acceptTypes(null, map).length == 0 && SiteWeb.acceptTypes(new String[] { ".pdf", "*" + '/' + "*" }, map).length == 0);
         expect("nothing asked: no line", SiteWeb.askedLine(bank, false, false, false, false) == null);
         expect("what was asked, in Sioul's words", "Ce site a demandé la caméra, votre position\u202f: pas dans cette version de Sioul.".equals(SiteWeb.askedLine(bank, true, false, true, false)));
         expect("the microphone in English when not given", SiteWeb.askedLine(bank, false, true, false, false).contains("the microphone"));
@@ -485,6 +494,8 @@ public final class SiteScreenCheck
         expect("each navigation's window said to the rule", override.contains("SiteWeb.Window.SITE : popupTab ? SiteWeb.Window.TAB : SiteWeb.Window.POPUP") && override.contains("current, committed, site.domain, window"));
         expect("an empty window whose first page went elsewhere goes, after the call", override.contains("if (inPopup && request.isForMainFrame() && SiteWeb.isEmptyWindow(popupCommitted))") && body(screen, "private void closeEmpty(", "    ").contains("pages.post("));
         String chooser = body(screen, "public boolean onShowFileChooser(", "        ");
+        expect("the chooser's intent from the field's types, never the web view's guess (review F5)", chooser.contains("SiteWeb.acceptTypes(params.getAcceptTypes(),") && !chooser.contains("params.createIntent()") && chooser.contains("say(site.word(\"no_chooser\"));"));
+        expect("the system's bars in Sioul's colour on Android 11 to 14 (section 10)", body(screen, "private void insets(", "    ").contains("if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {"));
         expect("the chooser: another mode answered by nothing", chooser.contains("if (!SiteWeb.choosesFiles(params.getMode()))") && chooser.indexOf("choosesFiles") < chooser.indexOf("startActivityForResult"));
         String result = body(screen, "protected void onActivityResult(", "    ");
         expect("the chooser's answer checked, for the request waiting alone", result.contains("request == filesAsked && files != null") && result.contains("SiteWeb.chosen(result == RESULT_OK, data, getPackageName())"));
