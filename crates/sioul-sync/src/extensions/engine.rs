@@ -587,7 +587,8 @@ fn sign_in_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     match outcome {
         Ok(Some(returned)) if returned.starts_with(watch) => {
             visit.hide(&returned);
-            if let Some((_, query)) = returned.split_once('?') {
+            // The values of its query and of its fragment (`#access_token=…`), each hidden.
+            if let Some((_, query)) = returned.split_once(['?', '#']) {
                 for pair in query.split(['&', '#']) {
                     if let Some((_, value)) = pair.split_once('=') {
                         visit.hide(value);

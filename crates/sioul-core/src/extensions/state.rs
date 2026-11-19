@@ -150,20 +150,41 @@ pub fn change<T>(path: &Path, f: impl FnOnce(&mut State) -> T) -> Result<T, Stri
     })
 }
 
-/// The most lines an extension's log keeps.
+/// The most lines an extension's log keeps, and the most bytes.
 pub const LOG_LINES: usize = 400;
+pub const LOG_BYTES: usize = 128 << 10;
+/// The most characters a line of the log holds (the engine cuts its own the same).
+pub const LOG_WIDTH: usize = 300;
+
+/// A line as the log keeps it: no control character, `LOG_WIDTH` characters at most.
+fn log_line(line: &str) -> String {
+    let plain: String = line.chars().filter(|c| !c.is_control()).collect();
+    let mut cut: String = plain.chars().take(LOG_WIDTH).collect();
+    if cut.len() < plain.len() {
+        cut.push('…');
+    }
+    cut
+}
 
 /// Lines added to an extension's log at `path`, its oldest lines dropped
-/// beyond `LOG_LINES`. The lines come already cut and hidden (sioul-sync's engine).
+/// beyond `LOG_LINES` and `LOG_BYTES`. The engine's lines come hidden and
+/// cut; every line is cut here again, whoever wrote it (X6), and the window's
+/// own lines name nothing an extension said.
 pub fn append_log(path: &Path, lines: &[String]) -> Result<(), String> {
     if lines.is_empty() {
         return Ok(());
     }
     crate::filelock::with_lock(path, || {
         let before = std::fs::read_to_string(path).unwrap_or_default();
+        let added: Vec<String> = lines.iter().map(|l| log_line(l)).collect();
         let mut all: Vec<&str> = before.lines().collect();
-        all.extend(lines.iter().map(String::as_str));
-        let keep = all.len().saturating_sub(LOG_LINES);
+        all.extend(added.iter().map(String::as_str));
+        let mut keep = all.len().saturating_sub(LOG_LINES);
+        let mut bytes: usize = all[keep..].iter().map(|l| l.len() + 1).sum();
+        while bytes > LOG_BYTES && keep < all.len() {
+            bytes -= all[keep].len() + 1;
+            keep += 1;
+        }
         let text = all[keep..].join("\n") + "\n";
         if let Some(folder) = path.parent() {
             std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
@@ -201,6 +222,14 @@ mod tests {
         assert_eq!(kept.lines().count(), LOG_LINES);
         assert_eq!(kept.lines().last(), Some("2-199"));
         assert_eq!(kept.lines().next(), Some("1-0"));
+        // X6: every line cut, whoever wrote it; the log bounded in bytes too.
+        append_log(&log, &[format!("long {}\u{7}", "x".repeat(100_000))]).unwrap();
+        let last = std::fs::read_to_string(&log).unwrap().lines().last().unwrap().to_string();
+        assert!(last.chars().count() <= LOG_WIDTH + 1 && !last.contains('\u{7}'), "{}", last.len());
+        for _ in 0..3 {
+            append_log(&log, &(0..400).map(|i| format!("{i} {}", "y".repeat(290))).collect::<Vec<_>>()).unwrap();
+        }
+        assert!(std::fs::metadata(&log).unwrap().len() as usize <= LOG_BYTES);
         let _ = std::fs::remove_dir_all(&folder);
     }
 

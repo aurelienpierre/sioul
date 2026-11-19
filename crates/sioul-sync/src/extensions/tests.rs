@@ -195,6 +195,13 @@ fn a_sign_in_is_shown_only_on_a_sign_in_call_and_hidden_from_the_log() {
     i32.const 0";
     let file = module(&imports, &asks, body);
     let stand = Stand { returned: Some("example-app://cb?code=OC-secret-1234&state=s".into()), ..Stand::default() };
+    // K4: a fragment's values too, with no query before it.
+    {
+        let fragment = module(&imports, &[asks[0], r#"{"line":"token AT-fragment-5678 seen"}"#], body);
+        let stand = Stand { returned: Some("example-app://cb#access_token=AT-fragment-5678&state=s".into()), ..Stand::default() };
+        let (outcome, _) = engine::call(&fragment, &given, &call_text(Call::SignIn(None), false), stand, &small(), true);
+        assert!(outcome.log.iter().any(|l| l.contains("token [hidden] seen")), "{:?}", outcome.log);
+    }
     // In a refresh: refused, nothing shown.
     let (outcome, stand) = run_it(&file, &given, stand, false);
     assert_eq!(outcome.reply.unwrap(), r#"{"refused":"not-now"}"#);
