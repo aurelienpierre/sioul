@@ -4775,6 +4775,7 @@ subscribe-not-public = Cette adresse est sur un réseau privé : Sioul lit seu
 subscribe-redirects = Cette adresse renvoie ailleurs plus de trois fois.
 subscribe-too-large = Cet agenda pèse plus de dix mégaoctets : il n’a pas été lu.
 subscribe-too-many = Cet agenda tient plus de vingt mille événements : il n’a pas été lu.
+subscribe-too-large-kept = Cet agenda prendrait ici bien plus de place qu’il n’en pèse : il n’a pas été lu.
 subscribe-page = L’adresse donne une page web, pas un agenda : peut-être une page de connexion.
 subscribe-text = Le serveur a répondu « { $said } », pas un agenda.
 subscribe-empty = Le serveur n’a rien répondu.

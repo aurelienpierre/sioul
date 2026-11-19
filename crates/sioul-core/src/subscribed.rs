@@ -244,6 +244,9 @@ pub enum Problem {
     TooLarge,
     /// More than twenty thousand events.
     TooMany,
+    /// Far heavier kept here than it came (each event with its time zones,
+    /// `agenda::kept_most`): a head of megabytes repeated for each event (F7).
+    TooLargeKept,
     /// A web page, not a calendar: a sign-in page, an error page.
     Page,
     /// A line of text, not a calendar: a refusal ("Invalid authentication").
@@ -270,6 +273,7 @@ impl Problem {
             Problem::Redirects => "subscribe-redirects",
             Problem::TooLarge => "subscribe-too-large",
             Problem::TooMany => "subscribe-too-many",
+            Problem::TooLargeKept => "subscribe-too-large-kept",
             Problem::Page => "subscribe-page",
             Problem::Text(_) => "subscribe-text",
             Problem::Empty => "subscribe-empty",
@@ -372,9 +376,11 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
     if text.lines().filter(|l| l.trim().eq_ignore_ascii_case("BEGIN:VEVENT")).count() > MOST_EVENTS {
         return Err(Problem::TooMany);
     }
-    let objects = match crate::agenda::calendar_objects(text, &|lines: &[String]| stable_uid(lines)) {
+    // Each event with what it needs, the whole weighed against what came (F7).
+    let objects = match crate::agenda::calendar_objects(text, &|lines: &[String]| stable_uid(lines), crate::agenda::kept_most(bytes.len())) {
         Ok(objects) => objects,
         Err(crate::agenda::FileProblem::NoEvent) => Vec::new(),
+        Err(crate::agenda::FileProblem::TooLarge) => return Err(Problem::TooLargeKept),
         Err(_) => return Err(Problem::NotCalendar),
     };
     // The calendar's own lines, outside its components.
@@ -541,6 +547,7 @@ impl Fetched {
             "subscribe-redirects" => Problem::Redirects,
             "subscribe-too-large" => Problem::TooLarge,
             "subscribe-too-many" => Problem::TooMany,
+            "subscribe-too-large-kept" => Problem::TooLargeKept,
             "subscribe-page" => Problem::Page,
             "subscribe-text" => Problem::Text(self.said.clone()),
             "subscribe-empty" => Problem::Empty,

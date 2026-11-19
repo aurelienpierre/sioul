@@ -231,3 +231,51 @@ fn a_subscription_is_written_changed_and_stopped() {
     assert!(config.agenda.subscriptions.is_empty() && config.agenda.calendars.is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The review's F7: a calendar whose own lines are heavy does not weigh
+/// that much once more per event: each event keeps what it needs (its time
+/// zones, the format's lines), never the calendar's whole head.
+#[test]
+fn a_copy_weighs_about_what_its_answer_weighs() {
+    let mut text = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Example//EN\r\n");
+    text.push_str(&format!("X-FILL:{}\r\n", "a".repeat(100_000)));
+    text.push_str("BEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n");
+    text.push_str("BEGIN:VTIMEZONE\r\nTZID:Asia/Tokyo\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:+0900\r\nTZOFFSETTO:+0900\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n");
+    for n in 0..200 {
+        text.push_str(&format!("BEGIN:VEVENT\r\nUID:{n}\r\nDTSTART;TZID=Europe/Paris:20300101T090000\r\nEND:VEVENT\r\n"));
+    }
+    text.push_str("END:VCALENDAR\r\n");
+    let feed = read(text.as_bytes()).unwrap();
+    let kept: usize = feed.items.iter().map(|(_, t)| t.len()).sum();
+    assert!(kept < 4 * text.len(), "{kept} bytes kept for {} received", text.len());
+    let one = &feed.items[0].1;
+    assert!(one.contains("TZID:Europe/Paris") && !one.contains("Asia/Tokyo") && !one.contains("X-FILL") && one.contains("VERSION:2.0"), "{one}");
+}
+
+/// A time zone of thousands of parts named by every event would weigh a
+/// thousand times what came: refused, the last copy kept, the line saying
+/// the calendar is too large to keep (F7).
+#[test]
+fn a_calendar_too_heavy_once_kept_replaces_nothing() {
+    crate::config::stand_ins_only();
+    let mut heavy = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Heavy/Zone\r\n");
+    for year in 0..1_500 {
+        heavy.push_str(&format!("BEGIN:STANDARD\r\nDTSTART:{:04}0101T000000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\n", 1000 + year));
+    }
+    heavy.push_str("END:VTIMEZONE\r\n");
+    for n in 0..2_000 {
+        heavy.push_str(&format!("BEGIN:VEVENT\r\nUID:{n}\r\nDTSTART;TZID=Heavy/Zone:20300101T090000\r\nEND:VEVENT\r\n"));
+    }
+    heavy.push_str("END:VCALENDAR\r\n");
+    assert_eq!(read(heavy.as_bytes()), Err(Problem::TooLargeKept));
+    let id = "heavy-test";
+    let s = subscription("https://calendar.example.org/heavy.ics", None, None);
+    vdir::prepare_subscribed(id, "Heavy", None).unwrap();
+    assert_eq!(take(id, &s, calendar(PUBLIC), 1_000).unwrap(), Taken::Changed);
+    assert_eq!(take(id, &s, calendar(&heavy), 2_000).unwrap(), Taken::Kept(Problem::TooLargeKept));
+    assert_eq!(folder(id).read_dir().unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count(), 2, "the last copy stays");
+    let tr = crate::i18n::Translator::new("en");
+    let now = jiff::Timestamp::from_second(3_000).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
+    assert!(line(id, &now, &tr).contains("too much room"), "{}", line(id, &now, &tr));
+    vdir::remove_subscribed(id).unwrap();
+}

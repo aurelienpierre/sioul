@@ -4742,6 +4742,7 @@ subscribe-not-public = This address is on a private network: Sioul reads public 
 subscribe-redirects = This address sends elsewhere more than three times.
 subscribe-too-large = This calendar weighs more than ten megabytes: it was not read.
 subscribe-too-many = This calendar holds more than twenty thousand events: it was not read.
+subscribe-too-large-kept = This calendar would take too much room kept here, far more than it weighs: it was not read.
 subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
 subscribe-text = The server answered "{ $said }", not a calendar.
 subscribe-empty = The server answered nothing.

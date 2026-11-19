@@ -3855,7 +3855,7 @@ pub fn calendar_file(bytes: &[u8], zone: &TimeZone) -> Result<CalendarFile, File
     }
     let text = String::from_utf8_lossy(bytes);
     // An event without UID gets one, new at each read.
-    let objects = calendar_objects(&text, &|_: &[String]| format!("{}@sioul", vdir::new_name()))?;
+    let objects = calendar_objects(&text, &|_: &[String]| format!("{}@sioul", vdir::new_name()), kept_most(bytes.len()))?;
     let mut out = CalendarFile::default();
     for (uid, object) in objects {
         let Some(edit) = edit_of_text(&object, zone) else { continue };
@@ -3882,15 +3882,34 @@ pub fn calendar_file(bytes: &[u8], zone: &TimeZone) -> Result<CalendarFile, File
     Ok(out)
 }
 
+/// The most a calendar of `received` bytes may weigh once kept as calendar
+/// objects (`calendar_objects`): four times what came, and a megabyte. An
+/// ordinary calendar keeps about what it weighs (each event with its time
+/// zones); one whose head is heavy (a line of megabytes, a time zone of
+/// thousands of parts) would weigh that once more per event (the review of
+/// the subscribed calendars, F7: ten megabytes could become a hundred gigabytes).
+pub fn kept_most(received: usize) -> usize {
+    received.saturating_mul(4).saturating_add(1024 * 1024)
+}
+
+/// The calendar's own lines an event's object keeps with it: what says
+/// which calendar format it is, and the zone its floating times were meant
+/// on; each a line of reasonable length (`HEAD_LINE_MOST`).
+const HEAD_KEPT: [&str; 4] = ["VERSION", "PRODID", "CALSCALE", "X-WR-TIMEZONE"];
+const HEAD_LINE_MOST: usize = 1000;
+
 /// A calendar's events as calendar objects, as Sioul keeps them, one file
-/// each (RFC 4791 §4.1): one per UID, a series with its changed times, the
-/// time zones and the calendar's own lines with it, METHOD taken out, any
-/// other component (a task, a journal) left out. A calendar published or
-/// asked alone (METHOD PUBLISH, REQUEST or none). `uid_of`: the UID of an
-/// event written without one, from its lines (a calendar file opened: a new
-/// one; a subscribed calendar: one made from what it says, the same at each
-/// fetch). What a calendar file opened and a subscribed calendar read.
-pub fn calendar_objects(text: &str, uid_of: &dyn Fn(&[String]) -> String) -> Result<Vec<(String, String)>, FileProblem> {
+/// each (RFC 4791 §4.1): one per UID, a series with its changed times, with
+/// what it needs of the calendar: its format's lines (`HEAD_KEPT`) and the
+/// time zones its times name, never the calendar's whole head (F7); METHOD
+/// taken out, any other component (a task, a journal) left out. A calendar
+/// published or asked alone (METHOD PUBLISH, REQUEST or none). `uid_of`:
+/// the UID of an event written without one, from its lines (a calendar file
+/// opened: a new one; a subscribed calendar: one made from what it says, the
+/// same at each fetch). `most`: the most the objects may weigh together
+/// (`kept_most`), past which none is given (`FileProblem::TooLarge`). What a
+/// calendar file opened and a subscribed calendar read.
+pub fn calendar_objects(text: &str, uid_of: &dyn Fn(&[String]) -> String, most: usize) -> Result<Vec<(String, String)>, FileProblem> {
     let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
     let unfolded = lines::unfold(&text);
     if !unfolded.iter().any(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VCALENDAR")) || parse(&utc_series(&text)).is_none() {
@@ -3901,31 +3920,48 @@ pub fn calendar_objects(text: &str, uid_of: &dyn Fn(&[String]) -> String) -> Res
     if !matches!(method.as_str(), "" | "PUBLISH" | "REQUEST") {
         return Err(FileProblem::Answer);
     }
+    drop(unfolded);
     let cut = cut(&text);
-    // The head without the other components a file may carry (a task, a
-    // journal): its own lines and its time zones.
-    let mut head: Vec<String> = Vec::new();
-    let mut other = 0usize;
-    let mut in_zone = 0usize;
+    // The head's lines an object keeps (`HEAD_KEPT`), and its time zones by
+    // their TZID; the other components a file may carry (a task, a journal)
+    // and the calendar's other lines left out.
+    let mut own: Vec<String> = vec!["BEGIN:VCALENDAR".to_string()];
+    let mut zones: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut zone: Option<Vec<String>> = None;
+    let (mut depth, mut other) = (0usize, false);
     for line in &cut.head {
         let name = lines::name(line);
         let what = lines::value(line).trim().to_ascii_uppercase();
-        let opens = name == "BEGIN" && what != "VCALENDAR";
-        if other > 0 {
-            other += usize::from(opens);
-            other -= usize::from(name == "END");
+        if name == "BEGIN" && what == "VCALENDAR" && depth == 0 {
             continue;
         }
-        if opens && what != "VTIMEZONE" && in_zone == 0 {
-            other = 1;
+        if name == "BEGIN" {
+            depth += 1;
+            if depth == 1 {
+                other = what != "VTIMEZONE";
+                if !other {
+                    zone = Some(Vec::new());
+                }
+            }
+        }
+        if depth == 0 {
+            if HEAD_KEPT.contains(&name.as_str()) && line.len() <= HEAD_LINE_MOST && !own.iter().any(|l| lines::name(l) == name) {
+                own.push(line.clone());
+            }
             continue;
         }
-        if opens {
-            in_zone += 1;
-        } else if name == "END" && in_zone > 0 {
-            in_zone -= 1;
+        if !other && let Some(block) = zone.as_mut() {
+            block.push(line.clone());
         }
-        head.push(line.clone());
+        if name == "END" {
+            depth -= 1;
+            if depth == 0 && let Some(block) = zone.take() {
+                let id = block.iter().find(|l| lines::name(l) == "TZID").map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
+                if !id.is_empty() {
+                    zones.entry(id).or_insert(block);
+                }
+            }
+        }
     }
     // One object per UID (a series and its overrides together); an event without one gets one.
     let mut by_uid: Vec<(String, Vec<Vec<String>>)> = Vec::new();
@@ -3949,7 +3985,24 @@ pub fn calendar_objects(text: &str, uid_of: &dyn Fn(&[String]) -> String) -> Res
             }
         }
     }
-    let objects: Vec<(String, String)> = by_uid.into_iter().map(|(uid, events)| (uid, stored(&Cut { head: head.clone(), events }.text()))).collect();
+    let mut objects: Vec<(String, String)> = Vec::with_capacity(by_uid.len());
+    let mut weight = 0usize;
+    for (uid, events) in by_uid {
+        // The time zones its times name, once each.
+        let named: BTreeSet<String> = events.iter().flatten().filter_map(|l| lines::param(l, "TZID")).map(|z| z.trim().to_string()).collect();
+        let mut head = own.clone();
+        for id in &named {
+            if let Some(block) = zones.get(id) {
+                head.extend(block.iter().cloned());
+            }
+        }
+        // Weighed before it is written out: past the most, nothing more is made.
+        weight = weight.saturating_add(head.iter().chain(events.iter().flatten()).map(|l| l.len() + 2).sum::<usize>());
+        if weight > most {
+            return Err(FileProblem::TooLarge);
+        }
+        objects.push((uid, stored(&Cut { head, events }.text())));
+    }
     if objects.is_empty() {
         return Err(FileProblem::NoEvent);
     }
