@@ -437,3 +437,28 @@ fn settings_that_do_not_read_take_nothing_back() {
     assert_eq!(left_out(&written).len(), 2);
     assert_eq!(keep(&written, &days_of(&Config::default(), &[]), from, to, &zone), None);
 }
+
+/// The review's F35: a series that ends on a day, made a whole day: its
+/// UNTIL takes the form of its DTSTART (RFC 5545 §3.3.10), and back; its
+/// last day's time still comes.
+#[test]
+fn until_follows_the_start_when_it_changes_kind() {
+    let zone = paris();
+    let timed = EventEdit { title: "Class".into(), start: "2030-10-02T17:00".into(), end: "2030-10-02T18:00".into(), repeat: "weekly".into(), every: 1, ends: "until".into(), until: "2031-06-25".into(), ..EventEdit::default() };
+    let text = agenda::new_event(&timed, &zone).unwrap();
+    assert!(text.contains("UNTIL=20310625T215959Z"), "{text}");
+    let form = agenda::edit_of_text(&text, &zone).unwrap();
+    let whole = agenda::apply(&text, &EventEdit { all_day: true, start: "2030-10-02".into(), end: "2030-10-02".into(), clock: String::new(), ..form }, &zone).unwrap();
+    assert!(whole.contains("DTSTART;VALUE=DATE:20301002"), "{whole}");
+    assert!(whole.contains("UNTIL=20310625") && !whole.contains("UNTIL=20310625T"), "a date, as its start: {whole}");
+    // The other way: a whole-day series until 25 June given a time keeps its last day's time.
+    let form = agenda::edit_of_text(&whole, &zone).unwrap();
+    assert_eq!((form.ends.as_str(), form.until.as_str()), ("until", "2031-06-25"));
+    let again = agenda::apply(&whole, &EventEdit { all_day: false, start: "2030-10-02T17:00".into(), end: "2030-10-02T18:00".into(), ..form }, &zone).unwrap();
+    let last = agenda::rule_times(&again, at("2031-06-25T00:00"), at("2031-06-26T00:00"), &zone).unwrap();
+    assert_eq!(last.len(), 1, "the time of the last day still comes: {again}");
+    // Another clock: the last second of the day on the new clock, in UTC.
+    let form = agenda::edit_of_text(&again, &zone).unwrap();
+    let york = agenda::apply(&again, &EventEdit { clock: "America/New_York".into(), ..form }, &zone).unwrap();
+    assert!(york.contains("UNTIL=20310626T035959Z"), "{york}");
+}

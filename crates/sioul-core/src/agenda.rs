@@ -2217,10 +2217,13 @@ struct Changed {
     geo: bool,
     /// Busy or free (TRANSP).
     transp: bool,
+    /// The start changed form (a whole day, or a time; another clock): a
+    /// rule's end is written again in its form, never kept as it was written (F35).
+    end_form: bool,
 }
 
 impl Changed {
-    const ALL: Changed = Changed { pauses: true, title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true, transp: true };
+    const ALL: Changed = Changed { pauses: true, title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true, transp: true, end_form: false };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
@@ -2241,7 +2244,8 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>, sta
         out.push(format!("GEO:{}", geo_value(lat, lon)));
     }
     if changed.rule {
-        out.extend(rule_line(&edit.repeat, edit.every, old_rule).map(|rule| with_end(&rule, edit, start, zone, old_rule)));
+        let kept_end = if changed.end_form { None } else { old_rule };
+        out.extend(rule_line(&edit.repeat, edit.every, old_rule).map(|rule| with_end(&rule, edit, start, zone, kept_end)));
     }
     if changed.pauses {
         out.extend(edit.pauses.iter().map(|p| format!("{}:{p}", crate::series::PAUSE_DURING)));
@@ -2317,7 +2321,11 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
         return Ok(text.to_string());
     }
     let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day, b.clock.trim()) != (&edit.start, &edit.end, edit.all_day, edit.clock.trim()));
-    let rule_changed = before.as_ref().is_none_or(|b| (&b.repeat, b.every, &b.ends, &b.until, b.count) != (&edit.repeat, edit.every, &edit.ends, &edit.until, edit.count));
+    // A series that ends on a day whose start becomes a whole day, or a time, or
+    // goes on another clock: its UNTIL written again in its start's form (RFC 5545
+    // §3.3.10; F35), else a whole day's would end at midnight, a time's in UTC.
+    let end_form = edit.ends == "until" && before.as_ref().is_some_and(|b| b.all_day != edit.all_day || b.clock.trim() != edit.clock.trim());
+    let rule_changed = end_form || before.as_ref().is_none_or(|b| (&b.repeat, b.every, &b.ends, &b.until, b.count) != (&edit.repeat, edit.every, &edit.ends, &edit.until, edit.count));
     let pauses_changed = before.as_ref().is_none_or(|b| b.pauses != edit.pauses);
     let old_rule = {
         let source = lines::unfold(text);
@@ -2334,7 +2342,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             // Busy or free said again when it changed, or when the event became a time or a whole
             // day, whose own default differs: written then, so that it stays what the form says.
             let transp = b.busy != edit.busy || b.all_day != edit.all_day;
-            Changed { pauses: pauses_changed, title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo, transp }
+            Changed { pauses: pauses_changed, title: !same_field(&b.title, &edit.title), location, notes: !same_field(&b.notes, &edit.notes), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo, transp, end_form }
         }
         None => Changed::ALL,
     };
