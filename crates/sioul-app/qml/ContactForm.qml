@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A contact's form: the name, addresses and numbers in view, each with what
-// it is for; the organisation; its categories, chosen among those in use or
-// typed; then, folded, postal addresses, the birthday, notes and web sites.
-// `edit()` gives what the backend saves.
+// A contact's form: the name, its parts folded under it (the title, given
+// names, family name, suffix: kept as typed, wave D), addresses and numbers
+// in view, each with what it is for; the organisation and the role; its
+// categories, chosen among those in use or typed; then, folded, postal
+// addresses, the birthday, notes and web sites. `edit()` gives what the
+// backend saves.
 
 pragma ComponentBehavior: Bound
 
@@ -18,9 +20,17 @@ ColumnLayout {
     required property var sioul
     required property var theme
     property bool moreShown: false
+    // The name's parts open under the name.
+    property bool partsShown: false
     readonly property var labels: ["", "work", "home", "cell"]
     // The categories the cards have (the page's list), to choose from.
     property var known: []
+    // The card's address book, when its groups do not decide who may reach
+    // you (someone else can write it): its name; "" when they do.
+    property string heldBook: ""
+
+    // Asked to open the address book's switch (Contacts ⚙ ▸ Address books).
+    signal askedSwitch()
     // This contact's categories, as edited.
     property var chosen: []
     // Those in use it does not have yet, to choose from.
@@ -50,6 +60,11 @@ ColumnLayout {
 
     function load(person) {
         name.text = person.name
+        prefix.text = person.prefix || ""
+        given.text = person.given || ""
+        family.text = person.family || ""
+        suffix.text = person.suffix || ""
+        form.partsShown = prefix.text !== ""
         org.text = person.org
         title.text = person.title
         birthday.text = person.birthday
@@ -85,6 +100,8 @@ ColumnLayout {
     function edit() {
         return {
             name: name.text,
+            // As typed: Sioul guesses them only for a card that has none.
+            parts: { prefix: prefix.text, given: given.text, family: family.text, suffix: suffix.text },
             emails: form.rows(emails),
             phones: form.rows(phones),
             org: org.text,
@@ -117,7 +134,52 @@ ColumnLayout {
     TextField {
         id: name
 
+        objectName: "contactFormName"
         Layout.fillWidth: true
+    }
+    // The name's parts, under the name: what other programs sort and address by (a fold line: BareButton).
+    BareButton {
+        objectName: "contactFormParts"
+        text: (form.partsShown ? "▾  " : "▸  ") + form.sioul.text("contact-name-parts")
+        onClicked: form.partsShown = !form.partsShown
+    }
+    GridLayout {
+        visible: form.partsShown
+        Layout.fillWidth: true
+        Layout.leftMargin: 12
+        columns: form.width < 420 ? 1 : 2
+        columnSpacing: 6
+        rowSpacing: 6
+
+        TextField {
+            id: prefix
+
+            objectName: "contactFormPrefix"
+            Layout.fillWidth: true
+            placeholderText: form.sioul.text("contact-name-prefix")
+            Accessible.name: form.sioul.text("contact-name-prefix")
+        }
+        TextField {
+            id: given
+
+            Layout.fillWidth: true
+            placeholderText: form.sioul.text("contact-name-given")
+            Accessible.name: form.sioul.text("contact-name-given")
+        }
+        TextField {
+            id: family
+
+            Layout.fillWidth: true
+            placeholderText: form.sioul.text("contact-name-family")
+            Accessible.name: form.sioul.text("contact-name-family")
+        }
+        TextField {
+            id: suffix
+
+            Layout.fillWidth: true
+            placeholderText: form.sioul.text("contact-name-suffix")
+            Accessible.name: form.sioul.text("contact-name-suffix")
+        }
     }
     Label {
         text: form.sioul.text("contact-emails")
@@ -241,6 +303,28 @@ ColumnLayout {
         }
         Item {
             Layout.fillWidth: true
+        }
+    }
+    // A group on a card whose book's groups do not decide who may reach you: said, with the door to its switch.
+    Flow {
+        objectName: "contactFormGroupsHeld"
+        visible: form.heldBook !== "" && (form.chosen.length > 0 || newCategory.text.trim() !== "")
+        Layout.fillWidth: true
+        spacing: 6
+
+        Label {
+            width: Math.min(implicitWidth, parent.width)
+            text: form.sioul.textWith("contact-groups-held", "book", form.heldBook)
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: form.theme.muted
+        }
+        Button {
+            objectName: "contactFormGroupsDoor"
+            flat: true
+            text: form.sioul.text("contact-groups-held-door")
+            onClicked: form.askedSwitch()
         }
     }
     Later {

@@ -756,6 +756,25 @@ pub struct ContactSettings {
     /// else Sioul's language's (`phones::chosen`).
     #[serde(default)]
     pub region: Option<String>,
+    /// What you said of each address book (`[contacts.books."<account>/<id>"]`,
+    /// Contacts ⚙ ▸ Address books): only what you said, the rest by default.
+    /// It travels with the settings, so that every device agrees.
+    #[serde(default)]
+    pub books: std::collections::BTreeMap<String, BookSaid>,
+}
+
+/// What you said of one address book.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct BookSaid {
+    /// "Its groups decide who may reach me", as you set it for `writers`
+    /// (`addressbooks::groups_count`); unsaid, on for a book only you can
+    /// write, off for one someone else can write.
+    #[serde(default)]
+    pub groups: Option<bool>,
+    /// Who else could write the book when you said it: when they change,
+    /// what you said no longer holds, and the default comes back.
+    #[serde(default)]
+    pub writers: Vec<String>,
 }
 
 /// Paper letters (docs/porch.md): the folder their scans arrive in.

@@ -1027,7 +1027,8 @@ fn change_here(verb: &str, json: &str) -> String {
                 .chain(list.cards().iter().map(|c| format!("{}{c}", sioul_core::porch::CONTACT)))
                 .chain(list.numbers().iter().map(|n| format!("{}{n}", sioul_core::porch::TEL)))
                 .collect();
-            let (found, patterns) = rules::from_safe(&entries, &sioul_core::contacts::all());
+            // A group read as the lists read it: a book someone else can write, its groups held back (review V2).
+            let (found, patterns) = rules::from_safe(&entries, &sioul_core::contacts::all(), &sioul_core::addressbooks::groups_held_back(&config));
             let mut added = 0;
             match rules::change_people(&path, |people| {
                 for person in found {

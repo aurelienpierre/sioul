@@ -107,8 +107,10 @@ pub(crate) fn take(mut sioul: Pin<&mut Sioul>) {
     if changed {
         crate::mail::show_mail(&sioul.qt_thread(), &sioul.shared());
     }
-    // A calendar file opened in Sioul, handed the same way (`calendarfile`).
+    // A calendar file opened in Sioul, handed the same way (`calendarfile`);
+    // a file of contacts too (`contactimport`, wave D).
     crate::calendarfile::take(sioul.as_mut());
+    crate::contactimport::take(sioul.as_mut());
 }
 
 /// One request made a draft, its window opened.

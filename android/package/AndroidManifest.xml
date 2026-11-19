@@ -366,6 +366,21 @@
                 <data android:mimeType="application/ics" />
                 <data android:mimeType="text/x-vcalendar" />
             </intent-filter>
+            <!-- A file of contacts opened (a vCard, a CSV table): read here,
+                 then shown in Sioul's window, where you choose which column is
+                 what, its address book and its groups (contactimport.rs). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/vcard" />
+                <data android:mimeType="text/x-vcard" />
+                <data android:mimeType="text/directory" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+            </intent-filter>
         </activity>
         <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/
              client.md, "Antivirus"): Android's own question where to save it,

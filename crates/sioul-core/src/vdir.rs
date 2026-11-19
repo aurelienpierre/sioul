@@ -449,6 +449,13 @@ fn new_is_there(old: &Path, new: &Path) -> bool {
     State::load(&state_path(&account, kind, &id)).items.iter().any(|i| i.file == file && (!i.etag.is_empty() || !i.hash.is_empty()))
 }
 
+/// Every item moved here whose old copy's deletion has not been done on its
+/// server yet, as (old, new): what the sync may move on the server itself
+/// (WebDAV MOVE, `dav::move_on_server`) rather than send anew and delete.
+pub fn moves_waiting() -> Vec<(PathBuf, PathBuf)> {
+    moved_change(|m| m.moved.iter().map(|i| (i.old.clone(), i.new.clone())).collect())
+}
+
 /// The old copy's deletion done on its server: nothing waits for it any more.
 pub fn deletion_done(old: &Path) {
     moved_change(|m| m.moved.retain(|i| i.old != old));
@@ -618,6 +625,35 @@ pub fn removed_copies() -> PathBuf {
     crate::config::state_dir().join("removed-agendas")
 }
 
+/// Where an address book removed here with its cards is copied first: one
+/// dated `.vcf` file per removal (`removed-address-books/`), never shared.
+pub fn removed_books() -> PathBuf {
+    crate::config::state_dir().join("removed-address-books")
+}
+
+/// Every card of an address book in one vCard file, each as its file holds
+/// it: what a removal keeps.
+pub fn collection_as_vcf(collection: &Collection) -> String {
+    cards_as_vcf(&collection.items())
+}
+
+/// These cards in one vCard file, each as its file holds it, its lines ended
+/// with CRLF; a file that is no card (or cannot be read) left out: what a
+/// removal keeps, and what Export writes.
+pub fn cards_as_vcf(paths: &[PathBuf]) -> String {
+    let mut out = String::new();
+    for path in paths {
+        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        if !text.to_ascii_uppercase().contains("BEGIN:VCARD") {
+            continue;
+        }
+        let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
+        out.push_str(text.trim_end());
+        out.push_str("\r\n");
+    }
+    out
+}
+
 /// Every item of a collection in one calendar file: its zones once each,
 /// then each event and task as its file holds it. What a removal keeps.
 pub fn collection_as_ics(collection: &Collection) -> String {
@@ -683,11 +719,15 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
     if collection.account != LOCAL && !known.pending && known.owned != Some(true) {
         return Err(format!("{}: its server does not say it is yours", collection.name));
     }
-    let folder = removed_copies();
+    // A calendar's events and tasks in one calendar file; an address book's cards in one vCard file.
+    let (folder, extension, copied) = match collection.kind {
+        Kind::Calendars => (removed_copies(), "ics", collection_as_ics(collection)),
+        Kind::Contacts => (removed_books(), "vcf", collection_as_vcf(collection)),
+    };
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let stamp = crate::zone::now().strftime("%Y-%m-%d-%H%M%S").to_string();
-    let copy = folder.join(format!("{}-{}-{stamp}.ics", collection.account, collection.id));
-    crate::filelock::replace(&copy, collection_as_ics(collection).as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let copy = folder.join(format!("{}-{}-{stamp}.{extension}", collection.account, collection.id));
+    crate::filelock::replace(&copy, copied.as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
     let path = collection.state_path();
     let mut state = State::load(&path);
     if collection.account == LOCAL || state.pending {
@@ -697,6 +737,7 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
         return Ok(copy);
     }
     state.removed = true;
+    state.kept.clear();
     state.save(&path)?;
     collection_said(collection.kind);
     Ok(copy)
@@ -745,7 +786,54 @@ pub fn delete_collection(collection: &Collection) -> Result<(), String> {
         return Ok(());
     }
     state.deleted = true;
-    state.save(&path)
+    state.kept.clear();
+    state.save(&path)?;
+    collection_said(collection.kind);
+    Ok(())
+}
+
+/// A collection whose folder went with its removal (one kept on this device
+/// alone, or made here and never sent: the Undo of a merge) made again,
+/// empty, with its name: on its server at the next sync for an account's.
+pub fn restore_collection(kind: Kind, account: &str, id: &str, name: &str) -> Result<(), String> {
+    if account != LOCAL {
+        State { pending: true, owned: Some(true), ..State::default() }.save(&state_path(account, kind, id))?;
+    }
+    prepare(kind, account, id, name, None).map_err(|e| e.to_string())?;
+    collection_said(kind);
+    Ok(())
+}
+
+/// A collection removed with its items here, not deleted on its server yet,
+/// shown again (the Undo of "Delete them with it"). Gone already, an error.
+pub fn unremove_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
+    let path = state_path(account, kind, id);
+    if !kind.root().join(account).join(id).is_dir() {
+        return Err(format!("{account}/{id}: gone"));
+    }
+    let mut state = State::load(&path);
+    if state.removed && !state.leave {
+        state.removed = false;
+        state.save(&path)?;
+        collection_said(kind);
+    }
+    Ok(())
+}
+
+/// A collection deleted on this device but not on its server yet shown
+/// again (the Undo of a merge): its deletion forgotten. Gone already, an error.
+pub fn undelete_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
+    let path = state_path(account, kind, id);
+    if !kind.root().join(account).join(id).is_dir() {
+        return Err(format!("{account}/{id}: gone"));
+    }
+    let mut state = State::load(&path);
+    if state.deleted {
+        state.deleted = false;
+        state.save(&path)?;
+        collection_said(kind);
+    }
+    Ok(())
 }
 
 /// Whether a name (an account's, a collection's) is one folder of its own:
@@ -871,6 +959,29 @@ pub struct State {
     /// `stop_showing`), and the sync asks it again before a DELETE.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owned: Option<bool>,
+    /// An address book made here whose server did not make it (an extended
+    /// MKCOL refused, or 405 with no address book there after it, review F6):
+    /// kept on this device, never asked again, said on its line; nothing is
+    /// moved into it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refused: bool,
+    /// Why a book removed or merged here is shown again rather than deleted
+    /// on its server (review F1, F5): "held", its server holds contacts this
+    /// device never had (added there since); "" none. Said on its line.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kept: String,
+    /// Who else may write this address book, as its server last listed it
+    /// (Nextcloud's `oc:invite`, those it is shared with to write): their
+    /// names, "group:<name>" for a group. Its groups decide who may reach
+    /// the person only once the person says so for these writers
+    /// (`addressbooks::groups_count`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writers: Vec<String>,
+    /// Whether its server said with whom it is shared (Nextcloud's
+    /// `oc:invite`); when it says neither that nor that the book is someone
+    /// else's, its line says so (it is taken as the person's alone).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub writers_known: bool,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1030,9 +1141,29 @@ fn collection_said(kind: Kind) {
     });
 }
 
-/// `agenda::guard` for a file of a collection, its refusal said.
+/// `agenda::guard` for a file of a collection, its refusal said; a card of an
+/// address book you only read is refused first, whatever the change (wave D:
+/// before it, only the card's buttons refused, and a write stayed on this
+/// device, never sent).
 fn guarded(path: &Path, change: crate::agenda::Change) -> Result<(), String> {
+    card_guard(path)?;
     crate::agenda::guard(path, change).map_err(|refusal| crate::agenda::said(refusal, &change))
+}
+
+/// A card's file in an address book its server lets you read only: refused,
+/// in one calm sentence. Any other file passes.
+fn card_guard(path: &Path) -> Result<(), String> {
+    if address_book_read_only(path) == Some(true) { Err(crate::agenda::translator().text("contact-read-only", None)) } else { Ok(()) }
+}
+
+/// Whether the address book whose folder holds `path` can only be read, as
+/// its last sync said (`State::read_only`); None when `path` is no file of an
+/// address book's folder.
+pub fn address_book_read_only(path: &Path) -> Option<bool> {
+    let rest = path.strip_prefix(Kind::Contacts.root()).ok()?;
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    let [account, id, _file] = parts.as_slice() else { return None };
+    Some(marks_of(&state_path(account, Kind::Contacts, id)).read_only)
 }
 
 /// Whether the calendar whose folder holds `path` can only be read; None

@@ -1,0 +1,111 @@
+# The columns of a CSV file of contacts, by their heading, for the import's
+# mapping guess (crates/sioul-core/src/contactimport.rs): each field with the
+# headings that name it, in French and English, as people and address books
+# write them. A heading is compared without case, accents, spaces and
+# punctuation ("E-mail 1 - Value" is "email1value"). A heading named nowhere
+# is offered "leave out". `cargo test -p sioul-core contactimport` checks
+# that this file is well formed and that each export below is recognised.
+#
+# field: title (the name's title: Mr, Mme), given, additional, family,
+#        name (the whole name), suffix, company, role (the job), mobile,
+#        phone, email, street, postcode, town, region, country, address
+#        (a whole postal address), birthday, note, groups, web
+
+[[column]]
+field = "title"
+headings = ["Civilité", "Civ", "Titre de civilité", "Title", "Name Prefix", "Prefix", "Salutation"]
+
+[[column]]
+field = "given"
+headings = ["Prénom", "Prénoms", "First Name", "Given Name", "Firstname", "Forename"]
+
+[[column]]
+field = "additional"
+headings = ["Deuxième prénom", "Autres prénoms", "Middle Name", "Additional Name"]
+
+[[column]]
+field = "family"
+headings = ["Nom", "Nom de famille", "Last Name", "Family Name", "Surname", "Lastname"]
+
+[[column]]
+field = "name"
+headings = ["Nom complet", "Nom et prénom", "Prénom et nom", "Name", "Full Name", "Display Name", "Client", "Contact"]
+
+[[column]]
+field = "suffix"
+headings = ["Suffixe", "Suffix", "Name Suffix"]
+
+[[column]]
+field = "company"
+headings = ["Société", "Entreprise", "Organisation", "Organisme", "Company", "Organization", "Organization Name", "Organization 1 - Name", "Business"]
+
+[[column]]
+field = "role"
+headings = ["Fonction", "Poste", "Métier", "Job Title", "Role", "Organization Title", "Organization 1 - Title", "Position"]
+
+[[column]]
+field = "mobile"
+headings = ["Portable", "Mobile", "Téléphone portable", "Tél. portable", "Tel portable", "Téléphone mobile", "Mobile Phone", "Cell", "Cell Phone", "Cellphone"]
+
+[[column]]
+field = "phone"
+headings = ["Téléphone", "Tél.", "Tel", "Tél", "Téléphone fixe", "Fixe", "Téléphone 2", "Phone", "Telephone", "Home Phone", "Business Phone", "Primary Phone", "Other Phone", "Work Phone", "Phone 1 - Value", "Phone 2 - Value", "Phone 3 - Value"]
+
+[[column]]
+field = "email"
+headings = ["E-mail", "Email", "Mail", "Courriel", "Adresse e-mail", "Adresse mail", "Adresse électronique", "E-mail Address", "E-mail 2 Address", "E-mail 3 Address", "Email Address", "E-mail 1 - Value", "E-mail 2 - Value", "E-mail 3 - Value"]
+
+[[column]]
+field = "street"
+headings = ["Rue", "Adresse", "Adresse 1", "Adresse ligne 1", "Voie", "Street", "Home Street", "Business Street", "Address", "Address 1 - Street", "Street Address"]
+
+[[column]]
+field = "address"
+headings = ["Adresse postale", "Adresse complète", "Address 1 - Formatted", "Home Address", "Business Address", "Mailing Address"]
+
+[[column]]
+field = "postcode"
+headings = ["Code postal", "CP", "Postcode", "Postal Code", "Zip", "ZIP Code", "Home Postal Code", "Business Postal Code", "Address 1 - Postal Code"]
+
+[[column]]
+field = "town"
+headings = ["Ville", "Commune", "Localité", "City", "Town", "Home City", "Business City", "Address 1 - City"]
+
+[[column]]
+field = "region"
+headings = ["Région", "Département", "Province", "State", "Region", "Home State", "Business State", "Address 1 - Region"]
+
+[[column]]
+field = "country"
+headings = ["Pays", "Country", "Country/Region", "Home Country/Region", "Business Country/Region", "Home Country", "Business Country", "Address 1 - Country"]
+
+[[column]]
+field = "birthday"
+headings = ["Date de naissance", "Naissance", "Anniversaire", "Birthday", "Date of Birth", "Birth Date", "DOB"]
+
+[[column]]
+field = "note"
+headings = ["Commentaire", "Commentaires", "Notes", "Note", "Remarque", "Remarques", "Observations", "Comments"]
+
+[[column]]
+field = "groups"
+headings = ["Groupes", "Groupe", "Catégories", "Catégorie", "Étiquettes", "Labels", "Group Membership", "Categories"]
+
+[[column]]
+field = "web"
+headings = ["Site web", "Site", "Site internet", "Web Page", "Website", "Web site", "Website 1 - Value"]
+
+# Exports recognised by headings only they write together: their name is
+# said, and their columns map by the headings above.
+
+[[export]]
+name = "Google Contacts"
+headings = ["First Name", "Last Name", "Labels", "E-mail 1 - Value"]
+
+[[export]]
+name = "Google Contacts"
+headings = ["Given Name", "Family Name", "Group Membership", "E-mail 1 - Value"]
+
+[[export]]
+name = "Outlook"
+headings = ["First Name", "Last Name", "E-mail Address", "Mobile Phone", "Job Title"]

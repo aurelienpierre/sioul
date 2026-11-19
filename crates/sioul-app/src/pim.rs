@@ -31,12 +31,12 @@ use std::time::Duration;
 /// Between two syncs of an account's contacts and calendars, unless something changed here.
 const DAV_PAUSE: Duration = Duration::from_secs(15 * 60);
 
-/// What the contacts and agenda pages show: their search and their stretch of days.
+/// What the contacts and agenda pages show: their filters and their stretch of days.
 #[derive(Clone)]
 pub(crate) struct PimState {
-    pub query: String,
-    /// The contacts of one category only; empty: all of them.
-    pub category: String,
+    /// The Contacts page's filters, the search among them (`contactfilter`),
+    /// kept on this device as it changes (`contacts-view.toml`).
+    pub filter: sioul_core::contactfilter::Filter,
     pub from: jiff::civil::Date,
     pub days: i64,
     /// What comes only: events over already are left out (the list opened on today).
@@ -48,7 +48,7 @@ pub(crate) struct PimState {
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), category: String::new(), from: sioul_core::zone::now().date(), days: crate::agenda::COMES_FIRST_DAYS, upcoming: true, comes: true }
+        PimState { filter: sioul_core::contactfilter::Filter::load(&sioul_core::contactfilter::Filter::default_path()), from: sioul_core::zone::now().date(), days: crate::agenda::COMES_FIRST_DAYS, upcoming: true, comes: true }
     }
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         // The phone's home-screen card reads its month of events again (homecard.rs).
         crate::homecard::agenda_seen(&removed, &skipped);
         let everyone: Vec<contacts::Contact> = contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
-        let contacts = json(&view::contacts(&everyone, &state.query, &state.category, tr()));
+        let contacts = json(&view::contacts_filtered(&everyone, &state.filter, &load_config(), tr()));
         let _ = qt.queue(move |mut sioul| {
             // Only the newest (see `backend::show`).
             if sioul.shared().pim_generation.load(Ordering::Relaxed) != generation || sioul.shared().pim_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
@@ -316,6 +316,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for (kind, title) in &report.moved_changed {
                 tell(qt, shared, moved_changed_line(kind, title));
             }
+            // Contacts moved here that someone changed there first: kept in both books, said in one line
+            // with their names (review F16: one line per card replaced the one before).
+            if !report.kept_both.is_empty() {
+                let names: Vec<String> = report.kept_both.iter().map(|(_, title)| title.clone()).filter(|t| !t.trim().is_empty()).collect();
+                tell(qt, shared, say("dav-kept-both", &[("n", report.kept_both.len().to_string()), ("names", names.join(", "))]));
+            }
+            // A book whose groups stopped deciding who reaches you, its writers changed (review V3).
+            crate::addressbooks::tell_groups_stopped();
             // Moved here, a meeting in both calendars by then: both stay, yours to choose, said once (M7).
             for (kind, title) in &report.moved_both {
                 tell(qt, shared, moved_both_line(kind, title));
@@ -369,7 +377,7 @@ pub(crate) fn contact(key: &str) -> String {
 /// Returns the contact's file.
 pub(crate) fn save_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str) -> Result<String, String> {
     let edit: ContactEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-    if edit.name.trim().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
+    if edit.name_or_parts().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
         return Err(tr().text("contact-no-name", None));
     }
     let (path, text) = match ours(key) {
@@ -412,10 +420,14 @@ pub(crate) fn load_contact_photo(qt: &QtThread, shared: &Arc<Shared>, url: &str)
     });
 }
 
-/// The address books a contact can go into: [{id, name}].
+/// The address books a contact can go into: [{id, name}], "id" its place
+/// ("account/id"), which a card's `place` names too (wave D: the chooser
+/// compared a label with the card's bare book name, and showed the first
+/// writable book whatever the card's once two could be written).
 pub(crate) fn books() -> String {
     let config = load_config();
-    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
+    // A book its server refused to make is never offered: its cards would stay on this device alone (review V9).
+    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
     json(&rows)
 }
 
@@ -425,8 +437,8 @@ pub(crate) fn books() -> String {
 pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book: &str, confirmed: bool) -> String {
     let fail = |e: String| serde_json::json!({ "error": e }).to_string();
     let Some(from) = ours(key) else { return fail(tr().text("contact-gone", None)) };
-    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
-    if collection_of(&from).is_some_and(|c| c.read_only) {
+    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
+    if collection_of(&from).is_some_and(|c| c.read_only) || target.read_only {
         return fail(tr().text("contact-read-only", None));
     }
     if from.parent() == Some(target.dir.as_path()) {
@@ -435,8 +447,13 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     let Ok(text) = std::fs::read_to_string(&from) else { return fail(tr().text("contact-gone", None)) };
     let provider = sioul_core::capabilities::provider_of(load_config().account(&target.account));
     let losses = sioul_core::capabilities::contact_losses(&text, provider);
-    if !losses.is_empty() && !confirmed {
-        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>() }).to_string();
+    // What the move does to who may reach the person, when it crosses a book whose groups are held back (review V1).
+    let config = load_config();
+    let reach = contacts::read(&from, &collection_of(&from).unwrap_or_else(|| target.clone()))
+        .map(|card| sioul_core::addressbooks::reach_of_move(&[&card], &target, &config, &sioul_core::porch::Senders::load(&config), tr()))
+        .unwrap_or_default();
+    if (!losses.is_empty() || reach.crosses) && !confirmed {
+        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>(), "reach": if reach.crosses { reach.said } else { Vec::new() } }).to_string();
     }
     let to = contacts::new_path(&target);
     // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).
@@ -451,9 +468,14 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     serde_json::json!({ "key": to.display().to_string() }).to_string()
 }
 
-/// Deletes a contact, after ten seconds to undo.
+/// Deletes a contact, after ten seconds to undo; one of a book you only read
+/// is refused at once, said (the door refuses it too, `vdir::remove_item`).
 pub(crate) fn delete_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
     let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return };
+    if vdir::address_book_read_only(&path) == Some(true) {
+        tell(qt, shared, tr().text("contact-read-only", None));
+        return;
+    }
     mail::schedule_removal(qt, shared, &account, path, tr().text("undo-contact-deleted", None));
     show_pim(qt, shared);
 }

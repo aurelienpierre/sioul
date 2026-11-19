@@ -234,10 +234,30 @@ pub(crate) fn clean(qt: &QtThread, shared: &Arc<Shared>, keys: &str) -> String {
 }
 
 /// Merges two cards, `lead` keeping its name; returns {"key"} (the card kept) or {"error"}.
-pub(crate) fn merge(qt: &QtThread, shared: &Arc<Shared>, lead: &str, other: &str) -> String {
+/// What merging `other` into `lead` would take across the switch of a
+/// book's groups (review L2), from the cards by their files.
+fn merge_groups(shared: &Shared, lead: &str, other: &str) -> sioul_core::addressbooks::MergeGroups {
+    let everyone = everyone(shared);
+    let (Some(lead), Some(other)) = (everyone.iter().find(|c| c.key == lead), everyone.iter().find(|c| c.key == other)) else {
+        return sioul_core::addressbooks::MergeGroups::default();
+    };
+    let config = load_config();
+    sioul_core::addressbooks::merge_groups(lead, other, &config, &sioul_core::porch::Senders::load(&config), tr())
+}
+
+/// The same, asked before the merge: JSON {groups, offer, reach}.
+pub(crate) fn merge_ask(shared: &Arc<Shared>, lead: &str, other: &str) -> String {
+    json(&merge_groups(shared, lead, other))
+}
+
+/// The two cards merged into `lead`; the other's groups only with `groups`
+/// when they come from a book whose groups are held back (`merge_ask`).
+pub(crate) fn merge(qt: &QtThread, shared: &Arc<Shared>, lead: &str, other: &str, groups: bool) -> String {
     let fail = |e: String| serde_json::json!({ "error": e }).to_string();
+    // Taken as before, unless the merge crosses the switch and its box stays unticked.
+    let groups = groups || merge_groups(shared, lead, other).groups.is_empty();
     let (Some(lead), Some(other)) = (writable(lead), writable(other)) else { return fail(tr().text("contact-read-only", None)) };
-    match duplicates::merge_files(&lead, &other, region(), &duplicates::undo_dir(), now()) {
+    match duplicates::merge_files(&lead, &other, region(), &duplicates::undo_dir(), now(), groups) {
         Ok(done) => {
             changed(qt, shared, &[lead.clone(), other]);
             tell(qt, shared, say("dup-merged", &[("names", done.names.join(", "))]));

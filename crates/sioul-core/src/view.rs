@@ -1876,6 +1876,26 @@ pub struct ContactsView {
     pub categories: Vec<String>,
     /// The category shown; empty: every contact (also when the one asked is gone).
     pub category: String,
+    /// The filters as they apply now (`contactfilter::Filter::fitted`): what the filter row shows.
+    pub filter: crate::contactfilter::Filter,
+    /// Every address book, to filter by: its place, its name and where it is kept, read only or not.
+    pub books: Vec<BookChoice>,
+    /// How many show, of how many: "132 of 840", or "840 contacts" when nothing narrows them.
+    pub counted: String,
+    pub shown: usize,
+    pub total: usize,
+}
+
+/// An address book among the filters.
+#[derive(Debug, Serialize)]
+pub struct BookChoice {
+    /// "account/id".
+    pub place: String,
+    /// "Professional · example.org".
+    pub name: String,
+    pub read_only: bool,
+    /// Its groups decide who may reach the person (`addressbooks::groups_count`).
+    pub groups: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1884,6 +1904,8 @@ pub struct ContactRow {
     /// Its address for links: `sioul:contact/<UID>`.
     pub uri: String,
     pub name: String,
+    /// Its title, greyed before its name in Sioul's list (`contacts::title_before_name`); "" none.
+    pub title: String,
     /// The first e-mail address, to write to them.
     pub email: String,
     /// The first address, else number, else organisation: one line, never more.
@@ -1892,30 +1914,52 @@ pub struct ContactRow {
     pub photo: String,
     /// Its categories, as the card writes them.
     pub categories: Vec<String>,
+    /// Its address book's place, "account/id".
+    pub place: String,
+    /// Its address book can only be read: its row's Edit and Delete say so.
+    pub read_only: bool,
 }
 
 /// The contacts matching `query`, by name; of one category when `category`
 /// names one (case and accents aside, as the sender lists compare them).
 pub fn contacts(all: &[crate::contacts::Contact], query: &str, category: &str, tr: &Translator) -> ContactsView {
+    let filter = crate::contactfilter::Filter { name: query.to_string(), group: category.to_string(), ..crate::contactfilter::Filter::default() };
+    let config = Config::load(&crate::config::default_path()).unwrap_or_default();
+    contacts_filtered(all, &filter, &config, tr)
+}
+
+/// The contacts the filters keep (`contactfilter`), by name, with the
+/// filters as they apply now and how many show of how many.
+pub fn contacts_filtered(all: &[crate::contacts::Contact], filter: &crate::contactfilter::Filter, config: &Config, tr: &Translator) -> ContactsView {
+    let collections = crate::vdir::collections(crate::vdir::Kind::Contacts);
+    let books: Vec<BookChoice> = collections.iter().map(|c| BookChoice { place: format!("{}/{}", c.account, c.id), name: c.label(config, tr), read_only: c.read_only, groups: crate::addressbooks::groups_count(c, config).count }).collect();
     let categories = crate::contacts::categories_in_use(all);
-    let wanted = crate::contacts::category_key(category);
-    let category = categories.iter().find(|c| !wanted.is_empty() && crate::contacts::category_key(c) == wanted).cloned().unwrap_or_default();
-    let found: Vec<&crate::contacts::Contact> = crate::contacts::search(all, query).into_iter().filter(|c| category.is_empty() || crate::contacts::in_category(c, &category)).collect();
-    let sentence = if all.is_empty() && crate::vdir::collections(crate::vdir::Kind::Contacts).is_empty() {
+    let filter = filter.fitted(&books.iter().map(|b| b.place.clone()).collect::<Vec<_>>(), &categories);
+    let category = filter.group.clone();
+    let found: Vec<&crate::contacts::Contact> = filter.apply(all);
+    let query = filter.name.trim();
+    let sentence = if all.is_empty() && collections.is_empty() {
         tr.text("contacts-no-book", None)
     } else if all.is_empty() {
         tr.text("contacts-none", None)
-    } else if found.is_empty() && query.trim().is_empty() {
+    } else if found.is_empty() && query.is_empty() && !category.is_empty() && !filter.narrows_beyond_group() {
         let mut args = i18n::args();
         args.set("category", category.clone());
         tr.text("contacts-none-in", Some(&args))
+    } else if found.is_empty() && query.is_empty() {
+        tr.text("contacts-none-filtered", None)
     } else if found.is_empty() {
         let mut args = i18n::args();
-        args.set("query", query.trim().to_string());
+        args.set("query", query.to_string());
         tr.text("mail-not-found", Some(&args))
     } else {
         String::new()
     };
+    let (shown, total) = (found.len(), all.len());
+    let mut args = tr.counted(total);
+    args.set("shown", shown as i64);
+    args.set("total", total as i64);
+    let counted = tr.text(if shown == total { "contacts-counted-all" } else { "contacts-counted-some" }, Some(&args));
     ContactsView {
         contacts: found
             .into_iter()
@@ -1923,16 +1967,24 @@ pub fn contacts(all: &[crate::contacts::Contact], query: &str, category: &str, t
                 key: c.key.clone(),
                 uri: crate::links::contact_uri(&c.uid),
                 name: c.name.clone(),
+                title: crate::contacts::title_before_name(c),
                 email: c.emails.first().map(|e| e.value.clone()).unwrap_or_default(),
                 detail: c.emails.first().map(|e| e.value.clone()).or_else(|| c.phones.first().map(|p| p.value.clone())).unwrap_or_else(|| c.org.clone()),
                 photo: c.photo.clone(),
                 categories: c.categories.clone(),
+                place: c.place.clone(),
+                read_only: c.read_only,
             })
             .collect(),
         sentence,
         can_add: crate::contacts::default_book().is_some(),
         categories,
         category,
+        filter,
+        books,
+        counted,
+        shown,
+        total,
     }
 }
 

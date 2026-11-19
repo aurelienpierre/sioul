@@ -337,8 +337,8 @@ impl SenderList {
         let mut list = SenderList::default();
         for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             if let Some(name) = category_of(line) {
-                if !list.categories.iter().any(|c| category_key(c) == category_key(name)) {
-                    list.categories.push(name.to_string());
+                if !list.categories.iter().any(|c| category_key(c) == category_key(name)) { // groups: a list's own lines
+                    list.categories.push(name.to_string()); // groups: a list's own lines
                 }
             } else if let Some(uid) = card_of(line) {
                 if !list.cards.iter().any(|c| c == uid) {
@@ -359,7 +359,7 @@ impl SenderList {
 
     /// The categories of your contacts it names, as written.
     pub fn categories(&self) -> &[String] {
-        &self.categories
+        &self.categories // groups: a list's own lines
     }
 
     /// The numbers and prefixes it names, as written after `tel:`.
@@ -374,7 +374,7 @@ impl SenderList {
 
     /// The first of `keys` (categories as compared, `category_key`) it names, as written.
     fn names_category(&self, keys: &[String]) -> Option<&str> {
-        self.categories.iter().find(|c| keys.contains(&category_key(c))).map(String::as_str)
+        self.categories.iter().find(|c| keys.contains(&category_key(c))).map(String::as_str) // groups: a list's own lines
     }
 
     /// Whether it names this card (its UID).
@@ -608,6 +608,25 @@ pub fn name_key(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
+/// The groups of a card that decide who may reach the person: its own,
+/// unless its address book is one whose groups are held back (a book
+/// someone else can write, its groups not said to count:
+/// `addressbooks::groups_held_back`). The one reading of a card's groups for
+/// the lists (review V2): their index (`Book::trusting`), "Add everyone on
+/// the Safe list" (`everywhere::from_safe`) and what a move or a group says
+/// it does to who may reach the person (`Senders::standing_by_groups`, the
+/// question of each act) all go through it.
+/// `nothing_else_reads_a_card_s_groups_to_decide_a_list` checks it.
+pub fn deciding_groups<'a>(contact: &'a crate::contacts::Contact, held: &std::collections::BTreeSet<String>) -> &'a [String] {
+    if held.contains(&contact.place) { &[] } else { &contact.categories } // groups: deciding
+}
+
+/// Whether a card is in a group, as the lists read its groups (`deciding_groups`).
+pub fn in_deciding_group(contact: &crate::contacts::Contact, category: &str, held: &std::collections::BTreeSet<String>) -> bool {
+    let wanted = category_key(category);
+    !wanted.is_empty() && deciding_groups(contact, held).iter().any(|c| category_key(c) == wanted)
+}
+
 /// A card of your address books, as who may reach you needs it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookCard {
@@ -651,13 +670,25 @@ fn push_once(slot: &mut Vec<usize>, index: usize) {
 impl Book {
     /// From contacts; `region` reads their numbers written without a country.
     pub fn of(contacts: &[crate::contacts::Contact], region: Option<&'static crate::phones::Region>) -> Book {
+        Book::trusting(contacts, region, &std::collections::BTreeSet::new())
+    }
+
+    /// From contacts, the groups of the cards of the books in `held` (by
+    /// place, "account/id") held back: a book someone else can write, its
+    /// groups not said to count (`addressbooks::groups_count`). Such a card
+    /// is still in your address books, by its UID, addresses, numbers and
+    /// name; no list reads its groups.
+    pub fn trusting(contacts: &[crate::contacts::Contact], region: Option<&'static crate::phones::Region>, held: &std::collections::BTreeSet<String>) -> Book {
         let mut book = Book { region, ..Book::default() };
         for contact in contacts {
             let index = book.cards.len();
             let mut keys: Vec<String> = Vec::new();
-            for name in contact.categories.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+            // Every group in use is named (shown); only the deciding ones are the card's for the lists.
+            for name in contact.categories.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) { // groups: shown
+                book.names.entry(category_key(name)).or_insert_with(|| name.to_string());
+            }
+            for name in deciding_groups(contact, held).iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
                 let key = category_key(name);
-                book.names.entry(key.clone()).or_insert_with(|| name.to_string());
                 if !keys.contains(&key) {
                     keys.push(key);
                 }
@@ -732,7 +763,7 @@ impl Book {
     /// The categories of these cards, as compared, each once.
     pub fn categories_of(&self, cards: &[usize]) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
-        for key in cards.iter().filter_map(|i| self.cards.get(*i)).flat_map(|c| c.categories.iter()) {
+        for key in cards.iter().filter_map(|i| self.cards.get(*i)).flat_map(|c| c.categories.iter()) { // groups: the index's, already deciding_groups'
             if !keys.contains(key) {
                 keys.push(key.clone());
             }
@@ -778,9 +809,10 @@ impl Book {
     }
 
     /// From every address book, kept while their files do not change: read
-    /// again only when one is added, changed or taken away, or the country
-    /// numbers are read in changes; never per message or per call.
-    pub fn load(region: Option<&'static crate::phones::Region>) -> std::sync::Arc<Book> {
+    /// again only when one is added, changed or taken away, the country
+    /// numbers are read in changes, or the books whose groups are held back
+    /// change (`held`, `addressbooks::groups_held_back`); never per message or per call.
+    pub fn load(region: Option<&'static crate::phones::Region>, held: &std::collections::BTreeSet<String>) -> std::sync::Arc<Book> {
         static KEPT: std::sync::Mutex<Option<(u64, std::sync::Arc<Book>)>> = std::sync::Mutex::new(None);
         let books = crate::vdir::collections(crate::vdir::Kind::Contacts);
         // Each book's place, and each card's name, size and time; the country.
@@ -791,6 +823,10 @@ impl Book {
             }
         };
         mix(region.map_or("", |r| r.code).as_bytes());
+        for place in held {
+            mix(b"held:");
+            mix(place.as_bytes());
+        }
         for book in &books {
             mix(book.dir.to_string_lossy().as_bytes());
             for item in book.items() {
@@ -808,7 +844,7 @@ impl Book {
         {
             return std::sync::Arc::clone(index);
         }
-        let index = std::sync::Arc::new(Book::of(&crate::contacts::all(), region));
+        let index = std::sync::Arc::new(Book::trusting(&crate::contacts::all(), region, held));
         *kept = Some((seal, std::sync::Arc::clone(&index)));
         index
     }
@@ -858,7 +894,7 @@ impl Senders {
             restricted: SenderList::load(&config.restricted_senders_path()),
             blocked: SenderList::load(&config.blocked_senders_path()),
             known: SenderList::load(&config.known_senders_path()),
-            contacts: Book::load(crate::reach::region(config)),
+            contacts: Book::load(crate::reach::region(config), &crate::addressbooks::groups_held_back(config)),
         }
     }
 
@@ -910,6 +946,39 @@ impl Senders {
         let order = [Standing::Blocked, Standing::Restricted, Standing::Neutral, Standing::Safe];
         let (standing, card) = order.into_iter().find_map(|standing| chosen.iter().find(|(s, _)| *s == standing).copied())?;
         Some(Judged { who: crate::reach::Who::of(standing), by: By::Card, name: card.name.clone(), card: card.name.clone() })
+    }
+
+    /// The list a card stands on through these groups, as the lists' own step
+    /// for groups decides it (`by_category`: the first list, in the order
+    /// ties are decided, naming one of them), for any one of its addresses
+    /// or numbers that nothing more precise decides first. The lists judge
+    /// each address and each number apart (`judge`, `judge_number`): its own
+    /// entry on a list, then the card's own choice (`contact:<UID>`, or one
+    /// list holding every address of it, `card_choice`), then the groups; so
+    /// a card with one address on a list by itself still has its other
+    /// addresses and its numbers let through by its group (review L1). None
+    /// when its groups decide none of them. With the group that decided.
+    /// What each act that moves a card or gives it a group counts with, so
+    /// that what it says is what the lists will do (review V1).
+    pub fn standing_by_groups(&self, contact: &crate::contacts::Contact, groups: &[String]) -> Option<(Standing, String)> {
+        let region = self.region();
+        let keys: Vec<String> = groups.iter().map(|g| category_key(g)).filter(|k| !k.is_empty()).collect();
+        if keys.is_empty() {
+            return None;
+        }
+        let addresses: Vec<String> = contact.emails.iter().map(|e| e.value.trim().strip_prefix("mailto:").unwrap_or(e.value.trim()).trim().to_ascii_lowercase()).filter(|a| !a.is_empty()).collect();
+        let numbers: Vec<String> = contact.phones.iter().filter_map(|p| number_key(&p.value, region)).filter(|k| !k.contains('*')).collect();
+        // The card's own choice decides every address and number its own entries leave.
+        let every_address_on_one = !addresses.is_empty() && self.lists().iter().any(|(_, l)| addresses.iter().all(|a| l.holds(a)));
+        if self.card_standing(&contact.uid).is_some() || every_address_on_one {
+            return None;
+        }
+        // Each address and each number apart: one its own entry leaves is the groups' to decide.
+        let left_to_groups = addresses.iter().any(|a| !self.lists().iter().any(|(_, l)| l.holds(a))) || numbers.iter().any(|k| !self.lists().iter().any(|(_, l)| l.holds_number(k, region)));
+        if !left_to_groups && !(addresses.is_empty() && numbers.is_empty()) {
+            return None;
+        }
+        self.lists().into_iter().find_map(|(standing, list)| list.names_category(&keys).map(|name| (standing, name.to_string())))
     }
 
     /// A category of these cards on a list.
@@ -2368,6 +2437,130 @@ mod tests {
             phones: phones.iter().map(|p| crate::contacts::Labeled { label: String::new(), value: p.to_string() }).collect(),
             ..contact(categories, emails)
         }
+    }
+
+    /// Review V2, L3: one reading of a card's groups for the lists. Outside
+    /// their tests, the programs read groups (any `.categories`, and
+    /// `contacts::in_category`) only in the files named here, each with why
+    /// it never decides who may reach the person; in porch.rs, only on lines
+    /// that say which reading they are (`// groups:`), `deciding_groups`
+    /// among them. A new reader anywhere else fails this test (checked by
+    /// hand on 19 November 2026: a reader added to calls.rs failed it).
+    #[test]
+    fn nothing_else_reads_a_card_s_groups_to_decide_a_list() {
+        let allowed = [
+            ("sioul-app/src/batch.rs", "tasks' and events' categories in their batch bar"),
+            ("sioul-app/src/contactimport.rs", "the file's groups, said and asked before they are kept"),
+            ("sioul-app/src/duplicates.rs", "a card's groups, shown in Duplicates' view"),
+            ("sioul-app/src/everywhere.rs", "the Safe list's own lines, not a card's"),
+            ("sioul-app/src/sites.rs", "the sites' categories"),
+            ("sioul-app/src/thingsearch.rs", "events' categories, searched"),
+            ("sioul-app/src/topics.rs", "the topics' seeds, shown"),
+            ("sioul-app/src/work.rs", "tasks' categories"),
+            ("sioul-cli/src/dav.rs", "a card written back as it is"),
+            ("sioul-cli/src/mcp/items.rs", "a task's tags, for an agent"),
+            ("sioul-cli/src/mcp/read.rs", "a card shown to an agent"),
+            ("sioul-cli/src/tasks.rs", "tasks' tags"),
+            ("sioul-core/src/addressbooks.rs", "what an act does, counted through Senders::standing_by_groups, the lists' own step"),
+            ("sioul-core/src/agenda.rs", "events' categories"),
+            ("sioul-core/src/appointments.rs", "tasks' tags"),
+            ("sioul-core/src/areas.rs", "tasks' categories for their areas"),
+            ("sioul-core/src/capabilities.rs", "what a task's server keeps"),
+            ("sioul-core/src/capture.rs", "a task's tags, typed"),
+            ("sioul-core/src/composed.rs", "a step's categories"),
+            ("sioul-core/src/contactfilter.rs", "the Contacts page's filter: shows, never decides"),
+            ("sioul-core/src/contactimport.rs", "a file's groups, imported, said, kept only when asked"),
+            ("sioul-core/src/contacts.rs", "where a card's groups are read from its file and written"),
+            ("sioul-core/src/duplicates.rs", "two cards merged: the other's groups taken only when asked"),
+            ("sioul-core/src/health.rs", "tasks' categories"),
+            ("sioul-core/src/pause.rs", "tasks' categories"),
+            ("sioul-core/src/plan.rs", "tasks' categories"),
+            ("sioul-core/src/quiet.rs", "tasks' categories"),
+            ("sioul-core/src/settings.rs", "a sender list's own lines"),
+            ("sioul-core/src/sites.rs", "the sites' categories"),
+            ("sioul-core/src/tasks.rs", "tasks' categories"),
+            ("sioul-core/src/taskview.rs", "tasks' categories"),
+            ("sioul-core/src/thingsearch.rs", "tasks' and events' categories, searched"),
+            ("sioul-core/src/topics/mod.rs", "the topics' seeds"),
+            ("sioul-core/src/topics/rules.rs", "a sender's groups as the lists' index gives them"),
+            ("sioul-core/src/view.rs", "a card's groups, shown"),
+            ("sioul-learn/src/topics.rs", "topics learn words from groups to sort mail; they never decide who reaches"),
+            ("sioul-learn/src/topics/model.rs", "the same, learnt"),
+        ];
+        fn files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") && !path.to_string_lossy().ends_with("_tests.rs") {
+                    out.push(path);
+                }
+            }
+        }
+        // Any read of `.categories` (not `categories_of`, `categories_line`…), and `in_category(`.
+        let reads = |line: &str| {
+            line.contains("in_category(")
+                || line.match_indices(".categories").any(|(at, word)| line[at + word.len()..].chars().next().is_none_or(|c| !(c.is_alphanumeric() || c == '_')))
+        };
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut sources = Vec::new();
+        for krate in std::fs::read_dir(crates).unwrap().filter_map(Result::ok) {
+            files(&krate.path().join("src"), &mut sources);
+        }
+        assert!(sources.len() > 50, "the sources found");
+        let mut readers = Vec::new();
+        for path in sources {
+            let name = path.strip_prefix(crates).unwrap().to_string_lossy().replace('\\', "/");
+            let text = std::fs::read_to_string(&path).unwrap();
+            let code = text.split("\n#[cfg(test)]\nmod tests").next().unwrap_or("");
+            for (n, line) in code.lines().enumerate() {
+                if !reads(line) || line.trim_start().starts_with("//") || allowed.iter().any(|(f, _)| *f == name) {
+                    continue;
+                }
+                // In porch.rs, only the readings that say what they are.
+                if name == "sioul-core/src/porch.rs" && line.contains("// groups:") {
+                    continue;
+                }
+                readers.push(format!("{name}:{}: {}", n + 1, line.trim()));
+            }
+        }
+        assert!(readers.is_empty(), "read groups apart from porch::deciding_groups and the files named:\n{}", readers.join("\n"));
+    }
+
+    /// The owner's answer of 18 November 2026: a card's groups decide who may
+    /// reach the person in a book only the person can write; in a book a
+    /// co-worker can write, only once the person says so for that book, and
+    /// again not when its writers change. A card's own line counts whatever
+    /// its book; and its groups still name it in your address books.
+    #[test]
+    fn a_group_counts_in_a_book_only_you_write_or_once_you_trust_its_writers() {
+        use crate::reach::Who;
+        use crate::vdir::{Kind, State};
+        crate::config::stand_ins_only();
+        let account = "porch-trust";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        let state = |id: &str, writers: &[&str]| State { url: format!("https://dav.example.org/{id}/"), owned: Some(true), writers: writers.iter().map(|w| w.to_string()).collect(), ..State::default() }.save(&crate::vdir::state_path(account, Kind::Contacts, id)).unwrap();
+        for id in ["mine", "team"] {
+            let dir = crate::vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            std::fs::write(dir.join("c.vcf"), format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{id}-1\r\nFN:Lou {id}\r\nEMAIL:{id}@example.org\r\nCATEGORIES:Clients\r\nEND:VCARD\r\n")).unwrap();
+        }
+        state("mine", &[]);
+        state("team", &["sam"]);
+        let judged = |config: &crate::config::Config, safe: &str| {
+            let cards: Vec<crate::contacts::Contact> = crate::contacts::all().into_iter().filter(|c| c.place.starts_with("porch-trust/")).collect();
+            let senders = Senders { safe: SenderList::parse(safe), contacts: std::sync::Arc::new(Book::trusting(&cards, None, &crate::addressbooks::groups_held_back(config))), ..Senders::default() };
+            (senders.judge("mine@example.org").who, senders.judge("team@example.org").who)
+        };
+        let unsaid = crate::config::Config::default();
+        assert_eq!(judged(&unsaid, "category:Clients"), (Who::Safe, Who::Neutral), "a co-worker can write the team's book: its card is yours, its group held back");
+        let trusted: crate::config::Config = toml::from_str("[contacts.books.\"porch-trust/team\"]\ngroups = true\nwriters = [\"sam\"]\n").unwrap();
+        assert_eq!(judged(&trusted, "category:Clients"), (Who::Safe, Who::Safe), "switched on for sam");
+        state("team", &["office", "sam"]);
+        assert_eq!(judged(&trusted, "category:Clients"), (Who::Safe, Who::Neutral), "its writers changed: off again until said");
+        assert_eq!(judged(&unsaid, "contact:team-1"), (Who::Neutral, Who::Safe), "the card's own line still counts");
+        let mine_off: crate::config::Config = toml::from_str("[contacts.books.\"porch-trust/mine\"]\ngroups = false\n").unwrap();
+        assert_eq!(judged(&mine_off, "category:Clients").0, Who::Neutral, "turned off for a book only you write");
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
     /// Decision 16 of 18 October 2026: a sender's own rows by ids alone, the

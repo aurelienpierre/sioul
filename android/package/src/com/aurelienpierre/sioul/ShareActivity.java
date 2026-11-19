@@ -112,18 +112,26 @@ public final class ShareActivity extends Activity
             // Never one of Sioul's own files, whoever names it (an address of its own
             // providers, a file: path into its folders): another app could otherwise
             // have Sioul read its private files as a calendar.
+            // A file of contacts (a vCard, a CSV) for the contacts' import
+            // (contactimport.rs), by its type or its name; anything else as a calendar.
+            final String contacts = contactsKind(intent.getType() != null ? intent.getType() : typeOf(app, file), String.valueOf(file.getLastPathSegment()));
             if (ownAddress(app, file)) {
-                Toast.makeText(app, ownFileRefused(), Toast.LENGTH_LONG).show();
+                Toast.makeText(app, ownFileRefused(contacts != null), Toast.LENGTH_LONG).show();
                 finish();
                 return;
             }
             new Thread(() -> {
                 try {
-                    write(new File(handed, "calendar/" + id + ".ics"), read(app, file));
+                    // A file of contacts goes to disk as it is read, never whole in memory
+                    // (it may hold photos, up to 32 MB: review F7).
+                    if (contacts != null)
+                        copy(app, file, CONTACTS_MOST, new File(handed, "contacts/" + id + "." + contacts));
+                    else
+                        write(new File(handed, "calendar/" + id + ".ics"), read(app, file, CALENDAR_MOST));
                     runOnUiThread(this::open);
                     tell();
-                } catch (IOException | RuntimeException e) {
-                    Log.e(DoseAlarms.TAG, "Sharing: a calendar file could not be kept for Sioul: " + e);
+                } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                    Log.e(DoseAlarms.TAG, "Sharing: " + (contacts != null ? "a file of contacts" : "a calendar file") + " could not be kept for Sioul: " + e);
                     runOnUiThread(() -> Toast.makeText(app, failed(e), Toast.LENGTH_LONG).show());
                 }
                 runOnUiThread(this::finish);
@@ -172,7 +180,7 @@ public final class ShareActivity extends Activity
      * "Sioul could not take what you shared: …", in the phone's language,
      * as {@link DoseAlarms#words} picks it: Rust's words are not loaded yet.
      */
-    private static String failed(Exception e)
+    private static String failed(Throwable e)
     {
         String why = why(e);
         boolean french = "fr".equals(Locale.getDefault().getLanguage());
@@ -481,7 +489,7 @@ public final class ShareActivity extends Activity
     }
 
     /** Why it failed, in the system's words, without Java's class names. */
-    private static String why(Exception e)
+    private static String why(Throwable e)
     {
         String message = e.getMessage();
         return message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message.trim();
@@ -490,6 +498,35 @@ public final class ShareActivity extends Activity
     /** A text written whole: under another name, then renamed. */
     /** The most of a calendar file read: a megabyte, and one byte to tell a larger one (calendarfile.rs). */
     private static final int CALENDAR_MOST = 1024 * 1024 + 1;
+
+    /** The most of a file of contacts read: 32 MB (cards may carry photos), and one byte to tell a larger one (contactimport.rs). */
+    private static final int CONTACTS_MOST = 32 * 1024 * 1024 + 1;
+
+    /**
+     * What a file opened holds for the contacts' import: "vcf" (a vCard),
+     * "csv" (a table), or null (a calendar file, as before), by its type, else
+     * by its name's extension.
+     */
+    static String contactsKind(String type, String name)
+    {
+        String t = type == null ? "" : type.toLowerCase(Locale.ROOT).split(";")[0].trim();
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        if (t.equals("text/vcard") || t.equals("text/x-vcard") || t.equals("text/directory") || n.endsWith(".vcf") || n.endsWith(".vcard"))
+            return "vcf";
+        if (t.equals("text/csv") || t.equals("text/comma-separated-values") || n.endsWith(".csv"))
+            return "csv";
+        return null;
+    }
+
+    /** The type the system says of an address, or null. */
+    private static String typeOf(Context app, Uri uri)
+    {
+        try {
+            return app.getContentResolver().getType(uri);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
 
     /** Opened as a calendar file (VIEW of a content: or file: address, never mailto:). */
     private static boolean calendarFile(Intent intent)
@@ -501,10 +538,12 @@ public final class ShareActivity extends Activity
         return scheme.equals(ContentResolver.SCHEME_CONTENT) || scheme.equals(ContentResolver.SCHEME_FILE);
     }
 
-    /** "Sioul does not open its own files as a calendar file.", in the phone's language. */
-    private static String ownFileRefused()
+    /** "Sioul does not open its own files as a calendar file." (or a file of contacts), in the phone's language. */
+    private static String ownFileRefused(boolean contacts)
     {
         boolean french = "fr".equals(Locale.getDefault().getLanguage());
+        if (contacts)
+            return french ? "Sioul n\u2019ouvre pas ses propres fichiers comme un fichier de contacts." : "Sioul does not open its own files as a file of contacts.";
         return french ? "Sioul n\u2019ouvre pas ses propres fichiers comme un fichier d\u2019agenda." : "Sioul does not open its own files as a calendar file.";
     }
 
@@ -570,8 +609,8 @@ public final class ShareActivity extends Activity
         return uri.getPath() == null || insideOwn(uri.getPath(), ownFolders(app));
     }
 
-    /** What the address holds, {@link #CALENDAR_MOST} bytes at most, through the system's resolver: nothing else is followed. */
-    private static byte[] read(Context app, Uri uri) throws IOException
+    /** What the address holds, through the system's resolver: nothing else is followed. */
+    private static InputStream open(Context app, Uri uri) throws IOException
     {
         // A file: path, opened where the system resolves it, then checked again by
         // what was opened: a link put in its place meanwhile reaches nothing of Sioul's.
@@ -585,23 +624,60 @@ public final class ShareActivity extends Activity
                     throw new IOException(e);
                 }
                 if (insideOwn(opened, ownFolders(app)))
-                    throw new IOException(ownFileRefused());
-                try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(file.dup())) {
-                    return upTo(in);
-                }
+                    throw new IOException(ownFileRefused(false));
+                return new ParcelFileDescriptor.AutoCloseInputStream(file.dup());
             }
         }
-        try (InputStream in = app.getContentResolver().openInputStream(uri)) {
-            if (in == null)
-                throw new FileNotFoundException(String.valueOf(uri.getLastPathSegment()));
-            return upTo(in);
+        InputStream in = app.getContentResolver().openInputStream(uri);
+        if (in == null)
+            throw new FileNotFoundException(String.valueOf(uri.getLastPathSegment()));
+        return in;
+    }
+
+    /** What the address holds, {@code most} bytes at most. */
+    private static byte[] read(Context app, Uri uri, int most) throws IOException
+    {
+        try (InputStream in = open(app, uri)) {
+            return upTo(in, most);
         }
     }
 
-    /** At most {@link #CALENDAR_MOST} bytes of {@code in}. */
-    private static byte[] upTo(InputStream in) throws IOException
+    /**
+     * What the address holds, {@code most} bytes at most, written to {@code file}
+     * as it is read, a piece at a time (beside, then put in place: Rust never
+     * reads half a file).
+     */
+    private static void copy(Context app, Uri uri, int most, File file) throws IOException
     {
-        byte[] buffer = new byte[CALENDAR_MOST];
+        File folder = file.getParentFile();
+        if (folder != null && !folder.isDirectory() && !folder.mkdirs())
+            throw new IOException("cannot make " + folder);
+        File temporary = new File(folder, file.getName() + ".new");
+        try (InputStream in = open(app, uri); FileOutputStream out = new FileOutputStream(temporary)) {
+            byte[] piece = new byte[64 * 1024];
+            int left = most;
+            while (left > 0) {
+                int read = in.read(piece, 0, Math.min(piece.length, left));
+                if (read < 0)
+                    break;
+                out.write(piece, 0, read);
+                left -= read;
+            }
+            out.getFD().sync();
+        } catch (IOException | RuntimeException e) {
+            temporary.delete();
+            throw e;
+        }
+        if (!temporary.renameTo(file)) {
+            temporary.delete();
+            throw new IOException("cannot write " + file);
+        }
+    }
+
+    /** At most {@code most} bytes of {@code in}. */
+    private static byte[] upTo(InputStream in, int most) throws IOException
+    {
+        byte[] buffer = new byte[most];
         int length = 0;
         while (length < buffer.length) {
             int read = in.read(buffer, length, buffer.length - length);

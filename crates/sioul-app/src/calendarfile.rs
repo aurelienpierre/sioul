@@ -70,9 +70,13 @@ pub(crate) fn hand(paths: &[PathBuf]) {
     crate::outside::poke();
 }
 
-/// Each file read and kept for the window of this version, whenever it comes.
+/// Each file read and kept for the window of this version, whenever it comes;
+/// a file of contacts (`.vcf`, `.csv`) for the contacts' import instead
+/// (`contactimport`, wave D), handed the same way.
 pub(crate) fn keep_all(paths: &[PathBuf]) {
-    for path in paths {
+    let (contacts, calendars): (Vec<PathBuf>, Vec<PathBuf>) = paths.iter().cloned().partition(|p| crate::contactimport::is_contacts_file(p));
+    crate::contactimport::keep_all(&contacts);
+    for path in &calendars {
         if let Err(e) = keep(&read_at_most(path)) {
             eprintln!("Sioul: {}: {e}", path.display());
         }

@@ -1,0 +1,4 @@
+﻿First Name,Middle Name,Last Name,Name Prefix,Name Suffix,Nickname,Organization Name,Organization Title,Birthday,Notes,Labels,E-mail 1 - Label,E-mail 1 - Value,Phone 1 - Label,Phone 1 - Value,Address 1 - Formatted
+Jane,,Example,Ms,,,Example Ltd,Accountant,1990-02-03,,* myContacts ::: Work,* Work,jane@example.org,Mobile,+44 7700 900002,"1 Example Street
+London"
+Paul,,Exemple,,,,,,,Met at the market,* myContacts,,paul@example.org,,,

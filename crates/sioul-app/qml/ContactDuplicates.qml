@@ -31,6 +31,19 @@ Panel {
     readonly property var pair: view.pairs.length > 0 ? view.pairs[0] : null
     // Whose name is kept: "first" or "second".
     property string kept: "first"
+    // What the merge would take across a book's switch (review L2): the groups only
+    // the other card carries, from a book whose groups do not decide who may reach
+    // you into one whose groups do; taken only when its box is ticked.
+    readonly property var crossing: {
+        if (!view.pair || typeof view.sioul.duplicatesMergeAsk !== "function")
+            return { groups: [], offer: "", reach: "" }
+        const lead = view.kept === "second" ? view.pair.second : view.pair.first
+        const other = view.kept === "second" ? view.pair.first : view.pair.second
+        return JSON.parse(view.sioul.duplicatesMergeAsk(lead.key, other.key) || "{}")
+    }
+    property bool takeGroups: false
+    // Another card kept: its box unticked again (a new pair unticks it below).
+    onKeptChanged: view.takeGroups = false
 
     signal openContact(string key)
     signal closeAsked
@@ -51,7 +64,7 @@ Panel {
     function merge() {
         const lead = view.kept === "second" ? view.pair.second : view.pair.first
         const other = view.kept === "second" ? view.pair.first : view.pair.second
-        const answer = JSON.parse(view.sioul.mergeContacts(lead.key, other.key))
+        const answer = JSON.parse(view.sioul.mergeContacts(lead.key, other.key, view.takeGroups))
         view.problem = answer.error || ""
     }
 
@@ -80,7 +93,10 @@ Panel {
         view.unticked = unticked
     }
 
-    onPairChanged: view.kept = view.pair ? view.pair.lead : "first"
+    onPairChanged: {
+        view.kept = view.pair ? view.pair.lead : "first"
+        view.takeGroups = false
+    }
     onVisibleChanged: {
         if (view.visible)
             view.look()
@@ -407,6 +423,26 @@ Panel {
                         checked: view.kept === "second"
                         onClicked: view.kept = "second"
                     }
+                }
+                // The groups that would come from a book whose groups are held back: named, one
+                // box to take them (unticked), and what taking them does to who may reach you.
+                WrapCheckBox {
+                    objectName: "duplicatesTakeGroups"
+                    visible: view.pair !== null && (view.crossing.groups || []).length > 0
+                    Layout.fillWidth: true
+                    checked: view.takeGroups
+                    text: view.theme.plain(view.crossing.offer || "")
+                    onToggled: view.takeGroups = checked
+                }
+                Label {
+                    objectName: "duplicatesTakeGroupsReach"
+                    visible: view.pair !== null && (view.crossing.reach || "") !== ""
+                    Layout.fillWidth: true
+                    text: view.crossing.reach || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: view.theme.text
                 }
                 Label {
                     visible: view.pair !== null

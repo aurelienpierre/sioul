@@ -1432,7 +1432,6 @@ contact-categories = Catégories
 contact-category-add = catégorie
 contact-category-remove = Retirer la catégorie { $category }
 contact-category-used = Catégories utilisées
-contacts-category-all = Toutes les catégories
 contacts-none-in = Aucun contact dans { $category }.
 set-phone-region = Pays des numéros de téléphone écrits sans indicatif
 set-phone-region-help = Un numéro écrit sans son pays, comme 01 99 00 12 34, est lu comme un numéro de ce pays, pour retrouver le même numéro écrit +33 1 99 00 12 34. Seulement pour comparer : les fiches gardent leurs numéros tels qu’ils sont écrits.
@@ -1468,6 +1467,8 @@ dup-share-email = l’adresse { $value }
 dup-in-book = Dans { $book }
 dup-keep-name = Nom gardé
 dup-merge-what = Fusionner garde la fiche du nom gardé, avec son organisation, son anniversaire et sa photo quand elle en a, et ajoute ce que seule l’autre contient : numéros, adresses, sites web, catégories, notes. L’autre fiche est ensuite supprimée, ici et sur son serveur.
+dup-merge-groups = Prendre aussi ses groupes : { $groups }
+dup-merge-groups-reach = Pris dans la fiche gardée, « { $group } » est sur votre liste { $list } : ses adresses et ses numéros passeraient comme cette liste le dit.
 dup-merge = Fusionner
 dup-not-same = Pas la même personne
 dup-later = Plus tard
@@ -3277,7 +3278,10 @@ set-task-lists-help = Renommées ici, et sur le serveur à la prochaine synchron
 set-calendars = Agendas
 set-calendars-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste.
 set-address-books = Carnets d’adresses
-set-address-books-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un carnet vide peut être supprimé ; un carnet qui contient des contacts reste.
+set-address-books-help = Où vos contacts sont gardés, et avec qui chaque carnet est partagé. Qui peut vous joindre dépend des groupes d’un contact, jamais de son carnet d’adresses ; les groupes d’un carnet que quelqu’un d’autre peut modifier ne comptent qu’une fois que vous le dites sur sa ligne.
+set-contacts-batches = Changements de nombreux contacts
+set-contacts-batches-help = Chacun peut être annulé en entier pendant trente jours : ce qui a changé depuis reste tel quel.
+set-contacts-more-group = Carte et numéros
 set-collections-remove = Le supprimer, ici et sur le serveur
 word-and = et
 health-every-days = { $days ->
@@ -9224,3 +9228,446 @@ devices-plain-here-system = { $name } (cet appareil, appelé { $system } par son
 devices-plain-line = { $label } : { $value }
 share-devices-moved = Vos appareils sont listés dans Paramètres ▸ Appareils, avec ce à quoi sert chacun.
 share-devices-open = Ouvrir Appareils
+
+## Carnets d’adresses et contacts par lots (vague D) : Contacts ⚙ ▸ Carnets d’adresses, les filtres, la sélection, les parties du nom, l’import.
+
+contact-name-parts = Civilité, prénoms, nom de famille
+contact-name-prefix = Civilité (M., Mme…)
+contact-name-given = Prénoms
+contact-name-family = Nom de famille
+contact-name-suffix = Suffixe
+contact-groups-held = Dans « { $book } », les groupes d’un contact ne décident pas qui peut vous joindre.
+contact-groups-held-door = Ses groupes…
+contacts-none-filtered = Aucun contact ne répond à ces filtres.
+contacts-counted-all = { $total ->
+    [one] Un contact
+   *[other] { $total } contacts
+}
+contacts-counted-some = { $shown } sur { $total }
+contacts-filter-books = Carnets d’adresses
+contacts-filter-books-all = Tous les carnets d’adresses
+contacts-filter-books-some = { $n ->
+    [one] Un carnet d’adresses
+   *[other] { $n } carnets d’adresses
+}
+contacts-filter-group = Groupe
+contacts-filter-group-any = Tous les groupes
+contacts-filter-group-none = Dans aucun groupe
+contacts-filter-phone = Numéro de téléphone
+contacts-filter-phone-any = Numéro ou non
+contacts-filter-phone-has = A un numéro
+contacts-filter-phone-lacks = N’a pas de numéro
+contacts-filter-email = Adresse électronique
+contacts-filter-email-any = Adresse électronique ou non
+contacts-filter-email-has = A une adresse électronique
+contacts-filter-email-lacks = N’a pas d’adresse électronique
+contacts-filter-address = Adresse postale
+contacts-filter-address-any = Adresse postale ou non
+contacts-filter-address-has = A une adresse postale
+contacts-filter-address-lacks = N’a pas d’adresse postale
+contacts-filter-title = Civilité (M., Mme…)
+contacts-filter-title-any = Civilité ou non
+contacts-filter-title-has = A une civilité (M., Mme…)
+contacts-filter-title-lacks = N’a pas de civilité
+contacts-filter-clear = Tout montrer
+contacts-select = Sélectionner
+contacts-select-done = Terminé
+contacts-select-none = Ne rien sélectionner
+contacts-select-shown = { $n ->
+    [one] Sélectionner le seul montré
+   *[other] Sélectionner les { $n } montrés
+}
+contacts-selected = { $n ->
+    [0] Aucun sélectionné
+    [one] Un sélectionné
+   *[other] { $n } sélectionnés
+}
+batch-actions = Avec eux…
+batch-move = Déplacer vers un carnet d’adresses…
+batch-group-add = Ajouter à un groupe…
+batch-group-remove = Retirer d’un groupe…
+batch-title = Mettre la civilité dans son champ…
+batch-delete-contacts = Supprimer…
+batch-book = Carnet d’adresses
+batch-group-name = Groupe
+batch-also-group = Les ajouter aussi à un groupe
+batch-needs-group = Quel groupe ? Tapez son nom, ou choisissez-en un déjà utilisé.
+batch-ask-none = Rien à changer parmi eux.
+batch-ask-move = { $n ->
+    [one] Déplacer un contact vers « { $book } » ?
+   *[other] Déplacer { $n } contacts vers « { $book } » ?
+}
+batch-ask-move-note = Chacun garde son identifiant : rien de ce qui le désigne ne change.
+batch-ask-losses = « { $book } » ne garderait pas : { $list }.
+batch-ask-group-add = { $n ->
+    [one] Ajouter un contact au groupe « { $group } » ?
+   *[other] Ajouter { $n } contacts au groupe « { $group } » ?
+}
+batch-ask-group-remove = { $n ->
+    [one] Retirer un contact du groupe « { $group } » ?
+   *[other] Retirer { $n } contacts du groupe « { $group } » ?
+}
+batch-ask-title = { $n ->
+    [one] Mettre la civilité d’un contact dans son champ ?
+   *[other] Mettre la civilité de { $n } contacts dans leur champ ?
+}
+batch-ask-delete = { $n ->
+    [one] Supprimer un contact ?
+   *[other] Supprimer { $n } contacts ?
+}
+batch-ask-delete-note = Annuler, dans la ligne d’état, les fait revenir pendant dix secondes ; ensuite, pendant trente jours, Contacts ⚙ ▸ Changements de nombreux contacts le fait.
+batch-cannot = { $n ->
+    [one] Un reste tel quel :
+   *[other] { $n } restent tels quels :
+}
+batch-why-gone = il n’existe plus
+batch-why-read-only = son carnet d’adresses est en lecture seule
+batch-why-target-read-only = ce carnet d’adresses est en lecture seule
+batch-why-there-already = il est déjà dans ce carnet d’adresses
+batch-why-same-uid = ce carnet d’adresses contient déjà une fiche du même identifiant
+batch-why-other-title = son champ de civilité contient déjà { $title }
+batch-go = Valider
+batch-go-delete = Les supprimer
+batch-stop = Arrêter
+batch-busy = Un autre changement de nombreux contacts est en cours : il se termine d’abord.
+batch-running = { $done } sur { $total }…
+batch-undoing = Retour de { $done } sur { $total }…
+batch-done-move = { $n ->
+    [one] Un contact déplacé.
+   *[other] { $n } contacts déplacés.
+}
+batch-done-groups = { $n ->
+    [one] Les groupes d’un contact ont changé.
+   *[other] Les groupes de { $n } contacts ont changé.
+}
+batch-done-title = { $n ->
+    [one] Une civilité mise dans son champ.
+   *[other] { $n } civilités mises dans leur champ.
+}
+batch-done-delete = { $n ->
+    [one] Un contact supprimé.
+   *[other] { $n } contacts supprimés.
+}
+batch-done-merge = { $n ->
+    [one] Un contact déplacé.
+   *[other] { $n } contacts déplacés.
+}
+batch-done-import = { $n ->
+    [one] Un contact importé.
+   *[other] { $n } contacts importés.
+}
+batch-done-failed = { $n ->
+    [one] Un n’a pas pu l’être : { $why }.
+   *[other] { $n } n’ont pas pu l’être : { $why }.
+}
+batch-stopped = Arrêté : les autres sont restés tels quels.
+batch-undone = { $n ->
+    [0] Rien à remettre.
+    [one] Un contact remis.
+   *[other] { $n } contacts remis.
+}
+book-whose-yours = À vous
+book-whose-shared-by = Partagé avec vous par { $owner }
+book-whose-shared = Partagé avec vous
+book-whose-unknown = Son serveur ne dit pas à qui il est
+book-kept-here = sur cet appareil seulement
+book-count = { $n ->
+    [one] 1 contact
+   *[other] { $n } contacts
+}
+book-writable = Modifiable
+book-read-only = En lecture seule
+book-waiting = Créé ici ; sur son serveur à la prochaine synchronisation.
+book-google-fixed = Google garde un seul carnet d’adresses : il se renomme et se partage sur les pages de Google. Les contacts y entrent et en sortent d’ici.
+book-needs-name = Un carnet d’adresses a besoin d’un nom.
+book-no-home = Ce compte ne peut pas recevoir de nouveau carnet d’adresses.
+book-leave-question = Ne plus montrer « { $name } » ? Il reste à son propriétaire.
+book-leave-note = Le carnet d’adresses de son propriétaire n’est pas touché.
+book-not-yours-to-remove = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas modifié d’ici.
+book-remove-empty = Supprimer « { $name } » ? Il ne contient aucun contact.
+book-remove-cards = { $n ->
+    [one] « { $name } » contient un contact. Où va-t-il ?
+   *[other] « { $name } » contient { $n } contacts. Où vont-ils ?
+}
+book-remove-copy = Ce compte est celui de cet appareil. Sur son serveur, « { $name } » est supprimé pour tous ceux avec qui il est partagé ; si quelqu’un y a ajouté des contacts depuis la dernière synchronisation, il est gardé et revient ici. Les contacts d’ici sont d’abord copiés sur cet appareil.
+books-new = Nouveau carnet d’adresses…
+books-new-where = Où
+books-new-name = Son nom
+books-make = Le créer
+books-made = Carnet d’adresses créé : { $name }.
+books-rename = Renommer
+books-renamed = Carnet d’adresses renommé : { $name }.
+books-merge = Fusionner avec…
+books-merge-into = Fusionner avec
+books-merge-go = Fusionner
+books-merge-cannot = { $n ->
+    [one] Un contact ne peut pas y aller : { $why }. Rien n’a été fusionné.
+   *[other] { $n } contacts ne peuvent pas y aller : { $why }. Rien n’a été fusionné.
+}
+books-merge-kept = « { $name } » reste : tous ses contacts n’ont pas été déplacés.
+books-remove = Supprimer…
+books-remove-go = Le supprimer
+books-remove-move = Les déplacer vers
+books-remove-move-go = Les déplacer, puis le supprimer
+books-remove-delete = Les supprimer avec lui
+books-removed = Carnet d’adresses supprimé : { $name }. Une copie de ses contacts : { $copy }
+books-removed-empty = Carnet d’adresses supprimé : { $name }.
+books-leave = Ne plus montrer
+books-left = N’est plus montré : { $name }.
+books-gone = Ce carnet d’adresses n’existe plus.
+books-share-asking = Sioul demande à son serveur qui le voit…
+books-share-who = Un utilisateur ou un groupe de ce serveur (son identifiant)
+books-share-group = C’est un groupe
+books-share-write = Peut modifier les contacts
+books-share-go = Partager
+books-share-stop = Arrêter
+books-shared-none = Vous seulement.
+books-shared-read = { $who } peut le lire.
+books-shared-write = { $who } peut le modifier.
+books-unshared = N’est plus partagé avec { $who }.
+books-share-elsewhere = Seulement un utilisateur ou un groupe du même serveur : son identifiant.
+books-share-not-here = Ce serveur ne partage pas de carnet d’adresses depuis Sioul.
+books-share-not-yet = Sur son serveur à la prochaine synchronisation ; il pourra être partagé ensuite.
+books-import = Importer…
+import-title = Importer des contacts
+import-file-kinds = Fichiers vCard ou CSV
+import-reading = Lecture du fichier…
+import-too-big = Ce fichier dépasse { $mb } Mo : il n’est pas lu.
+import-unreadable = Ce fichier ne peut pas être lu : { $error }
+import-kind-not = Seul un fichier vCard (.vcf) ou CSV (.csv) est lu.
+import-on-a-phone = Sur un téléphone, ouvrez le fichier avec Sioul depuis l’endroit où il est (Fichiers, un message) : Android le transmet.
+import-gone = Ce fichier n’est plus ouvert ici.
+import-found-vcf = { $n ->
+    [one] Une fiche dans ce fichier.
+   *[other] { $n } fiches dans ce fichier.
+}
+import-found-csv = { $n ->
+    [one] Une ligne dans ce fichier.
+   *[other] { $n } lignes dans ce fichier.
+}
+import-broken = { $n ->
+    [one] La ligne { $lines } ne se lit pas.
+   *[other] Les lignes { $lines } ne se lisent pas.
+}
+import-export-of = Reconnu : un export de { $name }.
+import-mapping-kept = Les colonnes comme vous les avez gardées : { $name }.
+import-columns = Quelle colonne est quoi
+import-keep-as = Garder ces colonnes sous un nom (facultatif)
+import-into = Dans le carnet d’adresses
+import-into-new = Un nouveau carnet d’adresses…
+import-groups = Ajouter chaque nouveau contact à ces groupes (facultatif, séparés par des virgules)
+import-titles = Mettre dans son champ une civilité trouvée au début d’un nom, là où elle ne peut être qu’une civilité
+import-summary = { $new ->
+    [0] Aucun nouveau contact.
+    [one] Un nouveau contact, dans « { $book } ».
+   *[other] { $new } nouveaux contacts, dans « { $book } ».
+}
+import-read-only = { $n ->
+    [one] Un déjà là dans un carnet d’adresses en lecture seule : laissé tel quel.
+   *[other] { $n } déjà là dans un carnet d’adresses en lecture seule : laissés tels quels.
+}
+import-titled = { $n ->
+    [one] Un nom commence par une civilité : la case ci-dessus la met dans son champ.
+   *[other] { $n } noms commencent par une civilité : la case ci-dessus les met dans leur champ.
+}
+import-check = Les compter
+import-go = Importer
+import-field-skip = Laisser de côté
+import-field-title = Civilité (M., Mme…)
+import-field-given = Prénoms
+import-field-additional = Autres prénoms
+import-field-family = Nom de famille
+import-field-name = Le nom entier
+import-field-suffix = Suffixe
+import-field-company = Organisation
+import-field-role = Fonction
+import-field-mobile = Portable
+import-field-phone = Téléphone
+import-field-email = Adresse électronique
+import-field-street = Rue
+import-field-postcode = Code postal
+import-field-town = Ville
+import-field-region = Région
+import-field-country = Pays
+import-field-address = Adresse postale entière
+import-field-birthday = Anniversaire
+import-field-note = Note
+import-field-groups = Groupes
+import-field-web = Site web
+batch-undone-left = { $n ->
+    [one] Un reste tel quel, dit plus bas.
+   *[other] { $n } restent tels quels, dit plus bas.
+}
+batch-why-changed-since = il a changé depuis que ce changement a été préparé
+batch-why-taken = une autre fiche a pris sa place depuis
+batch-why-gone-since = il a été déplacé ou supprimé depuis
+batch-why-changed-since-undo = il a changé depuis : cette version reste
+batch-why-book-gone = son carnet d’adresses n’existe plus
+batch-why-elsewhere-now = il est dans un autre carnet d’adresses maintenant
+batch-why-undo-gone = Ce changement ne peut plus être annulé : sa trace n’existe plus.
+batch-why-nothing-done = rien n’a été changé
+batch-why-household = son nom réunit deux personnes : laissé tel qu’il est écrit
+batch-why-no-name-line = son nom vient d’une autre ligne de sa fiche : changez-le depuis sa fiche
+batch-why-target-refused = son serveur n’a pas créé ce carnet d’adresses
+batch-title-group-only = Sa civilité est déjà dans son champ : seul le groupe est ajouté.
+batch-title-sure-help = Coché : le mot ne peut être qu’une civilité. Non coché : il peut faire partie d’un nom ou d’une entreprise ; cochez-le si c’est une civilité.
+batch-shared-theirs = « { $book } » est à quelqu’un d’autre : son propriétaire, et ceux avec qui il est partagé, verront ce qui y entre.
+batch-shared-with = « { $book } » est partagé avec { $who } : ils verront ce qui y entre.
+batch-shared-maybe = « { $book } » est peut-être partagé avec d’autres personnes : Sioul demande à son serveur qui le voit.
+batch-listed = { $when } · { $what }
+batch-listed-partly = Arrêté après { $done } sur { $planned }.
+batch-cannot-undo = Ne peut plus être annulé : { $why }.
+batch-undo-ask = { $n ->
+    [one] Remettre le contact touché par ce changement tel qu’il était avant ? Un contact changé depuis reste tel quel.
+   *[other] Remettre les { $n } contacts touchés par ce changement tels qu’ils étaient avant ? Ceux changés depuis restent tels quels.
+}
+batch-undo = Annuler…
+batch-undo-go = Les remettre
+book-refused = Son serveur n’a pas créé ce carnet d’adresses : il reste sur cet appareil seul, et rien n’y est déplacé.
+book-kept-held = Gardé : son serveur contient des contacts ajoutés là-bas depuis ; ils sont de nouveau ici.
+import-file-groups = Le fichier donne ces groupes à ses nouveaux contacts : { $groups }.
+import-keep-listed-one = { $group } ({ $list }), { $n ->
+    [one] une fiche
+   *[other] { $n } fiches
+}
+import-keep-listed = Garder aussi les groupes qui décident qui peut vous joindre : { $groups }
+import-other-names = { $n ->
+    [one] Un a un identifiant déjà là sous un autre nom : il est laissé tel quel ; sa propre case ci-dessous le complète quand même.
+   *[other] { $n } ont un identifiant déjà là sous un autre nom : chacun est laissé tel quel ; sa propre case ci-dessous le complète quand même.
+}
+import-other-name = même identifiant, autre nom : { $name }
+batch-why-unrecorded = sa trace ne peut pas être écrite sur cet appareil : arrêté avant lui
+books-groups-notice-title = « { $name } » : ses groupes ne décident plus qui vous joint
+books-groups-notice-body = { $who } peut maintenant modifier ce carnet d’adresses. Ses contacts restent les vôtres ; activez ses groupes dans Contacts ⚙ ▸ Carnets d’adresses si vous avez confiance.
+books-groups-notice-title-many = { $n } carnets d’adresses : leurs groupes ne décident plus qui vous joint
+books-groups-notice-line = « { $name } » ({ $who })
+books-groups-notice-body-many = Quelqu’un d’autre peut maintenant modifier { $books }. Leurs contacts restent les vôtres ; activez leurs groupes dans Contacts ⚙ ▸ Carnets d’adresses si vous avez confiance.
+batch-reach-stays = Qui peut vous joindre reste ce que disent ses groupes.
+batch-reach-held = { $n ->
+    [one] L’un d’eux est sur votre liste { $list } par un groupe ; dans ce carnet, il compte comme un simple contact tant que vous n’activez pas ses groupes.
+   *[other] { $n } d’entre eux sont sur votre liste { $list } par un groupe ; dans ce carnet, ils comptent comme de simples contacts tant que vous n’activez pas ses groupes.
+}
+batch-reach-let = { $n ->
+    [one] L’un d’eux porte un groupe qu’une de vos listes lit ({ $lists }) ; une fois déplacé, il passe comme cette liste le dit.
+   *[other] { $n } d’entre eux portent un groupe qu’une de vos listes lit ({ $lists }) ; une fois déplacés, ils passent comme cette liste le dit.
+}
+batch-reach-group-held = { $n ->
+    [one] L’un d’eux est dans un carnet d’adresses dont les groupes ne décident pas qui peut vous joindre : là, ce groupe ne compte qu’une fois ses groupes activés ({ $lists }).
+   *[other] { $n } d’entre eux sont dans un carnet d’adresses dont les groupes ne décident pas qui peut vous joindre : là, ce groupe ne compte qu’une fois ses groupes activés ({ $lists }).
+}
+import-reach-held = { $n ->
+    [one] Dans « { $book } », dont les groupes ne décident pas qui peut vous joindre, un nouveau contact porte un groupe d’une de vos listes ({ $lists }) : il compte comme un simple contact tant que vous n’activez pas ses groupes.
+   *[other] Dans « { $book } », dont les groupes ne décident pas qui peut vous joindre, { $n } nouveaux contacts portent un groupe d’une de vos listes ({ $lists }) : ils comptent comme de simples contacts tant que vous n’activez pas ses groupes.
+}
+book-writers-unsaid = Ce serveur ne dit pas qui peut modifier ce carnet.
+book-groups-count = Ses groupes décident qui peut me joindre
+book-groups-owner = Son propriétaire
+book-groups-stopped = { $who } peut modifier ce carnet d’adresses, donc ses groupes ne décident plus qui peut vous joindre : quelqu’un qui peut le modifier pourrait sinon y ajouter une fiche dans un groupe qu’une liste laisse passer. Activez « Ses groupes décident qui peut me joindre » si vous avez confiance.
+books-groups-on = Les groupes de « { $name } » décident maintenant qui peut vous joindre.
+books-groups-off = Les groupes de « { $name } » ne décident plus qui peut vous joindre ; ses contacts restent les vôtres.
+books-groups-failed = Ce choix n’a pas pu être gardé : le fichier des réglages ne peut pas être écrit.
+book-remove-copy-here = Ils sont d’abord copiés sur cet appareil, puis supprimés.
+book-not-yours-to-rename = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas renommé d’ici.
+book-not-yours-to-share = Son serveur ne dit pas que ce carnet d’adresses est à vous : il n’est pas partagé d’ici.
+books-merge-itself = Un carnet d’adresses ne peut pas être fusionné avec lui-même.
+books-merge-ask = { $n ->
+    [one] Déplacer le contact de « { $name } » dans « { $into } », puis supprimer « { $name } » ?
+   *[other] Déplacer les { $n } contacts de « { $name } » dans « { $into } », puis supprimer « { $name } » ?
+}
+books-rename-failed = Ce carnet d’adresses n’a pas pu être renommé : son dossier sur cet appareil ne peut pas être écrit.
+books-remove-failed = Ce carnet d’adresses n’a pas pu être supprimé : son dossier sur cet appareil ne peut pas être écrit.
+books-remove-undone = « { $name } » est revenu, avec ses contacts.
+books-remove-too-late = Trop tard : son serveur l’a déjà supprimé. Ses contacts sont gardés dans { $copy } ; Importer… les fait revenir.
+books-batches = Changements de nombreux contacts, ces trente derniers jours
+books-batches-none = Aucun changement de nombreux contacts ces trente derniers jours.
+dav-kept-both = { $n ->
+    [one] Un contact a changé ailleurs avant que son déplacement n’atteigne son serveur : il est gardé dans les deux carnets d’adresses, tel que vous l’avez laissé et tel qu’il a été changé. { $names }
+   *[other] { $n } contacts ont changé ailleurs avant que leur déplacement n’atteigne leur serveur : chacun est gardé dans les deux carnets d’adresses, tel que vous l’avez laissé et tel qu’il a été changé. { $names }
+}
+import-birthday-as-written = Anniversaire, tel que le fichier l’écrit : { $day }
+import-lines-more = { $lines } et { $more } autres
+import-encoding = Lu en { $encoding ->
+    [utf8] UTF-8.
+    [utf16] UTF-16, le « texte Unicode » d’un tableur.
+   *[windows1252] Windows-1252, comme l’enregistre un tableur français. Si les accents semblent faux, enregistrez de nouveau le fichier en UTF-8.
+}
+import-limit-card = { $n ->
+    [one] Une fiche dépasse { $mb } Mo et n’est pas lue : ligne { $lines }.
+   *[other] { $n } fiches dépassent { $mb } Mo et ne sont pas lues : lignes { $lines }.
+}
+import-limit-cards = Seules les { $most } premières fiches sont lues : à partir de la ligne { $line }, le fichier n’est pas lu.
+import-limit-columns = Ce fichier a { $n } colonnes : les { $most } premières sont proposées, les autres ne sont pas lues.
+import-limit-rows = Seules les { $most } premières lignes sont lues : à partir de la ligne { $line }, le fichier n’est pas lu.
+import-limit-cell = { $n ->
+    [one] Une ligne contient une cellule de plus de { $kb } Ko et n’est pas lue : ligne { $lines }.
+   *[other] { $n } lignes contiennent une cellule de plus de { $kb } Ko et ne sont pas lues : lignes { $lines }.
+}
+import-unclosed = { $n ->
+    [one] Un guillemet ouvert ligne { $line } n’est jamais fermé : de là, la ligne jusqu’à la fin n’est pas lue.
+   *[other] Un guillemet ouvert ligne { $line } n’est jamais fermé : de là, les { $n } lignes jusqu’à la fin ne sont pas lues.
+}
+import-overflow = { $n ->
+    [one] La ligne { $lines } a plus de cellules que le fichier n’a de colonnes : un séparateur dans une adresse l’a peut-être décalée. Regardez-la après l’import.
+   *[other] { $n } lignes ont plus de cellules que le fichier n’a de colonnes : un séparateur dans une adresse les a peut-être décalées (lignes { $lines }). Regardez-les après l’import.
+}
+import-separator = Colonnes séparées par
+import-separator-semicolon = Des points-virgules
+import-separator-comma = Des virgules (,)
+import-separator-tab = Des tabulations
+import-international = Écrire les numéros sans indicatif sous leur forme internationale, comme numéros de { $country } (Contacts ⚙)
+import-international-none = Les numéros restent tels que le fichier les écrit : aucun pays n’est choisi pour les numéros sans indicatif (Contacts ⚙).
+import-groups-here = Aussi à ceux déjà là
+import-complete = Les compléter avec ce que le fichier ajoute
+import-complete-help = Décoché, un contact déjà là reste exactement tel qu’il est. Coché, il reçoit ce qui est listé ci-dessous ; rien de ce qu’il contient n’est remplacé.
+import-gains = Déjà là, et ce que le fichier ajouterait :
+import-gain-in-file = (deux fois dans le fichier)
+import-gain-email = adresse électronique { $value }
+import-gain-phone = numéro { $value }
+import-gain-address = adresse { $value }
+import-gain-web = site web { $value }
+import-gain-org = organisation { $value }
+import-gain-role = fonction { $value }
+import-gain-birthday = anniversaire { $value }
+import-gain-note = note « { $value } »
+import-gain-title = civilité { $value }
+import-gain-given = prénoms { $value }
+import-gain-family = nom de famille { $value }
+import-gain-suffix = suffixe { $value }
+import-gain-group = groupe { $value }
+import-read-of = { $read } des { $rows } lignes du fichier lues comme contacts.
+import-here = { $n ->
+    [one] Un est déjà là (le même identifiant, ou le même nom avec la même adresse ou le même numéro) : laissé tel quel.
+   *[other] { $n } sont déjà là (le même identifiant, ou le même nom avec la même adresse ou le même numéro) : laissés tels quels.
+}
+import-twice = { $n ->
+    [one] Un est deux fois dans le fichier : importé une fois.
+   *[other] { $n } sont deux fois dans le fichier : chacun importé une fois.
+}
+import-apart = { $n ->
+    [one] Un partage un numéro ou une adresse avec une fiche déjà là, sous un autre nom : importé à part.
+   *[other] { $n } partagent un numéro ou une adresse avec une fiche déjà là : importés à part.
+}
+import-completed = { $n ->
+    [one] Un contact déjà là va changer, comme listé ci-dessous.
+   *[other] { $n } contacts déjà là vont changer, comme listé ci-dessous.
+}
+import-rewritten = { $n ->
+    [one] Un numéro est écrit sous sa forme internationale.
+   *[other] { $n } numéros sont écrits sous leur forme internationale.
+}
+import-birthdays = { $n ->
+    [one] Un anniversaire se lit de deux façons, ou d’aucune : il est gardé tel qu’écrit, dans sa note.
+   *[other] { $n } anniversaires se lisent de deux façons, ou d’aucune : chacun est gardé tel qu’écrit, dans sa note.
+}
+
+## Export (vague D, son propre commit).
+
+books-export = Exporter…
+books-export-kind = Fichiers vCard
+books-export-where = Choisissez un fichier hors des carnets d’adresses de Sioul.
+books-export-on-a-phone = Sur un téléphone, choisissez un dossier de la mémoire du téléphone (Téléchargements, Documents).
+books-exported = { $n ->
+    [one] Un contact enregistré en fichier vCard : { $path }
+   *[other] { $n } contacts enregistrés en un fichier vCard : { $path }
+}
+batch-export = Exporter…

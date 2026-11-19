@@ -155,6 +155,12 @@
 //! ## Contacts and calendars
 //!
 //! - [`contacts`]: contacts, one vCard per person.
+//! - [`addressbooks`]: address books, as the Contacts page manages them: whose each is, what it allows, made, merged, removed.
+//! - [`contactfilter`]: the Contacts page's filters, combined: by book, by group, has or lacks, the name.
+//! - [`contactbatch`]: many contacts at once: planned, kept, run through the doors, undone as a whole.
+//! - [`contactimport`]: contacts from a vCard or a CSV file, matched with those already here and completed.
+//! - [`csv`]: CSV files as spreadsheets write them: the separator and the encoding found, quoted cells.
+//! - [`titles`]: titles at the start of a name (Mr, Mme…), as data.
 //! - [`agenda`]: calendars: events from iCalendar files, repeating ones expanded.
 //! - [`agendas`]: several agendas: whose each one is, when it reaches you, what you may do with it, which warn of overlaps.
 //! - [`agentwrites`]: what an AI agent changed, said in the window with Undo.
@@ -233,6 +239,12 @@ pub mod dose_backs;
 pub mod dose_reminders;
 pub mod filelock;
 pub mod contacts;
+pub mod addressbooks;
+pub mod contactbatch;
+pub mod contactfilter;
+pub mod contactimport;
+pub mod csv;
+pub mod titles;
 pub mod duplicates;
 pub mod einvoice;
 pub mod everywhere;

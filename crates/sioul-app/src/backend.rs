@@ -61,6 +61,14 @@ pub mod qobject {
         // The Budgets page's From mail tab: the page last asked (`ledger::ask_mail`).
         #[qproperty(QString, money_mail)]
         #[qproperty(QString, contacts)]
+        // The batch running on contacts, or the last one's end (`contactbatch::start`):
+        // JSON {running, done, total, line, failed: [{name, why}]}.
+        #[qproperty(QString, contacts_batch)]
+        // The contacts' import, its step (`contactimport`): JSON {step, line, …}.
+        #[qproperty(QString, contacts_import)]
+        // The batches on contacts of the last thirty days (`contactbatch::show_batches`):
+        // JSON [{id, line, partly, why_not, ask}], newest first.
+        #[qproperty(QString, contacts_batches)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
@@ -574,6 +582,94 @@ pub mod qobject {
         #[qinvokable]
         fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
 
+        /// The Contacts page's filters (JSON, `contactfilter::Filter`): kept on this device, the list shown again.
+        #[qinvokable]
+        fn set_contacts_filter(self: Pin<&mut Sioul>, filter: &QString);
+
+        /// What a batch on the cards selected would do, said first (JSON {keys,
+        /// action, book, group, ticked}): JSON {count, sentence, note, losses, shared, cannot_line, cannot, previews}.
+        #[qinvokable]
+        fn contacts_batch_plan(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// Runs that batch off the window's thread, its progress in `contactsBatch`; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_batch(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// The batch running stopped before its next card.
+        #[qinvokable]
+        fn stop_contacts_batch(self: Pin<&mut Sioul>);
+
+        /// The batches of the last thirty days read again, off the window's thread, into `contactsBatches`.
+        #[qinvokable]
+        fn read_contacts_batches(self: Pin<&mut Sioul>);
+
+        /// A batch of the last thirty days undone, by its id; "" once started, else why not.
+        #[qinvokable]
+        fn undo_contacts_batch(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// What merging an address book into another would do, asked first: JSON {sentence, losses, shared, cannot}.
+        #[qinvokable]
+        fn merge_question(self: &Sioul, from: &QString, into: &QString) -> QString;
+
+        /// "Its groups decide who may reach me" set for an address book ("account/id"); "" done, else why not.
+        #[qinvokable]
+        fn set_book_groups(self: Pin<&mut Sioul>, place: &QString, on: bool) -> QString;
+
+        /// Contacts ⚙ ▸ Address books, as JSON {books, homes} (`addressbooks::lines`).
+        #[qinvokable]
+        fn address_books_setup(self: &Sioul) -> QString;
+
+        /// A new address book (JSON {account, name}); "" done, else why not.
+        #[qinvokable]
+        fn make_address_book(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// An address book renamed ("account/id"), with Undo; "" done, else why not.
+        #[qinvokable]
+        fn rename_address_book(self: Pin<&mut Sioul>, place: &QString, name: &QString) -> QString;
+
+        /// What removing an address book would do, asked first: JSON {act, sentence, count, into, note}.
+        #[qinvokable]
+        fn address_book_removal(self: &Sioul, place: &QString) -> QString;
+
+        /// An address book removed as `how` says ("empty", "delete", "leave", "move:<place>"); "" done or started, else why not.
+        #[qinvokable]
+        fn remove_address_book(self: Pin<&mut Sioul>, place: &QString, how: &QString) -> QString;
+
+        /// An address book's sharing read, or changed, the answer `bookShared`.
+        #[qinvokable]
+        fn read_book_sharing(self: Pin<&mut Sioul>, place: &QString);
+
+        #[qinvokable]
+        fn share_book(self: Pin<&mut Sioul>, place: &QString, who: &QString, write: bool);
+
+        #[qinvokable]
+        fn unshare_book(self: Pin<&mut Sioul>, place: &QString, sharee: &QString);
+
+        /// A book's cards ({book}) or the cards selected ({keys}) written as one vCard file at `url`; "" done, else why not.
+        #[qinvokable]
+        fn export_contacts(self: Pin<&mut Sioul>, asked: &QString, url: &QString) -> QString;
+
+        /// A file of contacts (a path) read off the window's thread, its first step in `contactsImport`.
+        #[qinvokable]
+        fn import_contacts(self: Pin<&mut Sioul>, path: &QString);
+
+        /// The CSV file shown read again with another separator (";", ",", a tab), its columns in `contactsImport`.
+        #[qinvokable]
+        fn separate_contacts_import(self: Pin<&mut Sioul>, separator: &QString);
+
+        /// The import planned (JSON {fields, book, new_account, new_name, groups, groups_here,
+        /// complete, titles, international, keep_as}), its count in `contactsImport`.
+        #[qinvokable]
+        fn plan_contacts_import(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// The import planned, run as one batch; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_import(self: Pin<&mut Sioul>) -> QString;
+
+        /// The import shown set aside, nothing written.
+        #[qinvokable]
+        fn close_contacts_import(self: Pin<&mut Sioul>);
+
         /// Looks for duplicates in the contacts, off the window's thread: they come in `duplicates`.
         #[qinvokable]
         fn find_duplicates(self: Pin<&mut Sioul>);
@@ -583,9 +679,14 @@ pub mod qobject {
         #[qinvokable]
         fn clean_contacts(self: Pin<&mut Sioul>, keys: &QString) -> QString;
 
-        /// Merges two cards, `lead` keeping its name, the other deleted; returns {"key"} or {"error"}.
+        /// Merges two cards, `lead` keeping its name, the other deleted, its groups taken when
+        /// `groups` or when they cross no switch (`duplicates_merge_ask`); returns {"key"} or {"error"}.
         #[qinvokable]
-        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
+        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString, groups: bool) -> QString;
+
+        /// What merging two cards would take across a book's switch, asked first: JSON {groups, offer, reach}.
+        #[qinvokable]
+        fn duplicates_merge_ask(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
 
         /// Two cards are not one person: never offered again; returns what went wrong, else "".
         #[qinvokable]
@@ -2967,6 +3068,11 @@ pub mod qobject {
         #[qsignal]
         fn agenda_shared(self: Pin<&mut Sioul>, id: QString, answer: QString);
 
+        /// An address book's sharing as its server answered (`addressbooks::sharing`): its
+        /// place, JSON {line, sharer, people, problem}.
+        #[qsignal]
+        fn book_shared(self: Pin<&mut Sioul>, place: QString, answer: QString);
+
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
         fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
@@ -3163,6 +3269,9 @@ pub struct SioulRust {
     undo_line: QString,
     money_mail: QString,
     contacts: QString,
+    contacts_batch: QString,
+    contacts_import: QString,
+    contacts_batches: QString,
     duplicates: QString,
     agenda: QString,
     overlaps: QString,
@@ -5674,7 +5783,8 @@ impl qobject::Sioul {
     fn search_contacts(self: Pin<&mut Self>, query: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.query = query.to_string();
+            state.filter.name = query.to_string();
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
     }
@@ -5702,9 +5812,106 @@ impl qobject::Sioul {
     fn show_contacts_category(self: Pin<&mut Self>, category: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.category = category.to_string();
+            state.filter.group = category.to_string();
+            state.filter.ungrouped = false;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn set_contacts_filter(self: Pin<&mut Self>, filter: &QString) {
+        let shared = self.shared();
+        if let Ok(asked) = serde_json::from_str::<sioul_core::contactfilter::Filter>(&filter.to_string())
+            && let Ok(mut state) = shared.pim.lock()
+        {
+            state.filter = asked;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
+        }
+        pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn contacts_batch_plan(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::plan(&self.shared(), &asked.to_string()))
+    }
+
+    fn run_contacts_batch(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::run(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn stop_contacts_batch(self: Pin<&mut Self>) {
+        crate::contactbatch::stop();
+    }
+
+    fn read_contacts_batches(self: Pin<&mut Self>) {
+        crate::contactbatch::show_batches(&self.qt_thread());
+    }
+
+    fn undo_contacts_batch(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::contactbatch::undo(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn merge_question(&self, from: &QString, into: &QString) -> QString {
+        QString::from(&crate::addressbooks::merge_question(&from.to_string(), &into.to_string()))
+    }
+
+    fn set_book_groups(self: Pin<&mut Self>, place: &QString, on: bool) -> QString {
+        QString::from(&crate::addressbooks::set_groups(&self.qt_thread(), &self.shared(), &place.to_string(), on))
+    }
+
+    fn address_books_setup(&self) -> QString {
+        QString::from(&crate::addressbooks::setup())
+    }
+
+    fn make_address_book(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::addressbooks::make(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn rename_address_book(self: Pin<&mut Self>, place: &QString, name: &QString) -> QString {
+        QString::from(&crate::addressbooks::rename(&self.qt_thread(), &self.shared(), &place.to_string(), &name.to_string()))
+    }
+
+    fn address_book_removal(&self, place: &QString) -> QString {
+        QString::from(&crate::addressbooks::removal(&place.to_string()))
+    }
+
+    fn remove_address_book(self: Pin<&mut Self>, place: &QString, how: &QString) -> QString {
+        QString::from(&crate::addressbooks::remove(&self.qt_thread(), &self.shared(), &place.to_string(), &how.to_string()))
+    }
+
+    fn read_book_sharing(self: Pin<&mut Self>, place: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Read);
+    }
+
+    fn share_book(self: Pin<&mut Self>, place: &QString, who: &QString, write: bool) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Share { who: who.to_string(), write });
+    }
+
+    fn unshare_book(self: Pin<&mut Self>, place: &QString, sharee: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Unshare(sharee.to_string()));
+    }
+
+    fn export_contacts(self: Pin<&mut Self>, asked: &QString, url: &QString) -> QString {
+        QString::from(&crate::contactexport::export(&self.qt_thread(), &self.shared(), &asked.to_string(), &url.to_string()))
+    }
+
+    fn import_contacts(self: Pin<&mut Self>, path: &QString) {
+        crate::contactimport::read(&self.qt_thread(), &self.shared(), &path.to_string(), false);
+    }
+
+    fn separate_contacts_import(self: Pin<&mut Self>, separator: &QString) {
+        crate::contactimport::separate(&self.qt_thread(), &separator.to_string());
+    }
+
+    fn plan_contacts_import(self: Pin<&mut Self>, asked: &QString) {
+        crate::contactimport::plan(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn run_contacts_import(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::contactimport::run(&self.qt_thread(), &self.shared()))
+    }
+
+    fn close_contacts_import(self: Pin<&mut Self>) {
+        crate::contactimport::close(&self.qt_thread());
     }
 
     fn find_duplicates(self: Pin<&mut Self>) {
@@ -5715,8 +5922,12 @@ impl qobject::Sioul {
         QString::from(&crate::duplicates::clean(&self.qt_thread(), &self.shared(), &keys.to_string()))
     }
 
-    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
-        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string()))
+    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString, groups: bool) -> QString {
+        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string(), groups))
+    }
+
+    fn duplicates_merge_ask(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
+        QString::from(&crate::duplicates::merge_ask(&self.shared(), &lead.to_string(), &other.to_string()))
     }
 
     fn not_same_contacts(self: Pin<&mut Self>, first: &QString, second: &QString) -> QString {
@@ -8633,7 +8844,7 @@ impl qobject::Sioul {
         // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

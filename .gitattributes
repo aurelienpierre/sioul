@@ -14,3 +14,5 @@
 *.mp3 binary
 *.wav binary
 *.zip binary
+# Contacts files as phones and spreadsheets write them (CRLF, Windows-1252): kept byte for byte.
+crates/sioul-core/tests/fixtures/contacts/* -text

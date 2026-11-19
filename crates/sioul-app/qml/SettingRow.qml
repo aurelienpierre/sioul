@@ -47,7 +47,8 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        // A block under a heading of its own (the panel's Section) says no title again.
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -391,6 +392,33 @@ ColumnLayout {
                 theme: field.theme
                 about: field.setting.help
                 onAvailabilityAsked: field.goTo("availability")
+            }
+        }
+    }
+    // The address books (AddressBooksSetup.qml), Contacts ⚙'s own block (wave D): its sentence said first there, once.
+    Loader {
+        active: field.setting.kind === "addressbooks"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            AddressBooksSetup {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+    // The changes to many contacts of the last thirty days (ContactBatches.qml), under their own heading.
+    Loader {
+        active: field.setting.kind === "contactbatches"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ContactBatches {
+                sioul: field.sioul
+                theme: field.theme
             }
         }
     }
@@ -1343,7 +1371,7 @@ ColumnLayout {
 
     Label {
         // The blocks say their sentence first themselves.
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText
