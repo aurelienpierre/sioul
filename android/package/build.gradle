@@ -2,8 +2,9 @@
 // Sioul's Gradle build for Android: Qt 6.11.2's template
 // (Qt/6.11.2/android_arm64_v8a/src/android/templates/build.gradle), which
 // androiddeployqt takes from here instead (QT_ANDROID_PACKAGE_SOURCE_DIR), with
-// one change: the resources kept are English and French, not English alone
-// (docs/android.md, "Building it"). Compare it with Qt's own at each Qt update.
+// two changes: the resources kept are English and French, not English alone
+// (docs/android.md, "Building it"); and androidx.webkit, for a site's screen
+// (docs/android.md, "Sites"). Compare it with Qt's own at each Qt update.
 
 buildscript {
     repositories {
@@ -28,6 +29,9 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     //noinspection GradleDependency
     implementation 'androidx.core:core:1.17.0'
+    // A site inside Sioul (SiteWeb.java): what this device's web view can do, asked feature by feature.
+    //noinspection GradleDependency
+    implementation 'androidx.webkit:webkit:1.18.0'
 }
 
 android {

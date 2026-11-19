@@ -159,6 +159,26 @@
                 android:resource="@xml/sioul_shortcuts" />
         </activity>
 
+        <!-- A site inside Sioul (SiteScreen.java; docs/android.md, "Sites"):
+             one site at a time, over the window, in its task and its
+             process, so that every site shares the web view's one store of
+             this device. Not exported, no intent filter: only Sioul opens
+             it, with one extra it checks. A rotation, a split screen or a
+             keyboard attached keeps the page; the bar stays above the soft
+             keyboard. The theme follows Sioul's, set by the screen. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.SiteScreen"
+            android:exported="false"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
+        <!-- The system's web view sends no diagnostics of Sioul's pages to its
+             maker, even with the person's consent given system-wide. -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+
         <!-- Measurable with Android's profiler (simpleperf) from a computer
              plugged in, as for Sioul's start; nothing else is opened by it. -->
         <profileable android:shell="true" />

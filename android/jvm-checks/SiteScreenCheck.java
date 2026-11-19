@@ -1,0 +1,264 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+package com.aurelienpierre.sioul;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * A site's screen (SiteScreen.java, SiteWeb.java; docs/android.md, "Sites"),
+ * on the JVM (android/jvm-checks/run.sh). What its one extra may carry
+ * (SiteWeb.Opening.of): an https address with a host, an id and a name
+ * without control characters and of reasonable length, a domain that is a
+ * host's name, Sioul's colours or its light ones, only the words the screen
+ * shows (each of Rust's among them, read from siteview.rs). Which addresses
+ * load (SiteWeb.where): https pages and blank ones; a link tapped to another
+ * site in the browser, a sign-in's redirects and a pop-up's pages kept; mail
+ * and telephone addresses to their apps at a tap; http, files, content,
+ * intents and other schemes refused. The host shown: the committed page's,
+ * in its ASCII form, "…" before any. The rough domain as Rust's domain_of
+ * reads it, the address kept for after a stop, the user agent without a
+ * web view's marks, a downloaded file's name, the line of what a site asked
+ * for, the features asked as Rust names them. Read from the sources: the
+ * manifest's screen not exported, without an intent filter, kept through
+ * rotations and resizes, above the keyboard, in Sioul's task and process;
+ * the web view's diagnostics off; its folder out of a transfer to another
+ * device; no JavaScript interface, no file or content access, no mixed
+ * content, windows only at a tap, no debugging, no certificate error passed
+ * over, the console never logged, no address nor cookie in a log line; the
+ * camera, the microphone and the location refused; a drawing process that
+ * ends handled; one extra read; StepService's door; the library in Gradle.
+ */
+public final class SiteScreenCheck
+{
+    static int failed = 0;
+    static int checked = 0;
+
+    static void expect(String what, boolean holds)
+    {
+        checked++;
+        if (!holds) {
+            failed++;
+            System.out.println("FAIL " + what);
+        }
+    }
+
+    /** The text with its comments taken out, so that only code is searched. */
+    static String code(String text)
+    {
+        return text.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "").replaceAll("(?s)<!--.*?-->", "");
+    }
+
+    /** The body of `signature` in `text`, to its closing brace at its indentation; "" when it is not there. */
+    static String body(String text, String signature, String indent)
+    {
+        int start = text.indexOf(signature);
+        int end = start < 0 ? -1 : text.indexOf("\n" + indent + "}\n", start);
+        return start < 0 || end < 0 ? "" : text.substring(start, end);
+    }
+
+    static String read(Path path) throws java.io.IOException
+    {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
+    static String site(String change) throws org.json.JSONException
+    {
+        org.json.JSONObject asked = new org.json.JSONObject()
+            .put("id", "bank")
+            .put("name", "My bank")
+            .put("url", "https://secure.bank.example.co.uk/login")
+            .put("domain", "example.co.uk")
+            .put("look", new org.json.JSONObject().put("dark", true).put("background", "#1e1f1c").put("surface", "#272824").put("text", "#E6E2DA").put("muted", "#a8a297").put("line", "#803b3b36"))
+            .put("words", new org.json.JSONObject().put("browser", "Ouvrir dans le navigateur").put("asked", "Ce site a demandé {what}\u202f: pas dans cette version de Sioul.")
+                .put("asked_camera", "la caméra").put("asked_location", "votre position").put("unknown", "never read").put("close", "x".repeat(601)));
+        if (change != null) {
+            org.json.JSONObject changed = new org.json.JSONObject(change);
+            for (java.util.Iterator<String> keys = changed.keys(); keys.hasNext();) {
+                String key = keys.next();
+                asked.put(key, changed.get(key));
+            }
+        }
+        return asked.toString();
+    }
+
+    public static void main(String[] args) throws Exception
+    {
+        // ------------------------------------------------ What the screen is given
+        SiteWeb.Opening bank = SiteWeb.Opening.of(site(null));
+        expect("a site Rust gives is taken", bank != null);
+        expect("its id, name, address, domain", bank.id.equals("bank") && bank.name.equals("My bank") && bank.url.equals("https://secure.bank.example.co.uk/login") && bank.domain.equals("example.co.uk"));
+        expect("Sioul's colours, dark", bank.dark && bank.background == 0xFF1E1F1C && bank.text == 0xFFE6E2DA && bank.line == 0x803B3B36);
+        expect("Sioul's words, in its language", bank.word("browser").equals("Ouvrir dans le navigateur"));
+        expect("a word longer than allowed: English instead", bank.word("close").equals("Close"));
+        expect("a word not given: English", bank.word("reload").equals("Reload"));
+        expect("a key the screen does not show: nothing", bank.word("unknown").isEmpty());
+        SiteWeb.Opening plain = SiteWeb.Opening.of(site("{\"look\": {\"background\": \"red\", \"text\": \"#fff\"}}"));
+        expect("colours that are not #RRGGBB: Sioul's light ones", plain != null && !plain.dark && plain.background == 0xFFF5F2EC && plain.text == 0xFF2D2A26);
+        String[] refused = {
+            "{\"id\": \"\"}", "{\"id\": \"a\\nb\"}", "{\"id\": \"" + "a".repeat(201) + "\"}", "{\"name\": \" \"}", "{\"name\": \"a\\u0007b\"}", "{\"name\": \"" + "n".repeat(201) + "\"}",
+            "{\"url\": \"http://bank.example.org\"}", "{\"url\": \"https://\"}", "{\"url\": \"file:///sdcard/a.html\"}", "{\"url\": \"javascript:alert(1)\"}", "{\"url\": \"https://example.org/" + "a".repeat(4100) + "\"}",
+            "{\"domain\": \"\"}", "{\"domain\": \"ex ample.org\"}", "{\"domain\": \"example.org/x\"}",
+        };
+        for (String change : refused)
+            expect("refused: " + (change.length() > 60 ? change.substring(0, 60) + "…" : change), SiteWeb.Opening.of(site(change)) == null);
+        SiteWeb.Opening other = SiteWeb.Opening.of(site("{\"url\": \"https://b\u00e4nk.example/\", \"domain\": \"b\u00e4nk.example\"}"));
+        expect("a domain in other alphabets, in its ASCII form", other != null && other.domain.equals("xn--bnk-qla.example"));
+        expect("no extra, not JSON, not an object: refused", SiteWeb.Opening.of(null) == null && SiteWeb.Opening.of("not json") == null && SiteWeb.Opening.of("[1]") == null);
+
+        // ------------------------------------------------ The host shown
+        expect("the host alone, no user, no port, lower case", SiteWeb.host("https://user:pw@Secure.Bank.Example.org:8443/a?b#c").equals("secure.bank.example.org"));
+        expect("a backslash ends the host", SiteWeb.host("https://bank.example.org\\@evil.example.net/").equals("bank.example.org"));
+        expect("an address in numbers", SiteWeb.host("https://[::1]:8080/").equals("[::1]"));
+        expect("before a page has committed: …", SiteWeb.shownHost("").equals("…") && SiteWeb.shownHost(null).equals("…") && SiteWeb.shownHost("about:blank").equals("…"));
+        expect("the committed page's host", SiteWeb.shownHost("https://accounts.example.org/sign-in").equals("accounts.example.org"));
+        String unicode = SiteWeb.shownHost("https://b\u00e4nk.example.org/");
+        expect("a name in other alphabets in its ASCII form: " + unicode, unicode.startsWith("xn--") && unicode.endsWith(".example.org"));
+
+        // ------------------------------------------------ The domain, as Rust's domain_of
+        String[][] domains = { { "secure.bank.example.co.uk", "example.co.uk" }, { "app.franceconnect.gouv.fr", "franceconnect.gouv.fr" }, { "mail.proton.me", "proton.me" }, { "proton.me", "proton.me" }, { "localhost", "localhost" }, { "a.b.c.example.org", "example.org" }, { "www.service-public.fr", "service-public.fr" } };
+        for (String[] pair : domains)
+            expect("the domain of " + pair[0], SiteWeb.domainOf(pair[0]).equals(pair[1]));
+        String rust = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "siteview.rs"));
+        for (String[] pair : domains)
+            expect("Rust's test holds the same domain: " + pair[0], rust.contains("(\"" + pair[0] + "\", \"" + pair[1] + "\")"));
+
+        // ------------------------------------------------ Where each navigation goes
+        String bankPage = "https://secure.bank.example.co.uk/home";
+        String domain = "example.co.uk";
+        Object[][] ways = {
+            // url, main frame, gesture, redirect, current, popup, way
+            { "https://www.example.co.uk/help", true, true, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "https://news.example.net/article", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
+            { "https://idp.example.net/authorize", true, false, true, bankPage, false, SiteWeb.Way.LOAD },
+            { "https://idp.example.net/authorize", true, false, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "https://idp.example.net/choose", true, true, false, "https://idp.example.net/authorize", false, SiteWeb.Way.LOAD },
+            { "https://secure.bank.example.co.uk/back", true, true, false, "https://idp.example.net/done", false, SiteWeb.Way.LOAD },
+            { "https://news.example.net/article", true, true, false, "https://accounts.example.com/x", true, SiteWeb.Way.LOAD },
+            { "https://frame.example.net/pay", false, true, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "HTTPS://News.Example.net/", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
+            { "http://old.example.net/", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
+            { "http://old.example.net/", true, false, true, bankPage, false, SiteWeb.Way.REFUSE },
+            { "http://old.example.net/", false, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "mailto:help@example.co.uk", true, true, false, bankPage, false, SiteWeb.Way.OTHER_APP },
+            { "tel:+33100000000", true, true, false, bankPage, false, SiteWeb.Way.OTHER_APP },
+            { "mailto:help@example.co.uk", true, false, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "tel:+33100000000", false, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "intent://scan/#Intent;scheme=zxing;end", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "file:///sdcard/Download/a.pdf", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "content://com.example.provider/a", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "javascript:alert(1)", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "sioul-open:notice", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "market://details?id=x", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "about:blank", true, false, false, "", true, SiteWeb.Way.LOAD },
+            { "about:srcdoc", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "data:text/html,<p>x</p>", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "data:text/html,<p>x</p>", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "blob:https://secure.bank.example.co.uk/1", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
+            { "blob:https://secure.bank.example.co.uk/1", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { "https://", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            { null, true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+        };
+        for (Object[] way : ways) {
+            SiteWeb.Way found = SiteWeb.where((String) way[0], (Boolean) way[1], (Boolean) way[2], (Boolean) way[3], (String) way[4], domain, (Boolean) way[5]);
+            expect(way[0] + " (main " + way[1] + ", tap " + way[2] + ", redirect " + way[3] + ", pop-up " + way[5] + "): " + way[6] + ", not " + found, found == way[6]);
+        }
+
+        // ------------------------------------------------ Kept, the user agent, a file's name, what was asked
+        expect("the page shown kept for after a stop", "https://secure.bank.example.co.uk/home?x=1".equals(SiteWeb.kept("https://secure.bank.example.co.uk/home?x=1")));
+        expect("never another scheme, nor a long one", SiteWeb.kept("http://example.org") == null && SiteWeb.kept("about:blank") == null && SiteWeb.kept(null) == null && SiteWeb.kept("https://example.org/" + "a".repeat(8200)) == null);
+        String agent = "Mozilla/5.0 (Linux; Android 14; Tablet Build/AP2A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.90 Safari/537.36";
+        String cleaned = SiteWeb.userAgent(agent);
+        expect("the user agent without a web view's marks: " + cleaned, !cleaned.contains("; wv") && !cleaned.contains("Version/4.0") && cleaned.contains("Chrome/142.0.7444.90") && cleaned.contains("(Linux; Android 14; Tablet Build/AP2A)"));
+        String[][] names = { { "../../etc/passwd", "passwd" }, { "..\\..\\x.pdf", "x.pdf" }, { ".hidden", "hidden" }, { "a:b*c?.pdf", "a_b_c_.pdf" }, { "report\n.pdf", "report_.pdf" }, { "", "download" }, { null, "download" }, { "...", "download" }, { "Relevé de compte.pdf", "Relevé de compte.pdf" } };
+        for (String[] pair : names)
+            expect("a file's name: " + pair[0] + " → " + SiteWeb.fileName(pair[0]), SiteWeb.fileName(pair[0]).equals(pair[1]));
+        String long_ = SiteWeb.fileName("a".repeat(300) + ".pdf");
+        expect("a long name cut, its extension kept", long_.length() == 120 && long_.endsWith(".pdf"));
+        expect("nothing asked: no line", SiteWeb.askedLine(bank, false, false, false) == null);
+        expect("what was asked, in Sioul's words", "Ce site a demandé la caméra, votre position\u202f: pas dans cette version de Sioul.".equals(SiteWeb.askedLine(bank, true, false, true)));
+        expect("the microphone in English when not given", SiteWeb.askedLine(bank, false, true, false).contains("the microphone"));
+
+        // ------------------------------------------------ As Rust names them
+        Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
+        expect("Rust's features found", features.find());
+        List<String> named = new ArrayList<>();
+        Matcher quoted = Pattern.compile("\"([A-Z_]+)\"").matcher(features.group(1));
+        while (quoted.find())
+            named.add(quoted.group(1));
+        expect("the features asked are Rust's, in its order: " + named, named.equals(java.util.Arrays.asList(SiteWeb.FEATURES)));
+        String[] library = { androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT, androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER, androidx.webkit.WebViewFeature.MUTE_AUDIO, androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING, androidx.webkit.WebViewFeature.MULTI_PROFILE };
+        expect("each the library's own name", java.util.Arrays.equals(library, SiteWeb.FEATURES));
+        String words = body(rust, "pub(crate) fn words(", "");
+        Matcher keys = Pattern.compile("\\(\"([a-z_]+)\", \"(site|ui)-[a-z-]+\"\\)|insert\\(\"([a-z_]+)\"\\.into\\(\\)").matcher(words);
+        List<String> given = new ArrayList<>();
+        while (keys.find())
+            given.add(keys.group(1) != null ? keys.group(1) : keys.group(3));
+        expect("Rust's words found: " + given, given.size() >= 20);
+        for (String key : given)
+            expect("a word Rust gives is one the screen keeps: " + key, SiteWeb.ENGLISH.containsKey(key));
+        expect("every word the screen shows comes from Rust", given.containsAll(SiteWeb.ENGLISH.keySet()));
+
+        // ------------------------------------------------ Read from the sources
+        Path root = Paths.get(System.getProperty("sioul.root"), "android", "package");
+        String manifest = code(read(root.resolve("AndroidManifest.xml")));
+        Matcher activity = Pattern.compile("(?s)<activity\\s+android:name=\"com\\.aurelienpierre\\.sioul\\.SiteScreen\"(.*?)(/>|</activity>)").matcher(manifest);
+        expect("the screen is in the manifest", activity.find());
+        String declared = activity.group(1);
+        expect("not exported", declared.contains("android:exported=\"false\""));
+        expect("no intent filter", activity.group(2).equals("/>") && !declared.contains("intent-filter"));
+        expect("kept through rotations, resizes and keyboards", declared.contains("orientation") && declared.contains("screenSize") && declared.contains("smallestScreenSize") && declared.contains("screenLayout") && declared.contains("keyboard"));
+        expect("above the soft keyboard", declared.contains("android:windowSoftInputMode=\"adjustResize\""));
+        expect("in Sioul's task and process", !declared.contains("android:process") && !declared.contains("taskAffinity") && !declared.contains("excludeFromRecents") && !declared.contains("launchMode"));
+        expect("the web view's diagnostics off", Pattern.compile("(?s)android:name=\"android\\.webkit\\.WebView\\.MetricsOptOut\"\\s+android:value=\"true\"").matcher(manifest).find());
+        String rules = code(read(root.resolve("res/xml/sioul_data_extraction_rules.xml")));
+        expect("the web view's folder out of a transfer", body(rules, "<device-transfer>", "    ").contains("<exclude domain=\"root\" path=\"app_webview/\" />") || rules.matches("(?s).*<device-transfer>.*<exclude domain=\"root\" path=\"app_webview/\" />.*</device-transfer>.*"));
+        expect("and of a cloud backup", rules.matches("(?s).*<cloud-backup>.*<exclude domain=\"root\" />.*</cloud-backup>.*"));
+        expect("no cloud backup before Android 12", manifest.contains("android:allowBackup=\"false\""));
+
+        Path java = root.resolve("src/com/aurelienpierre/sioul");
+        String screen = code(read(java.resolve("SiteScreen.java")));
+        String web = code(read(java.resolve("SiteWeb.java")));
+        expect("no JavaScript interface", !screen.contains("addJavascriptInterface") && !web.contains("addJavascriptInterface"));
+        expect("no file or content access", screen.contains("setAllowFileAccess(false)") && screen.contains("setAllowContentAccess(false)") && !screen.contains("setAllowFileAccess(true)") && !screen.contains("AllowUniversalAccessFromFileURLs(true)") && !screen.contains("AllowFileAccessFromFileURLs(true)"));
+        expect("no mixed content", screen.contains("MIXED_CONTENT_NEVER_ALLOW"));
+        expect("a window only at a tap", screen.contains("setJavaScriptCanOpenWindowsAutomatically(false)") && body(screen, "public boolean onCreateWindow(", "        ").contains("!gesture"));
+        expect("no debugging", !screen.contains("setWebContentsDebuggingEnabled"));
+        expect("no certificate error passed over", !screen.contains("onReceivedSslError") && !screen.contains(".proceed("));
+        expect("the console never logged", body(screen, "public boolean onConsoleMessage(", "        ").contains("return true;"));
+        expect("the camera and the microphone refused", body(screen, "public void onPermissionRequest(", "        ").contains("request.deny();") && !screen.contains(".grant("));
+        expect("the location refused", body(screen, "public void onGeolocationPermissionsShowPrompt(", "        ").contains("callback.invoke(origin, false, false);"));
+        expect("a drawing process that ends: the screen goes, Sioul stays", body(screen, "public boolean onRenderProcessGone(", "        ").contains("end();") && body(screen, "public boolean onRenderProcessGone(", "        ").contains("return true;"));
+        Matcher extras = Pattern.compile("getIntent\\(\\)\\.(get\\w+)\\(([^)]*)\\)").matcher(screen);
+        int read = 0;
+        while (extras.find()) {
+            read++;
+            expect("only the site's one extra is read: " + extras.group(), extras.group(1).equals("getStringExtra") && extras.group(2).equals("SITE"));
+        }
+        expect("the extra read once", read == 1);
+        expect("the extra checked before anything", screen.indexOf("SiteWeb.Opening.of(getIntent().getStringExtra(SITE))") < screen.indexOf("setContentView"));
+        for (String source : new String[] { screen, web }) {
+            Matcher log = Pattern.compile("Log\\.\\w\\(([^;]*)\\);").matcher(source);
+            while (log.find()) {
+                String said = log.group(1);
+                expect("nothing of a page in a log line: " + said, !said.matches("(?is).*\\b(url|address|committed|popupCommitted|cookies?|agent|name|disposition|asked)\\b.*") && !said.contains("getUrl") && !said.contains("getCookie"));
+            }
+        }
+        expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        expect("a site given is checked before the screen opens", body(web, "private static boolean open(", "    ").contains("Opening.of(asked.toString()) == null"));
+        String steps = code(read(java.resolve("StepService.java")));
+        expect("StepService's door to the sites' verbs", steps.contains("if (verb.startsWith(\"site-\"))") && steps.contains("return SiteWeb.call(context, verb, asked);"));
+        expect("androidx.webkit in Gradle", code(read(root.resolve("build.gradle"))).contains("implementation 'androidx.webkit:webkit:"));
+
+        System.out.println("SiteScreenCheck: " + (checked - failed) + " of " + checked + " held");
+        if (failed > 0)
+            System.exit(1);
+    }
+}
