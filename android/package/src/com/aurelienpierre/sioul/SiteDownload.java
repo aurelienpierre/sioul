@@ -41,7 +41,8 @@ import java.util.concurrent.Executors;
  * before the answer is known to be the file; a file cut short is deleted.
  *
  * <p>The pure parts are checked on a JVM (android/jvm-checks/SiteScreenCheck):
- * {@link #sameHost}, {@link #verdict}, {@link #roomFor}, {@link #isProgram}.
+ * {@link #sameHost}, {@link #verdict}, {@link #roomFor}, {@link #isProgram},
+ * {@link #takenBack}.
  */
 final class SiteDownload
 {
@@ -240,6 +241,8 @@ final class SiteDownload
         /** The document Android's "Save as" made (place CHOOSE); null for Downloads. */
         final Uri chosen;
         volatile boolean cancelled;
+        /** Whether this fetch began to write the document "Save as" gave (what it held is gone). */
+        volatile boolean opened;
 
         Job(String url, String agent, String type, String referrer, String name, String place, Uri chosen)
         {
@@ -275,7 +278,7 @@ final class SiteDownload
             if (why != null) {
                 Why said = job.cancelled ? Why.CANCELLED : why;
                 if (job.chosen != null)
-                    forget(context, job.chosen);
+                    forget(context, job);
                 main.accept(() -> heard.failed(said));
             }
         });
@@ -432,6 +435,7 @@ final class SiteDownload
             if (job.chosen != null) {
                 target.chosen = job.chosen;
                 target.out = resolver.openOutputStream(job.chosen, "wt");
+                job.opened = target.out != null;
                 return target.out == null ? null : target;
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -479,13 +483,44 @@ final class SiteDownload
         return file;
     }
 
-    /** The document Android's "Save as" made, deleted when nothing was saved in it. */
-    private static void forget(Context context, Uri chosen)
+    /**
+     * Whether the document "Save as" gave is deleted when nothing was saved
+     * in it: one this fetch began to write (what it held is gone already),
+     * or one that holds nothing (made for this file). A file that was there,
+     * chosen to be replaced and not touched yet, stays: a download that
+     * fails never costs the file it was to replace. A size not said counts
+     * as a file.
+     *
+     * @param opened whether this fetch began to write it
+     * @param size its size in bytes; -1 when not said
+     * @return whether it is deleted
+     */
+    static boolean takenBack(boolean opened, long size)
+    {
+        return opened || size == 0;
+    }
+
+    /** The document Android's "Save as" gave, deleted when nothing was saved in it ({@link #takenBack}). */
+    private static void forget(Context context, Job job)
     {
         try {
-            DocumentsContract.deleteDocument(context.getContentResolver(), chosen);
+            if (!takenBack(job.opened, sizeOf(context, job.chosen)))
+                return;
+            DocumentsContract.deleteDocument(context.getContentResolver(), job.chosen);
         } catch (IOException | RuntimeException e) {
             Log.i(DoseAlarms.TAG, "Sites: the empty file asked for could not be deleted: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** A document's size as its provider says it; -1 when it does not. */
+    private static long sizeOf(Context context, Uri document)
+    {
+        try (android.database.Cursor row = context.getContentResolver().query(document, new String[] { android.provider.OpenableColumns.SIZE }, null, null, null)) {
+            if (row != null && row.moveToFirst() && !row.isNull(0))
+                return row.getLong(0);
+        } catch (RuntimeException e) {
+            Log.i(DoseAlarms.TAG, "Sites: a chosen file's size could not be read: " + e.getClass().getSimpleName());
+        }
+        return -1;
     }
 }

@@ -419,7 +419,9 @@ public final class SiteScreenCheck
         expect("a redirect followed on the same host alone", fetchSource.contains("String next = sameHost(address, answer.getHeaderField(\"Location\"));") && fetchSource.contains("return Why.ELSEWHERE;"));
         expect("the cookies read for each address asked, sent to it alone", body(fetchSource, "private static Why run(", "    ").indexOf("CookieManager.getInstance().getCookie(address)") > body(fetchSource, "private static Why run(", "    ").indexOf("new URL(address).openConnection()"));
         expect("nothing written before the answer is the file", fetchSource.indexOf("Why not = verdict(") < fetchSource.indexOf("Target target = target(context, job);") && fetchSource.indexOf("roomFor(length,") < fetchSource.indexOf("Target target = target(context, job);"));
-        expect("a file cut short is taken back", fetchSource.contains("if (!done)") && fetchSource.contains("target.undo(context);") && fetchSource.contains("forget(context, job.chosen);"));
+        expect("a file cut short is taken back", fetchSource.contains("if (!done)") && fetchSource.contains("target.undo(context);") && fetchSource.contains("forget(context, job);"));
+        expect("a file chosen to be replaced stays when the download fails before writing it", !SiteDownload.takenBack(false, 4096) && !SiteDownload.takenBack(false, -1));
+        expect("the empty file made for a download, or one begun, is taken back", SiteDownload.takenBack(false, 0) && SiteDownload.takenBack(true, 4096) && SiteDownload.takenBack(true, -1));
         expect("a file under way stops with its site", body(screen, "protected void onDestroy()", "    ").contains("fetching.cancelled = true;"));
         expect("a form's address remembered, nothing answered in the page's place", body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("SiteWeb.posted(") && body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("return null;"));
         String offered = body(screen, "private void download(WebView page,", "    ");
