@@ -318,7 +318,7 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
         }
     }
     // Absence proves nothing: what a contact not read this time was is kept.
-    let mut plan = Plan { memory: memory.clone(), unmatched, ..Plan::default() };
+    let mut plan = Plan { memory: memory.clone(), unmatched: unmatched.clone(), ..Plan::default() };
     // Two or more at once: no hand does that; nobody leaves, and it is said (H3).
     if leaving.len() >= 2 {
         plan.kept = leaving;
