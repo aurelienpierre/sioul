@@ -16,7 +16,9 @@
 //! - **The runs**: an extension enabled here and signed in refreshes when
 //!   Sioul starts, then every three hours while the window runs (`tick`),
 //!   and in the phone's background step (`background_step`); never two of
-//!   the same at once; never on the window's thread.
+//!   the same at once, in one process (`RUNNING`) or across a phone's two
+//!   (the window's and the background service's: `run_lock`); never on the
+//!   window's thread.
 //! - **The sign-in page** (`show_page`): on a computer the window's
 //!   SignInWindow.qml, on Android SignIn.java; the address returned comes
 //!   back through `returned`.
@@ -487,6 +489,30 @@ fn start(id: &str) -> bool {
     RUNNING.lock().map(|mut r| r.insert(id.to_string())).unwrap_or(false)
 }
 
+/// Where the lock of one call of `id` is, beside its log (this device's state).
+fn run_lock_path(id: &str) -> std::path::PathBuf {
+    state::log_path(id).with_extension("run")
+}
+
+/// The lock of one call of `id` across processes (a phone's window and its
+/// background service share the extension's sign-in): taken without
+/// waiting, held for the whole call, let go when the file is dropped. None
+/// when another process holds it. A lock that cannot be taken here at all (a
+/// file system without locks) lets the call run: `RUNNING` still holds within the process.
+#[must_use]
+fn run_lock(id: &str) -> Option<Option<std::fs::File>> {
+    let path = run_lock_path(id);
+    if let Some(folder) = path.parent() {
+        let _ = std::fs::create_dir_all(folder);
+    }
+    let Ok(file) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path) else { return Some(None) };
+    match file.try_lock() {
+        Ok(()) => Some(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => None,
+        Err(_) => Some(None),
+    }
+}
+
 fn end(id: &str) {
     if let Ok(mut running) = RUNNING.lock() {
         running.remove(id);
@@ -496,8 +522,26 @@ fn end(id: &str) {
 /// One refresh of `id`, here and now (off the window's thread): its agendas
 /// taken in when this device's fetch is the freshest, its state noted.
 pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
-    let Some(installed) = state::load(&state::path()).get(id).cloned().filter(|i| i.enabled) else { return };
+    refresh_since(qt, id, None);
+}
+
+/// A refresh decided from a record whose last run was `seen` (the minute's
+/// tick, the phone's step): none when another process ran it meanwhile.
+fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
     if !start(id) {
+        return;
+    }
+    // One call of an extension at a time across processes: the other process runs it.
+    let Some(_held) = run_lock(id) else {
+        end(id);
+        return;
+    };
+    let Some(installed) = state::load(&state::path()).get(id).cloned().filter(|i| i.enabled) else {
+        end(id);
+        return;
+    };
+    if seen.is_some_and(|seen| ran_meanwhile(seen, installed.last_run)) {
+        end(id);
         return;
     }
     if let Some(qt) = qt {
@@ -592,11 +636,17 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
         if !start(&id) {
             return;
         }
+        // A refresh of the background service holds it: the sign-in waits for none.
+        let Some(held) = run_lock(&id) else {
+            end(&id);
+            return;
+        };
         show(&qt);
         let shower_qt = qt.clone();
         let shower: store::SignInShower = Box::new(move |page| show_page(&shower_qt, page));
         let (outcome, _) = store::run(&installed.offer, Call::SignIn(choice.as_deref()), french(), Real::new(&id, Some(shower)));
         keep_log(&id, "sign-in", &outcome);
+        drop(held);
         end(&id);
         let name = name_of(&id);
         let mut signed = false;
@@ -657,8 +707,9 @@ pub(crate) fn tick(qt: &QtThread) {
     }
     let started = STARTED.lock().map(|s| s.clone()).unwrap_or_default();
     for installed in due(&state, now, &started, &attempted()) {
+        let seen = state.get(&installed).map(|i| i.last_run);
         let (qt, id) = (qt.clone(), installed);
-        std::thread::spawn(move || refresh(Some(&qt), &id));
+        std::thread::spawn(move || refresh_since(Some(&qt), &id, seen));
     }
 }
 
@@ -691,8 +742,14 @@ pub(crate) fn background_step() {
         .filter(|id| state.get(id).is_some_and(|i| now - i.last_run.max(attempted.get(id).copied().unwrap_or(0)) >= EVERY))
         .collect();
     for id in ids {
-        refresh(None, &id);
+        let seen = state.get(&id).map(|i| i.last_run);
+        refresh_since(None, &id, seen);
     }
+}
+
+/// Whether another process ran an extension since its record said `seen`.
+fn ran_meanwhile(seen: i64, now_recorded: i64) -> bool {
+    now_recorded > seen
 }
 
 // ---------------------------------------------------------------- the sign-in page
@@ -844,6 +901,22 @@ mod tests {
         assert_eq!(due(&state, 1000 + 2 * EVERY, &started, &attempted), vec!["t".to_string()]);
         state.extensions[0].enabled = false;
         assert!(due(&state, 1000 + EVERY, &started, &never).is_empty());
+    }
+
+    /// K2: a phone's window and its background service never run one
+    /// extension at once; the second finds the lock held and lets the first
+    /// run, then sees that it ran.
+    #[test]
+    fn one_call_of_an_extension_at_a_time_across_processes() {
+        let id = "k2-lock-test";
+        let first = run_lock(id).expect("free").expect("a lock file");
+        assert!(run_lock(id).is_none(), "held by the other process (another open file here)");
+        drop(first);
+        let again = run_lock(id).expect("free again");
+        drop(again);
+        assert!(!ran_meanwhile(1000, 1000));
+        assert!(ran_meanwhile(1000, 1000 + EVERY), "the other process ran it meanwhile: no second run");
+        let _ = std::fs::remove_file(run_lock_path(id));
     }
 
     #[test]

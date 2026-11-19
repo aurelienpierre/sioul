@@ -9,6 +9,9 @@
 # sioul-app/src/agenda.rs: what the agenda's Day and Week show on this device (state): no item.
 sioul-app/src/agenda.rs	write_view	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
+# sioul-app/src/extensions.rs: the lock of one call of an extension, beside its log (state): no item.
+sioul-app/src/extensions.rs	run_lock	1	std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path)
+
 # sioul-app/src/alarms.rs: the zone Android last said, for both of a phone's processes (state): no item.
 sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, format!(
 
