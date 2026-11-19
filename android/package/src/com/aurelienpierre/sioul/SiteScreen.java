@@ -156,6 +156,13 @@ public final class SiteScreen extends Activity
         }
         setContentView(layout());
         try {
+            // A web view drawing inside Sioul's process would take Sioul with a page's crash (review V1).
+            if (SiteWeb.drawsInside()) {
+                say(site.word("one_process"));
+                browse(site.url);
+                finish();
+                return;
+            }
             view = page();
             madeView = true;
         } catch (RuntimeException e) {

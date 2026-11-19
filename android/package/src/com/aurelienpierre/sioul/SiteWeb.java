@@ -17,6 +17,7 @@ import android.webkit.WebView;
 
 import androidx.webkit.CookieManagerCompat;
 import androidx.webkit.WebStorageCompat;
+import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
 import org.json.JSONException;
@@ -58,8 +59,8 @@ final class SiteWeb
     // ---------------------------------------------------------------- Rust's questions
 
     /**
-     * Rust's question ({@link StepService#call}): "site-webview" {features},
-     * this device's web view; "site-open" {id, name, url, domain, look,
+     * Rust's question ({@link StepService#call}): "site-webview" {features,
+     * process}, this device's web view; "site-open" {id, name, url, domain, look,
      * words, places}, the site's screen shown, answered true or false;
      * "site-forget" {url, domain}, a removed site's sign-in forgotten
      * ({@link #forget}). Any thread.
@@ -74,7 +75,7 @@ final class SiteWeb
     {
         switch (verb) {
         case "site-webview":
-            return webView(context, asked.optBoolean("features", false)).toString();
+            return webView(context, asked.optBoolean("features", false), asked.optBoolean("process", false)).toString();
         case "site-open":
             return open(context, asked) ? "true" : "false";
         case "site-forget":
@@ -86,11 +87,15 @@ final class SiteWeb
 
     /**
      * This device's web view, as Rust's {@code siteview::WebView} reads it:
-     * {package, version}, and with {@code features} its label and features
-     * too; package "" when the device has none (removed, or turned off).
-     * Asking its features loads the web view into this process, once.
+     * {package, version}; with {@code process} or {@code features}, whether
+     * it draws pages in a process of its own ("apart") or in Sioul's
+     * ("one"; review V1) and its engine's own version from its user agent
+     * ("138"; review V4), else what an earlier question found; with
+     * {@code features}, its label and features too. Package "" when the
+     * device has none (removed, or turned off). Asking loads the web view
+     * into this process, once.
      */
-    static JSONObject webView(Context context, boolean features) throws JSONException
+    static JSONObject webView(Context context, boolean features, boolean process) throws JSONException
     {
         JSONObject said = new JSONObject();
         PackageInfo info;
@@ -105,6 +110,10 @@ final class SiteWeb
         }
         said.put("package", info.packageName);
         said.put("version", info.versionName == null ? "" : info.versionName);
+        String of = info.packageName + " " + info.getLongVersionCode();
+        String[] found = features || process ? drawing(context, of) : known(of);
+        said.put("process", found[0]);
+        said.put("engine", found[1]);
         if (!features)
             return said;
         // Its name and what it can do, for this device's card alone: the list needs neither.
@@ -116,8 +125,93 @@ final class SiteWeb
             label = "";
         }
         said.put("label", label);
-        said.put("features", features(info.packageName + " " + info.getLongVersionCode()));
+        said.put("features", features(of));
         return said;
+    }
+
+    /** Where the web view draws and its engine, by its package and version: found once, a failure never kept (review V3). */
+    private static String drawingOf = "";
+    private static String[] drawingFound;
+
+    /** What {@link #drawing} found for this web view, without asking it; "" for each when not yet. */
+    private static synchronized String[] known(String of)
+    {
+        return drawingFound != null && drawingOf.equals(of) ? drawingFound : new String[] { "", "" };
+    }
+
+    /**
+     * Whether the web view draws pages apart and its engine's version,
+     * asked on Android's main thread (which the web view's start needs)
+     * and waited for three seconds at most; each "" when it could not say,
+     * then asked again the next time.
+     */
+    private static String[] drawing(Context context, String of)
+    {
+        String[] before = known(of);
+        if (!before[0].isEmpty() && !before[1].isEmpty())
+            return before;
+        String[] found = { "", "" };
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        Runnable work = () -> {
+            try {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS))
+                    found[0] = WebViewCompat.isMultiProcessEnabled() ? "apart" : "one";
+            } catch (RuntimeException e) {
+                found[0] = "";
+            }
+            try {
+                found[1] = engineOf(android.webkit.WebSettings.getDefaultUserAgent(context));
+            } catch (RuntimeException e) {
+                found[1] = "";
+            }
+            done.countDown();
+        };
+        if (Looper.myLooper() == Looper.getMainLooper())
+            work.run();
+        else
+            new Handler(Looper.getMainLooper()).post(work);
+        try {
+            if (!done.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                return before;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return before;
+        }
+        synchronized (SiteWeb.class) {
+            if (!found[0].isEmpty() && !found[1].isEmpty()) {
+                drawingOf = of;
+                drawingFound = found;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Whether this device's web view draws pages inside Sioul's own
+     * process, on Android's main thread: where it does, a page's crash
+     * would end Sioul, and the site opens in the browser (review V1).
+     * False when it cannot say.
+     *
+     * @return whether it draws inside Sioul
+     */
+    static boolean drawsInside()
+    {
+        return WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) && !WebViewCompat.isMultiProcessEnabled();
+    }
+
+    /**
+     * The engine's own version, its first number, from the web view's user
+     * agent ("… Chrome/138.0.7204.179 …" → "138"); "" when it says none.
+     *
+     * @param agent the web view's default user agent, or null
+     * @return the version's first number, or ""
+     */
+    static String engineOf(String agent)
+    {
+        if (agent == null)
+            return "";
+        java.util.regex.Matcher chrome = java.util.regex.Pattern.compile("\\bChrome/(\\d{1,5})\\.").matcher(agent);
+        return chrome.find() ? chrome.group(1) : "";
     }
 
     /** Each feature of {@link #FEATURES}, asked of the web view once for its package and version. */
@@ -126,17 +220,22 @@ final class SiteWeb
         if (featuresFound != null && featuresOf.equals(of))
             return featuresFound;
         JSONObject found = new JSONObject();
+        boolean whole = true;
         for (String name : FEATURES) {
             boolean on;
             try {
                 on = WebViewFeature.isFeatureSupported(name);
             } catch (RuntimeException e) {
                 on = false;
+                whole = false;
             }
             found.put(name, on);
         }
-        featuresOf = of;
-        featuresFound = found;
+        // Kept only when every answer came (review V3): a failure is asked again next time.
+        if (whole) {
+            featuresOf = of;
+            featuresFound = found;
+        }
         return found;
     }
 
@@ -497,6 +596,7 @@ final class SiteWeb
         ENGLISH.put("ended", "The page stopped: Android ended what drew it. Sioul goes on; open the site again.");
         ENGLISH.put("no_browser", "No application on this device opens this address.");
         ENGLISH.put("not_https", "Sioul opens encrypted pages only (https): this one was not opened.");
+        ENGLISH.put("one_process", "This device's web view draws pages inside Sioul, where a page's crash would end Sioul: the site opens in your browser.");
     }
 
     /** Whether a text holds a control character (a line break among them). */

@@ -62,6 +62,14 @@ pub(crate) struct WebView {
     /// What it can do, feature by feature; empty when not asked.
     #[serde(default)]
     pub features: BTreeMap<String, bool>,
+    /// Where it draws pages: "apart" (a process of its own), "one" (Sioul's
+    /// own process: a page's crash ends Sioul), "" when not known yet.
+    #[serde(default)]
+    pub process: String,
+    /// Its engine's own version, the first number of "Chrome/…" in its user
+    /// agent ("138"); "" when not known yet: the package's version is read then.
+    #[serde(default)]
+    pub engine: String,
 }
 
 /// Where a site opens on this device.
@@ -77,11 +85,31 @@ pub(crate) enum Opens {
     Unknown,
     /// In the browser: the site's address is not https (a configuration written by hand).
     NotHttps,
+    /// In the browser: the web view draws pages in Sioul's own process,
+    /// where a page's crash would end Sioul (review V1).
+    OneProcess,
 }
 
 /// The engine's version, the first number of the package's: "138.0.7204.179" → 138.
 pub(crate) fn major(version: &str) -> Option<u32> {
     version.split('.').next()?.trim().parse().ok()
+}
+
+/// The engine's version: its own, from its user agent, when Java said it
+/// (review V4: a maker's package may number itself otherwise); else the
+/// package's first number.
+pub(crate) fn engine_major(view: &WebView) -> Option<u32> {
+    major(&view.engine).or_else(|| major(&view.version))
+}
+
+/// The version said in a line: the package's, and the engine's beside it
+/// when its first number differs ("150.2 (Chromium 108)").
+pub(crate) fn shown_version(view: &WebView) -> String {
+    match (major(&view.engine), major(&view.version)) {
+        (Some(engine), Some(package)) if engine != package => format!("{} (Chromium {engine})", view.version),
+        (Some(engine), None) => format!("{} (Chromium {engine})", view.version).trim_start().to_string(),
+        _ => view.version.clone(),
+    }
 }
 
 /// Where a site at `url` opens, with this device's web view as Java said it (none: no answer).
@@ -92,7 +120,8 @@ pub(crate) fn opens(view: Option<&WebView>, url: &str) -> Opens {
     match view {
         None => Opens::Unknown,
         Some(view) if view.package.is_empty() => Opens::NoWebView,
-        Some(view) => match major(&view.version) {
+        Some(view) => match engine_major(view) {
+            Some(major) if major >= OLDEST && view.process == "one" => Opens::OneProcess,
             Some(major) if major >= OLDEST => Opens::Here,
             Some(_) => Opens::TooOld,
             None => Opens::Unknown,
@@ -107,11 +136,12 @@ pub(crate) fn opens_line(opens: Opens, view: Option<&WebView>, tr: &Translator) 
         Opens::NoWebView => tr.text("site-opens-none", None),
         Opens::TooOld => {
             let mut args = sioul_core::i18n::args();
-            args.set("version", view.map(|v| v.version.clone()).unwrap_or_default());
+            args.set("version", view.map(shown_version).unwrap_or_default());
             tr.text("site-opens-old", Some(&args))
         }
         Opens::Unknown => tr.text("site-opens-unknown", None),
         Opens::NotHttps => tr.text("site-opens-address", None),
+        Opens::OneProcess => tr.text("site-opens-one-process", None),
     }
 }
 
@@ -130,7 +160,7 @@ pub(crate) fn card_line(view: Option<&WebView>, tr: &Translator) -> String {
     let named = |id: &str, view: &WebView, lacks: Option<String>| {
         let mut args = sioul_core::i18n::args();
         args.set("name", if view.label.is_empty() { view.package.clone() } else { view.label.clone() });
-        args.set("version", view.version.clone());
+        args.set("version", shown_version(view));
         if let Some(lacks) = lacks {
             args.set("lacks", lacks);
         }
@@ -147,19 +177,21 @@ pub(crate) fn card_line(view: Option<&WebView>, tr: &Translator) -> String {
             }
         }
         (Opens::TooOld, Some(view)) => named("webview-line-old", view, None),
+        (Opens::OneProcess, Some(view)) => named("webview-line-one-process", view, None),
         (Opens::NoWebView, _) => tr.text("webview-line-none", None),
         _ => tr.text("webview-line-unknown", None),
     }
 }
 
-/// This device's web view, asked of Java; with each feature when `features`
-/// (which loads the web view into the window's process, once). None on a
-/// computer, and when Java does not answer.
-pub(crate) fn webview(features: bool) -> Option<WebView> {
+/// This device's web view, asked of Java; where it draws and its engine's
+/// version when `process`, each feature too when `features` (either loads
+/// the web view into the window's process, once); else what Java found
+/// before. None on a computer, and when Java does not answer.
+pub(crate) fn webview(features: bool, process: bool) -> Option<WebView> {
     if !cfg!(target_os = "android") {
         return None;
     }
-    let said = crate::steps::java("site-webview", &serde_json::json!({ "features": features }).to_string());
+    let said = crate::steps::java("site-webview", &serde_json::json!({ "features": features, "process": process }).to_string());
     serde_json::from_value(said).ok()
 }
 
@@ -169,7 +201,7 @@ pub(crate) fn lines_here() -> Option<impl Fn(&str) -> String> {
     if !cfg!(target_os = "android") {
         return None;
     }
-    let view = webview(false);
+    let view = webview(false, false);
     Some(move |url: &str| opens_line(opens(view.as_ref(), url), view.as_ref(), tr()))
 }
 
@@ -178,7 +210,7 @@ pub(crate) fn card_line_here() -> String {
     if !cfg!(target_os = "android") {
         return String::new();
     }
-    card_line(webview(true).as_ref(), tr())
+    card_line(webview(true, true).as_ref(), tr())
 }
 
 /// The words the site's screen shows, in Sioul's language: Java keeps none of its own.
@@ -222,6 +254,7 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("ended", "site-screen-ended"),
         ("no_browser", "site-screen-no-browser"),
         ("not_https", "site-screen-not-https"),
+        ("one_process", "site-screen-one-process"),
     ];
     let mut words: serde_json::Map<String, serde_json::Value> = keys.iter().map(|(key, id)| (key.to_string(), tr.text(id, None).into())).collect();
     // Java puts its own words in place of these marks: what was asked, the file's name.
@@ -278,7 +311,8 @@ pub(crate) fn open(id: &str, look: &str) -> String {
     if !cfg!(target_os = "android") {
         return serde_json::json!({ "browser": site.url }).to_string();
     }
-    let view = webview(false);
+    // Where it draws asked now: the screen would load the web view into this process anyway.
+    let view = webview(false, true);
     if opens(view.as_ref(), &site.url) != Opens::Here {
         return serde_json::json!({ "browser": site.url }).to_string();
     }
@@ -336,7 +370,42 @@ mod tests {
     use super::*;
 
     fn view(version: &str, features: &[(&str, bool)]) -> WebView {
-        WebView { package: "com.android.webview".into(), label: "Android System WebView".into(), version: version.into(), features: features.iter().map(|(k, v)| (k.to_string(), *v)).collect() }
+        WebView { package: "com.android.webview".into(), label: "Android System WebView".into(), version: version.into(), features: features.iter().map(|(k, v)| (k.to_string(), *v)).collect(), ..WebView::default() }
+    }
+
+    /// A web view that draws in Sioul's own process sends sites to the
+    /// browser, with that reason in the line and the card (review V1);
+    /// one that draws apart, or has not said, carries them.
+    #[test]
+    fn a_web_view_without_a_process_of_its_own_sends_sites_to_the_browser() {
+        let url = "https://app.example.org/inbox";
+        let one = WebView { process: "one".into(), ..view("138.0.7204.179", &[]) };
+        assert_eq!(opens(Some(&one), url), Opens::OneProcess);
+        assert_eq!(opens(Some(&WebView { process: "apart".into(), ..view("138.0.7204.179", &[]) }), url), Opens::Here);
+        assert_eq!(opens(Some(&view("138.0.7204.179", &[])), url), Opens::Here, "not said yet");
+        assert_eq!(opens(Some(&WebView { process: "one".into(), ..view("108.0.1", &[]) }), url), Opens::TooOld, "too old first");
+        for language in ["en", "fr"] {
+            let tr = Translator::new(language);
+            let line = opens_line(Opens::OneProcess, Some(&one), &tr);
+            assert!(!line.starts_with("site-opens") && line != opens_line(Opens::Here, Some(&one), &tr), "{line}");
+        }
+        assert!(card_line(Some(&one), &Translator::new("en")).contains("browser"));
+        assert!(card_line(Some(&one), &Translator::new("en")).contains("crash"));
+    }
+
+    /// The engine's own version decides where it says one (review V4): a
+    /// package numbered otherwise is read by its engine, and the lines say both.
+    #[test]
+    fn the_engine_s_own_version_decides() {
+        let url = "https://app.example.org/inbox";
+        let renumbered = WebView { engine: "108".into(), ..view("150.2.1", &[]) };
+        assert_eq!(opens(Some(&renumbered), url), Opens::TooOld);
+        assert_eq!(shown_version(&renumbered), "150.2.1 (Chromium 108)");
+        assert!(opens_line(Opens::TooOld, Some(&renumbered), &Translator::new("en")).contains("150.2.1 (Chromium 108)"));
+        let current = WebView { engine: "142".into(), ..view("2.1.0", &[]) };
+        assert_eq!(opens(Some(&current), url), Opens::Here);
+        assert_eq!(shown_version(&view("142.0.7444.90", &[])), "142.0.7444.90", "one number, said once");
+        assert_eq!(shown_version(&WebView { engine: "142".into(), ..view("142.0.7444.90", &[]) }), "142.0.7444.90");
     }
 
     /// A site opens in Sioul where this device's web view is Chromium 120 or

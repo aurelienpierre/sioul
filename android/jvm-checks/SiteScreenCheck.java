@@ -315,6 +315,10 @@ public final class SiteScreenCheck
         expect("without their attributes: each name expired on its host and under the site's domain: " + byName, byName.size() == 7 && byName.contains("sid=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure; Domain=example.org")
             && byName.contains("pref=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure") && byName.contains("__Host-t=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure"));
 
+        // ------------------------------------------------ The web view's own engine (review V4)
+        expect("the engine's version from its user agent", SiteWeb.engineOf("Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36").equals("138"));
+        expect("none said: nothing", SiteWeb.engineOf(null).isEmpty() && SiteWeb.engineOf("Mozilla/5.0 (Linux; Android 9)").isEmpty() && SiteWeb.engineOf("HeadlessChrome/120.0").isEmpty());
+
         // ------------------------------------------------ As Rust names them
         Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
         expect("Rust's features found", features.find());
@@ -441,6 +445,13 @@ public final class SiteScreenCheck
             }
         }
         expect("nothing of Sioul's Java empties every site's store (review K2's rule, kept here)", !wipes);
+        // A web view drawing inside Sioul's process sends the site to the browser (review V1).
+        expect("the screen asks where the web view draws before making one", create.indexOf("if (SiteWeb.drawsInside())") >= 0 && create.indexOf("if (SiteWeb.drawsInside())") < create.indexOf("view = page();") && create.indexOf("if (SiteWeb.drawsInside())") > create.indexOf("try {"));
+        expect("and then opens the browser, saying why", create.contains("say(site.word(\"one_process\"));\n                browse(site.url);\n                finish();"));
+        expect("where it draws, asked of androidx.webkit behind its feature", body(web, "static boolean drawsInside()", "    ").contains("WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) && !WebViewCompat.isMultiProcessEnabled()"));
+        String drawing = body(web, "private static String[] drawing(", "    ");
+        expect("Rust's question asked on Android's main thread, three seconds at most", drawing.contains("new Handler(Looper.getMainLooper()).post(work);") && drawing.contains("done.await(3, java.util.concurrent.TimeUnit.SECONDS)"));
+        expect("an answer kept only when whole (review V3)", drawing.contains("if (!found[0].isEmpty() && !found[1].isEmpty())") && body(web, "private static synchronized JSONObject features(", "    ").contains("if (whole) {"));
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");
