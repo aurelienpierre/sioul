@@ -1225,6 +1225,43 @@ pub struct Cleaned {
     pub removed: usize,
     /// Old files changed since they were copied (someone wrote there after the move): kept, said.
     pub changed: Vec<String>,
+    /// Old files kept for another reason, each with its code (`storage-kept-<code>`):
+    /// "link" (a link on its way, rule 4), "same-file" (its copy is the same
+    /// file under another name), "copy-missing", "copy-differs" (rule 1),
+    /// "not-removed" (the system refused: a file open elsewhere, a permission).
+    pub kept: Vec<(String, &'static str)>,
+}
+
+impl Cleaned {
+    /// Nothing of Sioul's left in the notes folder by this take-out.
+    pub fn whole(&self) -> bool {
+        self.changed.is_empty() && self.kept.is_empty()
+    }
+}
+
+/// Whether `relative` (with `/`) below `root` is a plain file reached
+/// through no link: `Ok(false)` when it is not there; a link on its way, or
+/// a `..` that would leave `root`, refused (rule 4: a link anywhere in a
+/// path below a folder). `root` itself may be reached through links: it is
+/// the folder as set.
+pub fn plain_below(root: &Path, relative: &str) -> Result<bool, Fault> {
+    let parts: Vec<&str> = relative.split('/').filter(|part| !part.is_empty() && *part != ".").collect();
+    let mut path = root.to_path_buf();
+    for (i, part) in parts.iter().enumerate() {
+        if *part == ".." {
+            return Err(Fault::new("link", join(root, relative).display()));
+        }
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => return Err(Fault::new("link", path.display())),
+            Ok(meta) if i + 1 == parts.len() => return Ok(meta.is_file()),
+            Ok(meta) if meta.is_dir() => {}
+            Ok(_) => return Ok(false),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(Fault::new("unreadable", format!("{}: {e}", path.display()))),
+        }
+    }
+    Ok(false)
 }
 
 /// The old files taken out of the notes folder, once every device has
@@ -1238,6 +1275,29 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
     let mut cleaned = Cleaned::default();
     for entry in journal.files.iter().filter(|e| !e.alone) {
         let from = join(&notes, &entry.from);
+        // Reached through a link (a `papers/` replaced by a link to the papers' folder, a sync
+        // that carries links): never read nor removed through it, the copy may be behind it.
+        match plain_below(&notes, &entry.from) {
+            Ok(true) => {}
+            // Gone already (taken out by hand): its lock file, Sioul's own and hidden, goes too.
+            Ok(false) if std::fs::symlink_metadata(&from).is_err() => {
+                let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let _ = std::fs::remove_file(from.with_file_name(format!(".{name}.lock")));
+                continue;
+            }
+            Ok(false) => {
+                cleaned.kept.push((entry.from.clone(), "not-removed"));
+                continue;
+            }
+            Err(fault) if fault.code == "link" => {
+                cleaned.kept.push((entry.from.clone(), "link"));
+                continue;
+            }
+            Err(_) => {
+                cleaned.kept.push((entry.from.clone(), "not-removed"));
+                continue;
+            }
+        }
         let removed = match sha_of(&from) {
             Ok(sha) if sha == entry.sha => {
                 let gone = std::fs::remove_file(&from).is_ok();
@@ -1259,7 +1319,7 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
     for old in [OLD_PAPERS, OLD_LETTERS] {
         remove_empty(&notes.join(old));
     }
-    if cleaned.changed.is_empty() {
+    if cleaned.whole() {
         storage.cleaned = now;
         storage.adopted = false;
         storage.write(state)?;
@@ -1270,8 +1330,12 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
     Ok(cleaned)
 }
 
-/// A folder and those below it, each taken out once empty; never a file.
+/// A folder and those below it, each taken out once empty; never a file,
+/// never through a link (a link put at `papers/` leads to the papers' folder).
 fn remove_empty(dir: &Path) {
+    if !std::fs::symlink_metadata(dir).is_ok_and(|meta| meta.is_dir()) {
+        return;
+    }
     let Ok(read) = std::fs::read_dir(dir) else { return };
     for entry in read.flatten() {
         if entry.file_type().is_ok_and(|t| t.is_dir()) {

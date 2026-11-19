@@ -612,3 +612,29 @@ fn a_notes_folder_that_is_not_there_now_switches_nothing() {
     assert!(Storage::read(&none.state).is_moved() && Storage::read(&none.state).from_path().is_none());
     assert!(tree(&none.records).is_empty(), "nothing written there");
 }
+
+/// After the move, `papers/` in the notes folder replaced by a link to the
+/// new papers' folder (or a file of `letters/` by a link): the take-out
+/// removes nothing through it, and says why (review S14).
+#[cfg(unix)]
+#[test]
+fn clean_never_deletes_through_a_link_put_in_the_notes_folder() {
+    let stand = stand("clean-link");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    let old = stand.folders.notes.join("papers");
+    std::fs::remove_dir_all(&old).unwrap();
+    std::os::unix::fs::symlink(&stand.folders.papers, &old).unwrap();
+    // A scan's old file replaced by a link to its copy, too.
+    let scan = stand.folders.notes.join("letters").join("2026").join("2026-10-12 caf other.pdf");
+    std::fs::remove_file(&scan).unwrap();
+    std::os::unix::fs::symlink(stand.folders.letters.join("2026").join("2026-10-12 caf other.pdf"), &scan).unwrap();
+    let (papers, letters) = (tree(&stand.folders.papers), tree(&stand.folders.letters));
+    assert!(!papers.is_empty());
+    let cleaned = clean(&stand.folders.state, NOW + 86_400).unwrap();
+    assert_eq!(tree(&stand.folders.papers), papers, "the papers' folder as it was");
+    assert_eq!(tree(&stand.folders.letters), letters, "the letters' folder as it was");
+    assert!(cleaned.kept.iter().any(|(file, why)| file == "papers/Passport.pdf" && *why == "link"), "{cleaned:?}");
+    assert!(cleaned.kept.iter().any(|(file, why)| file.ends_with("caf other.pdf") && *why == "link"), "{cleaned:?}");
+    assert!(std::fs::symlink_metadata(&old).is_ok_and(|m| m.file_type().is_symlink()), "the link itself left alone");
+    assert_eq!(Storage::read(&stand.folders.state).cleaned, 0, "not said done while something stays");
+}
