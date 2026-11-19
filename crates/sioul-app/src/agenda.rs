@@ -364,7 +364,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "status": agenda::status_of(&text),
         // A series: how it repeats ("Every week until Friday 26 June"), its next pause and when it resumes.
         "repeats": if o.recurring { crate::series::card_lines(&text).0 } else { String::new() },
-        "pause": if o.recurring && text.contains("X-SIOUL-PAUSED") { crate::series::card_lines(&text).1 } else { String::new() },
+        "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
         "own_answer": own_answer,
         "people": people,
         "geo": geo,

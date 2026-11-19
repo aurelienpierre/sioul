@@ -167,12 +167,38 @@ pub(crate) fn mine_named(pauses: &mut [String]) -> Result<(), String> {
 /// What the event card says of a series (its file's `text`): how it repeats
 /// ("Every week until Friday 26 June"), and its next pause and when it
 /// resumes; "" each when it says nothing.
+///
+/// A series given guests after Sioul left times out of it keeps those
+/// times, and Sioul no longer keeps its pauses (each change would go to
+/// every guest): its card says so in one line, in place of the next pause (F37).
 pub(crate) fn card_lines(text: &str) -> (String, String) {
     let zone = sioul_core::zone::current();
     let now = sioul_core::zone::now();
     let Some(edit) = sioul_core::agenda::edit_of_text(text, &zone) else { return (String::new(), String::new()) };
+    let words = series::rule_words(&edit, now.date(), tr());
+    if sioul_core::agenda::with_others(text) {
+        let noted = text.contains(&format!("{};", series::PAUSED)) || text.contains(series::PAUSE_DURING);
+        return (words, if noted { tr().text("series-paused-guests", None) } else { String::new() });
+    }
     let config = load_config();
     let names = |source: &Source| source_name(&config, source);
-    (series::rule_words(&edit, now.date(), tr()), series::pause_line(text, &now, &names, tr()))
+    (words, series::pause_line(text, &now, &names, tr()))
 }
 
+#[cfg(test)]
+mod tests {
+    /// The review's F37: a series given guests after it paused keeps the
+    /// times left out, and its card says in one line that Sioul no longer
+    /// keeps its pauses; one that never paused says nothing of them.
+    #[test]
+    fn a_series_with_guests_says_its_pauses_are_no_longer_kept() {
+        sioul_core::agenda::own_addresses_here(Some(&["me@example.org"]));
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:f37@example.org\r\nDTSTAMP:20301001T000000Z\r\nDTSTART:20301002T160000Z\r\nDTEND:20301002T170000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Choir\r\nEXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=public:0123456789abcdef\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE:mailto:sam@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let (words, pause) = super::card_lines(series);
+        assert!(!words.is_empty());
+        assert_eq!(pause, crate::backend::tr().text("series-paused-guests", None));
+        let never = series.replace("EXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=public:0123456789abcdef\r\n", "");
+        assert_eq!(super::card_lines(&never).1, "");
+        sioul_core::agenda::own_addresses_here(None);
+    }
+}

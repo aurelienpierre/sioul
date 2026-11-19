@@ -1396,6 +1396,7 @@ event-pauses-help = Each date that falls in them is left out of the series, in e
 series-pause-vacations = my vacations
 series-pause-vacations-other = someone else's vacations
 series-pause-public = public holidays
+series-paused-guests = This series has guests: Sioul no longer keeps its pauses, and the dates already left out stay.
 series-paused-back = Paused from { $from } ({ $why }), back on { $back }.
 series-paused = Paused from { $from } ({ $why }).
 series-every = { $every ->

@@ -1423,6 +1423,7 @@ event-pauses-help = Chaque date qui y tombe est retirée de la série, dans tous
 series-pause-vacations = mes vacances
 series-pause-vacations-other = les vacances de quelqu’un d’autre
 series-pause-public = les jours fériés
+series-paused-guests = Cette série a des invités : Sioul ne tient plus ses pauses, et les dates déjà retirées restent.
 series-paused-back = En pause à partir du { $from } ({ $why }), reprend le { $back }.
 series-paused = En pause à partir du { $from } ({ $why }).
 series-every = { $every ->
