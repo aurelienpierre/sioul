@@ -1837,6 +1837,58 @@ fn of_medicines(store: &Store) -> bool {
     store.name == "data/health.toml"
 }
 
+/// The letters' list, by its name in the records: a file of the notes
+/// folder's records (`files/notes/`) as every version names it, wherever it is.
+pub const LETTERS_LIST: &str = "files/notes/letters/letters.toml";
+
+/// Sioul's own lists, by their names in the records: projects, client
+/// profiles, budgets, the bank's lines, movements, contracts, the papers'
+/// list and the letters' list. One read here before that is gone, or blank,
+/// is never read as "everything taken out" (`lists_lost`): two rules of the
+/// sharing would otherwise take every entry out on every device, a file of
+/// no bytes taken as emptied after `EMPTIED_WAIT`, a file gone written again
+/// from the one change that comes next. Until 18 November 2026 the health
+/// file alone was guarded so (docs/database.md, "Sioul's own lists").
+pub const LISTS: &[&str] = &["notes/sioul-cases.toml", CLIENTS, "notes/sioul-budgets.toml", "notes/sioul-bank.toml", "notes/sioul-contracts.toml", MOVEMENTS, "notes/sioul-papers.toml", LETTERS_LIST];
+
+/// Whether a file of the records is one of Sioul's own lists (`LISTS`).
+fn is_list(file: &str) -> bool {
+    LISTS.contains(&file)
+}
+
+/// Whether this device's memory holds an entry of `file` with a value: it read the file here before, or wrote it from the others' records.
+fn known_here(memory: &Memory, file: &str) -> bool {
+    let prefix = format!("{file}#");
+    memory.entries.range(prefix.clone()..).take_while(|(key, _)| key.starts_with(&prefix)).any(|(_, known)| !known.h.is_empty())
+}
+
+/// A file there of no bytes, or of blanks alone (read only when small).
+fn blank(path: &Path) -> bool {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.len() == 0 => true,
+        Ok(meta) if meta.len() > 64 * 1024 => false,
+        Ok(_) => std::fs::read(path).is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace)),
+        Err(_) => false,
+    }
+}
+
+/// Sioul's own lists (`LISTS`) of the stores read now that this device knew
+/// and that are gone, or of no bytes but blanks, their folder there (a
+/// notes folder not mounted is unknown, never written into: `gather`).
+fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory) -> Vec<String> {
+    LISTS
+        .iter()
+        .filter_map(|file| {
+            let (store, path) = locate(stores, file)?;
+            if !reads(store) || !known_here(memory, file) || !path.parent().is_some_and(Path::is_dir) {
+                return None;
+            }
+            let gone = std::fs::metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+            (gone || blank(&path)).then(|| (*file).to_string())
+        })
+        .collect()
+}
+
 /// Whether a health file's bytes read as its reader reads them
 /// (`sioul_core::health::Health::read`): never of no bytes, never a value it refuses.
 fn reads_as_medicines(bytes: &[u8]) -> bool {
@@ -6245,6 +6297,47 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.read.clear();
         memory.rebuild.extend(joining.iter().cloned());
     }
+    // Sioul's own lists (`LISTS`) read here before, now gone or blank: never
+    // read as "everything taken out". Written again whole from every
+    // device's records in this exchange, as the health file is (`rebuild`'s
+    // way), only what the records lack going out afterwards.
+    if memory.joined {
+        for file in lists_lost(stores, &reads, &memory) {
+            outcome.problems.push(format!("share-list-back:{file}"));
+            found.hashes.retain(|key, _| file_of(key) != file.as_str());
+            memory.entries.retain(|key, _| file_of(key) != file.as_str());
+            memory.files.remove(file.as_str());
+            memory.emptied.remove(file.as_str());
+            memory.sealed.gone.remove(file.as_str());
+            // A list sealed apart (the letters'): its last record written over a
+            // file of no bytes, never a copy of that kept beside as a conflict;
+            // one gone given that empty place first, so that it is written again.
+            if file.starts_with(FILES)
+                && let Some((_, path)) = locate(stores, &file)
+            {
+                if !path.exists() {
+                    let _ = sioul_core::filelock::replace(&path, b"");
+                }
+                if let Some(h) = content_hash(&path) {
+                    memory.sealed.named.entry(format!("{file}#")).or_default().insert(h);
+                }
+            }
+            memory.rebuild.insert(file.clone());
+            memory.rejoin.insert(file);
+            memory.read.clear();
+        }
+    }
+    // A list sealed apart (the letters') of no bytes or blanks never goes out:
+    // the later file replaces the other whole, so it would empty the list on
+    // every device. It waits for its records to be written over it.
+    for file in LISTS.iter().filter(|file| file.starts_with(FILES)) {
+        if let Some((store, path)) = locate(stores, file)
+            && reads(store)
+            && blank(&path)
+        {
+            found.hashes.remove(&format!("{file}#"));
+        }
+    }
     // Files rebuilt without being set aside (`rebuild`, `Memory::rejoin`)
     // join as the stores joining do: read from the records first, then only
     // what the records lack goes out; what they hold may be what was there
@@ -7046,8 +7139,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // other out everywhere at the next look; rebuilt whole from every
         // device's records at the next exchange (`rebuild`'s way), what came
         // waiting meanwhile (the check of 1b6795e, M3).
-        if of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file) {
-            outcome.problems.push(format!("share-not-medicines:{file}"));
+        // One of Sioul's own lists (`LISTS`) gone since this exchange looked
+        // (`lists_lost` took it before): the same, never written from what came alone.
+        let list_gone = is_list(file) && !path.exists() && known_here(&memory, file) && !rebuilt(file);
+        if (of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file)) || list_gone {
+            outcome.problems.push(format!("{}:{file}", if list_gone { "share-list-back" } else { "share-not-medicines" }));
             if !memory.rebuild.contains(file.as_str()) {
                 memory.entries.retain(|key, _| file_of(key) != file.as_str());
                 memory.files.remove(file.as_str());
@@ -13773,6 +13869,10 @@ mod gc_tests;
 #[cfg(test)]
 #[path = "share_drafts_tests.rs"]
 mod drafts_tests;
+
+#[cfg(test)]
+#[path = "share_lists_tests.rs"]
+mod lists_tests;
 
 #[cfg(test)]
 mod probe {

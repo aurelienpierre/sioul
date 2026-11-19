@@ -4110,6 +4110,7 @@ share-name-clash = { $file } waits: another file here differs from it by case or
 share-refused = { $file } is not written: its place goes through a link, or into the sharing folder or Sioul's own.
 share-not-text = { $file } stays here: its name is not text Sioul can carry.
 share-emptied = { $file } is empty here: nothing of it is taken out on your other devices for ten minutes.
+share-list-back = { $file } was gone or empty here: it is written again from what your devices hold, and nothing of it is taken out elsewhere.
 share-not-medicines = A change of your medicines from another device would not read as medicines here: it waits, and { $file } stays as it is.
 share-medicines-take-out-everywhere = Take them out everywhere
 share-medicines-take-out-here = Take them out here too

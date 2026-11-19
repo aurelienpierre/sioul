@@ -836,6 +836,7 @@ sioul-sync/src/secret.rs	drop	1	std::fs::remove_dir_all(&self.0)
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.
 sioul-sync/src/share.rs	remove_if_old	1	std::fs::remove_file(path)
+sioul-sync/src/share.rs	exchange	1	sioul_core::filelock::replace(&path, b"")
 #   write_entries: a file of entries put back entry by entry (settings, lists' records, the doses' record by its own rule): never an event's file.
 sioul-sync/src/share.rs	write_entries	1	sioul_core::health::write_witnessed(path, &bytes)
 sioul-sync/src/share.rs	write_entries	1	write_atomically(path, &bytes)
