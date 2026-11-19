@@ -812,8 +812,8 @@ pub(crate) fn say_of_device_said(id: &str, field: &str, value: &str) -> (String,
 }
 
 /// What a phone lets ring (`sioul_core::calls_line`), as the card says it:
-/// "calls.profile" (a profile's id), "calls.cell.<row>.<when>" ("rings" or
-/// "voicemail"), "calls.switch.<key>" ("on" or "off"), "calls.group.add"
+/// "calls.profile" (a profile's id), `"calls.cell.<row>.<when>"` ("rings" or
+/// "voicemail"), `"calls.switch.<key>"` ("on" or "off"), "calls.group.add"
 /// and "calls.group.remove" (a group's name), "calls.clear" (the line taken
 /// out: the shared screening again). A change by hand on a line that said
 /// nothing starts from the profile offered for what the phone is for.

@@ -297,7 +297,7 @@ pub(crate) struct Prop {
     /// `name` attributes of `comp` children (supported-calendar-component-set).
     comps: Vec<String>,
     /// For Nextcloud's `oc:invite`: those it is shared with to write, by the
-    /// last segment of their principal, "group:<name>" for a group.
+    /// last segment of their principal, `"group:<name>"` for a group.
     writers: Vec<String>,
 }
 

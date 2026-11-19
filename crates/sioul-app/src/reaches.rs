@@ -552,8 +552,8 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
     json!({ "line": line, "links": links })
 }
 
-/// A choice made on the page (`what`: "people.<channel>.<circle>",
-/// "group.<group>", "care.<kind>"; `value`: a behaviour's or a choice's
+/// A choice made on the page (`what`: `"people.<channel>.<circle>"`,
+/// `"group.<group>"`, `"care.<kind>"`; `value`: a behaviour's or a choice's
 /// id), the cells it names written (`attention::apply_rows`). "" when kept,
 /// else why not.
 pub(crate) fn choose(what: &str, value: &str) -> String {

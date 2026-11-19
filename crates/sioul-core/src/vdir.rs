@@ -1162,7 +1162,7 @@ pub struct State {
     pub kept: String,
     /// Who else may write this address book, as its server last listed it
     /// (Nextcloud's `oc:invite`, those it is shared with to write): their
-    /// names, "group:<name>" for a group. Its groups decide who may reach
+    /// names, `"group:<name>"` for a group. Its groups decide who may reach
     /// the person only once the person says so for these writers
     /// (`addressbooks::groups_count`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

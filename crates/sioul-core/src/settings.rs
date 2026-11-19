@@ -63,7 +63,7 @@ pub enum Kind {
     /// A secret kept in the system keyring, typed and never shown: `value` says whether one is kept.
     Secret,
     /// Nothing to change here: a button to where it is changed (`value`: the
-    /// window's `openThing` kind, "settings:<key>" for another setting).
+    /// window's `openThing` kind, `"settings:<key>"` for another setting).
     Link,
     /// Nothing to change: a sentence (`help`) and a button (`label`) that
     /// does one thing when pressed, never by itself; pressing it saves `true`

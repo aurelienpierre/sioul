@@ -123,7 +123,7 @@ pub(crate) fn removal(place: &str) -> String {
 
 /// A book removed as `how` says: "empty" (none held), "delete" (its cards
 /// with it, a dated copy first, with Undo while its server has not deleted
-/// it), "leave" (someone else's), or "move:<place>" (its cards moved there
+/// it), "leave" (someone else's), or `"move:<place>"` (its cards moved there
 /// as one batch, then it, undone as a whole). "" once done or started, else
 /// why not.
 pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, place: &str, how: &str) -> String {

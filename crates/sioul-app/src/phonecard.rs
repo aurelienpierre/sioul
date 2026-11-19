@@ -104,7 +104,7 @@ fn allowed_here() -> Option<Allowed> {
     })
 }
 
-/// This phone's own card, as JSON: {phone, allow: [lines], restricted
+/// This phone's own card, as JSON: {phone, allow: \[lines\], restricted
 /// (`access::restricted_card`)}; {phone: false} elsewhere. Read when the
 /// window comes back too: back from Sioul's page in Android, the accesses
 /// still held are asked again by themselves (`back`, `access::restricted_back`).
