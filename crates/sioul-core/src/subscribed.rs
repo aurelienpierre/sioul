@@ -338,7 +338,9 @@ pub struct Feed {
 /// The lines of an event that change at each answer, whatever changed:
 /// Moodle and Google stamp each event with the time of the request
 /// (`DTSTAMP`), OpenHolidays its creation and change too.
-const STAMPS: [&str; 3] = ["DTSTAMP", "LAST-MODIFIED", "CREATED"];
+/// Sioul's own copy of the stamp (`agenda::ORGANIZER_DTSTAMP`, which every
+/// calendar object it keeps carries) changes with it.
+const STAMPS: [&str; 4] = ["DTSTAMP", "LAST-MODIFIED", "CREATED", crate::agenda::ORGANIZER_DTSTAMP];
 
 /// What an answer's bytes hold, read as a calendar: refused (`Problem`)
 /// when they are no calendar (a page, a line of text, nothing), too large,

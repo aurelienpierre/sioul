@@ -7,11 +7,11 @@
 
 use super::*;
 
-const MOODLE: &str = "BEGIN:VCALENDAR\r\nMETHOD:PUBLISH\r\nPRODID:-//Moodle Pty Ltd//NONSGML Moodle Version 2025100600//EN\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:101@school.example.org/moodle\r\nSUMMARY:Essay is due\r\nDESCRIPTION:Hand in the essay.\r\nCLASS:PUBLIC\r\nLAST-MODIFIED:20301105T081000Z\r\nDTSTAMP:STAMP\r\nDTSTART:20301120T160000Z\r\nDTEND:20301120T160000Z\r\nCATEGORIES:LIT-3\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:102@school.example.org/moodle\r\nSUMMARY:Quiz opens\r\nCLASS:PUBLIC\r\nLAST-MODIFIED:20301105T081000Z\r\nDTSTAMP:STAMP\r\nDTSTART:20301122T080000Z\r\nDTEND:20301122T080000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+const MOODLE: &str = "BEGIN:VCALENDAR\r\nMETHOD:PUBLISH\r\nPRODID:-//Moodle Pty Ltd//NONSGML Moodle Version 2025100600//EN\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:101@school.example.org/moodle\r\nSUMMARY:Essay is due\r\nDESCRIPTION:Hand in the essay.\r\nCLASS:PUBLIC\r\nLAST-MODIFIED:20301105T081000Z\r\nDTSTAMP:@STAMP@\r\nDTSTART:20301120T160000Z\r\nDTEND:20301120T160000Z\r\nCATEGORIES:LIT-3\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:102@school.example.org/moodle\r\nSUMMARY:Quiz opens\r\nCLASS:PUBLIC\r\nLAST-MODIFIED:20301105T081000Z\r\nDTSTAMP:@STAMP@\r\nDTSTART:20301122T080000Z\r\nDTEND:20301122T080000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
 /// Moodle stamps every event with the time of the request: two answers a minute apart.
 fn moodle(stamp: &str) -> String {
-    MOODLE.replace("STAMP", stamp)
+    MOODLE.replace("@STAMP@", stamp)
 }
 
 /// The Ministry's school holidays, as its static files are shaped (a full

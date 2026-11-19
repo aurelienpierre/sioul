@@ -2014,9 +2014,16 @@ fn interval_of(rule: &str) -> u32 {
 /// `zone` for an instant), ("count", 0, n), or ("", "", 0) for none.
 fn end_of_rule(text: &str, zone: &TimeZone) -> (String, String, u32) {
     let source = lines::unfold(text);
-    let Some(rule) = master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_ascii_uppercase())) else {
+    let Some(rule) = master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_string())) else {
         return (String::new(), String::new(), 0);
     };
+    end_of_value(&rule, zone)
+}
+
+/// A rule's end from its value ("FREQ=WEEKLY;UNTIL=…"), as `end_of_rule` says it.
+/// An UNTIL at midnight on its clock ends the day before: no time of that day comes.
+fn end_of_value(rule: &str, zone: &TimeZone) -> (String, String, u32) {
+    let rule = rule.trim().to_ascii_uppercase();
     let part = |name: &str| rule.split(';').find_map(|p| p.trim().strip_prefix(name).map(str::to_string));
     if let Some(count) = part("COUNT=").and_then(|n| n.parse::<u32>().ok()).filter(|n| *n > 0) {
         return ("count".into(), String::new(), count);
@@ -2024,10 +2031,12 @@ fn end_of_rule(text: &str, zone: &TimeZone) -> (String, String, u32) {
     let Some(until) = part("UNTIL=") else { return (String::new(), String::new(), 0) };
     let day = if until.len() == 8 {
         Date::strptime("%Y%m%d", &until).ok()
-    } else if let Some(utc) = until.strip_suffix('Z') {
-        DateTime::strptime("%Y%m%dT%H%M%S", utc).ok().and_then(|d| d.to_zoned(TimeZone::UTC).ok()).map(|z| z.with_time_zone(zone.clone()).date())
     } else {
-        DateTime::strptime("%Y%m%dT%H%M%S", &until).ok().map(|d| d.date())
+        let local = match until.strip_suffix('Z') {
+            Some(utc) => DateTime::strptime("%Y%m%dT%H%M%S", utc).ok().and_then(|d| d.to_zoned(TimeZone::UTC).ok()).map(|z| z.with_time_zone(zone.clone()).datetime()),
+            None => DateTime::strptime("%Y%m%dT%H%M%S", &until).ok(),
+        };
+        local.map(|at| if at.time() == jiff::civil::Time::midnight() { at.date().yesterday().unwrap_or(at.date()) } else { at.date() })
     };
     match day {
         Some(day) => ("until".into(), day.to_string(), 0),
@@ -2047,7 +2056,13 @@ fn pause_ids(text: &str) -> Vec<String> {
 /// at its last second on the series' clock, written as RFC 5545 §3.3.10 asks
 /// for its DTSTART: a day for a whole-day series, local for a floating one,
 /// else in UTC.
-fn with_end(rule: &str, edit: &EventEdit, start: Option<&str>, zone: &TimeZone) -> String {
+fn with_end(rule: &str, edit: &EventEdit, start: Option<&str>, zone: &TimeZone, old: Option<&str>) -> String {
+    // The end the rule had, as the form read it, unchanged: its own words kept (another
+    // program's UNTIL at the last time's very instant stays so), when the rule kept them.
+    let has_end = rule.split(';').any(|p| p.trim().to_ascii_uppercase().starts_with("UNTIL=") || p.trim().to_ascii_uppercase().starts_with("COUNT="));
+    if has_end && old.is_some_and(|old| end_of_value(old, zone) == (edit.ends.clone(), edit.until.clone(), edit.count)) {
+        return rule.to_string();
+    }
     let mut parts: Vec<String> = rule.trim_start_matches("RRULE:").split(';').map(str::trim).filter(|p| !p.is_empty() && !p.to_ascii_uppercase().starts_with("UNTIL=") && !p.to_ascii_uppercase().starts_with("COUNT=")).map(str::to_string).collect();
     match edit.ends.as_str() {
         "count" if edit.count > 0 => parts.push(format!("COUNT={}", edit.count.min(9999))),
@@ -2175,11 +2190,12 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
         out.extend(vtimezone(&written.clock, &written.name, written.year));
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&crate::zone::now()))]);
+    // The event's own start, never a VTIMEZONE's: its end is written to match it.
+    let start = times.iter().find(|l| lines::name(l) == "DTSTART").cloned();
     out.extend(times);
     // Its mark written only where it is not its kind's own (a time busy, a whole day free).
     let transp = edit.busy.is_some_and(|busy| busy == edit.all_day);
     let edit = &settled_repeat(edit);
-    let start = out.iter().find(|l| lines::name(l) == "DTSTART").cloned();
     out.extend(content_lines(edit, Changed { transp, ..Changed::ALL }, None, start.as_deref(), &zone));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
@@ -2223,7 +2239,7 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>, sta
         out.push(format!("GEO:{}", geo_value(lat, lon)));
     }
     if changed.rule {
-        out.extend(rule_line(&edit.repeat, edit.every, old_rule).map(|rule| with_end(&rule, edit, start, zone)));
+        out.extend(rule_line(&edit.repeat, edit.every, old_rule).map(|rule| with_end(&rule, edit, start, zone, old_rule)));
     }
     if changed.pauses {
         out.extend(edit.pauses.iter().map(|p| format!("{}:{p}", crate::series::PAUSE_DURING)));
@@ -5738,9 +5754,12 @@ mod tests {
         assert_eq!(edit_of_text(&rich, &paris).map(|e| e.every), Some(2));
         let third = apply(&rich, &EventEdit { every: 3, ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
         assert!(third.contains("RRULE:FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,WE;UNTIL=20270630T220000Z\r\n"), "{third}");
-        // Another frequency: a rule of its own.
+        // Another frequency: a rule of its own, with the end the form shows (18 November 2026:
+        // the form reads a rule's end and writes it; an UNTIL at midnight ends the day before).
         let monthly = apply(&rich, &EventEdit { repeat: "monthly".into(), every: 2, ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
-        assert!(monthly.contains("RRULE:FREQ=MONTHLY;INTERVAL=2\r\n") && !monthly.contains("BYDAY=MO,WE"), "{monthly}");
+        assert!(monthly.contains("RRULE:FREQ=MONTHLY;INTERVAL=2;UNTIL=20270630T215959Z\r\n") && !monthly.contains("BYDAY=MO,WE"), "{monthly}");
+        let endless = apply(&rich, &EventEdit { repeat: "monthly".into(), every: 2, ends: String::new(), ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
+        assert!(endless.contains("RRULE:FREQ=MONTHLY;INTERVAL=2\r\n"), "{endless}");
     }
 
     /// A calendar file's occurrences around today are kept while it stands
