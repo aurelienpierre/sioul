@@ -274,6 +274,7 @@ final class SiteWeb
         ENGLISH.put("previous", "Previous");
         ENGLISH.put("next", "Next");
         ENGLISH.put("close_window", "Close this window");
+        ENGLISH.put("from", "from {name}");
         ENGLISH.put("asked", "This site asked for {what}: not in this version of Sioul.");
         ENGLISH.put("asked_camera", "the camera");
         ENGLISH.put("asked_microphone", "the microphone");
@@ -351,15 +352,27 @@ final class SiteWeb
     /**
      * The host shown above the page: the committed page's, never a
      * navigation only asked for (review of the extensions' sign-in, D1); in
-     * its ASCII form, a name in other alphabets as its "xn--" form (D2);
-     * "…" before a page has committed. The label keeps its end in sight
-     * when it is cut, so the registrable part always shows.
+     * its ASCII form, a name in other alphabets as its "xn--" form (D2); a
+     * blank page committed as such ("about:blank": a window the page wrote
+     * into itself, review N3); "…" before a page has committed. The label
+     * keeps its end in sight when it is cut, so the registrable part
+     * always shows.
      *
      * @param committed the address of the page shown, as the web view committed it; "" before any
      * @return the host to show
      */
     static String shownHost(String committed)
     {
+        if (committed != null && committed.regionMatches(true, 0, "about:", 0, 6)) {
+            String page = committed.toLowerCase(Locale.ROOT);
+            int end = page.length();
+            for (char stop : new char[] { '?', '#' }) {
+                int at = page.indexOf(stop);
+                if (at >= 0 && at < end)
+                    end = at;
+            }
+            return page.substring(0, Math.min(end, 40));
+        }
         String host = host(committed);
         if (host.isEmpty())
             return "…";
@@ -368,6 +381,45 @@ final class SiteWeb
         } catch (IllegalArgumentException e) {
             return host;
         }
+    }
+
+    /** The bar's two lines, and whether the first is the host. */
+    static final class Bar
+    {
+        final String first;
+        final String second;
+        final boolean hostFirst;
+
+        Bar(String first, String second, boolean hostFirst)
+        {
+            this.first = first;
+            this.second = second;
+            this.hostFirst = hostFirst;
+        }
+    }
+
+    /**
+     * The bar's two lines, always true (review N2): while the page shown is
+     * on the site's own domain, the site's name, its host under it; on any
+     * other host (a redirect, a sign-in provider, a link wrapper, a tab or
+     * a pop-up, a blank page), that host first and "from" the site's name
+     * under it, so that Sioul never vouches for a page of another domain
+     * under the site's name; before a page has committed, the name and "…".
+     *
+     * @param name the site's name
+     * @param siteDomain the site's domain, in ASCII (Rust's)
+     * @param committed the address of the page shown, as committed; "" before any
+     * @param from Sioul's words for the second line, with {@code {name}} in them
+     * @return the two lines
+     */
+    static Bar bar(String name, String siteDomain, String committed, String from)
+    {
+        String host = shownHost(committed);
+        if (host.equals("…"))
+            return new Bar(name, host, false);
+        if (!host.startsWith("about:") && domainOf(host).equals(siteDomain))
+            return new Bar(name, host, false);
+        return new Bar(host, from.replace("{name}", name), true);
     }
 
     /**

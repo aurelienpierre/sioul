@@ -3175,6 +3175,7 @@ site-screen-find-none = Not found
 site-screen-previous = Previous
 site-screen-next = Next
 site-screen-close-window = Close this window
+site-screen-from = from { $name }
 site-screen-asked = This site asked for { $what }: not in this version of Sioul.
 site-screen-asked-camera = the camera
 site-screen-asked-microphone = the microphone

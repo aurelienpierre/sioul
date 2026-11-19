@@ -117,10 +117,31 @@ public final class SiteScreenCheck
         expect("the host alone, no user, no port, lower case", SiteWeb.host("https://user:pw@Secure.Bank.Example.org:8443/a?b#c").equals("secure.bank.example.org"));
         expect("a backslash ends the host", SiteWeb.host("https://bank.example.org\\@evil.example.net/").equals("bank.example.org"));
         expect("an address in numbers", SiteWeb.host("https://[::1]:8080/").equals("[::1]"));
-        expect("before a page has committed: …", SiteWeb.shownHost("").equals("…") && SiteWeb.shownHost(null).equals("…") && SiteWeb.shownHost("about:blank").equals("…"));
+        expect("before a page has committed: …", SiteWeb.shownHost("").equals("…") && SiteWeb.shownHost(null).equals("…"));
+        expect("a blank page committed says so (review N3)", SiteWeb.shownHost("about:blank").equals("about:blank") && SiteWeb.shownHost("About:Blank#x").equals("about:blank") && SiteWeb.shownHost("about:srcdoc").equals("about:srcdoc"));
         expect("the committed page's host", SiteWeb.shownHost("https://accounts.example.org/sign-in").equals("accounts.example.org"));
         String unicode = SiteWeb.shownHost("https://b\u00e4nk.example.org/");
         expect("a name in other alphabets in its ASCII form: " + unicode, unicode.startsWith("xn--") && unicode.endsWith(".example.org"));
+
+        // ------------------------------------------------ The bar's two lines, always true (review N2)
+        String from = "from {name}";
+        SiteWeb.Bar onSite = SiteWeb.bar("My bank", "example.co.uk", "https://secure.bank.example.co.uk/home", from);
+        expect("on the site: its name, then the host", onSite.first.equals("My bank") && onSite.second.equals("secure.bank.example.co.uk") && !onSite.hostFirst);
+        SiteWeb.Bar elsewhere = SiteWeb.bar("My bank", "example.co.uk", "https://look-alike.example.net/login", from);
+        expect("elsewhere: the host first, the site's name never above it", elsewhere.first.equals("look-alike.example.net") && elsewhere.second.equals("from My bank") && elsewhere.hostFirst);
+        SiteWeb.Bar lookAlike = SiteWeb.bar("My bank", "example.co.uk", "https://secure.bank.example.co.uk.example.net/", from);
+        expect("a host that only starts like the site's is elsewhere", lookAlike.hostFirst && lookAlike.first.equals("secure.bank.example.co.uk.example.net"));
+        SiteWeb.Bar sameCountry = SiteWeb.bar("My bank", "example.co.uk", "https://bank.example.uk/", from);
+        expect("another registrable domain under the same country is elsewhere", sameCountry.hostFirst);
+        SiteWeb.Bar blank = SiteWeb.bar("My bank", "example.co.uk", "about:blank", from);
+        expect("a blank page: said as such, from the site", blank.first.equals("about:blank") && blank.second.equals("from My bank") && blank.hostFirst);
+        SiteWeb.Bar none = SiteWeb.bar("My bank", "example.co.uk", "", from);
+        expect("before any page: the name, then …", none.first.equals("My bank") && none.second.equals("…") && !none.hostFirst);
+        SiteWeb.Bar idn = SiteWeb.bar("Ma banque", "xn--bnk-qla.example", "https://www.b\u00e4nk.example/", "depuis {name}");
+        expect("a domain in other alphabets compared in its ASCII form", !idn.hostFirst && idn.second.equals("www.xn--bnk-qla.example"));
+        SiteWeb.Bar spoof = SiteWeb.bar("Ma banque", "xn--bnk-qla.example", "https://www.bank.example/", "depuis {name}");
+        expect("a look-alike in plain letters is elsewhere", spoof.hostFirst && spoof.second.equals("depuis Ma banque"));
+        expect("the word given by Rust: from", bank.word("from").equals("from {name}"));
 
         // ------------------------------------------------ The domain, as Rust's domain_of
         String[][] domains = { { "secure.bank.example.co.uk", "example.co.uk" }, { "app.franceconnect.gouv.fr", "franceconnect.gouv.fr" }, { "mail.proton.me", "proton.me" }, { "proton.me", "proton.me" }, { "localhost", "localhost" }, { "a.b.c.example.org", "example.org" }, { "www.service-public.fr", "service-public.fr" } };
@@ -290,6 +311,10 @@ public final class SiteScreenCheck
             }
         }
         expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        String shown = body(screen, "private void shownHost()", "    ");
+        expect("the bar's lines from the rule, for the page in front", shown.contains("SiteWeb.bar(site.name, site.domain, popup != null ? popupCommitted : committed, site.word(\"from\"))") && shown.contains("title.setText(bar.first);") && shown.contains("host.setText(bar.second);"));
+        expect("the site's name set nowhere else after the bar is made", screen.split("setText\\(site\\.name\\)", -1).length - 1 == 1);
+        expect("the line holding a host is cut on the left, read left to right", body(screen, "private void lines(", "    ").contains("hostLine.setEllipsize(TextUtils.TruncateAt.START);") && body(screen, "private void lines(", "    ").contains("hostLine.setTextDirection(View.TEXT_DIRECTION_LTR);"));
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");

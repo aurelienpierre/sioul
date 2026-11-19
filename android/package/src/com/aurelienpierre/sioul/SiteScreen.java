@@ -95,6 +95,8 @@ public final class SiteScreen extends Activity
     private static final int FILES_SPAN = 64;
 
     private SiteWeb.Opening site;
+    /** The bar's two lines: the site's name and the host, or another site's host and "from" the site (SiteWeb.bar). */
+    private TextView title;
     private TextView host;
     private FrameLayout pages;
     private LinearLayout finding;
@@ -170,22 +172,19 @@ public final class SiteScreen extends Activity
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(4), 0, dp(4), 0);
-        TextView name = new TextView(this);
-        name.setText(site.name);
-        name.setTypeface(Typeface.DEFAULT_BOLD);
-        name.setTextSize(16);
-        name.setTextColor(site.text);
-        name.setSingleLine(true);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        titles.addView(name);
+        title = new TextView(this);
+        title.setText(site.name);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextSize(16);
+        title.setTextColor(site.text);
+        title.setSingleLine(true);
+        titles.addView(title);
         host = new TextView(this);
         host.setTextSize(13);
         host.setTextColor(site.muted);
         host.setSingleLine(true);
-        // Cut on the left: the registrable part, at its end, stays in sight.
-        host.setEllipsize(TextUtils.TruncateAt.START);
-        host.setTextDirection(View.TEXT_DIRECTION_LTR);
         titles.addView(host);
+        lines(false);
         bar.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         bar.addView(button(R.drawable.sioul_site_reload, site.word("reload"), v -> {
             WebView front = front();
@@ -409,11 +408,30 @@ public final class SiteScreen extends Activity
         return SiteWeb.isHttps(address) ? address : site.url;
     }
 
-    /** The host above the page: the committed page's in front, "…" before it has one. */
+    /**
+     * The bar's two lines for the page in front, as committed: the site's
+     * name over its host on the site's own domain, else that host over
+     * "from" the site (SiteWeb.bar); "…" before it has one.
+     */
     private void shownHost()
     {
-        if (host != null)
-            host.setText(SiteWeb.shownHost(popup != null ? popupCommitted : committed));
+        if (title == null || host == null)
+            return;
+        SiteWeb.Bar bar = SiteWeb.bar(site.name, site.domain, popup != null ? popupCommitted : committed, site.word("from"));
+        title.setText(bar.first);
+        host.setText(bar.second);
+        lines(bar.hostFirst);
+    }
+
+    /** The line that holds a host is cut on the left, read left to right: its registrable part, at its end, stays in sight. */
+    private void lines(boolean hostFirst)
+    {
+        TextView hostLine = hostFirst ? title : host;
+        TextView other = hostFirst ? host : title;
+        hostLine.setEllipsize(TextUtils.TruncateAt.START);
+        hostLine.setTextDirection(View.TEXT_DIRECTION_LTR);
+        other.setEllipsize(TextUtils.TruncateAt.END);
+        other.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);
     }
 
     /** An address in the browser, or another app that opens it; said when none does. */

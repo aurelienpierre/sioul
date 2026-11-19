@@ -206,6 +206,10 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
     let mut args = sioul_core::i18n::args();
     args.set("file", "{file}");
     words.insert("downloading".into(), tr.text("site-screen-downloading", Some(&args)).into());
+    // The bar's second line on another site's page: the site it came from (review N2).
+    let mut args = sioul_core::i18n::args();
+    args.set("name", "{name}");
+    words.insert("from".into(), tr.text("site-screen-from", Some(&args)).into());
     words.into()
 }
 
@@ -342,6 +346,7 @@ mod tests {
         }
         assert!(words["asked"].as_str().unwrap().contains("{what}"));
         assert!(words["downloading"].as_str().unwrap().contains("{file}"));
+        assert!(words["from"].as_str().unwrap().contains("{name}") && words["from"].as_str().unwrap().starts_with("depuis"));
         assert_eq!(words["browser"], "Ouvrir dans le navigateur");
         assert_eq!(given("not json")["look"], serde_json::json!({}));
     }
