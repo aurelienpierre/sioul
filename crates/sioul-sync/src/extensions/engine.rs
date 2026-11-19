@@ -145,6 +145,8 @@ pub enum Stop {
     Trapped(String),
     /// It replied what cannot be read.
     Nonsense(String),
+    /// It was removed meanwhile: the call ended before it could keep anything.
+    Removed,
 }
 
 impl Stop {
@@ -158,6 +160,7 @@ impl Stop {
             Self::Memory => "stopped-memory",
             Self::Trapped(_) => "stopped-error",
             Self::Nonsense(_) => "stopped-nonsense",
+            Self::Removed => "stopped-removed",
         }
     }
 
@@ -171,6 +174,7 @@ impl Stop {
             Self::Memory => "it asked for too much memory".into(),
             Self::Trapped(why) => format!("it ended in an error of its own: {why}"),
             Self::Nonsense(why) => format!("it replied nonsense: {why}"),
+            Self::Removed => "it was removed meanwhile".into(),
         }
     }
 }
@@ -207,6 +211,11 @@ pub trait Services {
     fn sign_in(&mut self, open: &str, watch: &str, host: &str, wait: Duration) -> Result<Option<String>, &'static str>;
     /// Seconds since 1970.
     fn now(&self) -> i64;
+    /// Whether the extension was removed while it runs: the call ends at its
+    /// next ask or slice, before anything is kept (its secret above all).
+    fn removed(&mut self) -> bool {
+        false
+    }
 }
 
 /// What a call came to: its reply, or why it stopped; and its log's lines,
@@ -626,6 +635,10 @@ fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len:
     if caller.data().spent() > caller.data().limits.time {
         return halt(&mut caller, Stop::TooLong);
     }
+    // Removed meanwhile: nothing more is done for it, its secret above all.
+    if caller.data_mut().services.removed() {
+        return halt(&mut caller, Stop::Removed);
+    }
     // Counted before anything is copied: past the count, the ask is not read.
     caller.data_mut().asks += 1;
     let bytes = if caller.data().asks > asks {
@@ -728,6 +741,9 @@ fn run<S: Services>(store: &mut Store<Visit<S>>, func: &Func, params: &[Val]) ->
                 used += slice;
                 if used >= steps || store.data().spent() > time {
                     return Err(Stop::TooLong);
+                }
+                if store.data_mut().services.removed() {
+                    return Err(Stop::Removed);
                 }
                 store.set_fuel(slice.max(out.required_fuel())).map_err(|e| Stop::Trapped(e.to_string()))?;
                 call = out.resume(&mut *store, &mut results);

@@ -63,11 +63,15 @@ pub struct Installed {
     /// "unreachable", "refused", "changed", "stopped-time", …); none when the last run went well.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// Removed here: no call of it runs, a call under way ends at its next
+    /// ask, and its sign-in is still to forget while the keyring refuses.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leaving: bool,
 }
 
 impl Installed {
     pub fn new(offer: Offer) -> Self {
-        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), problem: None }
+        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), problem: None, leaving: false }
     }
 }
 

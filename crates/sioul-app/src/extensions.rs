@@ -155,6 +155,7 @@ fn problem_line(word: &str, name: &str) -> String {
         "stopped-asks-more" => "extension-stopped-asks-more",
         "stopped-interface" => "extension-stopped-interface",
         "stopped-unread" => "extension-stopped-unread",
+        "stopped-removed" => "extension-stopped-removed",
         "door" => "extension-problem-door",
         "keyring" => "extension-problem-keyring",
         "record" => "extension-problem-record",
@@ -225,10 +226,11 @@ fn page_json() -> String {
     if let Some(manifest) = listed.and_then(|l| l.manifest.as_ref()) {
         for offer in &manifest.offers {
             seen.insert(offer.id.clone());
-            offers.push(offer_json(offer, state.get(&offer.id), running.contains(&offer.id)));
+            offers.push(offer_json(offer, state.get(&offer.id).filter(|i| !i.leaving), running.contains(&offer.id)));
         }
     }
-    for installed in state.extensions.iter().filter(|i| !seen.contains(&i.offer.id)) {
+    // Those removed here are gone from the page, even while their sign-in is still to forget.
+    for installed in state.extensions.iter().filter(|i| !seen.contains(&i.offer.id) && !i.leaving) {
         offers.push(offer_json(&installed.offer, Some(installed), running.contains(&installed.offer.id)));
     }
     let address = listed.map(|l| l.address.clone()).unwrap_or_else(|| load_config().extensions.manifest_address().to_string());
@@ -490,14 +492,44 @@ pub(crate) fn disable(qt: &QtThread, id: &str) {
     show(qt);
 }
 
-/// Remove: its sign-in forgotten, its file taken out, its record gone; its
-/// agendas kept, or taken away when `keep` is false.
+/// How long Remove waits for a call under way to end: it ends at its next
+/// ask or slice once the extension is marked as leaving; a web request may
+/// still take its 30 seconds.
+const ENDING: std::time::Duration = std::time::Duration::from_secs(45);
+/// A sign-in the keyring refused to forget is tried again this often.
+const FORGET_AGAIN: i64 = 6 * 3600;
+/// When this process last tried to forget the sign-ins of extensions removed.
+static FORGOT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// Remove (K1): the extension marked as leaving (nothing schedules it, a call
+/// under way ends at its next ask, never writing its secret back), its
+/// sign-in page closed, the call waited for; then its sign-in forgotten, its
+/// files and log taken out, its agendas too when `keep` is false, and its
+/// record gone. While the keyring refuses, the record stays, marked, and the
+/// sign-in is tried again later (`forget_leaving`).
 pub(crate) fn remove(qt: &QtThread, id: &str, keep: bool) {
     let (qt, id) = (qt.clone(), id.to_string());
     std::thread::spawn(move || {
         let name = name_of(&id);
+        let _ = state::change(&state::path(), |s| {
+            if let Some(i) = s.get_mut(&id) {
+                i.leaving = true;
+                i.enabled = false;
+            }
+        });
+        cancel_page(&id);
+        // The call under way, here or in another process, ends: its lock is ours once it has.
+        let started = std::time::Instant::now();
+        let held = loop {
+            if let Some(held) = run_lock(&id) {
+                break held;
+            }
+            if started.elapsed() > ENDING {
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        };
         let installed = state::load(&state::path()).get(&id).cloned();
-        let forgotten = store::forget_secret(&id).is_ok();
         let mut taken = true;
         if let Some(installed) = &installed {
             store::discard_file(&installed.offer);
@@ -510,7 +542,8 @@ pub(crate) fn remove(qt: &QtThread, id: &str, keep: bool) {
                 }
             }
         }
-        let _ = state::change(&state::path(), |s| s.extensions.retain(|i| i.offer.id != id));
+        let forgotten = forget(&id);
+        drop(held);
         let line = if !forgotten {
             say("extension-removed-keyring", &[("name", name)])
         } else if !taken {
@@ -523,6 +556,34 @@ pub(crate) fn remove(qt: &QtThread, id: &str, keep: bool) {
         crate::backend::set_status(&qt, line);
         show(&qt);
     });
+}
+
+/// The sign-in of `id` forgotten: then its record, its log and its lock go;
+/// else its record stays, marked as leaving. Whether it was.
+fn forget(id: &str) -> bool {
+    if store::forget_secret(id).is_err() {
+        return false;
+    }
+    let gone = state::change(&state::path(), |s| s.extensions.retain(|i| !(i.offer.id == id && i.leaving)));
+    let _ = std::fs::remove_file(state::log_path(id));
+    let _ = std::fs::remove_file(run_lock_path(id));
+    gone.is_ok()
+}
+
+/// The sign-ins of extensions removed while the keyring refused, tried again
+/// at the first minute of the window and every six hours (never each minute:
+/// a locked keyring may ask for its password).
+fn forget_leaving(now: i64) {
+    if now - FORGOT.load(std::sync::atomic::Ordering::Relaxed) < FORGET_AGAIN {
+        return;
+    }
+    FORGOT.store(now, std::sync::atomic::Ordering::Relaxed);
+    let leaving: Vec<String> = state::load(&state::path()).extensions.iter().filter(|i| i.leaving).map(|i| i.offer.id.clone()).collect();
+    for id in leaving {
+        if run_lock(&id).is_some() && forget(&id) {
+            eprintln!("sioul: extensions: {id}: its sign-in forgotten, at last");
+        }
+    }
 }
 
 /// Yes to an update that asks for more: installed, what it is given now its own.
@@ -641,7 +702,7 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
     }
     let fetched = now();
     note_attempt(id, fetched);
-    let (outcome, _) = store::run(&installed.offer, Call::Refresh, french(), Real::new(id, None));
+    let (outcome, _) = store::run(&installed.offer, Call::Refresh, french(), Real::new(id, None).removable());
     keep_log(id, "refresh", &outcome);
     let mut brought: Option<Vec<Brought>> = None;
     let problem: Option<String> = match &outcome.reply {
@@ -651,6 +712,8 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
                 let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: stopped: it replied nonsense: {}", jiff::Timestamp::now(), nonsense.0)]);
                 Some("stopped-nonsense".into())
             }
+            // Removed meanwhile: nothing of it is taken in.
+            Ok(_) if state::load(&state::path()).get(id).is_none_or(|i| i.leaving) => Some("stopped-removed".into()),
             Ok(reply) => {
                 let write = !reply.agendas.is_empty() && may_write(id, fetched);
                 match take_in(&door(), id, &reply, write) {
@@ -736,9 +799,9 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
             return;
         };
         show(&qt);
-        let shower_qt = qt.clone();
-        let shower: store::SignInShower = Box::new(move |page| show_page(&shower_qt, page));
-        let (outcome, _) = store::run(&installed.offer, Call::SignIn(choice.as_deref()), french(), Real::new(&id, Some(shower)));
+        let (shower_qt, shower_id) = (qt.clone(), id.clone());
+        let shower: store::SignInShower = Box::new(move |page| show_page(&shower_qt, &shower_id, page));
+        let (outcome, _) = store::run(&installed.offer, Call::SignIn(choice.as_deref()), french(), Real::new(&id, Some(shower)).removable());
         keep_log(&id, "sign-in", &outcome);
         drop(held);
         end(&id);
@@ -790,10 +853,13 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
 /// once a day while one is enabled.
 pub(crate) fn tick(qt: &QtThread) {
     let state = state::load(&state::path());
+    let now = now();
+    if state.extensions.iter().any(|i| i.leaving) {
+        std::thread::spawn(move || forget_leaving(now));
+    }
     if state.extensions.iter().all(|i| !i.enabled) {
         return;
     }
-    let now = now();
     // Once a day; after a failed read, again an hour later at the soonest.
     if now - state.checked >= DAILY && now - TRIED.load(std::sync::atomic::Ordering::Relaxed) >= 3600 {
         TRIED.store(now, std::sync::atomic::Ordering::Relaxed);
@@ -849,9 +915,10 @@ fn ran_meanwhile(seen: i64, now_recorded: i64) -> bool {
 // ---------------------------------------------------------------- the sign-in page
 
 /// A sign-in page waited for: its own slot (never cleared by another's end),
-/// where its answer goes, and what it watches for.
+/// the extension that asked it, where its answer goes, and what it watches for.
 struct Page {
     slot: u64,
+    id: String,
     said: std::sync::mpsc::Sender<Option<String>>,
     watch: String,
 }
@@ -869,7 +936,7 @@ fn page_shown() -> bool {
 /// phone's SignIn.java), its answer waited for here,
 /// `page.wait` at most. Refused while another extension's page is shown:
 /// each page has its own slot, and its end clears its own alone.
-fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'static str> {
+fn show_page(qt: &QtThread, id: &str, page: &SignInPage) -> Result<Option<String>, &'static str> {
     let (said, answer) = std::sync::mpsc::channel();
     let slot = SLOTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     {
@@ -877,7 +944,7 @@ fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'stati
         if waiting.is_some() {
             return Err("not-now");
         }
-        *waiting = Some(Page { slot, said, watch: page.watch.clone() });
+        *waiting = Some(Page { slot, id: id.to_string(), said, watch: page.watch.clone() });
     }
     let clear = || {
         if let Ok(mut waiting) = PAGE.lock()
@@ -916,6 +983,14 @@ fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'stati
 /// fragment), as SignInSite.qml and SignIn.java check it.
 fn returns_to(address: &str, watch: &str) -> bool {
     !watch.is_empty() && address.strip_prefix(watch).is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
+}
+
+/// The sign-in page of `id` closed, when it is the one shown (Remove): its call is told "cancelled".
+fn cancel_page(id: &str) {
+    let waiting = PAGE.lock().ok().and_then(|mut w| if w.as_ref().is_some_and(|p| p.id == id) { w.take() } else { None });
+    if let Some(page) = waiting {
+        let _ = page.said.send(None);
+    }
 }
 
 /// The page's word: the address it returned to, or "" when the person
@@ -1081,9 +1156,21 @@ mod tests {
         let _ = std::fs::remove_file(run_lock_path(id));
     }
 
+    /// K1: Remove closes the sign-in page of the extension removed, and no other's.
+    #[test]
+    fn remove_closes_its_own_sign_in_page() {
+        let (said, answer) = std::sync::mpsc::channel();
+        *PAGE.lock().unwrap() = Some(Page { slot: 7, id: "other".into(), said, watch: "app://cb".into() });
+        cancel_page("k1-removed");
+        assert!(PAGE.lock().unwrap().is_some(), "another extension's page stays");
+        cancel_page("other");
+        assert_eq!(answer.recv().unwrap(), None, "its call is told cancelled");
+        assert!(PAGE.lock().unwrap().is_none());
+    }
+
     #[test]
     fn a_sign_in_page_gives_back_only_what_it_watched_for() {
-        let page = |said| Some(Page { slot: 0, said, watch: "app://cb".into() });
+        let page = |said| Some(Page { slot: 0, id: "t".into(), said, watch: "app://cb".into() });
         let (said, answer) = std::sync::mpsc::channel();
         *PAGE.lock().unwrap() = page(said);
         returned("https://elsewhere.example.org/?code=x");

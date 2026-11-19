@@ -11,6 +11,9 @@ sioul-app/src/agenda.rs	write_view	1	sioul_core::filelock::replace(&path, text.a
 
 # sioul-app/src/extensions.rs: the lock of one call of an extension, beside its log (state): no item.
 sioul-app/src/extensions.rs	run_lock	1	std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path)
+# sioul-app/src/extensions.rs: an extension removed, its log and its lock taken out (state): no item.
+sioul-app/src/extensions.rs	forget	1	std::fs::remove_file(state::log_path(id))
+sioul-app/src/extensions.rs	forget	1	std::fs::remove_file(run_lock_path(id))
 
 # sioul-app/src/alarms.rs: the zone Android last said, for both of a phone's processes (state): no item.
 sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, format!(

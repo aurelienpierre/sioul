@@ -11,13 +11,16 @@ use sioul_core::extensions::manifest::Grants;
 use std::collections::BTreeSet;
 
 /// Stand-in services: the web answers 200 with what was asked, the secret
-/// in memory, the sign-in page returns what the test says.
+/// in memory, the sign-in page returns what the test says; removed once
+/// `removed_after` asks were looked at, when it says so.
 #[derive(Default)]
 struct Stand {
     asked: Vec<WebRequest>,
     secret: Option<String>,
     returned: Option<String>,
     pages: Vec<String>,
+    removed_after: Option<usize>,
+    looked: usize,
 }
 
 impl Services for Stand {
@@ -42,6 +45,10 @@ impl Services for Stand {
     }
     fn now(&self) -> i64 {
         1_794_996_000
+    }
+    fn removed(&mut self) -> bool {
+        self.looked += 1;
+        self.removed_after.is_some_and(|after| self.looked > after)
     }
 }
 
@@ -220,6 +227,28 @@ fn the_secret_kept_never_reaches_the_log() {
     assert_eq!(outcome.reply.unwrap(), r#"{"kept":true}"#);
     assert_eq!(stand.secret.as_deref(), Some(r#"{"refresh":"RT-kept-0000"}"#));
     assert!(outcome.log.iter().any(|l| l.ends_with("renewed with [hidden]")), "{:?}", outcome.log);
+}
+
+/// K1: an extension removed while a call runs (a refresh renewing its
+/// token): the call ends at its next ask, and the secret is never written
+/// back after Remove forgot it.
+#[test]
+fn a_call_removed_meanwhile_keeps_nothing() {
+    let given = grants(&["sso.example.org"], Some("example-app://cb"));
+    let asks = [r#"{"keep":"RT-first-0000"}"#, r#"{"keep":"RT-renewed-0000"}"#];
+    let body = "(drop (call $secret (i32.const $at_0) (i32.const $len_0)))
+    (drop (call $secret (i32.const $at_1) (i32.const $len_1)))
+    (call $reply (i32.const 0) (i32.const 2))
+    i32.const 0";
+    let file = module(&["secret", "answer", "reply"], &asks, body);
+    let (outcome, stand) = run_it(&file, &given, Stand { removed_after: Some(1), ..Stand::default() }, false);
+    assert_eq!(outcome.reply, Err(Stop::Removed));
+    assert_eq!(stand.secret.as_deref(), Some("RT-first-0000"), "the renewed token is never kept");
+    assert!(outcome.log.iter().any(|l| l.contains("stopped: it was removed meanwhile")), "{:?}", outcome.log);
+    // A module that only computes ends at its next slice.
+    let looping = module(&["answer", "reply"], &[], "(loop $forever (br $forever)) i32.const 0");
+    let (outcome, _) = run_it(&looping, &grants(&[], None), Stand { removed_after: Some(0), ..Stand::default() }, false);
+    assert_eq!(outcome.reply, Err(Stop::Removed));
 }
 
 #[test]

@@ -3805,7 +3805,7 @@ extension-disabled = { $name } no longer runs on this device; its sign-in and ag
 extension-removed = { $name } is removed, with its agendas.
 extension-removed-kept = { $name } is removed; its agendas stay.
 extension-removed-agendas-stay = { $name } is removed; its agendas could not be taken away and stay.
-extension-removed-keyring = { $name } is removed; its sign-in could not be taken out of the keyring: it stays there under "extension".
+extension-removed-keyring = { $name } is removed; its sign-in could not be taken out of the keyring yet: Sioul tries again later.
 extension-updated = { $name } is now at version { $version }.
 extension-signed-in = Signed in. { $name } brings its agenda now.
 extension-sign-in-closed = The sign-in page for { $name } was closed.
@@ -3826,6 +3826,7 @@ extension-stopped-nonsense = { $name } stopped: it answered something Sioul cann
 extension-stopped-asks-more = { $name } stopped: it asks for more than its list says.
 extension-stopped-interface = { $name } stopped: it speaks another version of Sioul's interface.
 extension-stopped-unread = { $name } stopped: its file could not be read, or changed since it was checked.
+extension-stopped-removed = { $name } stopped: it was removed meanwhile.
 # An extension's sign-in page, on a computer: the site's name always in sight above the page.
 sign-in-window-title = Sign in on { $host }
 sign-in-site = You sign in on: { $host }

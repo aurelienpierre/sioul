@@ -3841,7 +3841,7 @@ extension-disabled = { $name } ne tourne plus sur cet appareil ; sa connexion 
 extension-removed = { $name } est retirée, avec ses agendas.
 extension-removed-kept = { $name } est retirée ; ses agendas restent.
 extension-removed-agendas-stay = { $name } est retirée ; ses agendas n’ont pas pu être enlevés et restent.
-extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas pu être retirée du trousseau : elle y reste sous « extension ».
+extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas encore pu être retirée du trousseau : Sioul réessaiera plus tard.
 extension-updated = { $name } est maintenant en version { $version }.
 extension-signed-in = Connexion faite. { $name } apporte son agenda.
 extension-sign-in-closed = La page de connexion de { $name } a été fermée.
@@ -3862,6 +3862,7 @@ extension-stopped-nonsense = { $name } s’est arrêtée : elle a répondu que
 extension-stopped-asks-more = { $name } s’est arrêtée : elle demande plus que ce que dit sa liste.
 extension-stopped-interface = { $name } s’est arrêtée : elle parle une autre version de l’interface de Sioul.
 extension-stopped-unread = { $name } s’est arrêtée : son fichier ne se lit pas, ou a changé depuis sa vérification.
+extension-stopped-removed = { $name } s’est arrêtée : elle a été retirée entre-temps.
 # La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
 sign-in-window-title = Connexion sur { $host }
 sign-in-site = Vous vous connectez sur : { $host }

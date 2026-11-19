@@ -54,12 +54,24 @@ pub type SignInShower = Box<dyn FnMut(&SignInPage) -> Result<Option<String>, &'s
 pub struct Real {
     id: String,
     shower: Option<SignInShower>,
+    /// Whether this device's record says when the extension is removed, and when it was last read.
+    watched: bool,
+    looked: Option<std::time::Instant>,
+    gone: bool,
 }
 
 impl Real {
     /// For the extension `id` (from its manifest); `shower` shows a sign-in page, when one may be shown.
     pub fn new(id: &str, shower: Option<SignInShower>) -> Self {
-        Self { id: id.to_string(), shower }
+        Self { id: id.to_string(), shower, watched: false, looked: None, gone: false }
+    }
+
+    /// Its call ends once this device's record no longer holds the extension,
+    /// or marks it as leaving (Remove, in this process or another): read
+    /// once a second at most.
+    pub fn removable(mut self) -> Self {
+        self.watched = true;
+        self
     }
 }
 
@@ -108,6 +120,11 @@ impl Services for Real {
     }
 
     fn keep_secret(&mut self, secret: &str) -> Result<(), &'static str> {
+        // Never written back once Remove began, whatever the last look said.
+        self.looked = None;
+        if self.removed() {
+            return Err("not-now");
+        }
         crate::secret::save_named(&sioul_core::extensions::secret_name(&self.id), secret).map_err(|_| "keyring")
     }
 
@@ -122,6 +139,18 @@ impl Services for Real {
 
     fn now(&self) -> i64 {
         jiff::Timestamp::now().as_second()
+    }
+
+    fn removed(&mut self) -> bool {
+        if !self.watched || self.gone {
+            return self.gone;
+        }
+        if self.looked.is_some_and(|at| at.elapsed() < Duration::from_secs(1)) {
+            return false;
+        }
+        self.looked = Some(std::time::Instant::now());
+        self.gone = state::load(&state::path()).get(&self.id).is_none_or(|i| i.leaving);
+        self.gone
     }
 }
 
