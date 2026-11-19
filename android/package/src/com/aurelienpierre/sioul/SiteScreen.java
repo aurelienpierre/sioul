@@ -128,6 +128,8 @@ public final class SiteScreen extends Activity
     private boolean askedLocation;
     /** The page's drawing process ended: the screen goes. */
     private boolean ended;
+    /** A web view was made in this screen: until then, nothing is asked of the web view (review L5). */
+    private boolean madeView;
     /** A file being fetched (SiteDownload), or null; its line under the bar. */
     private SiteDownload.Job fetching;
     private LinearLayout fetchRow;
@@ -155,8 +157,10 @@ public final class SiteScreen extends Activity
         setContentView(layout());
         try {
             view = page();
+            madeView = true;
         } catch (RuntimeException e) {
-            // No web view after all (turned off meanwhile, or not loading): the browser, as before.
+            // No web view after all (turned off meanwhile, or not loading): the browser, as before,
+            // and nothing asked of the web view again by this screen, which only closes (review L5).
             Log.w(DoseAlarms.TAG, "Sites: no web view to show the site: " + e.getClass().getSimpleName());
             browse(site.url);
             finish();
@@ -1037,7 +1041,7 @@ public final class SiteScreen extends Activity
     protected void onPause()
     {
         // What the sites keep, written now: Android may end the process while it is away.
-        CookieManager.getInstance().flush();
+        flushCookies();
         for (WebView page : new WebView[] { view, popup }) {
             if (page != null)
                 page.onPause();
@@ -1086,7 +1090,24 @@ public final class SiteScreen extends Activity
         }
         popup = null;
         view = null;
-        CookieManager.getInstance().flush();
+        flushCookies();
         super.onDestroy();
+    }
+
+    /**
+     * What the sites keep, written to the device: only once a web view was
+     * made here, since asking the cookie manager loads the web view, which
+     * throws again where it did not load (review L5); a failure is logged,
+     * never thrown on Android's main thread.
+     */
+    private void flushCookies()
+    {
+        if (!madeView)
+            return;
+        try {
+            CookieManager.getInstance().flush();
+        } catch (RuntimeException e) {
+            Log.w(DoseAlarms.TAG, "Sites: what the sites keep could not be written: " + e.getClass().getSimpleName());
+        }
     }
 }

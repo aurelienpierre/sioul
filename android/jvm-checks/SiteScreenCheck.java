@@ -410,6 +410,12 @@ public final class SiteScreenCheck
             expect("nothing of a file in a log line: " + fetchLog.group(1), fetchLog.group(1).matches("\"[^\"]*\"(\\s*\\+\\s*(e\\.getClass\\(\\)\\.getSimpleName\\(\\)|\\(target\\.own \\? \"[^\"]*\" : \"[^\"]*\"\\)))?"));
         }
         expect("the fetch's log lines read: " + fetchLogs, fetchLogs >= 6);
+        // The fallback where the web view does not load ends cleanly (review L5).
+        String create = body(screen, "protected void onCreate(Bundle saved)", "    ");
+        expect("a web view made is noted once made, and only then", create.indexOf("view = page();") >= 0 && create.indexOf("madeView = true;") == create.indexOf("view = page();") + "view = page();".length() + "\n            ".length());
+        expect("no web view: the browser, then the screen closes, nothing else asked", create.contains("browse(site.url);\n            finish();\n            return;"));
+        expect("the cookie manager asked in one place, behind that note, its failure caught", screen.split("CookieManager\\.getInstance\\(\\)", -1).length - 1 == 2 && body(screen, "private void flushCookies()", "    ").contains("if (!madeView)") && body(screen, "private void flushCookies()", "    ").contains("catch (RuntimeException e)"));
+        expect("pausing and closing write the cookies through it", body(screen, "protected void onPause()", "    ").contains("flushCookies();") && body(screen, "protected void onDestroy()", "    ").contains("flushCookies();") && !body(screen, "protected void onDestroy()", "    ").contains("CookieManager"));
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");
