@@ -337,8 +337,8 @@ impl SenderList {
         let mut list = SenderList::default();
         for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             if let Some(name) = category_of(line) {
-                if !list.categories.iter().any(|c| category_key(c) == category_key(name)) {
-                    list.categories.push(name.to_string());
+                if !list.categories.iter().any(|c| category_key(c) == category_key(name)) { // groups: a list's own lines
+                    list.categories.push(name.to_string()); // groups: a list's own lines
                 }
             } else if let Some(uid) = card_of(line) {
                 if !list.cards.iter().any(|c| c == uid) {
@@ -359,7 +359,7 @@ impl SenderList {
 
     /// The categories of your contacts it names, as written.
     pub fn categories(&self) -> &[String] {
-        &self.categories
+        &self.categories // groups: a list's own lines
     }
 
     /// The numbers and prefixes it names, as written after `tel:`.
@@ -374,7 +374,7 @@ impl SenderList {
 
     /// The first of `keys` (categories as compared, `category_key`) it names, as written.
     fn names_category(&self, keys: &[String]) -> Option<&str> {
-        self.categories.iter().find(|c| keys.contains(&category_key(c))).map(String::as_str)
+        self.categories.iter().find(|c| keys.contains(&category_key(c))).map(String::as_str) // groups: a list's own lines
     }
 
     /// Whether it names this card (its UID).
@@ -763,7 +763,7 @@ impl Book {
     /// The categories of these cards, as compared, each once.
     pub fn categories_of(&self, cards: &[usize]) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
-        for key in cards.iter().filter_map(|i| self.cards.get(*i)).flat_map(|c| c.categories.iter()) {
+        for key in cards.iter().filter_map(|i| self.cards.get(*i)).flat_map(|c| c.categories.iter()) { // groups: the index's, already deciding_groups'
             if !keys.contains(key) {
                 keys.push(key.clone());
             }
@@ -2439,17 +2439,53 @@ mod tests {
         }
     }
 
-    /// Review V2: one reading of a card's groups for the lists. Outside its
-    /// tests, nothing in the programs reads a card's groups (`contact.categories`,
-    /// `contacts::in_category`) but `deciding_groups`, and the files named
-    /// here, each with why it never decides who may reach the person.
+    /// Review V2, L3: one reading of a card's groups for the lists. Outside
+    /// their tests, the programs read groups (any `.categories`, and
+    /// `contacts::in_category`) only in the files named here, each with why
+    /// it never decides who may reach the person; in porch.rs, only on lines
+    /// that say which reading they are (`// groups:`), `deciding_groups`
+    /// among them. A new reader anywhere else fails this test (checked by
+    /// hand on 19 November 2026: a reader added to calls.rs failed it).
     #[test]
     fn nothing_else_reads_a_card_s_groups_to_decide_a_list() {
         let allowed = [
-            ("sioul-core/src/contacts.rs", "where a card's groups are read from its file and written"),
-            ("sioul-core/src/contactfilter.rs", "the Contacts page's filter: shows, never decides"),
+            ("sioul-app/src/batch.rs", "tasks' and events' categories in their batch bar"),
+            ("sioul-app/src/contactimport.rs", "the file's groups, said and asked before they are kept"),
+            ("sioul-app/src/duplicates.rs", "a card's groups, shown in Duplicates' view"),
+            ("sioul-app/src/everywhere.rs", "the Safe list's own lines, not a card's"),
+            ("sioul-app/src/sites.rs", "the sites' categories"),
+            ("sioul-app/src/thingsearch.rs", "events' categories, searched"),
+            ("sioul-app/src/topics.rs", "the topics' seeds, shown"),
+            ("sioul-app/src/work.rs", "tasks' categories"),
             ("sioul-cli/src/dav.rs", "a card written back as it is"),
+            ("sioul-cli/src/mcp/items.rs", "a task's tags, for an agent"),
+            ("sioul-cli/src/mcp/read.rs", "a card shown to an agent"),
+            ("sioul-cli/src/tasks.rs", "tasks' tags"),
+            ("sioul-core/src/addressbooks.rs", "what an act does, counted through Senders::standing_by_groups, the lists' own step"),
+            ("sioul-core/src/agenda.rs", "events' categories"),
+            ("sioul-core/src/appointments.rs", "tasks' tags"),
+            ("sioul-core/src/areas.rs", "tasks' categories for their areas"),
+            ("sioul-core/src/capabilities.rs", "what a task's server keeps"),
+            ("sioul-core/src/capture.rs", "a task's tags, typed"),
+            ("sioul-core/src/composed.rs", "a step's categories"),
+            ("sioul-core/src/contactfilter.rs", "the Contacts page's filter: shows, never decides"),
+            ("sioul-core/src/contactimport.rs", "a file's groups, imported, said, kept only when asked"),
+            ("sioul-core/src/contacts.rs", "where a card's groups are read from its file and written"),
+            ("sioul-core/src/duplicates.rs", "two cards merged: the other's groups taken only when asked"),
+            ("sioul-core/src/health.rs", "tasks' categories"),
+            ("sioul-core/src/pause.rs", "tasks' categories"),
+            ("sioul-core/src/plan.rs", "tasks' categories"),
+            ("sioul-core/src/quiet.rs", "tasks' categories"),
+            ("sioul-core/src/settings.rs", "a sender list's own lines"),
+            ("sioul-core/src/sites.rs", "the sites' categories"),
+            ("sioul-core/src/tasks.rs", "tasks' categories"),
+            ("sioul-core/src/taskview.rs", "tasks' categories"),
+            ("sioul-core/src/thingsearch.rs", "tasks' and events' categories, searched"),
+            ("sioul-core/src/topics/mod.rs", "the topics' seeds"),
+            ("sioul-core/src/topics/rules.rs", "a sender's groups as the lists' index gives them"),
+            ("sioul-core/src/view.rs", "a card's groups, shown"),
             ("sioul-learn/src/topics.rs", "topics learn words from groups to sort mail; they never decide who reaches"),
+            ("sioul-learn/src/topics/model.rs", "the same, learnt"),
         ];
         fn files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
             for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
@@ -2461,6 +2497,11 @@ mod tests {
                 }
             }
         }
+        // Any read of `.categories` (not `categories_of`, `categories_line`…), and `in_category(`.
+        let reads = |line: &str| {
+            line.contains("in_category(")
+                || line.match_indices(".categories").any(|(at, word)| line[at + word.len()..].chars().next().is_none_or(|c| !(c.is_alphanumeric() || c == '_')))
+        };
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut sources = Vec::new();
         for krate in std::fs::read_dir(crates).unwrap().filter_map(Result::ok) {
@@ -2473,18 +2514,17 @@ mod tests {
             let text = std::fs::read_to_string(&path).unwrap();
             let code = text.split("\n#[cfg(test)]\nmod tests").next().unwrap_or("");
             for (n, line) in code.lines().enumerate() {
-                let reads = line.contains("in_category(") || line.contains("contact.categories");
-                if !reads || line.trim_start().starts_with("//") || allowed.iter().any(|(f, _)| *f == name) {
+                if !reads(line) || line.trim_start().starts_with("//") || allowed.iter().any(|(f, _)| *f == name) {
                     continue;
                 }
-                // In porch.rs, `deciding_groups` itself and the index's names of groups, shown.
-                if name == "sioul-core/src/porch.rs" && (line.contains("// groups: deciding") || line.contains("// groups: shown")) {
+                // In porch.rs, only the readings that say what they are.
+                if name == "sioul-core/src/porch.rs" && line.contains("// groups:") {
                     continue;
                 }
                 readers.push(format!("{name}:{}: {}", n + 1, line.trim()));
             }
         }
-        assert!(readers.is_empty(), "read a card's groups apart from porch::deciding_groups:\n{}", readers.join("\n"));
+        assert!(readers.is_empty(), "read groups apart from porch::deciding_groups and the files named:\n{}", readers.join("\n"));
     }
 
     /// The owner's answer of 18 November 2026: a card's groups decide who may
