@@ -2816,6 +2816,10 @@ pub mod qobject {
         #[qinvokable]
         fn extension_accept(self: Pin<&mut Sioul>, id: &QString);
 
+        /// The calendar an extension's agenda goes into: `choice` "new:<account>" or "place:<account/id>".
+        #[qinvokable]
+        fn extension_calendar(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, choice: &QString);
+
         /// The sign-in page's word (SignInWindow.qml): the address it returned to, "" when closed.
         #[qinvokable]
         fn sign_in_returned(self: Pin<&mut Sioul>, address: &QString);
@@ -8592,6 +8596,10 @@ impl qobject::Sioul {
 
     fn extension_accept(self: Pin<&mut Self>, id: &QString) {
         crate::extensions::accept(&self.qt_thread(), &id.to_string());
+    }
+
+    fn extension_calendar(self: Pin<&mut Self>, id: &QString, agenda: &QString, choice: &QString) {
+        crate::extensions::choose_calendar(&self.qt_thread(), &self.shared(), &id.to_string(), &agenda.to_string(), &choice.to_string());
     }
 
     fn sign_in_returned(self: Pin<&mut Self>, address: &QString) {

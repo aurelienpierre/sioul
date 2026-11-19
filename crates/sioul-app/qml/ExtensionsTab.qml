@@ -4,8 +4,10 @@
 // Settings ▸ Extensions (docs/extensions.md): what the signed list offers,
 // each with what it brings, the sites it talks to and whether it keeps a
 // sign-in, said before anything is enabled; then Enable, Sign in…, its state
-// and its last problem in one sentence, Disable, Remove (which asks whether
-// to keep its agendas), and the yes an update asks when it wants more.
+// and its last problem in one sentence, each agenda it brought (a pupil's
+// timetable) with the calendar of yours its lessons go into, chosen here
+// (`extensionCalendar`), Disable, Remove (which asks whether to take its
+// lessons out of your calendars), and the yes an update asks when it wants more.
 // Opening it reads the list (`extensionsPage`); the view comes back as
 // `sioul.extensions` (extensions.rs). A sign-in that needs a choice first (a
 // platform) asks it here (`extensionChoices`).
@@ -24,7 +26,7 @@ Item {
 
     readonly property var view: {
         const text = tab.sioul.extensions
-        return text ? JSON.parse(text) : { offers: [], where: "", problem: "", reading: true }
+        return text ? JSON.parse(text) : { offers: [], calendars: [], where: "", problem: "", reading: true }
     }
 
     // The two questions, over the window (their tests reach them so).
@@ -33,6 +35,12 @@ Item {
 
     implicitHeight: column.implicitHeight
     Component.onCompleted: tab.sioul.extensionsPage()
+
+    // A calendar chosen for an agenda: kept, unless it is "Choose…" or the one already chosen.
+    function choose(id, agenda, choice) {
+        if (choice !== "" && choice !== "place:" + agenda.place)
+            tab.sioul.extensionCalendar(id, agenda.id, choice)
+    }
 
     ColumnLayout {
         id: column
@@ -131,13 +139,49 @@ Item {
                         color: tab.theme.warm
                     }
                 }
-                Label {
-                    Layout.fillWidth: true
-                    visible: offer.modelData.agendas.length > 0
-                    text: tab.sioul.textWith("extension-agendas", "names", offer.modelData.agendas.map(a => a.name).join(", "))
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: tab.theme.muted
+                // Each agenda it brought: its name as the extension gave it (plain text, never
+                // Sioul's voice), where its lessons go and how it went, and the calendar chosen.
+                Repeater {
+                    model: offer.modelData.agendas
+
+                    delegate: ColumnLayout {
+                        id: agenda
+
+                        required property var modelData
+                        // "Choose…", then a new calendar on each account, then the calendars of yours that may be written.
+                        readonly property var choices: [{ choice: "", label: tab.sioul.text("extension-calendar-choose") }].concat(tab.view.calendars || [])
+
+                        objectName: "extensionAgenda:" + agenda.modelData.id
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 2
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: agenda.modelData.name
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            font.bold: true
+                            color: tab.theme.text
+                        }
+                        Label {
+                            objectName: "extensionAgendaLine:" + agenda.modelData.id
+                            Layout.fillWidth: true
+                            text: agenda.modelData.line
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: agenda.modelData.warn ? tab.theme.warm : tab.theme.muted
+                        }
+                        ComboBox {
+                            objectName: "extensionCalendar:" + agenda.modelData.id
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 460
+                            model: agenda.choices.map(c => tab.theme.plain(c.label))
+                            currentIndex: Math.max(0, agenda.choices.findIndex(c => c.choice === "place:" + agenda.modelData.place))
+                            Accessible.name: tab.sioul.textWith("extension-calendar-for", "name", agenda.modelData.name)
+                            onActivated: index => tab.choose(offer.modelData.id, agenda.modelData, agenda.choices[index].choice)
+                        }
+                    }
                 }
 
                 Flow {
@@ -202,7 +246,7 @@ Item {
         }
     }
 
-    // Remove: its sign-in forgotten, its file taken out; its agendas kept, or not.
+    // Remove: its sign-in forgotten, its file taken out; its lessons left in your calendars, or taken out.
     SafeDialog {
         id: removing
 
@@ -237,7 +281,7 @@ Item {
                 objectName: "extensionKeepAgendas"
                 Layout.fillWidth: true
                 checked: true
-                text: tab.sioul.text("extension-keep-agendas")
+                text: tab.sioul.text("extension-leave-lessons")
             }
         }
 

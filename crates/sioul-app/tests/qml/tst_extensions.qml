@@ -4,9 +4,11 @@
 // Settings ▸ Extensions (ExtensionsTab.qml, docs/extensions.md) on a
 // stand-in for Sioul: what an extension brings, the sites it talks to and
 // whether it keeps a sign-in are said before anything is enabled; each
-// button shows only where it does something; Remove asks whether to keep the
-// agendas (kept unless you say otherwise); a choice the extension asks
-// before its sign-in is searchable, and the one chosen goes back to it.
+// button shows only where it does something; each agenda it brought says
+// where its lessons go, its name as plain text, and a calendar chosen goes
+// back to Sioul; Remove asks whether to leave its lessons in your calendars
+// (left unless you say otherwise); a choice the extension asks before its
+// sign-in is searchable, and the one chosen goes back to it.
 // Run by tools/qml-test.sh.
 
 import QtQuick
@@ -57,6 +59,9 @@ Item {
         function extensionAccept(id) {
             mock.asked = mock.asked.concat(["accept " + id])
         }
+        function extensionCalendar(id, agenda, choice) {
+            mock.asked = mock.asked.concat(["calendar " + id + " " + agenda + " " + choice])
+        }
     }
 
     function offer(changes) {
@@ -72,7 +77,7 @@ Item {
     }
 
     function view(offers) {
-        return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers })
+        return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers, calendars: [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }] })
     }
 
     Component {
@@ -156,12 +161,12 @@ Item {
             verify(texts(tab, []).indexOf("It needs a newer Sioul.") >= 0)
         }
 
-        function test_remove_keeps_the_agendas_unless_told() {
-            const tab = make([offer({ installed: true, enabled: true, agendas: [{ id: "p-1", name: "Timetable: Alex" }] })])
+        function test_remove_leaves_the_lessons_unless_told() {
+            const tab = make([offer({ installed: true, enabled: true, agendas: [{ id: "p-1", name: "Timetable: Alex", line: "In Kids.", warn: false, place: "local/kids" }] })])
             find(tab, "extensionRemove:timetable").clicked()
             const dialog = tab.removeDialog
             tryCompare(dialog, "opened", true)
-            verify(find(dialog, "extensionKeepAgendas").checked, "kept by default")
+            verify(find(dialog, "extensionKeepAgendas").checked, "left in your calendars by default")
             dialog.accept()
             compare(mock.asked, ["remove timetable true"])
             find(tab, "extensionRemove:timetable").clicked()
@@ -169,6 +174,24 @@ Item {
             find(dialog, "extensionKeepAgendas").checked = false
             dialog.accept()
             compare(mock.asked, ["remove timetable true", "remove timetable false"])
+        }
+
+        function test_each_agenda_says_where_its_lessons_go_and_a_calendar_is_chosen() {
+            const tab = make([offer({ installed: true, enabled: true, signedIn: true, agendas: [
+                { id: "p-1", name: "Timetable: <b>Alex</b>", line: "Choose the calendar.", warn: true, place: "" },
+                { id: "p-2", name: "Timetable: Sam", line: "In Kids: 140 lessons.", warn: false, place: "local/kids" }
+            ] })])
+            const shown = texts(tab, []).join("\n")
+            verify(shown.indexOf("Timetable: <b>Alex</b>") >= 0, "a name the extension gave, as plain text: " + shown)
+            verify(shown.indexOf("In Kids: 140 lessons.") >= 0 && shown.indexOf("Choose the calendar.") >= 0, shown)
+            const none = find(tab, "extensionCalendar:p-1")
+            const kids = find(tab, "extensionCalendar:p-2")
+            compare(none.currentIndex, 0, "Choose…, while none is chosen")
+            compare(kids.currentIndex, 3, "the calendar chosen")
+            none.activated(1)
+            kids.activated(3)
+            kids.activated(0)
+            compare(mock.asked, ["calendar timetable p-1 new:cloud"], "the one already chosen, and Choose…, ask nothing")
         }
 
         function test_a_choice_before_the_sign_in_goes_back_to_the_extension() {
