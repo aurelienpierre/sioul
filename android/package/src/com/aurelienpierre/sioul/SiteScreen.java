@@ -4,6 +4,7 @@
 package com.aurelienpierre.sioul;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -45,6 +46,9 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -89,6 +93,10 @@ public final class SiteScreen extends Activity
     static final String SITE = "com.aurelienpierre.sioul.extra.SITE";
     /** The page shown, kept in the screen's saved state. */
     private static final String SHOWN = "shown";
+    /** Android's "Save as", for a file the person saves where they choose. */
+    private static final int SAVE_AS = 4401;
+    /** Files a page offers while one is asked about or fetched: three wait, at most (review F4). */
+    private static final int OFFERS = 3;
     /** Android's file chooser, for a page's upload: its requests' codes, one per request, from here. */
     private static final int FILES = 4301;
     private static final int FILES_SPAN = 64;
@@ -126,6 +134,11 @@ public final class SiteScreen extends Activity
     private TextView fetchLine;
     private TextView fetchAction;
     private TextView fetchClose;
+    /** The files offered, waiting for their question, in turn; the question shown; the file waiting for "Save as". */
+    private final java.util.ArrayDeque<SiteDownload.Offer> offers = new java.util.ArrayDeque<>();
+    private AlertDialog asking;
+    private SiteDownload.Offer choosing;
+    private boolean toldTooMany;
 
     @Override
     protected void onCreate(Bundle saved)
@@ -720,13 +733,16 @@ public final class SiteScreen extends Activity
     }
 
     /**
-     * A download the page offered (review F3, F2): fetched by Sioul itself
-     * in the site's session, for its host alone, following no redirect to
-     * another host (SiteDownload), into Downloads; its progress and its end
-     * said in a line under the bar, with Open once saved, or why not and
-     * Open in the browser. A file a form made, or the page made itself
-     * ({@code blob:}, {@code data:}), cannot be asked for again: said at
-     * once. A window opened only for it goes.
+     * A download the page offered (review F3, F2, F4): never saved without
+     * a question, even after a tap. The question names the file (its name
+     * can be changed), its size when the site says it, the host it comes
+     * from, a line of caution for a program, and where it goes (Downloads,
+     * or a folder chosen in Android's own "Save as"); Cancel saves nothing.
+     * One question at a time, three offers waiting at most: a page cannot
+     * start several files unasked. Then Sioul fetches it itself, in the
+     * site's session, for its host alone (SiteDownload). A file a form
+     * made, or the page made itself ({@code blob:}, {@code data:}), cannot
+     * be asked for again: said at once. A window opened only for it goes.
      */
     private void download(WebView page, String url, String agent, String disposition, String type, long length)
     {
@@ -744,11 +760,106 @@ public final class SiteScreen extends Activity
             fetchFailed(name, SiteDownload.Why.FORM);
             return;
         }
-        if (fetching != null) {
-            say(site.word("download_busy"));
+        if (offers.size() >= OFFERS) {
+            if (!toldTooMany)
+                say(site.word("too_many"));
+            toldTooMany = true;
             return;
         }
-        fetch(new SiteDownload.Job(url, agent, type, SiteWeb.origin(committed), name, SiteDownload.DOWNLOADS, null));
+        offers.add(new SiteDownload.Offer(url, agent, type, length, name, SiteWeb.shownHost(url), SiteWeb.origin(committed)));
+        askNext();
+    }
+
+    /** The next file offered, asked about once nothing else is asked, chosen or fetched. */
+    private void askNext()
+    {
+        if (asking != null || choosing != null || fetching != null || offers.isEmpty() || isFinishing() || isDestroyed())
+            return;
+        ask(offers.poll());
+        if (offers.isEmpty())
+            toldTooMany = false;
+    }
+
+    /** The question for one file: what, from where, where to; Save or Cancel. */
+    private void ask(SiteDownload.Offer offer)
+    {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(24), dp(8), dp(24), 0);
+        TextView from = new TextView(this);
+        String size = offer.length > 0 ? SiteWeb.size(offer.length, getResources().getConfiguration().getLocales().get(0)) : "";
+        from.setText((size.isEmpty() ? site.word("save_from") : site.word("save_size_from").replace("{size}", size)).replace("{host}", offer.host));
+        from.setTextDirection(View.TEXT_DIRECTION_LOCALE);
+        form.addView(from);
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint(site.word("save_name"));
+        name.setText(offer.name);
+        int dot = offer.name.lastIndexOf('.');
+        name.setSelection(0, dot > 0 ? dot : offer.name.length());
+        form.addView(name);
+        if (SiteDownload.isProgram(offer.name, offer.type)) {
+            TextView caution = new TextView(this);
+            caution.setText(site.word("save_program"));
+            caution.setTypeface(Typeface.DEFAULT_BOLD);
+            caution.setPadding(0, dp(8), 0, 0);
+            form.addView(caution);
+        }
+        TextView where = new TextView(this);
+        where.setText(site.word("save_where"));
+        where.setPadding(0, dp(12), 0, 0);
+        form.addView(where);
+        // Each place Rust lists and this Java can save to, in that order; the first chosen.
+        RadioGroup places = new RadioGroup(this);
+        int[] ids = new int[site.places.size()];
+        for (int i = 0; i < ids.length; i++) {
+            RadioButton place = new RadioButton(this);
+            ids[i] = View.generateViewId();
+            place.setId(ids[i]);
+            place.setText(site.word("place_" + site.places.get(i)));
+            place.setMinHeight(dp(48));
+            places.addView(place);
+        }
+        places.check(ids[0]);
+        form.addView(places);
+        ScrollView room = new ScrollView(this);
+        room.addView(form);
+        asking = new AlertDialog.Builder(this)
+            .setTitle(site.word("save_title"))
+            .setView(room)
+            .setPositiveButton(site.word("save"), (dialog, which) -> {
+                String place = SiteDownload.DOWNLOADS;
+                for (int i = 0; i < ids.length; i++) {
+                    if (ids[i] == places.getCheckedRadioButtonId())
+                        place = site.places.get(i);
+                }
+                save(offer.named(SiteWeb.fileName(name.getText().toString())), place);
+            })
+            .setNegativeButton(site.word("cancel"), null)
+            .create();
+        asking.setOnDismissListener(dialog -> {
+            asking = null;
+            askNext();
+        });
+        asking.show();
+    }
+
+    /** A file said where it goes: fetched there, or "Save as" asked first. */
+    private void save(SiteDownload.Offer offer, String place)
+    {
+        if (SiteDownload.CHOOSE.equals(place)) {
+            Intent as = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(SiteDownload.base(offer.type).isEmpty() ? "application/octet-stream" : SiteDownload.base(offer.type)).putExtra(Intent.EXTRA_TITLE, offer.name);
+            try {
+                choosing = offer;
+                startActivityForResult(as, SAVE_AS);
+            } catch (ActivityNotFoundException e) {
+                choosing = null;
+                say(site.word("no_app"));
+            }
+            return;
+        }
+        fetch(offer.job(SiteDownload.DOWNLOADS, null));
     }
 
     /** The file fetched, its line under the bar following it. */
@@ -778,6 +889,7 @@ public final class SiteScreen extends Activity
                 fetchAction.setText(site.word("open"));
                 fetchAction.setVisibility(file != null ? View.VISIBLE : View.GONE);
                 fetchAction.setOnClickListener(v -> openSaved(file, job.type));
+                askNext();
             }
 
             @Override
@@ -785,8 +897,10 @@ public final class SiteScreen extends Activity
             {
                 if (fetching == job)
                     fetching = null;
-                if (!isDestroyed())
+                if (!isDestroyed()) {
                     fetchFailed(job.name, why);
+                    askNext();
+                }
             }
         });
     }
@@ -899,6 +1013,15 @@ public final class SiteScreen extends Activity
     @Override
     protected void onActivityResult(int request, int result, Intent data)
     {
+        if (request == SAVE_AS) {
+            // Where the person chose to save the file: fetched there; nothing saved when left.
+            SiteDownload.Offer offer = choosing;
+            choosing = null;
+            if (offer != null && result == RESULT_OK && data != null && data.getData() != null)
+                fetch(offer.job(SiteDownload.CHOOSE, data.getData()));
+            askNext();
+            return;
+        }
         if (request >= FILES && request < FILES + FILES_SPAN) {
             // Only the answer to the request waiting, checked before the page has it (review F1).
             if (request == filesAsked && files != null) {
@@ -947,6 +1070,9 @@ public final class SiteScreen extends Activity
         // A file under way stops with its site: nothing half-written stays (SiteDownload).
         if (fetching != null)
             fetching.cancelled = true;
+        offers.clear();
+        if (asking != null)
+            asking.dismiss();
         if (files != null) {
             files.onReceiveValue(null);
             files = null;

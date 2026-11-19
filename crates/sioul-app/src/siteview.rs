@@ -35,6 +35,12 @@ pub(crate) const OLDEST: u32 = 120;
 /// could not carry when they come.
 pub(crate) const HELPS: [(&str, &[&str]); 3] = [("news", &["DOCUMENT_START_SCRIPT", "WEB_MESSAGE_LISTENER"]), ("silence", &["MUTE_AUDIO"]), ("dark", &["ALGORITHMIC_DARKENING"])];
 
+/// Where a file a site offers may be saved, in the order the question
+/// offers them (SiteDownload.PLACES, the same): Downloads, a folder chosen
+/// in Android's "Save as". Notes, Papers and Letters join once the screen
+/// can hand a file to them (docs/sites.md, "On Android").
+pub(crate) const PLACES: [&str; 2] = ["downloads", "choose"];
+
 /// The features Java asks of the web view (SiteWeb.FEATURES, the same, in
 /// this order: SiteScreenCheck): every one `HELPS` names, and separate
 /// profiles, which would keep another sign-in screen's store apart.
@@ -193,8 +199,15 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("asked_microphone", "site-screen-asked-microphone"),
         ("asked_location", "site-screen-asked-location"),
         ("download_page", "site-screen-download-page"),
-        ("download_busy", "site-screen-download-busy"),
+        ("save_title", "site-screen-save-title"),
+        ("save_name", "site-screen-save-name"),
+        ("save_program", "site-screen-save-program"),
+        ("save_where", "site-screen-save-where"),
         ("place_downloads", "site-screen-place-downloads"),
+        ("place_choose", "site-screen-place-choose"),
+        ("save", "ui-save"),
+        ("cancel", "ui-cancel"),
+        ("too_many", "site-screen-too-many"),
         ("open", "site-screen-open"),
         ("stop", "site-screen-stop"),
         ("no_app", "site-screen-no-app"),
@@ -223,6 +236,13 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         args.set("why", "{why}");
         words.insert(key.into(), tr.text(id, Some(&args)).into());
     }
+    // The question before a download: its size and host filled by Java (review F4).
+    for (key, id) in [("save_from", "site-screen-save-from"), ("save_size_from", "site-screen-save-size-from")] {
+        let mut args = sioul_core::i18n::args();
+        args.set("size", "{size}");
+        args.set("host", "{host}");
+        words.insert(key.into(), tr.text(id, Some(&args)).into());
+    }
     // The bar's second line on another site's page: the site it came from (review N2).
     let mut args = sioul_core::i18n::args();
     args.set("name", "{name}");
@@ -242,6 +262,7 @@ pub(crate) fn asked(id: &str, name: &str, url: &str, look: &str, tr: &Translator
         "domain": sites::domain_of(&sites::host_of(url)),
         "look": look,
         "words": words(tr),
+        "places": PLACES,
     })
 }
 
@@ -366,6 +387,9 @@ mod tests {
             assert!(words[key].as_str().unwrap().contains("{file}"), "{key}");
         }
         assert!(words["saved"].as_str().unwrap().contains("{place}") && words["save_failed"].as_str().unwrap().contains("{why}"));
+        assert!(words["save_size_from"].as_str().unwrap().contains("{size}") && words["save_size_from"].as_str().unwrap().contains("{host}") && words["save_from"].as_str().unwrap().contains("{host}"));
+        assert_eq!(words["place_choose"], "Un dossier que je choisis\u{2026}");
+        assert_eq!(asked["places"], serde_json::json!(["downloads", "choose"]));
         assert!(words["from"].as_str().unwrap().contains("{name}") && words["from"].as_str().unwrap().starts_with("depuis"));
         assert_eq!(words["browser"], "Ouvrir dans le navigateur");
         assert_eq!(given("not json")["look"], serde_json::json!({}));

@@ -288,6 +288,21 @@ public final class SiteScreenCheck
             folder.delete();
         }
 
+        // ------------------------------------------------ Where a file may go (review F4)
+        expect("the places in Rust's order", SiteWeb.places(new org.json.JSONArray("[\"choose\", \"downloads\"]")).equals(java.util.Arrays.asList("choose", "downloads")));
+        expect("a place this Java cannot save to is not offered, nor one twice", SiteWeb.places(new org.json.JSONArray("[\"papers\", \"downloads\", \"downloads\"]")).equals(java.util.Arrays.asList("downloads")));
+        expect("none listed: Downloads, then a folder chosen", SiteWeb.places(null).equals(java.util.Arrays.asList("downloads", "choose")) && SiteWeb.places(new org.json.JSONArray("[\"notes\"]")).equals(java.util.Arrays.asList("downloads", "choose")));
+        expect("the site handed with its places", SiteWeb.Opening.of(site("{\"places\": [\"choose\"]}")).places.equals(java.util.Arrays.asList("choose")) && bank.places.equals(java.util.Arrays.asList("downloads", "choose")));
+        Matcher rustPlaces = Pattern.compile("pub\\(crate\\) const PLACES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
+        expect("Rust's places found", rustPlaces.find());
+        List<String> placesNamed = new ArrayList<>();
+        Matcher placeQuoted = Pattern.compile("\"([a-z]+)\"").matcher(rustPlaces.group(1));
+        while (placeQuoted.find())
+            placesNamed.add(placeQuoted.group(1));
+        expect("Rust lists the places this Java saves to, in its order: " + placesNamed, placesNamed.equals(java.util.Arrays.asList(SiteDownload.PLACES)));
+        for (String place : SiteDownload.PLACES)
+            expect("each place has its words: " + place, SiteWeb.ENGLISH.containsKey("place_" + place));
+
         // ------------------------------------------------ As Rust names them
         Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
         expect("Rust's features found", features.find());
@@ -372,7 +387,22 @@ public final class SiteScreenCheck
         expect("a file cut short is taken back", fetchSource.contains("if (!done)") && fetchSource.contains("target.undo(context);") && fetchSource.contains("forget(context, job.chosen);"));
         expect("a file under way stops with its site", body(screen, "protected void onDestroy()", "    ").contains("fetching.cancelled = true;"));
         expect("a form's address remembered, nothing answered in the page's place", body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("SiteWeb.posted(") && body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("return null;"));
-        expect("a form's file said at once, never fetched", body(screen, "private void download(WebView page,", "    ").indexOf("SiteWeb.wasPosted(url") < body(screen, "private void download(WebView page,", "    ").indexOf("fetch(new SiteDownload.Job("));
+        String offered = body(screen, "private void download(WebView page,", "    ");
+        expect("a form's file said at once, never fetched", offered.indexOf("SiteWeb.wasPosted(url") >= 0 && offered.indexOf("SiteWeb.wasPosted(url") < offered.indexOf("offers.add("));
+        // Every download asks first, even after a tap (review F4, the owner's word of 19 November 2026).
+        expect("a file offered waits for its question, never fetched straight away", offered.contains("offers.add(") && offered.contains("askNext();") && !offered.contains("fetch("));
+        expect("three offers wait at most: a page cannot start several unasked", screen.contains("private static final int OFFERS = 3;") && offered.indexOf("offers.size() >= OFFERS") < offered.indexOf("offers.add("));
+        expect("one question at a time, none while a file is chosen or fetched", body(screen, "private void askNext()", "    ").contains("if (asking != null || choosing != null || fetching != null || offers.isEmpty()"));
+        String question = body(screen, "private void ask(SiteDownload.Offer offer)", "    ");
+        expect("the question: the file's name, which can be changed", question.contains("EditText name = new EditText(this);") && question.contains("name.setText(offer.name);") && question.contains("offer.named(SiteWeb.fileName(name.getText().toString()))"));
+        expect("its size when known, and the host it comes from", question.contains("offer.length > 0") && question.contains("replace(\"{host}\", offer.host)"));
+        expect("a line of caution for a program", question.contains("if (SiteDownload.isProgram(offer.name, offer.type))"));
+        expect("each place offered, Rust's order, the first chosen", question.contains("for (int i = 0; i < ids.length; i++)") && question.contains("site.word(\"place_\" + site.places.get(i))") && question.contains("places.check(ids[0]);"));
+        expect("Cancel saves nothing", question.contains(".setNegativeButton(site.word(\"cancel\"), null)"));
+        expect("a file is fetched only once said where: Downloads, or the document \"Save as\" made", screen.split("[^.\\w]fetch\\(", -1).length - 1 == 3 && body(screen, "private void save(", "    ").contains("fetch(offer.job(SiteDownload.DOWNLOADS, null));")
+            && body(screen, "protected void onActivityResult(", "    ").contains("fetch(offer.job(SiteDownload.CHOOSE, data.getData()));"));
+        expect("\"Save as\" left: nothing saved", body(screen, "protected void onActivityResult(", "    ").contains("if (offer != null && result == RESULT_OK && data != null && data.getData() != null)"));
+        expect("the question goes with its site", body(screen, "protected void onDestroy()", "    ").contains("offers.clear();") && body(screen, "protected void onDestroy()", "    ").contains("asking.dismiss();"));
         Matcher fetchLog = Pattern.compile("Log\\.\\w\\(DoseAlarms\\.TAG, ([^;]*)\\);").matcher(fetchSource);
         int fetchLogs = 0;
         while (fetchLog.find()) {

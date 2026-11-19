@@ -193,6 +193,41 @@ final class SiteDownload
         void failed(Why why);
     }
 
+    /** A file a page offered, before the question: its address, type, length (-1 unknown), name, host, the page's origin. */
+    static final class Offer
+    {
+        final String url;
+        final String agent;
+        final String type;
+        final long length;
+        final String name;
+        final String host;
+        final String referrer;
+
+        Offer(String url, String agent, String type, long length, String name, String host, String referrer)
+        {
+            this.url = url;
+            this.agent = agent;
+            this.type = type;
+            this.length = length;
+            this.name = name;
+            this.host = host;
+            this.referrer = referrer;
+        }
+
+        /** The same file under the name the person gave it. */
+        Offer named(String given)
+        {
+            return new Offer(url, agent, type, length, given, host, referrer);
+        }
+
+        /** The file to fetch, into {@code place} ({@code chosen}: the document "Save as" made). */
+        Job job(String place, Uri chosen)
+        {
+            return new Job(url, agent, type, referrer, name, place, chosen);
+        }
+    }
+
     /** A file to fetch: what the page offered, where it goes, how to tell the screen. */
     static final class Job
     {

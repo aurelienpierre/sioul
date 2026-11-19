@@ -172,9 +172,11 @@ final class SiteWeb
         final int text;
         final int muted;
         final int line;
+        /** Where a file may be saved, in the order the question offers them (SiteDownload.PLACES, as Rust lists them). */
+        final java.util.List<String> places;
         private final Map<String, String> words;
 
-        private Opening(String id, String name, String url, String domain, boolean dark, int[] colours, Map<String, String> words)
+        private Opening(String id, String name, String url, String domain, boolean dark, int[] colours, Map<String, String> words, java.util.List<String> places)
         {
             this.id = id;
             this.name = name;
@@ -187,6 +189,7 @@ final class SiteWeb
             this.muted = colours[3];
             this.line = colours[4];
             this.words = words;
+            this.places = places;
         }
 
         /** The words Rust gave for {@code key}, else English, so that nothing shows a key. */
@@ -255,8 +258,29 @@ final class SiteWeb
                         words.put(key, said);
                 }
             }
-            return new Opening(id, name, url, domain, dark, colours, words);
+            return new Opening(id, name, url, domain, dark, colours, words, places(asked.optJSONArray("places")));
         }
+    }
+
+    /**
+     * The places a file may be saved, in the order Rust lists them, each one
+     * this Java can save to (SiteDownload.PLACES) and named once; this
+     * Java's own list when Rust lists none it knows. A place Rust adds later
+     * (Notes, Papers, Letters) is offered once this Java can save there.
+     *
+     * @param listed Rust's list, or null
+     * @return the places, never empty
+     */
+    static java.util.List<String> places(org.json.JSONArray listed)
+    {
+        java.util.List<String> known = java.util.Arrays.asList(SiteDownload.PLACES);
+        java.util.List<String> places = new java.util.ArrayList<>();
+        for (int i = 0; listed != null && i < listed.length(); i++) {
+            String place = listed.optString(i, "");
+            if (known.contains(place) && !places.contains(place))
+                places.add(place);
+        }
+        return places.isEmpty() ? known : places;
     }
 
     /** Sioul's words for the screen in English, for a word Rust did not give (siteview.rs, `words`). */
@@ -280,7 +304,16 @@ final class SiteWeb
         ENGLISH.put("asked_microphone", "the microphone");
         ENGLISH.put("asked_location", "your location");
         ENGLISH.put("download_page", "This file is made by the page itself: Sioul cannot save it yet. Open the page in your browser to save it.");
-        ENGLISH.put("download_busy", "Sioul is saving another file of this site: try again once it is there.");
+        ENGLISH.put("save_title", "Save this file?");
+        ENGLISH.put("save_name", "Name");
+        ENGLISH.put("save_from", "From {host}");
+        ENGLISH.put("save_size_from", "{size}, from {host}");
+        ENGLISH.put("save_program", "This file is a program: open it only if you expected one from this site.");
+        ENGLISH.put("save_where", "Where");
+        ENGLISH.put("place_choose", "A folder I choose…");
+        ENGLISH.put("save", "Save");
+        ENGLISH.put("cancel", "Cancel");
+        ENGLISH.put("too_many", "This page offered more files at once than Sioul asks about: the others were not saved.");
         ENGLISH.put("saving", "Downloading {file}");
         ENGLISH.put("saved", "{file} is in {place}.");
         ENGLISH.put("saved_choose", "{file} is saved where you chose.");
