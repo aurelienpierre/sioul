@@ -267,7 +267,7 @@ La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et pa
 ### Comment le plan apprend de votre temps {#how-the-plan-learns-from-your-time}
 
 - **Votre première estimation est gardée.** La première fois qu’une tâche reçoit une durée, Sioul la garde avec la tâche et ne la change jamais, même quand vous changez **Prend environ** ensuite. Une tâche qui avait une durée avant que cela existe n’en a pas de gardée ; sa durée actuelle sert à la place.
-- **Seules les tâches finies lui apprennent**, chacune avec son temps passé face à sa première estimation, tous ses moments additionnés.
+- **Seules les tâches finies lui apprennent**, chacune avec son temps passé face à sa première estimation, tous ses moments additionnés, ceux de ses étapes avec eux : un minuteur tourne sur l’étape que vous faites, donc une tâche faite par ses étapes apprend de leur temps, face à sa propre estimation. Une étape seule n’apprend rien, et apprend par sa tâche une fois celle-ci faite.
     - Les minutes chronométrées comptent pleinement, corrigées aussi.
     - Les minutes notées à la main comptent pour un quart, parce que les durées dont on se souvient sont moins sûres.
     - Les tâches abandonnées ne comptent jamais.

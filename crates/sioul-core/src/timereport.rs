@@ -109,22 +109,20 @@ pub struct AreaEstimate {
 
 /// Where estimates are off, by area: for each task done from `from` to `to`
 /// (none a step of a bigger one, as the plan's ratio reads them,
-/// `capacity::finished`) that `counts` and that has an estimate and time
-/// spent, all its stretches summed beside its first estimate (else its
-/// current one), each under the first of the areas it leans to (`area_of`,
+/// `capacity::finished`) that `counts` and that has an estimate of its own and
+/// time spent, its stretches and its steps' summed (`capacity::TaskTime`, as
+/// the ratio reads them) beside its own first estimate (else its current one),
+/// each under the first of the areas it leans to (`area_of`,
 /// `TaskAreas::leaning` in the window: work, then your admin, then leisure),
 /// so that each task counts once. An area with no such task has no line.
 pub fn estimates_by_area(entries: &[Entry], tasks: &[Task], area_of: &dyn Fn(&Task) -> crate::areas::Area, counts: &dyn Fn(&Task) -> bool, from: Date, to: Date, zone: &TimeZone) -> Vec<AreaEstimate> {
-    let mut spent: std::collections::BTreeMap<&str, u32> = std::collections::BTreeMap::new();
-    for e in entries.iter().filter(|e| !e.task.is_empty()) {
-        *spent.entry(e.task.as_str()).or_insert(0) += e.minutes;
-    }
+    let time = crate::capacity::TaskTime::of(tasks, entries.iter().map(|e| (e.task.as_str(), e.minutes, e.minutes as f32)));
     let mut sums = [(0u32, 0u32); 3];
     let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for task in tasks.iter().filter(|t| t.status == crate::tasks::Status::Completed && t.parent().is_none() && counts(t) && seen.insert(t.uid.as_str())) {
         let Some(done) = task.completed.and_then(|at| jiff::Timestamp::from_second(at).ok()).map(|t| t.to_zoned(zone.clone()).date()) else { continue };
         let estimate = task.estimate_first.unwrap_or(task.estimate);
-        let minutes = spent.get(task.uid.as_str()).copied().unwrap_or(0);
+        let minutes = time.whole(&task.uid).0;
         if done < from || done > to || estimate == 0 || minutes == 0 {
             continue;
         }
@@ -480,6 +478,20 @@ mod tests {
         assert_eq!(only_lumen.iter().map(|a| a.area).collect::<Vec<_>>(), ["work"]);
         let next_week = bounds("week", "2026-10-14".parse().unwrap());
         assert!(estimates_by_area(&all, &tasks, &|t| areas.of(t), &|_| true, next_week.0, next_week.1, &zone).is_empty());
+        // A whole done through its steps: their time, beside its own estimate, as the plan's ratio reads it.
+        let whole = task("move", &[], &[], 60);
+        let mut step = task("boxes", &[], &[], 20);
+        step.relations.push(crate::tasks::Relation { kind: "PARENT".into(), uid: "move".into(), gap: 0 });
+        let mut open_whole = task("paint", &[], &[], 30);
+        open_whole.status = crate::tasks::Status::NeedsAction;
+        let mut open_step = task("walls", &[], &[], 20);
+        open_step.relations.push(crate::tasks::Relation { kind: "PARENT".into(), uid: "paint".into(), gap: 0 });
+        let tasks = vec![whole, step, open_whole, open_step];
+        let sessions = vec![Session { task: "boxes".into(), start: at("2026-10-06", 10), minutes: 75, ..Session::default() }, Session { task: "walls".into(), start: at("2026-10-06", 14), minutes: 40, ..Session::default() }];
+        let all = entries(&sessions, &tasks, &[], &zone);
+        let by_area = estimates_by_area(&all, &tasks, &|_| Area::ADMIN, &|_| true, from, to, &zone);
+        let got: Vec<(&str, u32, u32)> = by_area.iter().map(|a| (a.area, a.spent_minutes, a.estimated_minutes)).collect();
+        assert_eq!(got, [("admin", 75, 60)], "the step's time in its whole's, the step and the open whole's step on no line");
     }
 
     /// The Time page's filter asks each project's area once per reading,

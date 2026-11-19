@@ -267,7 +267,7 @@ The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and s
 ### How the plan learns from your time {#how-the-plan-learns-from-your-time}
 
 - **Your first guess is kept.** The first time a task gets a length, Sioul keeps it with the task and never changes it, even when you change **Takes about** later. A task given a length before this existed has none kept; its current length is used instead.
-- **Only finished tasks teach it**, each one's time spent against its first guess, all its stretches added up.
+- **Only finished tasks teach it**, each one's time spent against its first guess, all its stretches added up, its steps' with them: a timer runs on the step you are doing, so a task done through its steps learns from their time, against its own guess. A step alone teaches nothing, and teaches through its task once that task is done.
     - Timed minutes count fully, corrected ones too.
     - Minutes noted by hand count a quarter, because remembered durations are less sure.
     - Dropped tasks never count.
