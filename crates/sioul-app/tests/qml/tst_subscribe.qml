@@ -231,6 +231,21 @@ Item {
             compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
         }
 
+        // The review's F41: "These are my own engagements" offered on a calendar of events,
+        // never on one of holidays, off until ticked, then sent.
+        function test_own_engagements() {
+            const setup = createTemporaryObject(setupComponent, root)
+            setup.toggle("subscribed/timetable")
+            const boxes = root.named(setup, "subscriptionEngagements").filter(b => b.visible)
+            compare(boxes.length, 1, "on the calendar of events alone")
+            verify(!boxes[0].checked, "off unless ticked")
+            mouseClick(boxes[0])
+            verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "engagements" && c[3] === "true"), JSON.stringify(mock.calls))
+            setup.toggle("subscribed/timetable")
+            setup.toggle("subscribed/zone-a")
+            compare(root.named(setup, "subscriptionEngagements").filter(b => b.visible).length, 0, "holidays act through the days off alone")
+        }
+
         // The review's F19 and F20: settings that do not read: the line says so, and Stop alone is offered.
         function test_a_calendar_whose_settings_do_not_read() {
             root.width = 412

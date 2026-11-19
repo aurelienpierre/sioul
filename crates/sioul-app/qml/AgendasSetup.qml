@@ -567,6 +567,15 @@ ColumnLayout {
                         checked: feed.sub !== null && feed.sub.days_off === true
                         onToggled: setup.saveSubscription(feed.sub.id, "days_off", checked ? "true" : "false")
                     }
+                    // Its events mark you busy and hold your time only when you say they are yours (F41).
+                    WrapCheckBox {
+                        objectName: "subscriptionEngagements"
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === ""
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("subscribe-engagements")
+                        checked: feed.sub !== null && feed.sub.engagements === true
+                        onToggled: setup.saveSubscription(feed.sub.id, "engagements", checked ? "true" : "false")
+                    }
                     WrapCheckBox {
                         objectName: "subscriptionAfterClass"
                         visible: !feed.unread && feed.sub !== null && feed.sub.holidays === "school"

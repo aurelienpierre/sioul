@@ -301,3 +301,30 @@ fn a_calendar_too_heavy_once_kept_replaces_nothing() {
     assert!(line(id, &now, &tr).contains("too much room"), "{}", line(id, &now, &tr));
     vdir::remove_subscribed(id).unwrap();
 }
+
+/// The review's F41: a subscribed calendar's events never mark you busy,
+/// for do not disturb nor the availability you share, unless you say they
+/// are your own engagements; a calendar of holidays never does, whatever
+/// its events say (`TRANSP:OPAQUE` on every holiday, as some publishers
+/// write them), acting through your days off alone.
+#[test]
+fn a_subscribed_calendar_marks_you_busy_only_when_you_say_so() {
+    let config: Config = toml::from_str(
+        "[agenda.subscriptions.classes]\nurl = \"https://calendar.example.org/classes.ics\"\n\n\
+         [agenda.subscriptions.mine]\nurl = \"https://calendar.example.org/mine.ics\"\nengagements = true\n\n\
+         [agenda.subscriptions.holidays]\nurl = \"https://calendar.example.org/holidays.ics\"\nholidays = \"public\"\nengagements = true\n",
+    )
+    .unwrap();
+    assert!(takes_no_time(&config, "classes"), "unsaid: none of your time");
+    assert!(!takes_no_time(&config, "mine"), "your own engagements, by your word");
+    assert!(takes_no_time(&config, "holidays"), "holidays act through the days off alone");
+    assert!(takes_no_time(&config, "stopped"), "a calendar the settings no longer name takes none either");
+    // A whole day said busy, as such a calendar's reader marks it (`agenda::read_occurrences`:
+    // the agenda's transparency over the event's own TRANSP): never a busy stretch.
+    let holiday = crate::agenda::Occurrence { all_day: true, opaque: false, transparent: true, start: 0, end: 86_400, ..crate::agenda::Occurrence::default() };
+    assert!(!crate::busy::event_marked(&holiday));
+    assert!(crate::busy::stretches_of(&[holiday.clone()], None, 0, 86_400).is_empty());
+    assert!(!holiday.holds_time());
+    let own = crate::agenda::Occurrence { opaque: true, transparent: false, ..holiday };
+    assert_eq!(crate::busy::stretches_of(&[own], None, 0, 86_400), [(0, 86_400)], "the same event of an agenda of yours");
+}

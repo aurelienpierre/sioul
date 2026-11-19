@@ -4748,6 +4748,7 @@ subscribe-holidays-none = Des événements
 subscribe-holidays-public = Des jours fériés
 subscribe-holidays-school = Des vacances scolaires
 subscribe-days-off = Ses jours comptent comme mes jours sans travail
+subscribe-engagements = Ce sont mes propres engagements : indisponible pendant eux, et ils prennent mon temps
 subscribe-after-class = Les vacances commencent après la classe : leur premier jour est encore un jour de classe, et le jour de la reprise n’en fait pas partie
 subscribe-make = S’abonner
 subscribe-reading = Un agenda est en cours de lecture. Réessayez dans un instant.

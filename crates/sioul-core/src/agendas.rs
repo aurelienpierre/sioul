@@ -431,7 +431,9 @@ pub struct Marks {
     pub theirs: bool,
     pub busy: bool,
     pub work: bool,
-    /// Its server says it takes none of your time as a whole (`vdir::calendar_transparent`).
+    /// It takes none of your time as a whole: its server says so
+    /// (`vdir::calendar_transparent`), or it is a calendar subscribed by its
+    /// address you did not say holds your own engagements (`subscribed::takes_no_time`).
     pub transparent: bool,
     /// A personal agenda you keep out of your work hours (`Reach::OutsideWork`).
     pub outside_work: bool,
@@ -445,7 +447,8 @@ pub struct Marks {
 pub fn marks_of(collection: &Collection) -> Marks {
     let config = read_config();
     let agenda = agenda_of(collection, &config);
-    let transparent = vdir::calendar_transparent(&collection.account, &collection.id);
+    // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
+    let transparent = vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id));
     Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, titles: agenda.titles }
 }
 

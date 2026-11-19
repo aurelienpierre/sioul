@@ -155,6 +155,7 @@ pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_jso
         "holidays": subscription.holidays().map_or("", |h| h.id()),
         "days_off": subscription.days_off(),
         "after_class": subscription.after_class(),
+        "engagements": subscription.engagements(),
         "unread": subscription.unread,
         "line": line,
     })
@@ -233,8 +234,8 @@ pub(crate) fn set_field(qt: &QtThread, shared: &Arc<Shared>, id: &str, field: &s
     }
     match field {
         "url" => refresh_now(qt, shared, id),
-        // What counts as your days off, or when holidays begin, changed: the series, the plan, the hours.
-        "days_off" | "after_class" | "holidays" => {
+        // What counts as your days off, when holidays begin, or whether its events hold your time, changed: the series, the plan, the hours.
+        "days_off" | "after_class" | "holidays" | "engagements" => {
             crate::work::show_work(qt, shared);
             crate::homecard::now();
             String::new()

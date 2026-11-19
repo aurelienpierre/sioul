@@ -4715,6 +4715,7 @@ subscribe-holidays-none = Events
 subscribe-holidays-public = Public holidays
 subscribe-holidays-school = School holidays
 subscribe-days-off = Its days count as my days off
+subscribe-engagements = These are my own engagements: busy during them, and they take my time
 subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
 subscribe-make = Subscribe
 subscribe-reading = A calendar is being read. Try again in a moment.

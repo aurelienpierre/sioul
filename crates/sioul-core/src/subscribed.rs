@@ -84,6 +84,13 @@ pub struct Subscription {
     /// "#rrggbb", its colour in the agenda; unsaid, the agenda's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// "These are my own engagements": its events mark you busy (do not
+    /// disturb, the availability you share) and hold your time, as your own
+    /// agendas' do. Unsaid, no: a calendar read from elsewhere never makes
+    /// you busy by itself (the review's F41). A calendar of holidays never
+    /// does: it acts through your days off alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engagements: Option<bool>,
     /// Its entry does not read here (a field of another type, written by a
     /// later Sioul or by hand; no address): what is here is the last entry
     /// that read on this device (`Fetched::entry`), else what of it reads.
@@ -137,6 +144,21 @@ impl Subscription {
     pub fn after_class(&self) -> bool {
         self.holidays() == Some(Holidays::School) && self.after_class.unwrap_or(false)
     }
+
+    /// Whether its events are your own engagements, by your word, never for
+    /// a calendar of holidays (`engagements`).
+    pub fn engagements(&self) -> bool {
+        self.holidays().is_none() && self.engagements.unwrap_or(false)
+    }
+}
+
+/// Whether a subscribed calendar's events take none of your time
+/// (`agendas::Marks::transparent`): unless you said they are your own
+/// engagements, a calendar read from elsewhere never marks you busy, for do
+/// not disturb, the availability you share nor the plan (F41). `id`: its
+/// folder's; a calendar the settings no longer name takes none either.
+pub fn takes_no_time(config: &Config, id: &str) -> bool {
+    !config.agenda.subscriptions.get(id).is_some_and(Subscription::engagements)
 }
 
 /// Whether an id names a subscribed calendar's folder: letters, digits, `-`, `_`.
@@ -176,6 +198,7 @@ fn unread(id: &str, value: &toml::Value) -> Subscription {
         days_off: yes("days_off"),
         after_class: yes("after_class"),
         colour: word("colour"),
+        engagements: yes("engagements"),
         unread: false,
     });
     Subscription { unread: true, ..entry }
@@ -820,11 +843,12 @@ pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Tran
 }
 
 /// The fields of a subscription the window writes.
-pub const FIELDS: [&str; 6] = ["url", "name", "holidays", "days_off", "after_class", "colour"];
+pub const FIELDS: [&str; 7] = ["url", "name", "holidays", "days_off", "after_class", "engagements", "colour"];
 
 /// One field of a subscription written: its address (checked first), its
 /// name, which holidays it holds, whether they count as your days off,
-/// whether they begin after class, its colour; "" takes it back to unsaid
+/// whether they begin after class, whether its events are your own
+/// engagements, its colour; "" takes it back to unsaid
 /// (never the address).
 pub fn set(path: &Path, id: &str, field: &str, value: &str, tr: &crate::i18n::Translator) -> Result<(), String> {
     let value = value.trim();
@@ -833,7 +857,7 @@ pub fn set(path: &Path, id: &str, field: &str, value: &str, tr: &crate::i18n::Tr
         _ if value.is_empty() => None,
         "name" => Some(toml_edit::value(value)),
         "holidays" => Some(toml_edit::value(Holidays::parse(value).ok_or_else(|| format!("{value}: public or school"))?.id())),
-        "days_off" | "after_class" => Some(toml_edit::value(matches!(value, "true" | "yes" | "on" | "1"))),
+        "days_off" | "after_class" | "engagements" => Some(toml_edit::value(matches!(value, "true" | "yes" | "on" | "1"))),
         "colour" if value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit()) => Some(toml_edit::value(value.to_ascii_lowercase())),
         "colour" => return Err(format!("{value}: a colour as #rrggbb")),
         _ => return Err(format!("{field}: not a field of a subscribed calendar")),
