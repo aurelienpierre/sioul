@@ -676,26 +676,26 @@ pub(crate) fn devices() -> String {
     grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
     // Every device of the table, and a device whose line says what it lets ring but that the table
     // does not hold (yet): the window shows only those it has a row for.
-    let listed: Vec<(String, String)> = rows.iter().map(|r| (r.id.clone(), r.form.clone())).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new()))).collect();
-    let calls = calls_views(&config, listed.iter().map(|(id, form)| (id.as_str(), form.as_str())));
+    let listed: Vec<(String, String, bool)> = rows.iter().map(|r| (r.id.clone(), r.form.clone(), r.no_lines)).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new(), false))).collect();
+    let calls = calls_views(&config, listed.iter().map(|(id, form, old)| (id.as_str(), form.as_str(), *old)));
     json(&Devices { on: vault.is_some(), why, stays, rows, grid, calls })
 }
 
 /// Each phone's section Calls (`sioul_core::calls_line::view`), by its id:
 /// for a device that is a phone, whose line says what it lets ring, or that
 /// says it screens calls.
-fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str)>) -> std::collections::BTreeMap<String, serde_json::Value> {
+fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str, bool)>) -> std::collections::BTreeMap<String, serde_json::Value> {
     let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
     let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config)).names();
     let today = crate::calls::today(config);
     let held = held_words(config);
     devices
-        .filter_map(|(id, form)| {
+        .filter_map(|(id, form, old)| {
             let said = config.devices.get(id);
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
-                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: false };
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: old };
                 (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
             })
         })

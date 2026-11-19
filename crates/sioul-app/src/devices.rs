@@ -162,6 +162,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         // It keeps its own table whatever comes, and says whether it learns now
         // (`spam::learns_level`): the tables travel while any device does not.
         entry.learns = crate::spam::learns_level();
+        // It reads a phone's own calls' table: the card of a phone that does not says so (M12).
+        entry.calls_lines = sioul_sync::devices::CALLS_LINES;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

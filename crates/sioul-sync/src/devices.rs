@@ -194,6 +194,14 @@ pub struct Entry {
     /// entry as before, the field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub learns: u32,
+    /// Whether its Sioul reads a phone's own calls' table (`[device."<id>"]
+    /// calls`, `sioul_core::calls_line`, format `CALLS_LINES`): 1 from a
+    /// build that does, 0 from an older one, which keeps the shared
+    /// screening whatever its card says; the card says so (review of
+    /// `phones`, M12). An older Sioul reads the entry as before, the field
+    /// unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub calls_lines: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
@@ -319,6 +327,9 @@ fn is_zero(n: &u32) -> bool {
 
 /// What a device's entry says once its Sioul follows what devices are for (`Entry::areas`).
 pub const AREAS: u32 = 1;
+
+/// What a device's entry says once its Sioul reads a phone's own calls' table (`Entry::calls_lines`).
+pub const CALLS_LINES: u32 = 1;
 
 fn is_zero_i64(n: &i64) -> bool {
     *n == 0
