@@ -296,14 +296,19 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
 /// what turns it on (`[dnd] focus`, its key of before, `everywhere::sources_for`):
 /// then a busy stretch is do-not-disturb on this phone's line, else its
 /// column "while busy" holds.
-fn busy_turns_dnd(config: &Config) -> bool {
+pub(crate) fn busy_turns_dnd(config: &Config) -> bool {
     config.dnd.focus
 }
 
 /// What a phone whose line says nothing does today, for its card: the
-/// matrix's Calls rows and the shared screening (`calls_line::Today`).
+/// matrix's Calls rows and the shared screening, read over the coming
+/// week's moments as the phone reads them (`calls_line::Today`, M5).
 pub(crate) fn today(config: &Config) -> sioul_core::calls_line::Today {
-    sioul_core::calls_line::Today::of(&sioul_core::attention::Attention::of(config), &sioul_core::screening::Screening::of(config), busy_turns_dnd(config))
+    let now = sioul_core::zone::now();
+    let clock = Clock::load(config, &now);
+    let from = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
+    let until = from.checked_add(jiff::Span::new().days(7)).unwrap_or_else(|_| now.clone());
+    sioul_core::calls_line::Today::of(&Attention::of(config), &Screening::of(config), &clock, &from, &until)
 }
 
 /// Whether this phone's own line in Settings ▸ Devices says what it lets ring

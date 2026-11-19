@@ -6,14 +6,17 @@
 // (Professional, Personal, Both, As Android does; "Your own" once changed by
 // hand), with what it does in a line; one small table, Rings or Voicemail by
 // row (Always through, fixed; Safe; Your contacts; the groups given a row;
-// Restricted; numbers nobody knows; hidden numbers) and by moment (work
-// hours, the rest of the day, the night, while busy); three switches; a
-// group given its row, or taken off; what always rings; the SIMs; and, on a
-// phone that does not screen yet, what to do. At a computer's width the
-// table is a grid of buttons; at a phone's, a list of rows, each opening its
-// four choices. The words are the core's (`calls_line::view`, through
-// `share::devices`); each change is written as a field of the phone's line
-// (`deviceSay(id, "calls.…", value)`), the same on every device.
+// Restricted; Everyone else; hidden numbers) and by moment (work hours, the
+// rest of the day, the night, while busy, where a cell may also be As usual);
+// five switches, each one setting, two under "More"; a group given its row,
+// or taken off; what "as usual" means while busy, what a pause and
+// do-not-disturb do here; what always rings; the SIMs; on a phone that does
+// not screen yet, what to do; on a phone whose Sioul reads no table yet, so.
+// At a computer's width the table is a grid of buttons; at a phone's, a list
+// of rows, each opening its four choices. The words are the core's
+// (`calls_line::view`, through `share::devices`); each change is said as a
+// field (`deviceSay(id, "calls.…", value)`) and written as the phone's whole
+// table, the same on every device.
 
 pragma ComponentBehavior: Bound
 
@@ -42,6 +45,8 @@ ColumnLayout {
     // Android's SIM page asked for (on the phone itself).
     signal simsAsked
 
+    // The screening's other settings shown ("More": numbers that cannot be a caller's, a failed verification).
+    property bool more: false
     readonly property var chosen: (line.view.profiles || []).find(p => p.chosen === true) || null
     // The profile chosen; the one offered while the table shows neither today's nor yours.
     readonly property var shownProfile: line.chosen || (line.view.today === true ? null : (line.view.profiles || []).find(p => p.id === line.view.offered) || null)
@@ -65,8 +70,9 @@ ColumnLayout {
         color: line.theme.muted
     }
     // One cell: Rings (the accent's fill) or Voicemail; a press turns it to the
-    // other. Today's cell that varies within its column (Varies, As usual):
-    // neither, and a press makes it ring.
+    // other. While busy a third value, As usual (`calls_line::Cell`): a press
+    // goes As usual, Rings, Voicemail, As usual. Today's cell that varies
+    // within its column (Varies): neither, and a press makes it ring.
     component Cell: Button {
         id: cell
 
@@ -75,17 +81,26 @@ ColumnLayout {
         required property string rowLabel
         required property string columnLabel
         readonly property bool varies: cell.said.varies === true
+        readonly property bool usual: cell.said.cell === "usual"
+        readonly property string next: cell.said.when === "busy" ? (cell.usual ? "rings" : cell.said.cell === "rings" ? "voicemail" : "usual") : (cell.said.cell === "rings" && !cell.varies ? "voicemail" : "rings")
 
         objectName: "callsCell-" + cell.rowId + "-" + (cell.said.when || "")
         text: line.theme.plain(cell.said.word || "")
-        highlighted: cell.said.rings === true && !cell.varies
-        flat: cell.said.rings !== true || cell.varies
-        font.italic: cell.varies
+        highlighted: cell.said.cell === "rings" && !cell.varies
+        flat: cell.said.cell !== "rings" || cell.varies
+        font.italic: cell.varies || cell.usual
         Accessible.name: cell.rowLabel + ", " + cell.columnLabel + ": " + (cell.said.word || "")
-        onClicked: line.say("calls.cell." + cell.rowId + "." + cell.said.when, cell.said.rings === true && !cell.varies ? "voicemail" : "rings")
+        onClicked: line.say("calls.cell." + cell.rowId + "." + cell.said.when, cell.next)
     }
 
     // ---------------------------------------------------------------- the profile
+    // This phone's Sioul reads no table yet (M12).
+    Said {
+        objectName: "callsOlder"
+        visible: (line.view.older || "") !== ""
+        color: line.theme.warm
+        text: line.view.older || ""
+    }
     Said {
         objectName: "callsSaid"
         visible: (line.view.said || "") !== ""
@@ -353,7 +368,7 @@ ColumnLayout {
         }
     }
     Repeater {
-        model: line.android ? [] : line.view.switches || []
+        model: line.android ? [] : (line.view.switches || []).filter(s => s.more !== true || line.more)
 
         delegate: Switch {
             id: toggle
@@ -380,6 +395,26 @@ ColumnLayout {
         }
     }
 
+    // Each switch is one setting of the screening: the two others under "More" (review of `phones`, M3).
+    BareButton {
+        id: moreLine
+
+        objectName: "callsMore"
+        visible: !line.android && (line.view.switches || []).some(s => s.more === true)
+        Layout.fillWidth: true
+        text: (line.more ? "▾  " : "▸  ") + line.sioul.text("phone-calls-more")
+        Accessible.name: line.sioul.text("phone-calls-more")
+        Accessible.role: Accessible.Button
+        onClicked: line.more = !line.more
+
+        contentItem: Label {
+            text: moreLine.text
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: line.theme.accent
+        }
+    }
+
     // Today's cells that vary: when each rings.
     Repeater {
         model: line.android ? [] : line.view.details || []
@@ -390,6 +425,18 @@ ColumnLayout {
             objectName: "callsDetail"
             text: modelData
         }
+    }
+
+    // What "as usual" means while busy (M1); what a pause and do-not-disturb do on this phone (M4).
+    Note {
+        objectName: "callsBusy"
+        visible: !line.android && (line.view.busy || "") !== ""
+        text: line.view.busy || ""
+    }
+    Note {
+        objectName: "callsHeld"
+        visible: !line.android && (line.view.held || "") !== ""
+        text: line.view.held || ""
     }
 
     // ---------------------------------------------------------------- what always rings, the SIMs, the role

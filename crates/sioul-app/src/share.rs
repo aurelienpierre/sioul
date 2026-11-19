@@ -694,7 +694,7 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
-                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today) };
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: "", older: false };
                 (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
             })
         })
@@ -710,12 +710,21 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
 /// device may say it of any other: it travels with the settings. Returns
 /// what went wrong, else "".
 pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
+    say_of_device_said(id, field, value).0
+}
+
+/// `say_of_device`, with what a change of a phone's calls is to be said
+/// with Undo: the line's sentence, when the change did more than the cell
+/// pressed (a first change that rings where a moment did not) or replaced a
+/// table of your own (a profile, "Screen as every phone does": L15).
+pub(crate) fn say_of_device_said(id: &str, field: &str, value: &str) -> (String, Option<String>) {
     let path = crate::backend::config_path();
+    let mut undo: Option<String> = None;
     let written = match (field, field.strip_prefix("at.")) {
         ("name", _) => sioul_core::device_said::set_name(&path, id, value),
         ("area", _) => sioul_core::device_said::set_area(&path, id, value),
         (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
-        _ if field.starts_with("calls.") => say_of_calls(&path, id, field, value),
+        _ if field.starts_with("calls.") => say_of_calls(&path, id, field, value).map(|said| undo = said),
         _ => Err(format!("{field}?")),
     };
     // What a phone lets ring: that phone's table again, at once when it is this one.
@@ -723,13 +732,13 @@ pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
         if id == here().id {
             std::thread::spawn(|| crate::calls::refresh(true));
         }
-        return String::new();
+        return (String::new(), undo);
     }
     // This device's own line said here: its entry says its cells now, for the keeper of the notices.
     if written.is_ok() && field != "name" && id == here().id {
         std::thread::spawn(crate::devices::cells_now);
     }
-    written.err().unwrap_or_default()
+    (written.err().unwrap_or_default(), None)
 }
 
 /// What a phone lets ring (`sioul_core::calls_line`), as the card says it:
@@ -738,22 +747,37 @@ pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
 /// and "calls.group.remove" (a group's name), "calls.clear" (the line taken
 /// out: the shared screening again). A change by hand on a line that said
 /// nothing starts from the profile offered for what the phone is for.
-fn say_of_calls(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
-    use sioul_core::calls_line::{self as line, Profile, Row, When};
+fn say_of_calls(path: &Path, id: &str, field: &str, value: &str) -> Result<Option<String>, String> {
+    use sioul_core::calls_line::{self as line, Cell, Profile, Row, When};
     let config = load_config();
-    let offered = Profile::offered(config.devices.get(id).and_then(sioul_core::device_said::Said::area));
     let refused = || format!("{field} = {value}?");
     let rest = field.strip_prefix("calls.").unwrap_or_default();
+    let current = config.devices.get(id).and_then(|s| s.calls.as_ref()).map(sioul_core::calls_line::Said::grid);
     // A first change on a line that says nothing starts from what the phone does today, never from a profile.
-    let unsaid = !config.devices.get(id).and_then(|s| s.calls.as_ref()).is_some_and(sioul_core::calls_line::Said::says);
-    if unsaid && (rest == "group.add" || rest.starts_with("cell.") || rest.starts_with("switch.")) {
-        line::start_from_today(path, id, &crate::calls::today(&config))?;
-    }
-    match rest {
-        "profile" => line::set_profile(path, id, Profile::read(value).ok_or_else(refused)?),
-        "group.add" => line::add_group(path, id, value, offered),
-        "group.remove" => line::remove_group(path, id, value),
-        "clear" => line::clear(path, id),
+    let today = current.is_none().then(|| crate::calls::today(&config));
+    let start = today.as_ref().map_or_else(|| Profile::offered(config.devices.get(id).and_then(sioul_core::device_said::Said::area)).grid(), line::Today::grid);
+    // What is said with Undo: a table of your own replaced, or a first change that rings more than the phone did.
+    let own = current.as_ref().is_some_and(|g| g.profile == Profile::Own);
+    let louder = |but: Option<(&Row, When)>| today.as_ref().map(|t| line::louder_words(&t.louder(but), tr())).filter(|w| !w.is_empty());
+    // The whole field read first: nothing is written for a change that does not read (L4).
+    let said = match rest {
+        "profile" => {
+            let profile = Profile::read(value).filter(|p| *p != Profile::Own).ok_or_else(refused)?;
+            line::set_profile(path, id, profile, &start)?;
+            own.then(|| tr().text("phone-calls-undo-profile", None))
+        }
+        "group.add" => {
+            line::add_group(path, id, value, &start)?;
+            louder(None)
+        }
+        "group.remove" => {
+            line::remove_group(path, id, value)?;
+            None
+        }
+        "clear" => {
+            line::clear(path, id)?;
+            own.then(|| tr().text("phone-calls-undo-clear", None))
+        }
         rest => {
             if let Some(key) = rest.strip_prefix("switch.") {
                 let on = match value.trim() {
@@ -761,19 +785,21 @@ fn say_of_calls(path: &Path, id: &str, field: &str, value: &str) -> Result<(), S
                     "off" | "false" => false,
                     _ => return Err(refused()),
                 };
-                return line::set_switch(path, id, key, on, offered);
+                if !line::SWITCHES.contains(&key) {
+                    return Err(refused());
+                }
+                line::set_switch(path, id, key, on, &start)?;
+                return Ok(louder(None));
             }
             let cell = rest.strip_prefix("cell.").ok_or_else(refused)?;
             let (row, when) = cell.rsplit_once('.').ok_or_else(refused)?;
             let (row, when) = (Row::read(row).ok_or_else(refused)?, When::read(when).ok_or_else(refused)?);
-            let rings = match value.trim() {
-                "rings" => true,
-                "voicemail" => false,
-                _ => return Err(refused()),
-            };
-            line::set_cell(path, id, &row, when, rings, offered)
+            let cell = Cell::read(value).ok_or_else(refused)?;
+            line::set_cell(path, id, &row, when, cell, &start)?;
+            louder(Some((&row, when)))
         }
-    }
+    };
+    Ok(said)
 }
 
 /// A cell as the window says it: its time, one of the five, and its areas

@@ -65,7 +65,9 @@ Item {
         }
         function cells(words) {
             const whens = ["work", "day", "night", "busy"]
-            return words.map((w, i) => ({ when: whens[i], rings: w === "R", word: w === "R" ? "Rings" : "Voicemail" }))
+            const cell = { R: "rings", V: "voicemail", U: "usual" }
+            const word = { R: "Rings", V: "Voicemail", U: "As usual" }
+            return words.map((w, i) => ({ when: whens[i], cell: cell[w], rings: w === "R", word: word[w] }))
         }
         // `calls_line::view` for a Personal phone with a group School, as the core words it.
         function calls() {
@@ -85,13 +87,15 @@ Item {
                 rows: [
                     { id: "always", label: "Always through", fixed: true, group: false, cells: mock.cells(["R", "R", "R", "R"]) },
                     { id: "safe", label: "Safe", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "R"]) },
-                    { id: "contacts", label: "Your contacts", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "V"]) },
+                    { id: "contacts", label: "Your contacts", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "U"]) },
                     { id: "group:School", label: "School", fixed: false, group: true, cells: mock.cells(["R", "R", "V", "R"]) },
                     { id: "restricted", label: "Restricted", fixed: false, group: false, cells: mock.cells(["R", "V", "V", "V"]) },
                     { id: "unknown", label: "Numbers nobody knows", fixed: false, group: false, cells: mock.cells(["V", "V", "V", "V"]) },
                     { id: "hidden", label: "Hidden numbers", fixed: false, group: false, cells: mock.cells(["R", "V", "V", "V"]) }
                 ],
-                switches: [{ key: "commercial", label: "Commercial and automated callers never ring", on: true }, { key: "twice", label: "A second call within 15 minutes rings", on: true }, { key: "called", label: "Numbers you called in the last 14 days ring as your contacts do", on: true }],
+                switches: [{ key: "commercial", label: "Commercial and automated callers never ring", on: true }, { key: "twice", label: "A second call within 15 minutes rings", on: true }, { key: "called", label: "Numbers you called in the last 14 days ring as your contacts do", on: true }, { key: "impossible", label: "Numbers that cannot be a caller's never ring", on: true, more: true }, { key: "unverified", label: "Numbers your network could not verify never ring", on: false, more: true }],
+                busy: "While busy, As usual rings as the moment's column says.",
+                held: "Under do-not-disturb and in a pause, Always through alone rings, as on every phone.",
                 groups: ["Clients"],
                 screens: false,
                 not_screening: "This phone does not screen calls yet.",
@@ -290,6 +294,22 @@ Item {
             compare(mock.asked[mock.asked.length - 1], "say phone calls.cell.contacts.night rings")
             named("callsCell-safe-work").clicked()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.cell.safe.work voicemail")
+            // While busy, three values in turn: As usual, Rings, Voicemail (H2).
+            const usual = named("callsCell-contacts-busy")
+            compare(usual.text, "As usual")
+            usual.clicked()
+            compare(mock.asked[mock.asked.length - 1], "say phone calls.cell.contacts.busy rings")
+            named("callsCell-safe-busy").clicked()
+            compare(mock.asked[mock.asked.length - 1], "say phone calls.cell.safe.busy voicemail")
+            verify(showing(named("callsBusy")) && showing(named("callsHeld")), "what as usual means while busy, what a pause and do-not-disturb do")
+            // Each switch one setting; the two others under More (M3).
+            verify(named("callsSwitch-unverified") === null || !showing(named("callsSwitch-unverified")), "folded under More")
+            named("callsMore").clicked()
+            wait(20)
+            verify(showing(named("callsSwitch-unverified")))
+            named("callsSwitch-unverified").toggle()
+            named("callsSwitch-unverified").toggled()
+            compare(mock.asked[mock.asked.length - 1], "say phone calls.switch.unverified on")
             verify(all("callsCell-always-work").length === 0, "Always through shows no button: it always rings")
             // A profile, a switch, a group taken off, a group given its row.
             professional.clicked()

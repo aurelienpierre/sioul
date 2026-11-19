@@ -558,16 +558,17 @@ pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
     // The busy stretches as do-not-disturb reads them: none that a press holds off (H1).
     let busy: Vec<(i64, i64)> = if android { Vec::new() } else { (i.busy)(i.from.timestamp().as_second(), i.until.timestamp().as_second()).into_iter().filter(|(since, _)| !crate::everywhere::pressed_off(i.press, *since)).collect() };
     let (group_numbers, groups) = if android { (Vec::new(), Vec::new()) } else { group_rows(&grid, i.senders, &numbers) };
-    // The screening's part, from the line: what it keeps out whatever else (the switch "commercial"), numbers called.
-    let spam = if grid.switches.commercial { screening::Spam::Voicemail } else { screening::Spam::Unknown };
+    // The screening's part, from the line: what it keeps out whatever else, each switch its one
+    // setting (commercial callers, numbers that cannot be a caller's, a failed verification: M3), numbers called.
+    let spam = |on: bool| if on { screening::Spam::Voicemail } else { screening::Spam::Unknown };
     let line_screening = screening::Screening {
         on: !android,
         hours: screening::Hours::Always,
         unknown: screening::Rule::Voicemail,
         hidden: screening::Rule::Voicemail,
-        automated: spam,
-        impossible: spam,
-        unverified: spam,
+        automated: spam(grid.switches.commercial),
+        impossible: spam(grid.switches.impossible),
+        unverified: spam(grid.switches.unverified),
         called: grid.switches.called,
     };
     let frames = line_frames(&LineMoments { attention: i.attention, clock: i.clock, layers: i.layers, busy: &busy, busy_is_dnd: i.busy_is_dnd, own: &own, grid: &grid, groups: &groups }, i.from, i.until);
@@ -647,19 +648,19 @@ pub struct LineMoments<'a> {
 /// The frames of a phone whose line says something: the clock's frames cut
 /// where do-not-disturb's layer, Reachable or a busy stretch begins or ends.
 /// A busy stretch is one do-not-disturb reads: none while Reachable lasts,
-/// none a press held off (`build`, H1). In this order: a pause,
-/// do-not-disturb's layer (its switch, a focus session), and a busy stretch
-/// while being busy turns do-not-disturb on (`busy_is_dnd`) hold all but
-/// Always through; then Reachable; then the
-/// moment's column: busy (that box off), else the night (sleep), else work hours, else
-/// the rest of the day (admin, leisure, meals, Free time). In a pause or
-/// under do-not-disturb's layer (its switch, a focus session) only Always
-/// through rings, and a person's own row as the matrix says it; while
-/// Reachable, every row of the people you know, numbers nobody knows and
-/// hidden numbers by their cells (the screening is never opened by a state).
-/// As Android does: every row rings. Slots of time for you are no part of it.
+/// none a press held off (`build`, H1). In this order: a pause and
+/// do-not-disturb's layer (its switch, a focus session) hold all but Always
+/// through, and a person's own row as the matrix says it; then Reachable,
+/// every row of the people you know; then, during a busy stretch, the
+/// column "while busy": a cell Rings or Voicemail decides, even where being
+/// busy turns do-not-disturb on (`busy_is_dnd`), and a cell as usual reads
+/// as the moment's column, or as do-not-disturb where being busy turns it
+/// on (H2, M1); else the moment's column (`When::of`: the night, work
+/// hours, the rest of the day). Numbers nobody knows and hidden numbers by
+/// their cells, never opened by a state. As Android does: every row rings.
+/// Slots of time for you are no part of it.
 pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
-    use crate::calls_line::{Row, When};
+    use crate::calls_line::{Cell, Row, When};
     let android = m.grid.screens_nothing();
     let mut out: Vec<Frame> = Vec::new();
     for f in m.clock.frames(from, until) {
@@ -676,49 +677,49 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
             now.reachable = holds(m.layers.reachable);
             // While Reachable lasts no busy stretch holds, as for do-not-disturb (`everywhere::now`; H1).
             let busy = !now.reachable && m.busy.iter().any(|&(a, b)| a <= start && start < b);
-            // Busy with its box among what turns do-not-disturb on: do-not-disturb, its rule, not the busy column.
-            let busy_dnd = busy && m.busy_is_dnd;
-            let busy = busy && !m.busy_is_dnd;
-            let held = dnd || busy_dnd || now.times.contains(&attention::Column::Pause);
-            let when = if busy {
-                When::Busy
-            } else if now.times.contains(&attention::Column::Sleep) {
-                When::Night
-            } else if now.times.contains(&attention::Column::Work) {
-                When::Work
-            } else {
-                When::Day
-            };
+            let held = dnd || now.times.contains(&attention::Column::Pause);
+            let when = When::of(&now);
             let hours = now.times.iter().any(|c| matches!(c, attention::Column::Work | attention::Column::Admin));
+            // A row's cell now: its moment's, or while busy its busy cell; as usual while busy
+            // reads as the moment, or as do-not-disturb (only Always through) where being busy turns it on.
+            let cell = |cells: Option<crate::calls_line::Cells>| -> bool {
+                let Some(cells) = cells else { return false };
+                match (busy, cells[When::Busy.index()]) {
+                    (true, Cell::Rings) => true,
+                    (true, Cell::Voicemail) => false,
+                    (true, Cell::Usual) if m.busy_is_dnd => false,
+                    _ => cells[when.index()] == Cell::Rings,
+                }
+            };
             // The people you know: their cell, every one while Reachable, none while held.
-            let known = |cell: bool| android || (!held && (now.reachable || cell));
+            let known = |rings: bool| android || (!held && (now.reachable || rings));
             // Numbers nobody knows and hidden numbers: their cell, never opened by a state.
-            let unknown = |cell: bool| android || (!held && cell);
+            let unknown = |rings: bool| android || (!held && rings);
             let mut ring: BTreeMap<String, bool> = BTreeMap::new();
             for row in ROWS {
                 let rings = match row {
-                    "safe" => known(m.grid.rings(&Row::Safe, when)),
-                    "neutral" => known(m.grid.rings(&Row::Contacts, when)),
-                    "restricted" => known(m.grid.rings(&Row::Restricted, when)),
+                    "safe" => known(cell(m.grid.cells(&Row::Safe))),
+                    "neutral" => known(cell(m.grid.cells(&Row::Contacts))),
+                    "restricted" => known(cell(m.grid.cells(&Row::Restricted))),
                     // Always through: a row of its own that always rings.
                     _ => true,
                 };
                 ring.insert(row.to_string(), rings);
             }
-            ring.insert("stranger".to_string(), unknown(m.grid.rings(&Row::Unknown, when)));
-            ring.insert("hidden".to_string(), unknown(m.grid.rings(&Row::Hidden, when)));
+            ring.insert("stranger".to_string(), unknown(cell(m.grid.cells(&Row::Unknown))));
+            ring.insert("hidden".to_string(), unknown(cell(m.grid.cells(&Row::Hidden))));
             for g in m.groups {
-                let cell = g.groups.iter().any(|n| m.grid.groups.get(*n).is_some_and(|(_, cells)| cells[when.index()]));
-                ring.insert(g.row.clone(), known(cell));
+                let rings = g.groups.iter().any(|n| m.grid.groups.get(*n).is_some_and(|(_, cells)| cell(Some(*cells))));
+                ring.insert(g.row.clone(), known(rings));
             }
             // A person's own row as the matrix says it, a busy stretch that turns do-not-disturb on read as do-not-disturb (H1).
             let mut own_now = now.clone();
-            own_now.dnd = dnd || busy_dnd;
+            own_now.dnd = dnd || (busy && m.busy_is_dnd);
             for o in m.own {
                 let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
                 ring.insert(o.row.clone(), android || m.attention.decide(&call, &own_now).level == Level::Now);
             }
-            let column = if busy_dnd && !android { "dnd" } else if busy && !held && !now.reachable && !android { "busy" } else { column_of(&now) }.to_string();
+            let column = if busy && !held && !android { "busy" } else { column_of(&now) }.to_string();
             let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
             match out.last_mut() {
                 Some(last) if last.until == from_ms && last.column == column && last.hours == hours && last.ring == ring => last.until = until_ms,
@@ -3660,7 +3661,7 @@ mod tests {
 #[cfg(test)]
 mod line_tests {
     use super::*;
-    use crate::calls_line::{Profile, Row, Said, When};
+    use crate::calls_line::{Cell, Profile, Said};
     use crate::everywhere::Person as Listed;
     use crate::porch::{Book, SenderList, Senders};
 
@@ -3782,19 +3783,20 @@ mod line_tests {
     }
 
     fn line(profile: Profile) -> Said {
-        Said { profile: Some(profile), ..Said::default() }
+        Said { grid: profile.grid() }
     }
 
     /// Nothing changes on any phone until its line is set: over matrices,
-    /// layers, screenings and Expecting a call, a phone with no line, with a
-    /// line of nothing readable (from the file), or one that says only its
-    /// base, gets the very table it got before, every byte, and Sioul never
-    /// asks when you are busy for it.
+    /// layers, screenings and Expecting a call, a phone with no line, or a
+    /// line that does not read (from the file: a partial one, or a table of
+    /// before), gets the very table it got before, every byte, and Sioul
+    /// never asks when you are busy for it.
     #[test]
     fn an_unsaid_line_makes_the_table_as_before() {
         let unread: crate::config::Config = toml::from_str("[device.p.calls]\nprofile = \"loud\"\nfollows = 2\n[device.p.calls.rows.safe]\nwork = true\nnight = \"maybe\"\n").unwrap();
         assert!(unread.devices["p"].calls.is_none(), "nothing readable: no line");
-        let base_only = Said { base: Some(Profile::Professional), ..Said::default() };
+        let partial: crate::config::Config = toml::from_str("[device.p]\ncalls = '{\"rows\":{\"safe\":\"RRVU\"}}'\n").unwrap();
+        assert!(partial.devices["p"].calls.is_none(), "a partial line reads as no line");
         let mut quieter = Attention::usual();
         quieter.set(attention::Row::People(Channel::Calls, Person::Neutral), attention::Column::Leisure, Level::Later).unwrap();
         quieter.set(attention::Row::People(Channel::Calls, Person::Safe), attention::Column::Sleep, Level::Now).unwrap();
@@ -3816,7 +3818,7 @@ mod line_tests {
                     for expecting in [None, Some(Through { pressed: ms("2026-11-16T08:00"), on: true, until: ms("2026-11-16T09:00") })] {
                         let world = World { attention: attention.clone(), screening, layers: layer.clone(), expecting, busy: vec![(s("2026-11-16T14:30"), s("2026-11-16T15:30"))], ..World::new() };
                         let before = world.as_before();
-                        for said in [None, Some(&Said::default()), Some(&base_only)] {
+                        for said in [None] {
                             let (table, asked) = world.build(said);
                             assert_eq!(table, before, "{said:?}");
                             assert_eq!(content(&table), content(&before));
@@ -3829,7 +3831,7 @@ mod line_tests {
                 }
             }
         }
-        assert_eq!(cases, 2 * 4 * 3 * 2 * 3);
+        assert_eq!(cases, 2 * 4 * 3 * 2);
     }
 
     /// The owner's three examples, decided as Java decides.
@@ -3851,8 +3853,10 @@ mod line_tests {
         let twice = Incoming { last_call: ms("2026-11-16T18:00"), ..call(unknown, "18:05") };
         assert!(decide(Some(&pro), &twice).refuse, "outside, not even a second call");
         // A personal phone: contacts ring; the group School rings; numbers nobody knows go to voicemail unless they call twice.
+        // Contacts to voicemail while busy, set by hand; the safe as usual while busy.
         let mut personal = line(Profile::Personal);
-        personal.cells.insert(Row::Group("School".into()).id(), When::ALL.iter().map(|w| (*w, true)).collect());
+        personal.grid.groups.push(("School".into(), [Cell::Rings; 4]));
+        personal.grid.fixed[1][3] = Cell::Voicemail;
         let busy = World { busy: vec![(s("2026-11-16T15:00"), s("2026-11-16T16:00"))], ..World::new() };
         let (table, _) = busy.build(Some(&personal));
         for time in ["10:00", "18:00"] {
@@ -3863,18 +3867,20 @@ mod line_tests {
         }
         let school = decide(Some(&table), &call("01 99 00 00 03", "23:00"));
         assert_eq!((school.refuse, school.why, school.column.as_str()), (false, "group", "sleep"), "the group's own row, at night too");
-        // While busy: the column "while busy", said as such; contacts to voicemail, School and the safe ring.
+        // While busy: the column "while busy", said as such; contacts to voicemail as set, School rings,
+        // the safe as usual: as the moment (work hours) says, ringing (H2).
         let friend_busy = decide(Some(&table), &call(friend, "15:30"));
         assert_eq!((friend_busy.refuse, friend_busy.column.as_str()), (true, "busy"));
         assert!(rings(&table, "01 99 00 00 03", "15:30") && rings(&table, safe, "15:30"));
         assert!(rings(&table, friend, "16:30"), "busy no more");
-        // The box "While busy" among what turns do-not-disturb on: a busy stretch is do-not-disturb,
-        // only Always through rings, the safe and the group too to voicemail; the busy column is not read.
+        // The box "While busy" among what turns do-not-disturb on: as usual reads as do-not-disturb,
+        // only Always through ringing, the safe to voicemail; a cell Rings or Voicemail still decides,
+        // School ringing, contacts to voicemail: the column is never dead (H2, M1).
         let busy_dnd = World { busy_is_dnd: true, ..busy };
         let (held, _) = busy_dnd.build(Some(&personal));
         let safe_held = decide(Some(&held), &call(safe, "15:30"));
-        assert_eq!((safe_held.refuse, safe_held.column.as_str()), (true, "dnd"));
-        assert!(!rings(&held, "01 99 00 00 03", "15:30") && !rings(&held, friend, "15:30") && rings(&held, "01 99 00 00 06", "15:30"));
+        assert_eq!((safe_held.refuse, safe_held.column.as_str()), (true, "busy"));
+        assert!(rings(&held, "01 99 00 00 03", "15:30") && !rings(&held, friend, "15:30") && rings(&held, "01 99 00 00 06", "15:30"));
         assert!(rings(&held, friend, "16:30"), "busy no more: the time's column again");
         // Claire is in the group (written "school") and Always through: Always through rings first, by their number.
         assert_eq!(table.numbers.get("+33199000006").map(String::as_str), Some("always-neutral"));
@@ -3898,10 +3904,8 @@ mod line_tests {
     #[test]
     fn what_always_rings_holds_on_every_line() {
         let world = World::new();
-        let mut all_voicemail = Said { profile: Some(Profile::Own), twice: Some(true), ..Said::default() };
-        for row in Row::FIXED {
-            all_voicemail.cells.insert(row.id(), When::ALL.iter().map(|w| (*w, false)).collect());
-        }
+        let mut all_voicemail = line(Profile::Own);
+        all_voicemail.grid.fixed = [[Cell::Voicemail; 4]; 5];
         for said in [line(Profile::Professional), line(Profile::Personal), all_voicemail] {
             let (table, _) = world.build(Some(&said));
             assert_eq!(decide(Some(&table), &call("112", "23:00")).why, "emergency");
@@ -3938,14 +3942,14 @@ mod line_tests {
         assert!(decide(Some(&table), &call("01 62 00 00 01", "23:00")).refuse, "never an automated caller");
         // Busy over the night: the busy column.
         let mut night_busy = line(Profile::Personal);
-        night_busy.cells.insert("contacts".into(), [(When::Busy, true)].into_iter().collect());
+        night_busy.grid.fixed[1][3] = Cell::Rings;
         let late = World { busy: vec![(s("2026-11-16T23:00"), s("2026-11-17T00:00"))], ..World::new() };
         let (table, _) = late.build(Some(&night_busy));
         assert!(rings(&table, friend, "23:30") && !rings(&table, friend, "22:30"));
         assert_eq!(table.frame_at(ms("2026-11-16T23:30")).unwrap().column, "busy");
         // Commercial callers ringing when the switch is off: as any number nobody knows.
         let mut open_line = line(Profile::Professional);
-        open_line.commercial = Some(false);
+        open_line.grid.switches.commercial = false;
         let (table, _) = World::new().build(Some(&open_line));
         assert!(rings(&table, "01 62 00 00 01", "10:00") && !rings(&table, "01 62 00 00 01", "18:00"));
         // Numbers called lately: as your contacts, or as nobody known once the switch is off.
@@ -3953,7 +3957,7 @@ mod line_tests {
         let (table, _) = World::new().build(Some(&line(Profile::Personal)));
         assert!(!decide(Some(&table), &lately).refuse && decide(Some(&table), &lately).called);
         let mut forget = line(Profile::Personal);
-        forget.called = Some(false);
+        forget.grid.switches.called = false;
         let (table, _) = World::new().build(Some(&forget));
         assert!(decide(Some(&table), &lately).refuse);
     }

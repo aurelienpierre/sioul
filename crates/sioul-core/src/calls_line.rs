@@ -2,46 +2,56 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Calls, per phone (docs/android.md, "Calls, per phone"): what one phone
-//! lets ring, said on its line in Settings ▸ Devices, from any device.
+//! lets ring, said on its card in Settings ▸ Devices, from any device.
 //!
-//! Kept in the shared configuration beside the device's name and areas,
-//! `[device."<id>".calls]` (`device_said`), read by that phone alone, which
-//! builds its calls' table from it (`calls::build`):
+//! Kept in the shared configuration beside the device's name and areas, as
+//! **one value** (`[device."<id>"] calls = "…"`, `device_said`), read by that
+//! phone alone, which builds its calls' table from it (`calls::build`). The
+//! value is a table written whole at each change (JSON in a string), so that
+//! two devices writing at once leave one of the two tables, never a mix
+//! (review of `phones`, L3, L16):
 //! - **a profile** (`profile`): professional, personal, both, as-android
 //!   (Sioul screens nothing on that phone), or `none` once a cell or a switch
-//!   was changed by hand, with the profile the change started from (`base`),
-//!   whose cells the unsaid ones keep;
-//! - **one small table** (`rows.<row>.<when>`, "rings" or "voicemail"): the
-//!   rows Safe, Your contacts, Restricted, numbers nobody knows, hidden
-//!   numbers, and any group of your contacts given a row (`group:<name>`, a
+//!   was changed by hand;
+//! - **one small table** (`rows.<row>`, four letters): the rows Safe, Your
+//!   contacts, Restricted, Everyone else (numbers nobody knows), hidden
+//!   numbers, and any group of your contacts given a row (`groups.<name>`, a
 //!   category as your cards write it); the columns work hours, the rest of
-//!   the day, the night, while busy. Always through is a row of its own that
-//!   always rings, never written;
-//! - **three switches**: commercial and automated callers never ring
-//!   (`commercial`), a second call within 15 minutes rings (`twice`), numbers
-//!   called in the last 14 days ring as your contacts do (`called`).
+//!   the day, the night, while busy. Each cell is `R` (rings) or `V`
+//!   (voicemail); while busy also `U`, as usual: as the moment's column says,
+//!   or as do-not-disturb says where being busy turns it on (H2, M1). Always
+//!   through is a row of its own that always rings, never written;
+//! - **five switches**: commercial and automated callers never ring
+//!   (`commercial`, the shared screening's `automated`), numbers that cannot
+//!   be a caller's (`impossible`), a failed verification (`unverified`), a
+//!   second call within 15 minutes rings (`twice`), numbers called in the
+//!   last 14 days ring as your contacts do (`called`). Each stands for one
+//!   setting (M3).
 //!
-//! Each cell and each switch is a field of its own, so that the sharing
-//! carries them one by one, as it carries the rest of the device's line: two
-//! cells changed on two devices both stay. Read leniently: a field or a word
-//! this Sioul does not read is passed over and kept in the file, never an
-//! error. **A line that says nothing readable leaves the phone as it was**:
-//! its table is the shared `[screening]` and the matrix's Calls rows, as
-//! before (`calls::build`).
+//! Read leniently: a value that does not read, or a line missing a row or a
+//! switch, is no line (a partial line reads as no line); a field or a group
+//! this Sioul does not read is passed over. **A line that says nothing
+//! leaves the phone as it was**: its table is the shared `[screening]` and
+//! the matrix's Calls rows, as before (`calls::build`). The card then shows
+//! what the phone does today (`Today`), and the first change of one cell
+//! writes that cell with whatever reproduces what the phone did: the busy
+//! column as usual, the switches as the screening's; a cell that varied
+//! within its column starts ringing, said with Undo.
 
 use crate::areas::Area;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::path::Path;
 
-/// The key of the calls' table in a device's line.
+/// The key of the calls' value in a device's line.
 pub const KEY: &str = "calls";
-/// The rows' table in it.
-pub const ROWS: &str = "rows";
-/// What starts a group's row: `group:School`.
+/// The value's format.
+pub const FORMAT: u64 = 1;
+/// What starts a group's row in the window: `group:School`.
 pub const GROUP: &str = "group:";
-/// The three switches' keys, in the order shown.
-pub const SWITCHES: [&str; 3] = ["commercial", "twice", "called"];
+/// The five switches' keys, in the order shown; the last two under "More".
+pub const SWITCHES: [&str; 5] = ["commercial", "twice", "called", "impossible", "unverified"];
+/// The switches shown folded, under "More" (M3).
+pub const MORE: [&str; 2] = ["impossible", "unverified"];
 
 /// Where a phone's table starts from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -57,7 +67,7 @@ pub enum Profile {
     Both,
     /// As Android does: Sioul screens nothing on that phone (the blocked aside).
     AsAndroid,
-    /// Cells or switches changed by hand ("none" in the file).
+    /// Cells or switches changed by hand ("none" in the value).
     Own,
 }
 
@@ -75,7 +85,7 @@ impl Profile {
         }
     }
 
-    /// A word of the file; none for any other.
+    /// A word of the value; none for any other.
     pub fn read(word: &str) -> Option<Profile> {
         Some(match word.trim().to_lowercase().as_str() {
             "professional" | "pro" | "work" => Profile::Professional,
@@ -87,28 +97,21 @@ impl Profile {
         })
     }
 
-    /// The table it fills (design of 18 November 2026, section 2; the owner's three examples are
-    /// the tests). `Own` has no table of its own: everything rings.
+    /// The table it fills (design of 18 November 2026, section 2; the owner's
+    /// three examples are the tests). While busy, each row as usual: no
+    /// profile's sentence says otherwise (decision on H2). `Own` has no table
+    /// of its own: everything rings.
     pub fn grid(self) -> Grid {
-        const R: bool = true;
-        const V: bool = false;
+        use Cell::{Rings as R, Usual as U, Voicemail as V};
         // Columns: work hours, the rest of the day, the night, while busy.
-        // Rows: Safe, Your contacts, Restricted, numbers nobody knows, hidden numbers.
+        // Rows: Safe, Your contacts, Restricted, Everyone else, hidden numbers.
+        let on = Switches { commercial: true, impossible: true, unverified: true, twice: true, called: true };
         let (fixed, switches) = match self {
-            Profile::Professional => (
-                [[R, V, V, V], [R, V, V, V], [R, V, V, V], [R, V, V, V], [R, V, V, V]],
-                Switches { commercial: true, twice: false, called: true },
-            ),
-            Profile::Personal => (
-                [[R, R, V, R], [R, R, V, V], [R, V, V, V], [V, V, V, V], [R, V, V, V]],
-                Switches { commercial: true, twice: true, called: true },
-            ),
-            Profile::Both => (
-                [[R, R, V, R], [R, R, V, V], [R, V, V, V], [R, V, V, V], [R, V, V, V]],
-                Switches { commercial: true, twice: true, called: true },
-            ),
-            Profile::AsAndroid => ([[R; 4]; 5], Switches { commercial: false, twice: true, called: true }),
-            Profile::Own => return Grid::ringing(),
+            Profile::Professional => ([[R, V, V, U]; 5], Switches { twice: false, ..on }),
+            Profile::Personal => ([[R, R, V, U], [R, R, V, U], [R, V, V, U], [V, V, V, U], [R, V, V, U]], on),
+            Profile::Both => ([[R, R, V, U], [R, R, V, U], [R, V, V, U], [R, V, V, U], [R, V, V, U]], on),
+            Profile::AsAndroid => ([[R, R, R, U]; 5], Switches { commercial: false, impossible: false, unverified: false, ..on }),
+            Profile::Own => ([[R, R, R, U]; 5], on),
         };
         Grid { profile: self, fixed, groups: Vec::new(), switches }
     }
@@ -134,7 +137,8 @@ pub enum When {
     Day,
     /// The night, from winding down to waking, and naps.
     Night,
-    /// While you are busy: an event or a task marked busy (`busy::stretches`).
+    /// While you are busy: an event or a task marked busy (`busy::stretches`),
+    /// as do-not-disturb reads it (none held off, none while Reachable).
     Busy,
 }
 
@@ -158,15 +162,29 @@ impl When {
     pub fn index(self) -> usize {
         self as usize
     }
+
+    /// The moment's column of a time as the matrix reads it: the night
+    /// (sleep, naps), else work hours, else the rest of the day. Read by the
+    /// line's frames and by today's table alike.
+    pub fn of(now: &crate::attention::Now) -> When {
+        use crate::attention::Column;
+        if now.times.contains(&Column::Sleep) {
+            When::Night
+        } else if now.times.contains(&Column::Work) {
+            When::Work
+        } else {
+            When::Day
+        }
+    }
 }
 
-/// A row of the table, by its key in the file.
+/// A row of the table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Row {
     Safe,
     Contacts,
     Restricted,
-    /// Numbers nobody knows.
+    /// Everyone else: numbers nobody knows.
     Unknown,
     Hidden,
     /// A group of your contacts (a category of their cards), as written.
@@ -188,7 +206,7 @@ impl Row {
         }
     }
 
-    /// A row's key; none for one this Sioul does not read (kept in the file).
+    /// A row's key; none for one this Sioul does not read.
     pub fn read(key: &str) -> Option<Row> {
         Some(match key.trim() {
             "safe" => Row::Safe,
@@ -196,13 +214,7 @@ impl Row {
             "restricted" => Row::Restricted,
             "unknown" => Row::Unknown,
             "hidden" => Row::Hidden,
-            other => {
-                let name = other.strip_prefix(GROUP)?.trim();
-                if name.is_empty() || name.chars().any(char::is_control) {
-                    return None;
-                }
-                Row::Group(name.to_string())
-            }
+            other => Row::Group(group_name(other.strip_prefix(GROUP)?)?),
         })
     }
 
@@ -211,18 +223,78 @@ impl Row {
     }
 }
 
-/// A row's four cells, by `When`: rings (true) or voicemail.
-pub type Cells = [bool; 4];
+/// A group's name as written, its spaces made single; none when empty or
+/// holding a control character.
+fn group_name(name: &str) -> Option<String> {
+    let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!name.is_empty() && !name.chars().any(char::is_control)).then_some(name)
+}
 
-/// A group's row when added: rings but at night.
-pub const GROUP_CELLS: Cells = [true, true, false, true];
+/// One cell: rings or voicemail; while busy also as usual (H2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Cell {
+    Rings,
+    Voicemail,
+    /// While busy: as the moment's column says, or as do-not-disturb says
+    /// where being busy turns it on.
+    Usual,
+}
 
-/// The three switches.
+impl Cell {
+    pub fn id(self) -> &'static str {
+        match self {
+            Cell::Rings => "rings",
+            Cell::Voicemail => "voicemail",
+            Cell::Usual => "usual",
+        }
+    }
+
+    /// The window's word or the value's letter; none for any other.
+    pub fn read(word: &str) -> Option<Cell> {
+        Some(match word.trim().to_lowercase().as_str() {
+            "rings" | "ring" | "r" => Cell::Rings,
+            "voicemail" | "v" => Cell::Voicemail,
+            "usual" | "u" => Cell::Usual,
+            _ => return None,
+        })
+    }
+
+    fn letter(self) -> char {
+        match self {
+            Cell::Rings => 'R',
+            Cell::Voicemail => 'V',
+            Cell::Usual => 'U',
+        }
+    }
+}
+
+/// A row's four cells, by `When`.
+pub type Cells = [Cell; 4];
+
+/// A group's row when added: rings but at night, as usual while busy.
+pub const GROUP_CELLS: Cells = [Cell::Rings, Cell::Rings, Cell::Voicemail, Cell::Usual];
+
+/// Four letters, "RRVU": none unless each reads, as usual only while busy.
+fn cells_of(text: &str) -> Option<Cells> {
+    let letters: Vec<Cell> = text.trim().chars().map(|c| Cell::read(&c.to_string())).collect::<Option<_>>()?;
+    let cells: Cells = letters.try_into().ok()?;
+    cells[..3].iter().all(|c| *c != Cell::Usual).then_some(cells)
+}
+
+fn cells_text(cells: &Cells) -> String {
+    cells.iter().map(|c| c.letter()).collect()
+}
+
+/// The five switches, each one setting (M3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Switches {
-    /// Commercial and automated callers never ring (ARCEP's roots for
-    /// machines, numbers that cannot be a caller's, a failed verification).
+    /// Commercial and automated callers never ring (ARCEP's roots for machines).
     pub commercial: bool,
+    /// Numbers that cannot be a caller's (France's numbering plan) never ring.
+    pub impossible: bool,
+    /// A number whose verification by the network failed never rings.
+    pub unverified: bool,
     /// A second call within 15 minutes rings.
     pub twice: bool,
     /// A number you called in the last 14 days rings as your contacts do.
@@ -230,21 +302,42 @@ pub struct Switches {
 }
 
 impl Switches {
-    fn set(&mut self, key: &str, on: bool) {
-        match key {
-            "commercial" => self.commercial = on,
-            "twice" => self.twice = on,
-            "called" => self.called = on,
-            _ => {}
-        }
+    pub fn get(&self, key: &str) -> Option<bool> {
+        Some(match key {
+            "commercial" => self.commercial,
+            "impossible" => self.impossible,
+            "unverified" => self.unverified,
+            "twice" => self.twice,
+            "called" => self.called,
+            _ => return None,
+        })
+    }
+
+    fn set(&mut self, key: &str, on: bool) -> bool {
+        let slot = match key {
+            "commercial" => &mut self.commercial,
+            "impossible" => &mut self.impossible,
+            "unverified" => &mut self.unverified,
+            "twice" => &mut self.twice,
+            "called" => &mut self.called,
+            _ => return false,
+        };
+        *slot = on;
+        true
+    }
+
+    /// As the shared screening says them: each switch its one setting.
+    pub fn of_screening(screening: &crate::screening::Screening) -> Switches {
+        use crate::screening::Spam;
+        Switches { commercial: screening.automated == Spam::Voicemail, impossible: screening.impossible == Spam::Voicemail, unverified: screening.unverified == Spam::Voicemail, twice: true, called: screening.called }
     }
 }
 
 /// A phone's table as it holds: what it reads as, every row, the switches.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Grid {
-    /// The profile it reads as: the one said while every fixed cell and
-    /// switch is that profile's, else `Own`.
+    /// The profile it reads as: the one written while every fixed cell and
+    /// switch is that profile's, else `Own`; As Android does whatever the cells.
     pub profile: Profile,
     /// The fixed rows, in `Row::FIXED`'s order.
     pub fixed: [Cells; 5],
@@ -254,11 +347,6 @@ pub struct Grid {
 }
 
 impl Grid {
-    /// Everything rings; the switches as the shared screening's first values.
-    pub fn ringing() -> Grid {
-        Grid { profile: Profile::Own, fixed: [[true; 4]; 5], groups: Vec::new(), switches: Switches { commercial: true, twice: true, called: true } }
-    }
-
     /// A row's cells; none for a group with no row.
     pub fn cells(&self, row: &Row) -> Option<Cells> {
         match row {
@@ -270,139 +358,99 @@ impl Grid {
         }
     }
 
-    /// Whether a row rings in a column; a group with no row does not say (false).
+    /// A row's cell in a column; none for a group with no row.
+    pub fn cell(&self, row: &Row, when: When) -> Option<Cell> {
+        self.cells(row).map(|c| c[when.index()])
+    }
+
+    /// Whether a row's cell says Rings (a group with no row, or as usual, does not).
     pub fn rings(&self, row: &Row, when: When) -> bool {
-        self.cells(row).is_some_and(|c| c[when.index()])
+        self.cell(row, when) == Some(Cell::Rings)
     }
 
     /// Sioul screens nothing on that phone.
     pub fn screens_nothing(&self) -> bool {
         self.profile == Profile::AsAndroid
     }
+
+    /// The profile it reads as, from the profile written: that profile while
+    /// its cells and switches are all the profile's, else `Own`.
+    fn reading_as(mut self, written: Profile) -> Grid {
+        self.profile = match written {
+            Profile::AsAndroid => Profile::AsAndroid,
+            Profile::Own => Profile::Own,
+            named => {
+                let table = named.grid();
+                if table.fixed == self.fixed && table.switches == self.switches { named } else { Profile::Own }
+            }
+        };
+        self
+    }
+
+    /// The one value written in the device's line.
+    pub fn text(&self) -> String {
+        let rows: serde_json::Map<String, serde_json::Value> = Row::FIXED.iter().zip(&self.fixed).map(|(r, c)| (r.id(), serde_json::Value::String(cells_text(c)))).collect();
+        let groups: serde_json::Map<String, serde_json::Value> = self.groups.iter().map(|(n, c)| (n.clone(), serde_json::Value::String(cells_text(c)))).collect();
+        let switches: serde_json::Map<String, serde_json::Value> = SWITCHES.iter().map(|k| (k.to_string(), serde_json::Value::Bool(self.switches.get(k).unwrap_or(true)))).collect();
+        serde_json::json!({ "v": FORMAT, "profile": self.profile.id(), "rows": rows, "groups": groups, "switches": switches }).to_string()
+    }
 }
 
-/// What a phone's line says of calls, as written: each field unsaid until it
-/// reads. A cell is `rows.<row>.<when>`; only those that read are here.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// What a phone's line says of calls, as read: its whole table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Said {
-    pub profile: Option<Profile>,
-    /// For `none`: the profile the cells were changed from.
-    pub base: Option<Profile>,
-    /// Row key → column → rings.
-    pub cells: BTreeMap<String, BTreeMap<When, bool>>,
-    pub commercial: Option<bool>,
-    pub twice: Option<bool>,
-    pub called: Option<bool>,
+    pub grid: Grid,
 }
 
 impl Said {
-    /// Whether the line says anything this Sioul reads: else the phone keeps
-    /// the shared screening, as before.
+    /// Whether the line says anything: a line that reads always does (a
+    /// partial one does not read).
     pub fn says(&self) -> bool {
-        self.profile.is_some() || !self.cells.is_empty() || self.commercial.is_some() || self.twice.is_some() || self.called.is_some()
+        true
     }
 
-    fn switch(&self, key: &str) -> Option<bool> {
-        match key {
-            "commercial" => self.commercial,
-            "twice" => self.twice,
-            "called" => self.called,
-            _ => None,
-        }
-    }
-
-    /// The table it holds: the profile's (`none`: its base's; no base:
-    /// everything rings), each cell and switch said over it, the groups'
-    /// rows (a cell unsaid in one: `GROUP_CELLS`'s).
+    /// The table it holds.
     pub fn grid(&self) -> Grid {
-        let start = match self.profile {
-            Some(Profile::Own) | None => self.base.filter(|b| *b != Profile::Own).map_or_else(Grid::ringing, Profile::grid),
-            Some(profile) => profile.grid(),
-        };
-        let mut grid = Grid { profile: Profile::Own, ..start.clone() };
-        let mut groups: BTreeMap<String, (String, Cells)> = BTreeMap::new();
-        for (key, cells) in &self.cells {
-            match Row::read(key) {
-                Some(Row::Group(name)) => {
-                    let entry = groups.entry(crate::porch::category_key(&name)).or_insert_with(|| (name.clone(), GROUP_CELLS));
-                    for (when, rings) in cells {
-                        entry.1[when.index()] = *rings;
-                    }
-                }
-                Some(row) => {
-                    if let Some(i) = row.fixed_index() {
-                        for (when, rings) in cells {
-                            grid.fixed[i][when.index()] = *rings;
-                        }
-                    }
-                }
-                None => {}
-            }
-        }
-        for key in SWITCHES {
-            if let Some(on) = self.switch(key) {
-                grid.switches.set(key, on);
-            }
-        }
-        grid.groups = groups.into_values().collect();
-        // It reads as the profile said while nothing differs from it.
-        if let Some(profile) = self.profile.filter(|p| *p != Profile::Own)
-            && grid.fixed == start.fixed
-            && grid.switches == start.switches
-        {
-            grid.profile = profile;
-        }
-        grid
+        self.grid.clone()
     }
 }
 
-/// `[device."<id>".calls]` read leniently: a value that is no table, a word
-/// that names nothing, a cell that is no word, are passed over (and kept in
-/// the file by every writing, which edits it in place). None when nothing
-/// reads.
+/// `[device."<id>"] calls` read leniently: a value that is no string, does
+/// not read, or misses a row or a switch is no line; a group this Sioul does
+/// not read is passed over. An older line written as a table (never
+/// released) is no line either.
 pub fn read(value: &toml::Value) -> Option<Said> {
-    let table = value.as_table()?;
-    let word = |key: &str| table.get(key).and_then(toml::Value::as_str);
-    let flag = |key: &str| table.get(key).and_then(toml::Value::as_bool);
-    let mut said = Said {
-        profile: word("profile").and_then(Profile::read),
-        base: word("base").and_then(Profile::read),
-        commercial: flag("commercial"),
-        twice: flag("twice"),
-        called: flag("called"),
-        cells: BTreeMap::new(),
-    };
-    if let Some(rows) = table.get(ROWS).and_then(toml::Value::as_table) {
-        for (key, cells) in rows {
-            let (Some(row), Some(cells)) = (Row::read(key), cells.as_table()) else { continue };
-            let read: BTreeMap<When, bool> = cells.iter().filter_map(|(when, cell)| Some((When::read(when)?, cell_word(cell.as_str()?)?))).collect();
-            if !read.is_empty() {
-                said.cells.insert(row.id(), read);
+    let json: serde_json::Value = serde_json::from_str(value.as_str()?).ok()?;
+    let rows = json.get("rows")?;
+    let mut fixed = [[Cell::Rings; 4]; 5];
+    for (i, row) in Row::FIXED.iter().enumerate() {
+        fixed[i] = cells_of(rows.get(row.id())?.as_str()?)?;
+    }
+    let listed_switches = json.get("switches")?;
+    let mut switches = Switches { commercial: true, impossible: true, unverified: true, twice: true, called: true };
+    for key in SWITCHES {
+        switches.set(key, listed_switches.get(key)?.as_bool()?);
+    }
+    let mut groups: Vec<(String, Cells)> = Vec::new();
+    if let Some(listed) = json.get("groups").and_then(serde_json::Value::as_object) {
+        for (name, cells) in listed {
+            let (Some(name), Some(cells)) = (group_name(name), cells.as_str().and_then(cells_of)) else { continue };
+            if !groups.iter().any(|(n, _)| crate::porch::category_key(n) == crate::porch::category_key(&name)) {
+                groups.push((name, cells));
             }
         }
     }
-    said.says().then_some(said)
-}
-
-/// "rings" or "voicemail" (and their near words); none for any other.
-fn cell_word(word: &str) -> Option<bool> {
-    match word.trim().to_lowercase().as_str() {
-        "rings" | "ring" => Some(true),
-        "voicemail" => Some(false),
-        _ => None,
-    }
-}
-
-fn cell_text(rings: bool) -> &'static str {
-    if rings { "rings" } else { "voicemail" }
+    groups.sort_by_key(|(n, _)| crate::porch::category_key(n));
+    let written = json.get("profile").and_then(serde_json::Value::as_str).and_then(Profile::read).unwrap_or(Profile::Own);
+    Some(Said { grid: Grid { profile: written, fixed, groups, switches }.reading_as(written) })
 }
 
 // ---------------------------------------------------------------- today, for a line that says nothing
 
 /// One cell of what a phone does today while its line says nothing: rings
 /// or voicemail through its whole column, or varies within it (`rings`
-/// none), with the moments it rings in and those it does not (their ids:
-/// "admin", "leisure", "meals", "free"; "time": as the time says).
+/// none), with the moments it rings in and those it does not, by the
+/// matrix's columns ("admin", "leisure", "meals", "free", "work", "sleep").
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TodayCell {
     pub rings: Option<bool>,
@@ -410,60 +458,109 @@ pub struct TodayCell {
     pub quiet: Vec<&'static str>,
 }
 
-/// What a phone whose line says nothing does today (review of `reach`, R3):
-/// the matrix's Calls rows and the shared call screening read into the
-/// line's four columns, so that its card hides nothing that decides
-/// whether it rings. Work hours: the Work column; the rest of the day:
-/// admin, leisure, meals and Free time; the night: Sleep; while busy: the
-/// Do not disturb layer when being busy turns it on, else as the time says.
-/// Numbers nobody knows and hidden numbers by the screening, never where
-/// your contacts' row declines (`calls::decide`).
+/// What a phone whose line says nothing does today (review of `reach`, R3;
+/// of `phones`, M5): read from the very moments its table is made of (the
+/// clock's frames over a week, `Clock::frames`) as the phone reads them,
+/// the matrix's lent cells and Free time's "Nothing at all" included. Each
+/// moment goes to the line's column (`When::of`); a pause and "Nothing at
+/// all" give way to the rule every phone follows (`calls::line_frames`), so
+/// they count in no column; Free time, which may be taken at any time, is
+/// one of the rest of the day's. The people you know by the matrix's Calls rows;
+/// Everyone else and hidden numbers by the shared screening, never where
+/// your contacts' row declines (`calls::decide`). While busy: as usual. The
+/// switches as the shared screening says each.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Today {
-    /// The fixed rows, in `Row::FIXED`'s order.
-    pub fixed: [[TodayCell; 4]; 5],
+    /// The fixed rows, in `Row::FIXED`'s order; work hours, the rest of the day, the night.
+    pub fixed: [[TodayCell; 3]; 5],
     pub switches: Switches,
 }
 
 impl Today {
-    pub fn of(attention: &crate::attention::Attention, screening: &crate::screening::Screening, busy_dnd: bool) -> Today {
-        use crate::attention::{Column, Level, Person, Row as MatrixRow};
+    pub fn of(attention: &crate::attention::Attention, screening: &crate::screening::Screening, clock: &crate::reach::Clock, from: &jiff::Zoned, until: &jiff::Zoned) -> Today {
+        use crate::attention::{Column, Level, Person};
         use crate::reach::Channel;
-        let rings_at = |person: Person, column: Column| attention.cell(MatrixRow::People(Channel::Calls, person), column) == Level::Now;
-        let hours = |column: Column| matches!(column, Column::Work | Column::Admin);
-        let fixed_rings = |row: usize, column: Column| match row {
-            0 => rings_at(Person::Safe, column),
-            1 => rings_at(Person::Neutral, column),
-            2 => rings_at(Person::Restricted, column),
-            // Numbers nobody knows and hidden numbers: the screening's, never beyond your contacts.
-            r => screening.rings(r == 4, hours(column)) && rings_at(Person::Neutral, column),
-        };
-        let day: [(Column, &'static str); 4] = [(Column::Admin, "admin"), (Column::Leisure, "leisure"), (Column::Meals, "meals"), (Column::Free, "free")];
-        let cell = |row: usize, moments: &[(Column, &'static str)]| {
-            let (ringing, quiet): (Vec<_>, Vec<_>) = moments.iter().partition(|(c, _)| fixed_rings(row, *c));
-            let rings = if quiet.is_empty() { Some(true) } else if ringing.is_empty() { Some(false) } else { None };
-            TodayCell { rings, ringing: ringing.iter().map(|(_, id)| *id).collect(), quiet: quiet.iter().map(|(_, id)| *id).collect() }
-        };
-        let busy = |row: usize| if busy_dnd { cell(row, &[(Column::Dnd, "dnd")]) } else { TodayCell { rings: None, ringing: vec!["time"], quiet: Vec::new() } };
-        let fixed = std::array::from_fn(|row| [cell(row, &[(Column::Work, "work")]), cell(row, &day), cell(row, &[(Column::Sleep, "sleep")]), busy(row)]);
-        Today { fixed, switches: Switches { commercial: screening.automated == crate::screening::Spam::Voicemail, twice: true, called: screening.called } }
+        let mut fixed: [[TodayCell; 3]; 5] = Default::default();
+        // The week's moments, and Free time, which you may take at any time of the rest of the day.
+        let moments = clock.frames(from, until).into_iter().map(|f| crate::attention::Now::of_moment(&f.moment)).chain([crate::attention::Now::time(Column::Free)]);
+        for now in moments {
+            if now.is(Column::Pause) || (now.nothing && now.is(Column::Free)) {
+                continue;
+            }
+            let when = When::of(&now).index();
+            let label = now.times.first().map_or("", |c| c.id());
+            let hours = now.times.iter().any(|c| matches!(c, Column::Work | Column::Admin));
+            let rings = |person: Person| attention.person(Channel::Calls, person, false, &now) == Level::Now;
+            let neutral = rings(Person::Neutral);
+            let said = [rings(Person::Safe), neutral, rings(Person::Restricted), screening.rings(false, hours) && neutral, screening.rings(true, hours) && neutral];
+            for (row, rang) in said.into_iter().enumerate() {
+                let cell = &mut fixed[row][when];
+                let list = if rang { &mut cell.ringing } else { &mut cell.quiet };
+                if !list.contains(&label) {
+                    list.push(label);
+                }
+            }
+        }
+        for row in &mut fixed {
+            for cell in row.iter_mut() {
+                cell.rings = match (cell.ringing.is_empty(), cell.quiet.is_empty()) {
+                    // Rings whenever it comes, or never comes (no work hours): rings.
+                    (_, true) => Some(true),
+                    (true, false) => Some(false),
+                    (false, false) => None,
+                };
+            }
+        }
+        Today { fixed, switches: Switches::of_screening(screening) }
     }
 
-    /// As the cells a line written from it starts with: a cell that varies
-    /// within the rest of the day rings (whatever cannot be told rings, as
-    /// the calls' table's rule); while busy "as usual" rings only where both
-    /// work hours and the rest of the day ring, so that being busy never lets
-    /// more ring than the day does.
-    pub fn cells(&self) -> [Cells; 5] {
-        self.fixed.clone().map(|row| {
-            let usual = row[0].rings == Some(true) && row[1].rings == Some(true);
-            [0, 1, 2, 3].map(|w| match (w, row[w].rings) {
-                (_, Some(rings)) => rings,
-                (3, None) => usual,
-                (_, None) => true,
-            })
-        })
+    /// The table a first change starts from: each cell as today, a cell that
+    /// varies ringing (a doubt rings; said with Undo, `louder`), as usual
+    /// while busy (never written otherwise: H2), the switches as today.
+    pub fn grid(&self) -> Grid {
+        let fixed = self.fixed.clone().map(|row| {
+            let [work, day, night] = row.map(|c| if c.rings.unwrap_or(true) { Cell::Rings } else { Cell::Voicemail });
+            [work, day, night, Cell::Usual]
+        });
+        Grid { profile: Profile::Own, fixed, groups: Vec::new(), switches: self.switches }
     }
+
+    /// What a table started from today rings more than the phone did: each
+    /// fixed row and column that varied, with the moments it did not ring in.
+    /// `but`: the cell the change itself sets, never counted.
+    pub fn louder(&self, but: Option<(&Row, When)>) -> Vec<(Row, When, Vec<&'static str>)> {
+        let mut out = Vec::new();
+        for (i, row) in Row::FIXED.iter().enumerate() {
+            for (w, cell) in self.fixed[i].iter().enumerate() {
+                let when = When::ALL[w];
+                if cell.rings.is_none() && but != Some((row, when)) {
+                    out.push((row.clone(), when, cell.quiet.clone()));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// What `louder` says, in sentences: "A doubt rings: … Your contacts: now
+/// also in Free time." in the person's words; empty for none.
+pub fn louder_words(louder: &[(Row, When, Vec<&'static str>)], tr: &crate::i18n::Translator) -> String {
+    if louder.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = louder
+        .iter()
+        .map(|(row, _, quiet)| {
+            let moments: Vec<String> = quiet.iter().map(|id| tr.text(&format!("attention-column-{id}"), None)).collect();
+            let mut args = crate::i18n::args();
+            args.set("row", tr.text(&format!("phone-calls-row-{}", row.id()), None));
+            args.set("moments", moments.join(", "));
+            tr.text("phone-calls-louder-part", Some(&args))
+        })
+        .collect();
+    let mut args = crate::i18n::args();
+    args.set("what", parts.join(" "));
+    tr.text("phone-calls-louder", Some(&args))
 }
 
 // ---------------------------------------------------------------- in words
@@ -480,24 +577,31 @@ pub struct Card<'a> {
     pub categories: &'a [String],
     /// What the phone does today while its line says nothing (`Today::of`).
     pub today: Option<&'a Today>,
+    /// Being busy turns do-not-disturb on (the box "While busy"): what "as usual" means while busy.
+    pub busy_is_dnd: bool,
+    /// Who rings in a pause and under do-not-disturb, as on every phone (M4), in a sentence; empty: none said.
+    pub held: &'a str,
+    /// The phone's Sioul is older than the first that reads a line (M12).
+    pub older: bool,
 }
 
 /// One phone's section Calls, in words, for its card in Settings ▸ Devices:
 /// {set, profile, offered, profiles: [{id, label, said, chosen}], said, columns:
-/// [{id, label}], rows: [{id, label, fixed, group, cells: [{when, rings,
-/// word}]}], switches: [{key, label, on}], groups (categories with no row
-/// yet), screens, sims, always, here, today, details}. A line that says
-/// nothing shows what the phone does today (`Card::today`; a cell that
-/// varies within its column says so, and `details` when it rings), nothing
-/// chosen; without it, the profile offered.
+/// [{id, label}], rows: [{id, label, fixed, group, cells: [{when, cell,
+/// rings, word, varies}]}], switches: [{key, label, on, more}], groups
+/// (categories with no row yet), screens, sims, always, here, today,
+/// details, busy, held, older}. A line that says nothing shows what the
+/// phone does today (`Card::today`; a cell that varies within its column
+/// says so, and `details` when it rings), nothing chosen; without it, the
+/// profile offered.
 pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> serde_json::Value {
     use serde_json::json;
-    let set = said.is_some_and(Said::says);
+    let set = said.is_some();
     let offered = Profile::offered(card.area);
     let today = if set { None } else { card.today };
-    let grid = match (said.filter(|s| s.says()), today) {
+    let grid = match (said, today) {
         (Some(said), _) => said.grid(),
-        (None, Some(today)) => Grid { profile: Profile::Own, fixed: today.cells(), groups: Vec::new(), switches: today.switches },
+        (None, Some(today)) => today.grid(),
         (None, None) => offered.grid(),
     };
     let chosen = set.then_some(grid.profile);
@@ -513,47 +617,50 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
         Some(Profile::AsAndroid) => tr.text("phone-calls-android", None),
         Some(_) => String::new(),
     };
-    let word = |rings: bool| tr.text(if rings { "phone-calls-rings" } else { "phone-calls-voicemail" }, None);
-    let cells = |cells: Cells| -> Vec<serde_json::Value> { When::ALL.iter().map(|w| json!({ "when": w.id(), "rings": cells[w.index()], "word": word(cells[w.index()]) })).collect() };
+    let word = |cell: Cell| tr.text(&format!("phone-calls-{}", cell.id()), None);
+    let cells = |cells: Cells| -> Vec<serde_json::Value> {
+        When::ALL
+            .iter()
+            .map(|w| {
+                let c = cells[w.index()];
+                json!({ "when": w.id(), "cell": c.id(), "rings": c == Cell::Rings, "word": word(c) })
+            })
+            .collect()
+    };
     let row = |id: String, label: String, fixed: bool, group: bool, c: Cells| json!({ "id": id, "label": label, "fixed": fixed, "group": group, "cells": cells(c) });
-    // A cell of today that varies within its column: "Varies", and in a line
-    // under the table, when it rings; "As the time" while busy, said once.
+    // A cell of today that varies within its column: "Varies", and in a line under the table, when it rings.
     let moments = |ids: &[&str]| ids.iter().map(|id| tr.text(&format!("attention-column-{id}"), None)).collect::<Vec<_>>().join(", ");
     let mut details: Vec<String> = Vec::new();
     let mut fixed_row = |r: Row| {
         let id = r.id();
         let label = tr.text(&format!("phone-calls-row-{id}"), None);
-        let c = grid.cells(&r).unwrap_or([true; 4]);
+        let c = grid.cells(&r).unwrap_or(GROUP_CELLS);
         let mut shown = row(id.clone(), label.clone(), false, false, c);
-        let Some((today, i)) = today.zip(Row::FIXED.iter().position(|f| *f == r)) else {
+        let Some((today, i)) = today.zip(r.fixed_index()) else {
             return shown;
         };
         for (w, cell) in today.fixed[i].iter().enumerate().filter(|(_, cell)| cell.rings.is_none()) {
-            let (word, detail) = if cell.ringing == ["time"] {
-                (tr.text("phone-calls-as-time", None), tr.text("phone-calls-as-time-detail", None))
-            } else {
-                let mut args = crate::i18n::args();
-                args.set("row", label.clone());
-                args.set("when", tr.text(&format!("phone-calls-when-{}", When::ALL[w].id()), None));
-                args.set("rings", moments(&cell.ringing));
-                args.set("voicemail", moments(&cell.quiet));
-                (tr.text("phone-calls-varies", None), tr.text("phone-calls-varies-detail", Some(&args)))
-            };
-            shown["cells"][w]["word"] = json!(word);
+            let mut args = crate::i18n::args();
+            args.set("row", label.clone());
+            args.set("when", tr.text(&format!("phone-calls-when-{}", When::ALL[w].id()), None));
+            args.set("rings", moments(&cell.ringing));
+            args.set("voicemail", moments(&cell.quiet));
+            shown["cells"][w]["word"] = json!(tr.text("phone-calls-varies", None));
             shown["cells"][w]["varies"] = json!(true);
-            if !details.contains(&detail) {
-                details.push(detail);
-            }
+            details.push(tr.text("phone-calls-varies-detail", Some(&args)));
         }
         shown
     };
-    let mut rows = vec![row("always".into(), tr.text("phone-calls-row-always", None), true, false, [true; 4]), fixed_row(Row::Safe), fixed_row(Row::Contacts)];
+    let mut rows = vec![row("always".into(), tr.text("phone-calls-row-always", None), true, false, [Cell::Rings; 4]), fixed_row(Row::Safe), fixed_row(Row::Contacts)];
     rows.extend(grid.groups.iter().map(|(name, c)| row(Row::Group(name.clone()).id(), name.clone(), false, true, *c)));
     rows.extend([fixed_row(Row::Restricted), fixed_row(Row::Unknown), fixed_row(Row::Hidden)]);
     let today_shown = today.is_some();
-    let switches: Vec<serde_json::Value> = SWITCHES.iter().map(|key| json!({ "key": key, "label": tr.text(&format!("phone-calls-{key}"), None), "on": match *key { "commercial" => grid.switches.commercial, "twice" => grid.switches.twice, _ => grid.switches.called } })).collect();
+    let switches: Vec<serde_json::Value> = SWITCHES.iter().map(|key| json!({ "key": key, "label": tr.text(&format!("phone-calls-{key}"), None), "on": grid.switches.get(key).unwrap_or(true), "more": MORE.contains(key) })).collect();
     let taken: Vec<String> = grid.groups.iter().map(|(n, _)| crate::porch::category_key(n)).collect();
     let groups: Vec<&String> = card.categories.iter().filter(|c| !taken.contains(&crate::porch::category_key(c))).collect();
+    // "As usual" while busy, in a sentence, wherever a row says it (M1).
+    let usual = grid.fixed.iter().chain(grid.groups.iter().map(|(_, c)| c)).any(|c| c[When::Busy.index()] == Cell::Usual);
+    let busy = if usual && !grid.screens_nothing() { tr.text(if card.busy_is_dnd { "phone-calls-usual-dnd" } else { "phone-calls-usual-time" }, None) } else { String::new() };
     json!({
         "set": set,
         "profile": chosen.map_or("", Profile::id),
@@ -565,6 +672,9 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
         // Shown from what the phone does today: each cell that varies, when it rings.
         "today": today_shown,
         "details": details,
+        "busy": busy,
+        "held": if grid.screens_nothing() { "" } else { card.held },
+        "older": if card.older { tr.text("phone-calls-older", None) } else { String::new() },
         "switches": switches,
         "groups": groups,
         "screens": card.screens,
@@ -576,51 +686,39 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
     })
 }
 
-/// The phone `id`'s line written from what it does today (`Today`), before
-/// a first change made on its table: every fixed cell and switch as today
-/// gives them, a cell that varies ringing; the profile "none" with no base,
-/// so that the change starts from what the phone did, never from a profile.
-pub fn start_from_today(path: &Path, id: &str, today: &Today) -> Result<(), String> {
-    let cells = today.cells();
-    edit(path, id, |now, calls| {
-        if now.as_ref().is_some_and(Said::says) {
-            return Ok(());
-        }
-        put(calls, "profile", toml_edit::value(Profile::Own.id()));
-        for key in SWITCHES {
-            let on = match key {
-                "commercial" => today.switches.commercial,
-                "twice" => today.switches.twice,
-                _ => today.switches.called,
-            };
-            put(calls, key, toml_edit::value(on));
-        }
-        let rows = rows_of(calls)?;
-        for (i, row) in Row::FIXED.iter().enumerate() {
-            let mut table = toml_edit::Table::new();
-            for w in When::ALL {
-                table.insert(w.id(), toml_edit::value(cell_text(cells[i][w.index()])));
+// ---------------------------------------------------------------- writing
+
+/// The value as written for the phone `id` (for Undo); none when there is none.
+pub fn raw(path: &Path, id: &str) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let table: toml::Table = text.parse().ok()?;
+    table.get("device")?.get(id.trim())?.get(KEY)?.as_str().map(str::to_string)
+}
+
+/// The phone `id`'s value put back as it was (Undo): `value`, or none.
+pub fn put_raw(path: &Path, id: &str, value: Option<&str>) -> Result<(), String> {
+    edit(path, id, |line| {
+        match value {
+            Some(text) => {
+                line.insert(KEY, toml_edit::value(text));
             }
-            rows.insert(&row.id(), toml_edit::Item::Table(table));
+            None => {
+                line.remove(KEY);
+            }
         }
         Ok(())
     })
 }
 
-// ---------------------------------------------------------------- writing
-
-/// The phone `id`'s calls' table changed in the configuration, in place,
-/// under the file's lock (which the sharing takes too): `change` gets the
-/// line as it reads now and its `calls` table to edit; tables left empty go,
-/// the device's line with its last field, `[device]` with its last line.
-fn edit(path: &Path, id: &str, change: impl FnOnce(Option<Said>, &mut dyn toml_edit::TableLike) -> Result<(), String>) -> Result<(), String> {
+/// The phone `id`'s line in the device's table, under the file's lock: the
+/// table changed by `change`, what is left empty taken away.
+fn edit(path: &Path, id: &str, change: impl FnOnce(&mut dyn toml_edit::TableLike) -> Result<(), String>) -> Result<(), String> {
     let id = id.trim();
     if id.is_empty() || id.chars().any(char::is_control) {
         return Err("a device's id is needed".to_string());
     }
     crate::filelock::with_lock(path, || {
         let mut doc = crate::config::read_document(path)?;
-        let now: Option<Said> = doc.to_string().parse::<toml::Table>().ok().and_then(|t| t.get("device")?.get(id)?.get(KEY).and_then(read));
         if doc.get("device").is_none_or(|item| !item.is_table_like()) {
             let mut devices = toml_edit::Table::new();
             devices.set_implicit(true);
@@ -633,24 +731,7 @@ fn edit(path: &Path, id: &str, change: impl FnOnce(Option<Said>, &mut dyn toml_e
             devices.insert(id, toml_edit::Item::Table(line));
         }
         let line = devices.get_mut(id).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: not a table"))?;
-        if line.get(KEY).is_none_or(|calls| !calls.is_table_like()) {
-            line.insert(KEY, toml_edit::Item::Table(toml_edit::Table::new()));
-        }
-        let calls = line.get_mut(KEY).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: calls is not a table"))?;
-        change(now, calls)?;
-        // What is left empty goes.
-        if let Some(rows) = calls.get_mut(ROWS).and_then(toml_edit::Item::as_table_like_mut) {
-            let empty: Vec<String> = rows.iter().filter(|(_, row)| row.as_table_like().is_some_and(toml_edit::TableLike::is_empty)).map(|(key, _)| key.to_string()).collect();
-            for key in empty {
-                rows.remove(&key);
-            }
-        }
-        if calls.get(ROWS).and_then(toml_edit::Item::as_table_like).is_some_and(toml_edit::TableLike::is_empty) {
-            calls.remove(ROWS);
-        }
-        if calls.is_empty() {
-            line.remove(KEY);
-        }
+        change(line)?;
         if line.is_empty() {
             devices.remove(id);
         }
@@ -661,170 +742,110 @@ fn edit(path: &Path, id: &str, change: impl FnOnce(Option<Said>, &mut dyn toml_e
     })
 }
 
-/// A value written in place: a key already there keeps its place and the comment above it.
-fn put(table: &mut dyn toml_edit::TableLike, key: &str, value: toml_edit::Item) {
-    match table.get_mut(key) {
-        Some(slot) => *slot = value,
-        None => {
-            table.insert(key, value);
-        }
-    }
+/// The phone `id`'s table changed whole, under the file's lock: read as it
+/// is (none: `start`, the table the change starts from), changed by
+/// `change`, written in one value. Answers the table before (none: the line
+/// said nothing).
+fn change(path: &Path, id: &str, start: &Grid, change: impl FnOnce(&mut Grid) -> Result<(), String>) -> Result<Option<Grid>, String> {
+    let mut before: Option<Grid> = None;
+    edit(path, id, |line| {
+        before = line.get(KEY).and_then(|item| item.as_value()).and_then(|v| v.as_str()).and_then(|text| read(&toml::Value::String(text.to_string()))).map(|s| s.grid);
+        let mut grid = before.clone().unwrap_or_else(|| start.clone());
+        change(&mut grid)?;
+        line.insert(KEY, toml_edit::value(grid.text()));
+        Ok(())
+    })?;
+    Ok(before)
 }
 
-/// The rows' table of `calls`, made when missing.
-fn rows_of(calls: &mut dyn toml_edit::TableLike) -> Result<&mut dyn toml_edit::TableLike, String> {
-    if calls.get(ROWS).is_none_or(|rows| !rows.is_table_like()) {
-        let mut rows = toml_edit::Table::new();
-        rows.set_implicit(true);
-        calls.insert(ROWS, toml_edit::Item::Table(rows));
-    }
-    calls.get_mut(ROWS).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| "calls.rows is not a table".to_string())
-}
-
-/// A profile chosen for the phone `id`: its word written; the fixed rows'
-/// cells, the switches and the base go, as the profile says them; the
-/// groups' rows stay. `Own` is no choice: a cell or a switch makes it.
-pub fn set_profile(path: &Path, id: &str, profile: Profile) -> Result<(), String> {
+/// A profile chosen for the phone `id`: its whole table written, the groups'
+/// rows kept. `Own` is no choice: a cell or a switch makes it.
+pub fn set_profile(path: &Path, id: &str, profile: Profile, start: &Grid) -> Result<Option<Grid>, String> {
     if profile == Profile::Own {
         return Err("none: change a cell or a switch".to_string());
     }
-    edit(path, id, |_, calls| {
-        put(calls, "profile", toml_edit::value(profile.id()));
-        calls.remove("base");
-        for key in SWITCHES {
-            calls.remove(key);
-        }
-        if let Some(rows) = calls.get_mut(ROWS).and_then(toml_edit::Item::as_table_like_mut) {
-            for row in Row::FIXED {
-                rows.remove(&row.id());
-            }
-        }
+    change(path, id, start, |grid| {
+        *grid = Grid { groups: std::mem::take(&mut grid.groups), ..profile.grid() };
         Ok(())
     })
 }
 
-/// Changed by hand from a profile: "none", the profile it started from kept
-/// as the base its unsaid cells read from; a line that said none yet starts
-/// from `offered` (the profile the card shows it from).
-fn by_hand(now: Option<&Said>, calls: &mut dyn toml_edit::TableLike, offered: Profile) {
-    let (profile, base) = (now.and_then(|s| s.profile), now.and_then(|s| s.base));
-    // Already "none": its base stays as it is (none: everything rings but what is said).
-    if profile != Some(Profile::Own) {
-        let from = profile.or(base).unwrap_or(offered);
-        if from != Profile::Own {
-            put(calls, "base", toml_edit::value(from.id()));
-        }
-        put(calls, "profile", toml_edit::value(Profile::Own.id()));
+/// One cell of the phone `id`'s table changed by hand: "as usual" only while
+/// busy. The table is then the person's own.
+pub fn set_cell(path: &Path, id: &str, row: &Row, when: When, cell: Cell, start: &Grid) -> Result<Option<Grid>, String> {
+    if cell == Cell::Usual && when != When::Busy {
+        return Err(format!("{}: as usual only while busy", when.id()));
     }
-}
-
-/// One cell of the phone `id`'s table: a fixed row's (the profile becomes
-/// "none", the cell alone written; a line that said nothing yet starts from
-/// `offered`) or a group's (that group's row made with its first cells when
-/// it had none). Always through is no cell.
-pub fn set_cell(path: &Path, id: &str, row: &Row, when: When, rings: bool, offered: Profile) -> Result<(), String> {
-    edit(path, id, |now, calls| {
-        let group = matches!(row, Row::Group(_));
-        if !group {
-            by_hand(now.as_ref(), calls, offered);
-        } else if now.is_none() {
-            // A group's row on a line that said nothing: the line starts from the profile offered.
-            put(calls, "profile", toml_edit::value(offered.id()));
-        }
-        let rows = rows_of(calls)?;
-        // A group's row under the key it was written with (another case), else its own.
-        let key = match row {
+    change(path, id, start, |grid| {
+        match row {
             Row::Group(name) => {
-                let wanted = crate::porch::category_key(name);
-                rows.iter().map(|(k, _)| k.to_string()).find(|k| matches!(Row::read(k), Some(Row::Group(n)) if crate::porch::category_key(&n) == wanted)).unwrap_or_else(|| row.id())
+                let key = crate::porch::category_key(name);
+                let Some((_, cells)) = grid.groups.iter_mut().find(|(n, _)| crate::porch::category_key(n) == key) else {
+                    return Err(format!("{name}: no row"));
+                };
+                cells[when.index()] = cell;
             }
-            fixed => fixed.id(),
-        };
-        let fresh = rows.get(&key).is_none_or(|r| !r.is_table_like());
-        if fresh {
-            let mut table = toml_edit::Table::new();
-            if group {
-                for w in When::ALL {
-                    table.insert(w.id(), toml_edit::value(cell_text(GROUP_CELLS[w.index()])));
-                }
+            fixed => {
+                let i = fixed.fixed_index().ok_or_else(|| "no row".to_string())?;
+                grid.fixed[i][when.index()] = cell;
             }
-            rows.insert(&key, toml_edit::Item::Table(table));
         }
-        let cells = rows.get_mut(&key).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{key}: not a table"))?;
-        put(cells, when.id(), toml_edit::value(cell_text(rings)));
+        if grid.profile != Profile::AsAndroid {
+            grid.profile = Profile::Own;
+        }
         Ok(())
     })
 }
 
-/// One switch of the phone `id` (`SWITCHES`): the profile becomes "none"
-/// (a line that said nothing yet starts from `offered`).
-pub fn set_switch(path: &Path, id: &str, key: &str, on: bool, offered: Profile) -> Result<(), String> {
-    if !SWITCHES.contains(&key) {
-        return Err(format!("{key}: {}", SWITCHES.join(", ")));
+/// One switch of the phone `id`'s table turned on or off by hand.
+pub fn set_switch(path: &Path, id: &str, key: &str, on: bool, start: &Grid) -> Result<Option<Grid>, String> {
+    change(path, id, start, |grid| {
+        if !grid.switches.set(key, on) {
+            return Err(format!("{key}?"));
+        }
+        if grid.profile != Profile::AsAndroid {
+            grid.profile = Profile::Own;
+        }
+        Ok(())
+    })
+}
+
+/// A group of your contacts given a row on the phone `id` (rings but at
+/// night, as usual while busy), once: a group that has one keeps it.
+pub fn add_group(path: &Path, id: &str, name: &str, start: &Grid) -> Result<Option<Grid>, String> {
+    let name = group_name(name).ok_or_else(|| "a group's name is needed".to_string())?;
+    change(path, id, start, |grid| {
+        let key = crate::porch::category_key(&name);
+        if !grid.groups.iter().any(|(n, _)| crate::porch::category_key(n) == key) {
+            grid.groups.push((name.clone(), GROUP_CELLS));
+            grid.groups.sort_by_key(|(n, _)| crate::porch::category_key(n));
+        }
+        Ok(())
+    })
+}
+
+/// A group's row taken off the phone `id` (as categories compare); a line
+/// that says nothing stays so.
+pub fn remove_group(path: &Path, id: &str, name: &str) -> Result<Option<Grid>, String> {
+    if raw(path, id).is_none() {
+        return Ok(None);
     }
-    edit(path, id, |now, calls| {
-        by_hand(now.as_ref(), calls, offered);
-        put(calls, key, toml_edit::value(on));
-        Ok(())
-    })
-}
-
-/// A group of your contacts given a row on the phone `id`, its first cells
-/// `GROUP_CELLS`; nothing when it has one (as categories compare). A line
-/// that said nothing yet starts from `offered`.
-pub fn add_group(path: &Path, id: &str, name: &str, offered: Profile) -> Result<(), String> {
-    let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ");
-    let Some(Row::Group(name)) = Row::read(&format!("{GROUP}{name}")) else {
-        return Err("a group's name is needed".to_string());
-    };
-    edit(path, id, |now, calls| {
-        if now.is_none() {
-            put(calls, "profile", toml_edit::value(offered.id()));
-        }
-        let rows = rows_of(calls)?;
-        let wanted = crate::porch::category_key(&name);
-        if rows.iter().any(|(k, _)| matches!(Row::read(k), Some(Row::Group(n)) if crate::porch::category_key(&n) == wanted)) {
-            return Ok(());
-        }
-        let mut table = toml_edit::Table::new();
-        for w in When::ALL {
-            table.insert(w.id(), toml_edit::value(cell_text(GROUP_CELLS[w.index()])));
-        }
-        rows.insert(&Row::Group(name.clone()).id(), toml_edit::Item::Table(table));
-        Ok(())
-    })
-}
-
-/// A group's row taken off the phone `id` (as categories compare).
-pub fn remove_group(path: &Path, id: &str, name: &str) -> Result<(), String> {
     let wanted = crate::porch::category_key(name);
-    edit(path, id, |_, calls| {
-        if let Some(rows) = calls.get_mut(ROWS).and_then(toml_edit::Item::as_table_like_mut) {
-            let keys: Vec<String> = rows.iter().map(|(k, _)| k.to_string()).filter(|k| matches!(Row::read(k), Some(Row::Group(n)) if crate::porch::category_key(&n) == wanted)).collect();
-            for key in keys {
-                rows.remove(&key);
-            }
-        }
+    change(path, id, &Profile::Own.grid(), |grid| {
+        grid.groups.retain(|(n, _)| crate::porch::category_key(n) != wanted);
         Ok(())
     })
 }
 
-/// The phone `id`'s calls' table taken out whole: it keeps the shared
-/// screening again, as before any was said. What this Sioul does not read
-/// in it goes too.
+/// The phone `id`'s line taken out: it screens as every phone does again.
 pub fn clear(path: &Path, id: &str) -> Result<(), String> {
-    edit(path, id, |_, calls| {
-        let keys: Vec<String> = calls.iter().map(|(k, _)| k.to_string()).collect();
-        for key in keys {
-            calls.remove(&key);
-        }
-        Ok(())
-    })
+    put_raw(path, id, None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Cell::{Rings as R, Usual as U, Voicemail as V};
 
     const PHONE: &str = "7b1c9e04-52a8-4c0d-8f0e-93c1b2a4d5e6";
 
@@ -839,56 +860,102 @@ mod tests {
         crate::config::Config::load(path).unwrap().devices.get(PHONE).and_then(|s| s.calls.clone())
     }
 
-    /// Read leniently: a word, a cell or a field this Sioul does not read is
-    /// passed over, the rest read; a table of nothing readable is no line,
-    /// and the configuration always reads.
+    fn at(text: &str) -> jiff::Zoned {
+        format!("{text}[Europe/Paris]").parse().unwrap()
+    }
+
+    /// Weekdays 09:00 to 17:00 at work (or none), admin on Saturday
+    /// mornings; the night and a nap after lunch (Needs).
+    fn clock(work: bool) -> crate::reach::Clock {
+        let days = if work { ["monday", "tuesday", "wednesday", "thursday", "friday"].iter().map(|d| format!("[[window]]\nday = \"{d}\"\nstart = \"09:00\"\nend = \"17:00\"\n\n")).collect::<String>() } else { String::new() };
+        let config: crate::config::Config = toml::from_str(&format!("{days}[[window]]\nday = \"saturday\"\nstart = \"09:00\"\nend = \"12:00\"\nkind = \"admin\"\n")).unwrap();
+        let needs = crate::needs::Needs { meals_on: true, naps_on: true, sleep_on: true, ..crate::needs::Needs::default() };
+        crate::reach::Clock::new(&config, crate::quiet::Overrides::default(), needs, crate::needs::Days::default(), Vec::new())
+    }
+
+    fn today(attention: &crate::attention::Attention, screening: &crate::screening::Screening, work: bool) -> Today {
+        Today::of(attention, screening, &clock(work), &at("2026-11-16T00:00"), &at("2026-11-23T00:00"))
+    }
+
+    fn value(json: &serde_json::Value) -> toml::Value {
+        toml::Value::String(json.to_string())
+    }
+
+    /// The one value: written whole, read back the same; a partial or
+    /// unreadable value, or an older table, is no line; a group that does
+    /// not read is passed over; as usual only while busy.
     #[test]
-    fn the_line_reads_leniently() {
-        let text = format!(
-            "[device.\"{PHONE}\"]\nname = \"Pocket\"\n\n[device.\"{PHONE}\".calls]\nprofile = \"personal\"\nfollows = 3\ntwice = \"maybe\"\ncalled = false\n\n[device.\"{PHONE}\".calls.rows.safe]\nnight = \"rings\"\nlater = \"rings\"\nbusy = 4\n\n[device.\"{PHONE}\".calls.rows.\"group:School\"]\nnight = \"rings\"\n\n[device.\"{PHONE}\".calls.rows.lunch]\nwork = \"rings\"\n"
-        );
-        let said = read(&text.parse::<toml::Table>().unwrap()["device"][PHONE]["calls"]).unwrap();
-        assert_eq!(said.profile, Some(Profile::Personal));
-        assert_eq!((said.twice, said.called, said.commercial), (None, Some(false), None), "a switch that is no flag is unsaid");
-        assert_eq!(said.cells.get("safe").map(|c| c.len()), Some(1), "only the cell that reads: {said:?}");
-        assert!(!said.cells.contains_key("lunch"), "a row this Sioul does not know");
-        let grid = said.grid();
-        assert_eq!(grid.profile, Profile::Own, "a cell said apart from the profile: by hand");
-        assert!(grid.rings(&Row::Safe, When::Night) && !grid.switches.called);
-        assert_eq!(grid.cells(&Row::Group("school".into())), Some([true, true, true, true]), "a group's row, its unsaid cells as a group's first");
-        // Nothing readable: no line, the phone as before; the rest of the configuration reads.
-        for nothing in ["calls = 3", "[device.\"P\".calls]\nprofile = \"loud\"\n[device.\"P\".calls.rows.safe]\nwork = true\n"] {
-            let text = if nothing.starts_with('[') { nothing.to_string() } else { format!("[device.\"P\"]\n{nothing}\n") };
-            let config: crate::config::Config = toml::from_str(&format!("language = \"en\"\n{text}")).unwrap();
-            assert_eq!(config.devices.get("P").and_then(|s| s.calls.clone()), None, "{nothing}");
+    fn the_line_is_one_value_read_leniently() {
+        let mut grid = Profile::Personal.grid();
+        grid.groups.push(("School".into(), GROUP_CELLS));
+        let back = read(&toml::Value::String(grid.text())).unwrap().grid;
+        assert_eq!(back, grid);
+        assert_eq!(back.profile, Profile::Personal, "a profile's table reads as that profile");
+        let whole: serde_json::Value = serde_json::from_str(&grid.text()).unwrap();
+        let mut broken = Vec::new();
+        for (path, new) in [("/rows/safe", Some("RRV")), ("/rows/safe", Some("RUVU")), ("/switches/called", None), ("/rows/hidden", None)] {
+            let mut json = whole.clone();
+            match new {
+                Some(text) => *json.pointer_mut(path).unwrap() = serde_json::json!(text),
+                None => {
+                    let (parent, key) = path.rsplit_once('/').unwrap();
+                    json.pointer_mut(parent).unwrap().as_object_mut().unwrap().remove(key);
+                }
+            }
+            broken.push(value(&json));
         }
+        broken.push(toml::Value::String("{".into()));
+        broken.push(toml::Value::Integer(3));
+        for b in &broken {
+            assert_eq!(read(b), None, "a partial line reads as no line: {b}");
+        }
+        let mut odd = whole.clone();
+        odd["groups"]["Lunch"] = serde_json::json!("ZZZZ");
+        odd["groups"][""] = serde_json::json!("RRRR");
+        odd["later"] = serde_json::json!(3);
+        assert_eq!(read(&value(&odd)).unwrap().grid.groups, grid.groups, "groups that do not read are passed over, fields this Sioul does not know too");
+        let older: crate::config::Config = toml::from_str(&format!("[device.\"{PHONE}\".calls]\nprofile = \"personal\"\n")).unwrap();
+        assert_eq!(older.devices[PHONE].calls, None, "a table of before is no line");
+        let mut changed = Profile::Personal.grid();
+        changed.fixed[0][2] = R;
+        assert_eq!(read(&toml::Value::String(changed.text())).unwrap().grid.profile, Profile::Own, "cells apart from the profile's: your own");
     }
 
     /// The card's words, in both languages: a line that says nothing shows
     /// the profile offered, nothing chosen; a line by hand reads "Your own";
     /// As Android does says Sioul screens nothing; the rows in the design's
-    /// order, Always through fixed; the groups not given a row offered;
-    /// a phone that does not screen says so.
+    /// order, Always through fixed; the groups not given a row offered; a
+    /// phone that does not screen says so; as usual while busy said in a
+    /// sentence, one for each meaning; the switches each one setting, two
+    /// under "More"; an older phone said.
     #[test]
     fn the_card_says_the_line_in_words() {
         for language in ["en", "fr"] {
             let tr = crate::i18n::Translator::new(language);
             let categories = ["School".to_string(), "Clients".to_string()];
-            let card = Card { area: Some(Area::WORK), screens: Some(false), categories: &categories, today: None };
+            let card = Card { area: Some(Area::WORK), screens: Some(false), categories: &categories, today: None, busy_is_dnd: false, held: "", older: false };
             let unsaid = view(None, &card, &tr);
             assert_eq!((unsaid["set"].as_bool(), unsaid["profile"].as_str(), unsaid["offered"].as_str()), (Some(false), Some(""), Some("professional")));
             assert!(unsaid["profiles"].as_array().unwrap().iter().all(|p| p["chosen"] == false));
             assert!(!unsaid["not_screening"].as_str().unwrap().is_empty());
-            let mut own = Said { profile: Some(Profile::Own), base: Some(Profile::Personal), ..Said::default() };
-            own.cells.insert("group:School".into(), [(When::Night, true)].into_iter().collect());
-            let view_own = view(Some(&own), &Card { screens: Some(true), ..card }, &tr);
-            assert_eq!(view_own["profiles"].as_array().unwrap().last().unwrap()["id"], "none");
+            let mut own = Profile::Personal.grid();
+            own.fixed[0][2] = R;
+            own.groups.push(("School".into(), GROUP_CELLS));
+            let own = read(&toml::Value::String(own.text())).unwrap();
+            let view_own = view(Some(&own), &Card { screens: Some(true), busy_is_dnd: true, older: true, ..card }, &tr);
+            assert_eq!(view_own["profiles"].as_array().unwrap().last().unwrap()["id"], "none", "a cell changed by hand: Your own");
+            assert!(view_own["profiles"].as_array().unwrap()[..4].iter().all(|p| p["chosen"] == false), "no profile shown chosen once a cell was changed by hand");
             let ids: Vec<&str> = view_own["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
             assert_eq!(ids, ["always", "safe", "contacts", "group:School", "restricted", "unknown", "hidden"]);
             assert_eq!(view_own["rows"][0]["fixed"], true);
+            assert_eq!(view_own["rows"][1]["cells"][3]["cell"], "usual");
             assert_eq!(view_own["groups"], serde_json::json!(["Clients"]), "School has its row");
             assert_eq!(view_own["not_screening"], "");
-            let android = view(Some(&Said { profile: Some(Profile::AsAndroid), ..Said::default() }), &card, &tr);
+            assert_ne!(view_own["busy"], unsaid["busy"], "as usual while busy: what do-not-disturb lets through when being busy turns it on");
+            assert!(!view_own["older"].as_str().unwrap().is_empty());
+            let keys: Vec<(&str, bool)> = view_own["switches"].as_array().unwrap().iter().map(|s| (s["key"].as_str().unwrap(), s["more"] == true)).collect();
+            assert_eq!(keys, [("commercial", false), ("twice", false), ("called", false), ("impossible", true), ("unverified", true)]);
+            let android = view(Some(&Said { grid: Profile::AsAndroid.grid() }), &card, &tr);
             assert!(!android["said"].as_str().unwrap().is_empty());
             let professional = &unsaid["profiles"][0];
             assert_eq!(professional["id"], "professional");
@@ -898,7 +965,7 @@ mod tests {
             let mut words: Vec<String> = Vec::new();
             for v in [&unsaid, &view_own, &android] {
                 words.extend(v["profiles"].as_array().unwrap().iter().map(|p| p["said"].as_str().unwrap().to_string()));
-                for key in ["said", "sims", "always", "not_screening"] {
+                for key in ["said", "sims", "always", "not_screening", "busy", "older", "here"] {
                     words.push(v[key].as_str().unwrap().to_string());
                 }
                 for list in ["profiles", "columns", "rows", "switches"] {
@@ -916,128 +983,117 @@ mod tests {
     }
 
     /// A phone whose line says nothing shows what it does today, from the
-    /// usual matrix and the shared screening (review of `reach`, R3): the
-    /// safe ring at work and in the day, to voicemail at night; your
-    /// contacts' rest of the day varies (Free time holds them), said with
-    /// when they ring; while busy, as the time says, or do-not-disturb's
-    /// cells when being busy turns it on. A first change starts from it.
+    /// very moments its table is made of (R3, M5): the safe ring at work and
+    /// in the day, to voicemail at night; your contacts' rest of the day
+    /// varies, said with when they ring; while busy, as usual. Without work
+    /// hours, admin time lends work's cells, as the phone reads them.
     #[test]
     fn an_unsaid_line_shows_what_the_phone_does_today() {
         let attention = crate::attention::Attention::usual();
         let screening = crate::screening::Screening::default();
-        let today = Today::of(&attention, &screening, false);
-        assert_eq!(today.fixed[0][0].rings, Some(true), "safe at work");
-        assert_eq!(today.fixed[0][2].rings, Some(false), "safe at night");
-        assert_eq!(today.fixed[1][1].rings, None, "your contacts in the rest of the day: {:?}", today.fixed[1][1]);
-        assert!(today.fixed[1][1].quiet.contains(&"free") && today.fixed[1][1].ringing.contains(&"leisure"));
-        assert_eq!(today.fixed[3][2].rings, Some(false), "nobody known at night");
-        assert_eq!(today.fixed[0][3].ringing, ["time"], "while busy: as the time says");
-        let held = Today::of(&attention, &screening, true);
-        assert_eq!(held.fixed[1][3].rings, Some(false), "busy turning do-not-disturb on: your contacts to voicemail");
-        let off = crate::screening::Screening { on: false, ..screening };
-        assert_eq!(Today::of(&attention, &off, false).fixed[3][0].rings, Some(true), "the screening off: where your contacts ring");
+        let shown = today(&attention, &screening, true);
+        assert_eq!(shown.fixed[0][0].rings, Some(true), "safe at work");
+        assert_eq!(shown.fixed[0][2].rings, Some(false), "safe at night");
+        assert_eq!(shown.fixed[1][1].rings, None, "your contacts in the rest of the day: {:?}", shown.fixed[1][1]);
+        assert_eq!(shown.fixed[3][2].rings, Some(false), "nobody known at night");
+        let grid = shown.grid();
+        assert!(grid.fixed.iter().all(|row| row[3] == U), "while busy: as usual, never written otherwise");
         for language in ["en", "fr"] {
             let tr = crate::i18n::Translator::new(language);
             let categories: Vec<String> = Vec::new();
-            let view = view(None, &Card { area: None, screens: Some(true), categories: &categories, today: Some(&today) }, &tr);
+            let card = Card { area: None, screens: Some(true), categories: &categories, today: Some(&shown), busy_is_dnd: false, held: "", older: false };
+            let view = view(None, &card, &tr);
             assert!(view["profiles"].as_array().unwrap().iter().all(|p| p["chosen"] == false));
             let contacts = view["rows"].as_array().unwrap().iter().find(|r| r["id"] == "contacts").unwrap().clone();
             assert_eq!(contacts["cells"][1]["varies"], true);
             assert_eq!(view["today"], true);
             let details: Vec<&str> = view["details"].as_array().unwrap().iter().filter_map(serde_json::Value::as_str).collect();
-            assert!(details.len() >= 2, "{language}: {details:?}");
+            assert!(!details.is_empty(), "{language}: {details:?}");
             for detail in details {
                 assert!(!detail.contains("phone-calls-") && !detail.contains("attention-column-") && !detail.contains('{'), "{language}: {detail}");
             }
-            assert!(!view["said"].as_str().unwrap().starts_with("phone-calls-") && !view["here"].as_str().unwrap().starts_with("phone-calls-"));
+            let louder = louder_words(&shown.louder(Some((&Row::Safe, When::Night))), &tr);
+            assert!(!louder.is_empty() && !louder.contains("phone-calls-") && !louder.contains('{'), "{language}: {louder}");
         }
-        let path = scratch("today");
+        // No work hours: admin time lends work's cells (M5), as the phone reads them.
+        use crate::attention::{Column, Level, Person, Row as MatrixRow};
+        let mut lending = crate::attention::Attention::usual();
+        let restricted = MatrixRow::People(crate::reach::Channel::Calls, Person::Restricted);
+        lending.set(restricted, Column::Work, Level::Now).unwrap();
+        lending.set(restricted, Column::Admin, Level::Later).unwrap();
+        let without_work = today(&lending, &screening, false);
+        assert!(without_work.fixed[2][1].ringing.contains(&"admin"), "admin time takes work's cell while work has no hours: {:?}", without_work.fixed[2][1]);
+    }
+
+    /// The first change of one cell writes that cell and reproduces the rest
+    /// (H2, the reviewer's test): the busy column stays as usual, so that
+    /// whoever rang during an event before still does; the switches as the
+    /// screening's, each its one setting (M3); a cell that varied starts
+    /// ringing, and `louder` says which.
+    #[test]
+    fn a_first_change_writes_that_cell_and_keeps_the_rest() {
+        let screening = crate::screening::Screening { unverified: crate::screening::Spam::Unknown, ..crate::screening::Screening::default() };
+        let shown = today(&crate::attention::Attention::usual(), &screening, true);
+        let path = scratch("first");
         std::fs::write(&path, "language = \"en\"\n").unwrap();
-        start_from_today(&path, PHONE, &today).unwrap();
-        set_cell(&path, PHONE, &Row::Safe, When::Night, true, Profile::Professional).unwrap();
-        let grid = said_in(&path).unwrap().grid();
-        assert!(grid.rings(&Row::Safe, When::Night) && grid.rings(&Row::Contacts, When::Day) && !grid.rings(&Row::Unknown, When::Night), "from today, never from the profile offered: {grid:?}");
-        // While busy, "as usual" written as no more than the day lets ring.
-        assert!(grid.rings(&Row::Safe, When::Busy) && !grid.rings(&Row::Contacts, When::Busy) && !grid.rings(&Row::Unknown, When::Busy), "{grid:?}");
+        let before = set_cell(&path, PHONE, &Row::Safe, When::Night, R, &shown.grid()).unwrap();
+        assert_eq!(before, None, "the line said nothing");
+        let grid = said_in(&path).unwrap().grid;
+        assert!(grid.rings(&Row::Safe, When::Night), "the cell changed");
+        assert!(grid.fixed.iter().all(|row| row[3] == U), "while busy as usual: contacts and restricted people rang during an event, and still do");
+        assert!(grid.switches.commercial && grid.switches.impossible && !grid.switches.unverified, "each switch as its one setting");
+        assert_eq!(grid.profile, Profile::Own);
+        assert!(!shown.louder(Some((&Row::Safe, When::Night))).is_empty(), "the varying cells now ring, to be said");
+        // A raw value put back (Undo): the line says nothing again.
+        put_raw(&path, PHONE, None).unwrap();
+        assert_eq!(said_in(&path), None);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
-    /// The owner's three examples, and the other profiles.
+    /// The owner's three examples, and the other profiles: as usual while busy.
     #[test]
     fn each_profile_fills_the_table() {
-        use When::*;
         let pro = Profile::Professional.grid();
-        assert!(pro.rings(&Row::Unknown, Work), "numbers nobody knows ring in work hours");
-        assert!(pro.switches.commercial, "commercial callers never");
-        for when in [Day, Night, Busy] {
-            assert!(Row::FIXED.iter().all(|row| !pro.rings(row, when)), "everything but Always through to voicemail outside: {when:?}");
-        }
-        assert!(!pro.switches.twice, "outside, not even twice");
+        assert!(pro.rings(&Row::Unknown, When::Work) && !pro.rings(&Row::Unknown, When::Day) && !pro.switches.twice && pro.switches.commercial);
         let personal = Profile::Personal.grid();
-        assert!(personal.rings(&Row::Contacts, Work) && personal.rings(&Row::Contacts, Day), "contacts ring");
-        assert!(When::ALL.iter().all(|w| !personal.rings(&Row::Unknown, *w)) && personal.switches.twice, "numbers nobody knows to voicemail unless they call twice");
+        assert!(personal.rings(&Row::Contacts, When::Day) && !personal.rings(&Row::Unknown, When::Work) && personal.switches.twice);
         let both = Profile::Both.grid();
-        for (i, row) in Row::FIXED.iter().enumerate() {
-            assert_eq!(both.fixed[i][0], pro.fixed[i][0], "work's rows in work hours: {row:?}");
-            assert_eq!(both.fixed[i][1..3], personal.fixed[i][1..3], "the personal ones outside: {row:?}");
+        assert_eq!(both.fixed[3], [R, V, V, U], "work's row in work hours, the personal one outside");
+        for p in Profile::OFFERED {
+            assert!(p.grid().fixed.iter().all(|row| row[3] == U), "{p:?}: as usual while busy");
         }
-        let android = Profile::AsAndroid.grid();
-        assert!(android.fixed.iter().flatten().all(|r| *r) && android.screens_nothing() && !android.switches.commercial);
-        // Offered by what the phone is for.
+        assert!(Profile::AsAndroid.grid().screens_nothing());
         assert_eq!(Profile::offered(Some(Area::WORK)), Profile::Professional);
-        assert_eq!(Profile::offered(Some(Area::PERSONAL)), Profile::Personal);
-        assert_eq!(Profile::offered(Some(Area::LEISURE)), Profile::Personal);
-        assert_eq!((Profile::offered(Some(Area::ALL)), Profile::offered(None)), (Profile::Both, Profile::Both));
     }
 
-    /// Written in place: a profile; a cell by hand makes it "none" with its
-    /// base, the other cells still the base's; a switch alike; a group's row
-    /// added once, changed, taken off; a profile again leaves the groups; the
-    /// whole line taken out. The device's name and a newer Sioul's field stay.
+    /// Written whole at each change: a profile keeps the groups; a cell by
+    /// hand makes the table your own; a switch, a group added once and taken
+    /// off; "as usual" refused outside the busy column; Clear takes the line
+    /// out; nothing else of the file touched.
     #[test]
-    fn the_line_is_written_in_place() {
-        let path = scratch("write");
-        std::fs::write(&path, format!("language = \"en\"\n\n[device.\"{PHONE}\"]\nname = \"Pocket\"\n\n[device.\"{PHONE}\".calls]\nfollows = 3\n")).unwrap();
-        assert_eq!(said_in(&path), None, "a newer field alone says nothing");
-        set_profile(&path, PHONE, Profile::Professional).unwrap();
-        assert_eq!(said_in(&path).unwrap().grid(), Profile::Professional.grid());
-        set_cell(&path, PHONE, &Row::Safe, When::Night, true, Profile::Personal).unwrap();
-        let said = said_in(&path).unwrap();
-        assert_eq!((said.profile, said.base), (Some(Profile::Own), Some(Profile::Professional)));
-        let grid = said.grid();
-        assert!(grid.rings(&Row::Safe, When::Night) && grid.rings(&Row::Unknown, When::Work) && !grid.switches.twice, "the rest as the base: {grid:?}");
-        set_switch(&path, PHONE, "twice", true, Profile::Personal).unwrap();
-        assert_eq!(said_in(&path).unwrap().base, Some(Profile::Professional), "the base kept");
-        assert!(said_in(&path).unwrap().grid().switches.twice);
-        assert!(set_switch(&path, PHONE, "loud", true, Profile::Personal).is_err());
-        add_group(&path, PHONE, "  School ", Profile::Personal).unwrap();
-        add_group(&path, PHONE, "school", Profile::Personal).unwrap();
-        set_cell(&path, PHONE, &Row::Group("SCHOOL".into()), When::Night, true, Profile::Personal).unwrap();
-        let grid = said_in(&path).unwrap().grid();
-        assert_eq!(grid.groups, vec![("School".to_string(), [true, true, true, true])], "one row, under the name first written");
-        set_profile(&path, PHONE, Profile::Personal).unwrap();
-        let said = said_in(&path).unwrap();
-        assert_eq!((said.profile, said.base, said.twice), (Some(Profile::Personal), None, None));
-        let grid = said.grid();
-        assert_eq!((grid.profile, grid.fixed), (Profile::Personal, Profile::Personal.grid().fixed));
-        assert_eq!(grid.groups.len(), 1, "a profile leaves the groups");
-        remove_group(&path, PHONE, "school").unwrap();
-        assert!(said_in(&path).unwrap().grid().groups.is_empty());
+    fn the_line_is_written_whole() {
+        let path = scratch("whole");
+        std::fs::write(&path, format!("# mine\nlanguage = \"en\"\n\n[device.\"{PHONE}\"]\nname = \"Pocket\"\n")).unwrap();
+        let start = Profile::Both.grid();
+        set_profile(&path, PHONE, Profile::Personal, &start).unwrap();
+        add_group(&path, PHONE, "  School ", &start).unwrap();
+        add_group(&path, PHONE, "school", &start).unwrap();
+        assert_eq!(said_in(&path).unwrap().grid.groups.len(), 1);
+        set_profile(&path, PHONE, Profile::Professional, &start).unwrap();
+        let grid = said_in(&path).unwrap().grid;
+        assert_eq!((grid.profile, grid.groups.len()), (Profile::Professional, 1), "a profile keeps the groups' rows");
+        assert!(set_cell(&path, PHONE, &Row::Safe, When::Work, U, &start).is_err(), "as usual only while busy");
+        set_cell(&path, PHONE, &Row::Group("School".into()), When::Busy, V, &start).unwrap();
+        set_switch(&path, PHONE, "unverified", false, &start).unwrap();
+        let grid = said_in(&path).unwrap().grid;
+        assert_eq!((grid.profile, grid.switches.unverified, grid.groups[0].1[3]), (Profile::Own, false, V));
+        remove_group(&path, PHONE, "SCHOOL").unwrap();
+        assert!(said_in(&path).unwrap().grid.groups.is_empty());
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("name = \"Pocket\"") && text.contains("follows = 3"), "{text}");
+        assert!(text.contains("# mine") && text.contains("name = \"Pocket\""), "{text}");
         clear(&path, PHONE).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("name = \"Pocket\"") && !text.contains("calls"), "{text}");
         assert_eq!(said_in(&path), None);
-        clear(&path, PHONE).unwrap();
-        // A cell changed on a line that said nothing: from the profile offered, never from "everything rings".
-        set_cell(&path, PHONE, &Row::Unknown, When::Day, true, Profile::Professional).unwrap();
-        let said = said_in(&path).unwrap();
-        assert_eq!((said.profile, said.base), (Some(Profile::Own), Some(Profile::Professional)));
-        assert!(!said.grid().rings(&Row::Contacts, When::Day) && said.grid().rings(&Row::Unknown, When::Day));
-        clear(&path, PHONE).unwrap();
-        add_group(&path, PHONE, "Clients", Profile::Professional).unwrap();
-        assert_eq!(said_in(&path).unwrap().profile, Some(Profile::Professional), "a group added on a line that said nothing");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("name = \"Pocket\""));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

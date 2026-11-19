@@ -7105,8 +7105,20 @@ impl qobject::Sioul {
     }
 
     fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
-        let field = field.to_string();
-        let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
+        let (id, field) = (id.to_string(), field.to_string());
+        // A phone's calls: their value before, for Undo.
+        let before = field.starts_with("calls.").then(|| sioul_core::calls_line::raw(&config_path(), &id)).flatten();
+        let (problem, undo) = crate::share::say_of_device_said(&id, &field, &value.to_string());
+        // A change that did more than the cell pressed, or replaced a table of your own: said with Undo, which
+        // puts the phone's value back as it was (`calls_line::put_raw`) and its table again.
+        if let Some(line) = undo {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            crate::mail::offer_back(&qt, &shared, line, move |_, _| {
+                let problem = sioul_core::calls_line::put_raw(&config_path(), &id, before.as_deref()).err().unwrap_or_default();
+                std::thread::spawn(|| crate::calls::refresh(true));
+                problem
+            });
+        }
         // What a device is for, or a cell of its line: what now brings on this device is said and
         // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
         // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device`).
