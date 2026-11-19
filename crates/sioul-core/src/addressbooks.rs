@@ -347,6 +347,49 @@ pub fn mark_groups_told(collection: &Collection, writers: &[String]) -> Result<(
     })
 }
 
+/// What a merge of two cards would take across the switch (review L2): the
+/// groups only `other` carries, when `lead` sits in a book whose groups
+/// decide who may reach the person and `other` in one whose groups do not;
+/// and, said as the lists would judge it (`Senders::standing_by_groups`, the
+/// six acts' step), what taking them would do to the card kept. Nothing to
+/// ask when none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct MergeGroups {
+    pub groups: Vec<String>,
+    /// "Also take its groups: Clients, Amis" (the box, unticked), or "".
+    pub offer: String,
+    /// What taking them does, or "".
+    pub reach: String,
+}
+
+pub fn merge_groups(lead: &crate::contacts::Contact, other: &crate::contacts::Contact, config: &Config, senders: &crate::porch::Senders, tr: &Translator) -> MergeGroups {
+    let held = groups_held_back(config);
+    if held.contains(&lead.place) || !held.contains(&other.place) {
+        return MergeGroups::default();
+    }
+    let groups: Vec<String> = other.categories.iter().filter(|g| !g.trim().is_empty() && !lead.categories.iter().any(|h| crate::porch::category_key(h) == crate::porch::category_key(g))).cloned().collect();
+    if groups.is_empty() {
+        return MergeGroups::default();
+    }
+    let mut args = crate::i18n::args();
+    args.set("groups", groups.join(", "));
+    let offer = tr.text("dup-merge-groups", Some(&args));
+    // The card kept, with the other's addresses and numbers, as the merge makes it.
+    let mut merged = lead.clone();
+    merged.emails.extend(other.emails.iter().cloned());
+    merged.phones.extend(other.phones.iter().cloned());
+    let reach = match senders.standing_by_groups(&merged, &groups) {
+        Some((standing, group)) => {
+            let mut args = crate::i18n::args();
+            args.set("group", group);
+            args.set("list", list_name(standing, tr));
+            tr.text("dup-merge-groups-reach", Some(&args))
+        }
+        None => String::new(),
+    };
+    MergeGroups { groups, offer, reach }
+}
+
 /// The books whose groups the lists of who may reach the person do not
 /// read now, by place ("account/id"): what `porch::Book` holds back.
 pub fn groups_held_back(config: &Config) -> std::collections::BTreeSet<String> {
@@ -608,6 +651,34 @@ mod tests {
         assert!(reach_of_groups(&[&lou], &["Clients".to_string()], &config, &senders, &tr).is_empty(), "its book's groups count: the group decides, as asked");
         assert!(reach_of_import(std::slice::from_ref(&planted), &team, &config, &senders, &tr).contains("“team”"));
         assert!(reach_of_import(std::slice::from_ref(&lou), &mine, &config, &senders, &tr).is_empty());
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+    }
+
+    /// Review L2: Duplicates' merge of a card from a book whose groups are
+    /// held back into one whose groups decide names the groups it would take,
+    /// leaves them out unless asked, and says what taking them does.
+    #[test]
+    fn a_merge_across_the_switch_asks_before_it_takes_groups() {
+        use crate::porch::{SenderList, Senders};
+        crate::config::stand_ins_only();
+        let tr = Translator::new("en");
+        let account = "dup-cloud";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        for (id, writers) in [("mine", vec![]), ("team", vec!["sam".to_string()])] {
+            vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            State { url: format!("https://cloud.example.org/{id}/"), owned: Some(true), writers, writers_known: true, ..State::default() }.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+        }
+        let card = |place: &str, groups: &[&str], email: &str| crate::contacts::Contact { uid: format!("{place}-lou"), name: "Lou Exemple".into(), place: format!("{account}/{place}"), categories: groups.iter().map(|g| g.to_string()).collect(), emails: vec![crate::contacts::Labeled { label: String::new(), value: email.into() }], ..crate::contacts::Contact::default() };
+        let (kept, planted) = (card("mine", &["Amis"], "lou@example.org"), card("team", &["Amis", "Clients"], "lou.travail@example.org"));
+        let senders = Senders { safe: SenderList::parse("category:Clients"), ..Senders::default() };
+        let config = Config::default();
+        let asked = merge_groups(&kept, &planted, &config, &senders, &tr);
+        assert_eq!(asked.groups, ["Clients"]);
+        assert!(asked.offer.contains("Clients") && asked.reach.contains("Safe"), "{asked:?}");
+        assert_eq!(merge_groups(&planted, &kept, &config, &senders, &tr), MergeGroups::default(), "into the held-back book: nothing to ask");
+        let text = |c: &crate::contacts::Contact| format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{}\r\nFN:Lou Exemple\r\nEMAIL:{}\r\nCATEGORIES:{}\r\nEND:VCARD\r\n", c.uid, c.emails[0].value, c.categories.join(","));
+        assert!(!crate::duplicates::merge_with(&text(&kept), &text(&planted), None, false).contains("Clients"), "left out unless asked");
+        assert!(crate::duplicates::merge_with(&text(&kept), &text(&planted), None, true).contains("Clients"), "taken when asked");
         let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 

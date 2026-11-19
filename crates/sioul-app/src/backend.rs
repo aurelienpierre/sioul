@@ -675,9 +675,14 @@ pub mod qobject {
         #[qinvokable]
         fn clean_contacts(self: Pin<&mut Sioul>, keys: &QString) -> QString;
 
-        /// Merges two cards, `lead` keeping its name, the other deleted; returns {"key"} or {"error"}.
+        /// Merges two cards, `lead` keeping its name, the other deleted, its groups taken when
+        /// `groups` or when they cross no switch (`duplicates_merge_ask`); returns {"key"} or {"error"}.
         #[qinvokable]
-        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
+        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString, groups: bool) -> QString;
+
+        /// What merging two cards would take across a book's switch, asked first: JSON {groups, offer, reach}.
+        #[qinvokable]
+        fn duplicates_merge_ask(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
 
         /// Two cards are not one person: never offered again; returns what went wrong, else "".
         #[qinvokable]
@@ -5877,8 +5882,12 @@ impl qobject::Sioul {
         QString::from(&crate::duplicates::clean(&self.qt_thread(), &self.shared(), &keys.to_string()))
     }
 
-    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
-        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string()))
+    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString, groups: bool) -> QString {
+        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string(), groups))
+    }
+
+    fn duplicates_merge_ask(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
+        QString::from(&crate::duplicates::merge_ask(&self.shared(), &lead.to_string(), &other.to_string()))
     }
 
     fn not_same_contacts(self: Pin<&mut Self>, first: &QString, second: &QString) -> QString {
