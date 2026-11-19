@@ -124,6 +124,42 @@ Item {
             mouseClick(dayCell(month, day))
         }
 
+        // A date not given yet, as a task's "can start" or "date asked" (reported on a real
+        // session, 19 November 2026): at rest the field shows its example, not the mask's
+        // bare dashes; a click types from the first place; emptied, it is empty again; and
+        // the month opens on today's, never on January 1900.
+        function test_an_empty_date_shows_its_example_and_opens_on_today() {
+            const date = createTemporaryObject(dateComponent, root, { date: "" })
+            const text = find(date, "dateText")
+            compare(text.text, "", "no dashes at rest")
+            compare(text.length, 0, "so its example shows")
+            // A click far to the right of the field's first place.
+            mouseClick(text, text.width - 10, text.height / 2)
+            tryCompare(text, "activeFocus", true)
+            compare(text.cursorPosition, 0, "typed from the first place")
+            for (const digit of "20261205")
+                keyClick(digit)
+            compare(date.date, "2026-12-05")
+            // Emptied: no date, not two dashes; and typed again from the first place.
+            text.selectAll()
+            keyClick(Qt.Key_Delete)
+            compare(date.date, "", "dashes alone are no date")
+            for (const digit of "2027")
+                keyClick(digit)
+            verify(date.date.startsWith("2027"), date.date)
+            // A date not whole yet: the month opens on today's, as for an empty one.
+            date.openMonth()
+            const today = new Date()
+            verify(Math.abs(date.shownYear - today.getFullYear()) <= 1, "the year shown: " + date.shownYear)
+            date.monthPopup.close()
+            // At rest again and empty, the example is back.
+            text.selectAll()
+            keyClick(Qt.Key_Delete)
+            root.forceActiveFocus()
+            tryCompare(text, "activeFocus", false)
+            compare(text.text, "")
+        }
+
         function test_the_arrows_are_named() {
             compare(named.arrowName(-1), "Previous month: September 2026")
             compare(named.arrowName(1), "Next month: November 2026")

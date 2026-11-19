@@ -62,7 +62,10 @@ Item {
     }
 
     function openMonth() {
-        const shown = field.date ? new Date(field.date + "T12:00:00") : new Date(Date.now() + (field.sioul && typeof field.sioul.zoneOffset === "function" ? field.sioul.zoneOffset(Date.now() / 1000) + new Date(Date.now()).getTimezoneOffset() * 60000 : 0))
+        // A date not whole yet (being typed, emptied, or a day that is none) opens on today's
+        // month: read as it stood, it gave no year at all, and the month opened on January 1900.
+        const typed = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(field.date) ? new Date(field.date + "T12:00:00") : null
+        const shown = typed !== null && !isNaN(typed.getTime()) && typed.getFullYear() >= 1900 ? typed : new Date(Date.now() + (field.sioul && typeof field.sioul.zoneOffset === "function" ? field.sioul.zoneOffset(Date.now() / 1000) + new Date(Date.now()).getTimezoneOffset() * 60000 : 0))
         field.shownYear = shown.getFullYear()
         field.shownMonth = shown.getMonth()
         field.earlier = field.date
@@ -107,18 +110,33 @@ Item {
             Layout.preferredWidth: field.sheet ? 110 : 130
             text: field.date
             placeholderText: "2026-10-05"
-            inputMask: "9999-99-99"
+            // The mask while a date is typed or held. An empty field at rest has none, and shows
+            // its example instead of the mask's bare dashes.
+            inputMask: text.activeFocus || /[0-9]/.test(field.date) ? "9999-99-99" : ""
             onTextEdited: {
-                field.date = text.text
+                // Dashes alone are no date: the field was emptied, and is typed again from its first place.
+                const emptied = !/[0-9]/.test(text.text)
+                field.date = emptied ? "" : text.text
+                if (emptied)
+                    text.cursorPosition = 0
                 field.edited()
             }
             // By Tab the whole date is selected, so that the first digit starts over: the
             // mask keeps every place and a cursor at its end would swallow what is typed.
             onActiveFocusChanged: {
+                // An empty field, however it was entered, is typed from its first place (a click
+                // puts the cursor where it fell, where the digits typed were lost: see onReleased).
+                if (text.activeFocus && !/[0-9]/.test(field.date))
+                    text.cursorPosition = 0
                 if (text.activeFocus && (text.focusReason === Qt.TabFocusReason || text.focusReason === Qt.BacktabFocusReason))
                     text.selectAll()
                 else if (!text.activeFocus && !field.sheet && field.monthOpen)
                     field.monthPopup.close()
+            }
+            // A click on an empty field: the cursor back to its first place, once the click placed it.
+            onReleased: {
+                if (!/[0-9]/.test(field.date))
+                    text.cursorPosition = 0
             }
             // Esc belongs to the month while it is open, not to the dialog around the field.
             Keys.onShortcutOverride: event => event.accepted = field.monthOpen && event.key === Qt.Key_Escape
