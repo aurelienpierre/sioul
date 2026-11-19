@@ -2,12 +2,15 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Settings ▸ What reaches you (« Ce qui vous joint », ReachesTab.qml), as
-//! the window reads it: the moment now in sentences, where you started from
-//! (the presets), a card per time and per layer saying in words what comes
-//! at once, what is shown without a notification, what waits and until
-//! when, the matrix's grid, the exceptions; and a person's sheet
-//! (PersonSheet.qml): their list and why, Always through, and what each
-//! channel does with them at each time. The matrix is
+//! the window reads it (`view`): the moment now in sentences, the three
+//! states, where you started from (the presets); Your rules, the matrix read
+//! as a few choices (`sioul_core::behaviours`): the people's table, Sioul's
+//! own notices in four groups, the moments and who holds what on a phone,
+//! what is set elsewhere, the calls' line; What comes when, the matrix's grid
+//! a word per cell. A choice is written as the cells it names (`choose`), a
+//! cell of the grid as its row (`set_row`), a preset whole (`preset`). And a
+//! person's sheet (PersonSheet.qml): their list and why, Always through, and
+//! what each channel does with them at each time. The matrix is
 //! `sioul_core::attention` (docs/attention.md); this file says it in words,
 //! and writes what is changed here.
 
@@ -344,7 +347,7 @@ pub(crate) fn view(realtime: bool) -> String {
     let usual = Attention::usual();
     let rows = table_rows(reach.phone);
     // What the page shows, alone, is compared (review R3): a row this device's
-    // table does not show, and the calls' rows, are not counted.
+    // table does not show is not counted; the calls' rows are, What comes when showing them.
     let presets: Vec<Value> = Preset::ALL
         .iter()
         .map(|p| {
@@ -368,10 +371,13 @@ pub(crate) fn view(realtime: bool) -> String {
         "presets_note": text("reach-presets-calls"),
         "changed": changed,
         "people": people(&attention, reach),
-        "own": own_groups(&attention, &config),
+        "own": own_groups(&attention, &config, &rows),
         "moments": moments(),
         "elsewhere": elsewhere(&attention, &config, reach),
         "calls": text("reach-calls"),
+        // Under the calls' rows of What comes when: a phone's own table replaces them, but in a
+        // pause and during do-not-disturb; its door opens that table (`settings:devices.calls`).
+        "calls_grid": { "text": text("reach-calls-grid"), "door_label": text("reach-calls-grid-open"), "door": "settings:devices.calls" },
         "rows": rows.iter().map(|r| r.id()).collect::<Vec<_>>(),
         "grid": grid,
         "phone": reach.phone,
@@ -381,12 +387,14 @@ pub(crate) fn view(realtime: bool) -> String {
     .to_string()
 }
 
-/// The rows of What comes when, by id: mail's and messages', but the blocked
-/// (never, said once); Sioul's own that act on this device. Calls are set
-/// for each phone in Settings ▸ Devices: their rows stay in the store and
-/// the engine, never on this page.
+/// The rows of What comes when, by id: mail's, calls' and messages', but the
+/// blocked (never, said once); Sioul's own that act on this device. The
+/// calls' rows are the table every phone follows until it has a table of its
+/// own (Settings ▸ Devices), and still decide there in a pause and during
+/// do-not-disturb: the full ledger shows them, changeable as every row
+/// (review of `phones`, "For `reach`"); Your rules has no calls' column.
 fn table_rows(phone: bool) -> Vec<Row> {
-    shown_rows(phone).into_iter().filter(|r| !matches!(r, Row::People(Channel::Calls, _))).collect()
+    shown_rows(phone)
 }
 
 /// A behaviour, or "Your own", in words.
@@ -435,11 +443,15 @@ fn people(attention: &Attention, reach: Reach) -> Value {
 /// Sioul's own notices in four groups (design 1.2): each its choice as its
 /// rows read it (`behaviours::group_reading`), "own" when none; care's
 /// switches one by one; the gathered times under Sites and apps.
-fn own_groups(attention: &Attention, config: &Config) -> Value {
+fn own_groups(attention: &Attention, config: &Config, rows: &[Row]) -> Value {
+    let usual = Attention::usual();
     let groups: Vec<Value> = Group::ALL
         .iter()
         .map(|group| {
             let read = behaviours::group_reading(attention, *group);
+            // "Your own" points at What comes when only where this device's table shows the row
+            // set cell by cell (review R5): a row of a phone's alone, on a computer, says so.
+            let hidden = group.kinds().iter().any(|k| !rows.contains(&Row::Own(*k)) && Column::ALL.iter().any(|c| attention.cell(Row::Own(*k), *c) != usual.cell(Row::Own(*k), *c)));
             let choice_label = |choice: &str| text(&format!("reach-choice-{}-{choice}", group.id()));
             let switches: Vec<Value> = if *group == Group::Care {
                 group.kinds().iter().map(|k| json!({ "kind": k.id(), "label": attention::row_label(tr(), Row::Own(*k)), "on": behaviours::care(attention, *k) })).collect()
@@ -460,6 +472,7 @@ fn own_groups(attention: &Attention, config: &Config) -> Value {
                 "choices": choices,
                 "switches": switches,
                 "gathered": if *group == Group::Sites { say("reach-gathered", &[("times", gathered_times(config))]) } else { String::new() },
+                "own_help": text(if hidden { "reach-own-help-elsewhere" } else { "reach-own-help" }),
             })
         })
         .collect();
@@ -528,7 +541,7 @@ fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
         (events, "reach-elsewhere-events", "agenda", "agenda"),
         (health, "reach-elsewhere-health", "health", "health"),
         (persons, "reach-elsewhere-persons", "contacts", "contacts"),
-        (sources, "reach-elsewhere-sources", "settings:devices", "devices"),
+        (sources, "reach-elsewhere-sources", "settings:devices.apps", "devices"),
     ] {
         if n > 0 {
             parts.push(counted(id, n));
@@ -1228,9 +1241,10 @@ mod tests {
                     }
                     said_well(page["own_help"].as_str().unwrap(), language);
                     said_well(page["blocked"]["help"].as_str().unwrap(), language);
-                    for group in own_groups(&attention, &config).as_array().unwrap() {
+                    for group in own_groups(&attention, &config, &table_rows(false)).as_array().unwrap() {
                         worded(group["label"].as_str().unwrap(), language);
                         said_well(group["holds"].as_str().unwrap(), language);
+                        said_well(group["own_help"].as_str().unwrap(), language);
                         for choice in group["choices"].as_array().unwrap() {
                             worded(choice["label"].as_str().unwrap(), language);
                         }
@@ -1306,10 +1320,17 @@ mod tests {
         assert_eq!(read("contacts"), pair("work-admin", "In work and admin hours", "awake", "When awake"));
         assert_eq!(read("restricted"), pair("work", "In work hours", "work", "In work hours"));
         assert_eq!(read("others"), pair("work-admin", "In work and admin hours", "work-admin", "In work and admin hours"));
-        let groups = own_groups(&usual, &Config::default());
+        let groups = own_groups(&usual, &Config::default(), &table_rows(false));
         let value = |id: &str| groups.as_array().unwrap().iter().find(|g| g["id"] == id).unwrap()["value"].as_str().unwrap().to_string();
         assert_eq!([value("asked"), value("reminders"), value("care"), value("sites")], ["sleep", "awake", "on", "gathered"]);
-        assert!(table_rows(true).iter().all(|r| !matches!(r, Row::People(Channel::Calls, _))));
+        // "Your own" on a computer, for a row only a phone's table shows (review R5): said so.
+        let reachable = Preset::Reachable.matrix();
+        let sites = |rows: &[Row]| own_groups(&reachable, &Config::default(), rows).as_array().unwrap().iter().find(|g| g["id"] == "sites").unwrap().clone();
+        assert_eq!(sites(&table_rows(false))["value"], "own");
+        assert_eq!(sites(&table_rows(false))["own_help"], text("reach-own-help-elsewhere"));
+        assert_eq!(sites(&table_rows(true))["own_help"], text("reach-own-help"));
+        // The calls' rows in the full ledger, as the table every phone follows until it has its own.
+        assert!(table_rows(false).contains(&Row::People(Channel::Calls, Person::Neutral)) && table_rows(true).contains(&Row::People(Channel::Calls, Person::Neutral)));
         assert!(table_rows(false).contains(&Row::Own(Kind::Sites)) && table_rows(true).contains(&Row::Own(Kind::AppAutomatons)));
         // A row changed in the grid: "Your own", in words.
         let mut own = Attention::usual();

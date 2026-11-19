@@ -909,16 +909,16 @@ impl Attention {
     }
 
     /// How many cells differ from another matrix's (a preset's); the
-    /// sources' own rows aside, which no preset sets, and the calls' rows,
-    /// each phone's (`preset_sets`).
+    /// sources' own rows aside, which no preset sets, and the call
+    /// screening's (`screened`).
     pub fn changes_from(&self, other: &Attention) -> usize {
         self.changes_in(other, &Row::ALL)
     }
 
-    /// `changes_from` over `rows` alone (the rows a page shows), those a
-    /// preset never sets left out.
+    /// `changes_from` over `rows` alone (the rows a page shows: review R3,
+    /// the calls' rows among them since What comes when shows them again).
     pub fn changes_in(&self, other: &Attention, rows: &[Row]) -> usize {
-        rows.iter().filter(|r| preset_sets(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        rows.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -3808,8 +3808,8 @@ mod tests {
         assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Neutral), Column::Dnd), Level::Later);
     }
 
-    /// A preset changes only what the page shows (review R3): the calls'
-    /// rows, each phone's, stay as they are set, and are not counted.
+    /// A preset changes only what Your rules shows (review R3): the calls'
+    /// rows stay as they are set, and, shown in What comes when, count.
     #[test]
     fn a_preset_leaves_the_calls_as_they_are() {
         let dir = std::env::temp_dir().join(format!("sioul-attention-preset-calls-{}", std::process::id()));
@@ -3823,7 +3823,8 @@ mod tests {
             let a = Attention::of(&Config::load(&path).unwrap());
             let calls = Row::People(Channel::Calls, Person::Neutral);
             assert_eq!((a.cell(calls, Column::Admin), a.cell(calls, Column::Meals), a.cell(calls, Column::Leisure)), (Level::Later, Level::Later, Level::Now), "{preset:?}");
-            assert_eq!(a.changes_from(&preset.matrix()), 0, "{preset:?}: the calls are not counted");
+            // Shown in What comes when, the calls' two cells count; nothing else differs.
+            assert_eq!(a.changes_from(&preset.matrix()), 2, "{preset:?}");
         }
         for preset in Preset::ALL {
             for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {

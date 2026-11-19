@@ -1226,7 +1226,9 @@ pub(crate) fn focus(s: &Session, command: FocusCommand) -> Result<(), String> {
             if let Some(running) = timelog::running() {
                 return Err(s.say("focus-already", &[("title", desk.find(s, &running.task).map(|t| t.title.clone()).unwrap_or(running.task))]));
             }
-            timelog::keep_running(Some(&timelog::Running { task: task.uid.clone(), start: now, planned: minutes.max(1), busy: task.busy, ..timelog::Running::default() }))?;
+            // Busy while it runs when it, or its nearest bigger task, is marked busy (`availability::busy_for_timer`).
+            let busy = sioul_core::availability::busy_for_timer(&desk.loaded.tasks, &task.uid);
+            timelog::keep_running(Some(&timelog::Running { task: task.uid.clone(), start: now, planned: minutes.max(1), busy, ..timelog::Running::default() }))?;
             println!("{}", s.say("focus-started", &[("title", one_line(&task.title)), ("minutes", minutes.to_string())]));
             Ok(())
         }

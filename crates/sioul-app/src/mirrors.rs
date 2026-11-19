@@ -20,12 +20,26 @@
 //!
 //! What this device did on the servers is its own memory
 //! (`state/availability.toml`), never shared: the settings say what is
-//! shared, each device sees to it. So is the time the plan last gave each
-//! busy task with a date asked and no time of its own
-//! (`state/busy-planned.toml`, `keep_planned`): the window writes it after
-//! each plan, only when a block's times changed, and every writer of a
-//! mirror reads it, the phone's background step too, so that a mirror never
-//! drops a busy task's time for want of a plan.
+//! shared, each device sees to it.
+//!
+//! **The busy tasks' times** (review of `reach`, B3 and B4, 19 November
+//! 2026) are one record for all devices, the freshest winning
+//! (`availability::BusyTimes`), carried in each device's sealed entry of the
+//! sharing (`devices::Entry::busy_tasks`), the way a mirror's note travels:
+//! never on any calendar's server. A device whose task lists are as fresh as
+//! any other's (`availability::tasks_fresh`, against the stamps of the
+//! others' entries, `devices::task_writers`) works them out
+//! (`availability::busy_times`): a task's block or start time; the plan's
+//! time before its date asked, a span once shared kept while its task is the
+//! same, still ahead and no busy event took its place, else laid again from
+//! this device's plan (`plan_seen`, the window's, never written to a file);
+//! without a plan here (a phone's background step, the command line), the
+//! shared spans of a task that is the same; where none is known anywhere,
+//! nothing (the task's panel says so: `busy_line`). It keeps them in its own
+//! entry. A device whose task lists are behind carries the record over as
+//! found: it neither adds, changes nor removes a task's block. Each mirror's
+//! note keeps the calendars' stamp (`Entry::mirrors`) and the task lists'
+//! (`Entry::mirror_tasks`).
 
 use crate::backend::{load_config, say, tr};
 use serde::{Deserialize, Serialize};
@@ -64,34 +78,20 @@ fn memo_path() -> PathBuf {
     sioul_core::config::state_dir().join("availability.toml")
 }
 
-/// The plan's time for busy tasks, as the window last worked it out (`availability::Planned`).
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct PlannedFile {
-    /// By task UID: (start, end), Unix seconds.
-    #[serde(default)]
-    tasks: BTreeMap<String, Vec<(i64, i64)>>,
+/// This device's plan's time for busy tasks (`availability::plan_spans`), as
+/// the window last worked it out; none in a process without a window (a
+/// phone's background service, the command line), which then uses the
+/// shared record (`keep`). Never written to a file.
+static PLAN: std::sync::Mutex<Option<av::Planned>> = std::sync::Mutex::new(None);
+
+/// The plan's time for busy tasks, as the window just worked it out.
+pub(crate) fn plan_seen(planned: av::Planned) {
+    *PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(planned);
 }
 
-fn planned_path() -> PathBuf {
-    sioul_core::config::state_dir().join("busy-planned.toml")
-}
-
-/// The plan's time for busy tasks, as last kept here; none when never kept.
-fn planned() -> av::Planned {
-    std::fs::read_to_string(planned_path()).ok().and_then(|text| toml::from_str::<PlannedFile>(&text).ok()).map(|f| f.tasks).unwrap_or_default()
-}
-
-/// The plan's time for busy tasks kept, when it changed: whether it did, so
-/// that the mirrors are written again only when a busy block's times changed.
-pub(crate) fn keep_planned(planned: &av::Planned) -> bool {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _held = LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if self::planned() == *planned {
-        return false;
-    }
-    let file = PlannedFile { tasks: planned.clone() };
-    toml::to_string(&file).is_ok_and(|text| sioul_sync::share::write_atomically(&planned_path(), text.as_bytes()).is_ok())
-}
+/// The busy tasks' times as `keep` last worked them out or carried them, for
+/// the task's panel (`busy_line`).
+static LAST: std::sync::Mutex<Option<av::BusyTimes>> = std::sync::Mutex::new(None);
 
 impl Memo {
     fn load() -> Memo {
@@ -108,6 +108,19 @@ impl Memo {
     fn due(&self, key: &str, now: i64) -> bool {
         self.tried.get(key).is_none_or(|at| now - at >= 15 * 60)
     }
+}
+
+/// Whether this device said a notice of `key` already (`Memo::said`): the
+/// availabilities' notices, and the first busy stretch's (`everywhere`).
+pub(crate) fn said_once(key: &str) -> bool {
+    Memo::load().said.contains(key)
+}
+
+/// A notice of `key` said on this device: never said again here.
+pub(crate) fn mark_said_once(key: &str) {
+    with_memo(|memo| {
+        memo.said.insert(key.to_string());
+    });
 }
 
 /// A memo changed and kept, under one lock across threads.
@@ -236,26 +249,67 @@ fn write_files(collection: &Collection, files: &BTreeMap<String, String>) -> boo
     changed
 }
 
-/// What this device wrote a mirror from, in its sealed entry (`devices::Entry::mirrors`).
-fn note_written(id: &str, as_of: i64) {
+/// What this device wrote a mirror from, in its sealed entry
+/// (`devices::Entry::mirrors`, the calendars' view; `mirror_tasks`, the
+/// task lists' its tasks' part came from).
+fn note_written(id: &str, as_of: i64, tasks_as_of: i64) {
     let Some((_, vault)) = crate::share::vault() else { return };
     let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
     let _ = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.mirrors.insert(id.to_string(), as_of);
+        if tasks_as_of > 0 {
+            entry.mirror_tasks.insert(id.to_string(), tasks_as_of);
+        }
     });
 }
 
-/// Your days off within `window`, busy all day for others (decision 3 of
-/// design-calendars), from the one function that says them
-/// (`vacations::DaysOff`); never for do-not-disturb (`busy::stretches`).
-/// Added to the busy tasks' times, so that they go through the same rule of
-/// which device writes as those times do: on `reach` (its review's B3), the
-/// busy times become one sealed record, the freshest device's (`BusyTimes`);
-/// once `reach` is merged, this is laid into that record where it is worked
-/// out (`busy_times_now`), never written by a device that carries the
-/// record over (the calendars' review, F43).
-fn days_off(config: &Config, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
-    av::days_off_spans(&sioul_core::vacations::DaysOff::of(config), window, zone)
+/// The busy tasks' times worked out here kept in this device's own entry,
+/// when they changed (`devices::Entry::busy_tasks`).
+fn keep_times(times: &av::BusyTimes) {
+    let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
+    if sioul_sync::devices::own(&path).busy_tasks == *times {
+        return;
+    }
+    let vault = crate::share::vault().and_then(|(_, vault)| vault);
+    let _ = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
+        entry.busy_tasks = times.clone();
+    });
+}
+
+/// This device's view of its task lists (`availability::view`): when it
+/// last knew each of them whole and current.
+fn tasks_view(now: i64) -> Option<(i64, i64)> {
+    let pulled: Vec<Option<i64>> = sioul_core::tasks::lists().iter().map(|c| pulled_of(c, now)).collect();
+    av::view(&pulled)
+}
+
+/// The busy tasks' times for `availability`'s mirror at `now`: worked out
+/// here when this device's task lists are as fresh as any other's, kept in
+/// its entry then; otherwise the freshest shared record, carried over
+/// (module's words). With the stamp of the task lists it came from.
+fn busy_times_now(config: &Config, availability: Option<&str>, tasks: &[sioul_core::tasks::Task], events: &[sioul_core::agenda::Occurrence], now: i64) -> av::BusyTimes {
+    let own_path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
+    let own = sioul_sync::devices::own(&own_path);
+    let entries = crate::devices::entries();
+    let others: Vec<&sioul_sync::devices::Entry> = entries.as_ref().map(|(id, all)| all.iter().filter(|e| e.id != *id && !e.left).collect()).unwrap_or_default();
+    // This device's own record first: among equals, it stays.
+    let shared = av::BusyTimes::freshest(std::iter::once(&own.busy_tasks).chain(others.iter().map(|e| &e.busy_tasks).filter(|b| b.as_of <= now + 600)));
+    let stamps: Vec<i64> = match (&entries, availability) {
+        (Some((id, all)), Some(availability)) => sioul_sync::devices::task_writers(all, id, availability, now),
+        (Some((id, all)), None) => all.iter().filter(|e| e.id != *id && !e.left && e.busy_tasks.as_of > 0 && e.busy_tasks.as_of <= now + 600).map(|e| e.busy_tasks.as_of).collect(),
+        _ => Vec::new(),
+    };
+    let view = tasks_view(now);
+    let fresh = av::tasks_fresh(view, stamps);
+    let zone = sioul_core::zone::current();
+    let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
+    let plan = PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    let times = av::tasks_part(fresh, tasks, events, plan.as_ref(), &shared, estimate, &zone, now, view.map_or(0, av::as_of));
+    if fresh {
+        keep_times(&times);
+    }
+    *LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(times.clone());
+    times
 }
 
 /// Every mirror written from this device's view, when it is the freshest
@@ -284,14 +338,13 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
     let tasks = sioul_core::tasks::all(&zone);
     let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path()).unwrap_or_default();
     let health = av::health_events(&events, &av::errand_tasks(&tasks, &recorded));
-    // Only what is marked busy: a task's own time where it is fixed, else the plan's before its date asked.
-    let estimate = config.tasks.estimate.unwrap_or(sioul_core::plan::Settings::default().default_estimate);
-    let mut task_time = av::task_time(&tasks, &events, &planned(), estimate, &zone, now);
-    task_time.spans.extend(days_off(config, widest, &zone));
     let (busy, not_known) = (tr().text("availability-busy", None), tr().text("availability-not-known", None));
     let words = av::Words { busy: &busy, not_known: &not_known };
     let mut changed: Vec<String> = Vec::new();
     for (availability, view) in fresh {
+        // Only what is marked busy: the busy tasks' times, worked out here or carried over (module's words).
+        let times = busy_times_now(config, Some(&availability.id), &tasks, &events, now);
+        let task_time = times.time();
         let files = av::mirror_files(&events, availability, &words, &health, &task_time, now);
         let mut wrote = false;
         for mirror in &availability.mirrors {
@@ -302,12 +355,59 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
             }
         }
         if wrote && let Some(view) = view {
-            note_written(&availability.id, av::as_of(view));
+            note_written(&availability.id, av::as_of(view), times.as_of);
         }
     }
     changed.sort();
     changed.dedup();
     changed
+}
+
+/// What the availability you share holds for a task (`uid`), in a sentence
+/// for its panel under its Busy switch (review B4): the spans to come of it
+/// and its open steps, as `keep` last worked them out or carried them (else
+/// the freshest shared record); or that its time is not known yet. Empty
+/// while no availability keeps a mirror, or the task gives no busy time
+/// (`availability::busy_for_timer`).
+pub(crate) fn busy_line(config: &Config, tasks: &[sioul_core::tasks::Task], uid: &str) -> String {
+    if !config.agenda.availabilities.iter().any(|a| !a.mirrors.is_empty()) || !av::busy_for_timer(tasks, uid) {
+        return String::new();
+    }
+    let times = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_else(|| {
+        let own = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir())).busy_tasks;
+        let others: Vec<av::BusyTimes> = crate::devices::entries().map(|(id, all)| all.into_iter().filter(|e| e.id != id && !e.left).map(|e| e.busy_tasks).collect()).unwrap_or_default();
+        av::BusyTimes::freshest(std::iter::once(&own).chain(others.iter()))
+    });
+    // It and its open steps, however deep.
+    let mut ours: BTreeSet<&str> = BTreeSet::from([uid]);
+    loop {
+        let more: Vec<&str> = tasks.iter().filter(|t| t.status.is_open() && t.parent().is_some_and(|p| ours.contains(p)) && !ours.contains(t.uid.as_str())).map(|t| t.uid.as_str()).collect();
+        if more.is_empty() {
+            break;
+        }
+        ours.extend(more);
+    }
+    let now = now();
+    let mut spans: Vec<(i64, i64)> = times.tasks.iter().filter(|(id, _)| ours.contains(id.as_str())).flat_map(|(_, t)| t.spans.iter().copied()).filter(|(_, end)| *end > now).collect();
+    spans.sort_unstable();
+    if spans.is_empty() {
+        return tr().text("busy-time-not-known", None);
+    }
+    let zone = sioul_core::zone::current();
+    let today = today();
+    let said: Vec<String> = spans
+        .iter()
+        .take(3)
+        .map(|(start, end)| {
+            let at = |t: i64| jiff::Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();
+            let day = at(*start).map(|z| tr().day_in(z.date(), today)).unwrap_or_default();
+            format!("{day}, {}–{}", sioul_core::timeline::clock(*start, &zone), sioul_core::timeline::clock(*end, &zone))
+        })
+        .collect();
+    let mut args = sioul_core::i18n::args();
+    args.set("spans", said.join("; "));
+    args.set("more", spans.len().saturating_sub(3));
+    tr().text("busy-time-holds", Some(&args))
 }
 
 /// The phone's background step (`steps`): for each account an availability

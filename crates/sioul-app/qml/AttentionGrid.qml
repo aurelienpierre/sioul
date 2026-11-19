@@ -180,6 +180,9 @@ ColumnLayout {
         choices.close()
     }
 
+    // A line under a group's last row, by the group's id: {text, door_label, door} (ReachesTab).
+    property var groupNotes: ({})
+
     objectName: "attentionGrid"
 
     spacing: 0
@@ -293,6 +296,7 @@ ColumnLayout {
             required property var modelData
             required property int index
             readonly property bool newGroup: row.index === 0 || grid.rows[row.index - 1].group !== row.modelData.group
+            readonly property bool lastOfGroup: row.index === grid.rows.length - 1 || grid.rows[row.index + 1].group !== row.modelData.group
 
             spacing: 0
 
@@ -386,6 +390,31 @@ ColumnLayout {
                         onClicked: grid.open(row.modelData, box.modelData, box)
                     }
                 }
+            }
+            // A group's own line under its last row, with its door (`groupNotes`: the calls'
+            // rows, which a phone's own table replaces but in a pause and during do-not-disturb).
+            Label {
+                readonly property var note: row.lastOfGroup ? grid.groupNotes[row.modelData.group_id] : undefined
+
+                objectName: note ? "groupNote-" + row.modelData.group_id : ""
+                visible: note !== undefined
+                Layout.fillWidth: true
+                Layout.maximumWidth: grid.nameWidth + grid.widths.reduce((sum, w) => sum + w, 0)
+                Layout.topMargin: 4
+                text: note ? note.text : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: grid.theme.muted
+            }
+            Button {
+                readonly property var note: row.lastOfGroup ? grid.groupNotes[row.modelData.group_id] : undefined
+
+                objectName: note ? "groupDoor-" + row.modelData.group_id : ""
+                visible: note !== undefined && (note.door || "") !== ""
+                flat: true
+                text: note ? grid.theme.plain(note.door_label) : ""
+                onClicked: grid.sioul.reminderOpened(note.door, "", "")
             }
         }
     }

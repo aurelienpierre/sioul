@@ -108,12 +108,25 @@ ColumnLayout {
         tab.rowOpen = ""
         if (view === "table" || (view === "time" && (detail || "") !== "")) {
             tab.view = "table"
+            // A door to a row lands on the row (review W4): its line opened on a phone, in sight on a computer.
+            if ((tab.shown.rows || []).indexOf(detail) >= 0) {
+                if (tab.narrow)
+                    tab.rowOpen = detail
+                else
+                    revealer.ask("cell-" + detail + "-work")
+            }
             return
         }
         tab.view = "rules"
         const part = parts[detail || ""] !== undefined && (detail || "") !== "" ? parts[detail] : parts[view] || ""
         if (part !== "")
             revealer.ask(part)
+    }
+
+    // The status line's card, where the three states are pressed with their lengths.
+    function openCard() {
+        if (tab.host && tab.host.statusLine && tab.host.statusLine.reachButton)
+            tab.host.statusLine.reachButton.openCard()
     }
 
     function readLists() {
@@ -179,6 +192,7 @@ ColumnLayout {
 
         property string part: ""
 
+        // A part of Your rules by its name ("people"), or an item by its own ("cell-doses-work").
         function ask(part) {
             revealer.part = part
             revealer.restart()
@@ -186,7 +200,7 @@ ColumnLayout {
 
         interval: 120
         onTriggered: {
-            const item = tab.findNamed(tab, "part-" + revealer.part)
+            const item = tab.findNamed(tab, revealer.part.startsWith("cell-") ? revealer.part : "part-" + revealer.part)
             if (item)
                 tab.reveal(item)
         }
@@ -239,13 +253,20 @@ ColumnLayout {
         objectName: "reachesNow"
         text: tab.shown.now.join(" ")
     }
+    // The three states on one row, the one on marked; the status line's card, where they are
+    // set, opens from Change… on a computer, from the row itself on a phone, which keeps its
+    // top to three rows before the tabs (the pictures' review, point 1).
     RowLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        Flow {
+        Row {
+            id: stateRow
+
             Layout.fillWidth: true
-            spacing: 6
+            spacing: tab.narrow ? 4 : 6
+            Accessible.role: tab.narrow ? Accessible.Button : Accessible.Grouping
+            Accessible.name: tab.narrow ? tab.sioul.text("attention-change") : ""
 
             Repeater {
                 model: [{ id: "usual", label: "reach-moment-usual" }, { id: "dnd", label: "reach-moment-dnd" }, { id: "reachable", label: "reach-moment-reachable" }]
@@ -257,15 +278,17 @@ ColumnLayout {
                     readonly property bool current: tab.shown.state === stateWord.modelData.id
 
                     objectName: "state-" + stateWord.modelData.id
-                    leftPadding: 10
-                    rightPadding: 10
+                    leftPadding: tab.narrow ? 7 : 10
+                    rightPadding: tab.narrow ? 7 : 10
                     topPadding: 5
                     bottomPadding: 5
-                    text: tab.sioul.text(stateWord.modelData.label)
+                    // The one on said by a mark and to a screen reader, not by its colour alone (review W1).
+                    text: (stateWord.current ? "✓ " : "") + tab.sioul.text(stateWord.modelData.label)
                     textFormat: Text.PlainText
+                    font.pixelSize: tab.narrow ? 13 : 14
                     font.weight: stateWord.current ? Font.DemiBold : Font.Normal
                     color: stateWord.current ? tab.theme.accentText : tab.theme.muted
-                    Accessible.name: stateWord.text
+                    Accessible.name: tab.sioul.text(stateWord.modelData.label) + (stateWord.current ? ", " + tab.sioul.text("reach-state-now") : "")
                     background: Rectangle {
                         radius: tab.theme.radius
                         color: stateWord.current ? tab.theme.accent : "transparent"
@@ -274,18 +297,22 @@ ColumnLayout {
                     }
                 }
             }
+            TapHandler {
+                enabled: tab.narrow
+                onTapped: tab.openCard()
+            }
         }
         // The states are pressed where they always are: the status line's button and its card.
         Button {
             objectName: "reachesStates"
+            visible: !tab.narrow
             text: tab.sioul.text("attention-change")
-            onClicked: {
-                if (tab.host && tab.host.statusLine && tab.host.statusLine.reachButton)
-                    tab.host.statusLine.reachButton.openCard()
-            }
+            onClicked: tab.openCard()
         }
     }
+    // Start from: the presets side by side on a computer; one button on a phone, opening them.
     Flow {
+        visible: !tab.narrow
         Layout.fillWidth: true
         spacing: 6
 
@@ -296,7 +323,7 @@ ColumnLayout {
             color: tab.theme.muted
         }
         Repeater {
-            model: tab.shown.presets
+            model: tab.narrow ? [] : tab.shown.presets
 
             delegate: Button {
                 id: presetButton
@@ -317,10 +344,53 @@ ColumnLayout {
             }
         }
     }
+    Button {
+        id: startFrom
+
+        objectName: "reachesStartFrom"
+        visible: tab.narrow
+        Layout.maximumWidth: tab.width
+        readonly property var current: tab.shown.presets.find(p => p.current === true) || null
+        text: tab.theme.plain(tab.sioul.text("reach-start") + " " + (startFrom.current ? startFrom.current.label : tab.sioul.text("reach-own")) + " ▾")
+        onClicked: presetMenu.popup(startFrom, 0, startFrom.height)
+    }
+    SioulMenu {
+        id: presetMenu
+
+        Instantiator {
+            model: tab.narrow ? tab.shown.presets : []
+
+            delegate: MenuItem {
+                id: presetLine
+
+                required property var modelData
+
+                objectName: "presetLine-" + presetLine.modelData.id
+                text: tab.theme.plain(presetLine.modelData.label)
+                checkable: true
+                checked: presetLine.modelData.current === true
+                onTriggered: tab.preset(presetLine.modelData.id, false)
+            }
+            onObjectAdded: (index, object) => presetMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => presetMenu.removeItem(object)
+        }
+        MenuItem {
+            enabled: false
+            contentItem: Label {
+                width: Math.min(380, Math.max(160, tab.width - 60))
+                text: tab.shown.presets_note || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: tab.theme.muted
+            }
+            Accessible.name: tab.shown.presets_note || ""
+        }
+    }
     // A preset leaves the calls as they are: each phone's (review R3).
     Note {
         objectName: "reachesPresetsNote"
-        visible: text !== ""
+        visible: text !== "" && !tab.narrow
         text: tab.shown.presets_note || ""
     }
     RowLayout {
@@ -641,6 +711,9 @@ ColumnLayout {
                 required property var modelData
                 required property int index
                 readonly property bool newGroup: listRow.modelData.group !== "" && (listRow.index === 0 || tab.lists[listRow.index - 1].group !== listRow.modelData.group)
+                // The addresses, numbers and domains named as your contacts: one line, opened to read and remove them.
+                readonly property bool named: listRow.modelData.key === "neutral"
+                property bool open: false
 
                 Layout.fillWidth: true
                 Layout.topMargin: listRow.newGroup ? 12 : 4
@@ -650,7 +723,19 @@ ColumnLayout {
                     visible: listRow.newGroup
                     text: listRow.modelData.group
                 }
+                Button {
+                    objectName: "namedContacts"
+                    visible: listRow.named
+                    Layout.maximumWidth: tab.width
+                    flat: true
+                    text: (listRow.open ? "▾ " : "▸ ") + tab.theme.plain(listRow.modelData.label)
+                    Accessible.name: listRow.modelData.label
+                    Accessible.description: listRow.modelData.help
+                    onClicked: listRow.open = !listRow.open
+                }
                 SettingRow {
+                    objectName: listRow.named ? "namedContactsList" : ""
+                    visible: !listRow.named || listRow.open
                     Layout.fillWidth: true
                     setting: listRow.modelData
                     sioul: tab.sioul
@@ -762,7 +847,7 @@ ColumnLayout {
                 }
                 Note {
                     visible: group.modelData.value === "own" && group.modelData.choices.length > 0
-                    text: tab.sioul.text("reach-own") + ": " + tab.shown.people.own_help
+                    text: tab.sioul.text("reach-own") + ": " + (group.modelData.own_help || tab.shown.people.own_help)
                     font.italic: true
                 }
                 Note {
@@ -830,7 +915,8 @@ ColumnLayout {
                 }
             }
             Repeater {
-                model: tab.narrow ? [] : tab.shown.moments.rows.reduce((out, r) => out.concat([{ text: r.label, strong: true }, { text: r.who }, { text: r.by }, { text: r.phone }]), [])
+                // Each cell named with its row and its column for a screen reader (review W2).
+                model: tab.narrow ? [] : tab.shown.moments.rows.reduce((out, r) => out.concat([{ text: r.label, strong: true, said: r.label }, { text: r.who, said: r.label + ", " + (tab.shown.moments.columns[0] || "") + ": " + r.who }, { text: r.by, said: r.label + ", " + (tab.shown.moments.columns[1] || "") + ": " + r.by }, { text: r.phone, said: r.label + ", " + (tab.shown.moments.columns[2] || "") + ": " + r.phone }]), [])
 
                 delegate: Cell {
                     required property var modelData
@@ -838,6 +924,7 @@ ColumnLayout {
                     share: modelData.strong ? 1 : 2
                     strong: modelData.strong === true
                     text: modelData.text
+                    Accessible.name: modelData.said
                 }
             }
         }
@@ -875,7 +962,28 @@ ColumnLayout {
             text: tab.sioul.text("attention-dnd-turns-on")
         }
         Repeater {
-            model: ["dnd.button", "dnd.pauses", "dnd.sleep", "dnd.focus", "free_time.nothing"].map(k => tab.setting(k)).filter(s => s !== null)
+            model: ["dnd.button", "dnd.pauses", "dnd.sleep", "dnd.focus"].map(k => tab.setting(k)).filter(s => s !== null)
+
+            delegate: SettingRow {
+                required property var modelData
+
+                Layout.fillWidth: true
+                setting: modelData
+                sioul: tab.sioul
+                theme: tab.theme
+                onSave: (key, value, shown) => tab.save(key, value, shown)
+            }
+        }
+        // Free time made stricter: it turns nothing on, so it stands under its own heading
+        // (the pictures' review, point 5).
+        Strong {
+            objectName: "reachesFreeTime"
+            Layout.topMargin: 8
+            visible: tab.setting("free_time.nothing") !== null
+            text: tab.sioul.text("reach-free-time")
+        }
+        Repeater {
+            model: ["free_time.nothing"].map(k => tab.setting(k)).filter(s => s !== null)
 
             delegate: SettingRow {
                 required property var modelData
@@ -916,13 +1024,14 @@ ColumnLayout {
                 }
             }
             Repeater {
-                model: tab.narrow ? [] : tab.shown.moments.holds.reduce((out, h) => out.concat([{ text: h.label, strong: true }, { text: h.sioul }, { text: h.android }]), [])
+                model: tab.narrow ? [] : tab.shown.moments.holds.reduce((out, h) => out.concat([{ text: h.label, strong: true, said: h.label }, { text: h.sioul, said: h.label + ", " + (tab.shown.moments.holds_columns[0] || "") + ": " + h.sioul }, { text: h.android, said: h.label + ", " + (tab.shown.moments.holds_columns[1] || "") + ": " + h.android }]), [])
 
                 delegate: Cell {
                     required property var modelData
 
                     strong: modelData.strong === true
                     text: modelData.text
+                    Accessible.name: modelData.said
                 }
             }
         }
@@ -1008,10 +1117,16 @@ ColumnLayout {
     }
 
     // ================================================================ What comes when
+    // As wide as its words, centred in the page's whole width (the pictures' review, point 2).
     Loader {
+        id: gridLoader
+
+        readonly property var grid: gridLoader.item as AttentionGrid
         active: tab.view === "table" && !tab.narrow
         visible: active
-        Layout.fillWidth: true
+        Layout.fillWidth: gridLoader.grid === null
+        Layout.preferredWidth: gridLoader.grid !== null ? Math.min(tab.width, gridLoader.grid.nameWidth + gridLoader.grid.widths.reduce((sum, w) => sum + w, 0) + 24) : tab.width
+        Layout.alignment: Qt.AlignHCenter
         Layout.bottomMargin: 18
 
         sourceComponent: Component {
@@ -1021,6 +1136,7 @@ ColumnLayout {
                 theme: tab.theme
                 words: true
                 now: tab.shown.now_columns
+                groupNotes: tab.shown.calls_grid ? { "calls": tab.shown.calls_grid } : ({})
                 onSave: (key, value, shown) => {
                     tab.problem = tab.sioul.reachesSet(key.slice("attention.".length), JSON.stringify(value), JSON.stringify(shown))
                     tab.reload()
@@ -1032,59 +1148,82 @@ ColumnLayout {
     Repeater {
         model: tab.view === "table" && tab.narrow && tab.openRowData === null ? tab.gridRows : []
 
-        delegate: BareButton {
-            id: rowButton
+        delegate: ColumnLayout {
+            id: rowLine
 
             required property var modelData
             required property int index
-            readonly property bool newGroup: rowButton.index === 0 || tab.gridRows[rowButton.index - 1].group !== rowButton.modelData.group
+            // The last of the calls' rows: the line that a phone's own table replaces them, and its door.
+            readonly property bool callsEnd: rowLine.modelData.group_id === "calls" && (rowLine.index === tab.gridRows.length - 1 || tab.gridRows[rowLine.index + 1].group_id !== "calls")
 
-            objectName: "row-" + rowButton.modelData.id
             Layout.fillWidth: true
-            Layout.topMargin: rowButton.newGroup && rowButton.index > 0 ? 10 : 0
-            implicitHeight: rowCol.implicitHeight + 10
-            Accessible.name: tab.theme.plain(rowButton.modelData.group + ", " + rowButton.modelData.label)
-            contentItem: ColumnLayout {
-                id: rowCol
+            spacing: 2
 
-                spacing: 1
+            BareButton {
+                id: rowButton
 
-                Label {
-                    visible: rowButton.newGroup
-                    Layout.fillWidth: true
-                    text: rowButton.modelData.group
-                    textFormat: Text.PlainText
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    color: tab.theme.accent
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
+                readonly property var modelData: rowLine.modelData
+                readonly property int index: rowLine.index
+                readonly property bool newGroup: rowButton.index === 0 || tab.gridRows[rowButton.index - 1].group !== rowButton.modelData.group
+
+                objectName: "row-" + rowButton.modelData.id
+                Layout.fillWidth: true
+                Layout.topMargin: rowButton.newGroup && rowButton.index > 0 ? 10 : 0
+                implicitHeight: rowCol.implicitHeight + 10
+                Accessible.name: tab.theme.plain(rowButton.modelData.group + ", " + rowButton.modelData.label)
+                contentItem: ColumnLayout {
+                    id: rowCol
+
+                    spacing: 1
 
                     Label {
+                        visible: rowButton.newGroup
                         Layout.fillWidth: true
-                        text: rowButton.modelData.label + (rowButton.modelData.changed ? "  •" : "")
+                        text: rowButton.modelData.group
                         textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: tab.theme.text
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: tab.theme.accent
                     }
-                    Label {
-                        text: {
-                            const now = tab.shown.now_columns
-                            const cell = rowButton.modelData.cells.find(c => now.indexOf(c.column) >= 0)
-                            return cell ? cell.word : ""
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: rowButton.modelData.label + (rowButton.modelData.changed ? "  •" : "")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: tab.theme.text
                         }
-                        textFormat: Text.PlainText
-                        color: tab.theme.muted
-                    }
-                    Label {
-                        text: "›"
-                        color: tab.theme.muted
+                        Label {
+                            text: {
+                                const now = tab.shown.now_columns
+                                const cell = rowButton.modelData.cells.find(c => now.indexOf(c.column) >= 0)
+                                return cell ? cell.word : ""
+                            }
+                            textFormat: Text.PlainText
+                            color: tab.theme.muted
+                        }
+                        Label {
+                            text: "›"
+                            color: tab.theme.muted
+                        }
                     }
                 }
+                onClicked: tab.rowOpen = rowButton.modelData.id
             }
-            onClicked: tab.rowOpen = rowButton.modelData.id
+
+            Note {
+                objectName: rowLine.callsEnd ? "callsGridNote" : ""
+                visible: rowLine.callsEnd
+                text: tab.shown.calls_grid ? tab.shown.calls_grid.text : ""
+            }
+            GoButton {
+                visible: rowLine.callsEnd
+                text: tab.shown.calls_grid ? tab.theme.plain(tab.shown.calls_grid.door_label) : ""
+                onClicked: tab.sioul.reminderOpened("settings:devices.calls", "", "")
+            }
         }
     }
     ColumnLayout {
@@ -1138,6 +1277,15 @@ ColumnLayout {
             }
         }
     }
+    // What each word of the grid says, in one line under it (the pictures' review, point 4).
+    Note {
+        objectName: "reachesGridKey"
+        visible: tab.view === "table"
+        Layout.maximumWidth: tab.narrow ? -1 : gridLoader.Layout.preferredWidth
+        Layout.alignment: Qt.AlignHCenter
+        Layout.bottomMargin: 18
+        text: tab.sioul.text("reach-grid-key")
+    }
 
     // A circle's behaviours, for one channel (a computer's cell) or both (a
     // phone's line): each channel's name, then its choices, the one it has
@@ -1177,6 +1325,8 @@ ColumnLayout {
 
                 objectName: behaviourLine.said ? "" : "behaviour-" + behaviourLine.modelData.channel + "-" + behaviourLine.modelData.id
                 enabled: !behaviourLine.said
+                // Each line its own name for a screen reader: its words and their help (review W3).
+                Accessible.name: (behaviourLine.modelData.head !== undefined ? behaviourLine.modelData.head : behaviourLine.modelData.note !== undefined ? behaviourLine.modelData.note : behaviourLine.modelData.label) + ((behaviourLine.modelData.help || "") !== "" ? ". " + behaviourLine.modelData.help : "")
                 Accessible.checkable: !behaviourLine.said
                 Accessible.checked: behaviourLine.modelData.current === true
                 contentItem: ColumnLayout {
@@ -1247,6 +1397,7 @@ ColumnLayout {
                 readonly property bool current: !choiceLine.said && cellChoices.cell !== null && cellChoices.cell.value === choiceLine.modelData.id
 
                 enabled: !choiceLine.said
+                Accessible.name: choiceLine.modelData.head !== undefined ? choiceLine.modelData.head : choiceLine.modelData.note !== undefined ? choiceLine.modelData.note : choiceLine.modelData.label
                 Accessible.checkable: !choiceLine.said
                 Accessible.checked: choiceLine.current
                 contentItem: Label {

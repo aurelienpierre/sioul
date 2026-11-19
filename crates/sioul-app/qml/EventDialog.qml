@@ -200,8 +200,10 @@ SafeDialog {
     property string remind: ""
     property var reminds: []
     // Busy or free (`busy`, its TRANSP): a time busy, a whole day free, unless
-    // said otherwise; `busyTouched` once the switch was pressed, after which
-    // "All day" no longer moves it.
+    // said otherwise; `busyTouched` once the switch was pressed, or when the
+    // event's file says it (review B13), after which "All day" no longer moves
+    // it. Untouched, the form says nothing of it, so that no mark is frozen
+    // when the kind changes (B6).
     property bool busy: true
     property bool busyTouched: false
 
@@ -292,7 +294,8 @@ SafeDialog {
         dialog.around = f.margins
         dialog.demands = f.demands
         dialog.remind = f.remind
-        if (f.busy !== undefined) {
+        // Said (pressed, or its file's): said again; unsaid (null) stays unsaid.
+        if (f.busy !== undefined && f.busy !== null) {
             dialog.busy = f.busy
             dialog.busyTouched = true
         }
@@ -383,7 +386,7 @@ SafeDialog {
             dialog.remind = e.remind || ""
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices(dialog.remind) || "[]")
             dialog.busy = e.busy !== undefined && e.busy !== null ? e.busy : !e.all_day
-            dialog.busyTouched = false
+            dialog.busyTouched = e.busy !== undefined && e.busy !== null
             dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || dialog.remind !== "" || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
             // What was typed here before, closed without Save: given back, said so.
             dialog.loadedForm = JSON.stringify(dialog.form())
@@ -589,7 +592,7 @@ SafeDialog {
             margins: dialog.around,
             demands: dialog.demands,
             remind: dialog.remind,
-            busy: dialog.busy,
+            busy: dialog.busyTouched ? dialog.busy : null,
             geo: dialog.geo,
             links: dialog.links,
             guests: dialog.guests

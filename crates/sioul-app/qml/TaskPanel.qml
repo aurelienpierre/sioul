@@ -936,6 +936,17 @@ Panel {
                 font.pixelSize: 12
                 color: panel.theme.muted
             }
+            // What the availability you share holds for it, or that its time is not known yet.
+            Label {
+                objectName: "taskBusyLine"
+                visible: busySwitch.visible && text !== ""
+                Layout.fillWidth: true
+                text: panel.detail !== null && panel.detail.busy_line ? panel.detail.busy_line : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: panel.theme.muted
+            }
             Button {
                 visible: panel.card !== null && (panel.card.status === "completed" || panel.card.status === "cancelled")
                 flat: true

@@ -1206,6 +1206,8 @@ ColumnLayout {
                     }
                 }
                 TextField {
+                    // The addresses named as your contacts are read and removed, never added to (review C1).
+                    visible: field.setting.key !== "neutral"
                     Layout.fillWidth: true
                     // The four lists take numbers too; the senders you let in, addresses only.
                     placeholderText: field.sioul.text(field.setting.kind === "words" ? "set-words-add" : field.setting.key === "known" ? "set-senders-add" : "set-senders-add-number")

@@ -465,28 +465,41 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         // three lists (Safe, Restricted, Blocked); the people placed on them; the
         // groups of your contacts (their cards' categories), each on a list or none.
         // Your contacts are everyone in your address books, with nothing to set:
-        // the list of them and the choice of them leave the page, and the lines
+        // the list of them and the choice of them leave the page. The lines
         // `neutral-senders.txt` holds keep being read (`porch::Senders`), so that
-        // nothing changes for someone set so; one person is kept a plain contact
-        // inside a restricted group from their sheet (`reaches::person_change`).
+        // nothing changes for someone set so, and stay in view (review C1): the
+        // addresses, numbers and domains named there in one line, shown only
+        // when there are some, to read and remove; a card or a group on it shows
+        // as what it is, "Your contacts", never "No list". A sheet and unblocking
+        // may still write there (`reaches::person_change`, `porch::unblock`):
+        // what they write appears in that line.
         "senders" => {
             for (key, id, path) in [("safe", "safe", config.safe_senders_path()), ("restricted", "restricted", config.restricted_senders_path()), ("blocked", "blocked-all", config.blocked_senders_path())] {
                 // Addresses and patterns, then numbers as written.
                 let list = SenderList::load(&path);
                 b.push(key, id, Kind::Senders, SettingValue::Texts(list.entries().into_iter().chain(list.numbers().iter().cloned()).collect()));
             }
+            let named = SenderList::load(&config.neutral_senders_path());
+            let named: Vec<String> = named.entries().into_iter().chain(named.numbers().iter().cloned()).collect();
+            if !named.is_empty() {
+                let mut args = crate::i18n::args();
+                args.set("n", named.len());
+                let s = b.push("neutral", "sender-named-contacts", Kind::Senders, SettingValue::Texts(named));
+                s.label = tr.text("set-sender-named-contacts", Some(&args));
+            }
             let senders = crate::porch::Senders::load(config);
-            // No list, Safe, Restricted, Blocked: your contacts are no choice, a group or a card
-            // set so by an older page reads as no list, which it is for anyone in your address books.
-            let choices = |none: &str| -> Vec<Choice> {
+            // No list, Safe, Restricted, Blocked: your contacts are no choice. A group or a card
+            // on the list of your contacts (an older page, a sheet) shows so, with that choice
+            // too, so that No list takes it off.
+            let choices = |none: &str, named: bool| -> Vec<Choice> {
                 std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text(none, None) })
-                    .chain(crate::porch::Standing::ALL.iter().filter(|l| **l != crate::porch::Standing::Neutral).map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
+                    .chain(crate::porch::Standing::ALL.iter().filter(|l| named || **l != crate::porch::Standing::Neutral).map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
                     .collect()
             };
-            let shown = |standing: Option<crate::porch::Standing>| standing.filter(|s| *s != crate::porch::Standing::Neutral).map_or("", |s| s.as_str());
+            let shown = |standing: Option<crate::porch::Standing>| standing.map_or("", |s| s.as_str());
             // The people placed on a list themselves (their card): changed here or on their card.
             let mut cards: Vec<String> = Vec::new();
-            for list in [&senders.safe, &senders.restricted, &senders.blocked] {
+            for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
                 for uid in list.cards() {
                     if !cards.contains(uid) {
                         cards.push(uid.clone());
@@ -509,12 +522,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                     let s = b.push(&format!("{}{uid}", crate::porch::CONTACT), "sender-person", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices("sender-no-choice");
+                    s.choices = choices("sender-no-choice", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
             // The groups of your contacts, those in use and those on a list.
             let mut names = senders.contacts.names();
-            for list in [&senders.safe, &senders.restricted, &senders.blocked] {
+            for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
                 for name in list.categories() {
                     if !names.iter().any(|n| crate::porch::category_key(n) == crate::porch::category_key(name)) {
                         names.push(name.clone());
@@ -524,13 +537,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             if !names.is_empty() {
                 b.group = tr.text("set-sender-categories-group", None);
                 b.note(tr.text("set-sender-categories-note", None), Vec::new());
-                let choices = choices("sender-no-list");
                 for name in names {
                     let standing = shown(senders.category_standing(&name));
                     let s = b.push(&format!("{}{name}", crate::porch::CATEGORY), "sender-category", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices.clone();
+                    s.choices = choices("sender-no-list", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
         }
