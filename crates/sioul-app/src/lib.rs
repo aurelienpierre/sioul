@@ -215,6 +215,8 @@ mod series;
 mod servers;
 mod share;
 mod sites;
+// A site opened inside Sioul on Android, in a screen of its own around the system's web view (docs/android.md, "Sites").
+mod siteview;
 mod spam;
 mod stars;
 mod storage;

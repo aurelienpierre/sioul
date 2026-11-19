@@ -228,6 +228,9 @@ public final class StepService extends Service
                 // The training by itself: the phone's power and network, its wake lock (Learn.java).
                 if (verb.startsWith("learn-"))
                     return Learn.call(context, verb, asked);
+                // A site inside Sioul: this device's web view, the site's screen (SiteWeb.java, SiteScreen.java).
+                if (verb.startsWith("site-"))
+                    return SiteWeb.call(context, verb, asked);
                 // The calls screened (Calls.java): the role, its pages, the phone app's dial pad.
                 return verb.startsWith("calls-") ? Calls.call(context, verb, asked) : null;
             }

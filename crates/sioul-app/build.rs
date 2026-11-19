@@ -186,6 +186,12 @@ fn main() {
         "qml/SecurityKeyBand.qml",
         "qml/SioulMenu.qml",
         "qml/SitePopup.qml", "qml/PresetPlaceMenu.qml", "qml/PresetGroupMenu.qml", "qml/BankAccountDialog.qml", "qml/BankRulesDialog.qml", "qml/ReserveDialog.qml",
+        // The Sites page's list, menu and forms: a computer's page and Android's alike.
+        "qml/SitesList.qml",
+        "qml/SiteRow.qml",
+        "qml/SiteMenu.qml",
+        "qml/SiteEditDialog.qml",
+        "qml/SiteAddDialog.qml",
         "qml/LoginChooser.qml",
         "qml/VaultUnlock.qml",
         // Bitwarden in Accounts: the password manager's card, its form, "From Bitwarden…".
