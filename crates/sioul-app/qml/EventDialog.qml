@@ -517,6 +517,14 @@ SafeDialog {
         dialog.measureLength()
     }
 
+    // For the window's pictures: the repeat's end and its pauses in view.
+    function showRepeat() {
+        Qt.callLater(() => {
+            const top = repeat.mapToItem(scroll.contentItem.contentItem, 0, 0).y
+            scroll.contentItem.contentY = Math.max(0, Math.min(top - 12, scroll.contentItem.contentHeight - scroll.height))
+        })
+    }
+
     // For the window's pictures: the costs and the gain in view.
     function showRatings() {
         dialog.moreShown = true

@@ -132,6 +132,10 @@ fn after(qt: &QtThread, shared: &Arc<Shared>, round: &Round) {
 /// one after, what is due; on a thread of its own, never while another
 /// round runs.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
+    // A demo off the network (SIOUL_DEMO): nothing fetched by itself, nothing taken out.
+    if crate::backend::offline() {
+        return;
+    }
     // A phone's window starts cold many times a day: no reading for its opening there (F23).
     let opening = !OPENED.swap(true, Ordering::Relaxed) && !cfg!(target_os = "android");
     // Nothing subscribed, nothing left here to take out: no round.
@@ -180,7 +184,7 @@ pub(crate) fn refresh_now(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Stri
 /// holidays changed then kept as on a computer (the series that pause for
 /// them); no window to tell.
 pub(crate) fn background_step() {
-    if !crate::backend::config_read().is_some_and(|c| network_allows(&c)) {
+    if crate::backend::offline() || !crate::backend::config_read().is_some_and(|c| network_allows(&c)) {
         return;
     }
     let Some(running) = Running::take() else { return };
