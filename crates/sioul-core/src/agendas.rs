@@ -265,10 +265,14 @@ impl Agenda {
     /// everything else is yours, personal, all day, read and write. Read and
     /// write is never more than the server allows.
     pub fn of(collection: &Collection, said: &Said, config: &Config, server_read_only: bool, details: &dyn Fn() -> bool) -> Agenda {
-        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only { Whose::Shared } else { Whose::Yours });
+        // A calendar subscribed by its address (`subscribed`): yours unless said, read only, never written.
+        let subscribed = collection.account == vdir::SUBSCRIBED;
+        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
         let area = said.area.as_deref().and_then(Area::parse).unwrap_or_else(|| if work_account(config, &collection.account) { Area::WORK } else { Area::PERSONAL });
         let reaches = said.reaches.as_deref().and_then(Reaches::parse).unwrap_or_default();
         let access = match said.access.as_deref().and_then(Access::parse) {
+            Some(Access::Availability) if subscribed => Access::Availability,
+            _ if subscribed => Access::Read,
             Some(Access::Write) | None if server_read_only => {
                 if said.access.is_none() && !details() {
                     Access::Availability
@@ -427,7 +431,9 @@ pub struct Marks {
     pub theirs: bool,
     pub busy: bool,
     pub work: bool,
-    /// Its server says it takes none of your time as a whole (`vdir::calendar_transparent`).
+    /// It takes none of your time as a whole: its server says so
+    /// (`vdir::calendar_transparent`), or it is a calendar subscribed by its
+    /// address you did not say holds your own engagements (`subscribed::takes_no_time`).
     pub transparent: bool,
     /// A personal agenda you keep out of your work hours (`Reach::OutsideWork`).
     pub outside_work: bool,
@@ -441,7 +447,8 @@ pub struct Marks {
 pub fn marks_of(collection: &Collection) -> Marks {
     let config = read_config();
     let agenda = agenda_of(collection, &config);
-    let transparent = vdir::calendar_transparent(&collection.account, &collection.id);
+    // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
+    let transparent = vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id));
     Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, titles: agenda.titles }
 }
 
@@ -1107,7 +1114,7 @@ pub fn set_warns(path: &Path, a: &str, b: &str, warns: Option<bool>) -> Result<(
 
 /// `[agenda.<name>]` changed by `change`, under the file's lock, which the
 /// sharing takes too; an empty table taken out.
-fn edit_agenda_table(path: &Path, name: &str, change: impl FnOnce(&mut toml_edit::Table) -> Result<(), String>) -> Result<(), String> {
+pub(crate) fn edit_agenda_table(path: &Path, name: &str, change: impl FnOnce(&mut toml_edit::Table) -> Result<(), String>) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let mut doc = crate::config::read_document(path)?;
         if !doc.contains_key("agenda") {
@@ -1155,7 +1162,8 @@ impl Hours {
     pub fn at(config: &Config, overrides: &crate::quiet::Overrides, now: &Zoned) -> Hours {
         let windows = config.week_hours();
         let blank = crate::quiet::Blocks::default();
-        let at = |when: &Zoned| crate::quiet::mode(&windows, &config.time_off, overrides, &blank, when);
+        let days_off = crate::vacations::DaysOff::of(config);
+        let at = |when: &Zoned| crate::quiet::mode(&windows, &days_off, overrides, &blank, when);
         let state = |mode: &crate::quiet::Mode| (mode.time != Time::Any, mode.time.works());
         let first = at(now);
         let (set, work) = state(&first);

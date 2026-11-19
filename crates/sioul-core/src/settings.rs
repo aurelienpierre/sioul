@@ -197,8 +197,9 @@ impl Builder<'_> {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does).
-            .filter(|c| (holding.is_empty() || c.holds(holding)) && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
+            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does);
+            // nor a calendar subscribed by its address, renamed and stopped on its own line in Your agendas.
+            .filter(|c| (holding.is_empty() || c.holds(holding)) && c.account != crate::vdir::SUBSCRIBED && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars change through its Calendar API (part 5);
@@ -767,7 +768,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("needs-title", None);
             b.said("needs", Kind::Needs, tr.text("needs-title", None), tr.text("needs-help", None), SettingValue::Text(String::new()));
             b.group = tr.text("set-time-off-group", None);
-            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
+            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone(), kind: t.kind.clone() }).collect();
             b.push("time_off", "time-off", Kind::TimeOff, SettingValue::TimeOff(off));
             // What reaches you, and when (docs/attention.md): the matrix is the tab's own
             // (`attention::grid`, the window's `reachesView`); these are the switches beside it.
@@ -1720,7 +1721,7 @@ mod tests {
         let hours: Vec<(String, Kind, String)> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "hours").map(|s| (s.key, s.kind, s.group)).collect();
         assert_eq!(
             hours,
-            [("window", Kind::Windows, "Working hours and quiet time"), ("window.admin", Kind::Windows, "Working hours and quiet time"), ("needs", Kind::Needs, "Meals, rest and sleep"), ("time_off", Kind::TimeOff, "Days off")].map(|(k, kind, g)| (k.to_string(), kind, g.to_string()))
+            [("window", Kind::Windows, "Working hours and quiet time"), ("window.admin", Kind::Windows, "Working hours and quiet time"), ("needs", Kind::Needs, "Meals, rest and sleep"), ("time_off", Kind::TimeOff, "Vacations and holidays")].map(|(k, kind, g)| (k.to_string(), kind, g.to_string()))
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
@@ -1906,7 +1907,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
-        let day = |id: &str, label: &str| TimeOffValue { id: id.into(), from: "2026-08-01".into(), until: "2026-08-15".into(), label: label.into() };
+        let day = |id: &str, label: &str| TimeOffValue { id: id.into(), from: "2026-08-01".into(), until: "2026-08-15".into(), label: label.into(), kind: String::new() };
         std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer\"\n").unwrap();
         // Another device names it otherwise meanwhile; this one changes its label from what it showed.
         std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer holidays\"\n").unwrap();

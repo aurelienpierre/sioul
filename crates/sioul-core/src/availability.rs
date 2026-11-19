@@ -644,6 +644,38 @@ pub fn plan_spans(plan: &crate::plan::Plan, settings: &crate::plan::Settings, ta
         .collect()
 }
 
+/// The key under which your days off travel in the busy times' record
+/// (`BusyTimes::tasks`): no task's UID, never one of a task's panel.
+pub const DAYS_OFF: &str = "sioul:days-off";
+
+/// Your days off laid into the busy times worked out on this device (the
+/// calendars' review, F43): one more entry of the record, so that they travel
+/// with it and follow its rule (the freshest device's record; a device behind
+/// carries it over as found, `tasks_part`). None, the entry goes.
+pub fn lay_days_off(times: &mut BusyTimes, spans: Vec<(i64, i64)>) {
+    if spans.is_empty() {
+        times.tasks.remove(DAYS_OFF);
+    } else {
+        times.tasks.insert(DAYS_OFF.to_string(), TaskSpans { seen: String::new(), planned: false, spans });
+    }
+}
+
+/// Your days off as busy time (18 November 2026; design-calendars §2, the
+/// owner's decision 3): each day that counts as a day off, as the one
+/// function says it (`vacations::DaysOff`: a vacation you typed, a holiday
+/// of a calendar that counts), busy from its midnight to the next in `zone`,
+/// within `window`; they go with the busy tasks' times (`TaskTime::spans`),
+/// said "Busy" as those are, and days in a row make one block. Only the
+/// availability you share reads them: a day off is busy for others, never a
+/// reason to hold what reaches you (`busy::stretches`, which do-not-disturb
+/// reads, knows nothing of it).
+pub fn days_off_spans(days_off: &crate::vacations::DaysOff, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
+    let day_of = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
+    let (Some(first), Some(last)) = (day_of(window.0), day_of(window.1)) else { return Vec::new() };
+    let midnight = |date: jiff::civil::Date| date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    days_off.days(first, last).into_iter().map(|date| (midnight(date), date.tomorrow().map_or(midnight(date) + DAY, midnight))).filter(|(start, end)| end > start && *end > window.0 && *start < window.1).collect()
+}
+
 /// The blocks of `events` within `window` (those of the agendas picked that
 /// mark you busy, `busy::event_marked`: not cancelled, free or declined; a
 /// whole day only when said busy), and the busy tasks' times (`tasks`), each
@@ -1079,6 +1111,58 @@ mod tests {
 
     fn mine(agendas: &[&str]) -> Availability {
         Availability { id: "a1".into(), agendas: agendas.iter().map(|a| a.to_string()).collect(), ..Availability::default() }
+    }
+
+    /// A day off is busy all day in the availability you share (decision 3
+    /// of design-calendars), whatever its source: a vacation typed, a public
+    /// holiday of a calendar that counts; days in a row one block, said
+    /// "Busy"; a holiday of a calendar that does not count, nothing. The
+    /// busy stretches do-not-disturb reads know nothing of it.
+    #[test]
+    fn a_day_off_is_busy_all_day_for_others_alone() {
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let midnight = |text: &str| text.parse::<jiff::civil::Date>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let typed = [crate::config::TimeOff { id: String::new(), from: "2030-12-23".parse().unwrap(), until: "2030-12-24".parse().unwrap(), label: "Away".into(), kind: "sick".into() }];
+        let public = crate::subscribed::HolidayDays { id: "fr".into(), name: "Jours fériés".into(), holidays: crate::subscribed::Holidays::Public, days_off: true, periods: vec![("2030-12-25".parse().unwrap(), "2030-12-25".parse().unwrap(), "Noël".into())], as_of: Some(1) };
+        let school = crate::subscribed::HolidayDays { id: "zone".into(), name: "Zone A".into(), holidays: crate::subscribed::Holidays::School, days_off: false, periods: vec![("2030-12-28".parse().unwrap(), "2031-01-03".parse().unwrap(), String::new())], as_of: Some(1) };
+        let off = crate::vacations::DaysOff::with_holidays(&typed, &[public, school]);
+        let window = (midnight("2030-12-01"), midnight("2031-01-31"));
+        let spans = days_off_spans(&off, window, &zone);
+        assert_eq!(spans.len(), 3, "three days off, the school holidays not counted");
+        let time = TaskTime { spans, ..TaskTime::default() };
+        let found = blocks(&[], &mine(&["me/personal"]), &WORDS, &BTreeSet::new(), &time, window);
+        assert_eq!(found, [Block { start: midnight("2030-12-23"), end: midnight("2030-12-26"), word: "Busy".into() }], "one block, all day, saying nothing of why");
+        assert!(days_off_spans(&off, (midnight("2031-02-01"), midnight("2031-03-01")), &zone).is_empty(), "outside the window: nothing");
+        // Do-not-disturb's busy stretches (F42): they read events alone, and a day off is none.
+        // The holidays as their calendar's reader gives them, said busy by their publisher
+        // (TRANSP:OPAQUE), on a subscribed agenda that takes none of your time (F41), with the
+        // events of that month: only the dentist marks you busy.
+        let holiday = |day: &str| Occurrence { all_day: true, opaque: false, transparent: true, ..event("subscribed/fr", day, midnight(day), midnight(day) + 86_400, "Noël") };
+        let dentist = event("me/personal", "d", midnight("2030-12-23") + 10 * 3600, midnight("2030-12-23") + 11 * 3600, "Dentist");
+        let read = [holiday("2030-12-25"), dentist.clone()];
+        assert_eq!(crate::busy::stretches_of(&read, None, window.0, window.1), [(dentist.start, dentist.end)], "do-not-disturb's busy stretches: nothing of the days off");
+    }
+
+    /// The calendars' review, F43, on `reach`'s record (its B3): your days
+    /// off travel in the busy times' record, laid where it is worked out; a
+    /// device whose view is behind carries them over as found, so that two
+    /// devices that know different days never write the mirror in turn; none,
+    /// their entry goes; never a task's.
+    #[test]
+    fn days_off_follow_the_busy_times_record() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let now = 100_000;
+        let mut desk = busy_times(&[], &[], Some(&Planned::new()), &BusyTimes::default(), 30, &zone, now, 5_000);
+        lay_days_off(&mut desk, vec![(172_800, 259_200)]);
+        assert_eq!(desk.time().spans, vec![(172_800, 259_200)]);
+        // The phone, behind (the vacation not arrived there): the desk's record carried over, its days off with it.
+        let phone = tasks_part(false, &[], &[], None, &desk, 30, &zone, now, 4_000);
+        assert_eq!(phone, desk, "carried over as found");
+        // Worked out again on a fresh device: its own days off laid, none taking the entry out.
+        let mut fresh = tasks_part(true, &[], &[], None, &desk, 30, &zone, now, 6_000);
+        lay_days_off(&mut fresh, Vec::new());
+        assert!(!fresh.tasks.contains_key(DAYS_OFF) && fresh.time().spans.is_empty());
+        assert!(crate::tasks::Task::default().uid != DAYS_OFF);
     }
 
     /// The blocks: the agendas picked alone, what takes time alone, each

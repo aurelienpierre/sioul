@@ -209,12 +209,14 @@ mod replies;
 mod reviews;
 mod securitykey;
 mod senders;
+mod series;
 mod servers;
 mod share;
 mod sites;
 mod spam;
 mod stars;
 mod steps;
+mod subscriptions;
 // tell: the window's notices, one call about one thing (docs/notifications.md).
 mod tell;
 mod timenote;

@@ -967,6 +967,39 @@ pub mod qobject {
         #[qinvokable]
         fn agendas_setup(self: &Sioul) -> QString;
 
+        /// The official French calendars offered (Agenda ⚙ ▸ Subscribe to a
+        /// calendar…), as JSON (`subscriptions::officials`).
+        #[qinvokable]
+        fn subscribe_officials(self: &Sioul) -> QString;
+
+        /// A calendar subscribed by its web address ({url, name, holidays,
+        /// days_off, after_class, id, whose, person, area}), then read at
+        /// once: {id, problem} as JSON (`subscriptions::subscribe`).
+        #[qinvokable]
+        fn subscribe_calendar(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// One field of a subscribed calendar ("url", "name", "holidays",
+        /// "days_off", "after_class", "colour"); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_subscription_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// "Refresh now" on a subscribed calendar's line: read apart, said in the status line.
+        #[qinvokable]
+        fn refresh_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A subscribed calendar stopped, on every device; returns what went wrong, else "".
+        #[qinvokable]
+        fn stop_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Settings ▸ Hours ▸ Vacations and holidays: the calendars of holidays, as JSON.
+        #[qinvokable]
+        fn holidays_calendars(self: &Sioul) -> QString;
+
+        /// What a series may pause during, for the event form: my vacations,
+        /// public holidays, each school-holidays calendar, as JSON (`series::sources`).
+        #[qinvokable]
+        fn pause_sources(self: &Sioul) -> QString;
+
         /// One field of an agenda's settings ("whose", "name", "area",
         /// "reaches", "access"; "" back to the default); returns what went
         /// wrong, else "".
@@ -3474,31 +3507,48 @@ thread_local! {
 }
 
 pub(crate) fn load_config() -> Config {
+    config_parsed().0
+}
+
+/// The settings, only when their file is there and reads: what takes
+/// something away on their word (a subscribed calendar's copy, a series'
+/// pauses) asks this, never the defaults a file that does not read gives
+/// (the calendars' review, F19, F27).
+pub(crate) fn config_read() -> Option<Config> {
+    let (config, reads) = config_parsed();
+    reads.then_some(config)
+}
+
+/// The settings as `load_config` gives them, and whether their file is
+/// there and reads.
+fn config_parsed() -> (Config, bool) {
     // Read a hundred times a minute: parsed again only when the file changed
     // (its size or its time), as the sharing or another window may change it.
     // A time younger than two seconds is not trusted: two writings of one size
     // within a tick of the clock look alike.
-    type Parsed = (PathBuf, u64, std::time::SystemTime, Config);
+    type Parsed = (PathBuf, u64, std::time::SystemTime, Config, bool);
     static PARSED: Mutex<Option<Parsed>> = Mutex::new(None);
     let path = config_path();
     let settled = |time: &std::time::SystemTime| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2));
     let stamp = std::fs::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
     if let Some((size, time)) = stamp
         && let Ok(parsed) = PARSED.lock()
-        && let Some((p, s, t, config)) = parsed.as_ref()
+        && let Some((p, s, t, config, reads)) = parsed.as_ref()
         && *p == path
         && *s == size
         && *t == time
     {
-        return config.clone();
+        return (config.clone(), *reads);
     }
-    let config = Config::load(&path).unwrap_or_default();
+    let loaded = Config::load(&path);
+    let reads = loaded.is_ok();
+    let config = loaded.unwrap_or_default();
     // The words this program looks for, said once each time the file is read (`words::current`).
     sioul_core::words::set_current(sioul_core::words::Words::of(&config));
     if let (Some((size, time)), Ok(mut parsed)) = (stamp, PARSED.lock()) {
-        *parsed = Some((path, size, time, config.clone()));
+        *parsed = Some((path, size, time, config.clone(), reads));
     }
-    config
+    (config, reads)
 }
 
 /// One translator for the session: the configuration's language, else the session's.
@@ -6144,6 +6194,34 @@ impl qobject::Sioul {
         QString::from(&crate::agenda::setup())
     }
 
+    fn subscribe_officials(&self) -> QString {
+        QString::from(&crate::subscriptions::officials())
+    }
+
+    fn subscribe_calendar(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::subscriptions::subscribe(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn set_subscription_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        QString::from(&crate::subscriptions::set_field(&self.qt_thread(), &self.shared(), &id.to_string(), &field.to_string(), &value.to_string()))
+    }
+
+    fn refresh_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::refresh_now(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn stop_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::stop(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn holidays_calendars(&self) -> QString {
+        QString::from(&crate::subscriptions::holidays())
+    }
+
+    fn pause_sources(&self) -> QString {
+        QString::from(&crate::series::sources())
+    }
+
     fn take_child(self: Pin<&mut Self>, key: &QString, start: f64, who: &QString) -> QString {
         // A time of Unix seconds, as the card holds it (a whole number in a double).
         #[allow(clippy::cast_possible_truncation)]
@@ -8010,6 +8088,10 @@ impl qobject::Sioul {
         crate::sites::gather_tick(&self.qt_thread(), &self.shared());
         // Your sites' own icons, when missing or a week old.
         crate::sites::favicon_tick(&self.qt_thread());
+        // The calendars subscribed by their address: when Sioul opens, then each at its time.
+        crate::subscriptions::tick(&self.qt_thread(), &self.shared());
+        // The series that pause: kept up to date when your vacations or holidays change, and each day.
+        crate::series::tick(&self.qt_thread(), &self.shared());
         // Dates coming: told once each.
         crate::remind::tick();
         // What waited (nobody at the computer, a pause, do-not-disturb), told now if it may come.
@@ -8924,7 +9006,7 @@ impl qobject::Sioul {
         // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

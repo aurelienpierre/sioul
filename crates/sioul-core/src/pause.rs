@@ -701,7 +701,7 @@ mod tests {
         let paused = Overrides { paused_since: Some(stamp("2026-10-02T10:00")), ..Overrides::default() };
         for time in ["10:30", "12:30", "14:10", "20:30", "23:30"] {
             let now = at(&format!("2026-10-02T{time}"));
-            let m = mode(&week(), &[], &paused, &health(&now), &now);
+            let m = mode(&week(), &crate::vacations::DaysOff::default(), &paused, &health(&now), &now);
             assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::Paused, Time::Sleep, true), "{time}: above work, meals, naps, evenings and the night");
             // As usual (`attention`): doses come unless the setup said otherwise, an
             // event's own alarm (an alarm you set), a code you just asked for (Q6); nothing else.
@@ -720,20 +720,20 @@ mod tests {
             Overrides { work_now: Some(stamp("2026-10-02T17:00")), ..paused.clone() },
             Overrides { free_since: Some(stamp("2026-10-02T10:30")), ..paused.clone() },
         ] {
-            assert_eq!(mode(&week(), &[], &others, &health(&now), &now).reason, Reason::Paused);
+            assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &others, &health(&now), &now).reason, Reason::Paused);
         }
         // Ended: the hours again; pressed again later: paused again.
         let ended = Overrides { paused_ended: Some(stamp("2026-10-02T10:45")), ..paused.clone() };
-        assert_eq!(mode(&week(), &[], &ended, &health(&now), &now).reason, Reason::Working);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &ended, &health(&now), &now).reason, Reason::Working);
         let again = Overrides { paused_since: Some(stamp("2026-10-02T10:50")), ..ended };
-        assert_eq!(mode(&week(), &[], &again, &health(&now), &now).reason, Reason::Paused);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &again, &health(&now), &now).reason, Reason::Paused);
     }
 
     #[test]
     fn free_time_is_leisure_with_the_safe_list_only() {
         let now = at("2026-10-02T15:00");
         let free = Overrides { free_since: Some(stamp("2026-10-02T14:40")), ..Overrides::default() };
-        let m = mode(&week(), &[], &free, &health(&now), &now);
+        let m = mode(&week(), &crate::vacations::DaysOff::default(), &free, &health(&now), &now);
         assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::FreeTime, Time::Leisure, true), "leisure in working hours");
         assert_eq!(m.until.as_ref().map(|z| z.strftime("%H:%M").to_string()), Some("22:00".into()), "until the night's start");
         // As usual (`attention`): doses, codes, and events' alarms when their event falls in it; nothing else.
@@ -758,13 +758,13 @@ mod tests {
         // Sleep still comes first: a nap, then the night, which ends it.
         let nap = at("2026-10-02T14:10");
         let early = Overrides { free_since: Some(stamp("2026-10-02T13:30")), ..Overrides::default() };
-        assert_eq!(mode(&week(), &[], &early, &health(&nap), &nap).reason, Reason::Nap);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &early, &health(&nap), &nap).reason, Reason::Nap);
         let late = at("2026-10-02T21:30");
-        assert_eq!(mode(&week(), &[], &free, &health(&late), &late).reason, Reason::FreeTime);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &free, &health(&late), &late).reason, Reason::FreeTime);
         let night = at("2026-10-02T22:30");
-        assert_eq!(mode(&week(), &[], &free, &health(&night), &night).reason, Reason::WindingDown);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &free, &health(&night), &night).reason, Reason::WindingDown);
         let morning = at("2026-10-03T10:00");
-        assert_eq!(mode(&week(), &[], &free, &health(&morning), &morning).reason, Reason::DayOff, "over with the night");
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &free, &health(&morning), &morning).reason, Reason::DayOff, "over with the night");
         // Without a night, at midnight.
         let no_night = Blocks::default();
         assert_eq!(free_until(stamp("2026-10-02T14:40"), &no_night, now.time_zone()), stamp("2026-10-03T00:00"));
@@ -827,11 +827,11 @@ mod tests {
         assert_eq!(o.free_lost, Some(25));
         // Work until then, Sioul ends it: leisure after.
         let at_17 = at("2026-10-02T17:10");
-        let m = mode(&work, &[], &o, &health(&at_17), &at_17);
+        let m = mode(&work, &crate::vacations::DaysOff::default(), &o, &health(&at_17), &at_17);
         assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::Extended, Time::Work, false));
         assert_eq!(m.until.map(|z| z.strftime("%H:%M").to_string()), Some("17:25".into()));
         let after = at("2026-10-02T17:30");
-        assert_eq!(mode(&work, &[], &o, &health(&after), &after).reason, Reason::Evening);
+        assert_eq!(mode(&work, &crate::vacations::DaysOff::default(), &o, &health(&after), &after).reason, Reason::Evening);
         // A second free time the same day adds up: 15:30–16:30, an hour more.
         start_free(&mut o, stamp("2026-10-02T15:30"));
         assert_eq!(end_free(&mut o, &ev, &at("2026-10-02T16:30"), true).map(hm), Some("18:25".into()));
@@ -839,7 +839,7 @@ mod tests {
         keep_usual_end(&mut o, back.date());
         assert_eq!(o.moved_end(back.date()), None);
         let at_17 = at("2026-10-02T17:10");
-        assert_eq!(mode(&work, &[], &o, &health(&at_17), &at_17).reason, Reason::Evening);
+        assert_eq!(mode(&work, &crate::vacations::DaysOff::default(), &o, &health(&at_17), &at_17).reason, Reason::Evening);
         start_free(&mut o, stamp("2026-10-02T16:35"));
         assert_eq!(end_free(&mut o, &ev, &at("2026-10-02T16:50"), true), None);
         // The setting "the end does not move": the same.
@@ -852,7 +852,7 @@ mod tests {
         end_free(&mut done, &ev, &at("2026-10-05T11:00"), true);
         done.rest_until = Some(stamp("2026-10-06T09:00"));
         let monday = at("2026-10-05T17:10");
-        assert_eq!(mode(&work, &[], &done, &health(&monday), &monday).reason, Reason::DoneForTheDay);
+        assert_eq!(mode(&work, &crate::vacations::DaysOff::default(), &done, &health(&monday), &monday).reason, Reason::DoneForTheDay);
         // While it goes on, the plan sees the end as if work came back now.
         let mut going = Overrides::default();
         start_free(&mut going, stamp("2026-10-05T15:00"));
@@ -861,7 +861,7 @@ mod tests {
         assert!(going.free_from().is_some(), "only seen, not ended");
         // The next day starts as usual.
         let tuesday = at("2026-10-06T17:10");
-        assert_eq!(mode(&work, &[], &o, &health(&tuesday), &tuesday).reason, Reason::Evening);
+        assert_eq!(mode(&work, &crate::vacations::DaysOff::default(), &o, &health(&tuesday), &tuesday).reason, Reason::Evening);
     }
 
     /// One task with `minutes`, light or not.
@@ -906,7 +906,7 @@ mod tests {
         assert!(o.paused_from().is_none());
         assert_eq!(o.moved_end(back.date()), None);
         let evening = at("2026-10-05T17:30");
-        assert_eq!(mode(&week(), &[], &o, &health(&evening), &evening).reason, Reason::Evening, "the day is not extended");
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &o, &health(&evening), &evening).reason, Reason::Evening, "the day is not extended");
         // The paused hours' work flows to later days: today keeps only what is left, lighter.
         let windows = week();
         let mut settings = Settings::of_hours(&windows, TaskAreas::usual()).with_events(&back, &[]);
@@ -930,7 +930,7 @@ mod tests {
         start_pause(&mut rest, stamp("2026-10-05T10:00"), 0);
         end_pause(&mut rest, &at("2026-10-05T10:30"), After::Rest, Some(stamp("2026-10-06T09:00")), Some(stamp("2026-10-05T14:00")));
         let noon = at("2026-10-05T12:00");
-        assert_eq!(mode(&week(), &[], &rest, &health(&noon), &noon).reason, Reason::DoneForTheDay);
+        assert_eq!(mode(&week(), &crate::vacations::DaysOff::default(), &rest, &health(&noon), &noon).reason, Reason::DoneForTheDay);
         assert!(rest.porch_rests(stamp("2026-10-05T13:00")) && !rest.porch_rests(stamp("2026-10-05T14:00")));
         // Forgotten: the stamps go, nothing else.
         forget(&mut rest);

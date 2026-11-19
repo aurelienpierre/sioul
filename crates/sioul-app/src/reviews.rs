@@ -32,7 +32,7 @@ fn work_end(config: &sioul_core::config::Config, now: &Zoned) -> Option<Zoned> {
 /// `date`'s last hours of work or admin end then, in `zone`; none on a day
 /// without them, or in time off.
 fn work_end_on(config: &sioul_core::config::Config, date: Date, zone: &jiff::tz::TimeZone) -> Option<Zoned> {
-    if sioul_core::quiet::time_off_on(&config.time_off, date).is_some() {
+    if sioul_core::vacations::DaysOff::of(&config).on(date).is_some() {
         return None;
     }
     sioul_core::window::hours_on(&config.week_hours(), date, zone).map(|(_, closing)| closing)

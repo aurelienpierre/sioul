@@ -39,7 +39,7 @@ On a phone, Settings opens on the list of its sections instead, each with one li
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
 - **Meals, rest and sleep**, under their own heading: your usual meals, naps and night, the alarm at waking, the notice before each and how far **Later** moves one ([Meals, rest and sleep](health.md#meals-rest-and-sleep)). Every page follows them: what now is for, the plan, what reaches you. A day that differs is changed on the Health page, that day only. Leisure is every other time, neither work nor admin: there is nothing to set for it.
-- **Time off**, under **Days off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
+- **Vacations and holidays**: your vacations, sick leave and other days off, quiet from the first day to the last, each with a word and its kind; then each calendar of public or school holidays you subscribed to, with its switch **its days count as my days off** (on for public holidays, off for school holidays), and **Subscribe to a calendar of holidays…** ([Vacations and holidays](hours.md#vacations-and-holidays)).
 
 Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
 

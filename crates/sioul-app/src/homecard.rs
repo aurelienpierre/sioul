@@ -743,7 +743,7 @@ fn timeline(m: &Moment, hours: &[(Zoned, sioul_core::agendas::Hours)]) -> Vec<(Z
     // One way of cutting the time ahead, for the card and the agenda's head line (`quiet::frames`),
     // each frame's time on this device: the card shows what comes forward on it then.
     let lines = crate::dispatch::lines();
-    quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.porch_windows(), m.now, &horizon, &ends, FRAMES).into_iter().map(|(from, until, mode)| (from, until, mode.on(&lines))).collect()
+    quiet::frames(&m.config.week_hours(), &sioul_core::vacations::DaysOff::of(&m.config), m.overrides, m.blocks, &m.config.porch_windows(), m.now, &horizon, &ends, FRAMES).into_iter().map(|(from, until, mode)| (from, until, mode.on(&lines))).collect()
 }
 
 /// What a frame is, for Java's colours and tests: the time's word, or the pause's.
@@ -1749,7 +1749,7 @@ fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> b
     let Some(frames) = frames_of(card) else { return false };
     for frame in frames.iter_mut().filter(|f| f["porch"].is_object()) {
         let Some(from) = frame["from"].as_i64().and_then(|at| Timestamp::from_millisecond(at).ok()).map(|t| t.to_zoned(zone.clone())) else { continue };
-        let mode = quiet::mode(&hours, &m.config.time_off, m.overrides, m.blocks, &from).on(&crate::dispatch::lines());
+        let mode = quiet::mode(&hours, &sioul_core::vacations::DaysOff::of(&m.config), m.overrides, m.blocks, &from).on(&crate::dispatch::lines());
         let porch = made.entry(porch_key(m, &mode, &from)).or_insert_with(|| porch_at(m, input, &mode, &from)).clone();
         let at: Vec<usize> = porch
             .mail

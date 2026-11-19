@@ -4009,6 +4009,28 @@ mod tests {
         assert!(puts(&dav).is_empty(), "{:?}", dav.seen());
     }
 
+    /// A series that pauses (18 November 2026) travels as Sioul wrote it:
+    /// its left-out times (EXDATE) and Sioul's own lines of what it pauses
+    /// for and which times it left out, sent and pulled back byte for byte by
+    /// a server that keeps what it is given, as the stand-in does.
+    #[test]
+    fn a_series_pauses_travel_as_written() {
+        home();
+        let (dav, home) = Dav::start(&["classes"]);
+        let client = client();
+        sync_one(&client, "series-pauses", &home, "classes").unwrap();
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VEVENT\r\nUID:swimming\r\nDTSTAMP:20301001T080000Z\r\nDTSTART:20301002T150000Z\r\nDTEND:20301002T160000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20310625T215959Z\r\nSUMMARY:Swimming\r\nX-SIOUL-PAUSE-DURING:public\r\nX-SIOUL-PAUSE-DURING:school/zone-a\r\nEXDATE:20301023T150000Z\r\nEXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=school/zone-a:20301023T150000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=public:0123456789abcdef\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=school/zone-a:fedcba9876543210\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(folder("series-pauses", "classes").join("swimming.ics"), series).unwrap();
+        let report = sync_one(&client, "series-pauses", &home, "classes").unwrap();
+        assert_eq!(report.sent, 1, "{report:?}");
+        assert_eq!(dav.items("classes").values().next().map(String::as_str), Some(series), "kept as sent");
+        let zone = jiff::tz::TimeZone::UTC;
+        let there = dav.items("classes").values().next().cloned().unwrap();
+        assert_eq!(sioul_core::series::sources_of(&there).len(), 2);
+        assert_eq!(sioul_core::series::paused_of(&there, &zone).values().map(std::collections::BTreeSet::len).sum::<usize>(), 2);
+        assert_eq!(sioul_core::series::versions_of(&there).len(), 2, "each source's version, kept as sent");
+    }
+
     /// F1: an event made here is sent, then the network drops before the
     /// calendar is read: the next sync knows it was sent.
     #[test]

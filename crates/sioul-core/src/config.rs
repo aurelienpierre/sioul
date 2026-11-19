@@ -179,9 +179,18 @@ pub struct Config {
     /// When offices are open, for tasks that need one; Monday to Friday 9:00–17:00 when unsaid.
     #[serde(rename = "office_hours", default)]
     pub office_hours: Vec<AdminWindow>,
-    /// Days off: holidays, sick leave; quiet from the first day to the last.
-    #[serde(rename = "time_off", default)]
+    /// Your vacations: holidays, sick leave; quiet from the first day to the
+    /// last. Read through `vacations::DaysOff` alone, which adds the public
+    /// holidays of a subscribed calendar. An entry that does not read is
+    /// passed over (`time_off_entries`), the rest still read.
+    #[serde(rename = "time_off", default, deserialize_with = "time_off_entries")]
     pub time_off: Vec<TimeOff>,
+    /// Whose your vacations are and when they last changed (`[vacations]`,
+    /// 19 November 2026): what a series that pauses during them notes
+    /// (`series::Source::Vacations`, `series::Version::Edited`). Shared with
+    /// the settings; read leniently (a field that does not read is unsaid).
+    #[serde(default, deserialize_with = "vacations_mark")]
+    pub vacations: VacationsMark,
     #[serde(default)]
     pub quiet: QuietSettings,
     /// The Porch's own choices (docs/porch.md).
@@ -294,7 +303,7 @@ pub struct RowSettings {
     pub hidden: Option<Vec<String>>,
 }
 
-/// Days off, from one day to another, both included.
+/// A vacation you typed, from one day to another, both included.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TimeOff {
     /// Its id, given when the sharing takes format 2 (one id per day off); empty before.
@@ -306,6 +315,89 @@ pub struct TimeOff {
     pub until: jiff::civil::Date,
     #[serde(default)]
     pub label: String,
+    /// "vacation", "sick" or "other" (18 November 2026); unsaid, or a word
+    /// this Sioul does not know, a vacation. An older Sioul passes over it.
+    /// One that is not a word reads as unsaid, never the whole vacation (F30).
+    #[serde(default, deserialize_with = "word_or_unsaid")]
+    pub kind: String,
+}
+
+/// A word, or "" for anything else (a number, a table): one field that does
+/// not read never takes its entry with it.
+fn word_or_unsaid<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(toml::Value::deserialize(d).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default())
+}
+
+/// Your vacations' own marks (`[vacations]`), shared with the settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VacationsMark {
+    /// An opaque id of your settings, random, made once (`vacations_owner`):
+    /// a series pausing during your vacations names them by it, so that
+    /// another person's Sioul that writes the same calendar does not take
+    /// them for its own. Nothing personal.
+    pub owner: String,
+    /// When Sioul last changed the days of your vacations, as an instant
+    /// ("2026-11-19T10:00:00Z"); the same on every device that has the
+    /// settings of that change. Unsaid: never.
+    pub stamp: String,
+}
+
+impl VacationsMark {
+    /// When your vacations were last changed, Unix seconds; 0 unsaid.
+    pub fn edited(&self) -> i64 {
+        let stamp = self.stamp.trim();
+        stamp
+            .parse::<jiff::Timestamp>()
+            .ok()
+            .or_else(|| jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", stamp.trim_end_matches(['Z', 'z'])).ok().and_then(|d| d.to_zoned(jiff::tz::TimeZone::UTC).ok()).map(|z| z.timestamp()))
+            .map_or(0, |t| t.as_second())
+    }
+}
+
+/// `[vacations]` read leniently: a field that is not a word reads as unsaid,
+/// a value that is not a table as nothing said.
+fn vacations_mark<'de, D: serde::Deserializer<'de>>(d: D) -> Result<VacationsMark, D::Error> {
+    let value = toml::Value::deserialize(d).ok();
+    let word = |field: &str| value.as_ref().and_then(|v| v.get(field)).and_then(toml::Value::as_str).unwrap_or_default().to_string();
+    Ok(VacationsMark { owner: word("owner"), stamp: word("stamp") })
+}
+
+/// Your vacations' owner id (`VacationsMark::owner`), made and written into
+/// the settings at `path` when there is none yet, with a stamp of now when
+/// none was said. Asked when a series is first made to pause during your vacations.
+pub fn vacations_owner(path: &Path) -> Result<String, String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let said = doc.get("vacations").and_then(|v| v.get("owner")).and_then(Item::as_str).map(str::trim).filter(|o| crate::subscribed::valid_id(o)).map(str::to_string);
+        if let Some(owner) = said {
+            return Ok(owner);
+        }
+        let owner = crate::ids::new();
+        let table = doc.entry("vacations").or_insert(Item::Table(Table::new()));
+        let Some(table) = table.as_table_like_mut() else { return Err("vacations: not a table".into()) };
+        table.insert("owner", value(owner.as_str()));
+        if table.get("stamp").and_then(Item::as_str).is_none() {
+            table.insert("stamp", value(jiff::Timestamp::now().to_string()));
+        }
+        write_document(path, &doc)?;
+        Ok(owner)
+    })
+}
+
+/// The days of the vacations a settings document holds, as spans (`series::spans`).
+fn vacation_spans(doc: &DocumentMut) -> crate::series::Spans {
+    let list: Vec<TimeOff> = doc.get("time_off").and_then(Item::as_array_of_tables).map(|tables| tables.iter().filter_map(|t| toml::from_str::<TimeOff>(&t.to_string()).ok()).collect()).unwrap_or_default();
+    crate::series::spans(list.iter().map(|t| (t.from, t.until)))
+}
+
+/// The `[[time_off]]` entries that read: one without its two days, or whose
+/// day is no date, is passed over, never the whole configuration (before 18
+/// November 2026 it stopped the configuration from loading). A list that is
+/// not a list reads as none.
+fn time_off_entries<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<TimeOff>, D::Error> {
+    let value = toml::Value::deserialize(d)?;
+    let toml::Value::Array(entries) = value else { return Ok(Vec::new()) };
+    Ok(entries.into_iter().filter_map(|entry| entry.try_into::<TimeOff>().ok()).collect())
 }
 
 /// What quiet time keeps: the categories of tasks that are yours (family,
@@ -644,6 +736,14 @@ pub struct AgendaSettings {
     /// The hour the day planning opens on.
     #[serde(default)]
     pub day_start: Option<u32>,
+    /// The calendars subscribed by their web address (18 November 2026,
+    /// `subscribed`): `[agenda.subscriptions."<id>"]`, the address and what
+    /// the calendar is, typed once and carried with the settings, one entry
+    /// per field; each device fetches it by itself into
+    /// `calendars/subscribed/<id>/`, which the sharing never carries. An
+    /// entry that does not read is passed over (`subscribed::entries`).
+    #[serde(default, deserialize_with = "crate::subscribed::entries")]
+    pub subscriptions: std::collections::BTreeMap<String, crate::subscribed::Subscription>,
     /// Where a new event goes ("account/id"), Settings ▸ Agenda; unset: the
     /// first calendar that takes events, as before (`agenda::default_calendar`).
     #[serde(default)]
@@ -1641,7 +1741,9 @@ impl Config {
             .into_iter()
             .chain((2..).map(|n| format!("{label}-{n}")))
             .map(|id| slug(&id))
-            .find(|id| self.every_account().all(|a| &a.id != id))
+            // Never the name of a folder of Sioul's own beside the accounts' (F24):
+            // `local`, this device's calendars; `subscribed`, those read by their address.
+            .find(|id| id != crate::vdir::LOCAL && id != crate::vdir::SUBSCRIBED && self.every_account().all(|a| &a.id != id))
             .unwrap_or_default()
     }
 }
@@ -2219,6 +2321,9 @@ pub struct TimeOffValue {
     pub until: String,
     #[serde(default)]
     pub label: String,
+    /// "vacation", "sick", "other" (`TimeOff::kind`); "" a vacation.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
 }
 
 /// A day's hours, as the settings edit them.
@@ -2276,12 +2381,30 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
             // id of its own once the list carries ids (format 2: one id per day off).
             let mut there: Vec<Table> = doc.get(key).and_then(Item::as_array_of_tables).map(|list| list.iter().cloned().collect()).unwrap_or_default();
             let with_ids = there.iter().any(|t| t.get("id").and_then(Item::as_str).is_some_and(|id| !id.is_empty()));
-            let same = |t: &Table, from: &toml_edit::Datetime, until: &toml_edit::Datetime, label: &str| {
-                t.get("from").and_then(Item::as_datetime) == Some(from) && t.get("until").and_then(Item::as_datetime) == Some(until) && t.get("label").and_then(Item::as_str).unwrap_or_default() == label
+            // A vacation's kind, written only when it is not a vacation (unsaid reads as one).
+            let kind_of = |kind: &str| -> Option<&'static str> {
+                match kind.trim() {
+                    "sick" => Some("sick"),
+                    "other" => Some("other"),
+                    _ => None,
+                }
             };
+            let same = |t: &Table, from: &toml_edit::Datetime, until: &toml_edit::Datetime, label: &str, kind: Option<&str>| {
+                t.get("from").and_then(Item::as_datetime) == Some(from) && t.get("until").and_then(Item::as_datetime) == Some(until) && t.get("label").and_then(Item::as_str).unwrap_or_default() == label && t.get("kind").and_then(Item::as_str).and_then(kind_of) == kind
+            };
+            // An entry that does not read (no day, or no date) is shown nowhere: kept as it is, at the end.
+            let reads = |t: &Table| toml::from_str::<TimeOff>(&t.to_string()).is_ok();
+            let unread: Vec<Table> = there.iter().filter(|t| !reads(t)).cloned().collect();
+            there.retain(reads);
             let mut tables = ArrayOfTables::new();
             for off in days {
-                let (from, until, label) = (date(&off.from)?, date(&off.until)?, off.label.trim());
+                let (from, until, label, kind) = (date(&off.from)?, date(&off.until)?, off.label.trim(), kind_of(&off.kind));
+                let set_kind = |table: &mut Table| match kind {
+                    Some(kind) => table["kind"] = value(kind),
+                    None => {
+                        table.remove("kind");
+                    }
+                };
                 // Named by its id: changed in its own table, which keeps its id and the rest.
                 if let Some(at) = there.iter().position(|t| !off.id.is_empty() && t.get("id").and_then(Item::as_str) == Some(off.id.as_str())) {
                     let mut table = there.remove(at);
@@ -2292,15 +2415,19 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                     } else {
                         table["label"] = value(label);
                     }
+                    set_kind(&mut table);
                     tables.push(table);
                     continue;
                 }
-                if let Some(at) = there.iter().position(|t| same(t, &from, &until, label)) {
+                if let Some(at) = there.iter().position(|t| same(t, &from, &until, label, kind)) {
                     tables.push(there.remove(at));
                     continue;
                 }
                 let mut table = Table::new();
-                if with_ids {
+                // A sick leave or another kind takes an id even before the sharing's format 2:
+                // a Sioul 0.0.11 changes an entry named by its id in its own table, its kind
+                // kept, where it rewrote one without an id whole, the kind lost (F31).
+                if with_ids || kind.is_some() {
                     table["id"] = value(crate::ids::new());
                 }
                 table["from"] = value(from);
@@ -2308,12 +2435,25 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                 if !label.is_empty() {
                     table["label"] = value(label);
                 }
+                set_kind(&mut table);
                 tables.push(table);
             }
-            if days.is_empty() {
+            for table in unread {
+                tables.push(table);
+            }
+            let before = vacation_spans(&doc);
+            if tables.is_empty() {
                 doc.remove(key);
             } else {
                 doc[key] = Item::ArrayOfTables(tables);
+            }
+            // Their days changed: stamped now, in the shared settings, for the
+            // series that pause during them (`series::Version::Edited`).
+            if vacation_spans(&doc) != before {
+                let mark = doc.entry("vacations").or_insert(Item::Table(Table::new()));
+                if let Some(mark) = mark.as_table_like_mut() {
+                    mark.insert("stamp", value(jiff::Timestamp::now().to_string()));
+                }
             }
             return write_document(path, &doc);
         }
@@ -3021,7 +3161,13 @@ mod tests {
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
         // The last day off, the last hours taken away: the window's JSON `[]` reads as numbers.
         let empty: SettingValue = serde_json::from_str("[]").unwrap();
-        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new() }])).unwrap();
+        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new(), kind: String::new() }])).unwrap();
+        set_value(&path, "time_off", &empty).unwrap();
+        // F31: a sick leave takes an id even before the sharing's format 2, so that an older Sioul keeps its kind.
+        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new(), kind: "sick".into() }])).unwrap();
+        let sick = Config::load(&path).unwrap();
+        assert!(!sick.time_off[0].id.is_empty() && sick.time_off[0].kind == "sick");
+        assert!(!sick.vacations.stamp.is_empty(), "the vacations' days changed: stamped");
         set_value(&path, "time_off", &empty).unwrap();
         set_value(&path, "window.admin", &empty).unwrap();
         let config = Config::load(&path).unwrap();
@@ -3489,5 +3635,19 @@ mod train_here_tests {
         assert!(shared_from_older.spam.trains_here(), "unset: on, whatever the shared switch says");
         let off: super::Config = toml::from_str("[spam]\ntrain_by_itself = true\ntrain_here = false\n").unwrap();
         assert!(!off.spam.trains_here());
+    }
+
+    /// The calendars' review, F24 and F30: an account is never named as a
+    /// folder of Sioul's own beside the accounts (`local`, `subscribed`); a
+    /// vacation whose kind is not a word reads, its kind unsaid.
+    #[test]
+    fn reserved_ids_and_a_kind_that_is_no_word() {
+        let config = super::Config::default();
+        assert_eq!(config.free_id("me@subscribed.example"), "subscribed-me");
+        assert_eq!(config.free_id("me@local.example"), "local-me");
+        let read: super::Config = toml::from_str("[[time_off]]\nfrom = 2030-08-01\nuntil = 2030-08-15\nkind = 2\n").unwrap();
+        assert_eq!((read.time_off.len(), read.time_off[0].kind.as_str()), (1, ""));
+        let mark: super::Config = toml::from_str("vacations = 3\n").unwrap();
+        assert_eq!(mark.vacations, super::VacationsMark::default(), "a mark that is no table is nothing said");
     }
 }

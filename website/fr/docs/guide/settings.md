@@ -39,7 +39,7 @@ Sur un téléphone, Paramètres s’ouvre plutôt sur la liste de ses sections, 
 - **Heures de travail** : ces jours et à ces heures, le travail peut vous joindre. En dehors, il se repose.
 - **Heures pour vos démarches** : vos démarches viennent alors (organismes, factures, courriers, courses de santé).
 - **Repas, repos et sommeil**, sous leur propre titre : vos repas, siestes et nuit habituels, le réveil au lever, l’avis avant chacun et de combien **Plus tard** en décale un ([Repas, repos et sommeil](health.md#meals-rest-and-sleep)). Toutes les pages les suivent : ce à quoi sert le moment présent, le plan, ce qui vous joint. Un jour qui diffère se change sur la page Santé, ce jour-là seulement. Les loisirs, c’est tout le reste du temps, ni travail ni démarches : il n’y a rien à régler pour eux.
-- **Congés**, sous **Jours sans travail** : vacances, arrêt maladie, calme du premier jour au dernier, comme un jour sans travail, avec un mot dessus.
+- **Vacances et jours fériés** : vos vacances, arrêts maladie et autres jours sans travail, calmes du premier jour au dernier, chacun avec un mot et son type ; puis chaque agenda de jours fériés ou de vacances scolaires auquel vous êtes abonné, avec son interrupteur **ses jours comptent comme mes jours sans travail** (allumé pour les jours fériés, éteint pour les vacances scolaires), et **S’abonner à un agenda de vacances…** ([Vacances et jours fériés](hours.md#vacations-and-holidays)).
 
 Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusieurs : **+** en ajoute une, **×** en retire une. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
 

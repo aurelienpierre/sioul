@@ -372,6 +372,9 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // A child's event: who takes it, its kind, what you may answer (part 3).
         "child": crate::children::card(&path, if o.recurring { o.start } else { 0 }),
         "status": agenda::status_of(&text),
+        // A series: how it repeats ("Every week until Friday 26 June"), its next pause and when it resumes.
+        "repeats": if o.recurring { crate::series::card_lines(&text).0 } else { String::new() },
+        "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
@@ -607,7 +610,7 @@ fn filter_now_with(view: &View) -> FilterNow {
     let agendas = sioul_core::agendas::all(&config);
     // The set Sioul's own time brings now (work, admin, leisure, as the hours say, Free time and the pause aside).
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let time = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &zoned).time;
+    let time = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::default(), &zoned).time;
     let sets = config.agenda.sets.clone();
     let by_time = sioul_core::agendas::set_of_time(&sets, time.id()).map(|(name, _)| name.clone());
     let mut out = kept.clone();
@@ -848,7 +851,10 @@ pub(crate) fn setup() -> String {
                 // For availability: what its events say shown (part 4).
                 "titles": a.titles,
                 // Its server, and whether it is yours to rename and remove (part 5).
-                "server": collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default(),
+                // None for a calendar subscribed by its address: no server to rename it on, nothing shared from here.
+                "server": if a.account == sioul_core::vdir::SUBSCRIBED { serde_json::Value::Null } else { collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default() },
+                // A calendar subscribed by its address: its address, what it holds, its line on this device; null for another.
+                "subscription": crate::subscriptions::row(&config, &a.id),
                 // A calendar of busy blocks Sioul keeps for your availability (Agenda ⚙ ▸ Your availability), and for which.
                 "mirror": a.mirror,
                 "kept_for": if a.mirror { config.agenda.availabilities.iter().find(|x| x.mirrors.iter().any(|m| format!("{}/{}", m.account, m.calendar) == a.id)).map(|x| x.name.clone()).unwrap_or_default() } else { String::new() },
@@ -1043,7 +1049,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let read = started.elapsed();
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
-    let mut items = agenda::items(&occurrences, &zone, &errand);
+    // A calendar of holidays that counts as your days off: its whole days are
+    // drawn as days off (`timeline::days_off`), never twice.
+    let counted = sioul_core::subscribed::counted_folders(&load_config());
+    // Within the years its days are read for (`subscribed::HOLIDAYS_FROM`), else shown as the event it is (F25).
+    let year_of = |year: i16| jiff::civil::Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
+    let read_for = year_of(sioul_core::subscribed::HOLIDAYS_FROM)..year_of(sioul_core::subscribed::HOLIDAYS_UNTIL);
+    let shown: Vec<Occurrence> = occurrences.iter().filter(|o| !(o.all_day && read_for.contains(&o.start) && counted.iter().any(|f| std::path::Path::new(&o.key).starts_with(f)))).cloned().collect();
+    let mut items = agenda::items(&shown, &zone, &errand);
     // Legs as events of their own when Show says so (D25); else quiet lines in their appointment's lead.
     if read_view().legs {
         for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Leg) {
@@ -1085,7 +1098,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         // The Month's dates too: a prescription's, by its kind (a pure read of the health file).
         let month_health = (mode == Mode::Month).then(|| sioul_core::health::Health::read(&sioul_core::health::Health::default_path()).ok()).flatten();
         let health = health_read.as_ref().and_then(|(h, _, _)| h.as_ref().ok()).or(month_health.as_ref());
-        items.extend(timeline::days_off(&load_config().time_off));
+        items.extend(timeline::days_off(&sioul_core::vacations::DaysOff::of(&load_config())));
         items.extend(crate::dated::items(&tasks, &occurrences, health, state.from, state.days, &now, &errand));
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
@@ -1110,7 +1123,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             Ok(health) => items.extend(dose_items(health, state.from, state.days, &now)),
             Err(_) => doses_note = tr().text("agenda-doses-unread", None),
         }
-        items.extend(timeline::days_off(&load_config().time_off));
+        items.extend(timeline::days_off(&sioul_core::vacations::DaysOff::of(&load_config())));
         // The dates asked of you on their days, today and after (the unified agenda, part 4),
         // and the next one past them.
         let (dated, next) = crate::dated::items_and_next(&tasks, &occurrences, health.as_ref().ok(), state.from, state.days, &now, &errand);
@@ -1542,7 +1555,7 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let held = work::held_by_plan(today, now).unwrap_or_else(|| sioul_core::plan::event_spans(occurrences, 0));
     let blocks = sioul_core::quiet::Blocks::of(&needs, &days, &held, now);
-    let moments: Vec<(i64, i64, sioul_core::quiet::Mode)> = sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &blocks, &[], now, &next_midnight, &[], 48)
+    let moments: Vec<(i64, i64, sioul_core::quiet::Mode)> = sioul_core::quiet::frames(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &[], now, &next_midnight, &[], 48)
         .into_iter()
         .map(|(from, until, mode)| (from.timestamp().as_second(), until.timestamp().as_second(), mode))
         .collect();

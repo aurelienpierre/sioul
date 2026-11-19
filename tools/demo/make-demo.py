@@ -1634,8 +1634,13 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("work", event(c, "accountant", t("Call with Marc (accountant)", "Appel avec Marc (comptable)"), c.weekday_after(2), "11:00", "11:30",
                        location=t("Phone: +33 4 65 71 63 25", "Téléphone : +33 4 65 71 63 25"),
                        notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), project="taxes-2026")),
+        # A series that pauses during the school holidays, the public holidays and your vacations: the
+        # window's own round leaves its times out there (`series::keep`) when it starts.
         ("personal", event(c, "choir", t("Choir rehearsal", "Répétition de la chorale"), c.this_week(3), "18:45", "20:30",
-                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir")),
+                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir",
+                           extra=["X-SIOUL-PAUSE-DURING:public", f"X-SIOUL-PAUSE-DURING:school/{SCHOOL_ID}", f"X-SIOUL-PAUSE-DURING:vacations/{VACATIONS_OWNER}"])
+         # It ends with the season, at the end of June.
+         .replace("RRULE:FREQ=WEEKLY", f"RRULE:FREQ=WEEKLY;UNTIL={utc(c.at(date(c.today.year + 1, 6, 30), '23:59'))}")),
         ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
@@ -1670,6 +1675,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
     for calendar, text in events:
         uid = text.split("UID:")[1].split("\r\n")[0]
         p.write(p.data / "calendars" / DAV / calendar / f"{uid}.ics", text)
+    write_subscribed(p)
     # Léa's dentist came in since this device's first look: asked once, under the Agenda's head line (part 3).
     p.write(p.state / "holder-questions.toml", 'looked = true\nseen = ["demo-event-lea-dentist", "demo-event-lea-swimming"]\nask = ["demo-event-lea-dentist"]\n')
     if ONGOING == "quiet":
@@ -1677,6 +1683,56 @@ def write_calendars(p: Profile, mails: list[Mail]):
 
     by_key = {m.key: m for m in mails}
     write_tasks(p, by_key)
+
+
+# Calendars by their address (18 November 2026, docs/client.md): the official French files' addresses
+# (Licence Ouverte), never fetched here (SIOUL_DEMO=1, and the sandbox has no network).
+SCHOOL_ID = "fr-school-zone-a"
+SCHOOL_URL = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics"
+PUBLIC_ID = "fr-public-metropole"
+PUBLIC_URL = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics"
+# The opaque id of the demo's settings, whose vacations a series names (`config::VacationsMark::owner`).
+VACATIONS_OWNER = "demo-owner-noa"
+
+
+def fnv64_hex(text: str) -> str:
+    """`vdir::content_hash`: FNV-1a on 64 bits, as 16 hex digits."""
+    h = 0xCBF29CE484222325
+    for byte in text.encode():
+        h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{h:016x}"
+
+
+def write_subscribed(p: "Profile"):
+    """Each subscribed calendar's copy on this device as a round leaves it (`subscribed::take`,
+    `vdir::replace_subscribed`), read two hours ago: its files, its sync state (read only), what
+    this device read of it (`state/subscribed/<id>.toml`). The school holidays begin after class
+    in ten days; the public holidays are Christmas and New Year's Day to come."""
+    c = p.clock
+    xmas = date(c.today.year, 12, 25) if date(c.today.year, 12, 25) >= c.today else date(c.today.year + 1, 12, 25)
+    new_year = date(xmas.year + 1, 1, 1)
+    calendars = [
+        (SCHOOL_ID, SCHOOL_URL, "Calendrier scolaire - Zone A", [(c.day(10), c.day(26), "Vacances de Noël")]),
+        (PUBLIC_ID, PUBLIC_URL, "Jours fériés Métropole", [(xmas, xmas + timedelta(days=1), "Jour de Noël"), (new_year, new_year + timedelta(days=1), "1er janvier")]),
+    ]
+    read = unix(c.ago(hours=2))
+    for cid, url, name, holidays in calendars:
+        folder = p.data / "calendars" / "subscribed" / cid
+        p.write(folder / "displayname", name)
+        for n, (first, after, summary) in enumerate(holidays):
+            uid = f"demo-{cid}-{n}@subscribed.sioul"
+            p.write(folder / f"{fnv64_hex(uid)}.ics", vcalendar(["BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{utc(c.at(c.day(-30), '00:00'))}",
+                                                                 f"DTSTART;VALUE=DATE:{ics_date(first)}", f"DTEND;VALUE=DATE:{ics_date(after)}",
+                                                                 f"SUMMARY:{escape(summary)}", "TRANSP:TRANSPARENT", "END:VEVENT"]))
+        p.write(p.state / "dav" / "subscribed" / "calendars" / f"{cid}.toml", 'read_only = true\ncomponents = ["VEVENT"]\nowned = false\n')
+        p.write(p.state / "subscribed" / f"{cid}.toml", f"""address = "{fnv64_hex(url)}"
+tried = {read}
+checked = {read}
+changed = {unix(c.ago(hours=24 * 3))}
+hash = "demo"
+name = {toml_string(name)}
+events = {len(holidays)}
+""")
 
 
 # A task's tie to the appointment it prepares (`pairs::APPOINTMENT`).
@@ -2940,6 +2996,17 @@ parent_address = "sam@example.org"
 whose = "partner"
 name = "Sam"
 {work_agenda}
+# Calendars by their address (Agenda ⚙ ▸ Your agendas ▸ Subscribe to a calendar…): the
+# official school holidays of a zone and the public holidays, each device reading them by itself.
+[agenda.subscriptions."{SCHOOL_ID}"]
+url = "{SCHOOL_URL}"
+holidays = "school"
+after_class = true
+
+[agenda.subscriptions."{PUBLIC_ID}"]
+url = "{PUBLIC_URL}"
+holidays = "public"
+
 # Your availability (Agenda ⚙ ▸ Your availability): your busy times for Sam,
 # "Work" for the work agenda, kept in a calendar of blocks shared with Sam.
 [[agenda.availabilities]]
@@ -3090,6 +3157,11 @@ preset = "taxes"
 id = "choir"
 name = {toml_string(t("Choir", "Chorale"))}
 area = "leisure"
+
+# Whose the vacations are, and when they last changed: what a series pausing during them notes.
+[vacations]
+owner = "{VACATIONS_OWNER}"
+stamp = "{p.clock.at(p.clock.day(-10), '09:00').astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
 """)
     p.write(p.config / "known-senders.txt", f"""# Senders let in: they skip the screener.
 @{W.library}

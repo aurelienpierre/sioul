@@ -1417,6 +1417,46 @@ repeat-daily = Tous les jours
 repeat-weekly = Toutes les semaines
 repeat-monthly = Tous les mois
 repeat-yearly = Tous les ans
+# Une série qui finit, et qui fait une pause (18 novembre 2026, docs/client.md).
+event-repeat-ends = Fin
+event-repeat-ends-never = Jamais
+event-repeat-ends-until = Un jour donné
+event-repeat-ends-count = Après un nombre de fois
+event-repeat-ends-times = fois
+event-until-before-start = Cette série finirait avant sa première date : choisissez un dernier jour plus tard.
+event-pauses = En pause pendant
+event-pauses-help = Chaque date qui y tombe est retirée de la série, dans tous les logiciels d’agenda ; une date que vous avez retirée vous-même le reste.
+series-pause-vacations = mes vacances
+series-pause-vacations-other = les vacances de quelqu’un d’autre
+series-pause-public = les jours fériés
+series-paused-guests = Cette série a des invités : Sioul ne tient plus ses pauses, et les dates déjà retirées restent.
+series-paused-back = En pause à partir du { $from } ({ $why }), reprend le { $back }.
+series-paused = En pause à partir du { $from } ({ $why }).
+series-every = { $every ->
+        [1] { $unit ->
+            [daily] Chaque jour
+            [weekly] Chaque semaine
+            [monthly] Chaque mois
+           *[yearly] Chaque année
+        }
+       *[other] { $unit ->
+            [daily] Tous les { $every } jours
+            [weekly] Toutes les { $every } semaines
+            [monthly] Tous les { $every } mois
+           *[yearly] Tous les { $every } ans
+        }
+    }
+series-count-paused = { $rule } : { $count } dates, dont { $paused } en pause : { $held ->
+        [0] aucune n’a lieu.
+        [one] une seule a lieu, le { $last }.
+       *[other] { $held } ont lieu, la dernière le { $last }.
+    }
+event-count-pauses = Le nombre compte chaque date de la série, celles qui tombent dans une pause comprises : il y en a moins qui ont lieu.
+series-until = { $rule } jusqu’au { $date }
+series-count = { $rule }, { $count ->
+        [one] une fois
+       *[other] { $count } fois
+    }
 contact-name = Nom
 contact-emails = Adresses électroniques
 contact-phones = Numéros de téléphone
@@ -2375,11 +2415,23 @@ set-accounts-elsewhere = À quoi sert chaque adresse, jusqu’où elle remonte, 
 set-task-areas-group = À quoi sert une tâche
 set-files-group = Votre dossier
 set-invoice-group = Factures
-set-time-off-group = Jours sans travail
-set-time-off = Congés
+set-time-off-group = Vacances et jours fériés
+set-time-off = Vos vacances
 set-time-off-help = Vacances, arrêt maladie : calme du premier jour au dernier, comme un jour sans travail.
 set-time-off-label = Vacances, un mot dessus
 set-time-off-add = Ajouter
+vacations-kind = Type
+vacations-kind-vacation = Vacances
+vacations-kind-sick = Arrêt maladie
+vacations-kind-other = Autre
+vacations-calendars = Agendas de vacances et de jours fériés
+vacations-calendars-none = Pas encore d’agenda de vacances. Les jours fériés comptent comme vos jours sans travail, sauf si vous dites non ; les vacances scolaires non, sauf si vous dites oui.
+vacations-counts-line = { $name } · { $holidays ->
+        [public] des jours fériés
+       *[other] des vacances scolaires
+    } : ses jours comptent comme mes jours sans travail
+vacations-not-read-here = Cet appareil n’a pas encore lu cet agenda : d’ici là, il ne connaît pas ces jours.
+vacations-subscribe = S’abonner à un agenda de vacances…
 set-quiet-personal = Ce qui est à vous
 set-quiet-personal-help = Les tâches de ces catégories, et les projets marqués comme à vous, sont à vous hors du travail : celles de loisirs (joy, famille, amis, loisirs) viennent pendant les loisirs et les repas, les autres (santé, perso) à tous vos moments. Une tâche sans aucune de ces catégories ni celles du travail est une démarche.
 set-office-hours = Quand les bureaux sont ouverts
@@ -4701,6 +4753,70 @@ agenda-stop-showing = Ne plus l’afficher…
 agenda-remove-confirm = Supprimer
 agenda-leave-confirm = Ne plus l’afficher
 agenda-keep = Le garder
+# Agendas abonnés par leur adresse web (18 novembre 2026, docs/client.md, « Calendars by their address »).
+subscribe-open = S’abonner à un agenda…
+subscribe-title = S’abonner à un agenda par son adresse
+subscribe-address = L’adresse de l’agenda
+subscribe-address-hint = https://…, ou une adresse webcal
+subscribe-where-moodle = Moodle : dans le calendrier, « Import or export calendars », puis « Export calendar », puis « Get calendar URL », et « Copy URL » (les mots de Moodle en anglais).
+subscribe-where-pronote = PRONOTE : « Communication > Agenda », puis « Exporter l’agenda au format iCal » en haut à droite, là où l’établissement le permet. Pas encore essayé avec une vraie adresse.
+subscribe-official = Ou un agenda officiel français :
+subscribe-official-public = Jours fériés · { $name }
+subscribe-official-school = Vacances scolaires · { $name }
+subscribe-choose-public = Les jours fériés d’un territoire…
+subscribe-choose-school = Les vacances scolaires d’une zone…
+subscribe-name = Son nom
+subscribe-holidays = Ce qu’il tient
+subscribe-holidays-none = Des événements
+subscribe-holidays-public = Des jours fériés
+subscribe-holidays-school = Des vacances scolaires
+subscribe-days-off = Ses jours comptent comme mes jours sans travail
+subscribe-engagements = Ce sont mes propres engagements : indisponible pendant eux, et ils prennent mon temps
+subscribe-after-class = Les vacances commencent après la classe : leur premier jour est encore un jour de classe, et le jour de la reprise n’en fait pas partie
+subscribe-make = S’abonner
+subscribe-taken = Cet agenda est déjà parmi vos abonnements.
+subscribe-reading = Un agenda est en cours de lecture. Réessayez dans un instant.
+subscribe-refreshed = Agenda lu : ses événements sont à jour.
+subscribe-unchanged = Agenda lu : rien n’a changé.
+subscribe-refresh = Actualiser
+subscribe-change = Changer l’adresse
+subscribe-change-save = Garder cette adresse
+subscribe-stop = Arrêter…
+subscribe-stop-question = Arrêter cet agenda sur tous vos appareils ? Ses événements quittent chacun d’eux ; vous pourrez vous abonner de nouveau plus tard.
+subscribe-stop-confirm = L’arrêter
+subscribe-line-settings-unread = Sioul ne peut pas lire son fichier de réglages ici : la copie de cet agenda reste telle qu’elle était, et n’est plus relue tant que le fichier ne se lit pas.
+subscribe-line-entry-unread = Les réglages de cet agenda ne se lisent pas ici (écrits par un Sioul plus récent, ou à la main) : sa copie et ses derniers réglages restent tels qu’ils étaient.
+subscribe-line-read = Lu { $when }.
+subscribe-line-never = Pas encore lu sur cet appareil.
+subscribe-line-no-calendar = { $kept ->
+        [yes] Cette adresse ne donne plus d’agenda, depuis { $since }. { $why } La copie lue { $when } reste.
+       *[no] Cette adresse ne donne pas d’agenda. { $why } Rien n’en a encore été lu.
+    } Changez l’adresse, ou actualisez.
+subscribe-line-unreached = Pas joint depuis { $since }. { $why } { $kept ->
+        [yes] La copie lue { $when } reste ;
+       *[no] {""}
+    } Sioul réessaie plus tard.
+subscribe-line-not-taken = Depuis { $since }, ce que donne l’adresse n’est pas pris. { $why } { $kept ->
+        [yes] La copie lue { $when } reste.
+       *[no] Rien n’en a encore été lu.
+    }
+subscribe-not-https = Seule une adresse https:// est lue, ou une adresse webcal.
+subscribe-not-address = Ce n’est pas l’adresse d’un agenda.
+subscribe-not-public = Cette adresse est sur un réseau privé : Sioul lit seulement des adresses publiques.
+subscribe-redirects = Cette adresse renvoie ailleurs plus de trois fois.
+subscribe-too-large = Cet agenda pèse plus de dix mégaoctets : il n’a pas été lu.
+subscribe-too-many = Cet agenda tient plus de vingt mille événements : il n’a pas été lu.
+subscribe-too-large-kept = Cet agenda prendrait ici bien plus de place qu’il n’en pèse : il n’a pas été lu.
+subscribe-cut = L’agenda est revenu coupé avant sa fin : il n’a pas été lu.
+subscribe-no-event = L’agenda est revenu sans aucun événement.
+subscribe-not-written = Cet appareil n’a pas pu écrire la copie de l’agenda (son disque est peut-être plein).
+subscribe-page = L’adresse donne une page web, pas un agenda : peut-être une page de connexion.
+subscribe-text = Le serveur a répondu « { $said } », pas un agenda.
+subscribe-empty = Le serveur n’a rien répondu.
+subscribe-not-calendar = La réponse n’est pas un agenda.
+subscribe-gone = Le serveur ne connaît plus cette adresse.
+subscribe-status = Le serveur a répondu par le code { $status }.
+subscribe-network = Le serveur n’a pas pu être joint.
 agenda-remove-question = Supprimer « { $name } », { $count ->
         [one] { $what ->
             [tasks] une tâche
@@ -4953,6 +5069,7 @@ agenda-access = Vous pouvez
 agenda-access-write = Lire et écrire
 agenda-access-read = Lire seulement
 agenda-access-availability = Voir seulement quand il est pris
+agenda-subscribed-read-only = Lu à son adresse : vous le lisez seulement, et il ne change que là-bas.
 agenda-server-read-only = Son serveur vous le laisse lire seulement.
 # Sur la fiche d’un événement : vous à deux endroits. $whose : l’agenda de l’autre événement (le nom d’une personne), « none » pour le vôtre ; $why : « accepted » (une invitation acceptée dans l’agenda d’un autre), « tentative », sinon « none ».
 conflict-same-time = En même temps que « { $title } »{ $whose ->

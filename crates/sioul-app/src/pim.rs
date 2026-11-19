@@ -521,6 +521,9 @@ struct EventView {
     organized: bool,
     /// Its guests, as the form's "Invite…" field lists them (`organizer::guests_of`).
     guests: Vec<sioul_core::organizer::Guest>,
+    /// A series ending after a number of times, some of them in pauses: how
+    /// many take place (`series::count_words`); "" else.
+    count_said: String,
 }
 
 /// The conflicts among `events` (the next two weeks', those whose deletion
@@ -719,7 +722,11 @@ pub(crate) fn event(key: &str) -> String {
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
     let guests = if others { Vec::new() } else { sioul_core::organizer::guests_of(&text) };
     edit_with_own(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests }))
+        .map(|edit| {
+            // A series counted in times, some of them in pauses: how many take place, in plain words (F36).
+            let count_said = sioul_core::series::count_words(&text, &sioul_core::zone::now(), tr());
+            json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests, count_said })
+        })
         .unwrap_or_default()
 }
 
@@ -838,6 +845,10 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     let legs = if saved.legs.is_empty() { String::new() } else { format!(" {}", say("legs-moved-with", &[("legs", saved.legs.join(", "))])) };
     let told = if saved.told.is_empty() { String::new() } else { format!(" {}", saved.told) };
     tell(qt, shared, format!("{}{legs}{told}", tr().text("event-saved", None)));
+    // A series that pauses: its pauses settled at once, off the window (`series`).
+    if std::fs::read_to_string(&saved.path).is_ok_and(|t| t.contains("X-SIOUL-PAUSE")) {
+        crate::series::keep_paused(qt, shared, "saved");
+    }
     // The re-plan due before the agenda's job starts (`work::replan_asked`).
     crate::work::show_work(qt, shared);
     show_pim(qt, shared);
@@ -893,7 +904,17 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     // Its guests, as the form's "Invite…" field lists them (decision 7 of the event card):
     // absent from a form that shows no such field (an older window, the tests).
     let guests: Option<Vec<sioul_core::organizer::Guest>> = given.as_ref().and_then(|v| v.get("guests")).and_then(|g| serde_json::from_value(g.clone()).ok());
-    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    let mut edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    // A series with guests never pauses: each time left out would be sent to every one of them.
+    if guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty()) {
+        edit.pauses.clear();
+    }
+    // "My vacations" chosen: named yours, your settings' owner id made first if need be.
+    crate::series::mine_named(&mut edit.pauses)?;
+    // A series that would end before it starts is said, never written (F39).
+    if agenda::ends_before_it_starts(&edit) {
+        return Err(tr().text("event-until-before-start", None));
+    }
     let zone = sioul_core::zone::current();
     let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
@@ -1833,7 +1854,11 @@ fn find_uid(uid: &str) -> Option<PathBuf> {
     if uid.is_empty() {
         return None;
     }
-    vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|path| {
+    // A calendar you may write first: a twin in a subscribed copy (your own
+    // agenda also read by its public address) is never the one an answer lands on.
+    let mut calendars = vdir::collections(Kind::Calendars);
+    calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
+    calendars.into_iter().flat_map(|c| c.items()).find(|path| {
         std::fs::read_to_string(path).ok().is_some_and(|text| sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
     })
 }

@@ -41,7 +41,7 @@ A trip, a holiday, a residency, an event typed with a wrong end date: an event o
 - **In the lists** (What comes, and the Week and Month lists of a small screen), it is one row on its first day, its whole span under its title: "Mon 2 Nov 10:00 → Mon 30 Nov 10:15"; an evening past midnight, "22:00 → 02:00 (Tue)". A thin line in its calendar's colour then runs down the list's left edge through every day it covers, and ends on its last day with a small mark and a row "until 10:15", even on a day with nothing else. A tap on the line opens the event. A list that starts after it began says "Ongoing since Mon 2 Nov, until Mon 30 Nov" at the top of its first day. Three lines run side by side at most; beyond them, the day's title says how many more ("+2").
 - **In the Week and the Month**, an event of 24 hours or more, and one of several whole days, is one bar across its days: at the top of the week, its start time at one end and its end time at the other; in the month, once on each week's row, its title once on each. Its hours are not filled on the timeline, so what else happens on those days stays readable. In the Day, it is one line at the head: "Ongoing: Residency, until Mon 30 Nov 10:15", every one of them, however many. Three bars at most run side by side; beyond them "+2" under a day opens that day.
 - **An evening past midnight**, shorter than 24 hours, keeps its hours in the Day and the Week, as other calendars draw it (a bar would hide them), and its line on both its days in the month.
-- **Time off over several days** ([Settings ▸ Hours](settings.md#hours), **Time off**) is drawn the same way: one row on its first day, "All day", "Wed 4 Nov → Fri 6 Nov" under its word, a grey line through its days to "last day", one grey bar in the Week and the Month, whose cells stay shaded. A single day off stays at the head of its day, as before.
+- **Days off over several days** ([Settings ▸ Hours](settings.md#hours), **Vacations and holidays**: your vacations, and the holidays that count as your days off) are drawn the same way: one row on its first day, "All day", "Wed 4 Nov → Fri 6 Nov" under its word, a grey line through its days to "last day", one grey bar in the Week and the Month, whose cells stay shaded. A single day off stays at the head of its day, as before.
 - **On the home card**, from the day after its first, it is one line under today: "Ongoing: Residency, until Mon 30 Nov 10:15".
 - `sioul agenda` and the agents' agenda list it once, with its span; asked from a later day, "Ongoing since".
 
@@ -62,6 +62,19 @@ An event opens in its card: beside the page on a computer (over its right part w
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
 - **A meeting someone else organises**, an event with guests that another person invited you to: its time, title, place, notes and calendar are its organiser's, since its server tells every guest of a change. Sioul neither drags nor deletes it, and its form changes only what is yours: the time kept before and after it, its costs and what it gives back, your reminder. An event that names only an organiser, as Google writes into your own events, stays yours to change.
 - **A meeting you organise**, one you invited people to: every field is yours, and its guests too ([Inviting people](#inviting-people)).
+
+### A series that ends, and pauses {#series-that-end-and-pause}
+
+In the event's form, under **Repeats** and **Every**:
+
+- **Ends**: **Never**, **On a day** (the last day it may come), or **After a number of times**. Every calendar program reads it: your phone's, your server's, whoever you share the agenda with.
+- **Pauses during**: **my vacations**, **public holidays**, and each calendar of school holidays you subscribed to, by its name; tick one or several. Each date that falls in them is left out of the series, by the standard means, so your phone and anyone who sees the agenda see the same gaps. When a vacation is typed, moved or removed, or a calendar of holidays changes, Sioul puts back the dates it left out that no longer fall in a pause and leaves out the new ones, for the eighteen months ahead. A date you left out yourself stays out.
+- **School holidays begin after class**: for the official French calendars, the day the holidays start is still a class day, and the day classes resume is no pause.
+- **The card says** how it repeats ("Every week until Wednesday 25 June") and its next pause: "Paused from Friday 19 December (public holidays), back on Monday 5 January."
+
+Pauses are not offered on a meeting with others, since each date left out would be sent to every guest, nor on repeating tasks. A series given guests later keeps the dates already left out, and Sioul stops keeping its pauses; its card says so.
+
+Each pause is kept by itself. A device that does not know a calendar of holidays (it has not read it yet, or you never subscribed there) or knows an older copy of it leaves that calendar's dates as they are, and still keeps those of your vacations; a newer copy of the calendar, or vacations changed later, put the dates right. Your vacations are named as yours on the series: someone else's Sioul that can write a shared agenda never takes them for theirs. Two devices that know the same never undo each other.
 
 ### A day and an hour {#a-day-and-an-hour}
 
@@ -210,6 +223,19 @@ Agenda ⚙ ▸ **Your agendas** makes, renames, recolours, removes and shares yo
 
 An AI agent never makes, removes or shares an agenda: these are your own presses.
 
+## Calendars by their address {#calendars-by-their-address}
+
+Agenda ⚙ ▸ Your agendas ▸ **Subscribe to a calendar…** takes a calendar published by its address, read only: a school's or a university's timetable, public holidays, school holidays.
+
+- **Its address**, beginning with `https://` or `webcal://`. Under the field, where two school planners show theirs: **Moodle**, in the calendar, "Import or export calendars", then "Export calendar", then "Get calendar URL", and "Copy URL"; **PRONOTE**, « Communication > Agenda », then « Exporter l'agenda au format iCal » at the top right, where the school allows it. PRONOTE was not tried with a real address yet: how it marks a cancelled lesson is not known; a calendar that marks one by the standard means shows it cancelled.
+- **Or an official French calendar**: public holidays by territory (13), school holidays by zone (14, each zone's académies said under it), from Etalab's and the Ministry of Education's open data.
+- **Its name, whose it is** (a child's timetable goes to that child), **what it is for**, and whether it holds **public** or **school holidays**: public holidays count as your days off unless you say not, school holidays do not unless you say so ([Vacations and holidays](hours.md#vacations-and-holidays)).
+- **These are my own engagements**, on its line, off unless you tick it: only then do its events mark you busy (for do not disturb and the availability you share) and take your time in the plan, as your own agendas' do. A calendar read from elsewhere never makes you busy by itself; a calendar of holidays acts through your days off alone.
+
+The address is typed once: it reaches your other devices with your settings, and each device reads the calendar by itself, when Sioul opens, every three hours on a computer (a calendar of holidays once a day, or as often as the calendar asks, between an hour and a day), and a few times a day from a phone's background step, never by itself on mobile data when that phone keeps its downloads to Wi-Fi ([Mail, Your own spam filter](mail.md#your-own-spam-filter)). After a problem it is asked again later and later, an hour then up to a day; **Refresh now** asks at once. Its events never travel between your devices. Its line says when this device last read it, with **Refresh now**, **Change the address** and **Stop…**.
+
+What is not a calendar replaces nothing: a sign-in page, a line of text, an empty answer leave the last good copy in place, and the line says "This address no longer gives a calendar" with what to do. Sioul reads only `https` addresses on the public Internet, follows three redirects at most, and refuses a calendar of more than ten megabytes or twenty thousand events. The address is never written in a log, a notice, or what an AI agent is given. So far this was tested against stand-ins only, never a real address.
+
 ## Your availability {#your-availability}
 
 Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to whom: your busy times, never what fills them. Nothing is shared until you press **Share**. So far, this was tested against stand-ins of the servers only, never against the real ones.
@@ -219,6 +245,7 @@ Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to wh
 - **Share with…** asks only who: **A person** (a user name, `user@server` or an address), **A group**, **Anyone with a link**, or **A booking tool**. Sioul then says which way it will use and why, in one sentence; **Another way** shows the next one. **Share** makes it.
 - **Your server's own way comes first**, because it needs no Sioul running and never goes out of date: on Google, your calendars shared busy only, or their public free/busy for a link; Fastmail's own link of busy times; a booking page on your own server, Nextcloud's Appointments or Google's appointment schedules, which Sioul opens for you and whose link you paste back. Google then shows the events' exact times, without the time you keep around them, and the line says so.
 - **Elsewhere, a calendar of busy blocks**, kept by Sioul in one of your accounts and named after you ("Alex, busy times"): shared with someone on your Nextcloud, with a group, with someone on another Nextcloud, or by its link. It says only the day it was last brought up to date, never the time. In Your agendas it shows as kept for its availability, and pressing it opens Your availability.
+- **Your days off are busy all day** for those you share with: your vacations and the holidays that count as your days off, each a whole day "Busy", never saying why. They hold nothing of what reaches you: do-not-disturb does not follow them. Only a calendar of busy blocks kept by Sioul shows them; a server's own way shows only your calendars' events.
 - **The wider the audience, the coarser the view**: a person or a group sees your exact busy times for the next two months; a link sees them rounded to the quarter hour, for the next two weeks; a booking tool sees two months, and then nothing it could offer.
 - **Each share's line** says who sees what, its link with **Copy**, **Open** for a booking page, and who keeps it up to date: your server, or your devices, the phone in the background and a computer while Sioul runs. When a calendar of blocks has not been brought up to date for a day, Sioul says so once, at your next admin time. **Stop** takes that share back, with Undo.
 - **Each Nextcloud** you use shows your busy times to its users when they invite you; Agenda ⚙ says so, with **Send my working hours to cloud.example.org**, off at first, so that they also see when you work.
@@ -305,11 +332,11 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event.
+Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files; more than one reminder of Sioul's for an event.
 
 ## Going further {#going-further}
 
-- **Repeating events made elsewhere** keep their rule, however rich ("every other Monday and Wednesday", "the first Monday of the month"): changing their title in Sioul leaves the rule whole. Sioul's own form makes every so many days, weeks, months or years.
+- **Repeating events made elsewhere** keep their rule, however rich ("every other Monday and Wednesday", "the first Monday of the month"): changing their title in Sioul leaves the rule whole. Sioul's own form makes every so many days, weeks, months or years, until a day or for a number of times, and pausing during your vacations and holidays ([A series that ends, and pauses](#series-that-end-and-pause)).
 - **Time zones**: an event written in another time zone keeps it and shows in yours, its time there beside; Sioul writes new events in the zone your agenda shows, unless its form's **Time zone** says another clock.
 - **An event made after its reminder's time** is not reminded: you have just seen it.
 - **A calendar file in a message**: an `.ics` that a message carries goes into your calendar with **Add to my calendar**.
@@ -348,6 +375,10 @@ A meal or a nap had early moves, and that is all Sioul keeps of it. Recording wh
 A day picked with the pointer no longer leaves an hour to type, and a day typed needs no pointer for its hour. The field stays for whoever types, and one click away the hours and the minutes by fives are all in view, with nothing to drag or scroll on a computer. No study compares ways of setting a time, so this arrangement is an inference: it rests on WCAG 2.2, which asks that nothing need dragging (2.5.7) and that targets measure 24 pixels at least (2.5.8), and which is a floor, not a measure of speed. No evidence supports an analog clock face for time blindness either: the one trial near the question tested training and devices together, in children, and never set analog against digital (Wennberg et al. 2018).
 
 A task tied to one time of a repeating event writes nothing into the event: a server tells every guest of any change to a meeting (RFC 6638), and a calendar you only read could not take it. No standard names one time in a tie (RFC 5545, RFC 9253), so the task carries it ([A task before an event](tasks.md#a-task-before-an-event)).
+
+A calendar subscribed by its address is read by each device by itself, and its address travels with your settings, in clear within the sealed sharing: these are class periods and holidays, not secrets, and re-typing a long address on every device would be the cost (the owner's decision of 18 November 2026). A pasted address can lead anywhere, so Sioul reads public `https` addresses only and checks each redirect: the same feature had two published flaws in Nextcloud, where an address reached the server's own network (CVE-2020-8118, CVE-2020-8138). What does not read as a calendar replaces nothing, because two widely used clients empty their copy when a sign-in page comes back instead (audit-calendars §6). A school's or a university's timetable from Moodle was read only in Moodle's source code; PRONOTE was not tried with a real address.
+
+A series pauses by the standard means, dates left out of it, so that every calendar program shows the same pauses; Sioul notes beside them which dates are its own, so that it can put them back when a holiday moves and never puts back one you left out yourself.
 
 More in [what the research says](../dev/research.md), findings 46 to 54, 66, 71 and 72.
 
@@ -417,7 +448,7 @@ As of November 2026, from each app's own documentation.
     | Google calendars, read and write | ✓ | — | ✓ | ✓ | ✓ | partly³ |
     | Answers invitations from any system by mail (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
     | Opens and imports `.ics` files | ✓⁷ | ✓⁸ | ✓ | ✓ | ✓⁹ | ✓ |
-    | Exports `.ics` files, subscribes to a calendar by its address | ✗⁷ | ✓⁸ | ✓ | ✓ | partly⁹ | ✓ |
+    | Exports `.ics` files, subscribes to a calendar by its address | partly⁷ | ✓⁸ | ✓ | ✓ | partly⁹ | ✓ |
     | Chooses an event's time zone | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Events encrypted end to end | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | partly¹⁴ |
     | Free software | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
@@ -428,7 +459,7 @@ As of November 2026, from each app's own documentation.
     4. You answer in Calendar or Gmail; invitations from other systems are not described.
     5. The apps set your answer on events already in a synced calendar; an invitation in a mail cannot be answered from it.
     6. From Proton Mail; invitations from other providers are added to your calendar as they arrive, where Sioul adds nothing until you answer.
-    7. A calendar file opened in Sioul, on a computer, a phone or a tablet, goes into the agenda you choose, with its categories, its time zone and its alarms kept, and is never doubled; one that a message carries goes in with **Add to my calendar**. No export, no subscription by address.
+    7. A calendar file opened in Sioul, on a computer, a phone or a tablet, goes into the agenda you choose, with its categories, its time zone and its alarms kept, and is never doubled; one that a message carries goes in with **Add to my calendar**. A calendar is subscribed to by its address, read only, each device reading it by itself; no export.
     8. On a computer only.
     9. Both apps import and export `.ics` files; subscribing by address needs ICSx⁵.
     10. Local time, UTC or any zone, chosen in the event's form; an event made elsewhere keeps its time zone; both times show where they differ.

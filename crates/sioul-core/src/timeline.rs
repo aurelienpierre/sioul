@@ -579,11 +579,14 @@ pub fn merge(items: Vec<Item>, now: i64, open: &dyn Fn(&str) -> bool) -> Vec<Ite
         .collect()
 }
 
-/// The configuration's days off, as items: from their first day to their last.
-pub fn days_off(time_off: &[crate::config::TimeOff]) -> Vec<Item> {
-    time_off
+/// Your days off, as items: from their first day to their last; your
+/// vacations, then the holidays of a calendar that counts as your days off
+/// (`vacations::DaysOff`), which take the place of that calendar's own whole
+/// days in the views (`agenda`).
+pub fn days_off(days_off: &crate::vacations::DaysOff) -> Vec<Item> {
+    days_off
+        .periods()
         .iter()
-        .filter(|off| off.until >= off.from)
         .map(|off| {
             let id = if off.id.is_empty() { off.from.to_string() } else { off.id.clone() };
             Item {
@@ -1668,8 +1671,8 @@ mod tests {
     /// The days off: one item from their first day to their last, named by their label.
     #[test]
     fn days_off_span_their_days() {
-        let off = crate::config::TimeOff { id: String::new(), from: day("2026-12-24"), until: day("2026-12-26"), label: "Holidays".into() };
-        let items = days_off(&[off]);
+        let off = crate::config::TimeOff { id: String::new(), from: day("2026-12-24"), until: day("2026-12-26"), label: "Holidays".into(), kind: String::new() };
+        let items = days_off(&crate::vacations::DaysOff::typed(&[off]));
         assert_eq!(items[0].id, "off:2026-12-24");
         assert_eq!(items[0].time, Time::Day { date: day("2026-12-24"), until: day("2026-12-26") });
         let tr = Translator::new("en");

@@ -125,7 +125,7 @@ impl Look {
         let switch = switch_here(&here_id());
         let blocks = blocks(&now);
         let state = rules::now(&config.dnd, &sources(&overrides, &blocks, &now), switch.latest().as_ref(), now.timestamp().as_second());
-        let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);
+        let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &now);
         Look { config, overrides, switch, state, mode, now }
     }
 
@@ -1246,7 +1246,7 @@ mod tests {
             let sources = Sources { paused: paused.then_some(1), ..Sources::default() };
             let state = rules::now(&config.dnd, &sources, press.as_ref(), 100);
             let now = Zoned::now();
-            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &Overrides::default(), &sioul_core::quiet::Blocks::default(), &now);
+            let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &Overrides::default(), &sioul_core::quiet::Blocks::default(), &now);
             Look { config, overrides: Overrides::default(), switch: Switch::default(), state, mode, now }
         };
         let off = look(false, false).signature();
@@ -1274,7 +1274,7 @@ mod tests {
             let overrides = Overrides { paused_since: paused.then_some(stamp - 60), ..Overrides::default() };
             let sources = rules::sources_at(&overrides, &sioul_core::quiet::Blocks::default(), &now);
             let state = rules::now(&config.dnd, &sources, press.as_ref(), stamp);
-            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &now);
+            let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::default(), &now);
             Look { config, overrides, switch: Switch::default(), state, mode, now }
         };
         let at = jiff::Timestamp::now().as_millisecond();
@@ -1393,7 +1393,7 @@ mod tests {
         let overrides = Overrides { paused_since: Some(stamp - 300), ..Overrides::default() };
         let state = rules::now(&config.dnd, &rules::sources_at(&overrides, &sioul_core::quiet::Blocks::default(), &now), None, stamp);
         assert!(!state.has(Why::Paused));
-        let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &now);
+        let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::default(), &now);
         let look = Look { config, overrides, switch: Switch::default(), state, mode, now };
         assert_eq!(moment_of(&look)["paused"], true);
     }

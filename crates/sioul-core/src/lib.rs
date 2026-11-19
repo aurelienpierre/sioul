@@ -327,12 +327,16 @@ pub mod stars;
 pub mod screening;
 pub mod securitykey;
 pub mod settings;
+// A series that ends, and pauses during your vacations and holidays (docs/client.md).
+pub mod series;
 pub mod shield;
 pub mod sounds;
 pub mod spam;
 pub mod sites;
 pub mod state;
 pub mod stopped;
+// Calendars subscribed by their web address (docs/client.md, "Calendars by their address").
+pub mod subscribed;
 pub mod taskview;
 pub mod thingsearch;
 // texts: SMS phase (b), read and sent through the phone (docs/texts.md).
@@ -350,6 +354,8 @@ pub mod timereport;
 pub mod today;
 pub mod trust;
 pub mod unsubscribe;
+// Your days off, and why: one answer for every reader (docs/areas.md).
+pub mod vacations;
 pub mod vdir;
 pub mod view;
 pub mod voicemail;

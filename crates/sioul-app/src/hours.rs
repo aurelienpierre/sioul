@@ -73,7 +73,7 @@ pub(crate) fn blocks(now: &Zoned) -> Blocks {
 pub(crate) fn hours_mode_at(now: &Zoned) -> Mode {
     let config = load_config();
     let overrides = Overrides::load(&Overrides::default_path());
-    quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks(now), now)
+    quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks(now), now)
 }
 
 /// What now is for, and until when, on this device: the time as the hours

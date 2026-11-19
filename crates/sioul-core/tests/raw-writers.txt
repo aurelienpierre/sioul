@@ -622,6 +622,14 @@ sioul-core/src/today.rs	save	1	crate::filelock::save_merged(path, &self.read, se
 # sioul-core/src/unsubscribe.rs: unsubscriptions asked: no item.
 sioul-core/src/unsubscribe.rs	add	1	std::fs::write(&temporary, text)
 
+# sioul-core/src/series.rs: the versions of each calendar of holidays this device held (state/series-held.toml): no item.
+sioul-core/src/series.rs	remember	1	crate::filelock::replace(&path, toml::to_string(&kept).map_err(|e| e.to_string())?.as_bytes())
+
+# sioul-core/src/subscribed.rs: what this device last read of a subscribed calendar (state/subscribed/), and its note taken out with the calendar: no item.
+sioul-core/src/subscribed.rs	save	1	crate::filelock::replace(&path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+sioul-core/src/subscribed.rs	settle	1	std::fs::remove_file(Fetched::path(&id))
+sioul-core/src/subscribed.rs	stop	1	std::fs::remove_file(Fetched::path(id))
+
 # sioul-core/src/vdir.rs:
 #   set_account_off: an account's mark of being off (no item).
 sioul-core/src/vdir.rs	set_account_off	1	std::fs::write(dir.join(OFF), "Switched off in Sioul's Accounts: these collections wait here.\n")
@@ -963,3 +971,17 @@ sioul-app/src/stars.rs	turn	1	std::fs::remove_dir_all(stars::folder())
 sioul-core/src/stars.rs	forget	1	std::fs::remove_file(path)
 sioul-core/src/stars.rs	note_kept	1	crate::filelock::replace(&path, text.as_bytes())
 sioul-core/src/stars.rs	take_kept	1	std::fs::remove_file(&path)
+
+# sioul-core/src/vdir.rs: a subscribed calendar's one door (replace_subscribed, guarded by subscribed_only): its whole copy written beside, then swapped in for the last one, a cut short swap settled, the copy taken out when the subscription stops; never a calendar of yours, which every other door keeps (its sync state read only).
+sioul-core/src/vdir.rs	replace_whole	1	std::fs::remove_dir_all(&next)
+sioul-core/src/vdir.rs	written_through	1	std::fs::File::create(path)
+sioul-core/src/vdir.rs	replace_whole	1	std::fs::rename(&live, &old)
+sioul-core/src/vdir.rs	replace_whole	1	std::fs::rename(&next, &live)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::rename(&live, &old)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::rename(&next, &live)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::remove_dir_all(&next)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::remove_dir_all(&old)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::rename(&old, &live)
+sioul-core/src/vdir.rs	finish_subscribed_now	1	std::fs::remove_file(live.join(WHOLE))
+sioul-core/src/vdir.rs	remove_subscribed	1	std::fs::remove_dir_all(&live)
+sioul-core/src/vdir.rs	remove_subscribed	1	std::fs::remove_file(state_path(SUBSCRIBED, Kind::Calendars, id))

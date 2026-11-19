@@ -44,7 +44,8 @@ pub struct Money<'a> {
 use crate::agenda::Occurrence;
 use crate::attention::{self, Attention, Level};
 use crate::budget::Ledger;
-use crate::config::{Config, TimeOff};
+use crate::config::Config;
+use crate::vacations::DaysOff;
 use crate::window::AdminWindow;
 use crate::i18n::Translator;
 use crate::tasks::{Status, Task};
@@ -355,17 +356,17 @@ fn hours(config: &Config) -> Vec<AdminWindow> {
     if hours.is_empty() { crate::window::default_office_hours() } else { hours }
 }
 
-fn working(hours: &[AdminWindow], time_off: &[TimeOff], date: Date) -> bool {
-    crate::window::open_day(hours, date) && crate::quiet::time_off_on(time_off, date).is_none()
+fn working(hours: &[AdminWindow], days_off: &DaysOff, date: Date) -> bool {
+    crate::window::open_day(hours, date) && days_off.on(date).is_none()
 }
 
 /// When work starts, `days` working days before `date`.
-fn working_days_before(hours: &[AdminWindow], time_off: &[TimeOff], date: Date, days: u32, zone: &TimeZone) -> Option<Zoned> {
+fn working_days_before(hours: &[AdminWindow], days_off: &DaysOff, date: Date, days: u32, zone: &TimeZone) -> Option<Zoned> {
     let mut day = date;
     let mut left = days;
     for _ in 0..90 {
         day = day.yesterday().ok()?;
-        if working(hours, time_off, day) {
+        if working(hours, days_off, day) {
             left -= 1;
             if left == 0 {
                 return crate::window::hours_on(hours, day, zone).map(|(opening, _)| opening);
@@ -376,11 +377,11 @@ fn working_days_before(hours: &[AdminWindow], time_off: &[TimeOff], date: Date, 
 }
 
 /// When work next starts, at or after `at`; `at` itself within working hours.
-fn work_from(hours: &[AdminWindow], time_off: &[TimeOff], at: &Zoned) -> Option<Zoned> {
-    if working(hours, time_off, at.date()) && crate::window::current(hours, at).is_some() {
+fn work_from(hours: &[AdminWindow], days_off: &DaysOff, at: &Zoned) -> Option<Zoned> {
+    if working(hours, days_off, at.date()) && crate::window::current(hours, at).is_some() {
         return Some(at.clone());
     }
-    crate::quiet::next_work(hours, time_off, at)
+    crate::quiet::next_work(hours, days_off, at)
 }
 
 /// "2026-10-09" or "2026-10-09T14:00": its day, and the moment it ends (the end of the day without a time).
@@ -596,6 +597,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
     let zone = now.time_zone().clone();
     let settings = &config.reminders;
     let hours = hours(config);
+    let days_off = crate::vacations::DaysOff::of(config);
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
     let mut out = event_reminders(config, tr, now, events, tasks);
 
@@ -623,7 +625,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         // A date asked, a few working days before.
         if settings.asked_days > 0
             && let Some((day, end)) = asked_date(&task.due, &zone)
-            && let Some(due) = working_days_before(&hours, &config.time_off, day, settings.asked_days, &zone)
+            && let Some(due) = working_days_before(&hours, &days_off, day, settings.asked_days, &zone)
             && task.created <= due.timestamp().as_second()
         {
             let mut args = crate::i18n::args();
@@ -669,7 +671,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 && task.created <= end
                 && waits.iter().all(|(first, _)| first.created <= end)
                 && let Some(over) = at(end)
-                && let Some(due) = work_from(&hours, &config.time_off, &over)
+                && let Some(due) = work_from(&hours, &days_off, &over)
             {
                 let mut args = crate::i18n::args();
                 args.set("before", last.title.clone());
@@ -700,7 +702,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         let today = now.date();
         let horizon = today.checked_add(Span::new().days(30)).unwrap_or(today);
         for due in by_hand(ledger, money.map(|m| m.movements), today, horizon) {
-            let Some(at) = working_days_before(&hours, &config.time_off, due.day, settings.payment_days, &zone) else { continue };
+            let Some(at) = working_days_before(&hours, &days_off, due.day, settings.payment_days, &zone) else { continue };
             let Some(end) = due.day.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
             let mut args = crate::i18n::args();
             args.set("date", tr.day(due.day));
@@ -735,7 +737,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         if paper.added.is_some_and(|added| added > from) {
             continue;
         }
-        let Some(due) = from.to_zoned(zone.clone()).ok().and_then(|z| work_from(&hours, &config.time_off, &z)) else { continue };
+        let Some(due) = from.to_zoned(zone.clone()).ok().and_then(|z| work_from(&hours, &days_off, &z)) else { continue };
         let Some(end) = until.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
         let mut args = crate::i18n::args();
         args.set("title", paper.title.clone());
@@ -758,7 +760,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
     for contract in contracts.iter().filter(|c| c.is_open() && c.every == "year") {
         let (Some(renewal), Some(by)) = (contract.next_renewal(now.date()), contract.cancel_by(now.date())) else { continue };
         let Some(from) = by.checked_sub(Span::new().days(14)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
-        let Some(due) = work_from(&hours, &config.time_off, &from) else { continue };
+        let Some(due) = work_from(&hours, &days_off, &from) else { continue };
         let Some(end) = by.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
         let mut args = crate::i18n::args();
         args.set("title", contract.title.clone());
@@ -790,7 +792,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             args.set("amount", tr.money(crate::money::Money(m.sum.amount().cents().abs())));
             args.set("date", tr.day_in(m.day, today));
             let Some(from) = m.day.checked_add(Span::new().days(7)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
-            let Some(due) = work_from(&hours, &config.time_off, &from) else { continue };
+            let Some(due) = work_from(&hours, &days_off, &from) else { continue };
             let title = tr.text(if m.way == crate::movements::Way::In { "money-missed-in" } else { "money-missed-out" }, Some(&args));
             out.push(Reminder { key: format!("missed:{}:{}", m.label, m.day), kind: Kind::Money, at: due.timestamp().as_second(), until: from.timestamp().as_second() + 30 * 86_400, title, body: tr.text("money-missed-why", Some(&args)), target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None });
         }
@@ -798,7 +800,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             let mut args = crate::i18n::args();
             args.set("label", short.payment.clone());
             args.set("date", tr.day_in(short.day, today));
-            let Some(due) = working_days_before(&hours, &config.time_off, short.day, 5, &zone) else { continue };
+            let Some(due) = working_days_before(&hours, &days_off, short.day, 5, &zone) else { continue };
             let Some(end) = short.day.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
             out.push(Reminder {
                 key: format!("short:{}:{}", short.payment, short.day),
@@ -903,7 +905,7 @@ pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Remi
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     let blocks = crate::quiet::Blocks::read(now, &events);
-    let mode = crate::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
+    let mode = crate::quiet::mode(&config.week_hours(), &crate::vacations::DaysOff::of(&config), &overrides, &blocks, now);
     // The tasks for what an outing's preparation says to bring (`leaving`), never their own
     // reminders: those preparations and their steps alone made tasks, the others left as text.
     let files: Vec<(PathBuf, crate::vdir::Collection, String)> = crate::tasks::lists().into_iter().flat_map(|list| list.items().into_iter().filter_map(|path| std::fs::read_to_string(&path).ok().map(|text| (path, list.clone(), text))).collect::<Vec<_>>()).collect();
@@ -1281,7 +1283,7 @@ mod tests {
         assert!(all.is_empty(), "{all:#?}");
         // Time off moves the working days.
         let mut off = self::config();
-        off.time_off = vec![TimeOff { id: String::new(), from: "2026-10-12".parse().unwrap(), until: "2026-10-13".parse().unwrap(), label: String::new() }];
+        off.time_off = vec![crate::config::TimeOff { id: String::new(), from: "2026-10-12".parse().unwrap(), until: "2026-10-13".parse().unwrap(), label: String::new(), kind: String::new() }];
         let all = super::all(&off, &tr, &now, &[], &[task("after", "2026-10-14")], None, &[], &[], None, |_| true);
         assert_eq!(all[0].at, at("2026-10-08T09:00").timestamp().as_second(), "Thursday and Friday before the days off");
         assert_eq!(all[0].title, "Demandé pour mercredi 14 octobre");

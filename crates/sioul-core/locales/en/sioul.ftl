@@ -1387,6 +1387,49 @@ repeat-daily = Every day
 repeat-weekly = Every week
 repeat-monthly = Every month
 repeat-yearly = Every year
+# A series that ends, and pauses (18 November 2026, docs/client.md).
+event-repeat-ends = Ends
+event-repeat-ends-never = Never
+event-repeat-ends-until = On a day
+event-repeat-ends-count = After a number of times
+event-repeat-ends-times = { $n ->
+        [one] time
+       *[other] times
+    }
+event-until-before-start = This series would end before its first date: choose a later last day.
+event-pauses = Pauses during
+event-pauses-help = Each date that falls in them is left out of the series, in every calendar program; a date you left out yourself stays out.
+series-pause-vacations = my vacations
+series-pause-vacations-other = someone else's vacations
+series-pause-public = public holidays
+series-paused-guests = This series has guests: Sioul no longer keeps its pauses, and the dates already left out stay.
+series-paused-back = Paused from { $from } ({ $why }), back on { $back }.
+series-paused = Paused from { $from } ({ $why }).
+series-every = { $every ->
+        [1] { $unit ->
+            [daily] Every day
+            [weekly] Every week
+            [monthly] Every month
+           *[yearly] Every year
+        }
+       *[other] { $unit ->
+            [daily] Every { $every } days
+            [weekly] Every { $every } weeks
+            [monthly] Every { $every } months
+           *[yearly] Every { $every } years
+        }
+    }
+series-count-paused = { $rule }: { $count } dates, { $paused } of them in pauses: { $held ->
+        [0] none takes place.
+        [one] one takes place, on { $last }.
+       *[other] { $held } take place, the last on { $last }.
+    }
+event-count-pauses = The number counts every date of the series, those that fall in a pause included: fewer take place.
+series-until = { $rule } until { $date }
+series-count = { $rule }, { $count ->
+        [one] once
+       *[other] { $count } times
+    }
 contact-name = Name
 contact-emails = E-mail addresses
 contact-phones = Phone numbers
@@ -2339,11 +2382,23 @@ set-accounts-elsewhere = What each address is for, how far back it goes, how oft
 set-task-areas-group = What a task is for
 set-files-group = Your folder
 set-invoice-group = Invoices
-set-time-off-group = Days off
-set-time-off = Time off
+set-time-off-group = Vacations and holidays
+set-time-off = Your vacations
 set-time-off-help = Holidays, sick leave: quiet from the first day to the last, as on a day off.
 set-time-off-label = Holidays, a word on them
 set-time-off-add = Add
+vacations-kind = Kind
+vacations-kind-vacation = Vacation
+vacations-kind-sick = Sick leave
+vacations-kind-other = Other
+vacations-calendars = Calendars of holidays
+vacations-calendars-none = No calendar of holidays yet. Public holidays count as your days off unless you say not; school holidays do not unless you say so.
+vacations-counts-line = { $name } · { $holidays ->
+        [public] public holidays
+       *[other] school holidays
+    }: its days count as my days off
+vacations-not-read-here = This device has not read this calendar yet: until it does, it does not know these days.
+vacations-subscribe = Subscribe to a calendar of holidays…
 set-quiet-personal = What is yours
 set-quiet-personal-help = Tasks of these categories, and projects marked as yours, are yours outside work: those of leisure (joy, family, friends, leisure) come in leisure and during meals, the others (health, personal) in any time of yours. A task with none of these and none of work's is your admin.
 set-office-hours = When offices are open
@@ -4665,6 +4720,70 @@ agenda-stop-showing = Stop showing…
 agenda-remove-confirm = Remove
 agenda-leave-confirm = Stop showing
 agenda-keep = Keep it
+# Calendars subscribed by their web address (18 November 2026, docs/client.md, "Calendars by their address").
+subscribe-open = Subscribe to a calendar…
+subscribe-title = Subscribe to a calendar by its address
+subscribe-address = The calendar's address
+subscribe-address-hint = https://… or webcal://…
+subscribe-where-moodle = Moodle: in the calendar, "Import or export calendars", then "Export calendar", then "Get calendar URL", and "Copy URL".
+subscribe-where-pronote = PRONOTE: "Communication > Agenda", then "Exporter l'agenda au format iCal" at the top right, where the school allows it (its French screens' words). Not tried with a real address yet.
+subscribe-official = Or an official French calendar:
+subscribe-official-public = Public holidays · { $name }
+subscribe-official-school = School holidays · { $name }
+subscribe-choose-public = Public holidays of a territory…
+subscribe-choose-school = School holidays of a zone…
+subscribe-name = Its name
+subscribe-holidays = What it holds
+subscribe-holidays-none = Events
+subscribe-holidays-public = Public holidays
+subscribe-holidays-school = School holidays
+subscribe-days-off = Its days count as my days off
+subscribe-engagements = These are my own engagements: busy during them, and they take my time
+subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
+subscribe-make = Subscribe
+subscribe-taken = This calendar is subscribed already.
+subscribe-reading = A calendar is being read. Try again in a moment.
+subscribe-refreshed = Calendar read: its events are up to date.
+subscribe-unchanged = Calendar read: nothing changed.
+subscribe-refresh = Refresh now
+subscribe-change = Change the address
+subscribe-change-save = Keep this address
+subscribe-stop = Stop…
+subscribe-stop-question = Stop this calendar on all your devices? Its events leave each of them; you can subscribe again later.
+subscribe-stop-confirm = Stop it
+subscribe-line-settings-unread = Sioul cannot read its settings file here: this calendar's copy stays as it was, and is not read again until the file reads.
+subscribe-line-entry-unread = This calendar's settings do not read here (written by a later Sioul, or by hand): its copy and its last settings stay as they were.
+subscribe-line-read = Read { $when }.
+subscribe-line-never = Not read on this device yet.
+subscribe-line-no-calendar = { $kept ->
+        [yes] This address no longer gives a calendar, since { $since }. { $why } The copy read { $when } stays.
+       *[no] This address gives no calendar. { $why } Nothing was read from it yet.
+    } Change the address, or refresh now.
+subscribe-line-unreached = Not reached since { $since }. { $why } { $kept ->
+        [yes] The copy read { $when } stays;
+       *[no] {""}
+    } Sioul tries again later.
+subscribe-line-not-taken = Since { $since }, what the address gives is not taken. { $why } { $kept ->
+        [yes] The copy read { $when } stays.
+       *[no] Nothing was read from it yet.
+    }
+subscribe-not-https = Only an address beginning with https:// or webcal:// is read.
+subscribe-not-address = This is not a calendar's address.
+subscribe-not-public = This address is on a private network: Sioul reads public addresses only.
+subscribe-redirects = This address sends elsewhere more than three times.
+subscribe-too-large = This calendar weighs more than ten megabytes: it was not read.
+subscribe-too-many = This calendar holds more than twenty thousand events: it was not read.
+subscribe-too-large-kept = This calendar would take too much room kept here, far more than it weighs: it was not read.
+subscribe-cut = The calendar came back cut short: it was not read.
+subscribe-no-event = The calendar came back without any event.
+subscribe-not-written = This device could not write the calendar's copy (its disk may be full).
+subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
+subscribe-text = The server answered "{ $said }", not a calendar.
+subscribe-empty = The server answered nothing.
+subscribe-not-calendar = The answer is not a calendar.
+subscribe-gone = The server no longer knows this address.
+subscribe-status = The server answered with code { $status }.
+subscribe-network = The server could not be reached.
 agenda-remove-question = Remove “{ $name }”, { $count ->
         [one] one { $what ->
             [tasks] task
@@ -4914,6 +5033,7 @@ agenda-access = You may
 agenda-access-write = Read and write
 agenda-access-read = Read only
 agenda-access-availability = See only when it is busy
+agenda-subscribed-read-only = Read from its address: you read it only, and it changes only there.
 agenda-server-read-only = Its server lets you read it only.
 # On an event's card: you in two places. $whose: the other event's agenda (a person's name), "none" for yours; $why: "accepted" (an invitation you accepted in another's agenda), "tentative", else "none".
 conflict-same-time = At the same time as { $whose ->
