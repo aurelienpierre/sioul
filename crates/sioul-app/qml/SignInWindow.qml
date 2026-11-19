@@ -4,7 +4,8 @@
 // A sign-in page an extension asked for, on a computer (docs/extensions.md,
 // "A sign-in"): a window of Sioul's own with Qt WebEngine, the site's name
 // always in sight above the page, so that you see where a password is
-// typed. Its profile is its own and kept in memory only (no storage name:
+// typed: the host of the last page drawn, never of a navigation still under
+// way, the page covered meanwhile (SignInSite.qml). Its profile is its own and kept in memory only (no storage name:
 // off the record), gone with the window. Only https pages load; when a
 // navigation reaches the address the extension watches for (an
 // application's own scheme, such as `skoapp-prod://…`), it is stopped there,
@@ -29,17 +30,12 @@ Window {
     // What the extension asked: {open, watch, host}.
     required property var page
 
-    // The host of the page shown now: what is said above it.
-    property string shownHost: window.page.host || ""
+    // The site of the page drawn now: what is said above it, and whether the page is covered.
+    readonly property SignInSite site: SignInSite {}
     // The answer given once: the address returned, or "" when closed.
     property bool answered: false
     // The page's own profile, once made.
     property WebEngineProfile made: null
-
-    function hostOf(address) {
-        const rest = String(address).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-        return rest.split(/[\/?#]/)[0].replace(/^.*@/, "").toLowerCase()
-    }
 
     function answer(address) {
         if (window.answered)
@@ -62,7 +58,7 @@ Window {
     minimumHeight: 420
     visible: true
     color: window.theme.background
-    title: window.sioul.textWith("sign-in-window-title", "host", window.shownHost)
+    title: window.sioul.textWith("sign-in-window-title", "host", window.site.shown)
     onClosing: window.answer("")
 
     ColumnLayout {
@@ -85,7 +81,7 @@ Window {
                 Label {
                     objectName: "signInSite"
                     Layout.fillWidth: true
-                    text: window.sioul.textWith("sign-in-site", "host", window.shownHost)
+                    text: window.sioul.textWith("sign-in-site", "host", window.site.shown)
                     textFormat: Text.PlainText
                     elide: Text.ElideMiddle
                     font.pixelSize: 16
@@ -109,6 +105,33 @@ Window {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+
+            // While a navigation is under way, or after one failed, the page is
+            // covered: what is drawn there may not be the site named above.
+            Rectangle {
+                objectName: "signInCover"
+                anchors.fill: parent
+                z: 1
+                visible: window.site.covered
+                color: window.theme.background
+
+                Label {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 32, 420)
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
+                    text: window.sioul.text(window.site.failed ? "sign-in-not-shown" : "sign-in-loading")
+                    color: window.theme.text
+                }
+                // Nothing reaches the page beneath.
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.AllButtons
+                    hoverEnabled: true
+                    onWheel: wheel => wheel.accepted = true
+                }
+            }
         }
     }
 
@@ -119,7 +142,8 @@ Window {
             id: view
 
             anchors.fill: parent
-            onUrlChanged: window.shownHost = window.hostOf(view.url)
+            // Nothing is typed into a page that may not be the site named.
+            enabled: !window.site.covered
             onNavigationRequested: request => {
                 const address = request.url.toString()
                 // The address watched for: never loaded, given back whole.
@@ -134,18 +158,34 @@ Window {
                 else
                     request.reject()
             }
-            // A link that would open another window opens here, https only.
+            // A link that would open another window opens here, https only; its
+            // site is named once its page came, as any other (onLoadingChanged).
             onNewWindowRequested: request => {
                 if (String(request.requestedUrl).startsWith("https://"))
                     view.url = request.requestedUrl
             }
-            // A redirect to the watched address that ends as a failed load rather than a navigation.
             onLoadingChanged: info => {
                 const address = info.url.toString()
+                // A redirect to the watched address that ends as a failed load rather than a navigation.
                 if (window.page.watch && address.startsWith(window.page.watch)) {
                     view.stop()
                     window.answer(address)
                     window.close()
+                    return
+                }
+                // The main frame's loads: the name follows the page that came, never one on its way.
+                switch (info.status) {
+                case WebEngineView.LoadStartedStatus:
+                    window.site.loading("started", address)
+                    break
+                case WebEngineView.LoadSucceededStatus:
+                    window.site.loading("succeeded", address)
+                    break
+                case WebEngineView.LoadFailedStatus:
+                    window.site.loading("failed", address)
+                    break
+                default:
+                    window.site.loading("stopped", address)
                 }
             }
         }

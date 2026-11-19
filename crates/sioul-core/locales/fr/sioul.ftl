@@ -3862,6 +3862,8 @@ extension-stopped-unread = { $name } s’est arrêtée : son fichier ne se lit
 # La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
 sign-in-window-title = Connexion sur { $host }
 sign-in-site = Vous vous connectez sur : { $host }
+sign-in-loading = La page suivante arrive. Elle s’affiche ici une fois arrivée, avec son site au-dessus.
+sign-in-not-shown = Cette page n’a pas pu s’afficher. Fermez cette fenêtre et appuyez à nouveau sur Se connecter…
 ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.

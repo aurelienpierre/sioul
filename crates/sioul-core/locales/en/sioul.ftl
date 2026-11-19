@@ -3826,6 +3826,8 @@ extension-stopped-unread = { $name } stopped: its file could not be read, or cha
 # An extension's sign-in page, on a computer: the site's name always in sight above the page.
 sign-in-window-title = Sign in on { $host }
 sign-in-site = You sign in on: { $host }
+sign-in-loading = The next page is on its way. It shows here once it has come, with its site above it.
+sign-in-not-shown = This page could not be shown. Close this window and press Sign in… again.
 ui-refresh-all = Refresh everything: mail, agenda, tasks, contacts (F5)
 ui-refreshing = Refreshing…
 # The column of the places, on the left of the window.
