@@ -92,6 +92,10 @@ pub mod qobject {
         // {"state": "ready" | "unreadable" | "unset", "path"}; "" until first found.
         // The Notes page asks for it when it is not ready (FolderNeeded.qml).
         #[qproperty(QString, notes_folder)]
+        // Where Sioul's lists are and the move out of the notes folder stands, as JSON
+        // (`storage::view_json`): read again each minute off the window's thread; "" until
+        // first found. The window of the move (StorageMove.qml) shows itself once from it.
+        #[qproperty(QString, storage_move)]
         // What this device is for what follows you: "phone", "tablet" or "computer" (devicekind.rs).
         // Never the layout, which follows the window's size (main.qml's `compact`).
         #[qproperty(QString, device_kind)]
@@ -1943,6 +1947,13 @@ pub mod qobject {
         #[qinvokable]
         fn set_share_part(self: Pin<&mut Sioul>, part: &QString, on: bool) -> QString;
 
+        /// This device's move of Sioul's lists out of the notes folder, as the
+        /// window of the move asks it: the papers' and letters' folders chosen
+        /// ("" for the default) and whether its part "projects" goes on. Run
+        /// off the window's thread; said in the status line and in `storageMove`.
+        #[qinvokable]
+        fn move_lists(self: Pin<&mut Sioul>, papers: &QString, letters: &QString, carry: bool);
+
         /// On a phone: whether a sync app carries the notes folder, as you
         /// say (Sioul cannot read its settings there). Returns what went wrong, else "".
         #[qinvokable]
@@ -3177,6 +3188,7 @@ pub struct SioulRust {
     focus_session: QString,
     reading: QString,
     notes_folder: QString,
+    storage_move: QString,
     device_kind: QString,
     telephony: bool,
     keyboard: bool,
@@ -3564,6 +3576,21 @@ pub(crate) fn notes_folder_now(qt: &QtThread, shared: &Arc<Shared>) {
             if !before.is_empty() {
                 show(&qt_again, &shared);
                 work::show_work(&qt_again, &shared);
+            }
+        });
+    });
+}
+
+/// Where Sioul's lists are and the move stands (`storageMove`), found off the
+/// window's thread (it reads the sharing folder's entries and lists the notes
+/// folder), then set when it changed.
+pub(crate) fn storage_move_now(qt: &QtThread) {
+    let qt = qt.clone();
+    std::thread::spawn(move || {
+        let found = crate::storage::view_json();
+        let _ = qt.queue(move |mut sioul| {
+            if sioul.storage_move().to_string() != found {
+                sioul.as_mut().set_storage_move(QString::from(&found));
             }
         });
     });
@@ -4826,6 +4853,7 @@ impl qobject::Sioul {
         crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
         notes_folder_now(&self.qt_thread(), &self.shared());
+        storage_move_now(&self.qt_thread());
         self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
         // Said again now that Android's side answers (a first sentence may have come before it).
         crate::devicekind::name_in_words();
@@ -7642,6 +7670,8 @@ impl qobject::Sioul {
     fn refresh_mode(mut self: Pin<&mut Self>) {
         // The notes folder read again: a drive plugged in or taken out is seen within a minute.
         notes_folder_now(&self.qt_thread(), &self.shared());
+        // Where Sioul's lists are, and whether every device knows the new places yet.
+        storage_move_now(&self.qt_thread());
         // Doses to remind, errands to make: off the window's thread.
         let (qt, shared_tick) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
@@ -8382,6 +8412,8 @@ impl qobject::Sioul {
             ("github_token", config::SettingValue::Text(secret)) => sioul_sync::github::save_token(&secret).map_err(|e| e.sentence(tr(), "GitHub")),
             ("task_categories", config::SettingValue::Rename(change)) => work::rename_category(&self.qt_thread(), &self.shared(), &change.from, &change.to),
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
+            // The papers' or letters' folder (Papers ▸ ⚙, Letters ▸ ⚙): once Sioul's lists moved, the files follow, off this thread.
+            ("papers.folder" | "letters.folder", config::SettingValue::Text(folder)) => crate::storage::change_folder(&self.qt_thread(), &self.shared(), &key, &folder),
             ("passwords_shown", config::SettingValue::Bool(on)) => {
                 work::set_view_flag(&self.shared(), "passwords-shown", on);
                 Ok(())
@@ -8648,6 +8680,24 @@ impl qobject::Sioul {
 impl qobject::Sioul {
     fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
         QString::from(&crate::share::set_notes_carried(carried))
+    }
+
+    fn move_lists(self: Pin<&mut Self>, papers: &QString, letters: &QString, carry: bool) {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let (papers, letters) = (papers.to_string(), letters.to_string());
+        crate::storage::begin();
+        storage_move_now(&qt);
+        std::thread::spawn(move || {
+            let problem = crate::storage::move_now(&papers, &letters, carry);
+            let line = if problem.is_empty() { tr().text("storage-moved", None) } else { problem };
+            let qt_again = qt.clone();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));
+            storage_move_now(&qt_again);
+            // What reads Sioul's lists, papers and letters is shown again from where they are now.
+            show(&qt_again, &shared);
+            work::show_work(&qt_again, &shared);
+            crate::share::exchange(&qt_again, &shared);
+        });
     }
 
     fn set_share_part(self: Pin<&mut Self>, part: &QString, on: bool) -> QString {

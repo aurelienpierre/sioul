@@ -204,6 +204,28 @@ ColumnLayout {
         text: panel.sioul.text("share-notes-folder-open")
         onClicked: panel.sioul.reminderOpened("settings:case_store", "", "")
     }
+    // Where Sioul keeps its own lists (docs/notes-folder.md, "What lives where"): in the notes folder
+    // until this device moved them, then in its own folder; the window of the move from here at any time.
+    Label {
+        objectName: "shareStorage"
+        readonly property var view: panel.sioul.storageMove ? JSON.parse(panel.sioul.storageMove) : ({})
+
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        text: view.moved === true ? panel.sioul.textArgs("storage-line-moved", JSON.stringify({ papers: view.papers || "", letters: view.letters || "" })) : panel.sioul.text("storage-line-not")
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        color: panel.theme.text
+    }
+    Button {
+        objectName: "shareStorageOpen"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        flat: true
+        icon.name: "go-next"
+        icon.color: panel.theme.text
+        text: panel.sioul.text("storage-move-open")
+        onClicked: panel.sioul.reminderOpened("storage-move", "", "")
+    }
     Repeater {
         model: panel.status.lines
 

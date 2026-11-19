@@ -36,6 +36,8 @@ Item {
         property string language: "en"
         // The notes folder as the backend says it (the sharing's line to the Notes page).
         property string notesFolder: JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
+        // Where Sioul's lists are (`storage::view_json`): "" until known.
+        property string storageMove: ""
         // What the sharing's line to the notes folder asked the window to open.
         property var opened: []
         property var sends: []
@@ -102,6 +104,9 @@ Item {
         }
         function textWith(key, name, value) {
             return mock.text(key) + " " + value
+        }
+        function textArgs(key, args) {
+            return mock.text(key) + " " + args
         }
         function filesAccess() {
             return true
@@ -233,6 +238,18 @@ Item {
 
         // The notes folder is the Notes page's: one line says which it is (or that there
         // is none), with a button to its row there, by its key.
+        // Where Sioul keeps its lists: one line, and the window of the move from it at any time.
+        function test_the_lists_line_opens_the_window_of_the_move() {
+            mock.opened = []
+            const line = walk(panel, i => i.objectName === "shareStorage", [])[0]
+            compare(line.text, mock.text("storage-line-not"))
+            mock.storageMove = JSON.stringify({ moved: true, papers: "/stand-in/Papers", letters: "/stand-in/Letters" })
+            verify(line.text.indexOf("/stand-in/Papers") >= 0 && line.text.indexOf("/stand-in/Letters") >= 0, line.text)
+            walk(panel, i => i.objectName === "shareStorageOpen", [])[0].clicked()
+            compare(mock.opened, ["storage-move"])
+            mock.storageMove = ""
+        }
+
         function test_the_notes_folder_line_leads_to_the_notes_page() {
             mock.opened = []
             const line = walk(panel, i => i.objectName === "shareNotesFolder", [])[0]

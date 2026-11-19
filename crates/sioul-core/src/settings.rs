@@ -340,8 +340,17 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         // before, `[letters] inbox` as it was: the old setting is the one read).
         "letters" => {
             b.group = tr.text("set-letters-group", None);
+            // The letters' folder, this device's own: read once Sioul's lists left the notes
+            // folder (docs/notes-folder.md, "What lives where"); chosen again, its scans follow.
+            b.push("letters.folder", "letters-folder", Kind::Folder, SettingValue::Text(config.letters_folder().display().to_string()));
             let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.letters_inbox().map(|inbox| inbox.display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+        }
+        // The Papers page's own: the papers' folder, this device's own, read once
+        // Sioul's lists left the notes folder; chosen again, the files follow.
+        "papers" => {
+            b.group = tr.text("set-papers-group", None);
+            b.push("papers.folder", "papers-folder", Kind::Folder, SettingValue::Text(config.papers_folder().display().to_string()));
         }
         "porch" => {
             // Working hours and days off are Sioul's as a whole: in the settings page.
@@ -1654,7 +1663,8 @@ mod tests {
         assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
         assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
-        assert_eq!(keys("letters"), vec!["letters.inbox"]);
+        assert_eq!(keys("letters"), vec!["letters.folder", "letters.inbox"]);
+        assert_eq!(keys("papers"), vec!["papers.folder"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).

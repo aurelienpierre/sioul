@@ -724,6 +724,19 @@ SioulWindow {
         doseTaken.item.ask(key)
     }
 
+    // The window of the move of Sioul's lists out of the notes folder
+    // (StorageMove.qml, made the first time): by itself once, when every
+    // device knows the new places; from Settings ▸ Sharing at any time.
+    function showStorageMove() {
+        if (storageMove.item === null) {
+            storageMove.setSource("StorageMove.qml", { sioul: sioul, theme: theme })
+        }
+        const shown = storageMove.item as StorageMove
+        if (shown !== null) {
+            shown.show()
+        }
+    }
+
     // A meal's, a nap's or the night's question (later, at another time, not
     // today), or "" to note where you stopped alone (Interruption.qml, made
     // the first time); the pages showing them read again.
@@ -884,6 +897,9 @@ SioulWindow {
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
+        // Where Sioul keeps its lists (Settings ▸ Sharing): the window of the move.
+        else if (item.kind === "storage-move")
+            window.showStorageMove()
         else if (item.kind === "agenda")
             window.page = 4
         else if (item.kind === "sites")
@@ -5628,6 +5644,19 @@ SioulWindow {
     }
     Loader {
         id: doseTaken
+    }
+    Loader {
+        id: storageMove
+    }
+    // Every device knows the new places, nothing moved here yet: the window of the move, once.
+    Connections {
+        target: sioul
+
+        function onStorageMoveChanged() {
+            const view = sioul.storageMove ? JSON.parse(sioul.storageMove) : ({})
+            if (view.offer === true && !sioul.viewFlag("storage-move-said"))
+                window.showStorageMove()
+        }
     }
     // Recents' picture of Sioul kept out while a health card is open (Android
     // 13 and later; RecentsGuard.qml): the Health page, a dose's question, a
