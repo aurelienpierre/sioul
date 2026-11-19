@@ -324,7 +324,7 @@ impl Consent {
         // address, or links its scan), made before the letter had its project or before
         // "Into the agenda" gave it one, as a time block is in its task's (review of
         // e5bd27b, later 3).
-        if let Some(letters) = loaded.vault.as_ref().and_then(|vault| crate::letters::Letters::for_notes(&vault.root).ok()) {
+        if let Some(letters) = crate::letters::Letters::of(loaded.places.as_ref(), loaded.vault.as_ref().map(|vault| vault.root.as_path())) {
             for letter in letters.list.iter().filter(|l| !l.project.trim().is_empty()) {
                 let address = links::letter_uri(&letter.id);
                 consent.tie(&address, letter.project.trim());

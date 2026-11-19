@@ -132,7 +132,7 @@ impl Fixture {
     }
 
     pub(crate) fn world(&self) -> World<'_> {
-        World { tasks: &self.tasks, events: &self.events, contacts: &self.contacts, vault: Some(&self.vault), drafts: &self.drafts, mail: &self.mail, projects: &self.projects, budget: &self.budget, local: &self.local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None }
+        World { tasks: &self.tasks, events: &self.events, contacts: &self.contacts, vault: Some(&self.vault), places: None, drafts: &self.drafts, mail: &self.mail, projects: &self.projects, budget: &self.budget, local: &self.local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None }
     }
 }
 

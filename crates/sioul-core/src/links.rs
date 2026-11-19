@@ -491,6 +491,10 @@ pub struct World<'a> {
     pub events: &'a [EventRef],
     pub contacts: &'a [Contact],
     pub vault: Option<&'a Vault>,
+    /// Where the lists, papers and letters are (`Config::places`), as the
+    /// caller read them: never read again here from the device's own
+    /// configuration. None: the old layout under the vault (tests).
+    pub places: Option<&'a crate::storage::Places>,
     pub drafts: &'a [Draft],
     pub mail: &'a MailIndex,
     pub projects: &'a [Project],
@@ -905,7 +909,7 @@ impl World<'_> {
             // ("Into the agenda" labels its link the same): never by its id (review of
             // part 4, later 11); its card reads the rest.
             Kind::Letter => {
-                let letters = self.letters.get_or_init(|| self.vault.and_then(|v| crate::letters::Letters::for_notes(&v.root).ok()));
+                let letters = self.letters.get_or_init(|| crate::letters::Letters::of(self.places, self.vault.map(|v| v.root.as_path())));
                 let sender = letters.as_ref().and_then(|letters| letters.get(&id).map(|l| l.reading.sender.trim().to_string())).filter(|s| !s.is_empty());
                 out.title = sender.unwrap_or_else(|| id.clone());
                 out.key = id.clone();
@@ -978,6 +982,8 @@ pub struct Loaded {
     pub events: Vec<EventRef>,
     pub contacts: Vec<Contact>,
     pub vault: Option<Vault>,
+    /// Where the lists, papers and letters are, as `read` found them (`Config::places`).
+    pub places: Option<crate::storage::Places>,
     pub drafts: Vec<Draft>,
     pub mail: MailIndex,
     pub projects: Vec<Project>,
@@ -1211,6 +1217,7 @@ impl Loaded {
             contacts: crate::contacts::all(),
             projects: root.as_deref().and_then(|r| crate::projects::ProjectStore::load(r).ok()).map(|s| s.projects).unwrap_or_default(),
             vault: root.as_deref().map(Vault::open),
+            places: config.places(),
             drafts: Draft::all(),
             mail: MailIndex::build_ranked(&MailIndex::roots_of(config)),
             budget,
@@ -1226,6 +1233,7 @@ impl Loaded {
             events: &self.events,
             contacts: &self.contacts,
             vault: self.vault.as_ref(),
+            places: self.places.as_ref(),
             drafts: &self.drafts,
             mail: &self.mail,
             projects: &self.projects,
@@ -1401,7 +1409,7 @@ mod tests {
         let mut local = LocalLinks::default();
         local.add("mid:abc@caf.example", "sioul:contact/caf", "contact");
         let (tasks, events) = (vec![certificate, form], vec![meeting]);
-        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
+        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), places: None, drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         let related = world.related("sioul:task/certificate");
         let seen: Vec<(Kind, &str, &str)> = related.iter().map(|r| (r.kind, r.how.as_str(), r.uri.as_str())).collect();
         assert_eq!(
@@ -1461,7 +1469,7 @@ mod tests {
         let vault = Vault { root: PathBuf::from("/vault"), notes: vec![notes::read("lease.md", "---\ncase: housing\n---\n# Lease\n"), notes::read("rent.md", "# Rent\n\nFor [housing](sioul:project/housing).\n")], folders: Vec::new() };
         let tasks = vec![Task { uid: "rent".into(), title: "Pay the rent".into(), projects: vec!["housing".into()], ..Task::default() }];
         let projects = vec![housing];
-        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
+        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), places: None, drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         assert_eq!(world.canonical("sioul:case/housing"), "sioul:project/housing");
         for address in ["sioul:case/housing", "sioul:project/housing"] {
             let mut tied: Vec<(Kind, String, String)> = world.related(address).into_iter().map(|r| (r.kind, r.how, r.uri)).collect();
@@ -1497,7 +1505,7 @@ mod tests {
         crate::letters::Letters::change(&root, |letters| letters.put(letter)).unwrap();
         let vault = Vault::open(&root);
         let local = LocalLinks::default();
-        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
+        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), places: None, drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         let named = world.describe("sioul:letter/2026-10-28-1a2b");
         assert_eq!((named.kind, named.title.as_str(), named.found), (Kind::Letter, "CAF", true));
         assert_eq!(world.describe("sioul:letter/elsewhere").title, "elsewhere");
@@ -1585,4 +1593,21 @@ mod tests {
         assert_eq!(plain.iter().map(|r| (r.uri.as_str(), r.when, r.rid.as_str())).collect::<Vec<_>>(), [("sioul:event/search-times", Some(moved), "")]);
         assert_eq!(world.describe("sioul:event/search-times").title, "Quarterly planning");
     }
+    /// A letter described from the places the caller read, once moved: its
+    /// list in the records, never the device's own configuration read from
+    /// inside (review S36).
+    #[test]
+    fn a_letter_is_read_from_the_places_given() {
+        let dir = std::env::temp_dir().join(format!("sioul-links-places-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vault")).unwrap();
+        std::fs::create_dir_all(dir.join("records").join("letters")).unwrap();
+        std::fs::write(dir.join("records/letters/letters.toml"), "[[letter]]\nid = \"l1\"\nfile = \"2026/l1.pdf\"\nkind = \"other\"\nstatus = \"new\"\nsender = \"Example Office\"\n").unwrap();
+        let places = crate::storage::Places::apart(&dir.join("records"), Some(&dir.join("vault")), &dir.join("Papers"), &dir.join("Letters"));
+        let loaded = Loaded { vault: Some(Vault::open(&dir.join("vault"))), places: Some(places), ..Loaded::default() };
+        let described = loaded.world().describe(&letter_uri("l1"));
+        assert_eq!(described.title, "Example Office", "{described:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
 }

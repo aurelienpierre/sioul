@@ -480,14 +480,15 @@ impl Letters {
         })
     }
 
-    /// The letters this device keeps, for a notes folder `root` a caller
-    /// holds (the vault's): where its configuration keeps them once its
-    /// lists moved, else under `root`.
-    pub fn for_notes(root: &Path) -> Result<Letters, String> {
-        let config = crate::config::Config::load(&crate::config::default_path()).unwrap_or_default();
-        match config.places().filter(|places| places.moved) {
-            Some(places) => Letters::load_at(&places),
-            None => Letters::load(root),
+    /// The letters where the caller says they are (`places`, as it read
+    /// them from its configuration), else under a notes folder `root` in the
+    /// old layout; never read from the device's own configuration here
+    /// (review S36): a test with folders of its own reads only those.
+    pub fn of(places: Option<&crate::storage::Places>, root: Option<&Path>) -> Option<Letters> {
+        match (places, root) {
+            (Some(places), _) => Letters::load_at(places).ok(),
+            (None, Some(root)) => Letters::load(root).ok(),
+            (None, None) => None,
         }
     }
 
