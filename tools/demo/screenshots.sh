@@ -23,9 +23,13 @@
 # reads the time zone as the system does; nothing else changes. From Saturday
 # 16:00 to Sunday 10:00 (UTC) no weekday is close enough: it says so.
 #
-# With bubblewrap (bwrap), Sioul runs with the profile mounted as the home of a
-# user "demo", so the pictures show /home/demo/… rather than SCRATCH, and the
-# real home is out of its reach. Without it, it runs on SCRATCH directly.
+# It runs in run.sh's sandbox, bubblewrap's (no bwrap, no pictures): the
+# profile mounted as the home of a user "demo", so the pictures show
+# /home/demo/… rather than SCRATCH, and the real home out of its reach; no
+# network (a namespace of its own, and SIOUL_DEMO=1); no display; a D-Bus
+# session of its own standing in for the system's too, and a runtime folder
+# of its own (the session's own runtime folder and /run/dbus hidden), so that
+# the English and the French pictures can be taken side by side.
 
 set -euo pipefail
 
@@ -64,11 +68,11 @@ if [[ "$now" == none ]]; then
 fi
 echo "Pictures of $now (TZ=$zone), in $language, in $scratch"
 
-if command -v bwrap > /dev/null; then
-    home=/home/demo
-else
-    home=""
+if ! command -v bwrap > /dev/null; then
+    echo "bubblewrap (bwrap) is needed: Sioul runs only in its sandbox (Fedora, Debian, Arch: bubblewrap)." >&2
+    exit 1
 fi
+home=/home/demo
 
 # The fonts Plasma users see, Noto Sans and Hack, whatever this system's
 # default (fonts.conf, which run.sh shares).
@@ -77,32 +81,48 @@ if command -v fc-match > /dev/null && ! FONTCONFIG_FILE="$fonts" fc-match "Sans 
     echo "Noto Sans is not installed: the pictures take this system's sans-serif font." >&2
 fi
 
+# The session's runtime folder (/run/user/<uid>) hidden: its D-Bus, Wayland and
+# audio sockets; and the system's bus (/run/dbus): the sandbox's own session
+# bus stands in for it.
+hide=()
+if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "$XDG_RUNTIME_DIR" ]]; then
+    hide=(--tmpfs "$XDG_RUNTIME_DIR")
+fi
+if [[ -d /run/dbus ]]; then
+    hide+=(--tmpfs /run/dbus)
+fi
+
 # Runs Sioul on profile $1, its pictures into $2.
 run() {
     local profile=$1 out=$2
     rm -rf "$out"
-    mkdir -p "$out"
-    local env=(SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS=demo SIOUL_TEST_PASSWORD=x SIOUL_THEME=light FONTCONFIG_FILE="$fonts"
-               QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software LANG="$locale" LC_ALL="$locale" TZ="$zone")
-    # Nothing reaches the desktop: no display, and a bus of its own (dbus-run-session).
-    if [[ -n "$home" ]]; then
-        env -u DISPLAY -u WAYLAND_DISPLAY bwrap --dev-bind / / --tmpfs /home --ro-bind "$repo" "$repo" --ro-bind "$app" "$app" \
-            --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
-            --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
-            --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --chdir "$home" \
-            env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
-                XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
-                timeout 400 dbus-run-session -- "$app" > "$out/log" 2>&1 || true
+    mkdir -p "$out" "$profile/documents"
+    # A runtime folder of its own: Sioul keeps one window per profile through a
+    # socket there, and every demo profile is the same /home/demo. In SCRATCH,
+    # unless its path is too long for a socket's (108 bytes at most).
+    local runtime
+    if (( ${#scratch} <= 60 )); then
+        runtime=$(mktemp -d "$scratch/run.XXXXXX")
     else
-        env -u DISPLAY -u WAYLAND_DISPLAY XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data" XDG_STATE_HOME="$profile/state" \
-            XDG_CACHE_HOME="$profile/cache" "${env[@]}" \
-            timeout 400 dbus-run-session -- "$app" > "$out/log" 2>&1 || true
+        runtime=$(mktemp -d /tmp/sioul-run.XXXXXX)
     fi
+    local env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS=demo SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
+               FONTCONFIG_FILE="$fonts" QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+               LANG="$locale" LC_ALL="$locale" TZ="$zone")
+    env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS \
+        bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" --ro-bind "$app" "$app" \
+        --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
+        --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
+        --bind "$profile/notes" "$home/Notes" --bind "$profile/documents" "$home/Documents" --bind "$out" "$out" \
+        --bind "$runtime" "$runtime" --chdir "$home" \
+        env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
+            XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
+            timeout 400 dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$out/log" 2>&1 || true
+    rm -rf "$runtime"
     grep -E "qml:|TypeError|ReferenceError" "$out/log" | sed "s|^|  $out/log: |" | head -20 || true
 }
 
-notes_at=()
-[[ -n "$home" ]] && notes_at=(--notes-at "$home/Notes")
+notes_at=(--notes-at "$home/Notes")
 
 python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile$suffix" --now "$now" --language "$language" "${notes_at[@]}"
 run "$scratch/profile$suffix" "$scratch/shots$suffix"
