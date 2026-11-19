@@ -35,7 +35,8 @@ ColumnLayout {
     property bool settings: false
     // Said under the title (Android: where sites open, and what they cannot do there).
     property string note: ""
-    property alias settingsButton: sitesSettings
+    // The ⚙, made on a computer alone (Android's page has none: review C2).
+    readonly property var settingsButton: sitesSettings.item
     property alias presetsMenu: presetsMenu
     property alias filterMenu: filterMenu
 
@@ -293,13 +294,17 @@ ColumnLayout {
             ToolTip.text: list.sioul.text("site-presets")
             onClicked: list.showPresets()
         }
-        SettingsButton {
+        Loader {
             id: sitesSettings
 
-            visible: list.settings
-            sioul: list.sioul
-            theme: list.theme
-            view: "sites"
+            active: list.settings
+            visible: active
+
+            sourceComponent: SettingsButton {
+                sioul: list.sioul
+                theme: list.theme
+                view: "sites"
+            }
         }
     }
 

@@ -110,7 +110,8 @@ ItemDelegate {
 
             Label {
                 Layout.fillWidth: true
-                text: row.site.name || ""
+                // A site without a name shows its address, as Android's page did (review C2).
+                text: row.site.name || row.site.url || ""
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: row.theme.text

@@ -286,5 +286,18 @@ Item {
             compare(page.problem, "site-forget-cookies", "what stays said under the title")
         }
 
+        // A site without a name shows its address; Android's page makes no ⚙ (review C2).
+        function test_a_nameless_site_and_no_settings_button() {
+            const before = mock.given
+            mock.given = before.concat([{ id: "bare", name: "", url: "https://bare.example.org", kind: "other", categories: [], area: "admin", in_view: true, news: false, muted: false, icon: "", opens_line: "Opens in Sioul." }])
+            page.reload()
+            wait(20)
+            const bare = rows().find(r => r.site.id === "bare")
+            verify(bare, "the nameless site listed")
+            verify(texts(bare).indexOf("https://bare.example.org") >= 0, "its address in place of its name: " + texts(bare))
+            compare(list().settingsButton, null, "no ⚙ made on Android")
+            mock.given = before
+            page.reload()
+        }
     }
 }

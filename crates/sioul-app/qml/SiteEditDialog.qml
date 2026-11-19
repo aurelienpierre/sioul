@@ -85,7 +85,6 @@ SafeDialog {
             id: editUrl
 
             Layout.fillWidth: true
-            inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
             onAccepted: editing.save()
         }
         Label {

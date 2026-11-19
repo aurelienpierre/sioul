@@ -44,9 +44,13 @@ SioulMenu {
     readonly property string siteId: menu.site !== null ? menu.site.id : ""
     readonly property var kinds: ["mailbox", "chat", "video", "social", "dating", "other"]
 
-    function set(field, value) {
+    // A setting written. Rust's sitesChanged reads the list again; `reload`
+    // false leaves it there, as the computer's page did for the type and
+    // "kept open" (review C1).
+    function set(field, value, reload) {
         menu.said(menu.sioul.setSite(menu.siteId, field, value))
-        menu.changed()
+        if (reload !== false)
+            menu.changed()
     }
 
     Repeater {
@@ -58,7 +62,7 @@ SioulMenu {
             text: menu.sioul.text("site-kind-" + modelData)
             checkable: true
             checked: menu.site !== null && menu.site.kind === modelData
-            onTriggered: menu.set("site", modelData)
+            onTriggered: menu.set("site", modelData, false)
         }
     }
     MenuSeparator {}
@@ -73,7 +77,7 @@ SioulMenu {
         text: menu.sioul.text("site-background")
         checkable: true
         checked: menu.site !== null && menu.site.background === true
-        onTriggered: menu.set("background", String(checked))
+        onTriggered: menu.set("background", String(checked), false)
     }
     // What it is for: the hours it comes forward in, any of them together (docs/areas.md).
     // None ticked: as its kind goes.

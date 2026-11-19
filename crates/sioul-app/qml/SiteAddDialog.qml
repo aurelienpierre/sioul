@@ -42,8 +42,8 @@ SafeDialog {
     property string problem: ""
     readonly property var country: adding.offered.countries.find(c => c.code === adding.offered.country) || null
     readonly property var shownPresets: {
-        const words = find.text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/\s+/).filter(w => w !== "")
-        const folded = t => String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+        const words = find.text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).filter(w => w !== "")
+        const folded = t => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
         return adding.offered.sites
             .filter(p => adding.category === "" || (adding.category.startsWith("type:") ? p.kind === adding.category.slice(5) : p.categories.indexOf(adding.category.slice(9)) >= 0))
             .filter(p => words.every(w => folded(p.name + " " + p.about + " " + p.host + " " + p.categories.join(" ")).indexOf(w) >= 0))
