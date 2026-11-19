@@ -103,6 +103,9 @@ sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path()
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)
 
+# sioul-app/src/projects.rs: what the Projects and Time pages show on this device (state): no item.
+sioul-app/src/projects.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
+
 # sioul-app/src/payments.rs: what the budgets show on this device (state): no item.
 sioul-app/src/payments.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
