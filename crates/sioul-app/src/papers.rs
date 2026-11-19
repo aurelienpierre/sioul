@@ -292,13 +292,39 @@ pub(crate) fn plan_renewal(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
     }
 }
 
-/// A file checked by the antivirus (an attachment), kept in the wallet's
+/// A file checked by the antivirus (an attachment), or a file a site
+/// offered and you filed in Papers (`downloads`), kept in the wallet's
 /// folder; returns its path there, with a title and a kind guessed from its name.
 pub(crate) fn keep_checked(file: &Path, name: &str, subject: &str) -> Result<(String, String, &'static str), String> {
     let wallet = wallet()?;
     let kept = wallet.keep_file(file, name)?;
+    let (title, kind) = guessed(name, subject);
+    Ok((wallet.root.join(&kept).display().to_string(), title, kind))
+}
+
+/// A paper's title and kind guessed from its file's name ("avis_impot_2026.pdf":
+/// a tax notice), else from a mail's subject.
+fn guessed(name: &str, subject: &str) -> (String, &'static str) {
     let title = Path::new(name).file_stem().map(|s| s.to_string_lossy().replace(['_', '-'], " ")).unwrap_or_default();
     let looked = sioul_core::words::Words::of(&load_config());
     let kind = Kind::guess(&looked, name).or_else(|| Kind::guess(&looked, subject)).unwrap_or_default();
-    Ok((wallet.root.join(&kept).display().to_string(), title, kind.id()))
+    (title, kind.id())
+}
+
+/// A file of the papers' folder, as a notice opens it (`downloads`): the
+/// paper that holds it ({"id"}), once its form was saved; else what the
+/// form starts from again ({"file", "title", "kind"}); {} when it is no longer there.
+pub(crate) fn of_file(path: &str) -> String {
+    let path = crate::backend::local_path(path);
+    if let Ok(wallet) = wallet()
+        && let Some(paper) = wallet.papers.iter().find(|p| wallet.file_path(p).is_some_and(|f| f == path))
+    {
+        return serde_json::json!({ "id": paper.id }).to_string();
+    }
+    if !path.is_file() {
+        return "{}".into();
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let (title, kind) = guessed(&name, "");
+    serde_json::json!({ "file": path.display().to_string(), "title": title, "kind": kind }).to_string()
 }

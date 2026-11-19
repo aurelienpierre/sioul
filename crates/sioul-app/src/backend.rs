@@ -1911,6 +1911,36 @@ pub mod qobject {
         #[qinvokable]
         fn letters_link(self: Pin<&mut Sioul>, files: &QString) -> QString;
 
+        /// A file a site offers, before anything is saved: the card's words and
+        /// places, the one chosen last for the site first, as JSON (`downloads::offer`).
+        #[qinvokable]
+        fn download_offer(self: &Sioul, asked: &QString) -> QString;
+
+        /// Save pressed on that card: the place kept for the site, a folder held
+        /// in Sioul's cache for the file while it comes, the status line saying
+        /// it comes; JSON {hold, name, folder, problem} (`downloads::start`).
+        #[qinvokable]
+        fn download_start(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// The file came whole: placed where you said, off the window's thread,
+        /// said in the status line and by one notice (`downloads::done`).
+        #[qinvokable]
+        fn download_done(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// The file failed or was cut: nothing kept, said why (`downloads::failed`).
+        #[qinvokable]
+        fn download_failed(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// A word of the download's card in the status line: "cancelled" (nothing
+        /// saved, the site told) or "waiting" (a file offered while Sites is not in view).
+        #[qinvokable]
+        fn download_said(self: Pin<&mut Sioul>, what: &QString, asked: &QString);
+
+        /// A file of the papers' folder, as a notice opens it: {"id"} of the paper
+        /// that holds it, else {"file", "title", "kind"} for its form (`papers::of_file`).
+        #[qinvokable]
+        fn paper_of_file(self: &Sioul, path: &QString) -> QString;
+
         /// The money watch, as JSON (`bank::view`).
         #[qinvokable]
         fn bank(self: &Sioul) -> QString;
@@ -3232,6 +3262,11 @@ pub mod qobject {
         /// An attachment was kept in the papers wallet: the form, to say what it is.
         #[qsignal]
         fn paper_kept(self: Pin<&mut Sioul>, file: QString, title: QString, kind: QString);
+
+        /// A file a site offered was filed where scans arrive: its letter, by the
+        /// id its reading gives it, brought into view on the Letters page once read.
+        #[qsignal]
+        fn letter_filed(self: Pin<&mut Sioul>, id: QString);
 
         /// A draft's window opens again: "Undo" after sending or discarding.
         /// Also a new draft handed by another application (`outside`).
@@ -6981,6 +7016,30 @@ impl qobject::Sioul {
         QString::from(&crate::letters::add(&files.to_string()))
     }
 
+    fn download_offer(&self, asked: &QString) -> QString {
+        QString::from(&crate::downloads::offer(&asked.to_string()))
+    }
+
+    fn download_start(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::downloads::start(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn download_done(self: Pin<&mut Self>, asked: &QString) {
+        crate::downloads::done(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn download_failed(self: Pin<&mut Self>, asked: &QString) {
+        crate::downloads::failed(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn download_said(self: Pin<&mut Self>, what: &QString, asked: &QString) {
+        crate::downloads::said(&self.qt_thread(), &self.shared(), &what.to_string(), &asked.to_string());
+    }
+
+    fn paper_of_file(&self, path: &QString) -> QString {
+        QString::from(&crate::papers::of_file(&path.to_string()))
+    }
+
     fn letters_link(mut self: Pin<&mut Self>, files: &QString) -> QString {
         let said = crate::letters::link(&files.to_string());
         self.as_mut().letters_changed();
@@ -9057,8 +9116,10 @@ impl qobject::Sioul {
         // Invoices (the guide's pictures; docs/projects.md), "views" the Week's steps by area and the
         // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
-        // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage"].contains(&steps.as_str()) && offline()) {
+        // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
+        // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
+        // docs/sites.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

@@ -158,6 +158,8 @@ mod devicekind;
 mod devices;
 mod dispatch;
 mod dnd;
+// A file a site offers: asked where, then placed (docs/sites.md, "Downloads").
+mod downloads;
 mod eventalarms;
 mod eventplace;
 mod duplicates;

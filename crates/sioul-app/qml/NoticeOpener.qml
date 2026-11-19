@@ -10,7 +10,8 @@
 // sheet; a site's notice: the site, then the web notice's own click (the
 // site opens the conversation), the site alone when it is gone; a message:
 // Mail's reader; an event: its card at that time; a dose: its route as
-// before; a task, a paper, a contract, a budget's line, a letter: where it lives.
+// before; a task, a paper, a contract, a budget's line, a letter: where it lives;
+// a file a site offered: the file or its folder, or its paper (docs/sites.md, "Downloads").
 
 pragma ComponentBehavior: Bound
 
@@ -53,8 +54,14 @@ QtObject {
         // An event's time, by its file and that time (a series' own, not its next); else the agenda.
         else if (address.startsWith("sioul:event/"))
             w.openThing(key !== "" ? { kind: "event", uri: address.split("#")[0], key: key } : { kind: "agenda", uri: "", key: "" })
+        // A file a site offered, filed in Papers: its paper, else its form again.
+        else if (address.startsWith("sioul:paper-file/"))
+            w.openPaperFile(after("sioul:paper-file/"))
         // A task, a paper, a contract, a budget's line, a letter…: its kind is its address's first word.
         else if (address.startsWith("sioul:"))
             w.openThing({ kind: address.slice("sioul:".length).split("/")[0], uri: address, key: key })
+        // A file a site offered, in Downloads or a folder you chose: the file, or its folder; never a program.
+        else if (address.startsWith("file:"))
+            w.openFile(address)
     }
 }

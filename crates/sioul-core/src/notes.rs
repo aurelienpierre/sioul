@@ -46,7 +46,10 @@ pub struct Checkbox {
 }
 
 /// What a file of the vault is: a Markdown note, or a picture, a PDF, a
-/// sound (an audio memo) kept beside the notes, read here and linked the same way.
+/// sound (an audio memo) kept beside the notes, read here and linked the
+/// same way; or any other file (a spreadsheet, an archive: one a site
+/// offered and you filed in Notes, docs/sites.md, "Downloads"), named and
+/// tied like any note, opened in another program.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NoteKind {
@@ -55,19 +58,35 @@ pub enum NoteKind {
     Image,
     Pdf,
     Audio,
+    File,
 }
 
-/// The kind of a file by its extension; None for files the vault leaves out.
-/// Text notes are Markdown, whether named `.md` (Obsidian's way) or `.txt`
+/// What the vault leaves out, by extension: Sioul's own lists and the
+/// copies a rename keeps (before a device moved them out of the notes
+/// folder: docs/notes-folder.md), files being written (a note's own `.new`,
+/// a browser's or a sync program's partial files), editors' swap and backup
+/// files, and a system's own (Windows' `desktop.ini`, `Thumbs.db`).
+const NOT_NOTES: &[&str] = &["toml", "lock", "new", "tmp", "temp", "part", "partial", "crdownload", "download", "swp", "swo", "bak", "ini", "db", "log", "before-rename", "sioul-move"];
+
+/// The kind of a file by its extension; None for files the vault leaves out:
+/// a name without an extension, one starting or ending with "~" (an office
+/// suite's lock, an editor's backup), and the kinds of `NOT_NOTES`. Text
+/// notes are Markdown, whether named `.md` (Obsidian's way) or `.txt`
 /// (Nextcloud Notes' default, Markdown all the same).
 pub fn kind_of_file(name: &str) -> Option<NoteKind> {
-    let extension = name.rsplit_once('.')?.1.to_lowercase();
+    let last = name.rsplit('/').next().unwrap_or(name);
+    if last.starts_with('~') || last.ends_with('~') {
+        return None;
+    }
+    let extension = last.rsplit_once('.').filter(|(stem, _)| !stem.is_empty())?.1.to_lowercase();
     Some(match extension.as_str() {
         "md" | "txt" => NoteKind::Text,
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => NoteKind::Image,
         "pdf" => NoteKind::Pdf,
         "mp3" | "ogg" | "oga" | "opus" | "m4a" | "aac" | "wav" | "flac" | "webm" | "3gp" | "amr" => NoteKind::Audio,
-        _ => return None,
+        "" => return None,
+        other if NOT_NOTES.contains(&other) => return None,
+        _ => NoteKind::File,
     })
 }
 
@@ -1089,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn pictures_pdfs_and_sounds_are_notes_too() {
+    fn pictures_pdfs_sounds_and_other_files_are_notes_too() {
         let dir = std::env::temp_dir().join(format!("sioul-media-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("memos")).unwrap();
         std::fs::write(dir.join("plan.md"), "# Plan\n\n![[scan.png]] and [[memo.ogg]]\n").unwrap();
@@ -1103,10 +1122,16 @@ mod tests {
         std::fs::write(dir.join("form.pdf"), b"%PDF-1.7").unwrap();
         // Nextcloud Notes writes `.txt` by default: Markdown all the same.
         std::fs::write(dir.join("shopping.txt"), "Shopping\n\n- [ ] bread\n").unwrap();
-        std::fs::write(dir.join("data.csv"), "left out").unwrap();
+        // Any other file is a file of the notes: named, tied, opened elsewhere.
+        std::fs::write(dir.join("data.csv"), "a file").unwrap();
+        // Sioul's own lists, files being written, a backup, a system's own: left out.
+        for left in ["sioul-projects.toml", "sioul-cases.toml.before-rename", "plan.md.new", "statement.pdf.crdownload", "~$report.docx", "plan.md~", "desktop.ini", "Makefile"] {
+            std::fs::write(dir.join(left), "left out").unwrap();
+        }
         let vault = Vault::open(&dir);
         let kinds: Vec<(&str, NoteKind)> = vault.notes.iter().map(|n| (n.path.as_str(), n.kind)).collect();
-        assert_eq!(kinds, vec![("form.pdf", NoteKind::Pdf), ("memos/memo.ogg", NoteKind::Audio), ("plan.md", NoteKind::Text), ("scan.png", NoteKind::Image), ("shopping.txt", NoteKind::Text)]);
+        assert_eq!(kinds, vec![("data.csv", NoteKind::File), ("form.pdf", NoteKind::Pdf), ("memos/memo.ogg", NoteKind::Audio), ("plan.md", NoteKind::Text), ("scan.png", NoteKind::Image), ("shopping.txt", NoteKind::Text)]);
+        assert_eq!(vault.note("data.csv").map(|n| n.title.as_str()), Some("data"));
         assert_eq!(vault.note("shopping.txt").map(|n| n.stem()), Some("shopping"));
         assert_eq!(vault.resolve("", "wiki:shopping").as_deref(), Some("shopping.txt"));
         assert!(write(&dir, "shopping.txt", "Shopping\n\n- [x] bread\n").is_ok(), "a .txt note is written back as it is");

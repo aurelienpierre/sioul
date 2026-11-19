@@ -204,6 +204,13 @@ pub fn contract_uri(id: &str) -> String {
     format!("sioul:contract/{}", encode(id))
 }
 
+/// A file of the papers' folder, by its path, before or after a paper holds
+/// it: what the notice of a file a site offered, filed in Papers, opens
+/// (docs/sites.md, "Downloads"): the paper, else its form again.
+pub fn paper_file_uri(path: &str) -> String {
+    format!("sioul:paper-file/{}", encode(path))
+}
+
 /// A paper letter of the Porch's letters, by its id.
 pub fn letter_uri(id: &str) -> String {
     format!("sioul:letter/{}", encode(id))

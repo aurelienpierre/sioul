@@ -9,7 +9,8 @@
 // silenced; a chat's real time is one tick away, always in view. Logins come
 // from Bitwarden when you ask, its account set in Accounts (VaultCard.qml).
 // The profile every site shares, and Bitwarden's page that asks a security
-// key, are the window's (SitesWeb.qml), so that Accounts asks a key too.
+// key, are the window's (SitesWeb.qml), so that Accounts asks a key too. A
+// file a site offers is saved only once you said where (SiteDownloads.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -39,6 +40,8 @@ Item {
     property alias loginChooser: chooser
     property alias addSiteDialog: adding
     property alias addSiteFind: find.text
+    // The files the sites offer, and their card (the window's images).
+    property alias downloads: siteFiles
     // What follows Bitwarden's unlocking: the login filled ("fill") or chosen ("choose").
     property string afterUnlock: "fill"
     // Sites opened this session stay loaded: going back to one does not reload it.
@@ -601,10 +604,35 @@ Item {
             notification.show()
         }
 
+        // A file a site offers: nothing saved before you say where (SiteDownloads.qml).
         function onDownloadRequested(download) {
-            download.accept()
-            page.sioul.status = page.sioul.textWith("site-downloading", "file", download.downloadFileName)
+            siteFiles.offer(download, page.siteOfView(download.view))
         }
+    }
+
+    // The files the sites offer: each asked in its card over the site, one
+    // after the other, while this page is in view (docs/sites.md, "Downloads").
+    SiteDownloads {
+        id: siteFiles
+
+        sioul: page.sioul
+        theme: page.theme
+        shown: page.visible && page.window.visible
+    }
+
+    // The site a page belongs to: a site's own view, or a pop-up it opened; null for another page.
+    function siteOfView(view) {
+        if (!view)
+            return null
+        for (const id of Object.keys(page.siteViews)) {
+            if (page.siteViews[id] === view)
+                return page.sites.find(s => s.id === id) || null
+        }
+        for (const popup of page.popups) {
+            if (page.popupOpen(popup) && popup.view === view)
+                return popup.site
+        }
+        return null
     }
 
     RowLayout {

@@ -61,12 +61,15 @@ Item {
         page.reload()
     }
 
+    // A letter not read yet (a file a site offered, filed where scans arrive, read
+    // within a minute) stays wanted until it shows, then comes into view.
     function reveal() {
         const id = page.wanted
-        page.wanted = ""
         const found = page.find(column, id)
-        if (found !== null)
-            scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
+        if (found === null)
+            return
+        page.wanted = ""
+        scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
     }
 
     // The first item under `item` showing the letter `id` (its `letterId`).

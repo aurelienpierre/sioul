@@ -37,6 +37,12 @@ TestCase {
         function showParameters(key) {
             fakeWindow.asked = fakeWindow.asked.concat([["settings", key]])
         }
+        function openFile(url) {
+            fakeWindow.asked = fakeWindow.asked.concat([["file", url]])
+        }
+        function openPaperFile(path) {
+            fakeWindow.asked = fakeWindow.asked.concat([["paper-file", path]])
+        }
     }
 
     NoticeOpener {
@@ -87,5 +93,16 @@ TestCase {
         compare(opened("sioul:paper/passport", ""), [["thing", "paper", "sioul:paper/passport", ""]])
         compare(opened("sioul:budget/home/3", ""), [["thing", "budget", "sioul:budget/home/3", ""]])
         compare(opened("https://example.org", ""), [], "not a thing of Sioul's: nothing")
+    }
+
+    // A file a site offered (docs/sites.md, "Downloads"): in a folder of the
+    // system's, the file or its folder (the window decides a program's); in
+    // Notes, the note; in Papers, its paper or its form, by the file's path; in Letters, the letter.
+    function test_a_file_a_site_offered_opens_where_it_went() {
+        compare(opened("file:///stand-in/Downloads/statement%20(2).pdf", ""), [["file", "file:///stand-in/Downloads/statement%20(2).pdf"]])
+        compare(opened("file:///stand-in/Downloads/", ""), [["file", "file:///stand-in/Downloads/"]])
+        compare(opened("sioul:note/notes/tableau%20v2.ods", ""), [["thing", "note", "sioul:note/notes/tableau%20v2.ods", ""]])
+        compare(opened("sioul:paper-file/%2Fstand-in%2FPapers%2Favis%20impot.pdf", ""), [["paper-file", "/stand-in/Papers/avis impot.pdf"]])
+        compare(opened("sioul:letter/2026-11-19-0a1b2c3d", ""), [["thing", "letter", "sioul:letter/2026-11-19-0a1b2c3d", ""]])
     }
 }
