@@ -176,7 +176,7 @@ An extension brings data from a service Sioul does not speak to itself, such as 
 - **Enable** downloads its file and checks it against the signed list; **Sign in…** opens the site's own page in a window of Sioul's (on a phone, a screen of Sioul's), its name always shown above it: you type your password there, never in Sioul. The sign-in stays in this device's keyring.
 - It then refreshes by itself every three hours, and brings each agenda **read only**. The agendas reach your other devices through the sharing; a device that does not run the extension shows them all the same.
 - Its line says when it last ran, what it brought, and its last problem in one sentence. **Disable** stops it on this device; **Remove** forgets its sign-in and asks whether to keep its agendas.
-- An extension runs apart from Sioul and is given only what its list says: the sites it names, its own entry in the keyring. An update that asks for more waits for your yes.
+- An extension runs apart from Sioul and is given only what its list says: the sites it names, its own entry in the keyring. An update that asks for more waits for your yes; one that asks for less applies at once. An extension taken out of the list stops, and its line says so.
 
 The extensions are unofficial: a service can change and stop one. [The developers' notes](../dev/extensions.md) describe the interface and every check.
 

@@ -163,6 +163,7 @@ fn problem_line(word: &str, name: &str) -> String {
         "door" => "extension-problem-door",
         "keyring" => "extension-problem-keyring",
         "record" => "extension-problem-record",
+        "withdrawn" => "extension-problem-withdrawn",
         _ => "extension-problem-other",
     };
     say(id, &[("name", name.to_string())])
@@ -296,11 +297,75 @@ fn read_list(qt: Option<QtThread>) {
     });
 }
 
+/// What a manifest whose signature held changes in this device's record.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Plan {
+    /// Installed here and no longer listed: they stop, and say so.
+    withdrawn: Vec<String>,
+    /// Listed again after they were withdrawn: they may be enabled again.
+    listed_again: Vec<String>,
+    /// What an extension is given narrowed at once to what the manifest lists
+    /// now (its hosts, its sign-in), its file unchanged: no question asked.
+    narrowed: Vec<Offer>,
+    /// A newer offer that asks for no more: taken now (its file downloaded when it changed).
+    taken: Vec<Offer>,
+    /// A newer offer that asks for more: waiting for the person's yes.
+    waiting: Vec<Offer>,
+}
+
+/// What the offer accepted here may still be given under `listed`: its hosts
+/// that `listed` names too, its sign-in only while `listed` has one.
+fn narrowed(accepted: &Offer, listed: &Offer) -> Offer {
+    let hosts: Vec<String> = accepted.hosts.iter().filter(|h| listed.hosts.iter().any(|l| l.eq_ignore_ascii_case(h))).cloned().collect();
+    let sign_in = if listed.sign_in.is_some() { accepted.sign_in.clone() } else { None };
+    Offer { hosts, sign_in, ..accepted.clone() }
+}
+
+/// The changes `manifest` brings to `state` (M1): an installed extension it
+/// no longer lists stops; one it lists is given at once no more than the
+/// manifest says; a newer offer is taken when it asks for no more, else waits.
+fn plan(state: &State, manifest: &Manifest) -> Plan {
+    let mut plan = Plan::default();
+    for installed in &state.extensions {
+        let id = &installed.offer.id;
+        let Some(offer) = manifest.offers.iter().find(|o| o.id == *id) else {
+            if installed.enabled || installed.problem.as_deref() != Some("withdrawn") || installed.waiting.is_some() {
+                plan.withdrawn.push(id.clone());
+            }
+            continue;
+        };
+        if installed.problem.as_deref() == Some("withdrawn") {
+            plan.listed_again.push(id.clone());
+        }
+        if offer.sha256 == installed.offer.sha256 && !offer.grants().asks_more_than(&installed.offer.grants()) {
+            // The same file, asking no more: the manifest's offer as it is now.
+            if *offer != installed.offer {
+                plan.narrowed.push(offer.clone());
+            }
+            continue;
+        }
+        let less = narrowed(&installed.offer, offer);
+        if less != installed.offer {
+            plan.narrowed.push(less);
+        }
+        if !offer.usable() {
+            continue;
+        }
+        if offer.grants().asks_more_than(&installed.offer.grants()) {
+            plan.waiting.push(offer.clone());
+        } else {
+            plan.taken.push(offer.clone());
+        }
+    }
+    plan
+}
+
 /// A manifest whose signature held taken in this device's state: its serial
 /// first (never lower than the last accepted here, or the whole manifest is
-/// refused), then for each extension installed here a newer version taken at
-/// once when it asks for no more, else set waiting for the person's yes.
-/// Files are downloaded outside the state's lock.
+/// refused), then `plan`'s changes: withdrawn extensions stopped, what each
+/// is given narrowed at once, a newer version taken when it asks for no
+/// more, else set waiting for the person's yes. Files are downloaded outside
+/// the state's lock.
 fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
     let path = state::path();
     state::change(&path, |state| {
@@ -308,31 +373,57 @@ fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
         state.checked = now();
         Ok::<(), String>(())
     })??;
-    let state = state::load(&path);
-    let (mut taken, mut waiting) = (Vec::new(), Vec::new());
-    for installed in &state.extensions {
-        let Some(offer) = manifest.offers.iter().find(|o| o.id == installed.offer.id) else { continue };
-        if offer.sha256 == installed.offer.sha256 || !offer.usable() {
-            continue;
-        }
-        if offer.grants().asks_more_than(&installed.offer.grants()) {
-            waiting.push(offer.clone());
+    let plan = plan(&state::load(&path), manifest);
+    let mut taken = Vec::new();
+    for offer in &plan.taken {
+        let installed = state::load(&path).get(&offer.id).map(|i| i.offer.clone());
+        let Some(old) = installed else { continue };
+        if old.sha256 == offer.sha256 {
+            taken.push((old, offer.clone()));
             continue;
         }
         match store::install(address, offer) {
-            Ok(_) => taken.push((installed.offer.clone(), offer.clone())),
+            Ok(_) => taken.push((old, offer.clone())),
             Err(problem) => eprintln!("sioul: extensions: {}: an update: {problem}", offer.id),
         }
     }
+    for id in &plan.withdrawn {
+        let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: no longer in the extensions' list: it no longer runs here", jiff::Timestamp::now())]);
+    }
     state::change(&path, |state| {
+        for id in &plan.withdrawn {
+            if let Some(installed) = state.get_mut(id) {
+                installed.enabled = false;
+                if let Some(waiting) = installed.waiting.take() {
+                    store::discard_file(&waiting);
+                }
+                installed.problem = Some("withdrawn".into());
+            }
+        }
+        for id in &plan.listed_again {
+            if let Some(installed) = state.get_mut(id)
+                && installed.problem.as_deref() == Some("withdrawn")
+            {
+                installed.problem = None;
+            }
+        }
+        for offer in &plan.narrowed {
+            if let Some(installed) = state.get_mut(&offer.id)
+                && installed.offer.sha256 == offer.sha256
+            {
+                installed.offer = offer.clone();
+            }
+        }
         for (old, offer) in &taken {
             if let Some(installed) = state.get_mut(&offer.id) {
-                store::discard_file(old);
+                if old.sha256 != offer.sha256 {
+                    store::discard_file(old);
+                }
                 installed.offer = offer.clone();
                 installed.waiting = None;
             }
         }
-        for offer in &waiting {
+        for offer in &plan.waiting {
             if let Some(installed) = state.get_mut(&offer.id) {
                 installed.waiting = Some(offer.clone());
             }
@@ -354,7 +445,9 @@ fn offered(id: &str) -> Option<(Offer, String)> {
 pub(crate) fn enable(qt: &QtThread, id: &str) {
     let (qt, id) = (qt.clone(), id.to_string());
     std::thread::spawn(move || {
-        let enabled = state::load(&state::path()).get(&id).map(|i| i.offer.clone());
+        let installed = state::load(&state::path()).get(&id).cloned();
+        let withdrawn = installed.as_ref().is_some_and(|i| i.problem.as_deref() == Some("withdrawn"));
+        let enabled = installed.map(|i| i.offer).filter(|_| !withdrawn);
         let outcome = match enabled {
             // Installed before, disabled since: enabled again as it was accepted.
             Some(offer) if store::checked_file(&offer).is_ok() => state::change(&state::path(), |s| {
@@ -362,6 +455,7 @@ pub(crate) fn enable(qt: &QtThread, id: &str) {
                     i.enabled = true;
                 }
             }),
+            _ if withdrawn => Err(say("extension-not-listed", &[])),
             _ => match offered(&id) {
                 None => Err(say("extension-not-listed", &[])),
                 Some((offer, _)) if !offer.usable() => Err(say("extension-needs-newer-sioul", &[])),
@@ -901,6 +995,47 @@ mod tests {
         assert_eq!(due(&state, 1000 + 2 * EVERY, &started, &attempted), vec!["t".to_string()]);
         state.extensions[0].enabled = false;
         assert!(due(&state, 1000 + EVERY, &started, &never).is_empty());
+    }
+
+    fn manifest_of(offers: &[(&str, &str, &[&str], Option<&str>)]) -> Manifest {
+        let mut text = String::from("format = 1\nserial = 2\n");
+        for (id, sha, hosts, sign_in) in offers {
+            let hosts: Vec<String> = hosts.iter().map(|h| format!("\"{h}\"")).collect();
+            let sign_in = sign_in.map(|s| format!("sign_in = \"{s}\"\n")).unwrap_or_default();
+            text.push_str(&format!("[[extension]]\nid = \"{id}\"\nversion = \"1\"\ninterface = 1\nname = {{ en = \"T\", fr = \"T\" }}\nabout = {{ en = \"T\", fr = \"T\" }}\nbrings = [\"agenda\"]\nhosts = [{}]\n{sign_in}file = \"t.wasm\"\nsha256 = \"{}\"\n", hosts.join(", "), sha.repeat(64)));
+        }
+        sioul_core::extensions::manifest::parse(&text).unwrap()
+    }
+
+    /// M1: a newer signed manifest takes away as well as it adds. An
+    /// extension it no longer lists stops; a narrower list of hosts, or no
+    /// sign-in, applies at once, its file unchanged, without asking; more
+    /// still waits for the person's yes.
+    #[test]
+    fn a_newer_manifest_withdraws_and_narrows_at_once() {
+        let before = manifest_of(&[("a", "1", &["api.example.org", "sso.example.org"], Some("app://cb")), ("b", "2", &["b.example.org"], None)]);
+        let state = State { extensions: before.offers.iter().cloned().map(Installed::new).collect(), ..State::default() };
+        // b withdrawn; a keeps its file but loses a host.
+        let after = manifest_of(&[("a", "1", &["api.example.org"], Some("app://cb"))]);
+        let planned = plan(&state, &after);
+        assert_eq!(planned.withdrawn, vec!["b".to_string()]);
+        assert_eq!(planned.narrowed.len(), 1);
+        assert_eq!(planned.narrowed[0].hosts, vec!["api.example.org".to_string()], "the host taken away is no longer given");
+        assert!(planned.taken.is_empty() && planned.waiting.is_empty(), "{planned:?}");
+        // A new file asking for a host more, and no sign-in: the sign-in goes at once, the host waits.
+        let wider = manifest_of(&[("a", "9", &["api.example.org", "sso.example.org", "new.example.org"], None), ("b", "2", &["b.example.org"], None)]);
+        let planned = plan(&state, &wider);
+        assert!(planned.withdrawn.is_empty());
+        assert_eq!(planned.narrowed.len(), 1);
+        assert_eq!(planned.narrowed[0].sign_in, None, "no sign-in given once the list keeps none");
+        assert_eq!(planned.narrowed[0].sha256, "1".repeat(64), "the file in use stays until the update is taken");
+        assert_eq!(planned.waiting.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(), vec!["a"]);
+        // Withdrawn already and still not listed: nothing more to do; listed again, it may be enabled again.
+        let mut gone = state.clone();
+        gone.extensions[1].enabled = false;
+        gone.extensions[1].problem = Some("withdrawn".into());
+        assert!(plan(&gone, &after).withdrawn.is_empty());
+        assert_eq!(plan(&gone, &before).listed_again, vec!["b".to_string()]);
     }
 
     /// K2: a phone's window and its background service never run one

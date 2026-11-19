@@ -3852,6 +3852,7 @@ extension-problem-changed = Le service de { $name } ne répond plus comme prévu
 extension-problem-door = { $name } a apporté ses agendas, mais ce Sioul ne les garde pas encore.
 extension-problem-keyring = { $name } n’a pas pu joindre le trousseau.
 extension-problem-record = { $name } a tourné, mais Sioul n’a pas pu le noter sur cet appareil (un disque plein, ou un dossier où il ne peut pas écrire) ; elle attend trois heures avant de tourner à nouveau.
+extension-problem-withdrawn = { $name } n’est plus dans la liste des extensions : elle ne tourne plus ici. Retirez-la pour oublier sa connexion.
 extension-problem-other = { $name } a rencontré un problème ; son journal sur cet appareil en dit plus.
 extension-stopped-time = { $name } s’est arrêtée : elle a pris trop de temps.
 extension-stopped-memory = { $name } s’est arrêtée : elle demandait trop de mémoire.

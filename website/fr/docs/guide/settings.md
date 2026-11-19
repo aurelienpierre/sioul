@@ -176,7 +176,7 @@ Une extension apporte des données d’un service que Sioul ne parle pas lui-mê
 - **Activer** télécharge son fichier et le vérifie d’après la liste signée ; **Se connecter…** ouvre la page du site lui-même dans une fenêtre de Sioul (sur un téléphone, un écran de Sioul), son nom toujours affiché au-dessus : vous y tapez votre mot de passe, jamais dans Sioul. La connexion reste dans le trousseau de cet appareil.
 - Elle se met ensuite à jour d’elle-même toutes les trois heures, et apporte chaque agenda **en lecture seule**. Les agendas rejoignent vos autres appareils par le partage ; un appareil qui ne fait pas tourner l’extension les montre tout de même.
 - Sa ligne dit quand elle a tourné, ce qu’elle a apporté, et son dernier problème en une phrase. **Désactiver** l’arrête sur cet appareil ; **Retirer** oublie sa connexion et demande s’il faut garder ses agendas.
-- Une extension tourne à part de Sioul et ne reçoit que ce que dit sa liste : les sites qu’elle nomme, sa propre entrée dans le trousseau. Une mise à jour qui demande plus attend votre accord.
+- Une extension tourne à part de Sioul et ne reçoit que ce que dit sa liste : les sites qu’elle nomme, sa propre entrée dans le trousseau. Une mise à jour qui demande plus attend votre accord ; une qui demande moins s’applique aussitôt. Une extension retirée de la liste s’arrête, et sa ligne le dit.
 
 Les extensions ne sont pas officielles : un service peut changer et en arrêter une. [Les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/extensions.html) décrivent l’interface et chaque vérification.
 

@@ -3816,6 +3816,7 @@ extension-problem-changed = { $name }'s service no longer answers as expected: a
 extension-problem-door = { $name } brought its agendas, but this Sioul does not keep them yet.
 extension-problem-keyring = { $name } could not reach the keyring.
 extension-problem-record = { $name } ran, but Sioul could not note it on this device (a full disk, or a folder it may not write); it waits three hours before running again.
+extension-problem-withdrawn = { $name } is no longer in the extensions' list: it no longer runs here. Remove it to forget its sign-in.
 extension-problem-other = { $name } met a problem; its log on this device says more.
 extension-stopped-time = { $name } stopped: it took too long.
 extension-stopped-memory = { $name } stopped: it asked for too much memory.
