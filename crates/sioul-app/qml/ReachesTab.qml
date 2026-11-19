@@ -726,7 +726,7 @@ ColumnLayout {
                 Button {
                     objectName: "namedContacts"
                     visible: listRow.named
-                    Layout.maximumWidth: listRow.width
+                    Layout.maximumWidth: tab.width
                     flat: true
                     text: (listRow.open ? "▾ " : "▸ ") + tab.theme.plain(listRow.modelData.label)
                     Accessible.name: listRow.modelData.label

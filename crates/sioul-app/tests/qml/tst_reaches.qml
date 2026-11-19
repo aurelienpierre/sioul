@@ -242,6 +242,7 @@ Item {
             const line = find(wide, "namedContacts")
             verify(line, "the line")
             verify(line.text.indexOf("2 addresses, numbers and domains you named as contacts") >= 0, line.text)
+            verify(line.width > 100 && line.height > 10, "drawn: " + line.width + " × " + line.height)
             verify(!find(wide, "namedContactsList"), "folded at first")
             line.clicked()
             const list = find(wide, "namedContactsList")
