@@ -970,6 +970,10 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
 /// list unchanged: a favourite set in another app may move no card's tag.
 const STARS_EVERY: i64 = 15 * 60;
 
+/// A book not known to keep favourites is asked once a day at most, not at
+/// every sync (review of `phones`, L11).
+const STARS_UNKNOWN_EVERY: i64 = 24 * 3600;
+
 /// Each card of an address book with its favourite as its server says it
 /// (`{http://nextcloud.com/ns}favorite`, "1" set, Nextcloud's contacts of
 /// May 2026): by its address there; and whether the server answered the
@@ -1037,6 +1041,10 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     if memory.looked > 0 && now - memory.looked < STARS_EVERY && changed(&list) < memory.looked && changed(&state_path) < memory.looked {
         return Ok(false);
     }
+    // Not known to keep favourites: asked again once a day, whatever changed (L11).
+    if memory.kept != Some(true) && memory.looked > 0 && now - memory.looked < STARS_UNKNOWN_EVERY {
+        return Ok(false);
+    }
     let (marked, answered) = favourites(client, &listed.url)?;
     memory.looked = now;
     if answered {
@@ -1077,15 +1085,31 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     let config = drafts_config();
     let senders = sioul_core::porch::Senders::load(&config);
     let blocked = |c: &sioul_core::stars::Seen| c.phones.iter().any(|n| senders.judge_number(n).who == sioul_core::reach::Who::Blocked) || c.emails.iter().any(|e| senders.who(e) == sioul_core::reach::Who::Blocked);
+    // A card the server refused a favourite for is never written again (L11): left as not written.
+    let refused_before = memory.refused.clone();
+    let refused_now = std::cell::RefCell::new(Vec::new());
     let mut write = |star: &[String], unstar: &[String]| -> Vec<String> {
         star.iter()
             .map(|h| (h, true))
             .chain(unstar.iter().map(|h| (h, false)))
-            .filter(|(href, on)| !matches!(set_favourite(client, &absolute(&listed.url, href), *on), Ok(true)))
+            .filter(|(href, on)| {
+                if refused_before.contains(*href) {
+                    return true;
+                }
+                match set_favourite(client, &absolute(&listed.url, href), *on) {
+                    Ok(true) => false,
+                    Ok(false) => {
+                        refused_now.borrow_mut().push((*href).clone());
+                        true
+                    }
+                    Err(_) => true,
+                }
+            })
             .map(|(href, _)| href.clone())
             .collect()
     };
     let result = sioul_core::stars::look(&list, &mut memory, &place, &seen, senders.region(), &blocked, Some(&mut write));
+    memory.refused.extend(refused_now.into_inner());
     memory.save(&memory_path).map_err(disk)?;
     let looked = result.map_err(disk)?;
     // People kept whose favourites went at once: told by the window (H3).
@@ -5410,6 +5434,8 @@ mod stars_tests {
         patches: Mutex<usize>,
         /// Its PROPFIND names its cards; false: the collection alone (a proxy that drops the depth).
         names: std::sync::atomic::AtomicBool,
+        /// Every PROPFIND counted.
+        propfinds: std::sync::atomic::AtomicUsize,
     }
 
     const BOOK: &str = "/remote.php/dav/addressbooks/users/alex/contacts/";
@@ -5422,6 +5448,7 @@ mod stars_tests {
         fn answer(&self, request: &Request) -> Reply {
             match request.method.as_str() {
                 "PROPFIND" => {
+                    self.propfinds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let named: &[&str] = if self.names.load(std::sync::atomic::Ordering::Relaxed) { &["claire.vcf", "fred.vcf"] } else { &[] };
                     let cards: String = named
                         .iter()
@@ -5482,12 +5509,12 @@ mod stars_tests {
         .unwrap();
         let client = Client::new("alex", "secret");
         // A Nextcloud with no favourite yet: it cannot be told from a server that keeps none; nothing written.
-        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
+        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
         let listed = synced("stars-unmarked", &serve(quiet.clone()));
         assert!(!keep_stars(&client, "stars-unmarked", &listed, 1_800_000_000).unwrap());
         assert_eq!(*quiet.patches.lock().unwrap(), 0, "never written to learn");
         assert_eq!(sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-unmarked").join("contacts.json")).kept, None);
-        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
         let base = serve(server.clone());
         let listed = synced("stars-nextcloud", &base);
         let client = Client::new("alex", "secret");
@@ -5531,10 +5558,14 @@ mod stars_tests {
             people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
         })
         .unwrap();
-        let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
+        let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
         let listed = synced("stars-plain", &serve(plain.clone()));
         keep_stars(&client, "stars-plain", &listed, now).unwrap();
+        let asked = plain.propfinds.load(std::sync::atomic::Ordering::Relaxed);
         keep_stars(&client, "stars-plain", &listed, now + 2 * STARS_EVERY).unwrap();
+        assert_eq!(plain.propfinds.load(std::sync::atomic::Ordering::Relaxed), asked, "not known to keep favourites: asked once a day (L11)");
+        keep_stars(&client, "stars-plain", &listed, now + STARS_UNKNOWN_EVERY).unwrap();
+        assert_eq!(plain.propfinds.load(std::sync::atomic::Ordering::Relaxed), asked + 1);
         assert_eq!(*plain.patches.lock().unwrap(), 0, "nothing written there");
         let memory = sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-plain").join("contacts.json"));
         assert_eq!((memory.kept, memory.looked > 0), (None, true), "looked at, not known to keep favourites");
@@ -5556,7 +5587,7 @@ mod stars_tests {
             people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
         })
         .unwrap();
-        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
         let listed = synced("stars-unnamed", &serve(server.clone()));
         let client = Client::new("alex", "secret");
         let now = 1_800_000_000;

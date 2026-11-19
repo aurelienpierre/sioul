@@ -79,6 +79,10 @@ pub struct Memory {
     /// How many contacts the last look could not match to one person (M8), for the list's block.
     #[serde(default)]
     pub unmatched: usize,
+    /// The cards a server refused a favourite for: never written again there
+    /// until the memory is forgotten (review of `phones`, L11).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub refused: BTreeSet<String>,
 }
 
 impl Memory {
