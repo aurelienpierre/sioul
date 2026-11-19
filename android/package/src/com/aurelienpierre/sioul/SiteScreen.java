@@ -31,6 +31,8 @@ import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.URLUtil;
@@ -135,6 +137,15 @@ public final class SiteScreen extends Activity
     private boolean ended;
     /** A web view was made in this screen: until then, nothing is asked of the web view (review L5). */
     private boolean madeView;
+    /** The screen is in front (resumed): a drawing process that ends behind it is said nothing (review L2). */
+    private boolean inFront;
+    /** The page's drawing process ended while the screen was behind: loaded again at its return. */
+    private boolean againAtReturn;
+    /** A page's dialog shown, and when the last one went: a second within a second is refused (review N5). */
+    private boolean dialogShown;
+    private long dialogGone;
+    /** The page a refused navigation was said for: said once a page (review N5). */
+    private String toldRefused;
     /** A file being fetched (SiteDownload), or null; its line under the bar. */
     private SiteDownload.Job fetching;
     private LinearLayout fetchRow;
@@ -179,9 +190,13 @@ public final class SiteScreen extends Activity
             return;
         }
         pages.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        String again = SiteWeb.restored(saved, SHOWN);
+        String kept = SiteWeb.restored(saved, SHOWN);
+        String again = SiteWeb.again(kept, site.domain);
         view.loadUrl(again != null ? again : site.url);
         shownHost();
+        // Made again after Android ended Sioul: said, since a form's page comes back empty (review L3).
+        if (saved != null)
+            fetchSaid(site.word("loaded_again"), false);
     }
 
     // ---------------------------------------------------------------- The screen
@@ -586,8 +601,11 @@ public final class SiteScreen extends Activity
                 hand(url);
                 break;
             default:
-                if (request.isForMainFrame())
-                    say(site.word("not_https"));
+                // Said once a page: a page that keeps asking fills no queue of toasts (review N5).
+                if (request.isForMainFrame() && !current.equals(toldRefused)) {
+                    toldRefused = current;
+                    say(site.word(SiteWeb.refusedWord(url)));
+                }
                 break;
             }
             // A window whose first page went elsewhere goes, never a blank page over the site.
@@ -730,6 +748,33 @@ public final class SiteScreen extends Activity
                 closePopup();
         }
 
+        // A page's dialogs, Sioul's own (review N5): its host as their title, Close this site always
+        // offered, and a second within a second of the last refused, so that no page holds the screen.
+        @Override
+        public boolean onJsAlert(WebView page, String url, String message, JsResult result)
+        {
+            return pageDialog(page, message, result, null, null, false);
+        }
+
+        @Override
+        public boolean onJsConfirm(WebView page, String url, String message, JsResult result)
+        {
+            return pageDialog(page, message, result, null, null, true);
+        }
+
+        @Override
+        public boolean onJsPrompt(WebView page, String url, String message, String defaultValue, JsPromptResult result)
+        {
+            return pageDialog(page, message, result, result, defaultValue, true);
+        }
+
+        @Override
+        public boolean onJsBeforeUnload(WebView page, String url, String message, JsResult result)
+        {
+            // The page's own words are not shown, as browsers do: only whether to leave.
+            return pageDialog(page, null, result, null, null, true);
+        }
+
         @Override
         public boolean onConsoleMessage(ConsoleMessage message)
         {
@@ -748,6 +793,81 @@ public final class SiteScreen extends Activity
             if (window == popup && SiteWeb.isEmptyWindow(popupCommitted))
                 closePopup();
         });
+    }
+
+    /**
+     * A page's dialog (alert, confirm, prompt, or leaving with
+     * {@code message} null): over the screen, its host as its title, OK
+     * (and Cancel where the page asks), and Close this site, which always
+     * gets the person out. One at a time; another within a second of the
+     * last refused at once. The page's answer given exactly once.
+     */
+    private boolean pageDialog(WebView page, String message, JsResult result, JsPromptResult prompt, String given, boolean asks)
+    {
+        if (dialogShown || android.os.SystemClock.elapsedRealtime() - dialogGone < 1000 || isFinishing()) {
+            result.cancel();
+            return true;
+        }
+        dialogShown = true;
+        boolean[] answered = { false };
+        java.util.function.Consumer<Boolean> answer = yes -> {
+            if (answered[0])
+                return;
+            answered[0] = true;
+            if (!yes)
+                result.cancel();
+            else if (prompt != null)
+                prompt.confirm(field(prompt) == null ? "" : field(prompt));
+            else
+                result.confirm();
+        };
+        EditText input = null;
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this);
+        String host = SiteWeb.shownHost(page == popup ? popupCommitted : committed);
+        if (message == null) {
+            dialog.setTitle(site.word("leave_ask"));
+            dialog.setPositiveButton(site.word("leave"), (d, w) -> answer.accept(true));
+            dialog.setNegativeButton(site.word("stay"), (d, w) -> answer.accept(false));
+        } else {
+            dialog.setTitle(site.word("page_says").replace("{host}", host));
+            dialog.setMessage(message.length() > 2000 ? message.substring(0, 2000) + "…" : message);
+            if (prompt != null) {
+                input = new EditText(this);
+                input.setSingleLine(true);
+                input.setText(given == null ? "" : given);
+                FrameLayout room = new FrameLayout(this);
+                room.setPadding(dp(24), 0, dp(24), 0);
+                room.addView(input);
+                dialog.setView(room);
+                promptField = input;
+            }
+            dialog.setPositiveButton(site.word("ok"), (d, w) -> answer.accept(true));
+            if (asks)
+                dialog.setNegativeButton(site.word("cancel"), (d, w) -> answer.accept(false));
+        }
+        dialog.setNeutralButton(site.word("close_site"), (d, w) -> {
+            answer.accept(false);
+            finish();
+        });
+        dialog.setOnCancelListener(d -> answer.accept(false));
+        AlertDialog shown = dialog.create();
+        shown.setOnDismissListener(d -> {
+            answer.accept(false);
+            dialogShown = false;
+            promptField = null;
+            dialogGone = android.os.SystemClock.elapsedRealtime();
+        });
+        shown.show();
+        return true;
+    }
+
+    /** The prompt's field while its dialog shows. */
+    private EditText promptField;
+
+    /** What was typed in a prompt's field. */
+    private String field(JsPromptResult prompt)
+    {
+        return promptField == null ? null : promptField.getText().toString();
     }
 
     /** The window the page opened goes; the site's page is in front again. */
@@ -769,8 +889,6 @@ public final class SiteScreen extends Activity
         if (ended)
             return;
         ended = true;
-        Log.i(DoseAlarms.TAG, "Sites: a page's drawing process ended; its screen closes.");
-        say(site.word("ended"));
         for (WebView page : new WebView[] { popup, view }) {
             if (page != null) {
                 pages.removeView(page);
@@ -779,7 +897,37 @@ public final class SiteScreen extends Activity
         }
         popup = null;
         view = null;
+        if (!inFront) {
+            // Behind another app (Android took its memory back): nothing said over that app; the
+            // page loaded again when the screen comes back (review L2).
+            Log.i(DoseAlarms.TAG, "Sites: a page's drawing process ended behind; loaded again at its return.");
+            againAtReturn = true;
+            return;
+        }
+        Log.i(DoseAlarms.TAG, "Sites: a page's drawing process ended; its screen closes.");
+        say(site.word("ended"));
         finish();
+    }
+
+    /** The page made again after its drawing process ended behind: the kept page on the site's domain, else the site's own (review L2, L3). */
+    private void again()
+    {
+        againAtReturn = false;
+        try {
+            view = page();
+        } catch (RuntimeException e) {
+            Log.w(DoseAlarms.TAG, "Sites: the page could not be made again: " + e.getClass().getSimpleName());
+            browse(site.url);
+            finish();
+            return;
+        }
+        ended = false;
+        pages.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        String address = SiteWeb.again(committed, site.domain);
+        committed = "";
+        view.loadUrl(address != null ? address : site.url);
+        shownHost();
+        fetchSaid(site.word("loaded_again"), false);
     }
 
     /**
@@ -1087,6 +1235,7 @@ public final class SiteScreen extends Activity
     protected void onPause()
     {
         // What the sites keep, written now: Android may end the process while it is away.
+        inFront = false;
         flushCookies();
         for (WebView page : new WebView[] { view, popup }) {
             if (page != null)
@@ -1099,6 +1248,11 @@ public final class SiteScreen extends Activity
     protected void onResume()
     {
         super.onResume();
+        inFront = true;
+        if (againAtReturn) {
+            again();
+            return;
+        }
         for (WebView page : new WebView[] { view, popup }) {
             if (page != null)
                 page.onResume();

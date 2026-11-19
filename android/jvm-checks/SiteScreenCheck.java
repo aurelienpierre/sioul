@@ -318,6 +318,13 @@ public final class SiteScreenCheck
         expect("without their attributes: each name expired on its host and under the site's domain: " + byName, byName.size() == 7 && byName.contains("sid=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure; Domain=example.org")
             && byName.contains("pref=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure") && byName.contains("__Host-t=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure"));
 
+        // ------------------------------------------------ Loaded again, refused (review L3, R2)
+        expect("a page of the site loaded again as it was", "https://secure.bank.example.co.uk/statements?y=2026".equals(SiteWeb.again("https://secure.bank.example.co.uk/statements?y=2026", "example.co.uk")));
+        expect("a page of another domain never brought back under the site", SiteWeb.again("https://look-alike.example.net/login", "example.co.uk") == null && SiteWeb.again("https://idp.example.net/authorize?state=1", "example.co.uk") == null);
+        expect("nothing kept, or not https: the site's own", SiteWeb.again(null, "example.co.uk") == null && SiteWeb.again("about:blank", "example.co.uk") == null);
+        expect("an http page refused: encrypted pages only", SiteWeb.refusedWord("http://old.example.net/").equals("not_https") && SiteWeb.refusedWord("HTTP://old.example.net/").equals("not_https"));
+        expect("another app's address refused: no other application", SiteWeb.refusedWord("intent://scan/#Intent;end").equals("no_app_link") && SiteWeb.refusedWord("market://details?id=x").equals("no_app_link") && SiteWeb.refusedWord(null).equals("no_app_link"));
+
         // ------------------------------------------------ The web view's own engine (review V4)
         expect("the engine's version from its user agent", SiteWeb.engineOf("Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36").equals("138"));
         expect("none said: nothing", SiteWeb.engineOf(null).isEmpty() && SiteWeb.engineOf("Mozilla/5.0 (Linux; Android 9)").isEmpty() && SiteWeb.engineOf("HeadlessChrome/120.0").isEmpty());
@@ -459,6 +466,19 @@ public final class SiteScreenCheck
         expect("the service workers' own file and content access off (review S3)", body(screen, "private static void workers()", "    ").contains("workers.setAllowFileAccess(false);") && body(screen, "private static void workers()", "    ").contains("workers.setAllowContentAccess(false);") && body(screen, "private WebView page()", "    ").contains("workers();"));
         expect("an HTTP sign-in refused and said (review S4)", body(screen, "public void onReceivedHttpAuthRequest(", "        ").contains("handler.cancel();") && !screen.contains("handler.proceed("));
         expect("protected media refused and said", body(screen, "public void onPermissionRequest(", "        ").contains("RESOURCE_PROTECTED_MEDIA_ID") && body(screen, "public void onPermissionRequest(", "        ").contains("request.deny();"));
+        // A page's dialogs and refusals cannot hold the screen (review N5).
+        String dialogs = body(screen, "private boolean pageDialog(", "    ");
+        expect("each of a page's dialogs is Sioul's own", screen.contains("return pageDialog(page, message, result, null, null, false);") && screen.contains("return pageDialog(page, message, result, result, defaultValue, true);") && screen.contains("return pageDialog(page, null, result, null, null, true);") && screen.contains("return pageDialog(page, message, result, null, null, true);"));
+        expect("a second within a second refused at once", dialogs.contains("if (dialogShown || android.os.SystemClock.elapsedRealtime() - dialogGone < 1000 || isFinishing())") && dialogs.indexOf("result.cancel();") < dialogs.indexOf("dialogShown = true;"));
+        expect("Close this site always offered", dialogs.contains("dialog.setNeutralButton(site.word(\"close_site\"), (d, w) -> {") && dialogs.contains("finish();"));
+        expect("the page's answer given exactly once", dialogs.contains("if (answered[0])") && dialogs.contains("shown.setOnDismissListener(d -> {\n            answer.accept(false);"));
+        expect("a refused navigation said once a page, in its own words", body(screen, "public boolean shouldOverrideUrlLoading(", "        ").contains("!current.equals(toldRefused)") && body(screen, "public boolean shouldOverrideUrlLoading(", "        ").contains("say(site.word(SiteWeb.refusedWord(url)));"));
+        // A drawing process that ends behind another app: nothing said over it, the page back at the return (review L2, L3).
+        String ending = body(screen, "private void end()", "    ");
+        expect("behind: nothing said, loaded again at the return", ending.indexOf("if (!inFront) {") >= 0 && ending.indexOf("if (!inFront) {") < ending.indexOf("say(site.word(\"ended\"));") && ending.contains("againAtReturn = true;"));
+        expect("in front: said, and the screen closes", ending.contains("say(site.word(\"ended\"));\n        finish();"));
+        expect("the return loads it again, said", body(screen, "protected void onResume()", "    ").contains("if (againAtReturn) {") && body(screen, "private void again()", "    ").contains("SiteWeb.again(committed, site.domain)") && body(screen, "private void again()", "    ").contains("fetchSaid(site.word(\"loaded_again\"), false);"));
+        expect("a screen made again loads a page of the site alone, and says so", create.contains("String again = SiteWeb.again(kept, site.domain);") && create.contains("fetchSaid(site.word(\"loaded_again\"), false);"));
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");

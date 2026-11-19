@@ -257,6 +257,13 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("no_browser", "site-screen-no-browser"),
         ("not_https", "site-screen-not-https"),
         ("one_process", "site-screen-one-process"),
+        ("no_app_link", "site-screen-no-app-link"),
+        ("loaded_again", "site-screen-loaded-again"),
+        ("ok", "ui-ok"),
+        ("close_site", "site-screen-close-site"),
+        ("leave_ask", "site-screen-leave-ask"),
+        ("leave", "site-screen-leave"),
+        ("stay", "site-screen-stay"),
     ];
     let mut words: serde_json::Map<String, serde_json::Value> = keys.iter().map(|(key, id)| (key.to_string(), tr.text(id, None).into())).collect();
     // Java puts its own words in place of these marks: what was asked, the file's name.
@@ -278,6 +285,10 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         args.set("host", "{host}");
         words.insert(key.into(), tr.text(id, Some(&args)).into());
     }
+    // A page's dialog: its host as the title, filled by Java (review N5).
+    let mut args = sioul_core::i18n::args();
+    args.set("host", "{host}");
+    words.insert("page_says".into(), tr.text("site-screen-page-says", Some(&args)).into());
     // The bar's second line on another site's page: the site it came from (review N2).
     let mut args = sioul_core::i18n::args();
     args.set("name", "{name}");

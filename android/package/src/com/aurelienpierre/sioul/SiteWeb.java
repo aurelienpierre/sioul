@@ -598,6 +598,14 @@ final class SiteWeb
         ENGLISH.put("ended", "The page stopped: Android ended what drew it. Sioul goes on; open the site again.");
         ENGLISH.put("no_browser", "No application on this device opens this address.");
         ENGLISH.put("not_https", "Sioul opens encrypted pages only (https): this one was not opened.");
+        ENGLISH.put("no_app_link", "Sioul opens no other application from a page: this link was not opened.");
+        ENGLISH.put("loaded_again", "Android had closed this page: it was loaded again.");
+        ENGLISH.put("page_says", "{host} says");
+        ENGLISH.put("ok", "OK");
+        ENGLISH.put("close_site", "Close this site");
+        ENGLISH.put("leave_ask", "Leave this page? What you typed in it may be lost.");
+        ENGLISH.put("leave", "Leave");
+        ENGLISH.put("stay", "Stay");
         ENGLISH.put("one_process", "This device's web view draws pages inside Sioul, where a page's crash would end Sioul: the site opens in your browser.");
     }
 
@@ -845,9 +853,38 @@ final class SiteWeb
     }
 
     /**
+     * The page loaded again after Android ended it (a process, or a page's
+     * drawing process): the kept address when it is on the site's own
+     * domain, else none, and the site's own address is loaded (review L3):
+     * a page of another domain is never brought back under the site.
+     *
+     * @param kept the address kept, or null
+     * @param siteDomain the site's domain
+     * @return the address to load again, or null
+     */
+    static String again(String kept, String siteDomain)
+    {
+        String address = kept(kept);
+        return address != null && domainOf(shownHost(address)).equals(siteDomain) ? address : null;
+    }
+
+    /**
+     * What a refused navigation says (review R2, N5): an http page, "Sioul
+     * opens encrypted pages only"; anything else (another app's address,
+     * a file), "Sioul opens no other application from a page".
+     *
+     * @param url the address refused, or null
+     * @return the words' key
+     */
+    static String refusedWord(String url)
+    {
+        return url != null && url.regionMatches(true, 0, "http:", 0, 5) ? "not_https" : "no_app_link";
+    }
+
+    /**
      * The web view's own user agent, saying what it is (a web view, "; wv",
      * as Android writes it), without the device's model and build (review
-     * S1): of the first parentheses, only "Linux", "Android <version>" and
+     * S1): of the first parentheses, only "Linux", "Android" and its version, and
      * "wv" stay. Unchanged when it holds no "Android" there. A site that
      * refuses browsers inside apps then goes through Open in the browser.
      */
