@@ -11,7 +11,9 @@
 // what a new device needs ("Add a device"). Your devices themselves are
 // listed in their own tab (DevicesTab.qml), one line here leading to it; the
 // devices that no longer count and what waits to leave the server stay here,
-// with "Remove its files" (RemovalAsked.qml).
+// with "Remove its files" (RemovalAsked.qml). The notes folder, which the
+// sharing carries notes and papers from, is the Notes page's: one line here
+// says which it is, with a button to its row there.
 
 pragma ComponentBehavior: Bound
 
@@ -179,6 +181,100 @@ ColumnLayout {
         text: panel.sioul.text("share-help")
         wrapMode: Text.Wrap
         font.pixelSize: 13
+        color: panel.theme.muted
+    }
+    // The notes folder, where notes and papers travel from: the Notes page's ⚙ (its row, by its key).
+    Label {
+        objectName: "shareNotesFolder"
+        readonly property var folder: panel.sioul.notesFolder ? JSON.parse(panel.sioul.notesFolder) : ({ state: "ready", path: "" })
+
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        text: folder.state === "unset" ? panel.sioul.text("share-notes-folder-none") : panel.sioul.textWith("share-notes-folder", "path", folder.path || "")
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        color: panel.theme.text
+    }
+    Button {
+        objectName: "shareNotesFolderOpen"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        flat: true
+        icon.name: "go-next"
+        icon.color: panel.theme.text
+        text: panel.sioul.text("share-notes-folder-open")
+        onClicked: panel.sioul.reminderOpened("settings:case_store", "", "")
+    }
+    // Where Sioul keeps its own lists (docs/notes-folder.md, "What lives where"): in the notes folder
+    // until this device moved them, then in its own folder; the window of the move from here at any time.
+    Label {
+        objectName: "shareStorage"
+        readonly property var view: panel.sioul.storageMove ? JSON.parse(panel.sioul.storageMove) : ({})
+
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        // Where the lists are not known now (the state of the move lost): that, before anything.
+        text: (view.lost || "") !== "" ? view.lost : (view.moved === true ? panel.sioul.textArgs("storage-line-moved", JSON.stringify({ papers: view.papers || "", letters: view.letters || "" })) : panel.sioul.text("storage-line-not"))
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        color: panel.theme.text
+    }
+    Button {
+        objectName: "shareStorageOpen"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        flat: true
+        icon.name: "go-next"
+        icon.color: panel.theme.text
+        text: panel.sioul.text("storage-move-open")
+        onClicked: panel.sioul.reminderOpened("storage-move", "", "")
+    }
+    // Sioul's old files, still in the notes folder after this device moved: never taken out by
+    // themselves; one line with their count and "Take them out", greyed until every device
+    // that counts has moved, naming those still to move; what the last press said.
+    ColumnLayout {
+        id: oldFiles
+
+        readonly property var view: panel.sioul.storageMove ? JSON.parse(panel.sioul.storageMove) : ({})
+
+        objectName: "shareOldFiles"
+        visible: oldFiles.view.moved === true && (oldFiles.view.old_files || 0) > 0
+        Layout.fillWidth: true
+        spacing: 4
+
+        Label {
+            objectName: "shareOldFilesLine"
+            Layout.fillWidth: true
+            text: panel.sioul.textArgs("storage-old-files", JSON.stringify({ count: oldFiles.view.old_files || 0 }))
+            textFormat: Text.PlainText
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            color: panel.theme.text
+        }
+        Label {
+            objectName: "shareOldFilesWaiting"
+            visible: (oldFiles.view.take_out_waiting || "") !== ""
+            Layout.fillWidth: true
+            text: oldFiles.view.take_out_waiting || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            color: panel.theme.muted
+        }
+        Button {
+            objectName: "shareOldFilesTakeOut"
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            enabled: oldFiles.view.take_out_open === true
+            text: panel.sioul.text("storage-take-out")
+            onClicked: panel.sioul.takeOutOldFiles()
+        }
+    }
+    // What the last "Take them out" said, while the line shows or once it went.
+    Label {
+        objectName: "shareOldFilesTaken"
+        readonly property var view: panel.sioul.storageMove ? JSON.parse(panel.sioul.storageMove) : ({})
+
+        visible: (view.taken || "") !== ""
+        Layout.fillWidth: true
+        text: view.taken || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: panel.theme.muted
     }
     Repeater {

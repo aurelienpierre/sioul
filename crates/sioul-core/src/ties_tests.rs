@@ -101,6 +101,7 @@ impl Fixture {
         };
         let letters = crate::letters::Letters {
             root: PathBuf::from("/stand-in/notes"),
+            docs: crate::storage::Places::under(std::path::Path::new("/stand-in/notes")).letters,
             list: vec![crate::letters::Letter { id: "caf-1".into(), file: "letters/caf.pdf".into(), project: "flat".into(), task: "answer-caf".into(), status: "new".into(), reading: crate::letters::Reading { sender: "CAF".into(), ..Default::default() }, ..Default::default() }],
         };
         let sources = Sources {
@@ -131,7 +132,7 @@ impl Fixture {
     }
 
     pub(crate) fn world(&self) -> World<'_> {
-        World { tasks: &self.tasks, events: &self.events, contacts: &self.contacts, vault: Some(&self.vault), drafts: &self.drafts, mail: &self.mail, projects: &self.projects, budget: &self.budget, local: &self.local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None }
+        World { tasks: &self.tasks, events: &self.events, contacts: &self.contacts, vault: Some(&self.vault), places: None, drafts: &self.drafts, mail: &self.mail, projects: &self.projects, budget: &self.budget, local: &self.local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None }
     }
 }
 
@@ -292,6 +293,7 @@ fn nothing_is_written_to_disk() {
     fixture.vault.root = dir.join("notes");
     if let Some(letters) = fixture.sources.letters.as_mut() {
         letters.root = dir.join("notes");
+        letters.docs = crate::storage::Places::under(&dir.join("notes")).letters;
     }
     let index = TieIndex::build(&fixture.world(), &fixture.sources);
     let world = World { ties: Some(Ties { index: &index, rule: &Open }), ..fixture.world() };

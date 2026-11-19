@@ -432,7 +432,7 @@ pub fn moment_from_files(config: &crate::config::Config, now: &jiff::Zoned, pres
     use crate::{everywhere, quiet};
     let overrides = quiet::Overrides::load(&quiet::Overrides::default_path());
     let blocks = quiet::Blocks::read_now(now);
-    let mode = quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
+    let mode = quiet::mode(&config.week_hours(), &crate::vacations::DaysOff::of(&config), &overrides, &blocks, now);
     let sources = everywhere::sources_at(&overrides, &blocks, now);
     let state = everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), now.timestamp().as_second());
     Moment { present, paused: mode.paused(), silenced: state.on(), day_ends: Moment::end_of_day(now) }

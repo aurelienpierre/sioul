@@ -29,11 +29,12 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 
 - une barre par jour (par mois, sur une année), empilée par projet ;
 - les heures de chaque projet, et ce qui reste à facturer, en heures et en argent à son taux, l’argent compté ligne par ligne comme sa facture le comptera, pour que les deux s’accordent au centime près ;
+- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent (chaque tâche compte une fois : une tâche de loisirs dans un projet personnel compte en loisirs) ;
 - puis chaque plage de temps, de la plus récente à la plus ancienne.
 
 ## D’où vient le temps {#where-time-comes-from}
 
-- **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche.
+- **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche. N’importe quelle tâche, quel que soit son usage et quelle que soit l’heure : vos démarches et vos loisirs comptent comme le travail, avec ou sans projet.
 - **Noter du temps**, sur cette page, sur la page d’un projet, ou avec **Nouveau ▾ ▸ Du temps passé** : une réunion, un appel, un travail fait loin du minuteur. **Pour** (un projet, ou une tâche), **Combien de temps** (`1h30`, `45m`, `90`), **Quand**, **Ce que c’était**, et **Ne pas facturer** quand il ne doit pas l’être.
 
 Pendant une séance de concentration, sous Linux et sur Android, une notification la montre : sa tâche, depuis quand, et **Pause** (**Reprendre** une fois en pause) et **Arrêter**, qui font ce que font les boutons de la fenêtre de concentration. Sur un bureau Linux, elle reste parmi les notifications du bureau tant que Sioul est ouvert (dans KDE Plasma, sous la cloche une fois sa bulle partie), et s’en va quand Sioul se ferme. Sur Android, un chronomètre y tourne, et ses boutons marchent avec Sioul en arrière-plan ou fermé. Mise en pause ou arrêtée ailleurs, dans la fenêtre de concentration ou sur un autre appareil, elle suit. Sous Windows et macOS, seule la fenêtre de concentration montre le temps qui court, pour l’instant.
@@ -59,7 +60,7 @@ Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle
 
 Il ne vous note jamais, ne montre jamais rien en retard, ne remplit jamais **Prend environ** à votre place, et ne vous compare jamais à personne.
 
-Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
+Chronométrer vos démarches et vos loisirs, c’est à vous de voir, et cela apprend au plan comme le travail : les tâches de chaque domaine apprennent leur propre durée. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
 
 ## Un tableur du temps facturable {#a-spreadsheet-of-billable-time}
 
@@ -226,7 +227,7 @@ Ces choix sont dans [Paramètres ▸ Factures](settings.md#invoices) : votre p
 
 ### Vos clients {#your-clients}
 
-Un client peut avoir une fiche, liée à son contact et gardée dans `sioul-clients.toml` dans votre dossier de notes : une entreprise, un particulier ou un organisme public ; la dénomination ; l’adresse de facturation et, quand elle est autre, l’adresse de livraison ; ses identifiants (un SIREN, un numéro de TVA) ; la langue, la devise et le délai de paiement de ses factures ; l’adresse où elles sont envoyées ; un bon de commande à imprimer.
+Un client peut avoir une fiche, liée à son contact et gardée dans `sioul-clients.toml`, parmi les propres listes de Sioul (dans votre dossier de notes tant que vous ne les avez pas déplacées : [Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)) : une entreprise, un particulier ou un organisme public ; la dénomination ; l’adresse de facturation et, quand elle est autre, l’adresse de livraison ; ses identifiants (un SIREN, un numéro de TVA) ; la langue, la devise et le délai de paiement de ses factures ; l’adresse où elles sont envoyées ; un bon de commande à imprimer.
 
 <figure markdown="span">
   [![Le projet d’un client sur la page Projets : sous son titre, la fiche du client en une ligne, avec Fiche client… à côté ; Faire la facture parmi les boutons du projet ; son temps et ses factures plus bas.](../assets/screens/fr/project-client.png){ loading=lazy }](../assets/screens/fr/project-client.png "Ouvrir l’image en grand")
@@ -258,7 +259,7 @@ La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et pa
 - Les devis.
 - Fusionner un brouillon changé sur deux appareils avant qu’ils échangent : pour l’instant la version la plus récente remplace l’autre en entier, Sioul le dit sur l’appareil dont les changements ont été remplacés, et garde cette version parmi ses versions précédentes ([Sur plusieurs appareils](#on-several-computers)).
 - Dire dans la fenêtre ce qu’un paiement dans une autre devise a donné en euros : pour l’instant, `sioul invoices received` le dit ([Payée, et les avoirs](#paid-and-credit-notes)).
-- Retirer la fiche d’un client depuis la fenêtre : pour l’instant, supprimez-la de `sioul-clients.toml` dans votre dossier de notes.
+- Retirer la fiche d’un client depuis la fenêtre : pour l’instant, supprimez-la de `sioul-clients.toml`, parmi les propres listes de Sioul (`~/.local/share/sioul/records/` sous Linux, ou votre dossier de notes tant que les listes de Sioul n’ont pas été déplacées).
 - Le temps qui court dans les notifications de Windows et de macOS : seule la fenêtre de concentration le montre là.
 
 ## Pour aller plus loin {#going-further}
@@ -266,7 +267,7 @@ La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et pa
 ### Comment le plan apprend de votre temps {#how-the-plan-learns-from-your-time}
 
 - **Votre première estimation est gardée.** La première fois qu’une tâche reçoit une durée, Sioul la garde avec la tâche et ne la change jamais, même quand vous changez **Prend environ** ensuite. Une tâche qui avait une durée avant que cela existe n’en a pas de gardée ; sa durée actuelle sert à la place.
-- **Seules les tâches finies lui apprennent**, chacune avec son temps passé face à sa première estimation, tous ses moments additionnés.
+- **Seules les tâches finies lui apprennent**, chacune avec son temps passé face à sa première estimation, tous ses moments additionnés, ceux de ses étapes avec eux : un minuteur tourne sur l’étape que vous faites, donc une tâche faite par ses étapes apprend de leur temps, face à sa propre estimation. Une étape seule n’apprend rien, et apprend par sa tâche une fois celle-ci faite.
     - Les minutes chronométrées comptent pleinement, corrigées aussi.
     - Les minutes notées à la main comptent pour un quart, parce que les durées dont on se souvient sont moins sûres.
     - Les tâches abandonnées ne comptent jamais.

@@ -10,10 +10,10 @@ La page Papiers garde les documents qu’on vous demande encore et encore (une c
 
 ## Protégé par défaut {#what-is-protected}
 
-- Vos papiers et vos lettres restent dans votre dossier de notes, sur vos appareils. Il n’y a pas de serveur de Sioul.
+- Vos papiers et vos lettres restent sur vos appareils : leurs fichiers dans un dossier des papiers et un dossier des courriers à vous, leurs listes parmi les propres listes de Sioul (tant que vous n’avez pas déplacé ces listes, tout est dans votre dossier de notes : [Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Il n’y a pas de serveur de Sioul.
 - Les lettres sont lues sur votre propre ordinateur, par des programmes de votre système : aucun scan n’est envoyé nulle part pour être lu.
 - Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus (Android n’en a pas que Sioul puisse appeler : là, elle est gardée sans vérification, et Sioul le dit), et un programme ne le devient jamais.
-- Entre vos appareils, les papiers voyagent par la synchronisation de votre dossier, ou par le partage de Sioul une fois **Papiers** activé : chaque fichier scellé à part, pour que le dossier et son serveur n’en voient ni les noms ni le contenu ([Le partage](sharing.md)).
+- Entre vos appareils, les fichiers des papiers et des courriers voyagent par la synchronisation de leur dossier, ou par le partage de Sioul une fois **Papiers** activé : chaque fichier scellé à part, pour que le dossier et son serveur n’en voient ni les noms ni le contenu. Leurs listes voyagent scellées dans la partie **Projets et argent** ([Le partage](sharing.md)).
 - Les tâches faites à partir d’une lettre ou d’un renouvellement vont dans votre liste de tâches : si cette liste est sur votre serveur d’agenda, leurs titres y sont aussi. Choisissez une liste gardée sur cet appareil si vous préférez que non.
 - Un agent d’IA, seulement si vous en connectez un, peut lire le texte des lettres avec les codes et les numéros de compte masqués ; il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent. Les papiers d’une personne de vos proches ne lui parviennent qu’une fois cette personne ouverte, et jamais les papiers de santé de personne d’autre que vous.
 
@@ -72,7 +72,7 @@ Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : pa
 
 ### Où vivent les papiers {#where-papers-live}
 
-`sioul-papers.toml` à la racine de votre dossier de notes, et les fichiers dans son dossier `papers` : ils voyagent avec votre dossier de notes, ou par le partage de Sioul une fois **Papiers** activé dans le partage ([Le partage](sharing.md)). **Retirer** enlève un papier du portefeuille ; son fichier reste où il est.
+La liste, `sioul-papers.toml`, est une des propres listes de Sioul, un fichier texte simple dans `records/` du dossier de données de Sioul (`~/.local/share/sioul/records/` sous Linux), que vous pouvez modifier à la main. Les fichiers sont dans le dossier des papiers, `Documents/Papers`, sauf si vous en choisissez un autre dans le ⚙ de la page (**Le dossier des papiers**, propre à cet appareil) ; un papier nomme son fichier depuis ce dossier. Tant que vous n’avez pas déplacé les listes de Sioul, la liste est à la racine de votre dossier de notes et les fichiers dans son dossier `papers` ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Choisir ensuite un autre dossier des papiers y copie les fichiers, chacun vérifié, et laisse l’ancien dossier tel qu’il était. La liste voyage scellée par le partage de Sioul, dans **Projets et argent** ; les fichiers par la synchronisation du dossier des papiers, ou par le partage une fois **Papiers** activé ([Le partage](sharing.md)). **Retirer** enlève un papier du portefeuille ; son fichier reste où il est.
 
 ## Le courrier papier {#paper-letters}
 
@@ -82,7 +82,7 @@ Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s�
 
 ### Mise en place {#setting-it-up}
 
-1. Dans le ⚙ de la page Courrier, **Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `letters/inbox` dans votre dossier de notes. L’appli de scan d’un téléphone qui s’y synchronise convient aussi. Un dossier choisi avant dans les réglages du Porche reste celui qui sert.
+1. Dans le ⚙ de la page Courrier, **Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `inbox` dans le dossier des courriers (au-dessus, **Le dossier des courriers** : `Documents/Letters`, sauf si vous en choisissez un autre ; `letters/inbox` dans votre dossier de notes tant que vous n’avez pas déplacé les listes de Sioul, [Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). L’appli de scan d’un téléphone qui s’y synchronise convient aussi. Un dossier choisi avant dans les réglages du Porche reste celui qui sert.
 2. Sioul lit les scans avec deux programmes de votre système. Sans eux, les scans attendent, non lus, et la page dit comment les installer, sous sa barre et dans son ⚙ ([Installer](install.md#the-packages)).
 3. Sur la barre de la page, **Ajouter un scan…** copie un PDF ou une image dans ce dossier ; **Lier des scans…** lie des scans que vous gardez ailleurs, là où ils sont : ils sont lus comme les autres et jamais copiés, et si l’un est ensuite déplacé ou supprimé, sa carte le dit ; **Ouvrir le dossier** l’ouvre. Dans le menu **Nouveau**, **Une lettre papier (scan)…** ajoute un scan depuis n’importe quelle page.
 
@@ -105,7 +105,7 @@ Puis :
 - **Dans l’agenda**, pour un rendez-vous ;
 - **Pour…** : pour qui elle est, quand c’est une personne de vos proches : le nom de son bloc d’adresse est lu (« Pour Léa »), et vous pouvez en cocher d’autres ;
 - le projet auquel elle appartient ;
-- **Fini, classé** : le scan va dans `letters/<année>/`, nommé d’après son jour, son expéditeur et son type ; son texte est gardé. Un scan lié reste où il est. La lettre se montre ensuite parmi celles classées, sous son année, son scan à un clic.
+- **Fini, classé** : le scan va dans `<année>/` du dossier des courriers, nommé d’après son jour, son expéditeur et son type ; son texte est gardé. Un scan lié reste où il est. La lettre se montre ensuite parmi celles classées, sous son année, son scan à un clic.
 
 ### Pas encore là {#not-there-yet}
 
@@ -119,7 +119,7 @@ Les règles lisent d’abord le français, et l’anglais aussi, par des règles
 
 ### Classée, avec son texte {#filed-with-its-text}
 
-**Fini, classé** déplace le scan dans `letters/<année>/`, nommé d’après son jour, son expéditeur et son type. Ce que Sioul en a lu est gardé aussi, dans un fichier texte du dossier `letters`.
+**Fini, classé** déplace le scan dans `<année>/` du dossier des courriers, nommé d’après son jour, son expéditeur et son type. Ce que Sioul en a lu est gardé aussi, dans un fichier texte à côté de la liste des courriers, parmi les propres listes de Sioul (`records/letters/` ; dans le dossier `letters` du dossier de notes tant que les listes de Sioul n’ont pas été déplacées).
 
 ### Où vont les tâches {#where-the-tasks-go}
 
@@ -193,7 +193,7 @@ En octobre 2026, d’après la documentation de chaque application.
 |---|---|---|---|---|---|---|
 | Où le texte est lu | votre ordinateur | votre serveur ; Azure AI si vous le choisissez | votre serveur | non précisé | non précisé | non précisé |
 | Comment les lettres sont triées | des règles écrites, en français et en anglais | des règles de correspondance et de l’apprentissage automatique ; un modèle de langage si vous l’activez (compatible OpenAI, ou Ollama sur votre machine) | apprentissage automatique et règles de langue (allemand, anglais, français, espagnol) | — | — | — |
-| Où les documents sont gardés | votre dossier de notes | votre serveur, « in clear text without encryption » | votre serveur | Adobe Document Cloud | Google Cloud, aux États-Unis | les serveurs de La Poste, en France |
+| Où les documents sont gardés | des dossiers à vous, sur votre appareil | votre serveur, « in clear text without encryption » | votre serveur | Adobe Document Cloud | Google Cloud, aux États-Unis | les serveurs de La Poste, en France |
 | Chiffré de bout en bout entre vos appareils | ✓¹ | —² | —² | ✗ | ✗³ | ✗ |
 | Demande un compte chez l’éditeur | non | non | non | oui, d’un appareil à l’autre | oui | oui |
 | Logiciel libre | ✓ GPL-3.0+ | ✓ GPL-3.0 | ✓ AGPL-3.0+ | ✗ | ✗ | ✗ |
@@ -217,13 +217,13 @@ D’autres en font plus par endroits : les cinq cherchent dans le texte de cha
 
 **Lire un scan.** Un PDF qui contient son texte est lu par `pdftotext` de Poppler ; sinon, ses pages sont changées en images par `pdftoppm` et lues par Tesseract, comme les photos et les images, en français et en anglais (`fra+eng`) quand ces langues sont installées. Ce sont les programmes de votre système, lancés comme processus locaux sur votre ordinateur ; leurs pages sont écrites dans le cache de Sioul le temps d’être lues, puis vidées. Rien ne quitte l’ordinateur. Quand ils manquent, les scans attendent, et le Porche dit comment les installer.
 
-**Le dossier d’arrivée.** `letters/inbox` dans le dossier de notes, ou un dossier que vous choisissez ; PDF, PNG, JPEG, TIFF et WebP. Un fichier modifié dans les 20 dernières secondes attend la minute suivante, et chaque fichier n’est lu qu’une fois (d’après son nom, sa taille et son heure).
+**Le dossier d’arrivée.** `inbox` dans le dossier des courriers (`letters/inbox` dans le dossier de notes tant que les listes de Sioul n’ont pas été déplacées), ou un dossier que vous choisissez ; PDF, PNG, JPEG, TIFF et WebP. Un fichier modifié dans les 20 dernières secondes attend la minute suivante, et chaque fichier n’est lu qu’une fois (d’après son nom, sa taille et son heure).
 
 **La comprendre.** Des règles écrites, pas d’apprentissage automatique : l’expéditeur d’après les mots de son en-tête ; le type d’après ses formules ; le montant sur la ligne qui le demande (« à payer », « montant dû », « amount due »), sinon le premier montant après un mot qui en nomme un ; l’échéance, une date à six mots au plus après des mots qui demandent pour quand (« avant le », « au plus tard le », « date limite », « échéance », « no later than », « due by »), jamais plus de 30 jours avant le jour du scan ; un délai (« dans un délai de deux mois à compter de la notification », « sous huitaine », « within 30 days ») compté à partir du jour où le scan est arrivé, ou de la date de la lettre elle-même.
 
-**Les fichiers.** `sioul-papers.toml` et le dossier `papers` à la racine de votre dossier de notes, chacun écrit en entier à côté de sa place, puis déplacé à sa place ; `letters/letters.toml`, le texte de chaque lettre dans `letters/<id>.txt`, les scans classés dans `letters/<année>/`. Des fichiers lisibles, que d’autres programmes lisent aussi.
+**Les fichiers.** Chacun écrit en entier à côté de sa place, puis déplacé à sa place : `sioul-papers.toml` dans `records/` du dossier de données de Sioul (`~/.local/share/sioul/records/` sous Linux), le `file` de chaque papier nommé depuis le dossier des papiers (`passport.pdf`) ; la liste des courriers, `records/letters/letters.toml`, le texte de chaque lettre dans `records/letters/<id>.txt`, les scans classés dans `<année>/` du dossier des courriers, le `file` de chaque lettre nommé depuis lui (`2026/…`). Le dossier des papiers et celui des courriers sont `papers.folder` et `letters.folder` dans `config.toml`, propres à chaque appareil. Avant le déplacement, tout était dans le dossier de notes : `sioul-papers.toml` et `papers/` à sa racine, `letters/letters.toml`, `letters/<id>.txt`, `letters/<année>/` ; un appareil qui n’a pas encore fait le déplacement et un appareil qui l’a fait lisent les chemins l’un de l’autre. Des fichiers lisibles, que d’autres programmes lisent aussi.
 
-**Scellés entre vos appareils.** Avec **Papiers** activé dans le partage de Sioul, `sioul-papers.toml` voyage scellé comme tout enregistrement, et chaque fichier du dossier `papers` compressé et scellé à part, en morceaux de 1 Mio, chacun scellé avec XChaCha20-Poly1305 avec le nom du fichier, son rang et une marque de fin comme données associées, pour qu’on ne puisse ni échanger, ni couper, ni ajouter de morceaux. Leurs noms dans le dossier sont un HMAC-SHA-256 de l’empreinte du contenu, sous une sous-clé tirée de la clé du partage par HKDF-SHA-256 : le dossier ne voit ni le nom des fichiers ni leur contenu. Les fichiers de plus de 64 Mio restent sur l’appareil qui les a ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)). Les lettres voyagent avec les notes.
+**Scellés entre vos appareils.** `sioul-papers.toml` voyage scellé comme tout enregistrement, dans **Projets et argent** une fois les listes de Sioul déplacées (dans **Papiers** avant). Avec **Papiers** activé dans le partage de Sioul, chaque fichier du dossier des papiers est compressé et scellé à part, en morceaux de 1 Mio, chacun scellé avec XChaCha20-Poly1305 avec le nom du fichier, son rang et une marque de fin comme données associées, pour qu’on ne puisse ni échanger, ni couper, ni ajouter de morceaux. Leurs noms dans le dossier sont un HMAC-SHA-256 de l’empreinte du contenu, sous une sous-clé tirée de la clé du partage par HKDF-SHA-256 : le dossier ne voit ni le nom des fichiers ni leur contenu. Les fichiers de plus de 64 Mio restent sur l’appareil qui les a ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)). Une fois les listes de Sioul déplacées, la liste des courriers et leurs textes voyagent dans **Projets et argent** et leurs scans dans **Papiers** ; avant, les lettres voyagent avec les notes.
 
 **L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; Android n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et les courriels mis de côté n’ont jamais leurs pièces jointes ouvertes.
 

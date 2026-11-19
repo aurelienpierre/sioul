@@ -653,7 +653,7 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let now = sioul_core::zone::now();
                 let stamp = now.timestamp().as_second();
                 let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-                let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now);
+                let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now);
                 let moment = attention::Now::of(&mode).layers(Slots::load(&Slots::default_path()).at(&now), attention::dnd_from_files(&config, stamp));
                 if Attention::of(&config).level(Row::Own(Kind::Codes), &moment) != Level::Now {
                     continue;

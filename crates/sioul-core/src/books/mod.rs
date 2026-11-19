@@ -511,7 +511,7 @@ impl Loaded {
 /// The books as the files say them now: the configuration's invoice
 /// settings, the invoices of `dir` with their life, the notes folder's money.
 pub fn load(config: &crate::config::Config, dir: &Path, today: Date) -> Loaded {
-    let root = config.notes_root_path();
+    let root = config.records_root();
     let words = crate::words::Words::of(config);
     let money = root.as_deref().filter(|r| Ledger::load(r).is_ok()).map(|r| crate::movements::books(r, &words, today));
     let settings = Settings::of(&config.invoice, money.as_deref().map(|m| &m.ledger));

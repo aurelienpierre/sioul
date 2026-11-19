@@ -154,7 +154,7 @@ fn title_now(named: &mut (String, String), uid: &str, shared: Option<&Arc<Shared
         Some(loaded) => title_of(uid, &loaded.tasks, &loaded.projects),
         None if named.0 == uid => return named.1.clone(),
         None => {
-            let projects = load_config().notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+            let projects = load_config().records_root().and_then(|root| ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
             title_of(uid, &tasks::all(&sioul_core::zone::current()), &projects)
         }
     };
@@ -276,6 +276,7 @@ pub unsafe extern "C" fn sioul_time_action(action: *const c_char) -> *mut c_char
         let window = WINDOW.lock().ok().and_then(|w| w.clone());
         let window = window.as_ref().map(|(qt, shared)| (qt, shared));
         act(&action, window);
+        crate::calls::timer_changed();
         let _ = crate::share::exchange_here(false);
         post(window).map(|note| crate::backend::json(&note)).unwrap_or_default()
     })

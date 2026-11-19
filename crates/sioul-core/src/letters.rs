@@ -15,8 +15,11 @@
 //! 2017); clearer material and the amount shown raise what people claim
 //! (Bhargava & Manoli 2015).
 //!
-//! `letters/letters.toml` in the notes folder, each letter's text beside it
-//! (`letters/<id>.txt`), the scans filed in `letters/<year>/`; a scan linked
+//! `letters/letters.toml` among Sioul's lists (the notes folder's root until
+//! this device's lists moved, then the data folder's `records/`), each
+//! letter's text beside it (`letters/<id>.txt`), the scans filed by year in
+//! the letters' folder (the notes folder's `letters/` until then, its
+//! `file` named from that folder: `storage::Docs`); a scan linked
 //! from elsewhere (the Letters page's "Link scans…", `Letter::linked`) stays
 //! where it is, never copied, never moved.
 
@@ -407,16 +410,41 @@ impl Letter {
     }
 }
 
-/// The letters of a notes folder.
-#[derive(Debug, Clone, Default)]
+/// The letters' list, their texts, and where their scans are.
+#[derive(Debug, Clone)]
 pub struct Letters {
+    /// Sioul's lists' folder: the list and the texts in its `letters/`.
     pub root: PathBuf,
+    /// Where the scans are, and are filed.
+    pub docs: crate::storage::Docs,
     pub list: Vec<Letter>,
 }
 
+impl Default for Letters {
+    fn default() -> Letters {
+        Letters { root: PathBuf::new(), docs: crate::storage::Places::under(Path::new("")).letters, list: Vec::new() }
+    }
+}
+
 impl Letters {
+    /// The letters' list's and texts' folder among Sioul's lists at `root`.
     pub fn folder(root: &Path) -> PathBuf {
         root.join(FOLDER)
+    }
+
+    /// `change`, where this device keeps them (`Config::places`).
+    pub fn change_at<R>(places: &crate::storage::Places, change: impl FnOnce(&mut Letters) -> R) -> Result<R, String> {
+        Letters::try_change_at(places, |letters| Ok(change(letters)))
+    }
+
+    /// `try_change`, where this device keeps them (`Config::places`).
+    pub fn try_change_at<R>(places: &crate::storage::Places, change: impl FnOnce(&mut Letters) -> Result<R, String>) -> Result<R, String> {
+        crate::filelock::with_lock(&Letters::folder(&places.records).join(MANIFEST), || {
+            let mut letters = Letters::load_at(places)?;
+            let out = change(&mut letters)?;
+            letters.save()?;
+            Ok(out)
+        })
     }
 
     /// Read, changed by `change` and written back, all under the file's lock
@@ -428,12 +456,7 @@ impl Letters {
 
     /// The same, written back only when `change` succeeds.
     pub fn try_change<R>(root: &Path, change: impl FnOnce(&mut Letters) -> Result<R, String>) -> Result<R, String> {
-        crate::filelock::with_lock(&Letters::folder(root).join(MANIFEST), || {
-            let mut letters = Letters::load(root)?;
-            let out = change(&mut letters)?;
-            letters.save()?;
-            Ok(out)
-        })
+        Letters::try_change_at(&crate::storage::Places::under(root), change)
     }
 
     /// The letters' tasks as a list that keeps no UID knows them (Google
@@ -457,11 +480,31 @@ impl Letters {
         })
     }
 
+    /// The letters where the caller says they are (`places`, as it read
+    /// them from its configuration), else under a notes folder `root` in the
+    /// old layout; never read from the device's own configuration here
+    /// (review S36): a test with folders of its own reads only those.
+    pub fn of(places: Option<&crate::storage::Places>, root: Option<&Path>) -> Option<Letters> {
+        match (places, root) {
+            (Some(places), _) => Letters::load_at(places).ok(),
+            (None, Some(root)) => Letters::load(root).ok(),
+            (None, None) => None,
+        }
+    }
+
+    /// The letters under one notes folder, as before the move.
     pub fn load(root: &Path) -> Result<Letters, String> {
+        Letters::load_at(&crate::storage::Places::under(root))
+    }
+
+    /// The letters where this device keeps them (`Config::places`); none yet: none.
+    pub fn load_at(places: &crate::storage::Places) -> Result<Letters, String> {
+        let root = places.records.as_path();
+        let docs = places.letters.clone();
         let path = Letters::folder(root).join(MANIFEST);
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Letters { root: root.to_path_buf(), list: Vec::new() }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Letters { root: root.to_path_buf(), docs, list: Vec::new() }),
             Err(e) => return Err(format!("{}: {e}", path.display())),
         };
         let table: toml::Table = text.parse().map_err(|e: toml::de::Error| format!("{}: {e}", path.display()))?;
@@ -501,7 +544,7 @@ impl Letters {
                 })
             })
             .collect();
-        Ok(Letters { root: root.to_path_buf(), list })
+        Ok(Letters { root: root.to_path_buf(), docs, list })
     }
 
     pub fn get(&self, id: &str) -> Option<&Letter> {
@@ -517,8 +560,7 @@ impl Letters {
 
     /// A scan's file, where it is on this computer.
     pub fn file_path(&self, letter: &Letter) -> PathBuf {
-        let path = Path::new(&letter.file);
-        if path.is_absolute() { path.to_path_buf() } else { self.root.join(path) }
+        self.docs.path_of(&letter.file)
     }
 
     /// Its text, as read.
@@ -531,15 +573,15 @@ impl Letters {
         std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(folder.join(format!("{id}.txt")), text)).map_err(|e| e.to_string())
     }
 
-    /// Its scan moved out of the inbox into `letters/<year>/`, named by its
-    /// day, sender and kind; a linked scan stays where it is.
+    /// Its scan moved out of the inbox into the letters' folder's `<year>/`,
+    /// named by its day, sender and kind; a linked scan stays where it is.
     pub fn file_away(&self, letter: &mut Letter) -> Result<(), String> {
         if letter.linked {
             return Ok(());
         }
         let from = self.file_path(letter);
         let day = letter.reading.dated.or(letter.received).unwrap_or(Date::constant(2000, 1, 1));
-        let folder = Letters::folder(&self.root).join(day.year().to_string());
+        let folder = self.docs.folder.join(day.year().to_string());
         if from.starts_with(&folder) {
             return Ok(());
         }
@@ -549,7 +591,7 @@ impl Letters {
         let base = format!("{day} {sender} {}", letter.reading.kind.id());
         let target = std::iter::once(folder.join(format!("{base}{extension}"))).chain((2..1000).map(|n| folder.join(format!("{base} {n}{extension}")))).find(|p| !p.exists()).ok_or("no free name")?;
         std::fs::rename(&from, &target).or_else(|_| std::fs::copy(&from, &target).and_then(|_| std::fs::remove_file(&from))).map_err(|e| e.to_string())?;
-        letter.file = target.strip_prefix(&self.root).map_or_else(|_| target.display().to_string(), |p| p.to_string_lossy().replace('\\', "/"));
+        letter.file = self.docs.named(&target);
         Ok(())
     }
 

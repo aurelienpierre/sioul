@@ -45,7 +45,17 @@ The hour before bed is sleep's: Health keeps it free, and nothing should keep th
 
 ## The hours
 
-In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave. There is no leisure to set: it is every other time. Between the two, **Meals, rest and sleep** sets your usual meals, naps and night ([Health](health.md#meals-rest-and-sleep) says what they do).
+In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Vacations and holidays**, below them, takes your vacations and sick leave, and the calendars of public or school holidays you subscribe to ([below](#vacations-and-holidays)). There is no leisure to set: it is every other time. Between the two, **Meals, rest and sleep** sets your usual meals, naps and night ([Health](health.md#meals-rest-and-sleep) says what they do).
+
+## Vacations and holidays {#vacations-and-holidays}
+
+[Settings ▸ Hours](settings.md#hours) ▸ **Vacations and holidays**:
+
+- **Your vacations**: from a day to another, with a word on them and a kind: a vacation, sick leave, or something else. What you typed before stays as it was.
+- **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one switch, **its days count as my days off**. Public holidays count unless you turn it off; school holidays do not, unless you turn it on (a parent who stays home with the children, a teacher).
+- **Subscribe to a calendar of holidays…** opens the Agenda's settings at the form, with the official French calendars ready: public holidays by territory, school holidays by zone.
+
+A day that counts as a day off is one everywhere: leisure all day, nothing planned in it, "two working days before" skips it, work's reminders wait until work comes back, and the agenda shades it. Each device knows the holidays from its own copy of the calendar: one that has not read it yet does not know them, and its line says so.
 
 Leisure set as hours by an earlier Sioul (its "free time") is left in your settings, untouched, and no longer counts. **Free time** is now a pause you take, whatever the hour: see [Pauses](pauses.md).
 
@@ -161,7 +171,7 @@ From winding down to waking, and during a nap, nothing disturbs:
 - **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** for Doses ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;
-- Tasks ▸ Now waits behind one sentence and **Show anyway**, where a thought can still be noted for later; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
+- Tasks ▸ Now waits behind one sentence and **Show anyway**; a thought can still be noted for later in the line under the tabs; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
 
 Without a night set in Settings ▸ Hours, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
 
@@ -199,6 +209,7 @@ The Porch asks, in a card, for the hours not set yet, with **Set my hours**, whi
 - People already give their devices a role: among 259 UK workers, those who keep work and home apart dedicated their devices more than those who mix them, with as many devices (Fleck, Cox & Robison 2015). That survey did not measure whether it helps, and no study found tests a device for work against one for everything. What goes with less distress is feeling in control of the line, whether one separates or mixes (Kossek et al. 2012, 591 managers); for people who prefer to mix, work on the phone in the evening even went with less conflict at home (Derks et al. 2016). So what a device is for is yours to say, nothing is narrowed until you say it, every cell can be changed and put back, and what is folded says why and opens in one gesture.
 - A dedicated device does not hold the line alone: 13 of 14 people who wanted "work is work, home is home" worked on the home computer too (Dearman & Pierce 2008), and mail read on a phone in the evening was forgotten at the office (Cecchinato, Cox & Bird 2015). So a fold opens, and opening it settles nothing: a message opened on a device that is not for it stays new on the device that is.
 - Asked through the day, 16 people wanted a notification on the device near them and in use: the phone nearly all day, a computer only while used (Weber et al. 2016, read in its first author's thesis). So the device you used last tells what is for it, and what is not waits in view and is told on the device it is for once you pick it up; a device waits for another only while that one has said it is for the thing, so that a message may come twice but never not at all.
+- A public holiday is a day off for most people, and a school holiday is one for few: the parent who stays home, the teacher. So public holidays count by default and school holidays one switch away; a vacation you type counts always. This is a default of Sioul's, not a finding.
 - No study separates personal admin from leisure: every one found knows two sides, work and the rest. Keeping admin off a device for leisure is Sioul's own inference, from admin being work nobody pays for.
 
 More in [what the research says](../dev/research.md), findings 21 to 23 and 83 to 85.

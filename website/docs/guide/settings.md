@@ -8,7 +8,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**, across the top of the page; Android adds **This phone** (**This tablet** on a tablet). **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**, across the top of the page. What sets a phone up is on its card in **Devices**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
 
 On a phone, Settings opens on the list of its sections instead, each with one line saying what it holds. Tap one to open it; Back, or the arrow at the top left, brings you back to the list. A link to a setting, from a notice or another page, opens its section directly, and Back then returns where you were. Settings opens on the list again at your next visit.
 
@@ -26,7 +26,7 @@ On a phone, Settings opens on the list of its sections instead, each with one li
 - **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the left end of the title bar, over the places, or ++f9++, changes it too.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
 - The sites' colours, **Colours for this screen** and **Calmer colours on sites**, are the Sites page's own, behind its ⚙: only the sites follow them ([Sites](sites.md#colours)).
-- **What this device is** (on a computer; on Android, at the top of **This phone** or **This tablet**): a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer. This device only.
+- **What this device is**: a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer. This device only.
 - **Details on the home screen** (on Android): Sioul's cards on the home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events of your calendars, with their titles, and the dates asked of you ([First steps](first-steps.md#on-a-phone)). Turned off, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, each date by its kind alone, and that a next step waits: for a device whose home screen others see. This device only.
 
 ## Hours
@@ -39,21 +39,18 @@ On a phone, Settings opens on the list of its sections instead, each with one li
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
 - **Meals, rest and sleep**, under their own heading: your usual meals, naps and night, the alarm at waking, the notice before each and how far **Later** moves one ([Meals, rest and sleep](health.md#meals-rest-and-sleep)). Every page follows them: what now is for, the plan, what reaches you. A day that differs is changed on the Health page, that day only. Leisure is every other time, neither work nor admin: there is nothing to set for it.
-- **Time off**, under **Days off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
+- **Vacations and holidays**: your vacations, sick leave and other days off, quiet from the first day to the last, each with a word and its kind; then each calendar of public or school holidays you subscribed to, with its switch **its days count as my days off** (on for public holidays, off for school holidays), and **Subscribe to a calendar of holidays…** ([Vacations and holidays](hours.md#vacations-and-holidays)).
 
 Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
 
 ## What reaches you {#what-reaches-you}
 
-One place for when each thing reaches you: mail, calls and other apps' messages by who sends them, Sioul's own notifications by what they are, at each time of your day. On top, what holds now, in sentences, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then five views:
+One page for when each thing reaches you: Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound. On top, what holds now in a sentence, the three states (As usual, Do not disturb, Reachable) and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then two tabs:
 
-- **By time**: a card for each time of your day, in sentences; **Change…** opens its rows.
-- **By person**: what reaches you by mail, by phone and by message from each list of people, **Tell me of new mail**, **Include newsletters**, and who is on which list.
-- **Sioul's own**: codes, doses, reminders, Health's notices, your sites and other apps, with **Sites' notifications gathered**.
-- **Exceptions**: the people who always get through, and each conversation, app or site with a choice of its own.
-- **Do not disturb**: what turns it on, what holds while it does, what each device does.
+- **Your rules**: **People**, a choice per circle (Always through, Safe, Your contacts, Restricted, Everyone else) for mail and for messages, with **Tell me of new mail** and **Include newsletters**; **Who is in which circle**, Always through beside the lists Safe, Restricted and Blocked, the people placed on them and your groups; **Sioul's own notices**, in four groups; **Moments**, what turns do-not-disturb on (**While busy** among them) and who holds what on a phone. One line counts what is set elsewhere, with a button to each place; calls are set for each phone, in **Devices**.
+- **What comes when**: every row at every time, a word in each cell, a press to change it.
 
-Free time's **Nothing at all** is on its card. See [What reaches you, and when](notifications.md).
+See [What reaches you, and when](notifications.md).
 
 ## Reminders {#reminders}
 
@@ -71,21 +68,25 @@ When each reminder may come, and new mail, is in [What reaches you](#what-reache
 
 Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **What comes during a pause**, its card in What reaches you; **Try the pause screen**. Free time's **Nothing at all** is on its card in [What reaches you](#what-reaches-you). See [Pauses](pauses.md).
 
-## This phone {#this-phone}
+## A phone's card {#this-phone}
 
-On Android, what sets it up, nothing that decides when (that is [What reaches you](#what-reaches-you)); on a tablet the tab is **This tablet**. **What this device is** comes first ([Display](#display)). Calls and texts are there only where the device has telephony: a tablet without a SIM has neither, and shows your phone's texts as a computer does.
+What sets a phone up is on its own card in [Devices](#devices), under its name.
 
-- **Calls**: Sioul as Android's caller ID & spam app, so that a call whose row says later goes to your voicemail; what Sioul does with calls, what it never does, and what always rings; reading the contacts; the **Call screening**, apart from do-not-disturb, for numbers nobody knows and hidden numbers: its switch, its hours, what becomes of each kind of number, and the numbers you called ([The call screening](calls.md#the-call-screening)); where a declined call goes; texts. See [Calls](calls.md).
-- **Other apps**: Android's **Notification access** (two steps for Sioul installed from a file), **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**; **Let Sioul make them silent**, linked to your computer, and what Sioul made silent, each with **Give its sound back**. Each app, conversation and site's own choice is in What reaches you ▸ Exceptions. See [Other apps' notifications, on Android](notifications.md#other-apps-on-a-phone).
-- **On your computers**: the part **Messages from your phone**, off until you turn it on, and for each app whether its messages go to your computers' Porch: not at all, who and when, or the words too (the SMS app's words unless you say otherwise); under each app, **Answer from your computers**, on unless you switch it off, lets a reply written on a computer go through that app's own Reply. See [On your computers](notifications.md#messages-on-your-computers).
-- **Texts**: what Sioul does with your texts once you allow it, each permission with what it is for, **Allow in Android…**, and, once Android has not given them after you asked, the steps it may want for an app installed from a file, with **Sioul's app info** ([Install](install.md#on-android)), the part **Texts**, how many texts and how much media your phone holds and how much has gone to your computers, the largest media file brought there, and what its carrier takes for a multimedia message, read only. See [Texts](texts.md).
-- **Do not disturb on this phone**: Android's Do Not Disturb access, which Sioul's modes need, and what each mode lets through; **Starred on this phone**, who of your Always through people is not starred there; **Keep this phone in step in the background**, and **Allow in the background**. See [What each system does](notifications.md#what-each-system-does).
-- **Alarms and notifications**: Android's pages for exact alarms, which reminders, doses and the alarm at waking need to come on time, and for Sioul's own notifications.
+- **Calls**, on every phone's card, set from any of your devices: a profile to start from, **Professional**, **Personal**, **Both** or **As Android does**, each with what it does in a line; one small table of who rings in your work hours, the rest of the day, the night and while you are busy, each cell **Rings** or **Voicemail**, while busy also **As usual** (on a phone, a list of rows, each opening its four choices); **Give a group its row…**; the switches, each one setting: commercial and automated callers never ring, a second call within 15 minutes rings, numbers you called in the last 14 days ring as your contacts do, and under **More** numbers that cannot be a caller's or that your network could not verify. Until you change it, the table shows what the phone does today, a cell that differs between moments of the day saying **Varies**; calls are set there alone, and What reaches you's presets leave them. Android does not tell Sioul which SIM a call comes on: the card says so, and on the phone opens Android's SIM page. See [Each phone its own calls](calls.md#calls-per-phone).
+- On the phone itself, its card also holds:
+    - **What Android must allow**: the role for calls, contacts, the call log, notification access, the texts' permissions, Do Not Disturb access, exact alarms and no battery restriction, each with what it is for, whether it is given, and one button; then Sioul's own notifications.
+    - **Android's restricted settings**, for Sioul installed from a file: three steps, each a button, each ticked once Sioul sees it worked ([Install](install.md#on-android)).
+    - **Other apps' notifications**: Android's **Notification access**, **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**; **Let Sioul make them silent**, linked to your computer. See [Other apps' notifications, on Android](notifications.md#other-apps-on-a-phone).
+    - **Messages on your computers**: the part **Messages from your phone**, and for each app whether its messages go to your computers' Porch; **Answer from your computers**. See [On your computers](notifications.md#messages-on-your-computers).
+    - **Texts**: what Sioul does with your texts once you allow it, the part **Texts**, what your phone holds and what has gone to your computers, what its carrier takes for a multimedia message. See [Texts](texts.md).
+    - **The call screening on this phone**: the screening a phone keeps while its Calls say nothing, where a declined call goes, and Android's own blocked numbers ([The call screening](calls.md#the-call-screening)).
+    - **Do not disturb on this phone**: Android's Do Not Disturb access and what each mode lets through; who of your Always through people is starred there; **Keep this phone in step in the background**. See [What each system does](notifications.md#what-each-system-does).
+- Another phone's card says that what Android allows is set on that phone.
 
-## Your folder and sharing
+## Sharing {#your-folder-and-sharing}
 
-- **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it ([Notes](notes.md)).
-- **Rename to sioul-projects.toml**: shown while your projects' file has its first name, `sioul-cases.toml`. It renames the file and its entries in one write, every project kept, with a copy of the old file beside it. Never done by itself: press it once each of your devices has this version of Sioul, since an older one reads only the first name ([Where projects live](projects.md#where-projects-live)).
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
+
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 
@@ -97,8 +98,9 @@ Every device you share with, this one first, each on a card; in a wide window, t
 - **What it is**, how it is **now**, when it was **last opened** and when it **last shared**, and its **Sioul**: as each device says them.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
 - **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
-- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Your folder and sharing](#your-folder-and-sharing).
+- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing).
 - **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**, for another device.
+- A phone's own sections: its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)).
 
 While this device does not share, it is the only one listed. See [Your devices](sharing.md#your-devices).
 
@@ -186,13 +188,15 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 
 | Page | Behind its ⚙ |
 |---|---|
-| [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, the calls your phones declined, how a message reads, how mail is sorted |
+| [Porch](porch.md#the-porchs-settings) | the projects shown there, the calls your phones declined, how a message reads, how mail is sorted |
 | [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, whether saying Spam also leaves a list, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, the reminder when a wait is over, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the reminder before an event, the time zone shown |
 | [Budgets](budgets.md#the-bank-watch) | the reminder before a planned payment |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
+| [Papers](papers.md#where-papers-live) | the papers' folder |
+| [Letters](papers.md#setting-it-up) | the letters' folder, where scans arrive |
 | [Texts](texts.md#pictures-and-files) | the multimedia messages sent from here, on a device without telephony |
 | [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager) |
 | [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
@@ -213,7 +217,7 @@ In the Mail page's ⚙, under **Your own spam filter**: what it does with each o
 
 When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting. What you say of each device in [Devices](#devices), its name and what it is for, travels with them, so that you can say it once, from the device in your hand.
 
-What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
+What stays on each device: where its folders are (the notes folder, the papers' and the letters' folders, where scans arrive), whether Sioul's lists have moved out of its notes folder, how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 
@@ -246,6 +250,6 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **Secrets**: account passwords, the AI shield's key and the GitHub token go to the system's keyring (the Secret Service, the macOS Keychain, the Windows Credential Manager, Android's KeyStore), never to `config.toml`.
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **What you said of each device** (`[device."<id>"]`, `<id>` being the device's id in the sharing, as `sioul devices` prints it): `name`, and `area` (`work`, `admin`, `leisure`, joined by `+`); each one entry, so a name given on one device and an area set on another both stay. Under it, `[device."<id>".at]` holds the cells you changed, a key per time (`work`, `admin`, `leisure`, `meals`, `sleep`): areas joined by `+`, or `none` for nothing; each cell one entry too. A device without a table is for everything, under its system's name.
-- **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
+- **Kept on each device**: `case_store` (the notes folder), `papers.folder` and `letters.folder` (the papers' and the letters' folders, read once Sioul's lists have moved), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`. Whether this device's lists have moved is never a setting: it is `storage.toml` in Sioul's state folder (`~/.local/state/sioul/` on Linux), which nothing that travels can change.
 - **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone, a narrow window: the window's size decides, never the system), the whole width. Settings' tabs span the page; each section reads 720 pixels wide at most, centred, while What reaches you's cards and Devices take the whole width, the devices' fields lining up as a table from 900 pixels.
 - **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).

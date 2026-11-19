@@ -18,7 +18,7 @@
 // 5. the call screening, under its own heading, while a phone of yours
 //    screens calls: its rule in a sentence, Expecting a call (1 h) or Screen
 //    calls again, and, on the phone, its settings. Its on/off switch stays in
-//    Settings ▸ This phone: one tap in a card opened often never turns spam
+//    Settings ▸ Devices ▸ this phone's card: one tap in a card opened often never turns spam
 //    protection off.
 // Every control is named for screen readers; nothing is drawn past the
 // screen's edge at 412 points, in either language.

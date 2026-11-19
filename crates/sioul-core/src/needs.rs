@@ -1986,7 +1986,7 @@ mod tests {
         let before: Zoned = "2026-10-07T06:59[Europe/Paris]".parse().unwrap();
         let alarm = needs.wakings(&before, &Days::default(), 1)[0];
         let ringing = jiff::Timestamp::from_second(alarm.at).unwrap().to_zoned(zone());
-        let mode = |now: &Zoned| crate::quiet::mode(&[], &[], &crate::quiet::Overrides::default(), &crate::quiet::Blocks::of(&needs, &Days::default(), &[], now), now);
+        let mode = |now: &Zoned| crate::quiet::mode(&[], &crate::vacations::DaysOff::default(), &crate::quiet::Overrides::default(), &crate::quiet::Blocks::of(&needs, &Days::default(), &[], now), now);
         assert!(mode(&before).sleeps());
         assert!(!mode(&ringing).sleeps());
         let usual = crate::attention::Attention::usual();

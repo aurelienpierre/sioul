@@ -5,14 +5,14 @@ The same papers are asked again and again (an identity card, the last tax notice
 Code: `crates/sioul-core/src/papers.rs`, `crates/sioul-app/src/papers.rs`, `qml/PapersPage.qml`, `qml/PaperDialog.qml`.
 
 ## Where they live
-`sioul-papers.toml` at the root of the notes folder, the files in its `papers/` folder: they travel with your projects and notes, by the same sync; where no sync carries the notes folder (a phone's), the sharing's "Papers" part carries them, sealed file by file, off until switched on ([database.md](database.md), "Parts"). A file chosen elsewhere (a scan in Downloads) is copied there when the paper is saved, under a free name.
+`sioul-papers.toml` among Sioul's own lists, in `records/` of the data folder, and the files in the papers' folder (`[papers] folder`, `Documents/Papers` by default, set in Papers ▸ ⚙, each device's own), each paper's `file` named from that folder; before a device moves its lists, the list is at the root of the notes folder and the files in its `papers/` ([notes-folder.md](notes-folder.md#what-lives-where)). Once moved, the list travels sealed in the sharing's "Projects and money" part, and the files in its "Papers" part, sealed file by file, off until switched on and refused while a sync app carries the papers' or the letters' folder ([database.md](database.md), "Parts"); before, both travelled with the notes folder, by its sync or by "Papers". A file chosen elsewhere (a scan in Downloads) is copied into the papers' folder when the paper is saved, under a free name. The letters live the same way: their list and texts in `records/letters/`, their scans filed by year in the letters' folder (`[letters] folder`, `Documents/Letters` by default, set in Letters ▸ ⚙), with the folder scans arrive in (`inbox/`).
 
 ```toml
 [[paper]]
 id = "passeport"
 kind = "passport"
 title = "Passeport"
-file = "papers/Passeport.pdf"
+file = "Passeport.pdf"   # from the papers' folder; "papers/Passeport.pdf" before the move, read on either side
 issued = 2016-12-21
 until = 2026-12-20
 holder = ""          # whom it is for, by name: empty, yours (persons.md)
@@ -44,7 +44,7 @@ Procurations and measures are shown apart, for the person they concern ([persons
 A paper is yours, or for persons of your household, several at once (a joint tax notice, a lease of two): the form's "For" chooses them, the Papers page's chips show one person's, and a person's page lists theirs ([persons.md](persons.md)). Each person chosen is a tie in `links.toml`, how `holder`, and `holder` keeps their names for older versions; a paper with neither is yours. A text with no tie is matched to persons by name at each read.
 
 ## How papers come in
-- **From a mail**: "Keep in papers" beside an attachment: the antivirus checks it (or, without one, you are asked, as for opening), it is copied into `papers/`, and the form opens with a name and a kind guessed from the file's name and the subject ("avis_impot_2026.pdf": a tax notice; "quittance": a rent receipt); you say the dates.
+- **From a mail**: "Keep in papers" beside an attachment: the antivirus checks it (or, without one, you are asked, as for opening), it is copied into the papers' folder (`papers/` in the notes folder before the move), and the form opens with a name and a kind guessed from the file's name and the subject ("avis_impot_2026.pdf": a tax notice; "quittance": a rent receipt); you say the dates.
 - **From a file**: "Add a paper" (or New ▸ A paper), then its file: a scan, a photo.
 - Nothing is typed twice: the form asks only what cannot be guessed. Reading the dates on a paper's scan is not built: paper letters are read by OCR already ([porch.md](porch.md), "Paper letters"), a paper's scan is only kept.
 

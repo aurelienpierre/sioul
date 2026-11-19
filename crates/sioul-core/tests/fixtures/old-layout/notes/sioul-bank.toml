@@ -1,0 +1,12 @@
+[[account]]
+id = "main"
+title = "Main"
+balance = 1200.0
+as_of = 2026-10-31
+
+[[movement]]
+account = "main"
+id = "fitid-2026-10-01"
+date = 2026-10-01
+amount = -620.0
+label = "LOYER OCTOBRE"

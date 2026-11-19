@@ -88,6 +88,9 @@ pub struct Row {
     pub version: String,
     /// Its Sioul is older than this device's.
     pub older: bool,
+    /// Its Sioul reads no phone's own calls' table (`Entry::calls_lines` 0): its card says so (M12).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub no_lines: bool,
     /// Its Sioul in words: "Sioul 0.0.3 (eff8661abcde).", said calmly when
     /// older than this device's; "" when its entry does not say.
     pub build: String,
@@ -264,6 +267,7 @@ fn of_entry(row: &mut Row, entry: &Entry, clock: &Clock) {
     // The build it runs (docs/database.md, "Devices"): an older one said, calmly.
     row.version = entry.build();
     row.older = sioul_core::build::older(&entry.version, sioul_core::build::VERSION);
+    row.no_lines = entry.calls_lines < crate::devices::CALLS_LINES;
     row.build = match (row.version.is_empty(), row.older) {
         (true, _) => String::new(),
         (false, true) => said(words, "share-device-build-older", &[("build", row.version.clone()), ("here", sioul_core::build::DESCRIBED.to_string())]),
@@ -403,6 +407,7 @@ fn here(facts: &Facts, clock: &Clock) -> Row {
     // This build, whatever its entry last said.
     row.version = sioul_core::build::DESCRIBED.to_string();
     row.older = false;
+    row.no_lines = false;
     row.build = said(words, "share-device-build", &[("build", row.version.clone())]);
     if facts.sharing {
         let parts = in_order(facts.parts);

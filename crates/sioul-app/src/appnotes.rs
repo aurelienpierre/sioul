@@ -190,7 +190,7 @@ fn account_of<'a>(accounts: &'a [sioul_core::config::Account], to: &str) -> Opti
     }
 }
 
-/// Do-not-disturb's switch or a focus session, holding now: when it ends,
+/// Do-not-disturb's switch or a busy stretch, holding now: when it ends,
 /// when that is known (a layer of the matrix), and which of them holds (for
 /// the log).
 fn gate() -> Option<Gated> {
@@ -622,7 +622,7 @@ fn kind_of(held: &appnotes::Held) -> &'static str {
 
 /// What reaches you now, as the matrix reads it: the time's column (or two,
 /// work and admin at once), then its layers, a slot of time for you and
-/// do-not-disturb (its switch or a focus session).
+/// do-not-disturb (its switch or a busy stretch).
 fn columns_now(live: &Live, now: &Zoned, slot: bool, dnd: bool) -> Vec<Column> {
     let moment = sioul_core::attention::Now::of(&live.clock.mode(now)).layers(slot, dnd);
     let mut columns = moment.times.clone();
@@ -637,15 +637,15 @@ fn columns_now(live: &Live, now: &Zoned, slot: bool, dnd: bool) -> Vec<Column> {
 
 /// The matrix's columns as the log says them: their ids ("leisure", "slot"),
 /// Free time's "Nothing at all" when it holds ("free (nothing at all)"), and
-/// do-not-disturb with what holds it ("dnd (focus session)", "dnd (switch)").
+/// do-not-disturb with what holds it ("dnd (busy)", "dnd (switch)").
 fn column_words(columns: &[Column], nothing: bool, gated: Option<&Gated>) -> Vec<String> {
     columns
         .iter()
         .map(|column| match column {
             Column::Free if nothing => "free (nothing at all)".to_string(),
             Column::Dnd => match gated {
-                Some(Gated { focus: true, switch: true, .. }) => "dnd (switch and focus session)".to_string(),
-                Some(Gated { focus: true, .. }) => "dnd (focus session)".to_string(),
+                Some(Gated { busy: true, switch: true, .. }) => "dnd (switch and busy)".to_string(),
+                Some(Gated { busy: true, .. }) => "dnd (busy)".to_string(),
                 Some(Gated { switch: true, .. }) => "dnd (switch)".to_string(),
                 _ => column.id().to_string(),
             },
@@ -681,7 +681,7 @@ fn kind_word(kind: &Kind) -> &'static str {
 /// decided it (`appnotes::cause`): its conversation's or its app's own row,
 /// a gathering and what gathers it, what it is for, the columns of the
 /// matrix that hold it now (do-not-disturb with what holds it). "Notes:
-/// held: messages 1 until 10:50; why: dnd (focus session)." Held again on
+/// held: messages 1 until 10:50; why: dnd (busy)." Held again on
 /// its return at its time: "held again". Never a name, a number, an app nor
 /// who wrote.
 fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>, gated: Option<&Gated>, now: &Zoned) -> String {
@@ -1586,7 +1586,7 @@ mod tests {
             }
         }
         // Do-not-disturb with what holds it, Free time's "Nothing at all".
-        let switch = Gated { until: None, focus: false, switch: true };
+        let switch = Gated { until: None, busy: false, switch: true };
         let columns = column_words(&[Column::Free, Column::Dnd], true, Some(&switch));
         assert_eq!(columns, ["free (nothing at all)", "dnd (switch)"]);
         assert_eq!(column_words(&[Column::Leisure, Column::Dnd], true, None), ["leisure", "dnd"], "nothing at all says nothing outside Free time");
@@ -1595,7 +1595,7 @@ mod tests {
     /// The listener's line at each hold (decision 2 of the overrides, 18
     /// October 2026): the kind of its channel, until when it waits or for
     /// good, and what decided it, never who: the proposal's case (a
-    /// contact's text at work held by a focus session), the switch and both,
+    /// contact's text at work held while busy), the switch and both,
     /// a text named only, an automaton in the night, an app's and a
     /// conversation's own rows, what it is for, held for good, held again.
     /// Then a real hold, decided and said: no name, number, app, conversation
@@ -1604,13 +1604,13 @@ mod tests {
     fn the_hold_line_says_what_decided_it_and_names_no_one() {
         let now: Zoned = "2026-10-14T10:20:00+02:00[Europe/Paris]".parse().unwrap();
         let stamp = now.timestamp().as_second();
-        let focus = Gated { until: Some(stamp + 30 * 60), focus: true, switch: false };
-        let both = Gated { until: None, focus: true, switch: true };
+        let focus = Gated { until: Some(stamp + 30 * 60), busy: true, switch: false };
+        let both = Gated { until: None, busy: true, switch: true };
         let line = |event: &str, kind: &str, until: Option<i64>, why: Why, cause: Cause, gated: Option<&Gated>| hold_line(event, kind, &Decision { until, why }, Some(&cause), gated, &now);
         let columns = |columns: &[Column]| Cause { columns: columns.to_vec(), ..Cause::default() };
         let in_minutes = |m: i64| Some(stamp + m * 60);
-        assert_eq!(line("held", "messages", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&focus)), "Notes: held: messages 1 until 10:50; why: dnd (focus session).");
-        assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and focus session).");
+        assert_eq!(line("held", "messages", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&focus)), "Notes: held: messages 1 until 10:50; why: dnd (busy).");
+        assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and busy).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Named), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a sender named only).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Machine), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a number kept for machines).");
         assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
@@ -1624,7 +1624,7 @@ mod tests {
         assert_eq!(line("held", "messages", Some(stamp + 7 * 86_400), Why::Never, Cause { for_good: true, ..Cause::default() }, None), "Notes: held: messages 1 for good; why: never.");
         assert_eq!(line("held again", "messages", Some(stamp + 3 * 86_400), Why::Waiting, columns(&[Column::Pause]), None), "Notes: held again: messages 1 until 2026-10-17 10:20; why: pause.");
         assert_eq!(hold_line("held", "messages", &Decision { until: in_minutes(5), why: Why::Waiting }, None, None, &now), "Notes: held: messages 1 until 10:25; why: unknown.");
-        // A real one: a contact's text at work, held by a focus session, decided and said as the listener does.
+        // A real one: a contact's text at work, held while busy, decided and said as the listener does.
         struct Work;
         impl appnotes::TimeSource for Work {
             fn mode(&self, _: &Zoned) -> sioul_core::quiet::Mode {
@@ -1647,7 +1647,7 @@ mod tests {
         assert_eq!(decision.until, focus.until, "held until the session's end");
         let cause = appnotes::cause(&posted.package, &kind, Some(Who::Neutral), false, &choices, &ask);
         let said = hold_line("held", kind_word(&kind), &decision, cause.as_ref(), Some(&focus), &now);
-        assert_eq!(said, "Notes: held: messages 1 until 10:50; why: dnd (focus session).");
+        assert_eq!(said, "Notes: held: messages 1 until 10:50; why: dnd (busy).");
         for private in ["org.example", "Noa", "Martin", "01 99 00", "+33", "Chat", "c0ffee", "ce soir", "safe", "neutral", "stranger", "blocked", "restricted"] {
             assert!(!said.contains(private), "{said} says {private}");
         }

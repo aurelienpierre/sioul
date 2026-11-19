@@ -86,6 +86,10 @@ struct Shown {
     hidden: std::collections::BTreeSet<String>,
     /// The filter as its list shows it, the agendas that take events (`FilterNow::shown`).
     filter: FilterShown,
+    /// The Day and the Week: the areas whose tasks' steps are drawn
+    /// (`areafilter::Shown`; `step_areas`), every one unless you said otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    steps_areas: Option<sioul_core::areafilter::Shown>,
 }
 
 fn no_more(more: &[u32]) -> bool {
@@ -324,6 +328,8 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     // Invited: your own answer, as you gave it (none yet: "needs-action").
     let own_answer = if o.with_others { people.iter().find(|p| p["you"] == true && p["organizer"] == false).and_then(|p| p["answer"].as_str()).unwrap_or_default().to_string() } else { String::new() };
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
+    // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
+    let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
     json(&serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
@@ -355,9 +361,20 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // One person in two places, said once on the card (research on several agendas, §5.3).
         "conflicts": pim::conflicts_known(&o.key, o.start),
         "busy": o.busy,
+        // Busy or free (the mark of `busy`, its TRANSP read as Google reads it), changed here
+        // but on a meeting with others, a calendar you only read, or a task's block (its task's own).
+        "marked_busy": sioul_core::busy::event_marked(&o),
+        // A calendar free as a whole marks no event busy: greyed, saying why (review B7).
+        "busy_writable": !o.read_only && !o.with_others && o.task.is_empty() && !o.busy && !calendar_free,
+        "busy_why": if calendar_free { tr().text("busy-calendar-free", None) } else { String::new() },
+        // One changed time of a series: its Busy is that time's alone (review B7).
+        "rid": o.rid,
         // A child's event: who takes it, its kind, what you may answer (part 3).
         "child": crate::children::card(&path, if o.recurring { o.start } else { 0 }),
         "status": agenda::status_of(&text),
+        // A series: how it repeats ("Every week until Friday 26 June"), its next pause and when it resumes.
+        "repeats": if o.recurring { crate::series::card_lines(&text).0 } else { String::new() },
+        "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
@@ -406,6 +423,11 @@ pub(crate) struct View {
     /// written again by place, and never written again so.
     #[serde(skip_serializing)]
     calendars_hidden: Vec<String>,
+    /// The areas whose tasks' steps the Day and the Week draw, as written
+    /// ("work+leisure"; "" for none); none: every area. Your word, kept until
+    /// you change it, never by the hours (`step_areas`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    step_areas: Option<String>,
 }
 
 /// An agenda kept hidden on this device: its place (`timeline::collection_of`), and its name when it was hidden.
@@ -418,7 +440,7 @@ struct HiddenCalendar {
 
 impl Default for View {
     fn default() -> View {
-        View { steps: true, needs: true, doses: true, legs: false, filter: None, calendars: Vec::new(), calendars_hidden: Vec::new() }
+        View { steps: true, needs: true, doses: true, legs: false, filter: None, calendars: Vec::new(), calendars_hidden: Vec::new(), step_areas: None }
     }
 }
 
@@ -433,6 +455,7 @@ pub(crate) fn view() -> String {
     let mut view = read_view();
     view.filter = None;
     view.calendars.clear();
+    view.step_areas = None;
     json(&view)
 }
 
@@ -506,9 +529,11 @@ pub(crate) fn set_view(asked: &str) -> String {
     view.calendars_hidden.clear();
     sioul_core::filelock::with_lock(&view_path(), || {
         let now = read_view();
-        // The filter's word and the agendas kept hidden have their own writers (`turn`, `keep_hidden`).
+        // The filter's word, the agendas kept hidden and the steps' areas have their own writers
+        // (`turn`, `keep_hidden`, `set_step_areas`).
         view.filter = now.filter.clone();
         view.calendars = now.calendars.clone();
+        view.step_areas = now.step_areas.clone();
         if view == now {
             return String::new();
         }
@@ -523,6 +548,35 @@ fn write_view(view: &View) -> std::io::Result<()> {
     }
     let text = toml::to_string(view).unwrap_or_default();
     sioul_core::filelock::replace(&path, text.as_bytes())
+}
+
+/// The areas whose tasks' steps the Day and the Week draw on this device:
+/// every area unless you said otherwise (a full view hides nothing unless you
+/// say so), kept until you change it.
+pub(crate) fn step_areas() -> sioul_core::areas::Area {
+    read_view().step_areas.map_or(sioul_core::areas::Area::ALL, |text| sioul_core::areas::Area::parse(&text).unwrap_or_default())
+}
+
+/// The steps' areas ticked (`Some`), or every area again (`None`, "Everything"),
+/// kept in Show's file under its lock. Returns what went wrong, else "".
+pub(crate) fn set_step_areas(areas: Option<sioul_core::areas::Area>) -> String {
+    sioul_core::filelock::with_lock(&view_path(), || {
+        let mut view = read_view();
+        let wanted = areas.filter(|a| *a != sioul_core::areas::Area::ALL).map(sioul_core::areas::Area::id);
+        if view.step_areas == wanted {
+            return String::new();
+        }
+        view.step_areas = wanted;
+        write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
+    })
+}
+
+/// The steps' filter as its button shows it: the areas ticked, "Every area"
+/// when all are, and whether they differ from what now is for on this device
+/// (`areafilter::hours_say`), so that "As the hours say" is offered.
+fn steps_filter(ticked: sioul_core::areas::Area, mode: &sioul_core::quiet::Mode) -> sioul_core::areafilter::Shown {
+    let label = if ticked == sioul_core::areas::Area::ALL { tr().text("area-filter-all", None) } else { sioul_core::areafilter::label(tr(), ticked) };
+    sioul_core::areafilter::Shown { work: ticked.work, admin: ticked.admin, leisure: ticked.leisure, label, own: ticked != sioul_core::areafilter::hours_say(mode), device: String::new() }
 }
 
 /// The agenda filter as it stands now (several agendas): every agenda, work's
@@ -556,7 +610,7 @@ fn filter_now_with(view: &View) -> FilterNow {
     let agendas = sioul_core::agendas::all(&config);
     // The set Sioul's own time brings now (work, admin, leisure, as the hours say, Free time and the pause aside).
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let time = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &zoned).time;
+    let time = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::default(), &zoned).time;
     let sets = config.agenda.sets.clone();
     let by_time = sioul_core::agendas::set_of_time(&sets, time.id()).map(|(name, _)| name.clone());
     let mut out = kept.clone();
@@ -797,7 +851,10 @@ pub(crate) fn setup() -> String {
                 // For availability: what its events say shown (part 4).
                 "titles": a.titles,
                 // Its server, and whether it is yours to rename and remove (part 5).
-                "server": collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default(),
+                // None for a calendar subscribed by its address: no server to rename it on, nothing shared from here.
+                "server": if a.account == sioul_core::vdir::SUBSCRIBED { serde_json::Value::Null } else { collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default() },
+                // A calendar subscribed by its address: its address, what it holds, its line on this device; null for another.
+                "subscription": crate::subscriptions::row(&config, &a.id),
                 // A calendar of busy blocks Sioul keeps for your availability (Agenda ⚙ ▸ Your availability), and for which.
                 "mirror": a.mirror,
                 "kept_for": if a.mirror { config.agenda.availabilities.iter().find(|x| x.mirrors.iter().any(|m| format!("{}/{}", m.account, m.calendar) == a.id)).map(|x| x.name.clone()).unwrap_or_default() } else { String::new() },
@@ -970,6 +1027,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     // Month its dates and appointments; What comes today in full and what differs (§4.7).
     let mode = Mode::of(state.days, state.comes);
     let drawn = mode == Mode::Drawn;
+    // The areas whose tasks' steps the Day and the Week draw: every one unless you said otherwise.
+    let steps_ticked = if drawn { step_areas() } else { sioul_core::areas::Area::ALL };
     let read_from = if drawn { from - 86_400 } else { from };
     // Today drawn: tomorrow read with it, for the head line (one read of the calendars).
     let after_tomorrow = today.tomorrow().and_then(|d| d.tomorrow()).map_or(to, |d| midnight(d, &zone));
@@ -990,7 +1049,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let read = started.elapsed();
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
-    let mut items = agenda::items(&occurrences, &zone, &errand);
+    // A calendar of holidays that counts as your days off: its whole days are
+    // drawn as days off (`timeline::days_off`), never twice.
+    let counted = sioul_core::subscribed::counted_folders(&load_config());
+    // Within the years its days are read for (`subscribed::HOLIDAYS_FROM`), else shown as the event it is (F25).
+    let year_of = |year: i16| jiff::civil::Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
+    let read_for = year_of(sioul_core::subscribed::HOLIDAYS_FROM)..year_of(sioul_core::subscribed::HOLIDAYS_UNTIL);
+    let shown: Vec<Occurrence> = occurrences.iter().filter(|o| !(o.all_day && read_for.contains(&o.start) && counted.iter().any(|f| std::path::Path::new(&o.key).starts_with(f)))).cloned().collect();
+    let mut items = agenda::items(&shown, &zone, &errand);
     // Legs as events of their own when Show says so (D25); else quiet lines in their appointment's lead.
     if read_view().legs {
         for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Leg) {
@@ -1032,7 +1098,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         // The Month's dates too: a prescription's, by its kind (a pure read of the health file).
         let month_health = (mode == Mode::Month).then(|| sioul_core::health::Health::read(&sioul_core::health::Health::default_path()).ok()).flatten();
         let health = health_read.as_ref().and_then(|(h, _, _)| h.as_ref().ok()).or(month_health.as_ref());
-        items.extend(timeline::days_off(&load_config().time_off));
+        items.extend(timeline::days_off(&sioul_core::vacations::DaysOff::of(&load_config())));
         items.extend(crate::dated::items(&tasks, &occurrences, health, state.from, state.days, &now, &errand));
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
@@ -1057,7 +1123,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             Ok(health) => items.extend(dose_items(health, state.from, state.days, &now)),
             Err(_) => doses_note = tr().text("agenda-doses-unread", None),
         }
-        items.extend(timeline::days_off(&load_config().time_off));
+        items.extend(timeline::days_off(&sioul_core::vacations::DaysOff::of(&load_config())));
         // The dates asked of you on their days, today and after (the unified agenda, part 4),
         // and the next one past them.
         let (dated, next) = crate::dated::items_and_next(&tasks, &occurrences, health.as_ref().ok(), state.from, state.days, &now, &errand);
@@ -1066,6 +1132,12 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         // A task once a day: a block that holds its step gives way to it (`timeline::merge`).
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
+        // The steps' filter: a task's step, its time block and its done mark drawn only while its
+        // area, as the plan reads it, is ticked; nothing stands in for what it leaves out.
+        if steps_ticked != sioul_core::areas::Area::ALL {
+            let areas = plan.as_ref().map_or_else(|| sioul_core::areas::TaskAreas::of_config(&load_config(), &[]), |p| p.settings().areas.clone());
+            items.retain(|item| !step_left_out(item, &tasks, &areas, steps_ticked));
+        }
     }
     named(&mut items);
     // The agenda filter (several agendas): in What comes, the calm tab, what the
@@ -1192,6 +1264,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         bars: spans.bars.clone(),
         bars_more: spans.bars_more.clone(),
         filter: filter.shown_as(false, by_hand),
+        steps_areas: drawn.then(|| steps_filter(steps_ticked, &crate::hours::mode_at(&now))),
         hidden: filtered.clone(),
     };
     (json(&shown), read)
@@ -1421,6 +1494,14 @@ fn hidden_now(plan: &work::PlanShown, uid: &str) -> bool {
     plan.quiet().is_some_and(|q| plan.loaded().tasks.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)))
 }
 
+/// Whether the steps' filter leaves `item` out of the Day and the Week: a
+/// task's step, its time block or its done mark, the task's area (as the plan
+/// reads it, `areas`) meeting none of the areas `ticked`. Events, meals, the
+/// night and doses are never its.
+fn step_left_out(item: &timeline::Item, tasks: &[sioul_core::tasks::Task], areas: &sioul_core::areas::TaskAreas, ticked: sioul_core::areas::Area) -> bool {
+    matches!(item.kind, timeline::Kind::Step | timeline::Kind::Done | timeline::Kind::Block) && !item.owner.is_empty() && tasks.iter().find(|t| t.uid == item.owner).is_some_and(|t| !areas.of(t).meets(ticked))
+}
+
 /// Whether a task (by UID) is a health errand among `tasks`: its block and
 /// steps are health's, never named by its prescription on the timeline nor in
 /// the head line (decision 7), never given to an agent (the MCP makes its own
@@ -1474,7 +1555,7 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let held = work::held_by_plan(today, now).unwrap_or_else(|| sioul_core::plan::event_spans(occurrences, 0));
     let blocks = sioul_core::quiet::Blocks::of(&needs, &days, &held, now);
-    let moments: Vec<(i64, i64, sioul_core::quiet::Mode)> = sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &blocks, &[], now, &next_midnight, &[], 48)
+    let moments: Vec<(i64, i64, sioul_core::quiet::Mode)> = sioul_core::quiet::frames(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &[], now, &next_midnight, &[], 48)
         .into_iter()
         .map(|(from, until, mode)| (from.timestamp().as_second(), until.timestamp().as_second(), mode))
         .collect();
@@ -2391,6 +2472,11 @@ mod tests {
         let _health_tests = crate::health::health_files_held();
         let _view = view_held();
         sioul_core::config::stand_ins_only();
+        // The head line reads the pauses where every test of this run writes them: its own, none
+        // (`everywhere::FILES`, held by the tests that write them; a pause one of them holds for a
+        // moment was read here as "Paused.").
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
         let health = sioul_core::health::Health::default_path();
         std::fs::create_dir_all(health.parent().unwrap()).unwrap();
         std::fs::write(&health, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n").unwrap();
@@ -2518,6 +2604,56 @@ mod tests {
         assert!(steps_of(&today["comes"], "rows").is_empty(), "What comes: not today's step {}", today["comes"]);
         assert!(!today["comes"]["plan"].as_str().unwrap_or("").contains(&tr().text("head-work", None)), "nor named Work: {}", today["comes"]["plan"]);
         assert_eq!(listed(&comes), Some((Some(true), Some(true))), "What comes' filter, no hours set: {}", comes["filter"]);
+        work::forget_plan();
+    }
+
+    /// The Day and the Week draw the steps of the areas ticked (the owner's
+    /// word, 18 November 2026, evening): every area unless said otherwise;
+    /// leisure alone ticked, a work task's step is not drawn, nothing standing
+    /// in for it (its time block neither), the leisure one is; the ticks kept
+    /// in Show's file until changed; "Everything" draws both again. What comes
+    /// has no such filter.
+    #[test]
+    fn the_day_draws_the_steps_of_the_areas_ticked() {
+        let _health_tests = crate::health::health_files_held();
+        let _view = view_held();
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Steps by area", None, &["VEVENT", "VTODO"]).unwrap();
+        let _gone = Gone(calendar.dir.clone());
+        if !work::task_pinned_today(&calendar.dir, "area-work", "Quarterly figures", "Travail", 600) || !work::task_pinned_today(&calendar.dir, "area-joy", "Piano", "joy", 3000) {
+            // Too close to midnight for blocks today: nothing to lay.
+            return;
+        }
+        let shared = Arc::new(Shared::default());
+        work::publish_now_with(&shared, None);
+        let ask = |days: i64, comes: bool| {
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = Zoned::now().date();
+                state.days = days;
+                state.upcoming = comes;
+                state.comes = comes;
+            }
+            serde_json::from_str::<serde_json::Value>(&made(&shared).0).unwrap()
+        };
+        let owners = |day: &serde_json::Value| {
+            let mut found: Vec<String> = day["days"][0]["timed"].as_array().cloned().unwrap_or_default().into_iter().filter(|r| matches!(r["item"]["kind"].as_str(), Some("step" | "block" | "done"))).filter_map(|r| r["item"]["owner"].as_str().map(str::to_string)).filter(|o| o.starts_with("area-")).collect();
+            found.sort();
+            found.dedup();
+            found
+        };
+        let _ = std::fs::remove_file(view_path());
+        let day = ask(1, false);
+        assert_eq!(owners(&day), ["area-joy", "area-work"], "every area by default");
+        assert_eq!((day["steps_areas"]["work"].as_bool(), day["steps_areas"]["label"].as_str()), (Some(true), Some(tr().text("area-filter-all", None).as_str())));
+        assert_eq!(set_step_areas(Some(sioul_core::areas::Area::LEISURE)), "");
+        assert!(std::fs::read_to_string(view_path()).unwrap().contains("step_areas = \"leisure\""), "kept on this device");
+        assert_eq!(owners(&ask(1, false)), ["area-joy"], "leisure alone: the work step, and its block, not drawn");
+        assert_eq!(owners(&ask(7, false)), ["area-joy"], "the Week alike");
+        let comes = ask(COMES_FIRST_DAYS, true);
+        assert!(comes.get("steps_areas").is_none(), "What comes: no such filter");
+        assert_eq!(set_step_areas(None), "");
+        assert_eq!(owners(&ask(1, false)), ["area-joy", "area-work"], "Everything");
+        let _ = std::fs::remove_file(view_path());
         work::forget_plan();
     }
 

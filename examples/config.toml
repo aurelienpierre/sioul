@@ -5,9 +5,17 @@
 # `sioul account add you@example.org` (or the window's Accounts page) finds the
 # server, tests the password and writes the [[account]] block for you.
 
-# The notes folder: your Markdown files, and beside them your projects, budgets
-# and papers (docs/notes-folder.md). Its key keeps its first name, case_store.
+# The notes folder: your Markdown files (docs/notes-folder.md). Its key keeps
+# its first name, case_store. Sioul's own lists (projects, budgets, papers'
+# and letters' lists) live in its data folder once moved ("What lives where").
 case_store = "~/Notes"
+
+# Papers' files and letters' scans, each in a folder of its own, this device's
+# own; unset: Papers and Letters in your documents folder.
+# [papers]
+# folder = "~/Documents/Papers"
+# [letters]
+# folder = "~/Documents/Letters"
 
 # Senders you know: one address or @domain per line. Everyone else waits in the screener.
 # This is the default; "let in" in the window adds to it.

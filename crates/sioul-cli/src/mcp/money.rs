@@ -41,7 +41,7 @@ struct Opened {
 }
 
 fn opened(s: &Session) -> Result<Opened, String> {
-    let root = s.config.notes_root_path().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
+    let root = s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     sioul_core::budget::Ledger::load(&root)?;
     let books = movements::books(&root, &sioul_core::words::Words::of(&s.config), sioul_core::zone::now().date());
     let consent = access::of(s, &Loaded::read(&s.config));

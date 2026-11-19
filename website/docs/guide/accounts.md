@@ -105,7 +105,7 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 addresses sign in on Microsoft
 
 ## Who may reach you {#senders}
 
-Who may reach you, and when, by mail, by phone and through other apps' messages, and who is on which list (safe, neutral, restricted, blocked, with addresses, numbers, patterns such as `*@example.org`, the people placed on a list and your contacts' categories): Settings ▸ **What reaches you** ▸ **By person** ([What reaches you, and when](notifications.md#by-person)). For one person, their sheet, from their card or a message: **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). What each address is for stays on its card, above: mail to an address for another time waits for that time.
+Who may reach you, and when, by mail and through other apps' messages, and who is in which circle (safe, restricted, blocked, with addresses, numbers, patterns such as `*@example.org`, the people placed on a list and your groups; your contacts are everyone in your address books): Settings ▸ **What reaches you** ▸ **People** ([What reaches you, and when](notifications.md#by-person)). For one person, their sheet, from their card or a message: **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). What each address is for stays on its card, above: mail to an address for another time waits for that time.
 
 ## Encryption
 

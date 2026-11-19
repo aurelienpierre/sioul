@@ -92,7 +92,7 @@ Une tâche peut aussi dire **ce que ça coûte**, dans son panneau : *léger*,
 
 ## Commencer, et s’arrêter {#starting-and-stopping}
 
-Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**.
+Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**. Il est dans Maintenant, sur la carte d’une tâche, et dans le menu d’une tâche (un clic droit ou un appui long) dans **Liste**, **Tableau** et **Gantt**, pour n’importe quelle tâche, à toute heure.
 
 La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur Android, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
 
@@ -100,6 +100,7 @@ La fenêtre de concentration reste au premier plan pendant que vous travaillez a
 - Deux minutes avant la fin : « Encore deux minutes : le moment de trouver où s’arrêter. »
 - À la fin : **Continuer**, ou **S’arrêter ici, cela compte**.
 - S’arrêter propose une ligne, **La prochaine fois, commencer par…**, montrée quand la tâche revient.
+- **Indisponible pendant que j’y travaille**, sur le panneau de la tâche : tant que son minuteur tourne vous êtes indisponible, et avec **Pendant une indisponibilité** coché « Ne pas déranger » tient sur tous vos appareils ; son temps compte dans la disponibilité que vous partagez ([Indisponible](notifications.md#busy)). Désactivé sauf si vous le mettez. Sur une tâche avec des étapes, le minuteur d’une étape vous rend indisponible aussi. Sous l’interrupteur, une ligne dit ce que la disponibilité que vous partagez contient pour la tâche, ou que son temps n’est pas encore connu.
 
 Le temps est noté pour la tâche, et pour son projet : pour le facturer, et pour apprendre combien de temps les choses prennent vraiment ([Temps](time.md)). Un minuteur oublié est coupé quand vous l’arrêtez, et le moment le dit ([Temps](time.md#where-time-comes-from)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
 
@@ -212,7 +213,7 @@ Puis un écran court, lu en dix secondes, dit :
 
 Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’ouvre sur cette première étape. D’ici là, le travail se repose ([le calme](hours.md#quiet-time)). Une pensée qui vient le soir peut se noter en une ligne ; elle attend, hors de vue, le retour du travail.
 
-**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Sous Linux et sur Android, la notification a aussi **Clore la journée de travail** ; sur un Mac et sous Windows elle n’a pas de bouton, et un clic dessus fait venir Sioul (sous Windows, ouvre la même feuille). Pressée une fois la journée tournée (5 h), elle n’ouvre rien. Sur Android, elle ne vient à l’heure qu’avec « Alarmes et rappels » autorisé (Paramètres ▸ Ce téléphone, ou Cette tablette) ; sans cela, le plus souvent elle ne vient pas. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
+**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Sous Linux et sur Android, la notification a aussi **Clore la journée de travail** ; sur un Mac et sous Windows elle n’a pas de bouton, et un clic dessus fait venir Sioul (sous Windows, ouvre la même feuille). Pressée une fois la journée tournée (5 h), elle n’ouvre rien. Sur Android, elle ne vient à l’heure qu’avec « Alarmes et rappels » autorisé (Paramètres ▸ Appareils, la carte de ce téléphone, ou Cette tablette) ; sans cela, le plus souvent elle ne vient pas. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
 
 **À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un petit écran dans le tiroir des lieux. Sur un ordinateur, le menu de l’icône de Sioul dans la zone de notification (sur un Mac, dans la barre des menus) a les deux mêmes.
 
@@ -232,7 +233,7 @@ Google Tasks garde moins : une liste là-bas grise ce que Google ne garde pas 
 
 Pendant le calme ([Les heures](hours.md#quiet-time)), **Maintenant** ne garde que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour. Les autres onglets montrent tout, quelle que soit l’heure. Une tâche que vous créez sur la page Tâches reste en vue dans Maintenant jusqu’à ce que vous quittiez la page, quelles que soient les heures, et sa ligne dit quand elle revient : « Hors de ces heures : de retour demain à 09:00. »
 
-Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), **Maintenant** attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les onglets restent à portée : **La journée**, **Liste**, **Tableau**, **Gantt** et **Chercher** montrent tout. Dans Maintenant, **Nouveau ▾ ▸ Une tâche** le montre quand même, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
+Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), **Maintenant** attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. La ligne sous les onglets note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les onglets restent à portée : **La journée**, **Liste**, **Tableau**, **Gantt** et **Chercher** montrent tout. Dans Maintenant, **Nouveau ▾ ▸ Une tâche** le montre quand même, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
 
 ## Pour aller plus loin {#going-further}
 

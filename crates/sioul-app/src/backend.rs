@@ -61,6 +61,14 @@ pub mod qobject {
         // The Budgets page's From mail tab: the page last asked (`ledger::ask_mail`).
         #[qproperty(QString, money_mail)]
         #[qproperty(QString, contacts)]
+        // The batch running on contacts, or the last one's end (`contactbatch::start`):
+        // JSON {running, done, total, line, failed: [{name, why}]}.
+        #[qproperty(QString, contacts_batch)]
+        // The contacts' import, its step (`contactimport`): JSON {step, line, …}.
+        #[qproperty(QString, contacts_import)]
+        // The batches on contacts of the last thirty days (`contactbatch::show_batches`):
+        // JSON [{id, line, partly, why_not, ask}], newest first.
+        #[qproperty(QString, contacts_batches)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
@@ -88,6 +96,14 @@ pub mod qobject {
         #[qproperty(QString, notes)]
         #[qproperty(QString, focus_session)]
         #[qproperty(QString, reading)]
+        // The notes folder as this device finds it, as JSON (`Config::notes_folder`):
+        // {"state": "ready" | "unreadable" | "unset", "path"}; "" until first found.
+        // The Notes page asks for it when it is not ready (FolderNeeded.qml).
+        #[qproperty(QString, notes_folder)]
+        // Where Sioul's lists are and the move out of the notes folder stands, as JSON
+        // (`storage::view_json`): read again each minute off the window's thread; "" until
+        // first found. The window of the move (StorageMove.qml) shows itself once from it.
+        #[qproperty(QString, storage_move)]
         // What this device is for what follows you: "phone", "tablet" or "computer" (devicekind.rs).
         // Never the layout, which follows the window's size (main.qml's `compact`).
         #[qproperty(QString, device_kind)]
@@ -574,6 +590,94 @@ pub mod qobject {
         #[qinvokable]
         fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
 
+        /// The Contacts page's filters (JSON, `contactfilter::Filter`): kept on this device, the list shown again.
+        #[qinvokable]
+        fn set_contacts_filter(self: Pin<&mut Sioul>, filter: &QString);
+
+        /// What a batch on the cards selected would do, said first (JSON {keys,
+        /// action, book, group, ticked}): JSON {count, sentence, note, losses, shared, cannot_line, cannot, previews}.
+        #[qinvokable]
+        fn contacts_batch_plan(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// Runs that batch off the window's thread, its progress in `contactsBatch`; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_batch(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// The batch running stopped before its next card.
+        #[qinvokable]
+        fn stop_contacts_batch(self: Pin<&mut Sioul>);
+
+        /// The batches of the last thirty days read again, off the window's thread, into `contactsBatches`.
+        #[qinvokable]
+        fn read_contacts_batches(self: Pin<&mut Sioul>);
+
+        /// A batch of the last thirty days undone, by its id; "" once started, else why not.
+        #[qinvokable]
+        fn undo_contacts_batch(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// What merging an address book into another would do, asked first: JSON {sentence, losses, shared, cannot}.
+        #[qinvokable]
+        fn merge_question(self: &Sioul, from: &QString, into: &QString) -> QString;
+
+        /// "Its groups decide who may reach me" set for an address book ("account/id"); "" done, else why not.
+        #[qinvokable]
+        fn set_book_groups(self: Pin<&mut Sioul>, place: &QString, on: bool) -> QString;
+
+        /// Contacts ⚙ ▸ Address books, as JSON {books, homes} (`addressbooks::lines`).
+        #[qinvokable]
+        fn address_books_setup(self: &Sioul) -> QString;
+
+        /// A new address book (JSON {account, name}); "" done, else why not.
+        #[qinvokable]
+        fn make_address_book(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// An address book renamed ("account/id"), with Undo; "" done, else why not.
+        #[qinvokable]
+        fn rename_address_book(self: Pin<&mut Sioul>, place: &QString, name: &QString) -> QString;
+
+        /// What removing an address book would do, asked first: JSON {act, sentence, count, into, note}.
+        #[qinvokable]
+        fn address_book_removal(self: &Sioul, place: &QString) -> QString;
+
+        /// An address book removed as `how` says ("empty", "delete", "leave", "move:<place>"); "" done or started, else why not.
+        #[qinvokable]
+        fn remove_address_book(self: Pin<&mut Sioul>, place: &QString, how: &QString) -> QString;
+
+        /// An address book's sharing read, or changed, the answer `bookShared`.
+        #[qinvokable]
+        fn read_book_sharing(self: Pin<&mut Sioul>, place: &QString);
+
+        #[qinvokable]
+        fn share_book(self: Pin<&mut Sioul>, place: &QString, who: &QString, write: bool);
+
+        #[qinvokable]
+        fn unshare_book(self: Pin<&mut Sioul>, place: &QString, sharee: &QString);
+
+        /// A book's cards ({book}) or the cards selected ({keys}) written as one vCard file at `url`; "" done, else why not.
+        #[qinvokable]
+        fn export_contacts(self: Pin<&mut Sioul>, asked: &QString, url: &QString) -> QString;
+
+        /// A file of contacts (a path) read off the window's thread, its first step in `contactsImport`.
+        #[qinvokable]
+        fn import_contacts(self: Pin<&mut Sioul>, path: &QString);
+
+        /// The CSV file shown read again with another separator (";", ",", a tab), its columns in `contactsImport`.
+        #[qinvokable]
+        fn separate_contacts_import(self: Pin<&mut Sioul>, separator: &QString);
+
+        /// The import planned (JSON {fields, book, new_account, new_name, groups, groups_here,
+        /// complete, titles, international, keep_as}), its count in `contactsImport`.
+        #[qinvokable]
+        fn plan_contacts_import(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// The import planned, run as one batch; "" once started, else why not.
+        #[qinvokable]
+        fn run_contacts_import(self: Pin<&mut Sioul>) -> QString;
+
+        /// The import shown set aside, nothing written.
+        #[qinvokable]
+        fn close_contacts_import(self: Pin<&mut Sioul>);
+
         /// Looks for duplicates in the contacts, off the window's thread: they come in `duplicates`.
         #[qinvokable]
         fn find_duplicates(self: Pin<&mut Sioul>);
@@ -583,9 +687,14 @@ pub mod qobject {
         #[qinvokable]
         fn clean_contacts(self: Pin<&mut Sioul>, keys: &QString) -> QString;
 
-        /// Merges two cards, `lead` keeping its name, the other deleted; returns {"key"} or {"error"}.
+        /// Merges two cards, `lead` keeping its name, the other deleted, its groups taken when
+        /// `groups` or when they cross no switch (`duplicates_merge_ask`); returns {"key"} or {"error"}.
         #[qinvokable]
-        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
+        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString, groups: bool) -> QString;
+
+        /// What merging two cards would take across a book's switch, asked first: JSON {groups, offer, reach}.
+        #[qinvokable]
+        fn duplicates_merge_ask(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
 
         /// Two cards are not one person: never offered again; returns what went wrong, else "".
         #[qinvokable]
@@ -710,6 +819,18 @@ pub mod qobject {
         /// Show changed, on this device alone; returns what went wrong, else "".
         #[qinvokable]
         fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
+
+        /// The Day's and the Week's steps: the areas ticked ("work+leisure", "" for none),
+        /// kept on this device until changed (`agenda::set_step_areas`); "everything" and
+        /// "as the hours say" below. Each returns what went wrong, else "".
+        #[qinvokable]
+        fn tick_step_areas(self: Pin<&mut Sioul>, areas: &QString) -> QString;
+
+        #[qinvokable]
+        fn step_areas_everything(self: Pin<&mut Sioul>) -> QString;
+
+        #[qinvokable]
+        fn step_areas_as_hours(self: Pin<&mut Sioul>) -> QString;
 
         /// The agenda filter: the agendas `ids` (a JSON list of places) turned
         /// on or off by hand, until work's hours change (`agenda::turn`);
@@ -854,6 +975,39 @@ pub mod qobject {
         #[qinvokable]
         fn agendas_setup(self: &Sioul) -> QString;
 
+        /// The official French calendars offered (Agenda ⚙ ▸ Subscribe to a
+        /// calendar…), as JSON (`subscriptions::officials`).
+        #[qinvokable]
+        fn subscribe_officials(self: &Sioul) -> QString;
+
+        /// A calendar subscribed by its web address ({url, name, holidays,
+        /// days_off, after_class, id, whose, person, area}), then read at
+        /// once: {id, problem} as JSON (`subscriptions::subscribe`).
+        #[qinvokable]
+        fn subscribe_calendar(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// One field of a subscribed calendar ("url", "name", "holidays",
+        /// "days_off", "after_class", "colour"); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_subscription_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// "Refresh now" on a subscribed calendar's line: read apart, said in the status line.
+        #[qinvokable]
+        fn refresh_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// A subscribed calendar stopped, on every device; returns what went wrong, else "".
+        #[qinvokable]
+        fn stop_subscription(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Settings ▸ Hours ▸ Vacations and holidays: the calendars of holidays, as JSON.
+        #[qinvokable]
+        fn holidays_calendars(self: &Sioul) -> QString;
+
+        /// What a series may pause during, for the event form: my vacations,
+        /// public holidays, each school-holidays calendar, as JSON (`series::sources`).
+        #[qinvokable]
+        fn pause_sources(self: &Sioul) -> QString;
+
         /// One field of an agenda's settings ("whose", "name", "area",
         /// "reaches", "access"; "" back to the default); returns what went
         /// wrong, else "".
@@ -881,6 +1035,11 @@ pub mod qobject {
         /// usual, "none", "15"); returns what went wrong, else "".
         #[qinvokable]
         fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
+
+        /// An event marked busy or free from its card (`pim::set_event_busy`):
+        /// what went wrong, else "".
+        #[qinvokable]
+        fn set_event_busy(self: Pin<&mut Sioul>, key: &QString, busy: bool, rid: &QString) -> QString;
 
         /// Deletes an event, or only the occurrence starting at `start`, after ten
         /// seconds to undo; never a meeting with others nor one of a calendar
@@ -1474,6 +1633,29 @@ pub mod qobject {
         #[qinvokable]
         fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
+        /// This phone's own card in Settings ▸ Devices, as JSON (`phonecard::view`):
+        /// `{ phone, allow, restricted }`, what Android must allow and its restricted
+        /// settings' card; `{ phone: false }` elsewhere.
+        #[qinvokable]
+        fn phone_card(self: Pin<&mut Sioul>) -> QString;
+
+        /// The same, read when the window comes back: back from Sioul's page in
+        /// Android, the accesses still held asked again by themselves first
+        /// (`phonecard::back`); never in answer to a step of the card.
+        #[qinvokable]
+        fn phone_card_back(self: Pin<&mut Sioul>) -> QString;
+
+        /// A line of what Android must allow pressed (`phonecard::ask`): "role",
+        /// "contacts", "history", "notifications", "texts", "dnd", "alarms",
+        /// "battery", "stars": Android's question or its page. The card again.
+        #[qinvokable]
+        fn phone_allow(self: Pin<&mut Sioul>, what: &QString) -> QString;
+
+        /// A step of the restricted settings' card pressed (`access::restricted_step`):
+        /// "notice", "info", "back". The card again, as `phone_card`.
+        #[qinvokable]
+        fn restricted_step(self: Pin<&mut Sioul>, step: &QString) -> QString;
+
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
         fn needs(self: &Sioul) -> QString;
@@ -1930,6 +2112,27 @@ pub mod qobject {
         /// A part of what is shared ("settings", "notes"…) switched on or off on this device; returns what went wrong, else "".
         #[qinvokable]
         fn set_share_part(self: Pin<&mut Sioul>, part: &QString, on: bool) -> QString;
+
+        /// This device's move of Sioul's lists out of the notes folder, as the
+        /// window of the move asks it: the papers' and letters' folders chosen
+        /// ("" for the default) and whether its part "projects" goes on. Run
+        /// off the window's thread; said in the status line and in `storageMove`.
+        #[qinvokable]
+        fn move_lists(self: Pin<&mut Sioul>, papers: &QString, letters: &QString, carry: bool);
+        /// Where a paper or a scan is now, for a `file://` link that still
+        /// names its old place in the notes folder (`storage::moved_to`), as a
+        /// file's address; "" for any other.
+        #[qinvokable]
+        fn moved_file(self: &Sioul, url: &QString) -> QString;
+        /// The sentence that says a sync program is known to carry a folder
+        /// chosen for papers or letters (`share::carrier_of`), or "".
+        #[qinvokable]
+        fn folder_carrier(self: &Sioul, folder: &QString) -> QString;
+        /// Sioul's old files out of this device's notes folder, on your press
+        /// in Settings ▸ Sharing once every device moved (`storage::take_out`).
+        /// Off the window's thread; said in the status line and in `storageMove`.
+        #[qinvokable]
+        fn take_out_old_files(self: Pin<&mut Sioul>);
 
         /// On a phone: whether a sync app carries the notes folder, as you
         /// say (Sioul cannot read its settings there). Returns what went wrong, else "".
@@ -2539,6 +2742,12 @@ pub mod qobject {
         #[qinvokable]
         fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// A choice of Settings ▸ What reaches you (`reaches::choose`; `what`:
+        /// "people.mail.safe", "group.reminders", "care.move"; `value`: a
+        /// behaviour's or a choice's id), its rows written whole: what went wrong, else "".
+        #[qinvokable]
+        fn reaches_choose(self: Pin<&mut Sioul>, what: &QString, value: &QString) -> QString;
+
         /// How someone reaches you, as JSON (`reaches::person`): a card's file or
         /// UID, or a sender's addresses (a JSON array, or one).
         #[qinvokable]
@@ -2988,6 +3197,11 @@ pub mod qobject {
         #[qsignal]
         fn agenda_shared(self: Pin<&mut Sioul>, id: QString, answer: QString);
 
+        /// An address book's sharing as its server answered (`addressbooks::sharing`): its
+        /// place, JSON {line, sharer, people, problem}.
+        #[qsignal]
+        fn book_shared(self: Pin<&mut Sioul>, place: QString, answer: QString);
+
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
         fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
@@ -3184,6 +3398,9 @@ pub struct SioulRust {
     undo_line: QString,
     money_mail: QString,
     contacts: QString,
+    contacts_batch: QString,
+    contacts_import: QString,
+    contacts_batches: QString,
     duplicates: QString,
     agenda: QString,
     overlaps: QString,
@@ -3197,6 +3414,8 @@ pub struct SioulRust {
     notes: QString,
     focus_session: QString,
     reading: QString,
+    notes_folder: QString,
+    storage_move: QString,
     device_kind: QString,
     telephony: bool,
     keyboard: bool,
@@ -3353,31 +3572,52 @@ thread_local! {
 }
 
 pub(crate) fn load_config() -> Config {
+    config_parsed().0
+}
+
+/// The settings, only when their file is there and reads: what takes
+/// something away on their word (a subscribed calendar's copy, a series'
+/// pauses) asks this, never the defaults a file that does not read gives
+/// (the calendars' review, F19, F27).
+pub(crate) fn config_read() -> Option<Config> {
+    let (config, reads) = config_parsed();
+    reads.then_some(config)
+}
+
+/// The settings as `load_config` gives them, and whether their file is
+/// there and reads.
+fn config_parsed() -> (Config, bool) {
     // Read a hundred times a minute: parsed again only when the file changed
     // (its size or its time), as the sharing or another window may change it.
     // A time younger than two seconds is not trusted: two writings of one size
     // within a tick of the clock look alike.
-    type Parsed = (PathBuf, u64, std::time::SystemTime, Config);
+    type Parsed = (PathBuf, u64, std::time::SystemTime, Config, bool);
     static PARSED: Mutex<Option<Parsed>> = Mutex::new(None);
     let path = config_path();
     let settled = |time: &std::time::SystemTime| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2));
     let stamp = std::fs::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
     if let Some((size, time)) = stamp
         && let Ok(parsed) = PARSED.lock()
-        && let Some((p, s, t, config)) = parsed.as_ref()
+        && let Some((p, s, t, config, reads)) = parsed.as_ref()
         && *p == path
         && *s == size
         && *t == time
     {
-        return config.clone();
+        // Where this device keeps its lists, read each time: the move's switch
+        // writes the state folder alone, never the file whose stamp is kept here.
+        let mut config = config.clone();
+        config.storage = sioul_core::storage::Storage::here();
+        return (config, *reads);
     }
-    let config = Config::load(&path).unwrap_or_default();
+    let loaded = Config::load(&path);
+    let reads = loaded.is_ok();
+    let config = loaded.unwrap_or_default();
     // The words this program looks for, said once each time the file is read (`words::current`).
     sioul_core::words::set_current(sioul_core::words::Words::of(&config));
     if let (Some((size, time)), Ok(mut parsed)) = (stamp, PARSED.lock()) {
-        *parsed = Some((path, size, time, config.clone()));
+        *parsed = Some((path, size, time, config.clone(), reads));
     }
-    config
+    (config, reads)
 }
 
 /// One translator for the session: the configuration's language, else the session's.
@@ -3565,6 +3805,43 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
     });
 }
 
+/// The notes folder's state (`notesFolder`), found off the window's thread (a
+/// drive that does not answer never holds the window), then set when it
+/// changed; once it was known, a change shows again what reads the folder.
+pub(crate) fn notes_folder_now(qt: &QtThread, shared: &Arc<Shared>) {
+    let (qt, shared) = (qt.clone(), shared.clone());
+    std::thread::spawn(move || {
+        let found = serde_json::to_string(&load_config().notes_folder()).unwrap_or_default();
+        let qt_again = qt.clone();
+        let _ = qt.queue(move |mut sioul| {
+            let before = sioul.notes_folder().to_string();
+            if before == found {
+                return;
+            }
+            sioul.as_mut().set_notes_folder(QString::from(&found));
+            if !before.is_empty() {
+                show(&qt_again, &shared);
+                work::show_work(&qt_again, &shared);
+            }
+        });
+    });
+}
+
+/// Where Sioul's lists are and the move stands (`storageMove`), found off the
+/// window's thread (it reads the sharing folder's entries and lists the notes
+/// folder), then set when it changed.
+pub(crate) fn storage_move_now(qt: &QtThread) {
+    let qt = qt.clone();
+    std::thread::spawn(move || {
+        let found = crate::storage::view_json();
+        let _ = qt.queue(move |mut sioul| {
+            if sioul.storage_move().to_string() != found {
+                sioul.as_mut().set_storage_move(QString::from(&found));
+            }
+        });
+    });
+}
+
 /// How long text reads, for the window's theme; and whether the places show their names.
 pub(crate) fn reading_json() -> String {
     let config = load_config();
@@ -3587,7 +3864,7 @@ impl World {
         let config = load_config();
         World {
             // With the mail tied to projects, so their conversations follow.
-            store: config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
+            store: config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
             known: KnownSenders::load(&config.known_senders_path()),
             senders: porch::Senders::load(&config),
             config,
@@ -3602,11 +3879,11 @@ impl World {
 
     fn ledger(&self) -> Option<Ledger> {
         // With the bank accounts' movements counted in their budgets.
-        self.config.notes_root_path().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
+        self.config.records_root().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
     }
 
     fn ledger_path(&self) -> Option<PathBuf> {
-        self.config.notes_root_path().map(|root| root.join(budget::LEDGER))
+        self.config.records_root().map(|root| root.join(budget::LEDGER))
     }
 
     /// Every message about money, and what becomes of it.
@@ -3832,7 +4109,7 @@ fn compute(shared: &Shared) -> Views {
     let another = |t: &Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).is_some_and(|account| crate::mail::read_here_only(account, &mode));
     let ours: Vec<Triaged> = items.iter().filter(|t| !another(t)).cloned().collect();
     let shown = if porch.open { PorchState::newest_shown(&ours) } else { BTreeMap::new() };
-    let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
+    let budgets = world.config.records_root().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
         // The money read once (`movements::books`, made again only when a file changed).
         let words = sioul_core::words::Words::of(&world.config);
         let books = sioul_core::movements::books(&root, &words, now.date());
@@ -4366,7 +4643,7 @@ fn tie_to_projects(files: &[PathBuf]) {
     let before = ties.links.len();
     // GitHub's notification mail, to its issue's task.
     crate::github::tie_mail(&config, files, &mut ties);
-    if let Some(store) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
+    if let Some(store) = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties)) {
         let senders = porch::Senders::load(&config);
         for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second()) {
             // By its Message-ID, else its digest in its account (`sioul:mail/…`).
@@ -4394,7 +4671,7 @@ fn tie_to_projects(files: &[PathBuf]) {
 fn retie_project(id: String) {
     std::thread::spawn(move || {
         let config = load_config();
-        let Some(project) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).and_then(|s| s.get(&id).cloned()) else { return };
+        let Some(project) = config.places().and_then(|places| ProjectStore::open(&places).ok()).and_then(|s| s.get(&id).cloned()) else { return };
         let routes: Vec<&sioul_core::projects::Route> = project.routes.iter().filter(|r| r.needs_body()).collect();
         if routes.is_empty() {
             return;
@@ -4821,6 +5098,8 @@ impl qobject::Sioul {
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
+        notes_folder_now(&self.qt_thread(), &self.shared());
+        storage_move_now(&self.qt_thread());
         self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
         // Said again now that Android's side answers (a first sentence may have come before it).
         crate::devicekind::name_in_words();
@@ -5673,7 +5952,8 @@ impl qobject::Sioul {
     fn search_contacts(self: Pin<&mut Self>, query: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.query = query.to_string();
+            state.filter.name = query.to_string();
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
     }
@@ -5701,9 +5981,106 @@ impl qobject::Sioul {
     fn show_contacts_category(self: Pin<&mut Self>, category: &QString) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.category = category.to_string();
+            state.filter.group = category.to_string();
+            state.filter.ungrouped = false;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
         }
         pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn set_contacts_filter(self: Pin<&mut Self>, filter: &QString) {
+        let shared = self.shared();
+        if let Ok(asked) = serde_json::from_str::<sioul_core::contactfilter::Filter>(&filter.to_string())
+            && let Ok(mut state) = shared.pim.lock()
+        {
+            state.filter = asked;
+            let _ = state.filter.save(&sioul_core::contactfilter::Filter::default_path());
+        }
+        pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn contacts_batch_plan(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::plan(&self.shared(), &asked.to_string()))
+    }
+
+    fn run_contacts_batch(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::contactbatch::run(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn stop_contacts_batch(self: Pin<&mut Self>) {
+        crate::contactbatch::stop();
+    }
+
+    fn read_contacts_batches(self: Pin<&mut Self>) {
+        crate::contactbatch::show_batches(&self.qt_thread());
+    }
+
+    fn undo_contacts_batch(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::contactbatch::undo(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn merge_question(&self, from: &QString, into: &QString) -> QString {
+        QString::from(&crate::addressbooks::merge_question(&from.to_string(), &into.to_string()))
+    }
+
+    fn set_book_groups(self: Pin<&mut Self>, place: &QString, on: bool) -> QString {
+        QString::from(&crate::addressbooks::set_groups(&self.qt_thread(), &self.shared(), &place.to_string(), on))
+    }
+
+    fn address_books_setup(&self) -> QString {
+        QString::from(&crate::addressbooks::setup())
+    }
+
+    fn make_address_book(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::addressbooks::make(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn rename_address_book(self: Pin<&mut Self>, place: &QString, name: &QString) -> QString {
+        QString::from(&crate::addressbooks::rename(&self.qt_thread(), &self.shared(), &place.to_string(), &name.to_string()))
+    }
+
+    fn address_book_removal(&self, place: &QString) -> QString {
+        QString::from(&crate::addressbooks::removal(&place.to_string()))
+    }
+
+    fn remove_address_book(self: Pin<&mut Self>, place: &QString, how: &QString) -> QString {
+        QString::from(&crate::addressbooks::remove(&self.qt_thread(), &self.shared(), &place.to_string(), &how.to_string()))
+    }
+
+    fn read_book_sharing(self: Pin<&mut Self>, place: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Read);
+    }
+
+    fn share_book(self: Pin<&mut Self>, place: &QString, who: &QString, write: bool) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Share { who: who.to_string(), write });
+    }
+
+    fn unshare_book(self: Pin<&mut Self>, place: &QString, sharee: &QString) {
+        crate::addressbooks::sharing(&self.qt_thread(), &self.shared(), &place.to_string(), crate::addressbooks::Change::Unshare(sharee.to_string()));
+    }
+
+    fn export_contacts(self: Pin<&mut Self>, asked: &QString, url: &QString) -> QString {
+        QString::from(&crate::contactexport::export(&self.qt_thread(), &self.shared(), &asked.to_string(), &url.to_string()))
+    }
+
+    fn import_contacts(self: Pin<&mut Self>, path: &QString) {
+        crate::contactimport::read(&self.qt_thread(), &self.shared(), &path.to_string(), false);
+    }
+
+    fn separate_contacts_import(self: Pin<&mut Self>, separator: &QString) {
+        crate::contactimport::separate(&self.qt_thread(), &separator.to_string());
+    }
+
+    fn plan_contacts_import(self: Pin<&mut Self>, asked: &QString) {
+        crate::contactimport::plan(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn run_contacts_import(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::contactimport::run(&self.qt_thread(), &self.shared()))
+    }
+
+    fn close_contacts_import(self: Pin<&mut Self>) {
+        crate::contactimport::close(&self.qt_thread());
     }
 
     fn find_duplicates(self: Pin<&mut Self>) {
@@ -5714,8 +6091,12 @@ impl qobject::Sioul {
         QString::from(&crate::duplicates::clean(&self.qt_thread(), &self.shared(), &keys.to_string()))
     }
 
-    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
-        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string()))
+    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString, groups: bool) -> QString {
+        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string(), groups))
+    }
+
+    fn duplicates_merge_ask(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
+        QString::from(&crate::duplicates::merge_ask(&self.shared(), &lead.to_string(), &other.to_string()))
     }
 
     fn not_same_contacts(self: Pin<&mut Self>, first: &QString, second: &QString) -> QString {
@@ -5834,6 +6215,25 @@ impl qobject::Sioul {
         QString::from(&crate::agenda::set_view(&view.to_string()))
     }
 
+    fn tick_step_areas(self: Pin<&mut Self>, areas: &QString) -> QString {
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areas::Area::parse(&areas.to_string()).unwrap_or_default()));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_everything(self: Pin<&mut Self>) -> QString {
+        let problem = crate::agenda::set_step_areas(None);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn step_areas_as_hours(self: Pin<&mut Self>) -> QString {
+        // What now is for on this device, ticked as your word: it stays when the hours change.
+        let problem = crate::agenda::set_step_areas(Some(sioul_core::areafilter::hours_say(&crate::hours::mode_now())));
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
     fn find_things(&self, query: &QString) -> QString {
         QString::from(&crate::thingsearch::search(&self.shared(), &query.to_string()))
     }
@@ -5877,6 +6277,34 @@ impl qobject::Sioul {
 
     fn agendas_setup(&self) -> QString {
         QString::from(&crate::agenda::setup())
+    }
+
+    fn subscribe_officials(&self) -> QString {
+        QString::from(&crate::subscriptions::officials())
+    }
+
+    fn subscribe_calendar(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::subscriptions::subscribe(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn set_subscription_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        QString::from(&crate::subscriptions::set_field(&self.qt_thread(), &self.shared(), &id.to_string(), &field.to_string(), &value.to_string()))
+    }
+
+    fn refresh_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::refresh_now(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn stop_subscription(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::subscriptions::stop(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn holidays_calendars(&self) -> QString {
+        QString::from(&crate::subscriptions::holidays())
+    }
+
+    fn pause_sources(&self) -> QString {
+        QString::from(&crate::series::sources())
     }
 
     fn take_child(self: Pin<&mut Self>, key: &QString, start: f64, who: &QString) -> QString {
@@ -6034,6 +6462,10 @@ impl qobject::Sioul {
     fn set_event_reminder(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
         let result = crate::remind::set_event(&self.qt_thread(), &self.shared(), &key.to_string(), &value.to_string());
         QString::from(&result.err().unwrap_or_default())
+    }
+
+    fn set_event_busy(self: Pin<&mut Self>, key: &QString, busy: bool, rid: &QString) -> QString {
+        QString::from(&pim::set_event_busy(&self.qt_thread(), &self.shared(), &key.to_string(), busy, &rid.to_string()))
     }
 
     fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
@@ -6463,7 +6895,7 @@ impl qobject::Sioul {
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {
         let world = World::load();
         let today = sioul_core::zone::now().date();
-        let Some(root) = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()) else { return QString::default() };
+        let Some(root) = world.config.records_root().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()) else { return QString::default() };
         let books = sioul_core::movements::books(&root, &sioul_core::words::Words::of(&world.config), today);
         let Some(found) = books.counted.budgets.iter().find(|b| b.id == id.to_string()) else { return QString::default() };
         let anchor = anchor.to_string().parse().unwrap_or(today);
@@ -7063,6 +7495,10 @@ impl qobject::Sioul {
     }
 
     fn device_forget(self: Pin<&mut Self>, id: &QString) -> QString {
+        // A phone forgotten: its word on where each person is starred taken out of the list (review of `phones`, L8).
+        if let Err(e) = sioul_core::stars::forget_place(&sioul_core::everywhere::People::default_path(), &id.to_string()) {
+            eprintln!("sioul: stars: {e}");
+        }
         QString::from(&crate::health::device_forget(&id.to_string()))
     }
 
@@ -7070,12 +7506,42 @@ impl qobject::Sioul {
         QString::from(&crate::share::devices())
     }
 
+    fn phone_card(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::view())
+    }
+
+    fn phone_card_back(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::back())
+    }
+
+    fn phone_allow(self: Pin<&mut Self>, what: &QString) -> QString {
+        QString::from(&crate::phonecard::ask(&what.to_string()))
+    }
+
+    fn restricted_step(self: Pin<&mut Self>, step: &QString) -> QString {
+        crate::access::restricted_step(&step.to_string());
+        QString::from(&crate::phonecard::view())
+    }
+
     fn device_say(mut self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
-        let field = field.to_string();
-        let problem = crate::share::say_of_device(&id.to_string(), &field, &value.to_string());
+        let (id, field) = (id.to_string(), field.to_string());
+        // A phone's calls: their value before, for Undo.
+        let before = field.starts_with("calls.").then(|| sioul_core::calls_line::raw(&config_path(), &id)).flatten();
+        let (problem, undo) = crate::share::say_of_device_said(&id, &field, &value.to_string());
+        // A change that did more than the cell pressed, or replaced a table of your own: said with Undo, which
+        // puts the phone's value back as it was (`calls_line::put_raw`) and its table again.
+        if let Some(line) = undo {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            crate::mail::offer_back(&qt, &shared, line, move |_, _| {
+                let problem = sioul_core::calls_line::put_raw(&config_path(), &id, before.as_deref()).err().unwrap_or_default();
+                std::thread::spawn(|| crate::calls::refresh(true));
+                problem
+            });
+        }
         // What a device is for, or a cell of its line: what now brings on this device is said and
         // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
-        if problem.is_empty() && field != "name" {
+        // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device`).
+        if problem.is_empty() && field != "name" && !field.starts_with("calls.") {
             self.as_mut().set_mode(QString::from(&mode_json()));
             let (qt, shared) = (self.qt_thread(), self.shared());
             show(&qt, &shared);
@@ -7616,6 +8082,10 @@ impl qobject::Sioul {
     }
 
     fn refresh_mode(mut self: Pin<&mut Self>) {
+        // The notes folder read again: a drive plugged in or taken out is seen within a minute.
+        notes_folder_now(&self.qt_thread(), &self.shared());
+        // Where Sioul's lists are, and whether every device knows the new places yet.
+        storage_move_now(&self.qt_thread());
         // Doses to remind, errands to make: off the window's thread.
         let (qt, shared_tick) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
@@ -7707,6 +8177,10 @@ impl qobject::Sioul {
         crate::sites::gather_tick(&self.qt_thread(), &self.shared());
         // Your sites' own icons, when missing or a week old.
         crate::sites::favicon_tick(&self.qt_thread());
+        // The calendars subscribed by their address: when Sioul opens, then each at its time.
+        crate::subscriptions::tick(&self.qt_thread(), &self.shared());
+        // The series that pause: kept up to date when your vacations or holidays change, and each day.
+        crate::series::tick(&self.qt_thread(), &self.shared());
         // Dates coming: told once each.
         crate::remind::tick();
         // What waited (nobody at the computer, a pause, do-not-disturb), told now if it may come.
@@ -8007,6 +8481,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn reaches_choose(self: Pin<&mut Self>, what: &QString, value: &QString) -> QString {
+        let problem = crate::reaches::choose(&what.to_string(), &value.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
     fn person_sheet(&self, key: &QString, addresses: &QString) -> QString {
         QString::from(&crate::reaches::person(&key.to_string(), &addresses.to_string()))
     }
@@ -8291,7 +8773,7 @@ impl qobject::Sioul {
     fn settings(&self, view: &QString) -> QString {
         let config = load_config();
         let lists: Vec<(String, String)> = sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| (format!("{}/{}", c.account, c.id), c.label(&config, tr()))).collect();
-        let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok());
+        let store = config.places().and_then(|places| ProjectStore::open(&places).ok());
         let mut rows = sioul_core::settings::for_view(&view.to_string(), &config, tr(), &lists, store.as_ref());
         // The categories are the tasks': the core does not read them.
         if view.to_string() == "tasks" {
@@ -8387,6 +8869,10 @@ impl qobject::Sioul {
             ("github_token", config::SettingValue::Text(secret)) => sioul_sync::github::save_token(&secret).map_err(|e| e.sentence(tr(), "GitHub")),
             ("task_categories", config::SettingValue::Rename(change)) => work::rename_category(&self.qt_thread(), &self.shared(), &change.from, &change.to),
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
+            // The papers' or letters' folder (Papers ▸ ⚙, Letters ▸ ⚙): once Sioul's lists moved, the files follow, off this thread.
+            ("papers.folder" | "letters.folder", config::SettingValue::Text(folder)) => crate::storage::change_folder(&self.qt_thread(), &self.shared(), &key, &folder),
+            // The notes folder: once the lists moved, never in or around their folders (`storage::check_notes_folder`).
+            ("case_store", config::SettingValue::Text(folder)) => crate::storage::check_notes_folder(&folder).and_then(|()| sioul_core::settings::change(&config_path(), &key, shown.as_ref(), &config::SettingValue::Text(folder))),
             ("passwords_shown", config::SettingValue::Bool(on)) => {
                 work::set_view_flag(&self.shared(), "passwords-shown", on);
                 Ok(())
@@ -8433,8 +8919,13 @@ impl qobject::Sioul {
         }
         // What this device is: the window's, and the others' at the next exchange (its devices' entry).
         // The notes folder moved: whether a sync app carries it, so whether notes and papers travel from here.
+        // The notes folder chosen (Notes ⚙, or the Notes page that asked for it): what
+        // reads it is shown again.
         if key == "case_store" {
             crate::devices::parts_now();
+            notes_folder_now(&qt, &shared);
+            show(&qt, &shared);
+            work::show_work(&qt, &shared);
         }
         if key == "device_kind" {
             self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
@@ -8633,10 +9124,11 @@ impl qobject::Sioul {
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
         // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
         // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
-        // Invoices (the guide's pictures; docs/projects.md), "shell" Settings' tabs and, on a phone, its
+        // Invoices (the guide's pictures; docs/projects.md), "views" the Week's steps by area and the
+        // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -8647,6 +9139,46 @@ impl qobject::Sioul {
 impl qobject::Sioul {
     fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
         QString::from(&crate::share::set_notes_carried(carried))
+    }
+
+    fn moved_file(&self, url: &QString) -> QString {
+        let url = url.to_string();
+        if !url.starts_with("file:") {
+            return QString::default();
+        }
+        QString::from(&sioul_core::storage::moved_to(&sioul_core::config::state_dir(), &local_path(&url)).map(|to| file_url(&to)).unwrap_or_default())
+    }
+
+    fn folder_carrier(&self, folder: &QString) -> QString {
+        let folder = local_path(folder.to_string().trim());
+        QString::from(&crate::share::carrier_of(&folder).map(|carrier| say("storage-move-carried", &[("carrier", carrier)])).unwrap_or_default())
+    }
+
+    fn take_out_old_files(self: Pin<&mut Self>) {
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let line = crate::storage::take_out();
+            let qt_again = qt.clone();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));
+            storage_move_now(&qt_again);
+        });
+    }
+
+    fn move_lists(self: Pin<&mut Self>, papers: &QString, letters: &QString, carry: bool) {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let (papers, letters) = (papers.to_string(), letters.to_string());
+        crate::storage::begin();
+        storage_move_now(&qt);
+        std::thread::spawn(move || {
+            let line = crate::storage::move_now(&papers, &letters, carry).unwrap_or_else(|problem| problem);
+            let qt_again = qt.clone();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));
+            storage_move_now(&qt_again);
+            // What reads Sioul's lists, papers and letters is shown again from where they are now.
+            show(&qt_again, &shared);
+            work::show_work(&qt_again, &shared);
+            crate::share::exchange(&qt_again, &shared);
+        });
     }
 
     fn set_share_part(self: Pin<&mut Self>, part: &QString, on: bool) -> QString {

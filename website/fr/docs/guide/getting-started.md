@@ -166,14 +166,14 @@ Chaque appareil garde toutes ses données, et fonctionne sans les autres. Trois 
 | Quoi | Comment cela parvient à vos autres appareils |
 |---|---|
 | Les courriels, les contacts, les événements et les tâches | par leurs propres serveurs, comme avec n’importe quel logiciel |
-| Ce que Sioul garde sur l’appareil : vos paramètres, vos comptes (jamais leurs mots de passe), vos heures, qui peut vous joindre, les liens entre les choses, les brouillons | par le **partage** de Sioul : un dossier qui porte des changements scellés |
+| Ce que Sioul garde sur l’appareil : vos paramètres, vos comptes (jamais leurs mots de passe), vos heures, qui peut vous joindre, les liens entre les choses, les brouillons, et ses propres listes (projets, budgets…) une fois sorties de votre dossier de notes | par le **partage** de Sioul : un dossier qui porte des changements scellés |
 | Votre dossier de notes | par sa propre application de synchronisation, ou par le partage une fois que vous l’activez |
 
 Une application de synchronisation que vous utilisez déjà porte le dossier du partage (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive, ou une autre), ou bien Sioul le porte lui-même quand vous avez un compte Nextcloud. Chaque changement est chiffré sur votre appareil avant d’y être écrit, avec une clé faite d’une phrase de passe que vous choisissez : le dossier et son serveur ne peuvent rien lire. Il n’y a aucun serveur à nous.
 
 ### Sur le premier appareil : commencer le partage {#start-sharing}
 
-1. Ouvrez **Paramètres ▸ Votre dossier et le partage**, et trouvez **Entre vos appareils**.
+1. Ouvrez **Paramètres ▸ Partage**, et trouvez **Entre vos appareils**.
 2. **Dossier** : choisissez un dossier dans celui que votre application de synchronisation porte, par exemple un nouveau dossier `Sioul` dans votre dossier Nextcloud. Avec un compte Nextcloud dans Sioul, vous pouvez choisir à la place **Sioul le tient à jour avec votre Nextcloud**, sans application de synchronisation.
 3. **Phrase de passe**, puis **Encore une fois** : quelques mots que vous n’oublierez pas, au moins 12 caractères.
 4. **Partager**.

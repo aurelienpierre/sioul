@@ -1,5 +1,7 @@
-# Budgets, an example (docs/accounting.md). Put yours at the root of your notes
-# folder as sioul-budgets.toml. Amounts in euros: positive in, negative out.
+# Budgets, an example (docs/accounting.md). Yours is sioul-budgets.toml among
+# Sioul's own lists: records/ in its data folder (at the root of the notes
+# folder before your lists moved: docs/notes-folder.md, "What lives where").
+# Amounts in euros: positive in, negative out.
 
 # A budget is an envelope with a goal: the balance to reach by the end of each period.
 [[budget]]

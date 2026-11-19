@@ -48,6 +48,8 @@ ColumnLayout {
     property var removal: ({})
     // "New agenda…" open.
     property bool making: false
+    // "Subscribe to a calendar…" open (SubscribeForm.qml).
+    property bool subscribing: false
     readonly property var colours: ["#4c6b5c", "#3f6f8f", "#7a5c99", "#b07d3f", "#a3504f", "#5f7f3a", "#5b6470", "#c06c8d"]
 
     // A calendar of busy blocks pressed: Agenda ⚙ ▸ Your availability, where it is kept, shown.
@@ -141,6 +143,19 @@ ColumnLayout {
         }
     }
 
+    // "Subscribe to a calendar…": its form, opened afresh (also from Settings ▸ Hours, through AgendaPage's `askSubscribe`).
+    function askSubscribe() {
+        setup.making = false
+        setup.subscribing = true
+        subscribeForm.begin()
+    }
+
+    // One field of a subscribed calendar written; the agendas read again.
+    function saveSubscription(id, field, value) {
+        setup.problem = setup.sioul.setSubscriptionField(id, field, value)
+        setup.read()
+    }
+
     // What may be chosen of what you may do with it: never writing where its server keeps it read only.
     function accessChoices(agenda) {
         return agenda.server_read_only ? ["read", "availability"] : ["write", "read", "availability"]
@@ -167,12 +182,40 @@ ColumnLayout {
         color: setup.theme.warm
     }
 
-    // A new agenda, with its role (part 5): made here, and on its server by the next sync.
-    Button {
-        objectName: "agendaNew"
-        visible: !setup.making && (setup.view.accounts || []).length > 0
-        text: setup.sioul.text("agenda-new")
-        onClicked: setup.making = true
+    // A new agenda, with its role (part 5): made here, and on its server by the next sync;
+    // or a calendar subscribed by its address, read by each device (SubscribeForm.qml).
+    Flow {
+        visible: !setup.making && !setup.subscribing
+        Layout.fillWidth: true
+        spacing: 8
+
+        Button {
+            objectName: "agendaNew"
+            visible: (setup.view.accounts || []).length > 0
+            text: setup.sioul.text("agenda-new")
+            onClicked: setup.making = true
+        }
+        Button {
+            objectName: "agendaSubscribe"
+            text: setup.sioul.text("subscribe-open")
+            onClicked: setup.askSubscribe()
+        }
+    }
+    SubscribeForm {
+        id: subscribeForm
+
+        visible: setup.subscribing
+        Layout.fillWidth: true
+        sioul: setup.sioul
+        theme: setup.theme
+        onDone: id => {
+            setup.subscribing = false
+            setup.read()
+            const opened = Object.assign({}, setup.opened)
+            opened["subscribed/" + id] = true
+            setup.opened = opened
+        }
+        onCancelled: setup.subscribing = false
     }
     ColumnLayout {
         id: making
@@ -387,6 +430,190 @@ ColumnLayout {
                     text: one.modelData.place
                     textFormat: Text.PlainText
                     color: setup.theme.muted
+                }
+                // A calendar subscribed by its address: when this device last read it, or why not;
+                // Refresh now, Change the address, Stop; its name; whether it holds holidays.
+                ColumnLayout {
+                    id: feed
+
+                    readonly property var sub: one.modelData.subscription || null
+                    // Its settings do not read here (F19, F20): its line says so, Stop alone stays.
+                    readonly property bool unread: feed.sub !== null && feed.sub.unread === true
+                    property bool changing: false
+                    property bool stopping: false
+
+                    visible: feed.sub !== null
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Label {
+                        objectName: "subscriptionLine"
+                        Layout.fillWidth: true
+                        text: feed.sub ? feed.sub.line : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: setup.theme.text
+                    }
+                    Flow {
+                        visible: !feed.changing && !feed.stopping
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Button {
+                            objectName: "subscriptionRefresh"
+                            visible: !feed.unread
+                            text: setup.sioul.text("subscribe-refresh")
+                            onClicked: setup.problem = setup.sioul.refreshSubscription(feed.sub.id)
+                        }
+                        Button {
+                            objectName: "subscriptionChange"
+                            visible: !feed.unread
+                            text: setup.sioul.text("subscribe-change")
+                            onClicked: {
+                                newAddress.text = feed.sub.url
+                                feed.changing = true
+                            }
+                        }
+                        Button {
+                            objectName: "subscriptionStop"
+                            text: setup.sioul.text("subscribe-stop")
+                            onClicked: feed.stopping = true
+                        }
+                    }
+                    TextField {
+                        id: newAddress
+
+                        objectName: "subscriptionAddress"
+                        visible: feed.changing
+                        Layout.fillWidth: true
+                        inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                        Accessible.name: setup.sioul.text("subscribe-address")
+                    }
+                    Flow {
+                        visible: feed.changing
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Button {
+                            objectName: "subscriptionAddressSave"
+                            enabled: newAddress.text.trim() !== ""
+                            text: setup.sioul.text("subscribe-change-save")
+                            onClicked: {
+                                setup.saveSubscription(feed.sub.id, "url", newAddress.text.trim())
+                                if (setup.problem === "")
+                                    feed.changing = false
+                            }
+                        }
+                        Button {
+                            flat: true
+                            text: setup.sioul.text("agenda-keep")
+                            onClicked: feed.changing = false
+                        }
+                    }
+                    Label {
+                        visible: feed.stopping
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("subscribe-stop-question")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: setup.theme.text
+                    }
+                    Flow {
+                        visible: feed.stopping
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Button {
+                            objectName: "subscriptionStopConfirm"
+                            text: setup.sioul.text("subscribe-stop-confirm")
+                            onClicked: {
+                                setup.problem = setup.sioul.stopSubscription(feed.sub.id)
+                                feed.stopping = false
+                                setup.read()
+                            }
+                        }
+                        Button {
+                            flat: true
+                            text: setup.sioul.text("agenda-keep")
+                            onClicked: feed.stopping = false
+                        }
+                    }
+                    TextField {
+                        objectName: "subscriptionName"
+                        visible: !feed.unread
+                        Layout.fillWidth: true
+                        text: feed.sub ? feed.sub.name : ""
+                        placeholderText: setup.theme.plain(one.modelData.name)
+                        Accessible.name: setup.sioul.text("subscribe-name")
+                        onEditingFinished: if (feed.sub && text.trim() !== feed.sub.name)
+                            setup.saveSubscription(feed.sub.id, "name", text.trim())
+                    }
+                    PlainComboBox {
+                        readonly property var kinds: ["", "public", "school"]
+
+                        objectName: "subscriptionKind"
+                        visible: !feed.unread
+                        Layout.fillWidth: true
+                        model: kinds.map(k => setup.sioul.text("subscribe-holidays-" + (k === "" ? "none" : k)))
+                        currentIndex: feed.sub ? Math.max(0, kinds.indexOf(feed.sub.holidays)) : 0
+                        Accessible.name: setup.sioul.text("subscribe-holidays")
+                        onActivated: index => setup.saveSubscription(feed.sub.id, "holidays", kinds[index])
+                    }
+                    WrapCheckBox {
+                        objectName: "subscriptionDaysOff"
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays !== ""
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("subscribe-days-off")
+                        checked: feed.sub !== null && feed.sub.days_off === true
+                        onToggled: setup.saveSubscription(feed.sub.id, "days_off", checked ? "true" : "false")
+                    }
+                    // Its events mark you busy and hold your time only when you say they are yours (F41).
+                    WrapCheckBox {
+                        objectName: "subscriptionEngagements"
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === ""
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("subscribe-engagements")
+                        checked: feed.sub !== null && feed.sub.engagements === true
+                        onToggled: setup.saveSubscription(feed.sub.id, "engagements", checked ? "true" : "false")
+                    }
+                    WrapCheckBox {
+                        objectName: "subscriptionAfterClass"
+                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === "school"
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("subscribe-after-class")
+                        checked: feed.sub !== null && feed.sub.after_class === true
+                        onToggled: setup.saveSubscription(feed.sub.id, "after_class", checked ? "true" : "false")
+                    }
+                    // Its colour in the agenda, kept with its settings (`colour`): no server to ask.
+                    Flow {
+                        visible: !feed.unread
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Repeater {
+                            model: setup.colours
+
+                            delegate: Rectangle {
+                                id: subDot
+
+                                required property string modelData
+
+                                objectName: "subscriptionColour"
+                                width: 22
+                                height: 22
+                                radius: 11
+                                color: subDot.modelData
+                                border.width: (one.modelData.colour || "").toLowerCase().startsWith(subDot.modelData) ? 3 : 0
+                                border.color: setup.theme.text
+                                Accessible.role: Accessible.Button
+                                Accessible.name: setup.sioul.text("agenda-colour") + " " + subDot.modelData
+
+                                TapHandler {
+                                    onTapped: setup.saveSubscription(feed.sub.id, "colour", subDot.modelData)
+                                }
+                            }
+                        }
+                    }
                 }
                 // On its server (part 5): yours renamed, recoloured, removed; someone else's stopped showing.
                 TextField {
@@ -785,7 +1012,8 @@ ColumnLayout {
                 Label {
                     visible: one.modelData.server_read_only === true
                     Layout.fillWidth: true
-                    text: setup.sioul.text("agenda-server-read-only")
+                    // A calendar read by its address has no server to say so: its own words.
+                    text: setup.sioul.text(one.modelData.subscription ? "agenda-subscribed-read-only" : "agenda-server-read-only")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: setup.theme.muted

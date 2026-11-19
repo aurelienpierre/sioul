@@ -250,7 +250,7 @@ fn show(s: &Session, number: &str) -> Result<(), String> {
     // The client, and whether it is billed as a business or a person; a
     // draft's client as its profile says it now (G12), a business when none says (G8).
     let mut found = found;
-    let root = s.config.notes_root_path();
+    let root = s.config.records_root();
     let clients = root.as_ref().and_then(|r| sioul_core::clients::Clients::load(r).ok()).unwrap_or_default();
     let loaded = sioul_core::links::Loaded::read(&s.config);
     let profiled = sioul_core::clients::resolve(&found.client_ref, &clients, &loaded.contacts).1.is_some();
@@ -317,7 +317,7 @@ fn csv(s: &Session, year: Option<i16>) -> String {
 }
 
 fn draft(s: &Session, id: &str) -> Result<(), String> {
-    let root = s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
+    let root = s.config.records_root().ok_or_else(|| s.tr.text("error-no-store", None))?;
     let store = sioul_core::projects::ProjectStore::load(&root)?;
     let project = store.get(id).ok_or_else(|| s.tr.text("project-gone", None))?.clone();
     let loaded = sioul_core::links::Loaded::read(&s.config);
@@ -389,7 +389,7 @@ fn issue(s: &Session, id: &str) -> Result<(), String> {
     let draft = invoice::draft_in(&folder, id).ok_or_else(|| s.tr.text("invoice-draft-gone", None))?;
     let (numbering, sharing) = numbering(s)?;
     // Its client as its profile says it now (a credit note's, the credited invoice's as it was); its project's budget expects it.
-    let root = s.config.notes_root_path();
+    let root = s.config.records_root();
     let loaded = sioul_core::links::Loaded::read(&s.config);
     let project = loaded.projects.iter().find(|p| p.id == draft.project);
     let ledger = root.as_ref().map(|r| r.join(sioul_core::budget::LEDGER)).filter(|l| l.is_file());

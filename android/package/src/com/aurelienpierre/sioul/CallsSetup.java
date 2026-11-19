@@ -17,7 +17,9 @@ import android.util.Log;
  * Android's questions about calls, asked from Settings ▸ Calls
  * (docs/android.md, "Calls"): "Set Sioul as your default caller ID &amp;
  * spam app?", or, asked with {@link #ASKED} {@link #HISTORY}, whether Sioul
- * may read the phone's call history (READ_CALL_LOG). Android answers only an
+ * may read the phone's call history (READ_CALL_LOG), or with {@link #STARS},
+ * whether it may read your contacts and write their stars (READ_CONTACTS,
+ * WRITE_CONTACTS; starred people both ways). Android answers only an
  * activity that asks for a result, so this one, never seen, asks and goes.
  * Its answer is read again by Sioul when its window comes back.
  */
@@ -27,9 +29,12 @@ public final class CallsSetup extends Activity
     static final String ASKED = "asked";
     /** Asked: reading the call history. */
     static final String HISTORY = "history";
+    /** Asked: reading your contacts and writing their stars (starred people both ways). */
+    static final String STARS = "stars";
 
     private static final int ASK = 0x5139;
     private static final int ASK_HISTORY = 0x513a;
+    private static final int ASK_STARS = 0x513b;
 
     @Override
     protected void onCreate(Bundle saved)
@@ -40,6 +45,14 @@ public final class CallsSetup extends Activity
         if (HISTORY.equals(getIntent().getStringExtra(ASKED))) {
             if (checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[] { Manifest.permission.READ_CALL_LOG }, ASK_HISTORY);
+                return;
+            }
+            finish();
+            return;
+        }
+        if (STARS.equals(getIntent().getStringExtra(ASKED))) {
+            if (!DndContacts.writable(this)) {
+                requestPermissions(new String[] { Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS }, ASK_STARS);
                 return;
             }
             finish();
@@ -74,6 +87,8 @@ public final class CallsSetup extends Activity
         super.onRequestPermissionsResult(request, permissions, results);
         if (request == ASK_HISTORY)
             Log.i(Calls.TAG, "Calls: the call history " + (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED ? "may be read." : "is not read."));
+        if (request == ASK_STARS)
+            Log.i(Calls.TAG, "Stars: " + (DndContacts.writable(this) ? "may be written." : "not written."));
         finish();
     }
 }

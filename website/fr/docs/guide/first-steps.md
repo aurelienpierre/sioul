@@ -59,7 +59,7 @@ Ce qui change sur Android :
 
 - **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et les nouveaux courriels à leurs heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
 - **Les appels** peuvent être filtrés une fois que vous laissez Sioul être « l’appli numéro de l’appelant et spam » d’Android : qui peut sonner, et quand, comme le dit sa ligne dans Ce qui vous joint ; les autres vont sur votre messagerie ([Les appels](calls.md)).
-- **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui les écrit, le reste aux heures de regroupement ([Paramètres ▸ Ce téléphone](settings.md#this-phone)).
+- **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui les écrit, le reste aux heures de regroupement ([Paramètres ▸ Appareils, la carte de ce téléphone](settings.md#this-phone)).
 - **Les courriels** sont relevés tant que Sioul est ouvert : Android l’arrête en arrière-plan.
 - **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courriel s’ouvrent dedans ([Les courriels](mail.md#from-other-apps)).
 - **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers de l’appareil, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
@@ -72,7 +72,7 @@ Ce qui change sur Android :
 
 ## Rejoindre vos autres appareils {#join-your-other-devices}
 
-Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Votre dossier et le partage** propose la même chose à tout moment.
+Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Partage** propose la même chose à tout moment.
 
 ## Ajouter vos courriels {#add-your-mail}
 
@@ -175,9 +175,9 @@ Les courriels de Google s’ajoutent dans le formulaire des courriels, plus haut
 
 ## Choisir votre dossier de notes {#choose-your-notes-folder}
 
-Vos notes sont un dossier de fichiers Markdown : un coffre Obsidian fonctionne tel quel. Sioul garde aussi vos projets, vos budgets, vos papiers et vos lettres scannées dans ce dossier, pour qu’ils voyagent avec lui jusqu’à vos autres appareils.
+Vos notes sont un dossier de fichiers Markdown : un coffre Obsidian fonctionne tel quel. Sioul garde ses propres listes (les projets, les budgets, les listes de vos papiers et de vos courriers) à part de vos notes, en fichiers texte simples dans son propre dossier, et les fichiers de vos papiers et de vos courriers dans des dossiers à eux. Tant que vous ne les y avez pas déplacés, une fois, ils sont dans votre dossier de notes ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)).
 
-Dans **Paramètres ▸ Votre dossier et le partage**, choisissez **Le dossier des notes**. Sioul le lit et y fait des liens ; il ne se l’approprie jamais. Voir [Les notes](notes.md).
+Ouvrez **Notes** : tant que cet appareil n’a pas de dossier de notes, la page en demande un, avec **Choisir un dossier…**. Sioul le lit et y fait des liens ; il ne se l’approprie jamais. Ses réglages (⚙) le changent ensuite. Voir [Votre dossier de notes](notes.md#your-notes-folder).
 
 ## Régler vos heures {#set-your-hours}
 

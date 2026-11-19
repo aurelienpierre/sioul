@@ -22,6 +22,11 @@
 // words, a line per time. A cell opens three boxes and "As its areas say";
 // one you changed is framed. Then one sentence for now on this device, one
 // for the areas no device is for, and what a device's areas never keep back.
+//
+// A phone's card holds its own sections (PhoneCard.qml): its calls, set from
+// any device; on the phone itself, what Android must allow, Android's
+// restricted settings, and what the tab "This phone" held (design of 18
+// November 2026). At a phone's width each section folds.
 
 pragma ComponentBehavior: Bound
 
@@ -40,9 +45,25 @@ ColumnLayout {
     // rows give it; none while they are not read.
     property var kindRow: null
 
-    // What the core says: { on, why, stays, rows, grid } (`share::devices`).
+    // What the core says: { on, why, stays, rows, grid, calls } (`share::devices`):
+    // `calls`, each phone's section Calls by its id (`calls_line::view`).
     property var view: ({ on: false, why: "", stays: "", rows: [] })
+    readonly property var calls: tab.view.calls || ({})
+    // What this phone says of itself, on the phone (`phonecard::view`): {phone, allow, restricted}.
+    property var own: ({ phone: false })
     readonly property var rows: tab.view.rows || []
+    // The devices' ids, in the table's order when a device last came or went:
+    // changed only then, never by a rename, so that a reload keeps each card
+    // (its folds opened, its sections) instead of making them again.
+    property var ids: []
+    // The phone card a door lands in, by its part ("calls", "apps"): this
+    // device's when it is a phone, else the first phone's (`reveal`).
+    readonly property string callsDoor: tab.doorOf(id => tab.calls[id] !== undefined)
+    readonly property string appsDoor: tab.doorOf(id => tab.calls[id] !== undefined && (tab.own.phone === true ? tab.rows.some(r => r.id === id && r.here === true) : tab.lists > 0))
+    // How many apps, conversations and sites have times of their own (`appNotesSetup`).
+    property int lists: 0
+    // A door that found no card to land in, in a line (`reveal`); "" otherwise.
+    property string doorSaid: ""
     // What is said around the cells: the times' names, now on this device,
     // the areas no device is for, what is never kept back (`device_grid::Grid`).
     readonly property var grid: tab.view.grid || ({ times: [], now: "", unheld: "", never: "" })
@@ -76,8 +97,53 @@ ColumnLayout {
         return Math.floor((tab.width - 2 * tab.pad - 7 * tab.between) * tab.shares[index])
     }
 
+    // The devices again: every 20 seconds while shown, after each change. Never Android's
+    // accesses nor the phone's stars (review of `phones`, L12): those when the tab shows
+    // or the window comes back (`reloadAll`), and in answer to what is asked of them.
     function reload() {
         tab.view = JSON.parse(tab.sioul.devices() || "{}")
+    }
+
+    // Everything the tab shows: what this device says of itself first (the cards are made
+    // knowing it), the devices, the apps with times of their own.
+    function reloadAll() {
+        if (typeof tab.sioul.phoneCard === "function")
+            tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
+        tab.reload()
+        if (typeof tab.sioul.appNotesSetup === "function")
+            tab.lists = ((JSON.parse(tab.sioul.appNotesSetup() || "{}") || {}).grid || { rows: [] }).rows.length
+    }
+
+    // A door's part in view (ParametersPage.qml, "devices.calls", "devices.apps"):
+    // the card it lands in, that section unfolded; none without such a card.
+    function reveal(part) {
+        const id = part === "calls" ? tab.callsDoor : part === "apps" ? tab.appsDoor : ""
+        const card = id === "" ? null : tab.cardOf(tab, id)
+        const found = card ? card.reveal(part) : null
+        // No card to land in: one line says why, at the tab's top (review of `phones`, L17).
+        tab.doorSaid = found ? "" : tab.sioul.text(part === "calls" ? "devices-door-no-phone" : "devices-door-no-apps")
+        return found
+    }
+
+    function cardOf(item, id) {
+        const card = item as PhoneCard
+        if (card && card.deviceId === id)
+            return card
+        for (let i = 0; i < item.children.length; i++) {
+            const found = tab.cardOf(item.children[i], id)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    // The device whose card a door lands in: this one when it fits, else the first that does.
+    function doorOf(fits) {
+        const here = tab.rows.find(r => r.here === true)
+        if (here && fits(here.id))
+            return here.id
+        const first = tab.rows.find(r => fits(r.id))
+        return first ? first.id : ""
     }
 
     function say(id, field, value) {
@@ -91,8 +157,33 @@ ColumnLayout {
     }
 
     spacing: 8
-    onVisibleChanged: if (visible) tab.reload()
-    Component.onCompleted: tab.reload()
+    onVisibleChanged: {
+        if (visible)
+            tab.reloadAll()
+        else
+            tab.doorSaid = ""
+    }
+    // The cards follow the devices, not each reading of them: a device renamed, which moves in the
+    // table's order, keeps every card as it is (review of `phones`, L14); one that comes or goes makes them anew.
+    onRowsChanged: {
+        const ids = tab.rows.map(r => r.id || "")
+        if (JSON.stringify(ids.slice().sort()) !== JSON.stringify(tab.ids.slice().sort()))
+            tab.ids = ids
+    }
+    Component.onCompleted: tab.reloadAll()
+
+    // Back from Android's question or page: what it allows here, read again
+    // (and, back from Sioul's page, the accesses asked again: `phonecard::view`).
+    Connections {
+        target: tab.Window.window
+
+        function onActiveChanged() {
+            const window = tab.Window.window
+            // Back from Android's page: the accesses still held asked again by themselves (M10).
+            if (window && window.active && tab.visible && typeof tab.sioul.phoneCardBack === "function")
+                tab.own = JSON.parse(tab.sioul.phoneCardBack() || "{}")
+        }
+    }
 
     // While shown: news of the other devices as it comes; never under a name
     // being typed, a choice being made or a question being read.
@@ -163,6 +254,16 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: tab.theme.warm
     }
+    // A door with no card to land in: no phone known, or no app with times of its own yet.
+    Label {
+        objectName: "devicesDoorSaid"
+        visible: tab.doorSaid !== ""
+        Layout.fillWidth: true
+        text: tab.doorSaid
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
+    }
     // Settings and accounts do not travel from here: what is said in this tab stays here.
     Label {
         objectName: "devicesStay"
@@ -221,13 +322,13 @@ ColumnLayout {
     }
 
     Repeater {
-        model: tab.rows
+        model: tab.ids
 
         delegate: Rectangle {
             id: device
 
-            required property var modelData
-            readonly property var row: device.modelData
+            required property string modelData
+            readonly property var row: tab.rows.find(r => r.id === device.modelData) || ({})
             readonly property string deviceId: device.row.id || ""
             readonly property bool renamed: (device.row.given || "") !== "" && device.row.given !== device.row.system
 
@@ -535,6 +636,36 @@ ColumnLayout {
                     Layout.fillWidth: true
                     host: tab
                     deviceId: device.deviceId
+                }
+
+                // A phone's own sections: its calls, from any device; on the phone itself what
+                // Android must allow and the tab "This phone"'s blocks (PhoneCard.qml). This
+                // device's own is where a door to the phone's setup lands (`setting:devices.here`).
+                // In a centred column of legible width, as a page's text and forms (PageColumn.qml): on a
+                // computer the table's four columns stay near their rows (the pictures' review, point 1).
+                Loader {
+                    active: tab.calls[device.deviceId] !== undefined || (device.row.here === true && tab.own.phone === true)
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: tab.theme.readable
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 6
+
+                    sourceComponent: Component {
+                        PhoneCard {
+                            objectName: device.row.here === true ? "setting:devices.here" : "phoneCard-" + device.deviceId
+                            sioul: tab.sioul
+                            theme: tab.theme
+                            deviceId: device.deviceId
+                            here: device.row.here === true
+                            calls: tab.calls[device.deviceId] || null
+                            own: tab.own
+                            folds: !tab.wide
+                            lists: tab.lists
+                            onSay: (field, value) => tab.say(device.deviceId, field, value)
+                            onOwnSaid: own => tab.own = own
+                        }
+                    }
                 }
             }
         }

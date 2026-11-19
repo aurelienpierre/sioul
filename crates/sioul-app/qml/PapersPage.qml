@@ -118,6 +118,12 @@ Item {
                     icon.name: "list-add"
                     onClicked: page.startNew()
                 }
+                // The papers' folder, this device's own (`papers.folder`).
+                SettingsButton {
+                    sioul: page.sioul
+                    theme: page.theme
+                    view: "papers"
+                }
             }
             Label {
                 Layout.fillWidth: true

@@ -122,6 +122,8 @@ pub mod devices;
 pub mod dispatch;
 pub mod discover;
 pub mod favicon;
+// A calendar fetched by its web address, held to what a calendar needs (sioul-core's `subscribed`).
+pub mod feeds;
 pub mod disk;
 // The desktop's do-not-disturb during Sioul's pauses (Plasma's inhibition, dconf's changes).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]

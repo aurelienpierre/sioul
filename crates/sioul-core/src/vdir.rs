@@ -76,6 +76,11 @@ impl Collection {
         if self.account == LOCAL {
             return String::new();
         }
+        // A subscribed calendar: where its address points.
+        if self.account == SUBSCRIBED {
+            let address = config.agenda.subscriptions.get(&self.id).map(|s| s.url.clone()).unwrap_or_default();
+            return crate::sites::domain_of(&crate::sites::host_of(&address));
+        }
         let account = config.account(&self.account);
         if matches!(crate::capabilities::provider_of_collection(account, self), crate::capabilities::Provider::Google | crate::capabilities::Provider::GoogleTasks) {
             return "Google".into();
@@ -449,6 +454,13 @@ fn new_is_there(old: &Path, new: &Path) -> bool {
     State::load(&state_path(&account, kind, &id)).items.iter().any(|i| i.file == file && (!i.etag.is_empty() || !i.hash.is_empty()))
 }
 
+/// Every item moved here whose old copy's deletion has not been done on its
+/// server yet, as (old, new): what the sync may move on the server itself
+/// (WebDAV MOVE, `dav::move_on_server`) rather than send anew and delete.
+pub fn moves_waiting() -> Vec<(PathBuf, PathBuf)> {
+    moved_change(|m| m.moved.iter().map(|i| (i.old.clone(), i.new.clone())).collect())
+}
+
 /// The old copy's deletion done on its server: nothing waits for it any more.
 pub fn deletion_done(old: &Path) {
     moved_change(|m| m.moved.retain(|i| i.old != old));
@@ -618,6 +630,35 @@ pub fn removed_copies() -> PathBuf {
     crate::config::state_dir().join("removed-agendas")
 }
 
+/// Where an address book removed here with its cards is copied first: one
+/// dated `.vcf` file per removal (`removed-address-books/`), never shared.
+pub fn removed_books() -> PathBuf {
+    crate::config::state_dir().join("removed-address-books")
+}
+
+/// Every card of an address book in one vCard file, each as its file holds
+/// it: what a removal keeps.
+pub fn collection_as_vcf(collection: &Collection) -> String {
+    cards_as_vcf(&collection.items())
+}
+
+/// These cards in one vCard file, each as its file holds it, its lines ended
+/// with CRLF; a file that is no card (or cannot be read) left out: what a
+/// removal keeps, and what Export writes.
+pub fn cards_as_vcf(paths: &[PathBuf]) -> String {
+    let mut out = String::new();
+    for path in paths {
+        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        if !text.to_ascii_uppercase().contains("BEGIN:VCARD") {
+            continue;
+        }
+        let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
+        out.push_str(text.trim_end());
+        out.push_str("\r\n");
+    }
+    out
+}
+
 /// Every item of a collection in one calendar file: its zones once each,
 /// then each event and task as its file holds it. What a removal keeps.
 pub fn collection_as_ics(collection: &Collection) -> String {
@@ -683,11 +724,15 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
     if collection.account != LOCAL && !known.pending && known.owned != Some(true) {
         return Err(format!("{}: its server does not say it is yours", collection.name));
     }
-    let folder = removed_copies();
+    // A calendar's events and tasks in one calendar file; an address book's cards in one vCard file.
+    let (folder, extension, copied) = match collection.kind {
+        Kind::Calendars => (removed_copies(), "ics", collection_as_ics(collection)),
+        Kind::Contacts => (removed_books(), "vcf", collection_as_vcf(collection)),
+    };
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let stamp = crate::zone::now().strftime("%Y-%m-%d-%H%M%S").to_string();
-    let copy = folder.join(format!("{}-{}-{stamp}.ics", collection.account, collection.id));
-    crate::filelock::replace(&copy, collection_as_ics(collection).as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let copy = folder.join(format!("{}-{}-{stamp}.{extension}", collection.account, collection.id));
+    crate::filelock::replace(&copy, copied.as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
     let path = collection.state_path();
     let mut state = State::load(&path);
     if collection.account == LOCAL || state.pending {
@@ -697,6 +742,7 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
         return Ok(copy);
     }
     state.removed = true;
+    state.kept.clear();
     state.save(&path)?;
     collection_said(collection.kind);
     Ok(copy)
@@ -745,7 +791,54 @@ pub fn delete_collection(collection: &Collection) -> Result<(), String> {
         return Ok(());
     }
     state.deleted = true;
-    state.save(&path)
+    state.kept.clear();
+    state.save(&path)?;
+    collection_said(collection.kind);
+    Ok(())
+}
+
+/// A collection whose folder went with its removal (one kept on this device
+/// alone, or made here and never sent: the Undo of a merge) made again,
+/// empty, with its name: on its server at the next sync for an account's.
+pub fn restore_collection(kind: Kind, account: &str, id: &str, name: &str) -> Result<(), String> {
+    if account != LOCAL {
+        State { pending: true, owned: Some(true), ..State::default() }.save(&state_path(account, kind, id))?;
+    }
+    prepare(kind, account, id, name, None).map_err(|e| e.to_string())?;
+    collection_said(kind);
+    Ok(())
+}
+
+/// A collection removed with its items here, not deleted on its server yet,
+/// shown again (the Undo of "Delete them with it"). Gone already, an error.
+pub fn unremove_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
+    let path = state_path(account, kind, id);
+    if !kind.root().join(account).join(id).is_dir() {
+        return Err(format!("{account}/{id}: gone"));
+    }
+    let mut state = State::load(&path);
+    if state.removed && !state.leave {
+        state.removed = false;
+        state.save(&path)?;
+        collection_said(kind);
+    }
+    Ok(())
+}
+
+/// A collection deleted on this device but not on its server yet shown
+/// again (the Undo of a merge): its deletion forgotten. Gone already, an error.
+pub fn undelete_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
+    let path = state_path(account, kind, id);
+    if !kind.root().join(account).join(id).is_dir() {
+        return Err(format!("{account}/{id}: gone"));
+    }
+    let mut state = State::load(&path);
+    if state.deleted {
+        state.deleted = false;
+        state.save(&path)?;
+        collection_said(kind);
+    }
+    Ok(())
 }
 
 /// Whether a name (an account's, a collection's) is one folder of its own:
@@ -783,6 +876,191 @@ pub fn prepare(kind: Kind, account: &str, id: &str, name: &str, color: Option<&s
 
 /// The account of collections kept on this computer only.
 pub const LOCAL: &str = "local";
+
+/// The account of the calendars subscribed by their web address
+/// (`subscribed`): each device fetches its own copy, which the sharing never
+/// carries (it carries `local` alone), read only for every door but
+/// `replace_subscribed`.
+pub const SUBSCRIBED: &str = "subscribed";
+
+/// The mark a subscribed calendar's next copy carries once written whole (`replace_subscribed`).
+const WHOLE: &str = ".sioul-whole";
+
+/// Where a subscribed calendar's next copy is written, and its last one set
+/// aside while the next takes its place: beside the calendars, in the data
+/// folder (one disk, so that a rename moves a folder whole), never read as a calendar.
+fn subscribed_aside(which: &str, id: &str) -> PathBuf {
+    crate::config::data_dir().join("subscribed").join(which).join(id)
+}
+
+/// The guard of `replace_subscribed`: a subscribed calendar's id, one
+/// folder of its own, and nothing else. Every other calendar is written
+/// event by event through the one rule (`write_item`), and a subscribed
+/// one by this door alone: its sync state keeps it read only for the others.
+fn subscribed_only(id: &str) -> Result<(), String> {
+    if one_folder(id) && !id.starts_with('.') { Ok(()) } else { Err(format!("{id}: not a subscribed calendar")) }
+}
+
+/// The one door of a subscribed calendar (18 November 2026): its whole copy
+/// replaced at once by `items` (a file name and its text each), never half.
+/// The next copy is written whole beside it and marked so, then the last one
+/// set aside, the next one put in its place, and the last one taken out; a
+/// step cut short (a crash, Android stopping Sioul) is settled by
+/// `finish_subscribed`: a next copy written whole goes in, one not whole is
+/// dropped, and the last copy comes back if nothing took its place. `name`
+/// and `colour` are written with it, for the other tools of a vdir.
+pub fn replace_subscribed(id: &str, name: &str, colour: Option<&str>, items: &[(String, String)]) -> Result<(), String> {
+    subscribed_only(id)?;
+    if let Some(bad) = items.iter().find(|(file, _)| !one_folder(file) || !file.ends_with(".ics")) {
+        return Err(format!("{}: not a calendar's file", bad.0));
+    }
+    crate::filelock::with_lock(&subscribed_aside("lock", id), || replace_whole(id, name, colour, items))
+}
+
+/// `replace_subscribed`, its lock held.
+fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, String)]) -> Result<(), String> {
+    let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
+    finish_subscribed_now(id);
+    let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
+    let (next, old) = (subscribed_aside("next", id), subscribed_aside("old", id));
+    if next.exists() {
+        std::fs::remove_dir_all(&next).map_err(|e| fail(&next, e))?;
+    }
+    std::fs::create_dir_all(&next).map_err(|e| fail(&next, e))?;
+    std::fs::create_dir_all(live.parent().unwrap_or(&live)).map_err(|e| fail(&live, e))?;
+    // Each file on the disk before the mark that says the copy is whole, and
+    // the mark before the renames: a power cut never leaves a copy of empty
+    // files in place, with no old one to come back to (F12).
+    for (file, text) in items {
+        written_through(&next.join(file), text.as_bytes()).map_err(|e| fail(&next.join(file), e))?;
+    }
+    written_through(&next.join("displayname"), name.trim().as_bytes()).map_err(|e| fail(&next, e))?;
+    if let Some(colour) = colour.filter(|c| c.len() == 7 && c.starts_with('#')) {
+        written_through(&next.join("color"), colour.as_bytes()).map_err(|e| fail(&next, e))?;
+    }
+    folder_through(&next);
+    written_through(&next.join(WHOLE), b"This copy was written whole.\n").map_err(|e| fail(&next, e))?;
+    folder_through(&next);
+    if crashed(5) {
+        return Ok(());
+    }
+    if live.exists() {
+        std::fs::create_dir_all(old.parent().unwrap_or(&old)).map_err(|e| fail(&old, e))?;
+        std::fs::rename(&live, &old).map_err(|e| fail(&live, e))?;
+        folder_through(old.parent().unwrap_or(&old));
+    }
+    if crashed(6) {
+        return Ok(());
+    }
+    std::fs::rename(&next, &live).map_err(|e| fail(&next, e))?;
+    // The renames on the disk before the last copy is taken out.
+    folder_through(live.parent().unwrap_or(&live));
+    folder_through(next.parent().unwrap_or(&next));
+    if crashed(7) {
+        return Ok(());
+    }
+    finish_subscribed_now(id);
+    counted(&live.join("whole.ics"));
+    collection_said(Kind::Calendars);
+    Ok(())
+}
+
+/// A file written and flushed to the disk (`File::sync_all`).
+fn written_through(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// A folder's entries flushed to the disk, where the system lets a folder be
+/// opened so (not Windows, whose renames go through its journal).
+fn folder_through(dir: &Path) {
+    if let Ok(folder) = std::fs::File::open(dir) {
+        let _ = folder.sync_all();
+    }
+}
+
+/// A subscribed calendar's replacement cut short, settled (`replace_subscribed`):
+/// called before each replacement and each read of what it holds.
+pub fn finish_subscribed(id: &str) {
+    if subscribed_only(id).is_ok() {
+        crate::filelock::with_lock(&subscribed_aside("lock", id), || finish_subscribed_now(id));
+    }
+}
+
+/// `finish_subscribed`, its lock held: a next copy written whole put in
+/// place (the last one set aside first), one not whole dropped; the last
+/// copy taken out once another is in place, else put back.
+fn finish_subscribed_now(id: &str) {
+    let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
+    let (next, old) = (subscribed_aside("next", id), subscribed_aside("old", id));
+    if next.join(WHOLE).exists() {
+        if live.exists() && !old.exists() {
+            let _ = std::fs::create_dir_all(old.parent().unwrap_or(&old));
+            let _ = std::fs::rename(&live, &old);
+        }
+        if !live.exists() {
+            let _ = std::fs::rename(&next, &live);
+        }
+    }
+    if next.exists() && !next.join(WHOLE).exists() {
+        let _ = std::fs::remove_dir_all(&next);
+    }
+    if old.exists() {
+        if live.exists() {
+            let _ = std::fs::remove_dir_all(&old);
+        } else {
+            let _ = std::fs::rename(&old, &live);
+        }
+    }
+    if live.join(WHOLE).exists() {
+        let _ = std::fs::remove_file(live.join(WHOLE));
+    }
+}
+
+/// A subscribed calendar's folder made ready here, under its door's lock:
+/// its sync state read only, for events (no other door writes it, no sync
+/// sends it), its name and colour as said. Whether anything was made or changed.
+pub fn prepare_subscribed(id: &str, name: &str, colour: Option<&str>) -> Result<bool, String> {
+    subscribed_only(id)?;
+    crate::filelock::with_lock(&subscribed_aside("lock", id), || {
+        finish_subscribed_now(id);
+        let path = state_path(SUBSCRIBED, Kind::Calendars, id);
+        let state = State::load(&path);
+        let mut changed = false;
+        if !state.read_only || state.components != ["VEVENT"] {
+            State { read_only: true, components: vec!["VEVENT".into()], owned: Some(false), ..state }.save(&path)?;
+            changed = true;
+        }
+        let dir = Kind::Calendars.root().join(SUBSCRIBED).join(id);
+        let same = |file: &str, value: Option<&str>| std::fs::read_to_string(dir.join(file)).ok().as_deref() == value;
+        let colour = colour.filter(|c| c.len() == 7 && c.starts_with('#'));
+        changed |= !dir.is_dir() || !same("displayname", Some(name.trim())) || (colour.is_some() && !same("color", colour));
+        prepare(Kind::Calendars, SUBSCRIBED, id, name.trim(), colour).map_err(|e| e.to_string())?;
+        if changed {
+            collection_said(Kind::Calendars);
+        }
+        Ok(changed)
+    })
+}
+
+/// A subscribed calendar taken out of this device (`subscribed::stop`, or
+/// stopped on another device): its copy and its sync state. No event of it
+/// lives anywhere else.
+pub fn remove_subscribed(id: &str) -> Result<(), String> {
+    subscribed_only(id)?;
+    crate::filelock::with_lock(&subscribed_aside("lock", id), || {
+        finish_subscribed_now(id);
+        let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
+        if live.exists() {
+            std::fs::remove_dir_all(&live).map_err(|e| format!("{}: {e}", live.display()))?;
+        }
+        let _ = std::fs::remove_file(state_path(SUBSCRIBED, Kind::Calendars, id));
+        collection_said(Kind::Calendars);
+        Ok(())
+    })
+}
 
 /// A new collection made here: its folder, its name and colour, and a state
 /// that asks the next sync to create it on the server (MKCALENDAR or an
@@ -871,6 +1149,29 @@ pub struct State {
     /// `stop_showing`), and the sync asks it again before a DELETE.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owned: Option<bool>,
+    /// An address book made here whose server did not make it (an extended
+    /// MKCOL refused, or 405 with no address book there after it, review F6):
+    /// kept on this device, never asked again, said on its line; nothing is
+    /// moved into it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refused: bool,
+    /// Why a book removed or merged here is shown again rather than deleted
+    /// on its server (review F1, F5): "held", its server holds contacts this
+    /// device never had (added there since); "" none. Said on its line.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kept: String,
+    /// Who else may write this address book, as its server last listed it
+    /// (Nextcloud's `oc:invite`, those it is shared with to write): their
+    /// names, `"group:<name>"` for a group. Its groups decide who may reach
+    /// the person only once the person says so for these writers
+    /// (`addressbooks::groups_count`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writers: Vec<String>,
+    /// Whether its server said with whom it is shared (Nextcloud's
+    /// `oc:invite`); when it says neither that nor that the book is someone
+    /// else's, its line says so (it is taken as the person's alone).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub writers_known: bool,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1030,9 +1331,29 @@ fn collection_said(kind: Kind) {
     });
 }
 
-/// `agenda::guard` for a file of a collection, its refusal said.
+/// `agenda::guard` for a file of a collection, its refusal said; a card of an
+/// address book you only read is refused first, whatever the change (wave D:
+/// before it, only the card's buttons refused, and a write stayed on this
+/// device, never sent).
 fn guarded(path: &Path, change: crate::agenda::Change) -> Result<(), String> {
+    card_guard(path)?;
     crate::agenda::guard(path, change).map_err(|refusal| crate::agenda::said(refusal, &change))
+}
+
+/// A card's file in an address book its server lets you read only: refused,
+/// in one calm sentence. Any other file passes.
+fn card_guard(path: &Path) -> Result<(), String> {
+    if address_book_read_only(path) == Some(true) { Err(crate::agenda::translator().text("contact-read-only", None)) } else { Ok(()) }
+}
+
+/// Whether the address book whose folder holds `path` can only be read, as
+/// its last sync said (`State::read_only`); None when `path` is no file of an
+/// address book's folder.
+pub fn address_book_read_only(path: &Path) -> Option<bool> {
+    let rest = path.strip_prefix(Kind::Contacts.root()).ok()?;
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    let [account, id, _file] = parts.as_slice() else { return None };
+    Some(marks_of(&state_path(account, Kind::Contacts, id)).read_only)
 }
 
 /// Whether the calendar whose folder holds `path` can only be read; None
@@ -1053,8 +1374,10 @@ fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
     let marks = marks_of(&state_path(account, Kind::Calendars, id));
-    // Your word on its agenda counts as its server's: read only, or its availability only (`agendas`).
-    Some((marks.read_only || crate::agendas::chosen_read_only(account, id), marks.components))
+    // A calendar subscribed by its address is read only by its account, never
+    // by a state file that can go missing (F18). Your word on its agenda
+    // counts as its server's: read only, or its availability only (`agendas`).
+    Some((account == SUBSCRIBED || marks.read_only || crate::agendas::chosen_read_only(account, id), marks.components))
 }
 
 /// Whether a calendar's server lets you read it only, as its last sync said
@@ -1228,6 +1551,60 @@ mod tests {
     /// Whether the journal still notes a move from `path` (another test's own may be under way).
     fn noted(path: &Path) -> bool {
         crate::filelock::with_lock(&moves_path(), || moves_load().moves.iter().any(|m| m.from == path))
+    }
+
+    /// A subscribed calendar replaced whole (18 November 2026), cut short
+    /// after each step as a crash would cut it: the next look leaves the
+    /// last copy whole or the next one whole, never a mix, never neither; a
+    /// next copy not written whole is dropped. Its door refuses any other
+    /// calendar, and a file that is not a calendar's.
+    #[test]
+    fn a_subscribed_calendar_is_replaced_whole_or_not_at_all() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
+        let event = |uid: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART;VALUE=DATE:20300101\r\nSUMMARY:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let old: Vec<(String, String)> = (0..3).map(|n| (format!("old-{n}.ics"), event(&format!("old-{n}")))).collect();
+        let new: Vec<(String, String)> = (0..4).map(|n| (format!("new-{n}.ics"), event(&format!("new-{n}")))).collect();
+        let names = |id: &str| -> Vec<String> {
+            let mut names: Vec<String> = std::fs::read_dir(Kind::Calendars.root().join(SUBSCRIBED).join(id)).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".ics")).collect();
+            names.sort();
+            names
+        };
+        let (olds, news): (Vec<String>, Vec<String>) = (old.iter().map(|(n, _)| n.clone()).collect(), new.iter().map(|(n, _)| n.clone()).collect());
+        for step in [0u8, 5, 6, 7] {
+            let id = format!("whole-{step}");
+            replace_subscribed(&id, "Timetable", None, &old).unwrap();
+            assert_eq!(names(&id), olds);
+            CRASH_AFTER.with(|c| c.set(step));
+            replace_subscribed(&id, "Timetable", Some("#4c6b5c"), &new).unwrap();
+            CRASH_AFTER.with(|c| c.set(0));
+            let seen = names(&id);
+            // Between its two renames the copy is set aside (step 6): never a mix, all the same.
+            assert!(seen == olds || seen == news || (step == 6 && seen.is_empty()), "step {step}: never a mix: {seen:?}");
+            finish_subscribed(&id);
+            assert_eq!(names(&id), news, "step {step}: the next copy, written whole, in place");
+            assert!(!Kind::Calendars.root().join(SUBSCRIBED).join(&id).join(WHOLE).exists());
+            assert!(!subscribed_aside("old", &id).exists() && !subscribed_aside("next", &id).exists());
+        }
+        // A next copy not written whole (cut while it was written): dropped, the last copy kept.
+        let id = "whole-cut";
+        replace_subscribed(id, "Timetable", None, &old).unwrap();
+        std::fs::create_dir_all(subscribed_aside("next", id)).unwrap();
+        std::fs::write(subscribed_aside("next", id).join("new-0.ics"), event("new-0")).unwrap();
+        finish_subscribed(id);
+        assert_eq!(names(id), olds);
+        assert!(!subscribed_aside("next", id).exists());
+        // Its guard: nothing but a subscribed calendar's id, nothing but calendar files.
+        assert!(replace_subscribed("../local", "x", None, &old).is_err());
+        assert!(replace_subscribed("x", "x", None, &[("../escape.ics".into(), event("e"))]).is_err());
+        assert!(replace_subscribed("x", "x", None, &[("notes.txt".into(), event("e"))]).is_err());
+        // Read only for every other door.
+        prepare_subscribed(id, "Timetable", None).unwrap();
+        let file = Kind::Calendars.root().join(SUBSCRIBED).join(id).join("old-0.ics");
+        assert_eq!(calendar_read_only(&file), Some(true));
+        assert!(write_item(&file, &event("mine")).is_err() && remove_item(&file).is_err());
+        remove_subscribed(id).unwrap();
+        assert!(!Kind::Calendars.root().join(SUBSCRIBED).join(id).exists());
     }
 
     /// A task made an appointment and back (21 October 2026), cut short

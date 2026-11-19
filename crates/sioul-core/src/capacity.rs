@@ -299,25 +299,76 @@ pub struct Finished {
     pub weight: f32,
 }
 
-/// Each finished task with an estimate and time spent: its log ratio, all its
-/// sessions summed (TE14); the first estimate, else the current one (a task
-/// estimated before the first was kept). Dropped tasks never count, nor steps
-/// of a bigger task: the estimates of parts sum to more than the whole's
-/// (Forsyth & Burt 2008), so what they teach would not carry over.
-pub fn finished(tasks: &[Task], sessions: &[Session], kind_of: &dyn Fn(&Task) -> &'static str, zone: &TimeZone) -> Vec<Finished> {
-    let mut spent: BTreeMap<&str, (u32, f32)> = BTreeMap::new();
-    for s in sessions.iter().filter(|s| !s.task.is_empty()) {
-        let entry = spent.entry(s.task.as_str()).or_insert((0, 0.0));
-        entry.0 = entry.0.saturating_add(s.minutes);
-        entry.1 += s.minutes as f32 * if Kind::timed(s.kind) { 1.0 } else { TYPED_WEIGHT };
+/// Each task's time with its steps': the minutes kept under its own UID and
+/// under each of its steps, at every depth, and what they weigh. A timer runs
+/// on the step being done (`work::focus_start` keeps the step's UID), so a
+/// whole done through its steps holds little or none of its own. The plan's
+/// ratio (`finished`) and the Time page's table by area
+/// (`timereport::estimates_by_area`) both read a whole's time here, so that
+/// they never disagree on what a task took.
+pub struct TaskTime<'a> {
+    own: BTreeMap<&'a str, (u32, f32)>,
+    steps: BTreeMap<&'a str, BTreeSet<&'a str>>,
+}
+
+impl<'a> TaskTime<'a> {
+    /// `stretches`: each stretch's task UID (empty for time on no task), its
+    /// minutes, and what they weigh (timed 1 a minute, typed `TYPED_WEIGHT`).
+    pub fn of(tasks: &'a [Task], stretches: impl IntoIterator<Item = (&'a str, u32, f32)>) -> TaskTime<'a> {
+        let mut own: BTreeMap<&str, (u32, f32)> = BTreeMap::new();
+        for (uid, minutes, weighed) in stretches.into_iter().filter(|(uid, ..)| !uid.is_empty()) {
+            let entry = own.entry(uid).or_insert((0, 0.0));
+            entry.0 = entry.0.saturating_add(minutes);
+            entry.1 += weighed;
+        }
+        let mut steps: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+        for task in tasks {
+            if let Some(whole) = task.parent() {
+                steps.entry(whole).or_default().insert(task.uid.as_str());
+            }
+        }
+        TaskTime { own, steps }
     }
+
+    /// A task's minutes and what they weigh, with its steps' at every depth,
+    /// each step once whatever loop its links make.
+    pub fn whole(&self, uid: &str) -> (u32, f32) {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        let mut left: Vec<&str> = vec![uid];
+        let mut total = (0u32, 0f32);
+        while let Some(at) = left.pop() {
+            if !seen.insert(at) {
+                continue;
+            }
+            if let Some(&(minutes, weighed)) = self.own.get(at) {
+                total.0 = total.0.saturating_add(minutes);
+                total.1 += weighed;
+            }
+            if let Some(steps) = self.steps.get(at) {
+                left.extend(steps.iter().copied());
+            }
+        }
+        total
+    }
+}
+
+/// Each finished task with an estimate and time spent: its log ratio, all its
+/// sessions and its steps' summed (TE14, `TaskTime`), what they weigh mixed
+/// over all those minutes; its own first estimate, else its current one (a
+/// task estimated before the first was kept), never its steps' estimates
+/// summed. Dropped tasks never count, nor steps of a bigger task: the
+/// estimates of parts sum to more than the whole's (Forsyth & Burt 2008), so
+/// what they teach would not carry over; their time counts in their whole's,
+/// once it is finished.
+pub fn finished(tasks: &[Task], sessions: &[Session], kind_of: &dyn Fn(&Task) -> &'static str, zone: &TimeZone) -> Vec<Finished> {
+    let time = TaskTime::of(tasks, sessions.iter().map(|s| (s.task.as_str(), s.minutes, s.minutes as f32 * if Kind::timed(s.kind) { 1.0 } else { TYPED_WEIGHT })));
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     tasks
         .iter()
         .filter(|t| t.status == Status::Completed && t.parent().is_none() && seen.insert(t.uid.as_str()))
         .filter_map(|t| {
             let estimate = t.estimate_first.unwrap_or(t.estimate);
-            let &(minutes, weighed) = spent.get(t.uid.as_str())?;
+            let (minutes, weighed) = time.whole(&t.uid);
             if estimate == 0 || minutes == 0 {
                 return None;
             }
@@ -1374,6 +1425,76 @@ mod tests {
             "admin" => "admin",
             _ => "leisure",
         }
+    }
+
+    /// The plan learns from time spent on every area (the owner's word, 18
+    /// November 2026: admin and personal tasks are timed to plan better): a
+    /// finished admin task and a leisure one count in the ratio of time spent
+    /// to first estimates as a work one does, yours and their kind's. Fails if
+    /// either is left out of that sum.
+    #[test]
+    fn the_ratio_learns_from_every_area() {
+        let today = day("2026-10-06");
+        let tasks = vec![done("report", 30, Some(30), "2026-10-05", "work"), done("taxes", 30, Some(30), "2026-10-05", "admin"), done("choir", 30, Some(30), "2026-10-05", "leisure")];
+        let sessions = vec![session("report", "2026-10-05", 60, Some(Kind::Measured)), session("taxes", "2026-10-05", 60, Some(Kind::Measured)), session("choir", "2026-10-05", 60, Some(Kind::Measured))];
+        let all = finished(&tasks, &sessions, &area, &TimeZone::UTC);
+        let mut kinds: Vec<&str> = all.iter().map(|f| f.kind).collect();
+        kinds.sort();
+        assert_eq!(kinds, ["admin", "leisure", "work"], "each area's task finished counts");
+        let r = ratios(&all, today);
+        assert!((r.count - 3.0).abs() < 1e-6, "three tasks behind your ratio: {}", r.count);
+        for kind in ["work", "admin", "leisure"] {
+            assert!(r.kinds.get(kind).is_some_and(|(_, weight)| (*weight - 1.0).abs() < 1e-6), "{kind}: {:?}", r.kinds);
+        }
+        // Without the admin and leisure tasks, the ratio would stand on one task: it does not.
+        let work_alone = ratios(&finished(&tasks[..1], &sessions[..1], &area, &TimeZone::UTC), today);
+        assert!(r.count > work_alone.count && (r.person - work_alone.person).abs() > 1e-6);
+    }
+
+    fn step(uid: &str, of: &str, done_on: Option<&str>) -> Task {
+        let mut task = done(uid, 15, Some(15), done_on.unwrap_or("2026-10-05"), "admin");
+        if done_on.is_none() {
+            task.status = Status::NeedsAction;
+            task.completed = None;
+        }
+        task.relations.push(crate::tasks::Relation { kind: "PARENT".into(), uid: of.into(), gap: 0 });
+        task
+    }
+
+    /// A timer runs on the step being done, so a whole's time is its own and
+    /// its steps', at every depth (the review of the second wave: a whole
+    /// done through its steps taught nothing, one with ten minutes of its own
+    /// and three hours on its steps taught a ratio far too low). Its estimate
+    /// stays its own; a step alone still teaches nothing, and a step whose
+    /// whole is not finished counts for nothing yet.
+    #[test]
+    fn a_whole_s_time_holds_its_steps_time() {
+        let measured = Some(Kind::Measured);
+        // Done through two steps, one with a step of its own, nothing timed on the whole.
+        let tasks = vec![done("move", 60, Some(60), "2026-10-05", "admin"), step("boxes", "move", Some("2026-10-04")), step("van", "move", Some("2026-10-05")), step("keys", "van", Some("2026-10-05"))];
+        let sessions = vec![session("boxes", "2026-10-04", 40, measured), session("van", "2026-10-05", 50, measured), session("keys", "2026-10-05", 30, measured)];
+        let all = finished(&tasks, &sessions, &area, &TimeZone::UTC);
+        assert_eq!(all.iter().map(|f| f.uid.as_str()).collect::<Vec<_>>(), ["move"], "the whole alone teaches, its steps do not");
+        assert!((all[0].log - 2f32.ln()).abs() < 1e-5, "120 min beside its own 60, never the steps' 45: {}", all[0].log.exp());
+        assert!((all[0].weight - 1.0).abs() < 1e-6);
+        // Ten minutes typed on the whole, three hours timed on its steps: 190 beside 60, the weight mixed over all.
+        let tasks = vec![done("site", 60, Some(60), "2026-10-05", "work"), step("a", "site", Some("2026-10-05")), step("b", "site", Some("2026-10-05"))];
+        let sessions = vec![session("site", "2026-10-05", 10, Some(Kind::Typed)), session("a", "2026-10-05", 100, measured), session("b", "2026-10-05", 80, measured)];
+        let all = finished(&tasks, &sessions, &area, &TimeZone::UTC);
+        assert!((all[0].log - (190f32 / 60.0).ln()).abs() < 1e-5, "the true ratio, not 10/60: {}", all[0].log.exp());
+        assert!((all[0].weight - (10.0 * TYPED_WEIGHT + 180.0) / 190.0).abs() < 1e-6, "{}", all[0].weight);
+        // A whole with no estimate of its own teaches nothing, whatever its steps guessed.
+        let tasks = vec![done("bare", 0, None, "2026-10-05", "admin"), step("s", "bare", Some("2026-10-05"))];
+        assert!(finished(&tasks, &[session("s", "2026-10-05", 30, measured)], &area, &TimeZone::UTC).is_empty());
+        // A step done whose whole is still open: nothing yet.
+        let mut open = done("open", 60, Some(60), "2026-10-05", "admin");
+        open.status = Status::NeedsAction;
+        let tasks = vec![open, step("first", "open", Some("2026-10-05"))];
+        assert!(finished(&tasks, &[session("first", "2026-10-05", 30, measured)], &area, &TimeZone::UTC).is_empty());
+        // Links that make a loop: each step counted once, and the sum ends.
+        let tasks = vec![step("loop", "y", Some("2026-10-05")), step("x", "loop", Some("2026-10-05")), step("y", "x", Some("2026-10-05"))];
+        let time = TaskTime::of(&tasks, [("x", 20, 20.0), ("y", 10, 10.0), ("loop", 5, 5.0)]);
+        assert_eq!(time.whole("loop").0, 35);
     }
 
     #[test]

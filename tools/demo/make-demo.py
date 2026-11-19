@@ -39,6 +39,8 @@ notifications brought, as the sharing brings its log to a computer, with the
 part "Messages from your phone" on here: the Porch's "From your phone" says
 them, and the doctor's sheet her messages of the week (docs/porch.md, "From
 your phone").
+--stars (or SIOUL_DEMO_STARS=1) turns starred people both ways on, with three
+people on the Always through list saying where each is starred (`phones`).
 --texts (or SIOUL_DEMO_TEXTS=1) adds the texts a phone read and those written
 here for it to send, as the sharing's part "Texts" brings them, written plain
 and marked as the demo's stand-ins (crates/sioul-app/src/texts.rs, `Seal`):
@@ -1209,6 +1211,28 @@ def write_calls(p: Profile):
     p.write(p.state / "calls" / "log" / "history" / "demo-phone.jsonl", "".join(history))
 
 
+def write_stars(p: Profile):
+    """Starred people both ways (crates/sioul-core/src/stars.rs), on: three
+    people on the Always through list, each saying where it is starred, as
+    the phone "Moss" (the stand-in id `phone-id`, the steps' own) left them at
+    its last look: the doctor starred, Maud not starred yet, Priya in none
+    of its contacts; the demo's address book looked at, no card marked
+    favourite there, so its favourites cannot be kept in step yet (the
+    list's block says it). Its pictures: SIOUL_GRAB_STEPS=phones."""
+    config = p.config / "config.toml"
+    p.write(config, config.read_text(encoding="utf-8") + '\n[dnd]\nstars = true\n\n[device."phone-id"]\nname = "Moss"\n')
+    people = [
+        ("demo-always-varga", "Dr Elena Varga", "+33 4 65 71 47 70", "", "starred"),
+        ("demo-always-maud", "Maud Ferrand", "+262 6 39 98 12 30", "maud.ferrand@example.org", "not-starred"),
+        ("demo-always-priya", "Priya Nair", "+262 6 39 98 90 46", "", "absent"),
+    ]
+    lines = []
+    for pid, name, phone, email, state in people:
+        lines.append(f'[[person]]\nid = "{pid}"\nname = {toml_string(name)}\nphones = ["{phone}"]\n' + (f'emails = ["{email}"]\n' if email else "") + f'\n[person.starred]\nphone-id = "{state}"\n')
+    p.write(p.config / "dnd-people.toml", "\n".join(lines))
+    p.write(p.state / "stars" / DAV / "contacts.json", json.dumps({"starred": [], "looked": unix(p.clock.now)}))
+
+
 def write_phone_messages(p: Profile):
     """The messages a phone's notifications brought, as its log reaches a
     computer through the sharing (crates/sioul-core/src/phonemsgs.rs, `Line`;
@@ -1570,6 +1594,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
         # shared with Sam on the server (Agenda ⚙ ▸ Your availability); its blocks come from the upkeep.
         ("calendars", "busy-sam", t("Noa, busy times", "Noa, heures prises"), "#5b6470", ["VEVENT"]),
         ("contacts", "contacts", "Contacts", None, []),
+        # A book a co-worker can write (wave D): shared with Sam to write, its groups off until said.
+        ("contacts", "team", t("Team", "Équipe"), None, []),
     ]
     for kind, cid, name, colour, components in collections:
         folder = p.data / kind / DAV / cid
@@ -1579,6 +1605,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         read_only = "true" if cid == "sam" else "false"
         state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", f"read_only = {read_only}",
                  "components = " + toml_list(components)]
+        # Address books: yours, as the server lists them with their shares (`oc:invite`).
+        if kind == "contacts":
+            state += ["owned = true", "writers_known = true"] + (["writers = [\"sam\"]"] if cid == "team" else [])
         p.write(p.state / "dav" / DAV / kind / f"{cid}.toml", "\n".join(state) + "\n")
     # Where the account's calendars live, as a Nextcloud says it (`/remote.php/dav/`): what
     # Agenda ⚙ ▸ Your availability reads the server's kind and name from.
@@ -1605,8 +1634,13 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("work", event(c, "accountant", t("Call with Marc (accountant)", "Appel avec Marc (comptable)"), c.weekday_after(2), "11:00", "11:30",
                        location=t("Phone: +33 4 65 71 63 25", "Téléphone : +33 4 65 71 63 25"),
                        notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), project="taxes-2026")),
+        # A series that pauses during the school holidays, the public holidays and your vacations: the
+        # window's own round leaves its times out there (`series::keep`) when it starts.
         ("personal", event(c, "choir", t("Choir rehearsal", "Répétition de la chorale"), c.this_week(3), "18:45", "20:30",
-                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir")),
+                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir",
+                           extra=["X-SIOUL-PAUSE-DURING:public", f"X-SIOUL-PAUSE-DURING:school/{SCHOOL_ID}", f"X-SIOUL-PAUSE-DURING:vacations/{VACATIONS_OWNER}"])
+         # It ends with the season, at the end of June.
+         .replace("RRULE:FREQ=WEEKLY", f"RRULE:FREQ=WEEKLY;UNTIL={utc(c.at(date(c.today.year + 1, 6, 30), '23:59'))}")),
         ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
@@ -1641,6 +1675,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
     for calendar, text in events:
         uid = text.split("UID:")[1].split("\r\n")[0]
         p.write(p.data / "calendars" / DAV / calendar / f"{uid}.ics", text)
+    write_subscribed(p)
     # Léa's dentist came in since this device's first look: asked once, under the Agenda's head line (part 3).
     p.write(p.state / "holder-questions.toml", 'looked = true\nseen = ["demo-event-lea-dentist", "demo-event-lea-swimming"]\nask = ["demo-event-lea-dentist"]\n')
     if ONGOING == "quiet":
@@ -1648,6 +1683,56 @@ def write_calendars(p: Profile, mails: list[Mail]):
 
     by_key = {m.key: m for m in mails}
     write_tasks(p, by_key)
+
+
+# Calendars by their address (18 November 2026, docs/client.md): the official French files' addresses
+# (Licence Ouverte), never fetched here (SIOUL_DEMO=1, and the sandbox has no network).
+SCHOOL_ID = "fr-school-zone-a"
+SCHOOL_URL = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics"
+PUBLIC_ID = "fr-public-metropole"
+PUBLIC_URL = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics"
+# The opaque id of the demo's settings, whose vacations a series names (`config::VacationsMark::owner`).
+VACATIONS_OWNER = "demo-owner-noa"
+
+
+def fnv64_hex(text: str) -> str:
+    """`vdir::content_hash`: FNV-1a on 64 bits, as 16 hex digits."""
+    h = 0xCBF29CE484222325
+    for byte in text.encode():
+        h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{h:016x}"
+
+
+def write_subscribed(p: "Profile"):
+    """Each subscribed calendar's copy on this device as a round leaves it (`subscribed::take`,
+    `vdir::replace_subscribed`), read two hours ago: its files, its sync state (read only), what
+    this device read of it (`state/subscribed/<id>.toml`). The school holidays begin after class
+    in ten days; the public holidays are Christmas and New Year's Day to come."""
+    c = p.clock
+    xmas = date(c.today.year, 12, 25) if date(c.today.year, 12, 25) >= c.today else date(c.today.year + 1, 12, 25)
+    new_year = date(xmas.year + 1, 1, 1)
+    calendars = [
+        (SCHOOL_ID, SCHOOL_URL, "Calendrier scolaire - Zone A", [(c.day(10), c.day(26), "Vacances de Noël")]),
+        (PUBLIC_ID, PUBLIC_URL, "Jours fériés Métropole", [(xmas, xmas + timedelta(days=1), "Jour de Noël"), (new_year, new_year + timedelta(days=1), "1er janvier")]),
+    ]
+    read = unix(c.ago(hours=2))
+    for cid, url, name, holidays in calendars:
+        folder = p.data / "calendars" / "subscribed" / cid
+        p.write(folder / "displayname", name)
+        for n, (first, after, summary) in enumerate(holidays):
+            uid = f"demo-{cid}-{n}@subscribed.sioul"
+            p.write(folder / f"{fnv64_hex(uid)}.ics", vcalendar(["BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{utc(c.at(c.day(-30), '00:00'))}",
+                                                                 f"DTSTART;VALUE=DATE:{ics_date(first)}", f"DTEND;VALUE=DATE:{ics_date(after)}",
+                                                                 f"SUMMARY:{escape(summary)}", "TRANSP:TRANSPARENT", "END:VEVENT"]))
+        p.write(p.state / "dav" / "subscribed" / "calendars" / f"{cid}.toml", 'read_only = true\ncomponents = ["VEVENT"]\nowned = false\n')
+        p.write(p.state / "subscribed" / f"{cid}.toml", f"""address = "{fnv64_hex(url)}"
+tried = {read}
+checked = {read}
+changed = {unix(c.ago(hours=24 * 3))}
+hash = "demo"
+name = {toml_string(name)}
+events = {len(holidays)}
+""")
 
 
 # A task's tie to the appointment it prepares (`pairs::APPOINTMENT`).
@@ -1783,6 +1868,8 @@ def write_tasks(p: Profile, mail: dict):
                             categories=[t("family", "famille")], due=c.day(8), contacts=["hugo"])),
         ("home-tasks", task(c, "gym", t("Book the climbing gym for Saturday", "Réserver la salle d'escalade pour samedi"), estimate=5, kind="online",
                             categories=[t("leisure", "loisirs")], due=c.this_week(4), contacts=["jonas"])),
+        ("home-tasks", task(c, "score", t("Print the Ave verum score", "Imprimer la partition de l'Ave verum"), status="COMPLETED", estimate=10, kind="make",
+                            categories=[t("leisure", "loisirs")], project="choir", completed=c.at(c.day(-2), "20:40"))),
     ]
     for calendar, text in tasks:
         uid = text.split("UID:")[1].split("\r\n")[0]
@@ -1793,6 +1880,27 @@ def write_contacts(p: Profile):
     people = contacts()
     for key, c in people.items():
         p.write(p.data / "contacts" / DAV / "contacts" / f"demo-contact-{key}.vcf", vcard(key, c))
+    # The co-workers' book (wave D): titles at the start of names (the title's move), a household.
+    team = {
+        "clara": dict(name="Mme Clara Exemple", first="Clara", last="Exemple", email=[("work", "clara.exemple@example.org")], phone=[("work", "+33 4 65 71 30 01")], cats=["clients"]),
+        "paul": dict(name="Dr. Paul Exemple", first="Paul", last="Exemple", email=[("work", "paul.exemple@example.org")], phone=[("work", "+33 4 65 71 30 02")]),
+        "dupont": dict(name=t("Mr and Mrs Dupont", "M. et Mme Dupont"), email=[("home", "dupont@example.org")], phone=[("home", "+33 4 65 71 30 03")]),
+        "lou": dict(name="Me Lou Exemple", first="Lou", last="Exemple", email=[("work", "lou.exemple@example.org")]),
+    }
+    for key, c in team.items():
+        p.write(p.data / "contacts" / DAV / "team" / f"demo-team-{key}.vcf", vcard(f"team-{key}", c))
+    # A small file of invented people to import (the import's pictures): one already here, two at one number.
+    p.write(p.root / "cache" / "demo-import" / "clients.csv", t(
+        "Title;First name;Last name;Phone;E-mail;Groups\n"
+        "Mrs;Ada;Exemple;04 65 71 40 01;ada.exemple@example.org;Clients\n"
+        "Mr;Ben;Exemple;04 65 71 40 01;ben.exemple@example.org;Clients\n"
+        f"Ms;{W.iris[0].split()[0]};{W.iris[0].split()[1]};+33 4 65 71 20 14;{W.iris[1]};\n"
+        "Dr;Nina;Exemple;04 65 71 40 02;nina.exemple@example.org;family\n",
+        "Civilité;Prénom;Nom;Téléphone;E-mail;Groupes\n"
+        "Mme;Ada;Exemple;04 65 71 40 01;ada.exemple@example.org;Clients\n"
+        "M.;Ben;Exemple;04 65 71 40 01;ben.exemple@example.org;Clients\n"
+        f"Mme;{W.iris[0].split()[0]};{W.iris[0].split()[1]};+33 4 65 71 20 14;{W.iris[1]};\n"
+        "Dr;Nina;Exemple;04 65 71 40 02;nina.exemple@example.org;famille\n"))
     places = ["[found]"]
     for c in people.values():
         if c.get("adr"):
@@ -2588,6 +2696,11 @@ def write_time(p: Profile):
     for offset in range(0, (c.today - c.monday).days):
         session(c.monday + timedelta(days=offset), "14:15", 50, project="fernhill", note=t("Homepage, details", "Page d'accueil, détails"))
     session(c.today, "11:20", 40, task="sketch", note=t("the left layout's header, with the serif title", "l'en-tête de la mise en page de gauche, avec le titre à empattements"))
+    # Time for every area: the bus pass (admin), the choir's score (leisure) and the thank-you
+    # to Oskar (work), all done, timed: the Time page sets each beside its first estimate, by area.
+    session(c.day(-3), "18:10", 15, task="bus-pass")
+    session(c.day(-2), "20:15", 20, task="score")
+    session(c.today, "09:05", 10, task="oskar")
 
     by_month: dict[str, list] = {}
     for s in sessions:
@@ -2860,7 +2973,7 @@ label = {toml_string(t("Leave", "Congés"))}
 
 language = "{LANG}"
 
-# The folder of notes, beside them the projects, budgets, the bank, the papers.
+# The folder of notes (Sioul's lists, papers and letters in folders of their own: below).
 case_store = {toml_string(p.notes_at)}
 
 # Minutes for tasks on each weekday, Monday first.
@@ -2883,6 +2996,17 @@ parent_address = "sam@example.org"
 whose = "partner"
 name = "Sam"
 {work_agenda}
+# Calendars by their address (Agenda ⚙ ▸ Your agendas ▸ Subscribe to a calendar…): the
+# official school holidays of a zone and the public holidays, each device reading them by itself.
+[agenda.subscriptions."{SCHOOL_ID}"]
+url = "{SCHOOL_URL}"
+holidays = "school"
+after_class = true
+
+[agenda.subscriptions."{PUBLIC_ID}"]
+url = "{PUBLIC_URL}"
+holidays = "public"
+
 # Your availability (Agenda ⚙ ▸ Your availability): your busy times for Sam,
 # "Work" for the work agenda, kept in a calendar of blocks shared with Sam.
 [[agenda.availabilities]]
@@ -3033,6 +3157,11 @@ preset = "taxes"
 id = "choir"
 name = {toml_string(t("Choir", "Chorale"))}
 area = "leisure"
+
+# Whose the vacations are, and when they last changed: what a series pausing during them notes.
+[vacations]
+owner = "{VACATIONS_OWNER}"
+stamp = "{p.clock.at(p.clock.day(-10), '09:00').astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
 """)
     p.write(p.config / "known-senders.txt", f"""# Senders let in: they skip the screener.
 @{W.library}
@@ -3095,6 +3224,48 @@ def as_written_before(p: Profile):
         p.write(ledger, ledger.read_text(encoding="utf-8").replace("sioul:project/", "sioul:case/"), moment)
 
 
+def move_lists(p: Profile, documents_at: str):
+    """Sioul's lists out of the notes folder, as a device that moved keeps them
+    (docs/notes-folder.md, "What lives where"): the lists in the data folder's
+    records/, the papers' files in Documents/Papers, the letters' scans and
+    their inbox in Documents/Letters, the lists' paths named from there, the
+    state folder saying so, the two folders this device's own in config.toml.
+    Each file keeps its time. The notes folder holds the notes alone."""
+    records, documents = p.data / "records", p.root / "documents"
+    lists = ["sioul-projects.toml", "sioul-cases.toml", "sioul-clients.toml", "sioul-budgets.toml", "sioul-bank.toml",
+             "sioul-movements.toml", "sioul-contracts.toml", "sioul-papers.toml"]
+    def move(source: Path, target: Path):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+    for name in lists:
+        if (p.notes / name).is_file():
+            move(p.notes / name, records / name)
+    for old, folder in (("papers", "Papers"), ("letters", "Letters")):
+        top = p.notes / old
+        for path in sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else []:
+            relative = path.relative_to(top)
+            own = old == "letters" and len(relative.parts) == 1 and (path.name == "letters.toml" or path.suffix == ".txt")
+            move(path, records / "letters" / relative if own else documents / folder / relative)
+        for folder_left in sorted((d for d in top.rglob("*") if d.is_dir()), reverse=True) if top.is_dir() else []:
+            folder_left.rmdir()
+        if top.is_dir():
+            top.rmdir()
+    for list_file, prefix in ((records / "sioul-papers.toml", "papers/"), (records / "letters" / "letters.toml", "letters/")):
+        if list_file.is_file():
+            moment = datetime.fromtimestamp(list_file.stat().st_mtime).astimezone()
+            p.write(list_file, list_file.read_text(encoding="utf-8").replace(f'file = "{prefix}', 'file = "'), moment)
+    p.write(p.state / "storage.toml", f"moved = {int(unix(p.clock.now))}\nfrom = {toml_string(p.notes_at)}\ncleaned = 0\n")
+    config = p.config / "config.toml"
+    p.write(config, config.read_text(encoding="utf-8") + f"""
+# This device's own folders for papers and letters (docs/papers.md): Sioul's lists are in its own folder.
+[papers]
+folder = {toml_string(documents_at + "/Papers")}
+
+[letters]
+folder = {toml_string(documents_at + "/Letters")}
+""")
+
+
 def main():
     global LANG, W, ONGOING, DAYS_OFF, CONFLICT, SHORTFALL
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -3111,12 +3282,17 @@ def main():
                         help="the calls a phone of yours screened, as the sharing brings them: the Porch lists those it declined (SIOUL_DEMO_CALLS=1 too)")
     parser.add_argument("--phone-messages", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_PHONE_MESSAGES")),
                         help="the messages a phone's notifications brought, as the sharing brings them, and their part on here (SIOUL_DEMO_PHONE_MESSAGES=1 too)")
+    parser.add_argument("--stars", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_STARS")),
+                        help="starred people both ways on, three people on Always through saying where each is starred (SIOUL_DEMO_STARS=1 too)")
     parser.add_argument("--texts", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_TEXTS")),
                         help="texts: the texts a phone read and those written here for it, as the part Texts brings them (SIOUL_DEMO_TEXTS=1 too)")
     parser.add_argument("--leave-spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_LEAVE_SPAM")),
                         help="two letters you said are spam, from proven senders offering one click (SIOUL_DEMO_LEAVE_SPAM=1 too)")
     parser.add_argument("--compose", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_COMPOSE")),
                         help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
+    parser.add_argument("--old-layout", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_LAYOUT")),
+                        help="Sioul's lists left in the notes folder, as before they moved to its own folder (SIOUL_DEMO_OLD_LAYOUT=1 too)")
+    parser.add_argument("--documents-at", help="where Sioul finds DIR/documents when it runs (default: beside the notes, Documents)")
     parser.add_argument("--old-projects", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_PROJECTS")),
                         help="the projects' file under its first name, sioul-cases.toml with [[case]], and the budgets' ties as sioul:case/: Settings offers to rename it (SIOUL_DEMO_OLD_PROJECTS=1 too)")
     parser.add_argument("--doses-asked", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DOSES_ASKED")),
@@ -3164,6 +3340,8 @@ def main():
         write_phone_messages(profile)
     if args.texts:
         write_texts(profile)
+    if args.stars:
+        write_stars(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)
     if args.old_projects:
@@ -3173,6 +3351,8 @@ def main():
     write_health(profile, args.doses_asked)
     write_weather(profile)
     write_site_news(profile)
+    if not args.old_layout:
+        move_lists(profile, args.documents_at or str(Path(profile.notes_at).parent / "Documents"))
     print(f"{root}: a demo profile for {clock.now.isoformat()}, in {'French' if LANG == 'fr' else 'English'}" + ("" if profile.hours else ", without hours"))
 
 

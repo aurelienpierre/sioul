@@ -253,7 +253,7 @@ pub const KEYS: [(&str, &[&str]); 8] = [
     ("called", &["bool"]),
 ];
 
-/// One setting of the screening written (Settings ▸ This phone ▸ Call
+/// One setting of the screening written (Settings ▸ Devices ▸ this phone's card ▸ Call
 /// screening), `key` as "screening.unknown": its value checked, then only that
 /// key, in place (`config::set_value`); the others keep their first values
 /// until you change them. Refused, said, for a key or a word it does not take.

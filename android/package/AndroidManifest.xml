@@ -52,20 +52,25 @@
     <!-- Do-not-disturb on every device (docs/android.md, "In the background"):
          the service that keeps this phone in step with your other devices
          while Sioul is closed, in the foreground with one quiet notification,
-         asked to be let run in the background; your contacts read (never
-         written) to say who on your list of people is not starred here. -->
+         asked to be let run in the background; your contacts read to say who
+         on your list of people is starred here. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Starred people both ways (DndContacts.java; the owner's decision of 18
+         November 2026): the star on a contact of someone Always through,
+         written once you turn this on and Android allows it. Sioul writes the
+         star alone: never a contact, a name or a number. -->
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- texts: your phone's texts read for your computers, and sent from them
-         (docs/texts.md; Texts.java, TextSend.java), asked in Settings ▸ This
-         phone ▸ Texts. Never the SMS role. -->
+         (docs/texts.md; Texts.java, TextSend.java), asked in this phone's card
+         in Settings ▸ Devices ▸ Texts. Never the SMS role. -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <!-- The phone's call history read (never written), asked in Settings ▸
-         This phone ▸ Calls (CallsSetup.java): the calls you missed and those
+    <!-- The phone's call history read (never written), asked in this phone's
+         card in Settings ▸ Devices (CallsSetup.java): the calls you missed and those
          of yours that did not reach them, for the Porch of each of your
          devices and the call-back tasks (docs/android.md, "Calls"). -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
@@ -366,6 +371,21 @@
                 <data android:mimeType="application/ics" />
                 <data android:mimeType="text/x-vcalendar" />
             </intent-filter>
+            <!-- A file of contacts opened (a vCard, a CSV table): read here,
+                 then shown in Sioul's window, where you choose which column is
+                 what, its address book and its groups (contactimport.rs). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/vcard" />
+                <data android:mimeType="text/x-vcard" />
+                <data android:mimeType="text/directory" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+            </intent-filter>
         </activity>
         <!-- An extension's sign-in page (SignIn.java; docs/extensions.md): the
              system's web view on a screen of Sioul's own, the site's name
@@ -494,7 +514,9 @@
             </intent-filter>
         </service>
         <!-- Android's question "Set Sioul as your caller ID & spam app?",
-             asked from Settings ▸ Calls (CallsSetup.java): never shown itself. -->
+             asked from Settings ▸ Calls (CallsSetup.java), and its questions
+             for the call history and for the stars (reading and writing
+             contacts): never shown itself. -->
         <activity
             android:name="com.aurelienpierre.sioul.CallsSetup"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
@@ -557,7 +579,7 @@
             android:process=":listener"
             android:exported="false" />
         <!-- Android's question for the link to your computer (Companion.java),
-             asked from Settings ▸ This phone: never shown itself. -->
+             asked from Settings ▸ Devices ▸ this phone's card: never shown itself. -->
         <activity
             android:name="com.aurelienpierre.sioul.Companion"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"

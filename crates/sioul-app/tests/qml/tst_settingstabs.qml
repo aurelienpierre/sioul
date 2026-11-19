@@ -9,8 +9,9 @@
 // Devices takes the whole width. On a phone's width (412 points), the page
 // opens on the list of its sections, each with its name and a line saying
 // what it holds; a tap opens one, Back returns to the list, and a link to a
-// setting opens its section. The phone's page is told it runs on Android,
-// so that its list holds a phone's sections, This phone among them.
+// setting opens its section. The phone's page is told it runs on Android: its
+// list holds the same sections, what the tab "This phone" held being this
+// phone's card in Devices, where its older keys lead.
 // Run by tools/qml-test.sh. To see the pages, set `pictures` below to a
 // folder (a change of your own, not to commit).
 
@@ -42,7 +43,7 @@ Item {
         id: mock
 
         property string language: "en"
-        // A phone: its own tab, This phone (the page told it runs on Android, below).
+        // A phone (the page told it runs on Android, below).
         readonly property bool telephony: true
         readonly property string deviceKind: "phone"
         readonly property var words: ({
@@ -54,21 +55,19 @@ Item {
                 "settings-tab-words": "Words",
                 "settings-tab-reminders": "Reminders",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-phone": "This phone",
-                "settings-tab-files": "Your folder and sharing",
+                "settings-tab-files": "Sharing",
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
                 "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "AI agents",
                 "settings-about-look": "Language, colours, the places' names, passwords as you type.",
                 "settings-about-hours": "Working hours, hours for your admin, meals and the night, time off.",
-                "settings-about-attention": "Who and what may reach you, on which channel and at what time; the exceptions, Do not disturb.",
+                "settings-about-attention": "Who reaches you, and when; Sioul's own notices; do not disturb on every device.",
                 "settings-about-words": "The words Sioul looks for in mail, papers, calls and tasks, in your languages.",
                 "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed, and notifications gathered.",
                 "settings-about-pauses": "Free time and the pause: when work ends, what helps you, the pause's screen.",
-                "settings-about-phone": "What this device is, and what its system lets Sioul do: calls, other apps' notifications, texts, Do not disturb, alarms.",
-                "settings-about-files": "Your notes folder, and sharing with your other devices.",
-                "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each.",
+                "settings-about-files": "Your devices in step, through a folder or a server, sealed; what each part carries.",
+                "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.",
                 "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
                 "settings-about-extensions": "Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.",
                 "settings-about-ai": "What AI agents may use, project by project."
@@ -81,21 +80,19 @@ Item {
                 "settings-tab-words": "Mots",
                 "settings-tab-reminders": "Rappels",
                 "settings-tab-pauses": "Pauses",
-                "settings-tab-phone": "Ce téléphone",
-                "settings-tab-files": "Votre dossier et le partage",
+                "settings-tab-files": "Partage",
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
                 "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "Agents d’IA",
                 "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie.",
                 "settings-about-hours": "Heures de travail, heures pour vos démarches, repas et nuit, congés.",
-                "settings-about-attention": "Qui et ce qui peut vous joindre, par quel canal et à quelle heure ; les exceptions, « Ne pas déranger ».",
+                "settings-about-attention": "Qui vous joint, et quand ; les avis de Sioul ; « Ne pas déranger » sur tous vos appareils.",
                 "settings-about-words": "Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.",
                 "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.",
                 "settings-about-pauses": "Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.",
-                "settings-about-phone": "Ce qu’est cet appareil, et ce que son système laisse faire à Sioul : appels, notifications des autres applications, SMS, « Ne pas déranger », alarmes.",
-                "settings-about-files": "Votre dossier de notes, et le partage avec vos autres appareils.",
-                "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun.",
+                "settings-about-files": "Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.",
+                "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.",
                 "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
                 "settings-about-extensions": "Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.",
                 "settings-about-ai": "Ce que les agents d’IA peuvent utiliser, projet par projet."
@@ -293,6 +290,8 @@ Item {
                 verify(entry.contentItem.implicitWidth <= entry.availableWidth + 0.5, entry.text + ": its words within the row (" + Math.round(entry.contentItem.implicitWidth) + " for " + Math.round(entry.availableWidth) + ")")
             }
             compare(entries[0].text, mock.text("settings-tab-look"))
+            // The sharing's section, named by what it holds alone (its id kept: "files").
+            compare(one(narrow, "settingsSection:files").text, data.language === "en" ? "Sharing" : "Partage")
             save(phone, "settings-phone-list-" + data.language)
             // Hours tapped: its rows, Back to the list.
             entries[narrow.sections.indexOf("hours")].clicked()
@@ -316,9 +315,11 @@ Item {
                 { tag: "a setting's row", key: "time_off", section: "hours" },
                 { tag: "a section", key: "invoices", section: "invoices" },
                 { tag: "a section of no rows", key: "ai", section: "ai" },
+                { tag: "the sharing, by its id", key: "files", section: "files" },
                 { tag: "a list of words", key: "words.voicemail.operators", section: "words" },
-                { tag: "an older key, calls (a phone: This phone)", key: "calls", section: "phone" },
-                { tag: "an older key, apps (Android: This phone)", key: "apps", section: "phone" },
+                { tag: "an older key, calls (a phone: its card in Devices)", key: "calls", section: "devices" },
+                { tag: "an older key, apps (Android: its card in Devices)", key: "apps", section: "devices" },
+                { tag: "This phone's own key: its card in Devices", key: "phone", section: "devices" },
                 { tag: "an older key, dnd", key: "dnd", section: "attention" },
                 { tag: "What reaches you's view", key: "attention.dnd", section: "attention" }
             ]

@@ -6,8 +6,12 @@
 //! 53; research/availability-sharing.md): your busy times, never what fills
 //! them.
 //!
-//! An **availability** is what you give out of your time: the agendas that
-//! count as busy, the margins kept around their events, one word per agenda
+//! An **availability** is what you give out of your time: the agendas whose
+//! events marked busy count (`busy::event_marked`: a time busy unless said
+//! free, a whole day free unless said busy), the tasks marked busy where
+//! their time is fixed or bounded by a date (`busy_times`: one record for all
+//! devices, `BusyTimes`, the freshest winning), the margins kept
+//! around them, one word per agenda
 //! at most ("Work", for a partner, who reads a bare "busy" as secrecy:
 //! Thayer et al. 2012, research/agendas.md §2.3), how coarse the blocks are
 //! and how far ahead they go. Each has **shares**, one per audience: a
@@ -317,7 +321,7 @@ impl Single {
     pub fn wanted(&self, events: &[Occurrence], busy: &str) -> BTreeMap<String, String> {
         let availability = self.migrated("", "");
         let words = Words { busy, not_known: busy };
-        blocks(events, &availability, &words, &BTreeSet::new(), (i64::MIN, i64::MAX)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
+        blocks(events, &availability, &words, &BTreeSet::new(), &TaskTime::default(), (i64::MIN, i64::MAX)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
     }
 }
 
@@ -361,16 +365,330 @@ pub fn window(availability: &Availability, now: i64) -> (i64, i64) {
     (today - DAY, today + i64::from(availability.days_ahead()) * DAY)
 }
 
-/// The blocks of `events` within `window` (those of the agendas picked, that
-/// take time: not cancelled, free or declined, never a whole day), each
+/// What tasks give an availability (docs/client.md, "Sharing your
+/// availability"): only what is marked busy, its spans (`BusyTimes::time`).
+/// A task's time block is its task's time, never an event of its own: an
+/// event with a task (`Occurrence::task`) never counts as an event, its task
+/// known here or not; its time comes from its task, or from what was shared
+/// of it (review of `reach`, B3).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaskTime {
+    /// The busy tasks' times, their margins around them (Unix seconds): a
+    /// block pinned by hand, a start time given, the plan's time before a
+    /// date asked. Each says "Busy".
+    pub spans: Vec<(i64, i64)>,
+}
+
+/// What the plan gives each busy task with a date asked and no time of its
+/// own, by UID: the times the day's layout lays it at before its date
+/// (`dayview::lay_on`), its margins included, as this device's plan worked
+/// it out (`plan_spans`).
+pub type Planned = BTreeMap<String, Vec<(i64, i64)>>;
+
+/// One busy task's time as shared (`BusyTimes`): the task as it was then
+/// (`seen`, `fingerprint`), whether the plan gave it (`planned`) or it was
+/// fixed (a block, a start time), and its spans.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskSpans {
+    #[serde(default)]
+    pub seen: String,
+    #[serde(default)]
+    pub planned: bool,
+    #[serde(default)]
+    pub spans: Vec<(i64, i64)>,
+}
+
+/// The busy tasks' times as one device worked them out (review of `reach`,
+/// B3, 19 November 2026): one record for all devices, the freshest winning
+/// (`freshest`). Each device keeps its copy in its own sealed entry of the
+/// sharing (`sioul_sync::devices::Entry::busy_tasks`), the way a mirror's
+/// note travels: never on any calendar's server. `as_of` is the freshest pull
+/// of the task lists it was worked out from (`as_of` of their `view`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BusyTimes {
+    #[serde(default)]
+    pub as_of: i64,
+    #[serde(default)]
+    pub tasks: BTreeMap<String, TaskSpans>,
+}
+
+impl BusyTimes {
+    pub fn is_empty(&self) -> bool {
+        self.as_of == 0 && self.tasks.is_empty()
+    }
+
+    /// Every span, as the availability's blocks take them.
+    pub fn time(&self) -> TaskTime {
+        TaskTime { spans: self.tasks.values().flat_map(|t| t.spans.iter().copied()).collect() }
+    }
+
+    /// The freshest of several devices' records: the latest `as_of`; the
+    /// first given among equals (this device's own, given first).
+    pub fn freshest<'a>(records: impl IntoIterator<Item = &'a BusyTimes>) -> BusyTimes {
+        let mut best: Option<&BusyTimes> = None;
+        for record in records {
+            if best.is_none_or(|b| record.as_of > b.as_of) {
+                best = Some(record);
+            }
+        }
+        best.cloned().unwrap_or_default()
+    }
+}
+
+/// Each task's bigger task (`RELATED-TO;RELTYPE=PARENT`), by UID.
+fn parents(tasks: &[crate::tasks::Task]) -> BTreeMap<&str, &str> {
+    tasks.iter().filter_map(|t| t.relations.iter().find(|r| r.kind.eq_ignore_ascii_case("PARENT")).map(|r| (t.uid.as_str(), r.uid.as_str()))).collect()
+}
+
+/// The nearest task marked busy among `uid` and its bigger tasks, however
+/// deep (review B10): a step of a busy task is busy while you work on it.
+pub fn busy_holder<'a>(tasks: &'a [crate::tasks::Task], uid: &str) -> Option<&'a crate::tasks::Task> {
+    let by_uid: BTreeMap<&str, &crate::tasks::Task> = tasks.iter().map(|t| (t.uid.as_str(), t)).collect();
+    holder_in(&by_uid, &parents(tasks), uid)
+}
+
+/// `busy_holder`, over tasks by UID and their bigger tasks already read.
+fn holder_in<'a>(by_uid: &BTreeMap<&str, &'a crate::tasks::Task>, parent: &BTreeMap<&str, &str>, uid: &str) -> Option<&'a crate::tasks::Task> {
+    let mut seen = BTreeSet::new();
+    let mut at = uid;
+    loop {
+        let task = *by_uid.get(at)?;
+        if task.busy {
+            return Some(task);
+        }
+        at = parent.get(at).copied().filter(|up| seen.insert(*up))?;
+    }
+}
+
+/// Whether a timer on `uid` makes the person busy: it, or its nearest bigger
+/// task, is marked busy (`busy_holder`).
+pub fn busy_for_timer(tasks: &[crate::tasks::Task], uid: &str) -> bool {
+    busy_holder(tasks, uid).is_some()
+}
+
+/// The open tasks that give time when busy, by UID, each with the date asked
+/// it is laid before: those marked busy themselves, and the open steps of a
+/// task marked busy (review B10), a step without a date of its own taking its
+/// busy bigger task's. Done, dropped and someone else's tasks give nothing.
+pub fn busy_tasks(tasks: &[crate::tasks::Task]) -> BTreeMap<String, String> {
+    let by_uid: BTreeMap<&str, &crate::tasks::Task> = tasks.iter().map(|t| (t.uid.as_str(), t)).collect();
+    let parent = parents(tasks);
+    tasks
+        .iter()
+        .filter(|t| t.status.is_open() && !t.elsewhere)
+        .filter_map(|t| holder_in(&by_uid, &parent, &t.uid).map(|holder| (t.uid.clone(), if t.due.is_empty() { holder.due.clone() } else { t.due.clone() })))
+        .collect()
+}
+
+/// A task as the plan reads it, in a word: what it is and asks, and its
+/// open steps' (`busy_times`: a span shared is kept while this is the same).
+pub fn fingerprint(task: &crate::tasks::Task, tasks: &[crate::tasks::Task]) -> String {
+    let parent = parents(tasks);
+    let mut steps: Vec<String> = tasks.iter().filter(|t| parent.get(t.uid.as_str()) == Some(&task.uid.as_str()) && t.status.is_open()).map(|t| format!("{}:{}:{}:{}", t.uid, t.modified, t.estimate, t.due)).collect();
+    steps.sort();
+    let said = format!("{}|{}|{}|{}|{}|{:?}|{}|{}|{}|{}", task.modified, task.due, task.start, task.estimate, task.busy, task.status, task.margins.before, task.margins.after, task.area, steps.join(","));
+    crate::holders::uuid_v5(&crate::holders::NAMESPACE, &said)
+}
+
+/// When a date asked ends (Unix seconds): its time when it has one, else the
+/// end of its day in `zone`; none for none.
+pub fn date_asked_ends(due: &str, zone: &jiff::tz::TimeZone) -> Option<i64> {
+    if due.contains('T') {
+        return due.parse::<jiff::civil::DateTime>().ok().and_then(|at| at.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second());
+    }
+    let date = due.get(..10)?.parse::<jiff::civil::Date>().ok()?;
+    date.tomorrow().ok()?.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
+}
+
+/// Spans before `ends` (review B5: the plan's time counts only before the
+/// date asked), cut there; none once it passed.
+fn before(spans: &[(i64, i64)], ends: Option<i64>, now: i64) -> Vec<(i64, i64)> {
+    match ends {
+        Some(ends) if now >= ends => Vec::new(),
+        Some(ends) => spans.iter().filter(|(a, _)| *a < ends).map(|(a, b)| (*a, (*b).min(ends))).filter(|(a, b)| a < b).collect(),
+        None => spans.to_vec(),
+    }
+}
+
+/// The busy tasks' times, worked out by a device whose task lists are as
+/// fresh as any other's (review B3), at `now` (Unix seconds), `as_of` its
+/// task lists' freshest pull. Each busy task (`busy_tasks`) gives its time
+/// where it is fixed: its blocks (those gone by stay what they were); else,
+/// while none is to come or under way, a start time given for its estimate
+/// (`default_estimate` when it has none); else, with a date asked not yet
+/// passed, the plan's time before it:
+///
+/// - **kept** from `shared` (the freshest record) while the task is the same
+///   (`fingerprint`), a span of it is still ahead, and no busy event of your
+///   own took the place of one: two devices never rewrite each other's
+///   spans in turn;
+/// - otherwise laid again from this device's plan (`plan`, `plan_spans`);
+/// - a device without a plan (a phone's background step, the command line)
+///   takes the shared spans of a task that is the same (review B4); where no
+///   span is known anywhere (never planned, or beyond the plan's days),
+///   nothing.
+///
+/// A task with neither a date asked nor a time of its own is fluid: there is
+/// no telling, and it gives nothing.
+#[allow(clippy::too_many_arguments)]
+pub fn busy_times(tasks: &[crate::tasks::Task], events: &[Occurrence], plan: Option<&Planned>, shared: &BusyTimes, default_estimate: u32, zone: &jiff::tz::TimeZone, now: i64, as_of: i64) -> BusyTimes {
+    let mut out = BusyTimes { as_of, tasks: BTreeMap::new() };
+    let taken: Vec<(i64, i64)> = events.iter().filter(|e| crate::busy::own_event(e) && crate::busy::event_marked(e) && e.end > e.start).map(|e| (e.start, e.end)).collect();
+    for (uid, due) in busy_tasks(tasks) {
+        let Some(task) = tasks.iter().find(|t| t.uid == uid) else { continue };
+        let (margin_before, margin_after) = (i64::from(task.margins.before.min(24 * 60)) * 60, i64::from(task.margins.after.min(24 * 60)) * 60);
+        let seen = fingerprint(task, tasks);
+        let blocks: Vec<&Occurrence> = events.iter().filter(|e| e.task == uid && !e.cancelled && e.end > e.start).collect();
+        let mut spans: Vec<(i64, i64)> = blocks.iter().map(|e| (e.start - margin_before, e.end + margin_after)).collect();
+        // Pinned to a block to come or under way: that is its time (`blocks::Blocks::of`).
+        let fixed = |spans: Vec<(i64, i64)>| TaskSpans { seen: seen.clone(), planned: false, spans };
+        if blocks.iter().any(|e| e.end > now) {
+            out.tasks.insert(uid, fixed(spans));
+            continue;
+        }
+        let start = task.start.contains('T').then(|| task.start.parse::<jiff::civil::DateTime>().ok().and_then(|at| at.to_zoned(zone.clone()).ok())).flatten();
+        if let Some(start) = start {
+            let start = start.timestamp().as_second();
+            let minutes = i64::from(if task.estimate > 0 { task.estimate } else { default_estimate.max(1) });
+            spans.push((start - margin_before, start + minutes * 60 + margin_after));
+            out.tasks.insert(uid, fixed(spans));
+            continue;
+        }
+        // The task as the plan reads it, and the date asked it is laid before (its own, or its busy bigger task's).
+        let seen = crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("{seen}|{due}"));
+        let ends = date_asked_ends(&due, zone);
+        let laid: Vec<(i64, i64)> = if due.is_empty() || ends.is_some_and(|e| now >= e) {
+            Vec::new()
+        } else {
+            let kept = shared.tasks.get(&uid).filter(|t| t.planned && t.seen == seen).map(|t| t.spans.iter().copied().filter(|(_, b)| *b > now).collect::<Vec<_>>()).unwrap_or_default();
+            let holds = !kept.is_empty() && !kept.iter().any(|(a, b)| taken.iter().any(|(x, y)| x < b && a < y));
+            match plan {
+                _ if holds => kept,
+                Some(plan) => before(plan.get(&uid).map(Vec::as_slice).unwrap_or_default(), ends, now),
+                // No plan here: what was shared of it, when it is the same task.
+                None => kept,
+            }
+        };
+        spans.extend(laid.iter().copied());
+        if spans.is_empty() {
+            continue;
+        }
+        out.tasks.insert(uid, TaskSpans { seen, planned: !laid.is_empty(), spans });
+    }
+    out
+}
+
+/// Whether this device's task lists are as fresh as any other's that wrote
+/// the busy tasks' times (review B3): every list known current here after the
+/// freshest any other device worked them out from (`others`), as the
+/// freshest-view rule reads calendars (`may_write`).
+pub fn tasks_fresh(view: Option<(i64, i64)>, others: impl IntoIterator<Item = i64>) -> bool {
+    may_write(view, others)
+}
+
+/// The tasks' part of a mirror at `now`: worked out here when this device's
+/// task lists are fresh (`busy_times`); otherwise the shared record carried
+/// over as found, so that a device behind neither adds, changes nor removes
+/// a task's block (review B3).
+#[allow(clippy::too_many_arguments)]
+pub fn tasks_part(fresh: bool, tasks: &[crate::tasks::Task], events: &[Occurrence], plan: Option<&Planned>, shared: &BusyTimes, default_estimate: u32, zone: &jiff::tz::TimeZone, now: i64, as_of: i64) -> BusyTimes {
+    if fresh { busy_times(tasks, events, plan, shared, default_estimate, zone, now, as_of) } else { shared.clone() }
+}
+
+/// The busy tasks with a date asked (their own, or their busy bigger
+/// task's) and no time of their own at `now`, by UID: those whose time the
+/// plan gives (`Planned`). A block to come or under way, a start time, or no
+/// date asked: none.
+pub fn planned_tasks<'a>(tasks: &'a [crate::tasks::Task], events: &[Occurrence], now: i64) -> Vec<&'a crate::tasks::Task> {
+    let busy = busy_tasks(tasks);
+    tasks.iter().filter(|t| busy.get(&t.uid).is_some_and(|due| !due.is_empty()) && !t.start.contains('T') && !events.iter().any(|e| e.task == t.uid && !e.cancelled && e.end > now)).collect()
+}
+
+/// What the plan gives each busy task with a date asked and no time of its
+/// own (`planned_tasks`; the open steps of a busy task among them, review
+/// B10): the times the day's layout lays it at, on each day the plan gives it
+/// (`Plan::days`, `dayview::lay_on`), its margins with it, before its date
+/// asked (review B5). Today is laid from the half hour begun (`now` rounded
+/// down), so that a step the plan keeps at the head of the day moves a span
+/// once in a half hour at most, never at each minute. `events` are those the
+/// plan read (today on, `plan::HORIZON_DAYS`).
+pub fn plan_spans(plan: &crate::plan::Plan, settings: &crate::plan::Settings, tasks: &[crate::tasks::Task], events: &[Occurrence], now: &jiff::Zoned) -> Planned {
+    let wanted: BTreeSet<&str> = planned_tasks(tasks, events, now.timestamp().as_second()).iter().map(|t| t.uid.as_str()).collect();
+    let mut out = Planned::new();
+    if wanted.is_empty() {
+        return out;
+    }
+    let zone = now.time_zone();
+    let half = now.timestamp().as_second().div_euclid(1800) * 1800;
+    let at = jiff::Timestamp::from_second(half).map_or_else(|_| now.clone(), |t| t.to_zoned(zone.clone()));
+    let midnight = |date: jiff::civil::Date| date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    let dates: BTreeSet<jiff::civil::Date> = plan.days.iter().filter(|(_, steps)| steps.iter().any(|(uid, _)| wanted.contains(uid.as_str()))).map(|(date, _)| *date).collect();
+    for date in dates {
+        let (start, end) = (midnight(date), date.tomorrow().map_or(midnight(date) + DAY, midnight));
+        let day: Vec<Occurrence> = events.iter().filter(|o| o.end > start && o.start < end).cloned().collect();
+        let view = crate::dayview::lay_on(date, &at, &day, plan, tasks, settings, crate::dayview::Drawn::ADMIN);
+        for block in view.blocks.iter().filter(|b| wanted.contains(b.key.as_str()) && matches!(b.kind, "task" | "margin") && b.end > b.start) {
+            out.entry(block.key.clone()).or_default().push((block.start, block.end));
+        }
+    }
+    // Before each one's date asked.
+    let busy = busy_tasks(tasks);
+    let now = now.timestamp().as_second();
+    out.into_iter()
+        .map(|(uid, spans)| {
+            let ends = busy.get(&uid).and_then(|due| date_asked_ends(due, zone));
+            let cut = before(&spans, ends, now);
+            (uid, cut)
+        })
+        .filter(|(_, spans)| !spans.is_empty())
+        .collect()
+}
+
+/// The key under which your days off travel in the busy times' record
+/// (`BusyTimes::tasks`): no task's UID, never one of a task's panel.
+pub const DAYS_OFF: &str = "sioul:days-off";
+
+/// Your days off laid into the busy times worked out on this device (the
+/// calendars' review, F43): one more entry of the record, so that they travel
+/// with it and follow its rule (the freshest device's record; a device behind
+/// carries it over as found, `tasks_part`). None, the entry goes.
+pub fn lay_days_off(times: &mut BusyTimes, spans: Vec<(i64, i64)>) {
+    if spans.is_empty() {
+        times.tasks.remove(DAYS_OFF);
+    } else {
+        times.tasks.insert(DAYS_OFF.to_string(), TaskSpans { seen: String::new(), planned: false, spans });
+    }
+}
+
+/// Your days off as busy time (18 November 2026; design-calendars §2, the
+/// owner's decision 3): each day that counts as a day off, as the one
+/// function says it (`vacations::DaysOff`: a vacation you typed, a holiday
+/// of a calendar that counts), busy from its midnight to the next in `zone`,
+/// within `window`; they go with the busy tasks' times (`TaskTime::spans`),
+/// said "Busy" as those are, and days in a row make one block. Only the
+/// availability you share reads them: a day off is busy for others, never a
+/// reason to hold what reaches you (`busy::stretches`, which do-not-disturb
+/// reads, knows nothing of it).
+pub fn days_off_spans(days_off: &crate::vacations::DaysOff, window: (i64, i64), zone: &jiff::tz::TimeZone) -> Vec<(i64, i64)> {
+    let day_of = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
+    let (Some(first), Some(last)) = (day_of(window.0), day_of(window.1)) else { return Vec::new() };
+    let midnight = |date: jiff::civil::Date| date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    days_off.days(first, last).into_iter().map(|date| (midnight(date), date.tomorrow().map_or(midnight(date) + DAY, midnight))).filter(|(start, end)| end > start && *end > window.0 && *start < window.1).collect()
+}
+
+/// The blocks of `events` within `window` (those of the agendas picked that
+/// mark you busy, `busy::event_marked`: not cancelled, free or declined; a
+/// whole day only when said busy), and the busy tasks' times (`tasks`), each
 /// widened by the margins kept around it (getting there is your time, and no
 /// server knows it), rounded outward to the availability's rounding; each
 /// says its agenda's word or "Busy", and "Busy" always for health
-/// (`health`, by UID: `health_events`), whatever the agenda's word. Blocks
-/// of one word that touch, overlap or lie closer than the rounding are made
-/// one, so that nothing says how many things fill a time. With `closing`,
-/// one last block "Not known yet" from the window's end on.
-pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, window: (i64, i64)) -> Vec<Block> {
+/// (`health`, by UID: `health_events`) and for a task, whatever the agenda's
+/// word. A task's block counts as its task (`TaskTime`), never as an event,
+/// its task known here or not (review B3).
+/// Blocks of one word that touch, overlap or lie closer than the rounding
+/// are made one, so that nothing says how many things fill a time. With
+/// `closing`, one last block "Not known yet" from the window's end on.
+pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, window: (i64, i64)) -> Vec<Block> {
     let (from, to) = window;
     let step = availability.step();
     let outward = |start: i64, end: i64| if step > 0 { (start.div_euclid(step) * step, (end + step - 1).div_euclid(step) * step) } else { (start, end) };
@@ -382,11 +700,15 @@ pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words,
     };
     let mut found: Vec<Block> = events
         .iter()
-        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && !e.cancelled && !e.transparent && !e.declined && !e.all_day && e.end > e.start && e.end > from && e.start < to)
+        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && e.task.is_empty() && e.end > e.start && e.end > from && e.start < to)
         .map(|e| {
             let (start, end) = outward(e.start - i64::from(e.margins.before.min(24 * 60)) * 60, e.end + i64::from(e.margins.after.min(24 * 60)) * 60);
             Block { start, end, word: word_of(e) }
         })
+        .chain(tasks.spans.iter().filter(|(start, end)| end > start && *end > from && *start < to).map(|(start, end)| {
+            let (start, end) = outward(*start, *end);
+            Block { start, end, word: words.busy.to_string() }
+        }))
         .collect();
     found.sort_by(|a, b| (&a.word, a.start, a.end).cmp(&(&b.word, b.start, b.end)));
     let mut merged: Vec<Block> = Vec::new();
@@ -482,8 +804,8 @@ pub fn block_text(block: &Block) -> String {
 /// The files a mirror of `availability` holds, by name (`<uid>.ics`): what it
 /// should hold at `now`, from `events` (read over `window`), the same on
 /// every device that read the same events the same day.
-pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, now: i64) -> BTreeMap<String, String> {
-    blocks(events, availability, words, health, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
+pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, now: i64) -> BTreeMap<String, String> {
+    blocks(events, availability, words, health, tasks, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
 }
 
 // ---------------------------------------------------------------- who keeps a mirror: the freshest view
@@ -791,6 +1113,58 @@ mod tests {
         Availability { id: "a1".into(), agendas: agendas.iter().map(|a| a.to_string()).collect(), ..Availability::default() }
     }
 
+    /// A day off is busy all day in the availability you share (decision 3
+    /// of design-calendars), whatever its source: a vacation typed, a public
+    /// holiday of a calendar that counts; days in a row one block, said
+    /// "Busy"; a holiday of a calendar that does not count, nothing. The
+    /// busy stretches do-not-disturb reads know nothing of it.
+    #[test]
+    fn a_day_off_is_busy_all_day_for_others_alone() {
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let midnight = |text: &str| text.parse::<jiff::civil::Date>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let typed = [crate::config::TimeOff { id: String::new(), from: "2030-12-23".parse().unwrap(), until: "2030-12-24".parse().unwrap(), label: "Away".into(), kind: "sick".into() }];
+        let public = crate::subscribed::HolidayDays { id: "fr".into(), name: "Jours fériés".into(), holidays: crate::subscribed::Holidays::Public, days_off: true, periods: vec![("2030-12-25".parse().unwrap(), "2030-12-25".parse().unwrap(), "Noël".into())], as_of: Some(1) };
+        let school = crate::subscribed::HolidayDays { id: "zone".into(), name: "Zone A".into(), holidays: crate::subscribed::Holidays::School, days_off: false, periods: vec![("2030-12-28".parse().unwrap(), "2031-01-03".parse().unwrap(), String::new())], as_of: Some(1) };
+        let off = crate::vacations::DaysOff::with_holidays(&typed, &[public, school]);
+        let window = (midnight("2030-12-01"), midnight("2031-01-31"));
+        let spans = days_off_spans(&off, window, &zone);
+        assert_eq!(spans.len(), 3, "three days off, the school holidays not counted");
+        let time = TaskTime { spans, ..TaskTime::default() };
+        let found = blocks(&[], &mine(&["me/personal"]), &WORDS, &BTreeSet::new(), &time, window);
+        assert_eq!(found, [Block { start: midnight("2030-12-23"), end: midnight("2030-12-26"), word: "Busy".into() }], "one block, all day, saying nothing of why");
+        assert!(days_off_spans(&off, (midnight("2031-02-01"), midnight("2031-03-01")), &zone).is_empty(), "outside the window: nothing");
+        // Do-not-disturb's busy stretches (F42): they read events alone, and a day off is none.
+        // The holidays as their calendar's reader gives them, said busy by their publisher
+        // (TRANSP:OPAQUE), on a subscribed agenda that takes none of your time (F41), with the
+        // events of that month: only the dentist marks you busy.
+        let holiday = |day: &str| Occurrence { all_day: true, opaque: false, transparent: true, ..event("subscribed/fr", day, midnight(day), midnight(day) + 86_400, "Noël") };
+        let dentist = event("me/personal", "d", midnight("2030-12-23") + 10 * 3600, midnight("2030-12-23") + 11 * 3600, "Dentist");
+        let read = [holiday("2030-12-25"), dentist.clone()];
+        assert_eq!(crate::busy::stretches_of(&read, None, window.0, window.1), [(dentist.start, dentist.end)], "do-not-disturb's busy stretches: nothing of the days off");
+    }
+
+    /// The calendars' review, F43, on `reach`'s record (its B3): your days
+    /// off travel in the busy times' record, laid where it is worked out; a
+    /// device whose view is behind carries them over as found, so that two
+    /// devices that know different days never write the mirror in turn; none,
+    /// their entry goes; never a task's.
+    #[test]
+    fn days_off_follow_the_busy_times_record() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let now = 100_000;
+        let mut desk = busy_times(&[], &[], Some(&Planned::new()), &BusyTimes::default(), 30, &zone, now, 5_000);
+        lay_days_off(&mut desk, vec![(172_800, 259_200)]);
+        assert_eq!(desk.time().spans, vec![(172_800, 259_200)]);
+        // The phone, behind (the vacation not arrived there): the desk's record carried over, its days off with it.
+        let phone = tasks_part(false, &[], &[], None, &desk, 30, &zone, now, 4_000);
+        assert_eq!(phone, desk, "carried over as found");
+        // Worked out again on a fresh device: its own days off laid, none taking the entry out.
+        let mut fresh = tasks_part(true, &[], &[], None, &desk, 30, &zone, now, 6_000);
+        lay_days_off(&mut fresh, Vec::new());
+        assert!(!fresh.tasks.contains_key(DAYS_OFF) && fresh.time().spans.is_empty());
+        assert!(crate::tasks::Task::default().uid != DAYS_OFF);
+    }
+
     /// The blocks: the agendas picked alone, what takes time alone, each
     /// "Busy" or its agenda's word, those of one word that touch made one;
     /// their files say nothing of what fills them.
@@ -803,14 +1177,18 @@ mod tests {
             Occurrence { cancelled: true, ..event("me/personal", "c", 5_000, 6_000, "Cancelled") },
             Occurrence { transparent: true, ..event("me/personal", "f", 7_000, 8_000, "Free") },
             Occurrence { all_day: true, ..event("me/personal", "h", 0, 86_400, "Holiday") },
+            // A whole day said busy counts; a task's block counts as its task, never as an event.
+            Occurrence { all_day: true, opaque: true, ..event("me/personal", "w", 86_400, 2 * 86_400, "Away") },
+            Occurrence { task: "t-free".into(), ..event("me/personal", "t", 12_000, 13_000, "Write the report") },
             Occurrence { declined: true, ..event("me/personal", "n", 10_000, 11_000, "Declined") },
             event("me/hidden", "p", 9_000, 9_500, "Not picked"),
         ];
         let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["me/personal", "work/main"]) };
-        let found = blocks(&events, &availability, &WORDS, &BTreeSet::new(), ALL);
-        assert_eq!(found, [Block { start: 1_000, end: 3_000, word: "Busy".into() }, Block { start: 2_500, end: 4_000, word: "Work".into() }]);
-        let files = mirror_files(&events, &availability, &WORDS, &BTreeSet::new(), 0);
-        assert_eq!(files.len(), 2);
+        let tasks = TaskTime::default();
+        let found = blocks(&events, &availability, &WORDS, &BTreeSet::new(), &tasks, ALL);
+        assert_eq!(found, [Block { start: 1_000, end: 3_000, word: "Busy".into() }, Block { start: 2_500, end: 4_000, word: "Work".into() }, Block { start: 86_400, end: 2 * 86_400, word: "Busy".into() }]);
+        let files = mirror_files(&events, &availability, &WORDS, &BTreeSet::new(), &tasks, 0);
+        assert_eq!(files.len(), 3);
         let all: String = files.values().cloned().collect();
         for kept in ["Dentist", "Lunch", "Board", "Rue Blanche"] {
             assert!(!all.contains(kept), "{kept}: {all}");
@@ -826,14 +1204,14 @@ mod tests {
         let at = |h: i64, m: i64| 1_800_000_000 / DAY * DAY + h * 3600 + m * 60;
         let session = Occurrence { margins: crate::demands::Margins { before: 20, after: 10 }, ..event("me/personal", "s", at(17, 0), at(17, 50), "Session") };
         let exact = mine(&["me/personal"]);
-        assert_eq!(blocks(std::slice::from_ref(&session), &exact, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(16, 40), end: at(18, 0), word: "Busy".into() }], "the margins, exact");
+        assert_eq!(blocks(std::slice::from_ref(&session), &exact, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(16, 40), end: at(18, 0), word: "Busy".into() }], "the margins, exact");
         let coarse = Availability { rounding: 15, ..exact.clone() };
         let plain = event("me/personal", "x", at(9, 7), at(9, 57), "Fifty minutes");
-        assert_eq!(blocks(std::slice::from_ref(&plain), &coarse, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(9, 0), end: at(10, 0), word: "Busy".into() }], "outward to the quarter hour");
+        assert_eq!(blocks(std::slice::from_ref(&plain), &coarse, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(9, 0), end: at(10, 0), word: "Busy".into() }], "outward to the quarter hour");
         // Ten minutes apart: one block once rounded; exact, two.
         let near = [event("me/personal", "a", at(11, 0), at(11, 50), "A"), event("me/personal", "b", at(12, 0), at(12, 30), "B")];
-        assert_eq!(blocks(&near, &coarse, &WORDS, &BTreeSet::new(), ALL), [Block { start: at(11, 0), end: at(12, 30), word: "Busy".into() }]);
-        assert_eq!(blocks(&near, &exact, &WORDS, &BTreeSet::new(), ALL).len(), 2);
+        assert_eq!(blocks(&near, &coarse, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL), [Block { start: at(11, 0), end: at(12, 30), word: "Busy".into() }]);
+        assert_eq!(blocks(&near, &exact, &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL).len(), 2);
     }
 
     /// Health is never named: an event known as health says "Busy" in an
@@ -844,7 +1222,7 @@ mod tests {
         let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["work/main"]) };
         let events = [event("work/main", "meeting", 1_000, 2_000, "Board"), event("work/main", "therapy", 5_000, 6_000, "Session")];
         let health: BTreeSet<String> = ["therapy".to_string()].into();
-        assert_eq!(blocks(&events, &availability, &WORDS, &health, ALL), [Block { start: 1_000, end: 2_000, word: "Work".into() }, Block { start: 5_000, end: 6_000, word: "Busy".into() }]);
+        assert_eq!(blocks(&events, &availability, &WORDS, &health, &TaskTime::default(), ALL), [Block { start: 1_000, end: 2_000, word: "Work".into() }, Block { start: 5_000, end: 6_000, word: "Busy".into() }]);
         crate::config::stand_ins_only();
         let dir = crate::config::state_dir().join("availability-health-test");
         std::fs::create_dir_all(&dir).unwrap();
@@ -875,16 +1253,16 @@ mod tests {
         let link = Availability { horizon: defaults(Audience::Link).horizon, rounding: 15, ..mine(&["me/personal"]) };
         assert_eq!(window(&link, now), (today - DAY, today + 14 * DAY));
         let events = vec![event("me/personal", "near", today + 3600, today + 7200, "Near"), event("me/personal", "far", today + 20 * DAY, today + 20 * DAY + 3600, "Far"), event("me/personal", "past", today - 3 * DAY, today - 3 * DAY + 60, "Past")];
-        let files = mirror_files(&events, &link, &WORDS, &BTreeSet::new(), now);
+        let files = mirror_files(&events, &link, &WORDS, &BTreeSet::new(), &TaskTime::default(), now);
         assert_eq!(files.len(), 1, "beyond the two weeks and before yesterday: left out");
         let booking = Availability { rounding: 15, horizon: 60, closing: true, ..mine(&["me/personal"]) };
-        let found = blocks(&events, &booking, &WORDS, &BTreeSet::new(), window(&booking, now));
+        let found = blocks(&events, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), window(&booking, now));
         let last = found.last().unwrap();
         assert_eq!((last.start, last.word.as_str()), (today + 60 * DAY, "Not known yet"), "closed from the horizon on");
         // Two devices: the same day, the events in another order.
         let mut reversed = events.clone();
         reversed.reverse();
-        assert_eq!(mirror_files(&reversed, &booking, &WORDS, &BTreeSet::new(), today + 80_000), mirror_files(&events, &booking, &WORDS, &BTreeSet::new(), now));
+        assert_eq!(mirror_files(&reversed, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), today + 80_000), mirror_files(&events, &booking, &WORDS, &BTreeSet::new(), &TaskTime::default(), now));
         assert_eq!(defaults(Audience::Person), Defaults { rounding: 0, horizon: 60, closing: false });
         assert_eq!(defaults(Audience::Booking), Defaults { rounding: 15, horizon: 60, closing: true });
     }
@@ -1011,10 +1389,173 @@ mod tests {
         // The same view on both: the same bytes.
         let events = [event("me/personal", "e1", now + 3_600, now + 7_200, "Dentist")];
         let a = mine(&["me/personal"]);
-        assert_eq!(mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now), mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now + 300));
+        assert_eq!(mirror_files(&events, &a, &WORDS, &BTreeSet::new(), &TaskTime::default(), now), mirror_files(&events, &a, &WORDS, &BTreeSet::new(), &TaskTime::default(), now + 300));
         // Uneven: one source newer than the last write, the other older.
         assert!(!may_write(view(&[Some(now + 600), Some(now - 120)]), [written]), "one source older than the mirror's: held");
         assert!(!may_write(view(&[Some(now), None]), []), "one source never pulled whole: held");
         assert!(!may_write(view(&[]), []), "no source: nothing to write");
+    }
+
+    fn task(uid: &str) -> crate::tasks::Task {
+        crate::tasks::Task { uid: uid.into(), title: uid.into(), busy: true, ..crate::tasks::Task::default() }
+    }
+
+    /// A task gives an availability only what is marked busy: its block, a
+    /// start time given for its estimate, or the plan's time before its date
+    /// asked; a fluid task (no date, no time) never; a task not marked busy,
+    /// done or someone else's never; its block counts as it, margins and all.
+    #[test]
+    fn a_busy_task_counts_where_its_time_is_known() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let blocked = crate::tasks::Task { margins: crate::demands::Margins { before: 10, after: 0 }, ..task("blocked") };
+        let timed = crate::tasks::Task { start: "2026-11-20T09:00".into(), estimate: 45, ..task("timed") };
+        let defaulted = crate::tasks::Task { start: "2026-11-21T09:00".into(), ..task("defaulted") };
+        let dated = crate::tasks::Task { due: "2026-11-25".into(), ..task("dated") };
+        let fluid = task("fluid");
+        let not_busy = crate::tasks::Task { busy: false, start: "2026-11-20T15:00".into(), ..task("not-busy") };
+        let done = crate::tasks::Task { status: crate::tasks::Status::Completed, start: "2026-11-20T16:00".into(), ..task("done") };
+        let elsewhere = crate::tasks::Task { elsewhere: true, start: "2026-11-20T17:00".into(), ..task("elsewhere") };
+        let tasks = vec![blocked, timed, defaulted, dated, fluid, not_busy, done, elsewhere];
+        let block = Occurrence { task: "blocked".into(), ..event("me/planned-tasks", "b1", 50_000, 53_600, "Blocked") };
+        let not_busy_block = Occurrence { task: "not-busy".into(), ..event("me/planned-tasks", "b2", 60_000, 63_600, "Not busy") };
+        let planned: Planned = [("dated".to_string(), vec![(70_000, 73_600)]), ("fluid".to_string(), vec![(80_000, 83_600)])].into();
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let times = busy_times(&tasks, &[block.clone(), not_busy_block.clone()], Some(&planned), &BusyTimes::default(), 30, &zone, 0, 0);
+        let mut spans = times.time().spans;
+        spans.sort_unstable();
+        let mut expected = vec![(50_000 - 600, 53_600), (at("2026-11-20T09:00"), at("2026-11-20T09:45")), (at("2026-11-21T09:00"), at("2026-11-21T09:30")), (70_000, 73_600)];
+        expected.sort_unstable();
+        assert_eq!(spans, expected);
+        assert!(times.tasks["dated"].planned && !times.tasks["timed"].planned);
+        // In the blocks: the busy task's block once, as its task; the other's block not at all, whatever its calendar.
+        let time = times.time();
+        let found = blocks(&[block, not_busy_block], &mine(&["me/planned-tasks"]), &WORDS, &BTreeSet::new(), &time, ALL);
+        assert_eq!(found.iter().map(|b| (b.start, b.end)).collect::<Vec<_>>(), spans);
+        assert!(found.iter().all(|b| b.word == "Busy"));
+        // Which tasks the plan's time is asked for: busy, a date asked, no block nor start time.
+        assert_eq!(planned_tasks(&tasks, &[], 0).iter().map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["dated"]);
+        // Its block gone by: what it was stays, and the plan's time counts again.
+        let gone = Occurrence { task: "blocked".into(), ..event("me/planned-tasks", "b0", 1_000, 2_000, "Blocked") };
+        let over = busy_times(&tasks[..1], std::slice::from_ref(&gone), Some(&planned), &BusyTimes::default(), 30, &zone, 10_000, 0);
+        assert_eq!(over.time().spans, vec![(1_000 - 600, 2_000)]);
+        let dated_over = crate::tasks::Task { due: "2026-11-25".into(), ..tasks[0].clone() };
+        let planned_again: Planned = [("blocked".to_string(), vec![(70_000, 73_600)])].into();
+        let again = busy_times(&[dated_over], &[gone], Some(&planned_again), &BusyTimes::default(), 30, &zone, 10_000, 0);
+        assert_eq!(again.time().spans, vec![(1_000 - 600, 2_000), (70_000, 73_600)]);
+    }
+
+    /// The review's three scenarios (B3): a device whose task lists are
+    /// behind carries the shared record over, never undoing a newer mark; a
+    /// span once shared is kept by a device whose plan differs, so that two
+    /// devices never rewrite each other's spans in turn; a time block whose
+    /// task is not known here is never written as an event's block.
+    #[test]
+    fn the_shared_spans_hold_between_devices() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let now = 100_000;
+        // 1. The computer marked "Tax return" busy, a start time given: its record says so.
+        let tax = crate::tasks::Task { start: "1970-01-02T12:00".into(), estimate: 60, ..task("tax") };
+        let computer = busy_times(std::slice::from_ref(&tax), &[], Some(&Planned::new()), &BusyTimes::default(), 30, &zone, now, 5_000);
+        assert_eq!(computer.time().spans, vec![(129_600, 133_200)]);
+        // The phone's copy of the task is not busy yet, its task lists older than that record:
+        // it carries the record over (`tasks_part`), adding, changing and removing nothing.
+        let phone_tax = crate::tasks::Task { busy: false, ..tax.clone() };
+        let stale = tasks_part(false, std::slice::from_ref(&phone_tax), &[], None, &computer, 30, &zone, now, 4_000);
+        assert_eq!(stale, computer, "carried over as found");
+        let fresh = tasks_part(true, std::slice::from_ref(&phone_tax), &[], None, &computer, 30, &zone, now, 6_000);
+        assert!(fresh.time().spans.is_empty(), "its lists newer: unmarked there, unmarked here");
+        assert!(!tasks_fresh(Some((4_000, 4_500)), [5_000]) && tasks_fresh(Some((6_000, 6_500)), [5_000]) && !tasks_fresh(None, []));
+        // 2. A busy task with a date asked, laid Wednesday 14:00 by the computer; another device's plan says Tuesday 10:00.
+        let dated = crate::tasks::Task { due: "1970-01-10".into(), estimate: 60, ..task("dated") };
+        let wednesday: Planned = [("dated".to_string(), vec![(300_000, 303_600)])].into();
+        let tuesday: Planned = [("dated".to_string(), vec![(200_000, 203_600)])].into();
+        let first = busy_times(std::slice::from_ref(&dated), &[], Some(&wednesday), &BusyTimes::default(), 30, &zone, now, 5_000);
+        let second = busy_times(std::slice::from_ref(&dated), &[], Some(&tuesday), &first, 30, &zone, now, 6_000);
+        assert_eq!(second.tasks["dated"].spans, vec![(300_000, 303_600)], "kept: the same task, still ahead, nothing took its place");
+        let third = busy_times(std::slice::from_ref(&dated), &[], Some(&wednesday), &second, 30, &zone, now, 7_000);
+        assert_eq!(third.tasks["dated"], second.tasks["dated"], "and kept again: never rewritten in turn");
+        // The task changed: laid again from the writer's plan.
+        let changed = crate::tasks::Task { estimate: 90, ..dated.clone() };
+        assert_eq!(busy_times(std::slice::from_ref(&changed), &[], Some(&tuesday), &first, 30, &zone, now, 6_000).tasks["dated"].spans, vec![(200_000, 203_600)]);
+        // A busy event took its place: laid again.
+        let meeting = event("me/work", "m", 299_000, 301_000, "Board");
+        assert_eq!(busy_times(std::slice::from_ref(&dated), std::slice::from_ref(&meeting), Some(&tuesday), &first, 30, &zone, now, 6_000).tasks["dated"].spans, vec![(200_000, 203_600)]);
+        // Its span gone by: laid again from the writer's plan.
+        let thursday: Planned = [("dated".to_string(), vec![(400_000, 403_600)])].into();
+        assert_eq!(busy_times(std::slice::from_ref(&dated), &[], Some(&thursday), &first, 30, &zone, 310_000, 6_000).tasks["dated"].spans, vec![(400_000, 403_600)]);
+        // 3. A time block whose task is not known here: never an event's block.
+        let unknown = Occurrence { task: "new-task".into(), ..event("me/planned-tasks", "b9", 50_000, 53_600, "New task") };
+        assert!(blocks(&[unknown], &mine(&["me/planned-tasks"]), &WORDS, &BTreeSet::new(), &TaskTime::default(), ALL).is_empty());
+    }
+
+    /// A device with no plan uses the shared spans of a task that is the same
+    /// (review B4); where none is known anywhere, nothing. The plan's time
+    /// counts only before the date asked (B5): cut there, nothing once it passed.
+    #[test]
+    fn without_a_plan_the_shared_spans_and_never_past_the_date_asked() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let dated = crate::tasks::Task { due: "1970-01-03".into(), estimate: 60, ..task("dated") };
+        let ends = date_asked_ends("1970-01-03", &zone);
+        assert_eq!(ends, Some(3 * DAY));
+        let planned: Planned = [("dated".to_string(), vec![(2 * DAY + 3_600, 2 * DAY + 7_200), (3 * DAY + 3_600, 3 * DAY + 7_200)])].into();
+        let laid = busy_times(std::slice::from_ref(&dated), &[], Some(&planned), &BusyTimes::default(), 30, &zone, 1_000, 5_000);
+        assert_eq!(laid.tasks["dated"].spans, vec![(2 * DAY + 3_600, 2 * DAY + 7_200)], "before its date asked only");
+        let phone = busy_times(std::slice::from_ref(&dated), &[], None, &laid, 30, &zone, 1_000, 6_000);
+        assert_eq!(phone.tasks["dated"].spans, laid.tasks["dated"].spans, "no plan here: the shared spans");
+        assert!(busy_times(std::slice::from_ref(&dated), &[], None, &BusyTimes::default(), 30, &zone, 1_000, 6_000).tasks.is_empty(), "none known anywhere: nothing");
+        assert!(busy_times(std::slice::from_ref(&dated), &[], Some(&planned), &laid, 30, &zone, 3 * DAY + 10, 6_000).tasks.is_empty(), "its date passed: nothing");
+        assert_eq!(BusyTimes::freshest([&BusyTimes::default(), &laid, &phone]).as_of, 6_000);
+    }
+
+    /// Busy on a task with steps (review B10): a step's timer reads its
+    /// nearest bigger task marked busy, and the open steps give its time,
+    /// before the bigger task's date asked.
+    #[test]
+    fn a_busy_task_s_steps_carry_its_mark() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let step = |uid: &str, parent: &str| crate::tasks::Task { busy: false, relations: vec![crate::tasks::Relation { kind: "PARENT".into(), uid: parent.into(), gap: 0 }], ..task(uid) };
+        let audit = crate::tasks::Task { due: "1970-01-10".into(), ..task("audit") };
+        let gather = step("gather", "audit");
+        let form = step("form", "gather");
+        let done = crate::tasks::Task { status: crate::tasks::Status::Completed, ..step("done-step", "audit") };
+        let other = crate::tasks::Task { busy: false, ..task("other") };
+        let tasks = vec![audit, gather, form, done, other];
+        assert!(busy_for_timer(&tasks, "gather") && busy_for_timer(&tasks, "form") && busy_for_timer(&tasks, "audit"));
+        assert!(!busy_for_timer(&tasks, "other"));
+        let busy = busy_tasks(&tasks);
+        assert_eq!(busy.keys().map(String::as_str).collect::<Vec<_>>(), ["audit", "form", "gather"]);
+        assert_eq!(busy["form"], "1970-01-10", "a step takes its busy bigger task's date asked");
+        let planned: Planned = [("gather".to_string(), vec![(10_000, 13_600)]), ("form".to_string(), vec![(20_000, 21_800)])].into();
+        let times = busy_times(&tasks, &[], Some(&planned), &BusyTimes::default(), 30, &zone, 1_000, 5_000);
+        let mut spans = times.time().spans;
+        spans.sort_unstable();
+        assert_eq!(spans, vec![(10_000, 13_600), (20_000, 21_800)]);
+    }
+
+    /// The plan's time for a busy task with a date asked follows the plan:
+    /// laid on the days the plan gives it, moved when the plan moves it.
+    #[test]
+    fn the_plan_s_time_follows_the_plan() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let now = jiff::civil::date(2026, 11, 18).at(8, 10, 0, 0).to_zoned(zone.clone()).unwrap();
+        let dated = crate::tasks::Task { due: "2026-11-25".into(), estimate: 60, ..task("dated") };
+        let hours = crate::window::parse_ranges("mo-fr 09:00-17:00");
+        let settings = crate::plan::Settings::of_hours(&hours, crate::areas::TaskAreas::usual()).with_events(&now, &[]);
+        let tasks = vec![dated];
+        let plan = crate::plan::plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let spans = plan_spans(&plan, &settings, &tasks, &[], &now);
+        let laid = spans.get("dated").cloned().unwrap_or_default();
+        assert!(!laid.is_empty(), "{plan:?}");
+        assert_eq!(laid.iter().map(|(a, b)| b - a).sum::<i64>(), 3_600, "its estimate: {laid:?}");
+        // An event over that time: the plan moves it, and its time with it.
+        let (start, end) = laid[0];
+        let meeting = Occurrence { agenda: "me/work".into(), uid: "m".into(), start: start - 3_600, end: end + 3_600, ..Occurrence::default() };
+        let moved_settings = crate::plan::Settings::of_hours(&hours, crate::areas::TaskAreas::usual()).with_events(&now, &[meeting.clone()]);
+        let moved_plan = crate::plan::plan(&tasks, now.date(), &moved_settings, &BTreeMap::new(), &BTreeSet::new());
+        let moved = plan_spans(&moved_plan, &moved_settings, &tasks, &[meeting], &now);
+        assert_ne!(moved.get("dated"), Some(&laid), "moved with the plan");
+        // A task not marked busy, or with no date asked: nothing asked of the plan.
+        let quiet = vec![crate::tasks::Task { busy: false, ..tasks[0].clone() }];
+        assert!(plan_spans(&plan, &settings, &quiet, &[], &now).is_empty());
     }
 }

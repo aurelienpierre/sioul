@@ -277,7 +277,7 @@ fn lanes(spans: &[(usize, usize)]) -> Vec<u32> {
 /// Whether an item is an event of a calendar (or a task's time block) that
 /// runs past its first day: its last moment on a later day than its start (an
 /// end at midnight belongs to the day before), or whole days over two or more;
-/// or days off over several days (the configuration's `time_off`), drawn once
+/// or days off over several days (`vacations::DaysOff`), drawn once
 /// as such an event is (the leftovers round). The plan reads the days off
 /// from the configuration, never from here.
 fn over_days(item: &Item, zone: &TimeZone) -> Option<(i64, i64, bool, Date, Date)> {
@@ -547,8 +547,8 @@ mod tests {
     fn days_off_over_several_days_are_one_row_a_line_and_a_bar() {
         use super::Mark::{End, First};
         let zone = paris();
-        let off = |id: &str, from: &str, until: &str| crate::config::TimeOff { id: id.into(), from: day(from), until: day(until), label: format!("Days off {id}") };
-        let items = crate::timeline::days_off(&[off("leave", "2026-11-04", "2026-11-06"), off("bridge", "2026-11-11", "2026-11-11")]);
+        let off = |id: &str, from: &str, until: &str| crate::config::TimeOff { id: id.into(), from: day(from), until: day(until), label: format!("Days off {id}"), kind: String::new() };
+        let items = crate::timeline::days_off(&crate::vacations::DaysOff::typed(&[off("leave", "2026-11-04", "2026-11-06"), off("bridge", "2026-11-11", "2026-11-11")]));
         let spans = super::spans(&items, day("2026-11-02"), 14, &zone, &crate::i18n::Translator::new("en"), &|_| false);
         assert_eq!(spans.events.iter().map(|e| e.item.id.as_str()).collect::<Vec<_>>(), ["off:leave"], "the single day stays at its head");
         let rows: Vec<Vec<(super::Mark, &str, &str)>> = spans.days.iter().map(|d| d.rows.iter().map(|r| (r.mark, r.when.as_str(), r.line.as_str())).collect()).collect();
@@ -560,7 +560,7 @@ mod tests {
         assert_eq!(spans.bars.iter().map(|b| (b.id.as_str(), b.row, b.from_column, b.to_column)).collect::<Vec<_>>(), [("off:leave", 0, 2, 4)]);
         assert!(spans.spanning("off:leave") && spans.bar("off:leave") && !spans.spanning("off:bridge"));
         // Over a week's end: a bar in each week's row, the line through the Sunday.
-        let long = crate::timeline::days_off(&[off("long", "2026-11-06", "2026-11-10")]);
+        let long = crate::timeline::days_off(&crate::vacations::DaysOff::typed(&[off("long", "2026-11-06", "2026-11-10")]));
         let spans = super::spans(&long, day("2026-11-02"), 14, &zone, &crate::i18n::Translator::new("en"), &|_| false);
         assert_eq!(spans.bars.iter().map(|b| (b.row, b.from_column, b.to_column, b.cut_before, b.cut_after)).collect::<Vec<_>>(), [(0, 4, 6, false, true), (1, 0, 1, true, false)]);
     }

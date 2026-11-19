@@ -432,7 +432,7 @@ fn row_copy(row: &Value) -> Value {
 /// row whole, which one line would cut; the row says the account and its day.
 fn shortfall() -> Vec<(Value, Vec<String>)> {
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return Vec::new() };
+    let Some(root) = config.records_root() else { return Vec::new() };
     let words = sioul_core::words::Words::of(&config);
     let tr = tr();
     let zone = sioul_core::zone::current();

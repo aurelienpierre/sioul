@@ -17,7 +17,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 - **Tasks**: VTODO files in the calendars' vdir; their links inside them (RFC 9253). **Links between things that cannot hold them**: `links.toml`. **Time spent**: one TOML file per month. **Today's choices** (weather, "not now"): `today.toml` in the state folder. SQLite and tantivy wait until plain files are too slow.
 - **History**: a file another device changes is kept as it was, on this device, to be put back ([database.md](database.md#earlier-versions)).
 - **Between your devices**: what only Sioul keeps (settings, senders, time, health…) travels as sealed records, one file per device, through a folder your sync app carries ([database.md](database.md)).
-- **Projects**: your own Markdown files, and one file that names them ([notes-folder.md](notes-folder.md)).
+- **Projects**: your own Markdown files, and one file that names them, among Sioul's own lists ([notes-folder.md](notes-folder.md#what-lives-where)).
 
 ## Protocols
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.

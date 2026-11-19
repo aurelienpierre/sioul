@@ -91,7 +91,7 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
     let wanted = Wanted { assigned: config.github.assigned, reviews: config.github.reviews, created: config.github.created, mentioned: config.github.mentioned };
     let open = sioul_sync::github::open_issues(wanted)?;
     // Your projects' routes say which project an issue belongs to, as they do for mail.
-    let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
+    let store = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
     let project_of = |issue: &Issue| store.as_ref().and_then(|s| s.route(&github::as_card(issue)).first().map(|r| r.project.id.clone()));
     let now = sioul_core::zone::now();
     let mut changed = 0;

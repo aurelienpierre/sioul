@@ -35,7 +35,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// The notes folder that holds the budget file, and the words.
 fn folder() -> Result<(sioul_core::config::Config, PathBuf), String> {
     let config = load_config();
-    let root = config.notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+    let root = config.records_root().ok_or_else(|| tr().text("papers-no-store", None))?;
     Ok((config, root))
 }
 
@@ -732,7 +732,7 @@ fn save_csv(path: &Path, csv: &str) -> std::io::Result<()> {
 /// more read for money each step, after its mail, so that From mail opens
 /// on what is already found; the rest at the next steps.
 pub(crate) fn background_step(config: &sioul_core::config::Config) {
-    let Some(root) = config.notes_root_path() else { return };
+    let Some(root) = config.records_root() else { return };
     let ledger = sioul_core::budget::Ledger::load(&root).unwrap_or_default();
     let reader = moneyindex::Reader::new(&ledger.mail_rules, &sioul_core::words::Words::of(config));
     let _ = sioul_core::mailpass::every(&reader, &moneyindex::addresses(config), FIRST_FILL);

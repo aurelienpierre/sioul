@@ -1994,7 +1994,7 @@ mod tests {
     impl TimeSource for TestClock {
         fn mode(&self, at: &Zoned) -> Mode {
             let needs = Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() };
-            crate::quiet::mode(&week(), &[], &self.overrides, &Blocks::of(&needs, &Days::default(), &[], at), at)
+            crate::quiet::mode(&week(), &crate::vacations::DaysOff::default(), &self.overrides, &Blocks::of(&needs, &Days::default(), &[], at), at)
         }
 
         fn starts(&self, from: &Zoned, until: &Zoned) -> Vec<Zoned> {

@@ -53,11 +53,11 @@ const NOT_SEEN_DAYS: i64 = 31;
 /// without one.
 pub fn coming(today: Date, days: u32) -> Vec<Coming> {
     let config = crate::config::Config::load(&crate::config::default_path()).unwrap_or_default();
-    let Some(root) = config.notes_root_path() else { return Vec::new() };
+    let Some(root) = config.records_root() else { return Vec::new() };
     coming_in(&root, &crate::words::Words::of(&config), today, days)
 }
 
-/// The same, from the notes folder `root`, with the words `words`.
+/// The same, from Sioul's lists at `root`, with the words `words`.
 pub fn coming_in(root: &Path, words: &crate::words::Words, today: Date, days: u32) -> Vec<Coming> {
     let from = today.checked_sub(NOT_SEEN_DAYS.days()).unwrap_or(today);
     let until = today.checked_add(i64::from(days).days()).unwrap_or(today);

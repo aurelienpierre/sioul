@@ -54,6 +54,11 @@
 //!    on a thread of this process, waited for as the sealed files are, no
 //!    longer.
 //!
+//! 8. the calendars subscribed by their address (`subscriptions::background_step`),
+//!    beside the mail while you are awake, at most every six hours: each one
+//!    read then only when its own time has come (`subscribed::due`), its copy
+//!    replaced whole when it changed.
+//!
 //! On a computer nothing here runs: the window does all of it each minute.
 
 use crate::backend::{load_config, tr};
@@ -70,6 +75,10 @@ pub(crate) const MAIL_EVERY: i64 = 15 * 60;
 /// while you are awake, and while you sleep (seconds; design-availability-sharing §3).
 pub(crate) const AVAILABILITY_AWAKE: i64 = 15 * 60;
 pub(crate) const AVAILABILITY_ASLEEP: i64 = 60 * 60;
+/// The calendars subscribed by their address looked at in the background at
+/// most this often, while you are awake (seconds): a few times a day, each
+/// read then only when its own time has come (`subscribed::due`).
+pub(crate) const SUBSCRIBED_EVERY: i64 = 6 * 60 * 60;
 /// Steps while another device is in use, while awake otherwise, while asleep (seconds).
 pub(crate) const STEP_IN_USE: i64 = 2 * 60;
 pub(crate) const STEP_AWAKE: i64 = 5 * 60;
@@ -222,6 +231,8 @@ static POKED: Mutex<(String, String)> = Mutex::new((String::new(), String::new()
 static MAILED: AtomicI64 = AtomicI64::new(0);
 /// When the availabilities' calendars were last looked at in the background.
 static CHECKED: AtomicI64 = AtomicI64::new(0);
+/// When the calendars subscribed by their address were last looked at in the background.
+static SUBSCRIBED_AT: AtomicI64 = AtomicI64::new(0);
 /// The alarm steps in a row that found nothing new, spaced (`spaced`).
 static QUIET: AtomicU32 = AtomicU32::new(0);
 
@@ -555,6 +566,13 @@ fn step(reason: &str) -> serde_json::Value {
     // check each, a pull and a rewrite only when one changed, at most every
     // quarter of an hour awake and every hour asleep (`mirrors::background_step`).
     let every = if asleep { AVAILABILITY_ASLEEP } else { AVAILABILITY_AWAKE };
+    // 8, begun now beside the mail too, while you are awake: the calendars
+    // subscribed by their address whose time has come, at most every six
+    // hours (`subscriptions::background_step`).
+    let subscribed = (!asleep && !config.agenda.subscriptions.is_empty() && started - SUBSCRIBED_AT.load(Ordering::Relaxed) >= SUBSCRIBED_EVERY - 30).then(|| {
+        SUBSCRIBED_AT.store(started, Ordering::Relaxed);
+        std::thread::spawn(crate::subscriptions::background_step)
+    });
     let calendars = (config.agenda.availabilities.iter().any(|a| !a.mirrors.is_empty()) && started - CHECKED.load(Ordering::Relaxed) >= every - 30).then(|| {
         CHECKED.store(started, Ordering::Relaxed);
         std::thread::spawn(|| crate::mirrors::background_step(&load_config()))
@@ -631,6 +649,12 @@ fn step(reason: &str) -> serde_json::Value {
         && calendars.join().is_err()
     {
         eprintln!("sioul: steps: availability stopped short");
+    }
+    // 8, done: the subscribed calendars due read, each copy replaced whole or kept.
+    if let Some(subscribed) = subscribed
+        && subscribed.join().is_err()
+    {
+        eprintln!("sioul: steps: subscribed calendars stopped short");
     }
     // 7. The spam filter's and the topics' training by itself, once a week
     // while the phone charges with its screen off (`spam::background_step`):
@@ -1393,17 +1417,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The coordinator's rule (6 October 2026): the list's stars are said and
-    /// their contacts opened, never written. Checked in what the APK is made of.
+    /// Starred people both ways (the owner's decision of 18 November 2026,
+    /// which takes back the rule of 6 October 2026 that Sioul never writes a
+    /// star): Sioul may write contacts, and writes the star alone. One write
+    /// in DndContacts.java, an update of one column, `Contacts.STARRED`, of a
+    /// contact found by its lookup key; never a contact created, edited or
+    /// deleted, there or anywhere in the Java. Checked in what the APK is made of.
     #[test]
-    fn sioul_never_writes_a_contact_nor_a_star() {
+    fn sioul_writes_the_star_alone_never_a_contact() {
         let package = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/package");
         let manifest = std::fs::read_to_string(package.join("AndroidManifest.xml")).unwrap();
-        assert!(manifest.contains("android.permission.READ_CONTACTS"));
-        assert!(!manifest.contains("WRITE_CONTACTS"), "no permission to write contacts");
-        let contacts = std::fs::read_to_string(package.join("src/com/aurelienpierre/sioul/DndContacts.java")).unwrap();
-        for write in [".insert(", ".update(", ".delete(", "applyBatch", "ContentProviderOperation"] {
+        assert!(manifest.contains("android.permission.READ_CONTACTS") && manifest.contains("android.permission.WRITE_CONTACTS"));
+        let sources = package.join("src/com/aurelienpierre/sioul");
+        let contacts = std::fs::read_to_string(sources.join("DndContacts.java")).unwrap();
+        for write in [".insert(", ".delete(", "applyBatch", "ContentProviderOperation", "bulkInsert", "RawContacts.CONTENT_URI,", "Data.CONTENT_URI,"] {
             assert!(!contacts.contains(write), "DndContacts.java writes: {write}");
+        }
+        assert_eq!(contacts.matches(".update(").count(), 1, "one write");
+        assert!(contacts.contains("return resolver.update(contact, star, null, null) > 0;"));
+        assert_eq!(contacts.matches("star.put(").count(), 1, "one column");
+        assert!(contacts.contains("star.put(ContactsContract.Contacts.STARRED, on ? 1 : 0);"));
+        assert!(contacts.contains("Uri contact = ContactsContract.Contacts.lookupContact("), "a contact that exists, by its lookup key");
+        // No other Java file writes Android's contacts.
+        for entry in std::fs::read_dir(&sources).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == "DndContacts.java" || !name.ends_with(".java") {
+                continue;
+            }
+            let text = std::fs::read_to_string(entry.path()).unwrap();
+            if text.contains("ContactsContract") {
+                for write in [".insert(", ".update(", ".delete(", "applyBatch", "bulkInsert"] {
+                    assert!(!text.lines().any(|line| line.contains("ContactsContract") && line.contains(write)), "{name} writes contacts: {write}");
+                }
+            }
         }
     }
 

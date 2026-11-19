@@ -1,0 +1,10 @@
+BEGIN:VCARD
+VERSION:4.0
+UID:urn:uuid:4fbe8971-0bc3-424c-9c26-36c3e1eff6b1
+KIND:individual
+FN:Dr Sam Example
+N:Example;Sam;;;
+TEL;VALUE=uri;TYPE=cell:tel:+44-7700-900001
+EMAIL;PREF=1:sam@example.org
+BDAY:19840512
+END:VCARD

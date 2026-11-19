@@ -179,7 +179,7 @@ impl<'a> Judge<'a> {
         Judge {
             config,
             sources,
-            store: config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|store| store.with_ties(&ties())),
+            store: config.places().and_then(|places| sioul_core::projects::ProjectStore::open(&places).ok()).map(|store| store.with_ties(&ties())),
             known: porch::KnownSenders::load(&config.known_senders_path()),
             senders: porch::Senders::load(config),
         }

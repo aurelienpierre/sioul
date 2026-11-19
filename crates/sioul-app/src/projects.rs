@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub(crate) fn store() -> Result<ProjectStore, String> {
-    let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
+    let root = load_config().records_root().ok_or_else(|| tr().text("error-no-store", None))?;
     ProjectStore::load(&root)
 }
 
@@ -175,7 +175,7 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
 /// A budget made (`id` empty) or changed; returns {"id"} or {"error"}.
 pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<budget::BudgetEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
+        let root = load_config().records_root().ok_or_else(|| tr().text("error-no-store", None))?;
         budget::save_budget(&root.join(budget::LEDGER), id, &edit)
     });
     crate::backend::show(qt, shared);
@@ -188,7 +188,7 @@ pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &
 /// A budget taken out, by its id (its lines stay in the file); returns what
 /// went wrong, else "". A line is taken out by `remove_line`.
 pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let result = budget::remove_budget(&root.join(budget::LEDGER), id);
     crate::backend::show(qt, shared);
     result.err().unwrap_or_default()
@@ -209,7 +209,7 @@ fn line_said(result: Result<bool, String>) -> String {
 /// only when it is still the line the page showed (`shown`: its row, JSON);
 /// returns what went wrong, else "".
 pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let result = match budget::SeenLine::from_page(uri, shown) {
         Some((place, seen)) => budget::remove_line(&path, place, &seen),
@@ -223,7 +223,7 @@ pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
 /// still the line the page showed (`shown`: its row, JSON). Returns what went
 /// wrong, else "".
 pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str, label: &str, amount: f64, date: &str) -> String {
-    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().records_root() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let today = sioul_core::zone::now().date();
     let result = match budget::SeenLine::from_page(uri, shown) {
@@ -248,6 +248,19 @@ pub(crate) fn show_time(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.
+/// Where a task done counts in the Time page's table by area: once, where it
+/// leans (`TaskAreas::leaning`: a leisure task in a personal project, leisure),
+/// among the areas ticked while no project is chosen, so that no line comes
+/// for an area left out.
+fn table_area(task_areas: &sioul_core::areas::TaskAreas, task: &sioul_core::tasks::Task, project: &str, ticked: sioul_core::areas::Area) -> sioul_core::areas::Area {
+    let leaning = task_areas.leaning(task);
+    if !project.is_empty() {
+        return leaning;
+    }
+    let shown = leaning.both(ticked);
+    if shown.is_empty() { task_areas.of(task).both(ticked) } else { shown }
+}
+
 pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -> String {
     let loaded = loaded(shared);
     let now = sioul_core::zone::now();
@@ -263,7 +276,8 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     // whatever the ticks. What is left to bill stays whole (`timereport::view`).
     let (ticked, filter) = filter(&crate::hours::mode_at(&now), now.timestamp().as_second());
     // Each project's area once, each task's once, then a look-up a stretch (`StretchAreas`).
-    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects));
+    let task_areas = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects);
+    let stretches = timereport::StretchAreas::of(&loaded.projects, &loaded.tasks, &task_areas);
     let shows = |e: &Entry| !project.is_empty() || stretches.area_of(e).is_none_or(|area| area.meets(ticked));
     let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr(), &shows);
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
@@ -273,14 +287,22 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
         entry.kind = timelog::Kind::id(kind).to_string();
         entry.kind_said = tr().text(&format!("time-kind-{}", entry.kind), None);
     }
+    // Where estimates are off, by area: the tasks done in the period that the page shows (one
+    // project's; else those of an area ticked), their time beside their first estimate.
+    let (from, to) = timereport::bounds(period, anchor);
+    let counts = |t: &sioul_core::tasks::Task| if project.is_empty() { task_areas.of(t).meets(ticked) } else { t.projects.iter().any(|p| p == project) };
+    let leans = |t: &sioul_core::tasks::Task| table_area(&task_areas, t, project, ticked);
+    let by_area = timereport::estimates_by_area(&all, &loaded.tasks, &leans, &counts, from, to, &sioul_core::zone::current());
     #[derive(serde::Serialize)]
     struct Shown {
         #[serde(flatten)]
         view: timereport::TimeView,
         /// The projects' filter's button (`areafilter::Shown`).
         filter: sioul_core::areafilter::Shown,
+        /// Time spent beside first estimates, by area, for the tasks done in the period.
+        by_area: Vec<timereport::AreaEstimate>,
     }
-    json(&Shown { view, filter })
+    json(&Shown { view, filter, by_area })
 }
 
 /// A project's billable time from `from` to `to`, written as a spreadsheet at
@@ -665,7 +687,7 @@ pub(crate) fn say_matched_payments(qt: &QtThread, shared: &Arc<Shared>, paid: cr
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
         let folder = invoice::folder();
         let device = crate::notices::here_id();
-        let root = load_config().notes_root_path();
+        let root = load_config().records_root();
         let mut problem = String::new();
         for matched in &paid {
             if let Err(e) = life::take_back(&folder, &device, &matched.taken.ids()) {
@@ -740,6 +762,25 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Time page's table by area counts each task once, where it leans,
+    /// and never under an area that is not ticked.
+    #[test]
+    fn a_leisure_task_in_a_personal_project_counts_as_leisure() {
+        use sioul_core::areas::{Area, TaskAreas};
+        let areas = TaskAreas {
+            work_categories: vec!["work".into()],
+            leisure_categories: vec!["leisure".into()],
+            personal_categories: Vec::new(),
+            projects: vec![("choir".into(), Area::PERSONAL)],
+        };
+        let score = sioul_core::tasks::Task { categories: vec!["leisure".into()], projects: vec!["choir".into()], ..Default::default() };
+        assert_eq!(table_area(&areas, &score, "", Area::ALL), Area::LEISURE);
+        assert_eq!(table_area(&areas, &score, "choir", Area::WORK), Area::LEISURE, "one project chosen: the ticks aside");
+        assert_eq!(table_area(&areas, &score, "", Area::ADMIN), Area::ADMIN, "leisure not ticked: the area ticked it is in");
+        let errand = sioul_core::tasks::Task { projects: vec!["choir".into()], ..Default::default() };
+        assert_eq!(table_area(&areas, &errand, "", Area::ALL), Area::PERSONAL, "nothing narrower: the first of both, admin, in the table");
+    }
 
     /// The projects' filter, the Projects and Time pages' (docs/areas.md, "A
     /// page's filter by area"): as the hours say on this device by default,

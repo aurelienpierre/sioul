@@ -31,12 +31,12 @@ use std::time::Duration;
 /// Between two syncs of an account's contacts and calendars, unless something changed here.
 const DAV_PAUSE: Duration = Duration::from_secs(15 * 60);
 
-/// What the contacts and agenda pages show: their search and their stretch of days.
+/// What the contacts and agenda pages show: their filters and their stretch of days.
 #[derive(Clone)]
 pub(crate) struct PimState {
-    pub query: String,
-    /// The contacts of one category only; empty: all of them.
-    pub category: String,
+    /// The Contacts page's filters, the search among them (`contactfilter`),
+    /// kept on this device as it changes (`contacts-view.toml`).
+    pub filter: sioul_core::contactfilter::Filter,
     pub from: jiff::civil::Date,
     pub days: i64,
     /// What comes only: events over already are left out (the list opened on today).
@@ -48,7 +48,7 @@ pub(crate) struct PimState {
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), category: String::new(), from: sioul_core::zone::now().date(), days: crate::agenda::COMES_FIRST_DAYS, upcoming: true, comes: true }
+        PimState { filter: sioul_core::contactfilter::Filter::load(&sioul_core::contactfilter::Filter::default_path()), from: sioul_core::zone::now().date(), days: crate::agenda::COMES_FIRST_DAYS, upcoming: true, comes: true }
     }
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         // The phone's home-screen card reads its month of events again (homecard.rs).
         crate::homecard::agenda_seen(&removed, &skipped);
         let everyone: Vec<contacts::Contact> = contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
-        let contacts = json(&view::contacts(&everyone, &state.query, &state.category, tr()));
+        let contacts = json(&view::contacts_filtered(&everyone, &state.filter, &load_config(), tr()));
         let _ = qt.queue(move |mut sioul| {
             // Only the newest (see `backend::show`).
             if sioul.shared().pim_generation.load(Ordering::Relaxed) != generation || sioul.shared().pim_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
@@ -316,6 +316,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for (kind, title) in &report.moved_changed {
                 tell(qt, shared, moved_changed_line(kind, title));
             }
+            // Contacts moved here that someone changed there first: kept in both books, said in one line
+            // with their names (review F16: one line per card replaced the one before).
+            if !report.kept_both.is_empty() {
+                let names: Vec<String> = report.kept_both.iter().map(|(_, title)| title.clone()).filter(|t| !t.trim().is_empty()).collect();
+                tell(qt, shared, say("dav-kept-both", &[("n", report.kept_both.len().to_string()), ("names", names.join(", "))]));
+            }
+            // A book whose groups stopped deciding who reaches you, its writers changed (review V3).
+            crate::addressbooks::tell_groups_stopped();
             // Moved here, a meeting in both calendars by then: both stay, yours to choose, said once (M7).
             for (kind, title) in &report.moved_both {
                 tell(qt, shared, moved_both_line(kind, title));
@@ -369,7 +377,7 @@ pub(crate) fn contact(key: &str) -> String {
 /// Returns the contact's file.
 pub(crate) fn save_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str) -> Result<String, String> {
     let edit: ContactEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-    if edit.name.trim().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
+    if edit.name_or_parts().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
         return Err(tr().text("contact-no-name", None));
     }
     let (path, text) = match ours(key) {
@@ -412,10 +420,14 @@ pub(crate) fn load_contact_photo(qt: &QtThread, shared: &Arc<Shared>, url: &str)
     });
 }
 
-/// The address books a contact can go into: [{id, name}].
+/// The address books a contact can go into: [{id, name}], "id" its place
+/// ("account/id"), which a card's `place` names too (wave D: the chooser
+/// compared a label with the card's bare book name, and showed the first
+/// writable book whatever the card's once two could be written).
 pub(crate) fn books() -> String {
     let config = load_config();
-    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
+    // A book its server refused to make is never offered: its cards would stay on this device alone (review V9).
+    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
     json(&rows)
 }
 
@@ -425,8 +437,8 @@ pub(crate) fn books() -> String {
 pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book: &str, confirmed: bool) -> String {
     let fail = |e: String| serde_json::json!({ "error": e }).to_string();
     let Some(from) = ours(key) else { return fail(tr().text("contact-gone", None)) };
-    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
-    if collection_of(&from).is_some_and(|c| c.read_only) {
+    let Some(target) = vdir::collections(Kind::Contacts).into_iter().find(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused && format!("{}/{}", c.account, c.id) == book) else { return fail(tr().text("dav-no-book", None)) };
+    if collection_of(&from).is_some_and(|c| c.read_only) || target.read_only {
         return fail(tr().text("contact-read-only", None));
     }
     if from.parent() == Some(target.dir.as_path()) {
@@ -435,8 +447,13 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     let Ok(text) = std::fs::read_to_string(&from) else { return fail(tr().text("contact-gone", None)) };
     let provider = sioul_core::capabilities::provider_of(load_config().account(&target.account));
     let losses = sioul_core::capabilities::contact_losses(&text, provider);
-    if !losses.is_empty() && !confirmed {
-        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>() }).to_string();
+    // What the move does to who may reach the person, when it crosses a book whose groups are held back (review V1).
+    let config = load_config();
+    let reach = contacts::read(&from, &collection_of(&from).unwrap_or_else(|| target.clone()))
+        .map(|card| sioul_core::addressbooks::reach_of_move(&[&card], &target, &config, &sioul_core::porch::Senders::load(&config), tr()))
+        .unwrap_or_default();
+    if (!losses.is_empty() || reach.crosses) && !confirmed {
+        return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>(), "reach": if reach.crosses { reach.said } else { Vec::new() } }).to_string();
     }
     let to = contacts::new_path(&target);
     // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).
@@ -451,9 +468,14 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     serde_json::json!({ "key": to.display().to_string() }).to_string()
 }
 
-/// Deletes a contact, after ten seconds to undo.
+/// Deletes a contact, after ten seconds to undo; one of a book you only read
+/// is refused at once, said (the door refuses it too, `vdir::remove_item`).
 pub(crate) fn delete_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
     let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return };
+    if vdir::address_book_read_only(&path) == Some(true) {
+        tell(qt, shared, tr().text("contact-read-only", None));
+        return;
+    }
     mail::schedule_removal(qt, shared, &account, path, tr().text("undo-contact-deleted", None));
     show_pim(qt, shared);
 }
@@ -499,6 +521,9 @@ struct EventView {
     organized: bool,
     /// Its guests, as the form's "Invite…" field lists them (`organizer::guests_of`).
     guests: Vec<sioul_core::organizer::Guest>,
+    /// A series ending after a number of times, some of them in pauses: how
+    /// many take place (`series::count_words`); "" else.
+    count_said: String,
 }
 
 /// The conflicts among `events` (the next two weeks', those whose deletion
@@ -697,7 +722,11 @@ pub(crate) fn event(key: &str) -> String {
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
     let guests = if others { Vec::new() } else { sioul_core::organizer::guests_of(&text) };
     edit_with_own(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests }))
+        .map(|edit| {
+            // A series counted in times, some of them in pauses: how many take place, in plain words (F36).
+            let count_said = sioul_core::series::count_words(&text, &sioul_core::zone::now(), tr());
+            json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests, count_said })
+        })
         .unwrap_or_default()
 }
 
@@ -816,6 +845,10 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     let legs = if saved.legs.is_empty() { String::new() } else { format!(" {}", say("legs-moved-with", &[("legs", saved.legs.join(", "))])) };
     let told = if saved.told.is_empty() { String::new() } else { format!(" {}", saved.told) };
     tell(qt, shared, format!("{}{legs}{told}", tr().text("event-saved", None)));
+    // A series that pauses: its pauses settled at once, off the window (`series`).
+    if std::fs::read_to_string(&saved.path).is_ok_and(|t| t.contains("X-SIOUL-PAUSE")) {
+        crate::series::keep_paused(qt, shared, "saved");
+    }
     // The re-plan due before the agenda's job starts (`work::replan_asked`).
     crate::work::show_work(qt, shared);
     show_pim(qt, shared);
@@ -871,7 +904,17 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     // Its guests, as the form's "Invite…" field lists them (decision 7 of the event card):
     // absent from a form that shows no such field (an older window, the tests).
     let guests: Option<Vec<sioul_core::organizer::Guest>> = given.as_ref().and_then(|v| v.get("guests")).and_then(|g| serde_json::from_value(g.clone()).ok());
-    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    let mut edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    // A series with guests never pauses: each time left out would be sent to every one of them.
+    if guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty()) {
+        edit.pauses.clear();
+    }
+    // "My vacations" chosen: named yours, your settings' owner id made first if need be.
+    crate::series::mine_named(&mut edit.pauses)?;
+    // A series that would end before it starts is said, never written (F39).
+    if agenda::ends_before_it_starts(&edit) {
+        return Err(tr().text("event-until-before-start", None));
+    }
     let zone = sioul_core::zone::current();
     let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
@@ -1733,6 +1776,43 @@ fn uid_of(text: &str) -> Option<String> {
     sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty())
 }
 
+/// An event marked busy or free from its card (`busy`: its TRANSP): one
+/// changed time of a series (`rid`, its RECURRENCE-ID) that time alone
+/// (review B7), else the event through the one writer of an event's form;
+/// refused for a meeting with others, whose file is never written. What
+/// went wrong, else "".
+pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, busy: bool, rid: &str) -> String {
+    let saved = || -> Result<(), String> {
+        let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
+        let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        if let Some(changed) = busy_of_time(&text, busy, rid)? {
+            vdir::write_item(&path, &changed)?;
+            if let Some(calendar) = collection_of(&path) {
+                nudge(shared, &calendar.account);
+            }
+            tell(qt, shared, tr().text("event-saved", None));
+            crate::work::show_work(qt, shared);
+            show_pim(qt, shared);
+            return Ok(());
+        }
+        let mut edit = agenda::edit_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+        edit.busy = Some(busy);
+        let json = serde_json::to_string(&edit).map_err(|e| e.to_string())?;
+        save_event(qt, shared, key, &json, "")
+    };
+    saved().err().unwrap_or_default()
+}
+
+/// The text an event's file takes when its card marks one changed time busy
+/// or free (`rid`), that time alone; none for the event as a whole, which
+/// goes through the event's form; refused for a meeting with others.
+fn busy_of_time(text: &str, busy: bool, rid: &str) -> Result<Option<String>, String> {
+    if with_others(text) {
+        return Err(tr().text("busy-with-others", None));
+    }
+    Ok(agenda::set_busy_of_time(text, rid, busy))
+}
+
 /// The form's fields of an event, yours about a meeting with others read
 /// from your own file when it has it (`own_time`), else from the meeting's
 /// lines an older Sioul wrote: what the form and the reminder chooser start
@@ -1774,7 +1854,11 @@ fn find_uid(uid: &str) -> Option<PathBuf> {
     if uid.is_empty() {
         return None;
     }
-    vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|path| {
+    // A calendar you may write first: a twin in a subscribed copy (your own
+    // agenda also read by its public address) is never the one an answer lands on.
+    let mut calendars = vdir::collections(Kind::Calendars);
+    calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
+    calendars.into_iter().flat_map(|c| c.items()).find(|path| {
         std::fs::read_to_string(path).ok().is_some_and(|text| sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
     })
 }
@@ -2037,6 +2121,19 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card's Busy (review T2, B7): one changed time of a series takes the
+    /// mark alone; the event as a whole goes through its form; a meeting with
+    /// others is refused, its file never written.
+    #[test]
+    fn the_card_s_busy_writes_what_it_names() {
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly\r\nDTSTART:20991102T090000Z\r\nDTEND:20991102T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly\r\nRECURRENCE-ID:20991109T090000Z\r\nDTSTART:20991109T110000Z\r\nDTEND:20991109T120000Z\r\nSUMMARY:Choir\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let changed = busy_of_time(series, false, "20991109T090000Z").unwrap().unwrap();
+        assert_eq!(changed.matches("TRANSP:TRANSPARENT").count(), 1, "{changed}");
+        assert!(busy_of_time(series, false, "").unwrap().is_none(), "the series: through its form");
+        let meeting = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:board\r\nDTSTART:20991104T130000Z\r\nDTEND:20991104T140000Z\r\nSUMMARY:Board\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:someone@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(busy_of_time(meeting, true, "").is_err(), "a meeting with others: never written");
+    }
 
     /// An appointment and a bus 25 minutes before it, on 29 October 2099 (UTC).
     fn doctor_and_bus(name: &str) -> (Collection, PathBuf, PathBuf) {
@@ -2702,7 +2799,7 @@ mod tests {
         let here = format!("{}/{}", calendar.account, calendar.id);
         let reading = sioul_core::letters::Reading { sender: "Caisse, Défense".into(), appointment: Some(("2099-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
         let letter = sioul_core::letters::Letter { id: "2026-10-28-1a2b".into(), file: "letters/inbox/caf.pdf".into(), status: "new".into(), project: "caf-file".into(), reading, ..Default::default() };
-        let letters = sioul_core::letters::Letters { root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
+        let letters = sioul_core::letters::Letters { docs: sioul_core::storage::Places::under(std::path::Path::new("/nowhere/Notes")).letters, root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
         let edit = crate::letters::event_of(&letters, &letter, "2099-10-29".parse().unwrap(), Some((14, 0)));
         let saved = write_event("", &edit.to_string(), &here).unwrap();
         let text = std::fs::read_to_string(&saved.path).unwrap();

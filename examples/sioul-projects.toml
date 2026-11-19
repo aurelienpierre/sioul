@@ -1,5 +1,6 @@
 # The projects' file, an example (docs/notes-folder.md).
-# Put it at the root of your notes folder, as sioul-projects.toml.
+# Yours is sioul-projects.toml among Sioul's own lists: records/ in its data
+# folder (at the root of the notes folder before your lists moved).
 # The record of each project stays in your own Markdown files; Sioul links to them.
 # (Its first name, sioul-cases.toml with [[case]] entries, still reads.)
 

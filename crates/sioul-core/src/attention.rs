@@ -13,8 +13,8 @@
 //! row per kind of Sioul's own and of the automated sources (codes, doses,
 //! reminders, sites, other apps' automatons…). Nine columns: the seven times
 //! (work, admin, leisure, meals, sleep, the pause, Free time) and two layers
-//! on top of them (time for you, do-not-disturb from its switch or a focus
-//! session). A cell holds a level, from the least strict to the strictest:
+//! on top of them (time for you, do-not-disturb from its switch or a busy
+//! stretch). A cell holds a level, from the least strict to the strictest:
 //! ● at once, ◑ shown, not told, ◐ when its event falls then, ◎ at the
 //! gathered times, ○ later, – not at all; and on the Always through row
 //! alone, = as their own row says, ☆ through this layer at their own row's
@@ -366,7 +366,7 @@ pub enum Column {
     Free,
     /// A slot of time for you in today's plan: a layer.
     Slot,
-    /// Do-not-disturb from its switch or a focus session: a layer.
+    /// Do-not-disturb from its switch or a busy stretch: a layer.
     Dnd,
 }
 
@@ -569,7 +569,8 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
             Kind::Alarms | Kind::Before => &[Now, Later],
             Kind::DayBefore | Kind::Dates | Kind::SitesLive | Kind::SiteCalls | Kind::AppAtOnce => &[Now, Later],
             Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time => &[Now, Never],
-            Kind::Sites => &[Gathered, Later],
+            // At once too, from Settings ▸ What reaches you's "Sites and apps" (`behaviours::Group::Sites`).
+            Kind::Sites => &[Now, Gathered, Later],
             Kind::AppAutomatons => &[Now, Gathered, Later],
         },
     }
@@ -702,7 +703,7 @@ pub struct Now {
     pub here: Here,
     /// In a slot of time for you (`Slots`).
     pub slot: bool,
-    /// Do-not-disturb from its switch or a focus session.
+    /// Do-not-disturb from its switch or a busy stretch.
     pub dnd: bool,
     /// Free time's "Nothing at all": the states' rows wait, Always through aside.
     pub nothing: bool,
@@ -908,10 +909,16 @@ impl Attention {
     }
 
     /// How many cells differ from another matrix's (a preset's); the
-    /// sources' own rows aside, which no preset sets, and the call screening's
-    /// (`screened`).
+    /// sources' own rows aside, which no preset sets, and the call
+    /// screening's (`screened`).
     pub fn changes_from(&self, other: &Attention) -> usize {
-        Row::ALL.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        self.changes_in(other, &Row::ALL)
+    }
+
+    /// `changes_from` over `rows` alone (the rows a page shows: review R3,
+    /// the calls' rows among them since What comes when shows them again).
+    pub fn changes_in(&self, other: &Attention, rows: &[Row]) -> usize {
+        rows.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -1799,6 +1806,13 @@ pub enum Preset {
     Reachable,
 }
 
+/// Whether a preset sets a row: every row but the calls' (each phone's own,
+/// Settings ▸ Devices; the call screening's among them), which a preset
+/// leaves as they are (review R3).
+pub fn preset_sets(row: Row) -> bool {
+    !matches!(row, Row::People(Channel::Calls, _)) && !screened(row)
+}
+
 impl Preset {
     pub const ALL: [Preset; 3] = [Preset::Usual, Preset::Quieter, Preset::Reachable];
 
@@ -1814,7 +1828,8 @@ impl Preset {
         Preset::ALL.into_iter().find(|p| p.id() == text.trim())
     }
 
-    /// Its matrix: the usual, changed as it says.
+    /// Its matrix: the usual, changed as it says; the calls' rows as Sioul
+    /// ships them, since a preset never sets them (`preset_sets`).
     pub fn matrix(self) -> Attention {
         use Column::*;
         use Level::*;
@@ -1823,7 +1838,6 @@ impl Preset {
             Preset::Usual => &[],
             Preset::Quieter => &[
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
-                (Row::People(Channel::Calls, Person::Neutral), &[Admin, Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Groups), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
@@ -1837,7 +1851,6 @@ impl Preset {
             Preset::Reachable => &[
                 (Row::People(Channel::Mail, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::People(Channel::Mail, Person::Stranger), &[Leisure], Quiet),
-                (Row::People(Channel::Calls, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::Own(Kind::AppAutomatons), &[Work, Admin], Now),
             ],
@@ -2227,19 +2240,52 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     write(path, config, &attention, &[row])
 }
 
-/// The refusal said when a write would set one of the call screening's rows.
-fn screened_refusal(key: &str) -> String {
-    format!("{key}: the call screening's own (Settings ▸ This phone ▸ Calls ▸ Call screening: screening.unknown, screening.hidden)")
+/// Rows written from Settings ▸ What reaches you (`behaviours`): each cell
+/// a choice names set (`Some`), the others kept as the file has them then
+/// (`None`); a fixed cell kept as it is (a value differing there refused), a
+/// value not offered refused; then written as `apply` writes a row, under
+/// the configuration's lock, from the file as it is then. The call
+/// screening's rows are refused.
+pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9])]) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let mut attention = Attention::of(&fresh);
+        for (row, cells) in rows {
+            if screened(*row) {
+                return Err(screened_refusal(&format!("attention.{}", row.id())));
+            }
+            for (column, level) in Column::ALL.iter().zip(cells) {
+                if let Some(level) = level {
+                    attention.set(*row, *column, *level)?;
+                }
+            }
+        }
+        let written: Vec<Row> = rows.iter().map(|(row, _)| *row).collect();
+        write(path, &fresh, &attention, &written)
+    })
 }
 
-/// A preset chosen: every row written as it says (the usual taken out),
-/// under the configuration's lock, from the file as it is then; the call
-/// screening's rows left as they are (`screened`).
+/// The refusal said when a write would set one of the call screening's rows.
+fn screened_refusal(key: &str) -> String {
+    format!("{key}: the call screening's own (Settings ▸ Devices ▸ this phone's card ▸ The call screening on this phone: screening.unknown, screening.hidden)")
+}
+
+/// A preset chosen: every row it sets written as it says (the usual taken
+/// out), under the configuration's lock, from the file as it is then; the
+/// calls' rows left as they are, the call screening's among them
+/// (`preset_sets`).
 pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
-        let matrix = preset.matrix();
-        write(path, &fresh, &matrix, &Row::ALL)
+        let now = Attention::of(&fresh);
+        let mut matrix = preset.matrix();
+        for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {
+            for column in Column::ALL {
+                matrix.cells[row.index()][column.index()] = now.cell(row, column);
+            }
+        }
+        let rows: Vec<Row> = Row::ALL.into_iter().filter(|r| preset_sets(*r)).collect();
+        write(path, &fresh, &matrix, &rows)
     })
 }
 
@@ -2350,17 +2396,17 @@ impl Slots {
     }
 }
 
-/// Whether do-not-disturb holds now from its switch or a focus session, as
+/// Whether do-not-disturb holds now from its switch or a busy stretch, as
 /// the shared files say (`everywhere`): its layer, for what runs without the
 /// window (`sioul remind --watch`, `sioul watch`, a phone's alarms and listener).
 /// The switch and the reasons read as the window reads them: the devices
 /// gone from the sharing as As usual (`everywhere::read_switch`), the pause,
-/// Free time, the nights and focus (`everywhere::sources_from_files`), so that
+/// Free time, the nights and busy (`everywhere::sources_from_files_for`), so that
 /// a pause ends Reachable here too (review of part 3, F7).
 pub fn dnd_from_files(config: &Config, now: i64) -> bool {
     use crate::everywhere;
     let zoned = jiff::Timestamp::from_second(now).map_or_else(|_| crate::zone::now(), |t| t.to_zoned(crate::zone::current()));
-    let sources = everywhere::sources_from_files(&zoned);
+    let sources = everywhere::sources_from_files_for(&zoned, &config.dnd);
     everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), now).gates()
 }
 
@@ -2373,12 +2419,15 @@ pub struct Named {
     pub label: String,
 }
 
-/// A value, its mark, and its words.
+/// A value, its mark, and its words; in a row's choices, its short word too
+/// (`cell_word`), as the table of What comes when shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Mark {
     pub id: String,
     pub mark: String,
     pub label: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub word: String,
 }
 
 /// A row as Settings draws it: its words, its group's, a sentence on it, the
@@ -2404,6 +2453,8 @@ pub struct GridRow {
 pub struct GridCell {
     pub column: String,
     pub value: String,
+    /// Its value in one or two words (`cell_word`): the table of What comes when.
+    pub word: String,
     pub choices: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub locked: String,
@@ -2465,13 +2516,28 @@ pub fn level_label(tr: &Translator, row: Row, level: Level) -> String {
     tr.text(own.unwrap_or(&format!("attention-level-{}", level.id())), None)
 }
 
+/// A value in one or two words, for a cell of the table of What comes when
+/// (Settings ▸ What reaches you, second tab): "Now", "Shown", "Later"; a
+/// call's later is "Voicemail", a message's "Held", a message in the shade
+/// "Silent", a code never told "Porch".
+pub fn cell_word(tr: &Translator, row: Row, level: Level) -> String {
+    let own = match (row, level) {
+        (Row::Own(Kind::Codes), Level::Never) => Some("attention-word-never-codes"),
+        (Row::People(Channel::Calls, _), Level::Later) => Some("attention-word-later-calls"),
+        (Row::People(Channel::Messages, _), Level::Later) => Some("attention-word-later-messages"),
+        (Row::People(Channel::Messages, _), Level::Quiet) => Some("attention-word-quiet-messages"),
+        _ => None,
+    };
+    tr.text(own.unwrap_or(&format!("attention-word-{}", level.id())), None)
+}
+
 /// The grid, in `tr`'s words, of `rows` (all of them, or a part: a
 /// channel's, the kinds'), compared with `preset`. The moment now is said by
 /// the window, which knows the devices and the hours (`reaches::now_sentences`).
 pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset) -> Grid {
     let compared = preset.matrix();
     let columns = Column::ALL.iter().map(|c| Named { id: c.id().to_string(), label: column_label(tr, *c) }).collect();
-    let marks = Level::ALL.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: tr.text(&format!("attention-level-{}", l.id()), None) }).collect();
+    let marks = Level::ALL.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: tr.text(&format!("attention-level-{}", l.id()), None), word: String::new() }).collect();
     let rows: Vec<GridRow> = rows
         .iter()
         .map(|row| {
@@ -2499,6 +2565,7 @@ pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset
                     GridCell {
                         column: column.id().to_string(),
                         value: value.id().to_string(),
+                        word: cell_word(tr, *row, value),
                         choices: choices(*row, *column).iter().map(|l| l.id().to_string()).collect(),
                         changed: value != compared.cell(*row, *column),
                         said: if locked.is_empty() { said } else { format!("{said}. {locked}") },
@@ -2515,7 +2582,7 @@ pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset
                 group: group.clone(),
                 group_id: row.group().to_string(),
                 help,
-                choices: offered.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(row.always()).to_string(), label: level_label(tr, *row, *l) }).collect(),
+                choices: offered.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(row.always()).to_string(), label: level_label(tr, *row, *l), word: cell_word(tr, *row, *l) }).collect(),
                 changed: cells.iter().any(|c| c.changed),
                 label,
                 cells,
@@ -2569,7 +2636,7 @@ pub struct SourceLine {
 pub fn source_grid(attention: &Attention, tr: &Translator, lines: &[SourceLine]) -> Grid {
     let columns = Column::ALL.iter().map(|c| Named { id: c.id().to_string(), label: column_label(tr, *c) }).collect();
     let label = |level: Level| tr.text(&format!("attention-source-{}", level.id()), None);
-    let choices: Vec<Mark> = SOURCE_CHOICES.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: label(*l) }).collect();
+    let choices: Vec<Mark> = SOURCE_CHOICES.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: label(*l), word: String::new() }).collect();
     let offered: Vec<String> = SOURCE_CHOICES.iter().map(|l| l.id().to_string()).collect();
     let rows = lines
         .iter()
@@ -2586,6 +2653,7 @@ pub fn source_grid(attention: &Attention, tr: &Translator, lines: &[SourceLine])
                     GridCell {
                         column: column.id().to_string(),
                         value: value.id().to_string(),
+                        word: String::new(),
                         choices: offered.clone(),
                         locked: String::new(),
                         changed: value != Level::As,
@@ -3540,7 +3608,7 @@ mod tests {
         assert_eq!((a.cell(row("codes"), Column::Sleep), a.cell(row("mail.neutral"), Column::Leisure), a.cell(row("sites"), Column::Work)), (Level::Now, Level::Now, Level::Later));
         // Refused: a fixed cell, a value not offered, a word not understood, a row that is none.
         assert!(apply(&path, &config, "attention.doses", &SettingValue::Texts(vec!["work:later".into()])).is_err());
-        assert!(apply(&path, &config, "attention.sites", &SettingValue::Texts(vec!["work".into()])).is_err());
+        assert!(apply(&path, &config, "attention.sites", &SettingValue::Texts(vec!["work:event".into()])).is_err());
         assert!(apply(&path, &config, "attention.mail.safe", &SettingValue::Texts(vec!["teatime".into()])).is_err());
         assert!(apply(&path, &config, "attention.mail.hidden", &SettingValue::Texts(vec!["work".into()])).is_err());
         // Back to the usual (codes wait on the Porch in sleep, decision 5 of 13 November 2026): the row taken out.
@@ -3738,6 +3806,34 @@ mod tests {
         // What the new defaults let through, Quieter holds: groups in leisure, texts under do-not-disturb.
         assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Groups), Column::Leisure), Level::Later);
         assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Neutral), Column::Dnd), Level::Later);
+    }
+
+    /// A preset changes only what Your rules shows (review R3): the calls'
+    /// rows stay as they are set, and, shown in What comes when, count.
+    #[test]
+    fn a_preset_leaves_the_calls_as_they_are() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-preset-calls-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.calls.neutral", &SettingValue::Texts(vec!["admin:later".into(), "meals:later".into()])).unwrap();
+        for preset in [Preset::Reachable, Preset::Quieter, Preset::Usual] {
+            apply_preset(&path, &Config::load(&path).unwrap(), preset).unwrap();
+            let a = Attention::of(&Config::load(&path).unwrap());
+            let calls = Row::People(Channel::Calls, Person::Neutral);
+            assert_eq!((a.cell(calls, Column::Admin), a.cell(calls, Column::Meals), a.cell(calls, Column::Leisure)), (Level::Later, Level::Later, Level::Now), "{preset:?}");
+            // Shown in What comes when, the calls' two cells count; nothing else differs.
+            assert_eq!(a.changes_from(&preset.matrix()), 2, "{preset:?}");
+        }
+        for preset in Preset::ALL {
+            for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {
+                for column in Column::ALL {
+                    assert_eq!(preset.matrix().cell(row, column), usual(row, column), "{preset:?} {row:?} {column:?}");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

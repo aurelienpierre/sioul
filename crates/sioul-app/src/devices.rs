@@ -152,6 +152,9 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.persons = sioul_sync::share::PERSONS_SHARED;
         // It has the client profiles' store: it travels once every device says so.
         entry.clients = sioul_sync::share::CLIENTS_SHARED;
+        // Where its lists are (docs/notes-folder.md, "What lives where"): it knows the new
+        // places, or it moved; nothing moves anywhere until every device knows them.
+        entry.storage = if sioul_core::storage::Storage::here().is_moved() { sioul_sync::devices::STORAGE_MOVED } else { sioul_sync::devices::STORAGE_KNOWS };
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
         // It follows what you said each device is for, and says its own cells and the cells it
@@ -162,6 +165,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         // It keeps its own table whatever comes, and says whether it learns now
         // (`spam::learns_level`): the tables travel while any device does not.
         entry.learns = crate::spam::learns_level();
+        // It reads a phone's own calls' table: the card of a phone that does not says so (M12).
+        entry.calls_lines = sioul_sync::devices::CALLS_LINES;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;
@@ -192,6 +197,11 @@ pub(crate) fn learns_now() {
     if sioul_sync::devices::own(&path).learns != crate::spam::learns_level() {
         let _ = write(|_| {});
     }
+}
+
+/// This device's lists moved (`sioul_core::storage`): its entry says so now (`Entry::storage`).
+pub(crate) fn storage_now() {
+    let _ = write(|_| {});
 }
 
 /// This device's kind changed (Settings ▸ This device): its entry says so

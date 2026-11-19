@@ -541,13 +541,13 @@ impl Dnd {
     fn of(moment: &serde_json::Value) -> Option<Dnd> {
         let why = moment["why"].as_str().unwrap_or_default();
         let line = moment["line"].as_str().unwrap_or_default().trim();
-        if moment["on"].as_bool() != Some(true) || !matches!(why, "manual" | "focus") || line.is_empty() {
+        if moment["on"].as_bool() != Some(true) || !matches!(why, "manual" | "busy") || line.is_empty() {
             return None;
         }
-        // A focus session's end is no promise (it is stopped, or runs over):
+        // A busy stretch's end is no promise (a timer is stopped, or runs over):
         // said in the frame for now only, unless an end is given.
         let until = match (why, moment["until_at"].as_i64()) {
-            ("focus", Some(0)) => None,
+            ("busy", Some(0)) => None,
             (_, until) => until,
         };
         Some(Dnd { line: line.to_string(), until })
@@ -743,7 +743,7 @@ fn timeline(m: &Moment, hours: &[(Zoned, sioul_core::agendas::Hours)]) -> Vec<(Z
     // One way of cutting the time ahead, for the card and the agenda's head line (`quiet::frames`),
     // each frame's time on this device: the card shows what comes forward on it then.
     let lines = crate::dispatch::lines();
-    quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.porch_windows(), m.now, &horizon, &ends, FRAMES).into_iter().map(|(from, until, mode)| (from, until, mode.on(&lines))).collect()
+    quiet::frames(&m.config.week_hours(), &sioul_core::vacations::DaysOff::of(&m.config), m.overrides, m.blocks, &m.config.porch_windows(), m.now, &horizon, &ends, FRAMES).into_iter().map(|(from, until, mode)| (from, until, mode.on(&lines))).collect()
 }
 
 /// What a frame is, for Java's colours and tests: the time's word, or the pause's.
@@ -1716,7 +1716,7 @@ pub(crate) fn mail_came() {
     let now = sioul_core::zone::now();
     // The Porch as the window gathers it (`backend::World`): the projects and their ties, the senders let in.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let store = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = Senders::load(&config);
     let state = sioul_core::state::PorchState::load(&sioul_core::state::PorchState::default_path());
@@ -1749,7 +1749,7 @@ fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> b
     let Some(frames) = frames_of(card) else { return false };
     for frame in frames.iter_mut().filter(|f| f["porch"].is_object()) {
         let Some(from) = frame["from"].as_i64().and_then(|at| Timestamp::from_millisecond(at).ok()).map(|t| t.to_zoned(zone.clone())) else { continue };
-        let mode = quiet::mode(&hours, &m.config.time_off, m.overrides, m.blocks, &from).on(&crate::dispatch::lines());
+        let mode = quiet::mode(&hours, &sioul_core::vacations::DaysOff::of(&m.config), m.overrides, m.blocks, &from).on(&crate::dispatch::lines());
         let porch = made.entry(porch_key(m, &mode, &from)).or_insert_with(|| porch_at(m, input, &mode, &from)).clone();
         let at: Vec<usize> = porch
             .mail
@@ -2867,7 +2867,7 @@ mod tests {
             assert_eq!(Dnd::of(&serde_json::json!({ "on": on, "why": why, "line": line, "until_at": until })), None, "{on} {why}");
         }
         // A focus session's, its end no promise: the frame for now only.
-        let focus = Dnd::of(&serde_json::json!({ "on": true, "why": "focus", "line": line, "until_at": 0 })).unwrap();
+        let focus = Dnd::of(&serde_json::json!({ "on": true, "why": "busy", "line": line, "until_at": 0 })).unwrap();
         assert_eq!(focus.until, None);
         // Until switched off: in every frame but the night's.
         let lasting = Dnd::of(&serde_json::json!({ "on": true, "why": "manual", "line": line, "until_at": 0 })).unwrap();

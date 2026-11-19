@@ -19,7 +19,7 @@
 //! from it (`calls::frames`), which its call screening reads within milliseconds.
 
 use crate::areas::{Time, Week};
-use crate::config::{Config, TimeOff};
+use crate::config::Config;
 use crate::needs::{Days, Kept, Needs};
 use crate::porch::Standing;
 use crate::quiet::{Blocks, Mode, Overrides};
@@ -152,7 +152,7 @@ pub struct Frame {
 #[derive(Debug, Clone)]
 pub struct Clock {
     windows: Vec<AdminWindow>,
-    time_off: Vec<TimeOff>,
+    days_off: crate::vacations::DaysOff,
     overrides: Overrides,
     needs: Needs,
     days: Days,
@@ -170,7 +170,7 @@ impl Clock {
     /// and each day's changes, the events' spans with their margins (`plan::event_spans`).
     pub fn new(config: &Config, overrides: Overrides, needs: Needs, days: Days, held: Vec<(i64, i64)>) -> Clock {
         let nothing = crate::pause::nothing_now(&overrides, &config.free_time);
-        Clock { windows: config.week_hours(), time_off: config.time_off.clone(), overrides, needs, days, held, nothing, lines: crate::areas::Lines::default() }
+        Clock { windows: config.week_hours(), days_off: crate::vacations::DaysOff::of(config), overrides, needs, days, held, nothing, lines: crate::areas::Lines::default() }
     }
 
     /// The same clock on this device, by what the person said each device is
@@ -200,7 +200,7 @@ impl Clock {
 
     /// The time at `at`.
     pub fn mode(&self, at: &Zoned) -> Mode {
-        crate::quiet::mode(&self.windows, &self.time_off, &self.overrides, &self.blocks(at), at).on(&self.lines)
+        crate::quiet::mode(&self.windows, &self.days_off, &self.overrides, &self.blocks(at), at).on(&self.lines)
     }
 
     /// The matrix's moment at `at`.
@@ -214,7 +214,7 @@ impl Clock {
     /// none in the pause, which lasts until you come back.
     pub fn step(&self, at: &Zoned) -> (Moment, Option<Zoned>) {
         let blocks = self.blocks(at);
-        let mode = crate::quiet::mode(&self.windows, &self.time_off, &self.overrides, &blocks, at);
+        let mode = crate::quiet::mode(&self.windows, &self.days_off, &self.overrides, &blocks, at);
         let moment = Moment::of(&mode, self.nothing);
         if mode.paused() {
             return (moment, None);

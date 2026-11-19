@@ -20,7 +20,7 @@ pub(crate) fn own_names(config: &Config) -> Vec<String> {
 
 /// The papers of the wallet, none when there is no notes folder or it does not read.
 fn papers_of(config: &Config) -> Vec<Paper> {
-    config.notes_root_path().and_then(|root| Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default()
+    config.records_root().and_then(|root| Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default()
 }
 
 /// The store, its old texts read once on this device and written then
@@ -240,7 +240,7 @@ pub(crate) fn page(id: &str) -> String {
     };
     let own = own_names(&config);
     let local = LocalLinks::load(&LocalLinks::default_path());
-    let papers: Vec<serde_json::Value> = match config.notes_root_path().map(|root| Wallet::load(&root)) {
+    let papers: Vec<serde_json::Value> = match config.places().map(|places| Wallet::load_at(&places)) {
         Some(Ok(wallet)) => {
             let mut theirs: Vec<&Paper> = wallet.papers.iter().filter(|p| store.holders_of(p, &local, &own).has(id)).collect();
             // In the Papers page's order: identity, health, home, money, warranties, others.
@@ -302,7 +302,7 @@ pub(crate) fn page(id: &str) -> String {
 
 /// The letters for a person (`Persons::letter_for`): their sender, kind and day, by id.
 fn letters_for(store: &Persons, config: &Config, local: &LocalLinks, own: &[String], id: &str) -> Vec<serde_json::Value> {
-    let Some(letters) = config.notes_root_path().and_then(|root| sioul_core::letters::Letters::load(&root).ok()) else { return Vec::new() };
+    let Some(letters) = config.places().and_then(|places| sioul_core::letters::Letters::load_at(&places).ok()) else { return Vec::new() };
     let today = sioul_core::zone::now().date();
     let mut theirs: Vec<&sioul_core::letters::Letter> = letters.list.iter().filter(|l| store.letter_for(&l.id, &l.reading.addressee, local, own).iter().any(|p| p == id)).collect();
     theirs.sort_by_key(|l| std::cmp::Reverse(l.received));
@@ -314,7 +314,7 @@ fn letters_for(store: &Persons, config: &Config, local: &LocalLinks, own: &[Stri
 
 /// The budgets for a person, by id and title (`budget::person_of`).
 fn budgets_for(config: &Config, id: &str) -> Vec<serde_json::Value> {
-    let Some(ledger) = config.notes_root_path().and_then(|root| sioul_core::budget::Ledger::load_file(&root.join(sioul_core::budget::LEDGER)).ok()) else { return Vec::new() };
+    let Some(ledger) = config.records_root().and_then(|root| sioul_core::budget::Ledger::load_file(&root.join(sioul_core::budget::LEDGER)).ok()) else { return Vec::new() };
     ledger.budgets.iter().filter(|b| sioul_core::budget::person_of(b).as_deref() == Some(id)).map(|b| serde_json::json!({ "id": b.id, "title": b.title })).collect()
 }
 
@@ -351,7 +351,7 @@ fn admin_now(config: &Config) -> bool {
     let now = sioul_core::zone::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let blocks = sioul_core::quiet::Blocks::read_now(&now);
-    match sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now).time {
+    match sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &blocks, &now).time {
         Time::Admin | Time::Any => true,
         Time::Several(open) => open.admin,
         _ => false,
@@ -576,8 +576,8 @@ fn rename_texts(id: &str, old: &str, new: &str) {
     if let Some(p) = before.get_mut(id) {
         p.name = old.to_string();
     }
-    if let Some(root) = config.notes_root_path() {
-        let _ = Wallet::change(&root, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, id, new));
+    if let Some(places) = config.places() {
+        let _ = Wallet::change_at(&places, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, id, new));
     }
     rename_agendas(&before, id, new);
 }
@@ -746,8 +746,8 @@ pub(crate) fn same_as(keep: &str, other: &str) -> String {
     let own = own_names(&config);
     let local = LocalLinks::load(&LocalLinks::default_path());
     // The texts first, read with the store as it was: the papers' holders and the agendas' names.
-    if let Some(root) = config.notes_root_path() {
-        let _ = Wallet::change(&root, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, other, &kept.name));
+    if let Some(places) = config.places() {
+        let _ = Wallet::change_at(&places, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, other, &kept.name));
     }
     let path = crate::backend::config_path();
     for (place, field, value) in persons::renamed_agendas(&config.agenda.calendars, &before, other, &kept.name) {
@@ -795,8 +795,8 @@ pub(crate) fn end(id: &str, ending: &str) -> String {
     let local = LocalLinks::load(&LocalLinks::default_path());
     let (mut saved, mut taken_out) = (0usize, 0usize);
     if person.relation() == Relation::Partner && !ending.folder.trim().is_empty()
-        && let Some(root) = config.notes_root_path()
-        && let Ok(wallet) = Wallet::load(&root)
+        && let Some(places) = config.places()
+        && let Ok(wallet) = Wallet::load_at(&places)
     {
         let theirs: Vec<Paper> = wallet.papers.iter().filter(|p| store.holders_of(p, &local, &own).persons == [id.to_string()]).cloned().collect();
         let folder = crate::backend::local_path(ending.folder.trim()).join(&person.name);
@@ -815,7 +815,7 @@ pub(crate) fn end(id: &str, ending: &str) -> String {
             copied.push(paper.id.clone());
         }
         if ending.take_out {
-            let _ = Wallet::change(&root, |wallet| {
+            let _ = Wallet::change_at(&places, |wallet| {
                 for id in &copied {
                     if wallet.remove(id) {
                         taken_out += 1;
@@ -1074,7 +1074,7 @@ mod tests {
         let nell = saved(serde_json::json!({ "name": "Nell", "relation": "child" }));
         let nell_b = saved(serde_json::json!({ "name": "Nell B.", "relation": "kin" }));
         // A letter its block names to Robin; then chosen for Nell.
-        let mut letters = sioul_core::letters::Letters { root: notes.clone(), ..Default::default() };
+        let mut letters = sioul_core::letters::Letters { docs: sioul_core::storage::Places::under(&notes).letters, root: notes.clone(), ..Default::default() };
         letters.put(sioul_core::letters::Letter { id: "l-robin".into(), reading: sioul_core::letters::Reading { sender: "Water board".into(), addressee: "QUILLFEATHER Robin".into(), ..Default::default() }, ..Default::default() });
         letters.save().unwrap();
         let page_of = |id: &str| serde_json::from_str::<serde_json::Value>(&page(id)).unwrap();

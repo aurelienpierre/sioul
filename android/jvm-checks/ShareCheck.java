@@ -22,7 +22,10 @@ import org.w3c.dom.NodeList;
  *   "..", through a link to a folder or a file of Sioul's, the folder
  *   itself; a file elsewhere, and a link out of them, are not;
  * - the manifest: ShareActivity takes VIEW of text/calendar,
- *   application/ics and text/x-vcalendar on content: and file: addresses.
+ *   application/ics and text/x-vcalendar on content: and file: addresses;
+ *   and of files of contacts (text/vcard, text/csv and their kin), which
+ *   ShareActivity.contactsKind tells from a calendar by their type, else
+ *   their name, for the contacts' import (contactimport.rs).
  * The repository's root comes as the property sioul.root.
  */
 public final class ShareCheck
@@ -89,6 +92,13 @@ public final class ShareCheck
             }
         }
 
+        // A file of contacts, by its type or its name; a calendar file stays one.
+        expect("a vCard by its type", ShareActivity.contactsKind("text/vcard; charset=utf-8", "x"), "vcf");
+        expect("a vCard by its name", ShareActivity.contactsKind("application/octet-stream", "People.VCF"), "vcf");
+        expect("a table by its type", ShareActivity.contactsKind("text/comma-separated-values", "x"), "csv");
+        expect("a table by its name", ShareActivity.contactsKind(null, "clients.csv"), "csv");
+        expect("a calendar file", ShareActivity.contactsKind("text/calendar", "visit.ics"), null);
+
         File root = new File(System.getProperty("sioul.root", "."));
         File manifest = new File(root, "android/package/AndroidManifest.xml");
         expect("manifest: found", manifest.isFile(), true);
@@ -96,6 +106,7 @@ public final class ShareCheck
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             Element application = elements(factory.newDocumentBuilder().parse(manifest).getDocumentElement(), "application").get(0);
             boolean viewed = false;
+            boolean contacts = false;
             for (Element activity : elements(application, "activity")) {
                 if (!activity.getAttribute("android:name").equals("com.aurelienpierre.sioul.ShareActivity"))
                     continue;
@@ -116,9 +127,17 @@ public final class ShareCheck
                         expect("calendar: its types", types, List.of("text/calendar", "application/ics", "text/x-vcalendar"));
                         expect("calendar: its schemes", schemes, List.of("content", "file"));
                     }
+                    if (actions.equals(List.of("android.intent.action.VIEW")) && types.contains("text/vcard")) {
+                        contacts = true;
+                        expect("contacts: its types", types, List.of("text/vcard", "text/x-vcard", "text/directory", "text/csv", "text/comma-separated-values"));
+                        expect("contacts: its schemes", schemes, List.of("content", "file"));
+                        for (String type : types)
+                            expect("contacts: " + type + " read as contacts", ShareActivity.contactsKind(type, "x") != null, true);
+                    }
                 }
             }
             expect("calendar: ShareActivity takes VIEW of calendar files", viewed, true);
+            expect("contacts: ShareActivity takes VIEW of files of contacts", contacts, true);
         }
 
         System.out.println("ShareCheck: " + (checked - failed) + "/" + checked + " checks passed");

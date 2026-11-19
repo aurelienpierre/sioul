@@ -152,7 +152,7 @@ window-none = No window in the coming week.
 
 ## Errors.
 error-no-mail = No mail to read yet: give --maildir, or accounts with a maildir in the configuration (examples/config.toml).
-error-no-store = No notes folder: give --store, or case_store in the configuration.
+error-no-store = No notes folder on this device: choose one on the Notes page (or give --store).
 error-no-windows = No admin windows in the configuration (examples/config.toml).
 
 ## Dates. $weekday and $month come from the names below.
@@ -231,7 +231,7 @@ mail-title = Proposed from mail
 mail-line = { $date } · { $budget } · { $amount } · { $label }
 mail-line-foreign = { $date } · { $budget } · { $amount } { $currency }, to convert · { $label }
 mail-added = added
-error-no-ledger = No budgets yet: give --file, or put sioul-budgets.toml at the root of your notes folder (examples/sioul-budgets.toml).
+error-no-ledger = No budgets yet: give --file, or make one in Sioul, which keeps them among its own lists in sioul-budgets.toml (examples/sioul-budgets.toml).
 
 ## Accounts.
 security-tls = encrypted from the start (TLS)
@@ -366,7 +366,7 @@ scout-app-bookmarks = Bookmarks
 scout-app-tables = Tables
 scout-app-forms = Forms
 scout-app-photos = Photos
-senders-help = Each address, number, card or category is on one list at most. Anyone in your address books is among your contacts until you choose otherwise; strangers are in none of them and on no list; the blocked never reach you. When each list reaches you is the grid above. Someone blocked from a message lands here too.
+senders-help = Each address, number, card or group is on one list at most. Everyone in your address books is among your contacts; everyone else is in none of them and on no list; the blocked never reach you. Someone blocked from a message lands here too.
 ui-sync-now = Fetch mail now
 ui-syncing = Fetching mail…
 ui-synced-at = Mail fetched at { $time }.
@@ -421,6 +421,9 @@ area-filter-none = Nothing ticked
 area-filter-as-hours = As the hours say
 area-filter-name = What shows: { $areas }
 area-filter-how = How this filter works
+area-filter-all = All areas
+area-filter-everything = Everything
+agenda-steps-filter-help = The steps of the plan show by what their task is for: every area unless you untick one. What you tick stays until you change it; As the hours say ticks what now is for. Events follow the Agendas filter; meals, the night and doses follow Show.
 ## What each device is for, and what comes to it when (docs/areas.md, "What each device is for")
 device-areas = { $areas ->
     [work] work
@@ -454,6 +457,8 @@ device-areas-come = { $areas ->
 device-waits = This device is for { $for }: { $waits } on your other devices.
 device-waits-cell = On this device, at this time, { $waits } on your other devices: you set it so in Settings ▸ Devices.
 mailbox-rests-device = { $address } waits on your other devices: this one is not for it now.
+devices-door-no-phone = No phone of yours is known here yet: calls are set in a phone's card, which shows here once that phone shares with this device.
+devices-door-no-apps = No app or conversation has times of its own yet: they are set on the phone, in its card, and listed in it here once set.
 devices-grid-title = What comes forward, and when
 devices-grid-help = For each device, what comes forward at each time: what the time brings, kept to what the device is for. Change a cell to let something else through there, friends on a phone during work, or nothing at all during meals; "As its areas say" puts it back. What does not come forward on a device is folded there, never removed: its page still opens it.
 devices-grid-device = Device
@@ -515,7 +520,7 @@ ui-add = Add
 ui-open = Open
 ui-no-accounts = No account yet: add the first one in "Add an account".
 ui-watching = Waiting for new mail.
-ui-no-budgets = No budgets yet: put sioul-budgets.toml at the root of your notes folder.
+ui-no-budgets = No budgets yet: add one here. Sioul keeps them among its own lists, in sioul-budgets.toml.
 ui-keys = Ctrl+1 to Ctrl+0 places · Ctrl+N new · Ctrl+Z undo · F5 refresh
 
 ## Budgets, itemized.
@@ -1222,18 +1227,18 @@ dav-meeting-set-aside = “{ $summary }” changed on its server meanwhile: the 
 dav-withdrawn = The messages in Drafts that said your change were taken out.
 dav-reinvited = An invitation with the server’s version waits in Drafts for { $who }.
 dav-served-untold = Your server never had your change: it told { $who } nothing of it.
-dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
+dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-undeleted = “{ $summary }” changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
 dav-undeleted-untitled = { $kind ->
         [contact] A contact with no name changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
         [task] A task with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
        *[event] An event with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
     }
-dav-moved-changed = “{ $summary }” changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+dav-moved-changed = “{ $summary }” changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Sharing ▸ Show earlier versions).
 dav-moved-changed-untitled = { $kind ->
-        [contact] A contact with no name changed in its old address book before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
-        [task] A task with no title changed in its old list before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
-       *[event] An event with no title changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+        [contact] A contact with no name changed in its old address book before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Sharing ▸ Show earlier versions).
+        [task] A task with no title changed in its old list before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Sharing ▸ Show earlier versions).
+       *[event] An event with no title changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Sharing ▸ Show earlier versions).
     }
 dav-moved-both = “{ $summary }” has guests in both its calendars now: its old copy gained them on its server before your move reached it, and the moved copy has its own. Both stay, since deleting either one tells its guests; you choose which goes.
 dav-moved-both-untitled = { $kind ->
@@ -1382,6 +1387,49 @@ repeat-daily = Every day
 repeat-weekly = Every week
 repeat-monthly = Every month
 repeat-yearly = Every year
+# A series that ends, and pauses (18 November 2026, docs/client.md).
+event-repeat-ends = Ends
+event-repeat-ends-never = Never
+event-repeat-ends-until = On a day
+event-repeat-ends-count = After a number of times
+event-repeat-ends-times = { $n ->
+        [one] time
+       *[other] times
+    }
+event-until-before-start = This series would end before its first date: choose a later last day.
+event-pauses = Pauses during
+event-pauses-help = Each date that falls in them is left out of the series, in every calendar program; a date you left out yourself stays out.
+series-pause-vacations = my vacations
+series-pause-vacations-other = someone else's vacations
+series-pause-public = public holidays
+series-paused-guests = This series has guests: Sioul no longer keeps its pauses, and the dates already left out stay.
+series-paused-back = Paused from { $from } ({ $why }), back on { $back }.
+series-paused = Paused from { $from } ({ $why }).
+series-every = { $every ->
+        [1] { $unit ->
+            [daily] Every day
+            [weekly] Every week
+            [monthly] Every month
+           *[yearly] Every year
+        }
+       *[other] { $unit ->
+            [daily] Every { $every } days
+            [weekly] Every { $every } weeks
+            [monthly] Every { $every } months
+           *[yearly] Every { $every } years
+        }
+    }
+series-count-paused = { $rule }: { $count } dates, { $paused } of them in pauses: { $held ->
+        [0] none takes place.
+        [one] one takes place, on { $last }.
+       *[other] { $held } take place, the last on { $last }.
+    }
+event-count-pauses = The number counts every date of the series, those that fall in a pause included: fewer take place.
+series-until = { $rule } until { $date }
+series-count = { $rule }, { $count ->
+        [one] once
+       *[other] { $count } times
+    }
 contact-name = Name
 contact-emails = E-mail addresses
 contact-phones = Phone numbers
@@ -1399,7 +1447,6 @@ contact-categories = Categories
 contact-category-add = category
 contact-category-remove = Take off the category { $category }
 contact-category-used = Categories in use
-contacts-category-all = All categories
 contacts-none-in = No contact in { $category }.
 set-phone-region = Country for phone numbers written without one
 set-phone-region-help = A number written without its country, as 01 99 00 12 34, is read as this country's, to find the same number written +33 1 99 00 12 34. Only to compare: cards keep their numbers as they are written.
@@ -1435,6 +1482,8 @@ dup-share-email = the address { $value }
 dup-in-book = In { $book }
 dup-keep-name = Name kept
 dup-merge-what = Merging keeps the card of the name kept, with its organisation, birthday and photo when it has them, and adds what only the other one has: numbers, addresses, web sites, categories, notes. The other card is then deleted, here and on its server.
+dup-merge-groups = Also take its groups: { $groups }
+dup-merge-groups-reach = Taken into the card kept, “{ $group }” is on your { $list } list: its addresses and numbers would be let through as that list says.
 dup-merge = Merge
 dup-not-same = Not the same
 dup-later = Later
@@ -2310,7 +2359,7 @@ focus-notification-channel = Focus timer
 note-search = Search the notes
 note-new = New note
 note-title = Its title
-note-no-store = No notes folder yet: it is chosen in Settings ▸ Your folder and sharing.
+note-no-store = No notes folder on this device yet: choose one on the Notes page.
 note-none-open = A note opens here.
 note-recent = Changed lately
 note-read = Read
@@ -2333,11 +2382,23 @@ set-accounts-elsewhere = What each address is for, how far back it goes, how oft
 set-task-areas-group = What a task is for
 set-files-group = Your folder
 set-invoice-group = Invoices
-set-time-off-group = Days off
-set-time-off = Time off
+set-time-off-group = Vacations and holidays
+set-time-off = Your vacations
 set-time-off-help = Holidays, sick leave: quiet from the first day to the last, as on a day off.
 set-time-off-label = Holidays, a word on them
 set-time-off-add = Add
+vacations-kind = Kind
+vacations-kind-vacation = Vacation
+vacations-kind-sick = Sick leave
+vacations-kind-other = Other
+vacations-calendars = Calendars of holidays
+vacations-calendars-none = No calendar of holidays yet. Public holidays count as your days off unless you say not; school holidays do not unless you say so.
+vacations-counts-line = { $name } · { $holidays ->
+        [public] public holidays
+       *[other] school holidays
+    }: its days count as my days off
+vacations-not-read-here = This device has not read this calendar yet: until it does, it does not know these days.
+vacations-subscribe = Subscribe to a calendar of holidays…
 set-quiet-personal = What is yours
 set-quiet-personal-help = Tasks of these categories, and projects marked as yours, are yours outside work: those of leisure (joy, family, friends, leisure) come in leisure and during meals, the others (health, personal) in any time of yours. A task with none of these and none of work's is your admin.
 set-office-hours = When offices are open
@@ -2391,11 +2452,18 @@ set-task-blocks-help = Where a task pinned to a time is written: an event, which
 set-task-blocks-own = “Planned tasks”, with each task's list
 set-task-block-alarms = An alarm in each block
 set-task-block-alarms-help = Five minutes before it, for the calendars of your other devices; in the blocks made or moved from now on. Without it, Sioul reminds you of a block as of any event, and a phone does not remind you twice.
+notes-folder-what = Your notes folder is a folder of plain Markdown notes, on this device, that stays yours: other programs, a notes editor among them, may open it and sync it, and Sioul links to it and never owns it. Choose the folder to use: an empty one to begin with, or one you already keep notes in.
+notes-folder-unreadable = Your notes folder cannot be read: { $path }. Perhaps it is on a drive that is not plugged in, or it was moved or renamed. Plug the drive in and this page fills by itself within a minute, or choose the folder again.
+notes-folder-choose = Choose a folder…
+notes-folder-choose-again = Choose again…
+share-notes-folder = Your notes folder is { $path }: your notes travel from there when a part below carries them. It is set in the Notes page's settings (⚙).
+share-notes-folder-none = This device has no notes folder yet: it is chosen on the Notes page, or in its settings (⚙).
+share-notes-folder-open = The notes folder, in Notes
 set-notes-root = The notes folder
-set-notes-root-help = Your folder of Markdown files, read as a vault: your notes, and beside them your projects (sioul-projects.toml) and budgets (sioul-budgets.toml). Sioul links to it and never owns it.
+set-notes-root-help = Your notes, as plain Markdown files that stay yours: Sioul links to them and never owns them. This device's own: each of your devices says where its copy is.
 set-projects-rename = Rename to sioul-projects.toml
 set-projects-rename-help = Your projects are in sioul-cases.toml, the file's first name, which Sioul still reads and writes as it is. Renamed, it becomes sioul-projects.toml and its entries [[project]], every field and comment kept, with a copy of the old file beside it (sioul-cases.toml.before-rename). Rename it once each of your devices has this version of Sioul or a later one: an older version reads only sioul-cases.toml.
-set-projects-both = Your notes folder holds both sioul-projects.toml and sioul-cases.toml: Sioul reads sioul-projects.toml and leaves sioul-cases.toml as it is. An older version of Sioul, on another device, may still write there.
+set-projects-both = Sioul's lists hold both sioul-projects.toml and sioul-cases.toml: Sioul reads sioul-projects.toml and leaves sioul-cases.toml as it is. An older version of Sioul, on another device, may still write there.
 set-notes-folder = New notes go into
 set-notes-folder-help = A folder inside the notes folder, where Sioul puts every new note (unless you make it in another folder), and your audio memos in its memos folder.
 set-reading-family = Font
@@ -3176,6 +3244,10 @@ project-area-unsaid = Nothing ticked: a client's project counts as work; another
 projects-filter-help = Projects show by what they are for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while. A client's project whose use is unsaid counts as work; another one shows for what its open tasks are for, and always when it has none. The Time page shares these ticks.
 projects-none-ticked = No project for what is ticked.
 time-filter-help = Time shows by what its project is for, as your hours say: work's in your work hours, admin's in your admin hours, leisure's in your free time. Tick others for a while; the Projects page shares these ticks. Time on no project counts by its task; time noted on nothing always shows. What is folded is counted in the whole beside the total, and what is left to bill never folds.
+time-by-area = Done in this period, by area
+time-by-area-spent = Spent
+time-by-area-estimated = First estimate
+time-by-area-help = For the tasks done in this period: the time spent on them beside what was first estimated. The plan learns from both, in every area.
 project-routes = Mail that comes here by itself
 ui-show-anyway = Show anyway
 folder-server-only = Kept on the server only: right click to keep a copy here.
@@ -3227,7 +3299,10 @@ set-task-lists-help = Renamed here and on the server at the next sync. An empty 
 set-calendars = Calendars
 set-calendars-help = Renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays.
 set-address-books = Address books
-set-address-books-help = Renamed here and on the server at the next sync. An empty address book can be deleted; one holding contacts stays.
+set-address-books-help = Where your contacts are kept, and with whom each book is shared. Who may reach you is decided by a contact's groups, never by its address book; the groups of a book someone else can write count only once you say so on its line.
+set-contacts-batches = Changes to many contacts
+set-contacts-batches-help = Each can be undone as a whole for thirty days: what changed since stays as it is.
+set-contacts-more-group = Map and numbers
 set-collections-remove = Delete it, here and on the server
 word-and = and
 health-every-days = { $days ->
@@ -3620,7 +3695,7 @@ rule-public-ai = An AI reads it too, as you allowed, and says its tone and topic
 rule-hostile = Insults aimed at you, harassment and threats come here. The sender's name, the subject and the text stay hidden until you choose to read them.
 rule-where-shield = An address’s shield is set on its card in Accounts.
 rule-where-rank = An address’s rank is set on its card in Accounts.
-rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ By person.
+rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ Who is in which circle.
 rule-where-routes = Its routes are set on its page in Projects.
 hostile-someone = Someone
 hostile-someone-at = Someone at { $domain }
@@ -3734,20 +3809,19 @@ ui-parameters = Settings
 settings-tab-look = Display
 settings-tab-hours = Hours
 settings-tab-reminders = Reminders
-settings-tab-files = Your folder and sharing
+settings-tab-files = Sharing
 settings-tab-invoices = Invoices
 settings-tab-extensions = Extensions
 settings-tab-ai = AI agents
 # Settings on a phone: the list of sections, each with one line saying what it holds.
 settings-about-look = Language, colours, the places' names, passwords as you type.
 settings-about-hours = Working hours, hours for your admin, meals and the night, time off.
-settings-about-attention = Who and what may reach you, on which channel and at what time; the exceptions, Do not disturb.
+settings-about-attention = Who reaches you, and when; Sioul's own notices; do not disturb on every device.
 settings-about-words = The words Sioul looks for in mail, papers, calls and tasks, in your languages.
 settings-about-reminders = Reminders of dates asked, with Sioul's window closed, and notifications gathered.
 settings-about-pauses = Free time and the pause: when work ends, what helps you, the pause's screen.
-settings-about-phone = What this device is, and what its system lets Sioul do: calls, other apps' notifications, texts, Do not disturb, alarms.
-settings-about-files = Your notes folder, and sharing with your other devices.
-settings-about-devices = Your devices: what each is, what it is for, what comes forward on each.
+settings-about-files = Your devices in step, through a folder or a server, sealed; what each part carries.
+settings-about-devices = Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.
 settings-about-invoices = Who issues your invoices, their numbers, VAT, bank and legal lines.
 settings-about-extensions = Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.
 settings-about-ai = What AI agents may use, project by project.
@@ -3894,6 +3968,7 @@ set-projects-group = Projects
 set-porch-projects = Projects shown here
 set-porch-projects-help = Each project ticked has its lane on the Porch. Mail for the others stays on their page in Projects, where projects are made, renamed and given their routes.
 loss-billable = whether its time is billed
+loss-busy = that it marks you busy
 time-export = Billable time, as a spreadsheet (CSV)…
 time-export-project = Project
 time-export-range = Time
@@ -3961,7 +4036,7 @@ share-device-ahead = Its clock is { $minutes ->
 share-device-future = Its clock runs more than ten minutes ahead of this one's: what it says is set aside here until its clock is set right.
 share-device-count-again = Count it again
 share-device-forget = Forget this device
-share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other device would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Your folder and sharing).
+share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other device would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Sharing).
 share-phones = A phone or a tablet sees this folder only if its sync app carries it, and some carry only a few folders: Murena's eDrive carries Documents (with Pictures, Music…), not the rest of your cloud. To reach such a device, share through a folder inside Documents: stop sharing, then choose one there.
 folder-not-on-device = This folder is not on this device: choose one your sync app keeps its files in (Documents, with Murena's eDrive).
 folder-browser-title = Choose a folder
@@ -4009,7 +4084,7 @@ share-part-senders-carries = Who is on which list, and how the lists name them (
 share-part-calls = Calls
 share-part-calls-carries = The calls your phones screened: when, the number, who it was by your lists, the time of day, whether it rang or went to voicemail, and why; and the calls you marked Seen. Sealed. Never a call from a number you blocked, never a voicemail's sound: that comes with your mail.
 share-part-phone-messages = Messages from your phone
-share-part-phone-messages-carries = From the notifications of the apps you choose on your phone (Settings ▸ This phone ▸ On your computers; its SMS app unless you say otherwise): who wrote, when, in which conversation, and the words, or only who and when; and the messages you marked Seen. Sealed, kept a week. Never a code, never a picture, never a blocked sender's message. Off until you turn it on: on your phone to send them, on a computer to show them there.
+share-part-phone-messages-carries = From the notifications of the apps you choose on your phone (Settings ▸ Devices, this phone's card ▸ Messages on your computers; its SMS app unless you say otherwise): who wrote, when, in which conversation, and the words, or only who and when; and the messages you marked Seen. Sealed, kept a week. Never a code, never a picture, never a blocked sender's message. Off until you turn it on: on your phone to send them, on a computer to show them there.
 # texts: the sharing's part for texts (SMS phase b).
 share-part-texts = Texts
 share-part-texts-carries = Your phone's texts, the whole history with the multimedia messages' pictures, sounds and videos, read on the phone and kept on your computers as an archive that only grows; the texts you write on a computer for your phone to send, and what became of each. Sealed, on every device too: a computer's copy opens only with your sharing key. Off until you turn it on: on your phone, and on each computer that should read or write them.
@@ -4022,15 +4097,15 @@ share-part-time-carries = Time noted, the session running, the day's choices, wh
 share-part-drafts = Drafts and invoices
 share-part-drafts-carries = Mail being written, invoices made.
 share-part-projects = Projects and money
-share-part-projects-carries = From your notes folder: projects and their mail routes, budgets, bank accounts and movements, contracts.
+share-part-projects-carries = Sioul's own lists: projects and their mail routes, budgets, bank accounts and movements, contracts, client profiles, and, once they left the notes folder, the lists of papers and letters.
 share-part-lists = Lists kept here
 share-part-lists-carries = Calendars and contacts kept on this device only.
 share-part-notes = Notes
-share-part-notes-carries = Your notes folder: notes, their pictures, PDFs and memos, scanned letters. Each file sealed apart, only what changed sent; files over 64 MB stay.
+share-part-notes-carries = Your notes folder: notes, their pictures, PDFs and memos, and scanned letters while Sioul's lists are still in it. Each file sealed apart, only what changed sent; files over 64 MB stay.
 share-part-papers = Papers
 share-part-accounts = Your calendars and contacts (your version, set aside when an item changed here and on its server too)
-share-part-papers-carries = The papers wallet and its files.
-share-part-carried = Your notes folder ({ $store }) is carried by a sync app already: carried here too, the two would undo each other's changes. To share it here, move it to a folder no sync carries, or leave it to that sync.
+share-part-papers-carries = The papers' wallet and its files, and once Sioul's lists left the notes folder, the letters' scans.
+share-part-carried = { $store } is carried by a sync app already: carried here too, the two would undo each other's changes. To share it here, move it to a folder no sync carries, or leave it to that sync.
 share-part-sent = Last sent: { $when }.
 share-part-received = Last received: { $when }.
 share-part-quiet = Nothing exchanged yet.
@@ -4195,6 +4270,8 @@ share-name-clash = { $file } waits: another file here differs from it by case or
 share-refused = { $file } is not written: its place goes through a link, or into the sharing folder or Sioul's own.
 share-not-text = { $file } stays here: its name is not text Sioul can carry.
 share-emptied = { $file } is empty here: nothing of it is taken out on your other devices for ten minutes.
+share-list-back = { $file } was gone or empty here: it is written again from what your devices hold, and nothing of it is taken out elsewhere.
+share-list-held = A device that does not know where Sioul's lists live now took most of { $file } out: this device keeps them, and does not follow. Update Sioul on that device.
 share-not-medicines = A change of your medicines from another device would not read as medicines here: it waits, and { $file } stays as it is.
 share-medicines-take-out-everywhere = Take them out everywhere
 share-medicines-take-out-here = Take them out here too
@@ -4306,7 +4383,7 @@ join-why-server = { $host } answered with an error: try again later.
 join-why-timed-out = The sign-in was not finished within twenty minutes: start again when you are ready.
 join-why-signed-out = The sign-in is over: sign in again, then join.
 share-add-title = Add a device
-share-add-intro = On the new device, open Sioul: on its first start its Porch offers “Join your other devices”, as Settings ▸ Your folder and sharing does.
+share-add-intro = On the new device, open Sioul: on its first start its Porch offers “Join your other devices”, as Settings ▸ Sharing does.
 share-add-murena = Choose “Sign in to Murena”, and sign in there as on murena.io.
 share-add-nextcloud = Choose “Sign in to another Nextcloud”, and give its address: { $host }.
 share-add-place = The folder there, { $place }, is found by itself.
@@ -4359,7 +4436,7 @@ share-device-build = Sioul { $build }.
 share-device-build-older = Sioul { $build }, older than this device's ({ $here }): updating it there, when you can, keeps both alike.
 share-newer = Your other devices share “{ $part }” in a newer form than this Sioul reads (Sioul { $build } wrote it). Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
 share-newer-plain = Your other devices share “{ $part }” in a newer form than this Sioul reads. Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
-share-newer-status = This device needs a newer Sioul to share “{ $part }”: Settings ▸ Your folder and sharing says more.
+share-newer-status = This device needs a newer Sioul to share “{ $part }”: Settings ▸ Sharing says more.
 share-format-held = One of your devices runs an older Sioul, or what it says does not read here (its line below says which): until it is updated there, your devices keep sharing in the form an older Sioul reads. Meanwhile, a time session, your pinned sites or a list of words changed on two devices at the same moment keep only the later change.
 share-format-wait = { $file } does not read as it should: your devices keep sharing in the older form until it does. Sioul tries again at each exchange.
 share-format-older = One of your devices runs an older Sioul, which does not read what your devices now share (its line below says which): update it there before it shares again.
@@ -4427,7 +4504,7 @@ mail-note-opens = The Porch opens: { $count } { $n ->
     } for you.
 mail-note-letter = { $sender }, { $subject }
 set-reminders-mail = Tell me of new mail
-set-reminders-mail-help = When mail arrives that its row lets come now, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes. When it may come is the Mail rows', below; never for codes (they have a row of their own), nor for what is set aside, blocked, sent by yourself or come to your less important accounts.
+set-reminders-mail-help = One quiet notification for each batch of mail its circle lets come now; never for codes, mail set aside or blocked, nor what you send yourself.
 set-reminders-mail-newsletters = Include newsletters
 set-reminders-mail-newsletters-help = Newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way.
 reminders-closed-unavailable = Not on Windows yet: reminders come while Sioul's window is open.
@@ -4453,7 +4530,7 @@ ui-papers = Papers
 ui-letters = Letters
 new-paper = A paper
 new-letter = A paper letter (scan)…
-papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your notes folder (papers/): they travel with it. A reminder comes when one should be renewed.
+papers-help = The papers asked again and again, each with its file and how long it holds. Their files are kept in the papers' folder (⚙), plain files any program opens. A reminder comes when one should be renewed.
 papers-add = Add a paper
 papers-none = No paper yet. Add one from a file (a scan, a photo), or keep an attachment of a mail with “Keep in papers”.
 papers-new = A new paper
@@ -4477,7 +4554,7 @@ papers-keep-help = Checked by the antivirus, then kept in the papers wallet: you
 papers-kept = { $name } is in your papers: say what it is.
 papers-attach = A paper
 papers-none-to-attach = No paper with a file yet
-papers-no-store = Papers live in your notes folder: choose it first (Settings ▸ Your folder and sharing).
+papers-no-store = Papers need a notes folder on this device until Sioul's lists move to its own folder: choose one on the Notes page, or move the lists (Settings ▸ Sharing).
 papers-no-title = A name, please: “Passport”, “Rent receipt September”.
 papers-bad-date = “{ $date }” does not read as a date.
 papers-no-file = { $path } cannot be found.
@@ -4730,6 +4807,70 @@ agenda-stop-showing = Stop showing…
 agenda-remove-confirm = Remove
 agenda-leave-confirm = Stop showing
 agenda-keep = Keep it
+# Calendars subscribed by their web address (18 November 2026, docs/client.md, "Calendars by their address").
+subscribe-open = Subscribe to a calendar…
+subscribe-title = Subscribe to a calendar by its address
+subscribe-address = The calendar's address
+subscribe-address-hint = https://… or webcal://…
+subscribe-where-moodle = Moodle: in the calendar, "Import or export calendars", then "Export calendar", then "Get calendar URL", and "Copy URL".
+subscribe-where-pronote = PRONOTE: "Communication > Agenda", then "Exporter l'agenda au format iCal" at the top right, where the school allows it (its French screens' words). Not tried with a real address yet.
+subscribe-official = Or an official French calendar:
+subscribe-official-public = Public holidays · { $name }
+subscribe-official-school = School holidays · { $name }
+subscribe-choose-public = Public holidays of a territory…
+subscribe-choose-school = School holidays of a zone…
+subscribe-name = Its name
+subscribe-holidays = What it holds
+subscribe-holidays-none = Events
+subscribe-holidays-public = Public holidays
+subscribe-holidays-school = School holidays
+subscribe-days-off = Its days count as my days off
+subscribe-engagements = These are my own engagements: busy during them, and they take my time
+subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
+subscribe-make = Subscribe
+subscribe-taken = This calendar is subscribed already.
+subscribe-reading = A calendar is being read. Try again in a moment.
+subscribe-refreshed = Calendar read: its events are up to date.
+subscribe-unchanged = Calendar read: nothing changed.
+subscribe-refresh = Refresh now
+subscribe-change = Change the address
+subscribe-change-save = Keep this address
+subscribe-stop = Stop…
+subscribe-stop-question = Stop this calendar on all your devices? Its events leave each of them; you can subscribe again later.
+subscribe-stop-confirm = Stop it
+subscribe-line-settings-unread = Sioul cannot read its settings file here: this calendar's copy stays as it was, and is not read again until the file reads.
+subscribe-line-entry-unread = This calendar's settings do not read here (written by a later Sioul, or by hand): its copy and its last settings stay as they were.
+subscribe-line-read = Read { $when }.
+subscribe-line-never = Not read on this device yet.
+subscribe-line-no-calendar = { $kept ->
+        [yes] This address no longer gives a calendar, since { $since }. { $why } The copy read { $when } stays.
+       *[no] This address gives no calendar. { $why } Nothing was read from it yet.
+    } Change the address, or refresh now.
+subscribe-line-unreached = Not reached since { $since }. { $why } { $kept ->
+        [yes] The copy read { $when } stays;
+       *[no] {""}
+    } Sioul tries again later.
+subscribe-line-not-taken = Since { $since }, what the address gives is not taken. { $why } { $kept ->
+        [yes] The copy read { $when } stays.
+       *[no] Nothing was read from it yet.
+    }
+subscribe-not-https = Only an address beginning with https:// or webcal:// is read.
+subscribe-not-address = This is not a calendar's address.
+subscribe-not-public = This address is on a private network: Sioul reads public addresses only.
+subscribe-redirects = This address sends elsewhere more than three times.
+subscribe-too-large = This calendar weighs more than ten megabytes: it was not read.
+subscribe-too-many = This calendar holds more than twenty thousand events: it was not read.
+subscribe-too-large-kept = This calendar would take too much room kept here, far more than it weighs: it was not read.
+subscribe-cut = The calendar came back cut short: it was not read.
+subscribe-no-event = The calendar came back without any event.
+subscribe-not-written = This device could not write the calendar's copy (its disk may be full).
+subscribe-page = The address gives a web page, not a calendar: perhaps a page to sign in.
+subscribe-text = The server answered "{ $said }", not a calendar.
+subscribe-empty = The server answered nothing.
+subscribe-not-calendar = The answer is not a calendar.
+subscribe-gone = The server no longer knows this address.
+subscribe-status = The server answered with code { $status }.
+subscribe-network = The server could not be reached.
 agenda-remove-question = Remove “{ $name }”, { $count ->
         [one] one { $what ->
             [tasks] task
@@ -4979,6 +5120,7 @@ agenda-access = You may
 agenda-access-write = Read and write
 agenda-access-read = Read only
 agenda-access-availability = See only when it is busy
+agenda-subscribed-read-only = Read from its address: you read it only, and it changes only there.
 agenda-server-read-only = Its server lets you read it only.
 # On an event's card: you in two places. $whose: the other event's agenda (a person's name), "none" for yours; $why: "accepted" (an invitation you accepted in another's agenda), "tentative", else "none".
 conflict-same-time = At the same time as { $whose ->
@@ -5279,6 +5421,11 @@ letter-task-acknowledgment = { $sender }: check what they received
 letter-task-attestation = File { $sender }'s attestation
 letter-task-contract = Read { $sender }'s contract
 letter-task-other = Answer { $sender }
+set-papers-group = Papers
+set-papers-folder = The papers' folder
+set-papers-folder-help = Where your papers' files are kept (scans, PDFs, photos), plain files any program opens. This device's own. Until Sioul's lists leave your notes folder, they stay in its papers folder; afterwards, choosing another folder copies them there, each checked, and leaves this one as it was.
+set-letters-folder = The letters' folder
+set-letters-folder-help = Where your letters' scans are filed by year, plain files any program opens; scans arrive in its inbox unless you choose another. This device's own. Until Sioul's lists leave your notes folder, they stay in its letters folder; afterwards, choosing another folder copies them there, each checked, and leaves this one as it was.
 set-letters-group = Paper letters
 set-letters-inbox = Where scans arrive
 set-letters-inbox-help = A folder where you, a scanner or a helper puts the post as PDF or photos (a phone's scanner app syncing there works too). Each scan is read by Sioul on a computer (Tesseract, Poppler; a phone does not read them) and waits on this page as a card: who, what, how much, by when. Scans kept elsewhere can be linked where they are instead (Link scans…).
@@ -5556,7 +5703,7 @@ need-over = It is over already: it stays as it was.
 health-day-empty = Meals, rest and sleep are set in Settings ▸ Hours.
 health-day-nothing = Nothing set for this day.
 health-errand-day = { $what } (in your tasks from this day)
-health-alone = These doses are known to this device only. If Sioul also runs on another device, share between them (Settings ▸ Your folder and sharing): a dose marked on one then counts on all, and only the one you are using reminds you.
+health-alone = These doses are known to this device only. If Sioul also runs on another device, share between them (Settings ▸ Sharing): a dose marked on one then counts on all, and only the one you are using reminds you.
 health-unchecked = Your other devices were last heard from at { $time }: a dose marked there may not show here yet.
 health-unchecked-yet = Your other devices are not heard from yet: a dose marked there may not show here yet.
 health-reminded-there = Reminders come on { $computer }, the device you are using.
@@ -5757,20 +5904,25 @@ sender-one-safe = Safe
 sender-one-neutral = Your contacts
 sender-one-restricted = Restricted
 sender-one-blocked = Blocked
-sender-categories = As their categories say
+sender-categories = As their groups say
 sender-no-list = No list
 sender-from-address = { $list }: their own choice.
-sender-from-category = { $list }, as the category { $name } says.
+sender-from-category = { $list }, as the group { $name } says.
 sender-from-domain = { $list }, as { $name } says.
 sender-from-default = { $list }: in none of your address books, on no list.
 sender-now-restricted = { $entry } is restricted: their mail comes only as the Restricted row says, in What reaches you.
-sender-now-categories = { $entry }: as their categories say.
+sender-now-categories = { $entry }: as their groups say.
 set-restricted = Restricted
+set-sender-named-contacts = { $n ->
+    [one] One address, number or domain you named as a contact
+   *[other] { $n } addresses, numbers and domains you named as contacts
+}
+set-sender-named-contacts-help = Named in an older version, from a person's sheet or when unblocking: they come as your contacts do, even outside your address books. Remove one to have it judged as everyone else.
 set-restricted-help = Those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs. They reach you only as the Restricted row above says. An address, a number, or a pattern with *.
-set-sender-categories-group = Your contacts' categories
-set-sender-categories-note = A person's own choice comes first (their address or number, then their card), then their card's categories, then a domain; anyone else in your address books is among your contacts, and everyone else a stranger. Nothing goes on a list by itself.
-set-sender-category = A category of your contacts
-set-sender-category-help = Everyone whose card is in this category, unless their own choice says otherwise.
+set-sender-categories-group = Groups
+set-sender-categories-note = A person's own choice comes first, then their groups, then a domain. Everyone in your address books is among your contacts.
+set-sender-category = A group
+set-sender-category-help = Everyone in this group, unless their own choice says otherwise.
 reach-word-pause = pause
 sender-list-stranger = Strangers
 sender-one-stranger = A stranger
@@ -6069,7 +6221,7 @@ dnd-device-older = { $device }: an older Sioul, which cannot follow until it is 
 dnd-device-closed = { $device }: Sioul is closed.
 dnd-why-manual = Turned on with the switch.
 dnd-why-manual-from = Turned on from { $device }.
-dnd-why-focus = While you focus on a task.
+dnd-why-busy = While you are busy.
 dnd-why-sleep = While you sleep.
 dnd-why-paused = During the pause.
 dnd-why-free-time = During your free time.
@@ -6085,8 +6237,8 @@ dnd-turn-off = Turn it off, on every device
 dnd-open-settings = Do-not-disturb settings…
 set-dnd-button = The switch in the status line
 set-dnd-button-help = A switch beside the sounds turns do-not-disturb on and off, on all your devices at once. Unticked, the switch is hidden; the rest below still holds.
-set-dnd-focus = While I focus on a task
-set-dnd-focus-help = Do-not-disturb holds while a focus session counts, on every device, and lifts 30 minutes past the time you chose (three hours for a session without one): a session left running never keeps you unreachable for long.
+set-dnd-focus = While busy
+set-dnd-focus-help = During an event or a task timer marked Busy, on every device. A timer left running lets go 30 minutes past its time.
 set-dnd-pauses = During the pauses
 set-dnd-pauses-help = Free time and the pause silence your devices too, as their own settings say. Unticked, they hold Sioul's own notifications only.
 set-dnd-sleep = While I sleep
@@ -6129,14 +6281,14 @@ dnd-stars-missing = { $n ->
     [one] One person on your list is not starred on { device-this }.
    *[other] { $Count } people on your list are not starred on { device-this }.
 }
-dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul never changes your contacts.
+dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul changes nothing of your contacts but their star.
 dnd-stars-starred = Starred
 dnd-stars-not-starred = Not starred
 dnd-stars-unknown = Not among { device-this-s } contacts
 dnd-stars-no-number = No number
 dnd-stars-open = Open their contact
 dnd-stars-add = Add to contacts
-dnd-stars-permission = To say who on your list is starred on { device-this }, Sioul needs to read your contacts. It never changes them.
+dnd-stars-permission = To say who on your list is starred on { device-this }, Sioul needs to read your contacts. It changes nothing of them but their star.
 dnd-stars-allow = Allow reading contacts
 dnd-stars-again = Look again
 dnd-stars-repeat = A second call from the same number within 15 minutes rings too, whoever calls: emergency services may call back from a number you do not know.
@@ -6323,10 +6475,10 @@ appnotes-why-answered = A conversation you answered from a computer in the last 
 appnotes-why-times = As you chose for this time: let through.
 appnotes-why-times-held = As you chose for this time: held until { $when }.
 appnotes-title = Notifications from other apps
-appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their rows in Settings ▸ What reaches you ▸ By person (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
+appnotes-does = Sioul holds other apps' notifications until their time, and lets through what may come now. Messages between people (SMS, chats, mail) follow their circle's choice in Settings ▸ What reaches you ▸ People (Messages; Mail for a mail app), as your mail does; notifications from automatons (shops, news, social networks, your browser's sites) come at the gathered times.
 appnotes-never = Sioul never keeps or sends what they say, never answers, never marks anything as read, and never touches read receipts or typing: the apps and the people in them see nothing of it. A held notification comes back whole, with its own tap and actions; none is ever deleted.
 appnotes-access-on = Notification access: given.
-appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and focus sessions when What reaches you ▸ Do not disturb says so).
+appnotes-access-off = Notification access: not given. Without it, other apps' notifications come as they are sent, and only do-not-disturb holds them: yours, and Sioul's (its switch, the pauses; your sleep and your busy stretches when What reaches you ▸ Moments says so).
 appnotes-steps = Sioul installed from a file (an APK) takes two steps in Android's settings:
 appnotes-step-restricted = 1. Notification access (Device and app notifications) ▸ Sioul: tap it once; Android may answer "Restricted setting". Then Android ▸ Apps ▸ Sioul ▸ ⋮ (at the top) ▸ Allow restricted settings, and confirm with your PIN: until then, Sioul's switch there stays grey (Android 13 and later).
 appnotes-step-access = 2. Notification access (Device and app notifications) ▸ Sioul ▸ on, and confirm.
@@ -6337,7 +6489,7 @@ appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
-appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and focus sessions too when What reaches you ▸ Do not disturb says so), Sioul's own mode lets through only what their rows let come then.
+appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
 appnotes-rang = These rang before Sioul held them:
 appnotes-rang-line = { $app }: { $channel }
 appnotes-make-silent = Make it silent
@@ -6387,7 +6539,7 @@ appnotes-privacy = Sioul reads the words of every notification of the apps you l
 appnotes-contacts-off = To know who wrote when an app gives a number or a contact, Sioul reads your contacts (it never writes them).
 appnotes-contacts-ask = Read contacts
 appnotes-heard = Android last handed Sioul a notification { $when }.
-appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own.
+appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own notices.
 
 ## Calls screened on a phone (docs/android.md, "Calls"; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = a hidden number
@@ -6452,6 +6604,70 @@ calls-why-stranger = Numbers not in your contacts go to voicemail { $context }.
 calls-why-hidden = Hidden numbers go to voicemail { $context }.
 calls-why-called = You had called this number in the last two weeks, so it rings as your contacts do: their calls go to voicemail { $context }.
 calls-why-own = Their own times send their calls to voicemail { $context }.
+calls-why-group = Calls from their group go to voicemail { $context }, as this phone's calls say.
+phone-calls-title = Calls
+phone-calls-profile = Start from
+phone-calls-profile-professional = Professional
+phone-calls-profile-personal = Personal
+phone-calls-profile-both = Both
+phone-calls-profile-as-android = As Android does
+phone-calls-profile-none = Your own
+phone-calls-profile-professional-said = Everyone else rings in your work hours; commercial callers never. Outside work hours everything but Always through goes to voicemail: a second call within 15 minutes does not ring outside work hours.
+phone-calls-profile-personal-said = Your contacts ring in the day; everyone else goes to voicemail unless they call twice within 15 minutes.
+phone-calls-profile-both-said = Professional in your work hours, Personal outside them.
+phone-calls-profile-as-android-said = Sioul screens nothing on this phone: Android decides.
+phone-calls-profile-none-said = Changed by hand: the table below is yours.
+phone-calls-always-rings = Rings at every moment, whatever the table says.
+phone-card-apps = Other apps' notifications
+phone-card-lists = Each app, conversation and site, by time
+phone-card-messages = Messages on your computers
+phone-card-texts = Texts
+phone-card-screening = The call screening on this phone
+phone-card-dnd = Do not disturb on this phone
+restricted-picture-title = App info
+restricted-picture-allow = Allow restricted settings
+phone-calls-unsaid = Until you choose here, this phone screens calls as every phone does.
+phone-calls-today = Until you change this table, this phone screens calls as every phone does, and the table shows it. A change starts from it, for this phone only.
+phone-calls-here = Calls are set here, phone by phone: the presets of What reaches you leave them as they are.
+phone-calls-varies = Varies
+phone-calls-usual = As usual
+phone-calls-usual-time = While busy, As usual rings as the moment's column says: being busy changes nothing for that row.
+phone-calls-usual-dnd = While busy, As usual follows Do not disturb, which being busy turns on; a cell set to Rings or Voicemail decides all the same.
+phone-calls-held = When do-not-disturb holds, or in a pause, this table gives way to what every phone does: { $who } ring then.
+phone-calls-held-alone = Always through alone
+phone-calls-held-with = Always through and { $rows }
+phone-calls-older = This phone's Sioul is older than the first that reads this table: it screens calls as every phone does until it is updated.
+phone-calls-louder = This phone has its own table now; where one moment rang and another did not, it rings. { $what }
+phone-calls-louder-part = { $row }: rings now in { $moments } too.
+phone-calls-impossible = Numbers that cannot be a caller's never ring
+phone-calls-unverified = Numbers your network could not verify never ring
+phone-calls-more = More
+phone-calls-undo-profile = Your own table is replaced by the profile.
+phone-calls-undo-clear = This phone screens calls as every phone does again; its own table is gone.
+phone-calls-varies-detail = { $row } — { $when }: rings in { $rings }; voicemail in { $voicemail }.
+phone-calls-android = Sioul screens nothing on this phone: Android decides. Your blocked numbers still go to voicemail.
+phone-calls-row-always = Always through
+phone-calls-row-safe = Safe
+phone-calls-row-contacts = Your contacts
+phone-calls-row-restricted = Restricted
+phone-calls-row-unknown = Everyone else
+phone-calls-row-hidden = Hidden numbers
+phone-calls-when-work = Work hours
+phone-calls-when-day = The rest of the day
+phone-calls-when-night = The night
+phone-calls-when-busy = While busy
+phone-calls-rings = Rings
+phone-calls-voicemail = Voicemail
+phone-calls-commercial = Commercial and automated callers never ring
+phone-calls-twice = A second call within 15 minutes rings
+phone-calls-called = Numbers you called in the last 14 days ring as your contacts do
+phone-calls-add-group = Give a group its row…
+phone-calls-remove-group = Take this row off
+phone-calls-back = Screen as every phone does
+phone-calls-not-screening = This phone does not screen calls yet: on the phone, What Android must allow ▸ Caller ID & spam app asks Android.
+phone-calls-sims = Android does not tell a screening app which SIM a call comes on, so Sioul cannot screen by SIM. To keep one SIM quiet, turn it off in Android.
+phone-calls-sims-open = Android's SIM page
+phone-calls-always = Whatever this table says, emergency numbers ring, and every call for a day after you call one.
 calls-why-automated = Automated callers go to your voicemail: since 2023, a machine may show only a number from the roots ARCEP keeps for machines, and your call screening knows them.
 calls-why-impossible = This number cannot be a caller's: France's numbering plan (version of 1 January 2026) forbids it as a caller ID. Your call screening sends such numbers to your voicemail.
 calls-why-unverified = Your network could not verify this number: it may have been borrowed. Your call screening sends such calls to your voicemail.
@@ -6524,7 +6740,7 @@ calls-setup-android-block = Your phone app's own “Block numbers not in contact
 calls-setup-change = Android's default apps
 calls-setup-change-help = To stop, choose “None” as caller ID & spam app there.
 calls-setup-when-title = Who may call you, and when
-calls-setup-when = The people you know ring at the times their row says in Settings ▸ What reaches you ▸ By person ▸ Calls: your contacts by their list, your Always through people at any time. Numbers nobody knows and hidden numbers are the call screening's, below.
+calls-setup-when = Who rings at which moment is set in each phone's card: Settings ▸ Devices ▸ Calls, a table of the people you know, numbers nobody knows and hidden numbers, by work hours, the rest of the day, the night and while busy. Until you change a phone's table, it shows what that phone does today.
 calls-setup-when-open = Who rings when
 calls-setup-people-open = Always through
 calls-setup-voicemail-title = Where a declined call goes
@@ -6815,6 +7031,153 @@ attention-level-never-codes = On the Porch only
 attention-level-never-mail = In its lane, never told
 attention-level-later-calls = Voicemail, listed later
 attention-level-quiet-messages = In the shade, without a sound
+attention-word-now = Now
+attention-word-quiet = Shown
+attention-word-event = At its event
+attention-word-gathered = Gathered
+attention-word-later = Later
+attention-word-never = Never
+attention-word-as = As their list
+attention-word-through = Through
+attention-word-never-codes = Porch
+attention-word-later-calls = Voicemail
+attention-word-later-messages = Held
+attention-word-quiet-messages = Silent
+
+## Settings ▸ What reaches you, as one page (design-reach §1; behaviours.rs, reaches.rs)
+reach-tab-rules = Your rules
+reach-tab-table = What comes when
+reach-start = Start from
+reach-people = People
+reach-circle-always = Always through
+reach-circle-always-help = The people on your Always through list.
+reach-circle-safe = Safe
+reach-circle-safe-help = Only you put someone here.
+reach-circle-contacts = Your contacts
+reach-circle-contacts-help = Everyone in your address books.
+reach-circle-restricted = Restricted
+reach-circle-restricted-help = Known, heard from only at the times you choose.
+reach-circle-others = Everyone else
+reach-circle-others-help = In no address book and on no list.
+reach-circle-blocked = Blocked
+reach-circle-blocked-help = Never, on any channel.
+reach-behaviour-always = Always
+reach-behaviour-awake = When awake
+reach-behaviour-work-admin = In work and admin hours
+reach-behaviour-work = In work hours
+reach-behaviour-gathered = At the gathered times
+reach-behaviour-never = Never told
+reach-behaviour-never-help-mail = Mail stays on the Porch, without a word.
+reach-behaviour-never-help-messages = A message is held at every time, on your phone: it stays in its own app, and the card What reaches you now counts what the phone holds.
+reach-own = Your own
+reach-free-time = In Free time
+reach-grid-key = Now: told at once. Shown: in Sioul, without a notification. Silent: a message in the shade, without a sound. Later: waits for its time. Held: a message kept on the phone until its time. Voicemail: a call goes to voicemail. Gathered: at the gathered times. At its event: when its event falls then. Porch: on the Porch only. Through: passes do-not-disturb, at their times. Never: not at all.
+reach-state-now = on now
+reach-own-help = Set cell by cell, in What comes when.
+reach-own-help-elsewhere = Set cell by cell on another device: What comes when does not show that row here.
+reach-people-automatic = A message is told only while what it was written to, an address or an app, is for now.
+reach-people-mail-off = Outside its times, your safe senders' mail waits on the Porch, the others' out of sight.
+reach-people-groups-note = Your contacts' messages set group conversations too.
+reach-circles = Who is in which circle
+reach-circles-help = Everyone in your address books is among your contacts, with nothing to set.
+reach-own-notices = Sioul's own notices
+reach-group-asked = What you set or asked for
+reach-group-asked-holds = Codes and links you asked for, doses, the alarm at waking and an event's alarms. Doses and the alarm at waking come at once; codes wait on the Porch while you sleep; an event's alarms come during sleep and Free time when their event falls then.
+reach-choice-asked-sleep = Doses while you sleep
+reach-choice-asked-waking = Doses at waking
+reach-group-reminders = Reminders
+reach-group-reminders-holds = Before an event, the working day before, dates, waits, payments and papers.
+reach-choice-reminders-awake = When awake
+reach-choice-reminders-off = Off
+reach-group-care = Care
+reach-group-care-holds = Notices that look after your day.
+reach-group-sites = Sites and apps
+reach-group-sites-holds = Sites' news on a computer, apps' automatic notifications on a phone.
+reach-choice-sites-now = At once
+reach-choice-sites-gathered = At the gathered times
+reach-gathered = Gathered at { $times }.
+reach-moments = Moments
+reach-moment-who = Who passes
+reach-moment-by = Turned on by
+reach-moment-phone = On your phone
+reach-moment-usual = As usual
+reach-moment-usual-who = Your rules above
+reach-moment-usual-by = Nothing
+reach-moment-usual-phone = As Android is set
+reach-moment-dnd = Do not disturb
+reach-moment-dnd-who = Always through, and what you set
+reach-moment-dnd-by = The switch, and the boxes below
+reach-moment-dnd-phone = Sioul's own mode, letting through whom Sioul does
+reach-moment-reachable = Reachable
+reach-moment-reachable-who = Everyone not blocked
+reach-moment-reachable-by = The switch, for a length
+reach-moment-reachable-phone = Sioul's mode off
+reach-holds = Who holds what on a phone
+reach-holds-sioul = Sioul
+reach-holds-android = Android
+reach-hold-call = A call
+reach-hold-call-sioul = Rings, or goes to voicemail
+reach-hold-call-android = Whether a ringing call sounds
+reach-hold-message = A message, another app's notification
+reach-hold-message-sioul = Shows now, or waits
+reach-hold-message-android = Whether it sounds; its first sound may come before Sioul hears of it
+reach-hold-dnd = Do not disturb
+reach-hold-dnd-sioul = One switch for every device
+reach-hold-dnd-android = Mirrored as the mode “Do not disturb (Sioul)”
+reach-hold-modes = Your own modes: Bedtime, driving
+reach-hold-modes-sioul = Read as a press of the switch
+reach-hold-modes-android = Yours alone
+reach-principle = Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound.
+reach-presets-calls = A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices.
+reach-calls = Calls are set for each phone in Settings ▸ Devices.
+reach-calls-open = Open Devices
+reach-calls-grid = These rows are the table every phone follows until it has its own. A phone that has its own table (Settings ▸ Devices) follows it instead, except in a pause and during do-not-disturb, where these rows still decide.
+reach-calls-grid-open = Each phone's table
+reach-elsewhere = Set elsewhere: { $what }.
+reach-elsewhere-none = Nothing is set elsewhere.
+reach-elsewhere-sites-live = { $n ->
+    [one] one site in real time
+   *[other] { $n } sites in real time
+}
+reach-elsewhere-sites-muted = { $n ->
+    [one] one site silenced
+   *[other] { $n } sites silenced
+}
+reach-elsewhere-events = { $n ->
+    [one] one event's own reminder
+   *[other] { $n } events' own reminders
+}
+reach-elsewhere-health = { $n ->
+    [one] one day of Health's
+   *[other] { $n } days of Health's
+}
+reach-elsewhere-persons = { $n ->
+    [one] one person's own times
+   *[other] { $n } people's own times
+}
+reach-elsewhere-sources = { $n ->
+    [one] one app's or conversation's own times
+   *[other] { $n } apps' and conversations' own times
+}
+reach-elsewhere-open-sites = Sites
+reach-elsewhere-open-devices = Devices
+reach-elsewhere-open-agenda = Agenda
+reach-elsewhere-open-health = Health
+reach-elsewhere-open-contacts = Contacts
+## The Busy mark (busy.rs): an event's card and form, a task's panel
+busy = Busy
+busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.
+busy-task = Busy while I work on it
+busy-task-help = Its time counts in the availability you share where it is known (a time block, a start time, the plan's time before its date), and while its timer runs your rules for busy time apply.
+busy-calendar-free = Its calendar is free as a whole: none of its events marks you busy, whatever each says.
+busy-dnd-first-title = Do not disturb, while you are busy
+busy-dnd-first-body = An event or a task marked busy turned do-not-disturb on, as "While busy" asks. Change it in Settings ▸ What reaches you ▸ Moments.
+busy-time-holds = { $more ->
+    [0] In the availability you share: { $spans }.
+   *[other] In the availability you share: { $spans }, and { $more } more.
+}
+busy-time-not-known = Its time is not known yet: the availability you share holds nothing for it until it has a time block, a start time, or a date asked that the plan lays it before.
+busy-with-others = A meeting with others keeps its organizer's busy or free: Sioul never writes it.
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = At once
 attention-source-gathered = At the gathered times
@@ -6844,14 +7207,14 @@ attention-person-always-help = The people on your Always through list, the same 
 attention-person-safe = Safe
 attention-person-safe-help = Only you put someone on this list.
 attention-person-neutral = Your contacts
-attention-person-neutral-help = Anyone in your address books, let in from the screener, or named among your contacts.
+attention-person-neutral-help = Everyone in your address books, or let in from the screener.
 attention-person-restricted = Restricted
 attention-person-restricted-help = Known, heard from only at the times you choose.
-attention-person-stranger = Strangers
+attention-person-stranger = Everyone else
 attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs.
 attention-person-hidden = Hidden numbers
 attention-person-hidden-help = Calls that show no number: someone who hides it, a hospital's switchboard.
-attention-person-groups = Groups
+attention-person-groups = Group conversations
 attention-person-groups-help = Conversations where several people write, whoever writes in them.
 attention-person-blocked = Blocked
 attention-person-blocked-help = Never, on any channel, whatever else says.
@@ -6938,7 +7301,7 @@ phonemsgs-setup-title = On your computers
 phonemsgs-setup-help = With this part of the sharing on, { device-this } sends your computers the messages its notifications bring, sealed, for the apps you choose: who wrote, when, and the words, cut at 1,000 characters. A computer shows them on its Porch once you turn the part on there too, at the times their sender may reach you, never as a notification. They are kept a week.
 phonemsgs-setup-never = Never sent: codes and approvals (a line says a code came, and that it stays on your phone), pictures (said as “a picture”), a blocked sender's messages, notifications an app marks secret, ongoing ones, Sioul's own. Seen on a computer takes the line away everywhere; it never touches your phone's notification and never marks anything read.
 phonemsgs-setup-part = Messages from your phone
-phonemsgs-setup-no-sharing = Set up your sharing first (Settings ▸ Your folder and sharing): the messages travel through it.
+phonemsgs-setup-no-sharing = Set up your sharing first (Settings ▸ Sharing): the messages travel through it.
 phonemsgs-setup-apps = By app
 phonemsgs-setup-apps-help = The phone's SMS app sends its words unless you say otherwise; every other app sends nothing until you choose it.
 phonemsgs-setup-sms = The phone's SMS app
@@ -7042,10 +7405,10 @@ replies-read-item = Mark as read in { $app }
 replies-read-title = Mark as read?
 replies-read-warning = { $app } may tell them that you read it.
 replies-read-confirm = Mark as read
-# texts: the Texts page, and Settings ▸ This phone ▸ Texts (SMS phase b).
+# texts: the Texts page, and Settings ▸ Devices, this phone's card ▸ Texts (SMS phase b).
 texts-page-title = Texts
-texts-page-off = Your texts show here once the sharing's part Texts is on, on this device and on your phone (Settings ▸ Your folder and sharing).
-texts-page-no-phone = No phone shares its texts with this computer: turn the part Texts on on your phone, in Settings ▸ This phone ▸ Texts.
+texts-page-off = Your texts show here once the sharing's part Texts is on, on this device and on your phone (Settings ▸ Sharing).
+texts-page-no-phone = No phone shares its texts with this computer: turn the part Texts on on your phone, in Settings ▸ Devices, this phone's card ▸ Texts.
 texts-page-never = Drafts, texts that failed or wait to leave, and multimedia messages still to download stay in your phone's messages app: Android shows them to that app alone.
 texts-page-back = Conversations
 texts-page-shared = Your phone last shared at { $time }.
@@ -7150,6 +7513,61 @@ access-notifications = Other apps' notifications: Android has not given Sioul no
 access-notifications-guarded = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. An app installed from a file gets it only once you allow its restricted settings: press Allow in Android… and tap Sioul once in Notification access (Android may answer "Restricted setting"); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and turn Sioul on in Notification access.
 access-contacts = Contacts: Android has not allowed Sioul to read them, so calls and messages show numbers where your contacts would give names. Allow in Android… asks.
 access-not-now = Not now
+restricted-title = Android's restricted settings
+restricted-intro-notifications = Sioul was installed from a file, so Android holds back notification access until you allow its restricted settings. Three steps:
+restricted-intro-texts = Sioul was installed from a file, so Android holds back the texts' permissions until you allow its restricted settings. Three steps:
+restricted-intro-both = Sioul was installed from a file, so Android holds back notification access and the texts' permissions until you allow its restricted settings. Three steps:
+restricted-notice-texts = Let Android show its notice: Sioul asks for the texts' permission, and Android answers "Restricted setting" instead. Press OK there.
+restricted-notice-page = Let Android show its notice: on the page that opens, touch Sioul's greyed switch once. Android answers "Restricted setting". Press OK there.
+restricted-notice-button = Show Android's notice
+restricted-info = Open Sioul's page in Android. There, press ⋮ at the top right, then Allow restricted settings, and confirm with your screen lock.
+restricted-info-button = Open Sioul's page
+restricted-back = Come back to Sioul: it asks for each access again by itself.
+restricted-back-done = Android now gives Sioul what it held back.
+restricted-back-button = Ask again now
+restricted-cannot-see = Sioul cannot see the setting itself, only whether each access works now.
+phone-allow-greyed = Android greys the switch?
+phone-allow-title = What Android must allow
+phone-allow-role = Caller ID & spam app
+phone-allow-role-for = screens calls before the phone rings
+phone-allow-contacts = Contacts
+phone-allow-contacts-for = names callers, and lets Sioul screen your contacts' calls
+phone-allow-history = Call log
+phone-allow-history-for = calls you missed, and yours that did not reach them
+phone-allow-notifications = Notification access
+phone-allow-notifications-for = holds other apps' notifications, and tells your computers
+phone-allow-texts = Texts
+phone-allow-texts-for = your texts on your computers
+phone-allow-dnd = Do Not Disturb access
+phone-allow-dnd-for = Sioul's own modes on this phone
+phone-allow-alarms = Exact alarms
+phone-allow-alarms-for = doses, waking and events on time
+phone-allow-battery = No battery restriction
+phone-allow-battery-for = keeps your devices in step while Sioul is closed
+phone-allow-stars = Modify contacts
+phone-allow-stars-for = stars the people who always get through
+phone-allow-given = Given
+phone-allow-not-given = Not given
+phone-allow-unknown = Cannot tell
+phone-allow-ask = Allow in Android…
+phone-allow-open = Android's page
+phone-allow-elsewhere = As this phone last said it. Change it on the phone itself.
+phone-stars-why = To star the people who always get through, Sioul asks Android to modify your contacts. It writes the star and nothing else.
+stars-switch = Starred contacts are Always through, both ways
+stars-switch-said = A contact starred on a phone, or marked favourite on a server that keeps favourites, is on this list on every device; everyone on it is starred where their contact is. Sioul writes the star and nothing else.
+stars-kept-title = Always through: nobody taken off
+stars-kept = { $names } lost their star on { $place } at the same time. No hand does that at once, so Sioul took nobody off Always through; if you meant to, take them off the list yourself.
+stars-unmatched = { $n ->
+    [one] One contact could not be matched to one person: a number or an address that two contacts or two people share. Sioul stars nobody for it.
+   *[other] { $n } contacts could not be matched to one person: a number or an address that two contacts or two people share. Sioul stars nobody for them.
+}
+stars-place-this-phone = this phone
+stars-place-phone = a phone of yours
+stars-place-book = { $book } ({ $account })
+stars-starred-on = Starred on { $place }.
+stars-not-starred-on = Not starred on { $place } yet.
+stars-absent-on = In no contact of { $place }: Sioul cannot star them there.
+stars-no-star = { $place }: its favourites cannot be kept in step yet. If its server keeps favourites (Nextcloud does), mark one contact as a favourite there, and Sioul keeps them in step from then on.
 mail-through-channel = New mail from people always let through
 # Sioul's own notices on a phone (Notices.java, docs/android.md "Notifications"): Android's channels, by class.
 notices-channel = Notices
@@ -7162,11 +7580,8 @@ event-alarms-calendar-settings = Its notifications
 event-alarms-sioul-title = Sioul rings events' alarms here
 event-alarms-sioul-body = No calendar app syncs your agendas on this device, so Sioul rings an event's own alarms itself.
 
-## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, This phone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
+## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, the phone's card (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneCard.qml, docs/attention.md)
 settings-tab-attention = What reaches you
-settings-tab-phone = This phone
-settings-tab-tablet = This tablet
-settings-tab-device = This device
 set-device-group = This device
 set-device-kind = What this device is
 set-device-kind-help = A phone is carried: your other devices call it “the phone”, and only the events’ reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts. The window’s layout follows its size whatever you choose here. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer.
@@ -7213,7 +7628,7 @@ attention-sheet-channels = What reaches you from them
 attention-sheet-always-help = On your Always through list, the same on every device: they come through more than their list lets them, as the lines below say.
 attention-sheet-always-blocked = Blocked: putting them on Always through takes them off the blocked list.
 attention-sheet-calls-none = This holds once a phone of yours screens calls.
-attention-sheet-line-calls-screening = Their calls are your call screening's: no list or address book knows them (Settings ▸ This phone ▸ Calls).
+attention-sheet-line-calls-screening = Their calls are your call screening's: no list or address book knows them (Settings ▸ Devices, the phone's card ▸ Calls).
 attention-sheet-no-number = No number of theirs is known: their calls cannot be told apart.
 attention-sheet-no-address = No address of theirs is known.
 attention-sheet-off-always = { $name } is off your Always through list.
@@ -7414,11 +7829,6 @@ attention-during-meals = meals
 attention-during-sleep = sleep
 attention-during-pause = a pause
 attention-during-free = free time
-attention-phone-intro = What sets { device-this } up. When each thing reaches you is in What reaches you.
-attention-phone-open-tab = What reaches you
-attention-phone-alarms-title = Alarms and notifications
-attention-phone-alarms = Reminders, doses and the alarm at waking need two of Android's permissions: exact alarms, so that they come on time, and Sioul's own notifications, so that they show.
-attention-phone-open-exact = Exact alarms…
 attention-phone-open-notifications = Sioul's notifications…
 set-pause-attention = What comes during a pause
 set-pause-attention-help = Doses, an event's alarms, your Always through people, and what waits until you come back: the pause's card in What reaches you.
@@ -7553,19 +7963,19 @@ attention-when-pause = From pressing Pause until you come back.
 attention-when-free = From pressing Free time until you come back, the night or midnight.
 attention-when-slot = The slots today's plan keeps for you.
 attention-when-dnd = While its switch in the status line is on.
-attention-when-dnd-focus = While its switch in the status line is on, and while you focus on a task.
+attention-when-dnd-focus = While its switch in the status line is on, and while you are busy.
 attention-also-meeting = During a meeting, Health's notices and “Work hours are over” do not come.
 attention-also-areas = What is for another time waits for it: mail to an address for work, a site or an app for work, a work task's dates. Your safe senders' mail is shown on the Porch meanwhile, and told when its address's hours begin; your Always through people come anyway.
 attention-also-porch-rests = After the pause, the Porch rests until your next admin hours: new mail is shown there, without a notification.
 attention-switch-through-off = Expecting a call is off: in the status line, it lets numbers nobody knows and hidden numbers ring for a while, never automated callers nor the blocked.
-attention-card-screening = Calls from numbers nobody knows and hidden numbers: as your call screening says, apart (Settings ▸ This phone).
-attention-card-screening-held = Calls from numbers nobody knows and hidden numbers: to voicemail then, as your contacts' are, unless you expect a call (Settings ▸ This phone).
+attention-card-screening = Calls from numbers nobody knows and hidden numbers: as your call screening says, apart (Settings ▸ Devices, the phone's card).
+attention-card-screening-held = Calls from numbers nobody knows and hidden numbers: to voicemail then, as your contacts' are, unless you expect a call (Settings ▸ Devices, the phone's card).
 attention-switch-realtime-on = Real time is on until the hours it was ticked in end: mail is fetched every minute, and every site's notifications come at once.
 attention-switch-realtime-off = Real time is off: “Mail every minute”, in the card What reaches you now (the status line's button), fetches mail every minute and brings every site's notifications at once, until the hours you are in end.
-attention-channel-calls-none = None of your phones screens calls yet: these rows apply once one does (Settings ▸ This phone, on the phone).
-attention-channel-messages-none = Sioul knows no phone of yours yet: these rows apply on a phone that holds other apps' notifications (Settings ▸ This phone, on the phone).
-attention-channel-messages-no-access = None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ This phone, on the phone).
-attention-channel-messages-phone = These rows apply on your phone, where Sioul holds other apps' notifications (Settings ▸ This phone, on the phone).
+attention-channel-calls-none = None of your phones screens calls yet: these rows apply once one does (Settings ▸ Devices, the phone's card, on the phone).
+attention-channel-messages-none = Sioul knows no phone of yours yet: these rows apply on a phone that holds other apps' notifications (Settings ▸ Devices, the phone's card, on the phone).
+attention-channel-messages-no-access = None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ Devices, the phone's card, on the phone).
+attention-channel-messages-phone = These rows apply on your phone, where Sioul holds other apps' notifications (Settings ▸ Devices, the phone's card, on the phone).
 attention-gathered-at = Sioul gathers them at { $times }; the times are in Settings ▸ Reminders.
 attention-spam-held = Mail your own spam filter finds maybe or probably spam waits on the Porch, in “Caught by your own spam filter”, without a notification: Mail ⚙ ▸ Your own spam filter.
 attention-spam-told = Your own spam filter leaves strangers' mail where it is, told as its row says: Mail ⚙ ▸ Your own spam filter.
@@ -7576,7 +7986,7 @@ attention-site-muted = silenced, its notifications never come
 attention-site-gathered = its notifications come at the gathered times
 attention-own-help-list = Each kind of notification Sioul sends. Press one to see what it does at each time, and to change it.
 attention-person-list-help = Each list of people on this channel. Press one to see what it does at each time, and to change it.
-attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through row says, in What reaches you ▸ Exceptions.
+attention-sheet-always-off-help = Ticked, they come through more than their list lets them, on every device: as each channel's Always through line says, in What reaches you ▸ People.
 
 ## The words Sioul looks for: Settings ▸ Words (docs/words.md)
 
@@ -7852,6 +8262,7 @@ mode-work-until-tonight = Work until tonight, { $time }
 ui-show-all-mail = Show all mail now
 ui-show-all-mail-help = Every lane and every address, at any hour, on this device, until “Done for now”; it tells nothing.
 calls-context-reachable = while you were reachable
+calls-context-busy = while you were busy
 appnotes-why-released = Held before you asked your phone to let what it held through: let through.
 
 # The button and the card "What reaches you now" (part 5 of "What reaches you"; the proposal's 3.5 and 3.6).
@@ -7917,6 +8328,7 @@ agenda-open-task = Open the task
 appointment-made = Now an appointment, in { $calendar }.
 appointment-has-steps = This task has steps of its own: it stays a task.
 task-made-from-event = Now a task, in { $list }.
+task-made-from-event-busy = Now a task, in { $list }, busy while you work on it, as the event was.
 task-made-already = This is a task's time already.
 task-from-invitation = An invitation stays an event: others expect you there.
 task-from-odd-repeat = Its repeat cannot be a task's: it stays an event.
@@ -8706,7 +9118,7 @@ books-not-declared = Not declared
 books-declared-on = { $what }, declared on
 clients-bill = Bill this client
 clients-profile = Client profile
-clients-profile-about = What this client’s invoices print, kept in your notes folder beside your projects (sioul-clients.toml), never in the card on your contacts’ server.
+clients-profile-about = What this client’s invoices print, kept among Sioul's own lists beside your projects (sioul-clients.toml), never in the card on your contacts’ server.
 clients-profile-line = Client profile: { $profile }
 clients-profile-none = No client profile yet: invoices bill it as a business, from its card.
 clients-profile-change = Client profile…
@@ -8871,7 +9283,7 @@ invoices-settings-platform-help = From 1 September 2027 your invoices to French 
 settings-tab-devices = Devices
 devices-title = Your devices
 devices-help = Every device Sioul shares with, this one first: what each is, when it was last opened and when it last shared, its Sioul, what you say it is for, and what it shares. Names and what each device is for travel with your settings. Each device then brings forward only what it is for, at the hours for it; with nothing ticked, everything comes there, as before.
-devices-alone = This device does not share with your other devices, so it is the only one listed. Your folder and sharing sets it up.
+devices-alone = This device does not share with your other devices, so it is the only one listed. Settings ▸ Sharing sets it up.
 devices-settings-stay = Settings and accounts do not travel from this device: a name or what a device is for, said here, stays here, and what your other devices say of them does not come here.
 devices-as-of = Sioul is not looking from this device now: the others are said as it last saw them, { $when }.
 devices-this = This device
@@ -8910,3 +9322,513 @@ devices-plain-here-system = { $name } (this device, named { $system } by its sys
 devices-plain-line = { $label }: { $value }
 share-devices-moved = Your devices are listed in Settings ▸ Devices, with what each is for.
 share-devices-open = Open Devices
+
+## Address books and contacts in bulk (wave D): Contacts ⚙ ▸ Address books, the filters, the selection, the name's parts, the import.
+
+contact-name-parts = Title, given names, family name
+contact-name-prefix = Title (Mr, Mrs…)
+contact-name-given = Given names
+contact-name-family = Family name
+contact-name-suffix = Suffix
+contact-groups-held = In “{ $book }”, a contact's groups do not decide who may reach you.
+contact-groups-held-door = Its groups…
+contacts-none-filtered = No contact matches these filters.
+contacts-counted-all = { $total ->
+    [one] One contact
+   *[other] { $total } contacts
+}
+contacts-counted-some = { $shown } of { $total }
+contacts-filter-books = Address books
+contacts-filter-books-all = All address books
+contacts-filter-books-some = { $n ->
+    [one] One address book
+   *[other] { $n } address books
+}
+contacts-filter-group = Group
+contacts-filter-group-any = Any group
+contacts-filter-group-none = In no group
+contacts-filter-phone = Phone number
+contacts-filter-phone-any = Phone number or not
+contacts-filter-phone-has = Has a phone number
+contacts-filter-phone-lacks = Has no phone number
+contacts-filter-email = E-mail address
+contacts-filter-email-any = E-mail address or not
+contacts-filter-email-has = Has an e-mail address
+contacts-filter-email-lacks = Has no e-mail address
+contacts-filter-address = Postal address
+contacts-filter-address-any = Postal address or not
+contacts-filter-address-has = Has a postal address
+contacts-filter-address-lacks = Has no postal address
+contacts-filter-title = Title (Mr, Mrs…)
+contacts-filter-title-any = Title or not
+contacts-filter-title-has = Has a title (Mr, Mrs…)
+contacts-filter-title-lacks = Has no title
+contacts-filter-clear = Show all
+contacts-select = Select
+contacts-select-done = Done
+contacts-select-none = Select none
+contacts-select-shown = { $n ->
+    [one] Select the one shown
+   *[other] Select the { $n } shown
+}
+contacts-selected = { $n ->
+    [0] None selected
+    [one] One selected
+   *[other] { $n } selected
+}
+batch-actions = With them…
+batch-move = Move to an address book…
+batch-group-add = Add to a group…
+batch-group-remove = Remove from a group…
+batch-title = Move the title into its field…
+batch-delete-contacts = Delete…
+batch-book = Address book
+batch-group-name = Group
+batch-also-group = Also add them to a group
+batch-needs-group = Which group? Type its name, or choose one in use.
+batch-ask-none = Nothing to change among these.
+batch-ask-move = { $n ->
+    [one] Move one contact to “{ $book }”?
+   *[other] Move { $n } contacts to “{ $book }”?
+}
+batch-ask-move-note = Each keeps its identifier: nothing that points at it changes.
+batch-ask-losses = “{ $book }” would not keep: { $list }.
+batch-ask-group-add = { $n ->
+    [one] Add one contact to the group “{ $group }”?
+   *[other] Add { $n } contacts to the group “{ $group }”?
+}
+batch-ask-group-remove = { $n ->
+    [one] Take one contact out of the group “{ $group }”?
+   *[other] Take { $n } contacts out of the group “{ $group }”?
+}
+batch-ask-title = { $n ->
+    [one] Move the title of one contact into its field?
+   *[other] Move the titles of { $n } contacts into their field?
+}
+batch-ask-delete = { $n ->
+    [one] Delete one contact?
+   *[other] Delete { $n } contacts?
+}
+batch-ask-delete-note = Undo, in the status line, brings them back for ten seconds; then, for thirty days, Contacts ⚙ ▸ Changes to many contacts does.
+batch-cannot = { $n ->
+    [one] One stays as it is:
+   *[other] { $n } stay as they are:
+}
+batch-why-gone = it is gone
+batch-why-read-only = its address book can only be read
+batch-why-target-read-only = that address book can only be read
+batch-why-there-already = it is in that address book already
+batch-why-same-uid = that address book holds a card with the same identifier
+batch-why-other-title = its title field holds { $title } already
+batch-go = Go
+batch-go-delete = Delete them
+batch-stop = Stop
+batch-busy = Another change to many contacts is under way: it ends first.
+batch-running = { $done } of { $total }…
+batch-undoing = Putting back { $done } of { $total }…
+batch-done-move = { $n ->
+    [one] One contact moved.
+   *[other] { $n } contacts moved.
+}
+batch-done-groups = { $n ->
+    [one] One contact's groups changed.
+   *[other] { $n } contacts' groups changed.
+}
+batch-done-title = { $n ->
+    [one] One title moved into its field.
+   *[other] { $n } titles moved into their field.
+}
+batch-done-delete = { $n ->
+    [one] One contact deleted.
+   *[other] { $n } contacts deleted.
+}
+batch-done-merge = { $n ->
+    [one] One contact moved.
+   *[other] { $n } contacts moved.
+}
+batch-done-import = { $n ->
+    [one] One contact imported.
+   *[other] { $n } contacts imported.
+}
+batch-done-failed = { $n ->
+    [one] One could not: { $why }.
+   *[other] { $n } could not: { $why }.
+}
+batch-stopped = Stopped: the others are as they were.
+batch-undone = { $n ->
+    [0] Nothing to put back.
+    [one] One contact put back.
+   *[other] { $n } contacts put back.
+}
+book-whose-yours = Yours
+book-whose-shared-by = Shared with you by { $owner }
+book-whose-shared = Shared with you
+book-whose-unknown = Its server does not say whose it is
+book-kept-here = on this device alone
+book-count = { $n ->
+    [one] 1 contact
+   *[other] { $n } contacts
+}
+book-writable = Can be written
+book-read-only = Read only
+book-waiting = Made here; on its server at the next sync.
+book-google-fixed = Google keeps one address book: it is renamed and shared on Google's own pages. Contacts move into it and out of it from here.
+book-needs-name = An address book needs a name.
+book-no-home = This account cannot hold a new address book.
+book-leave-question = Stop showing “{ $name }”? It stays its owner's.
+book-leave-note = Its owner's address book is not touched.
+book-not-yours-to-remove = Its server does not say this address book is yours: it is not changed from here.
+book-remove-empty = Remove “{ $name }”? It holds no contact.
+book-remove-cards = { $n ->
+    [one] “{ $name }” holds one contact. Where does it go?
+   *[other] “{ $name }” holds { $n } contacts. Where do they go?
+}
+book-remove-copy = This count is this device’s. On its server, “{ $name }” is deleted for everyone it is shared with; if someone added contacts there since the last sync, it is kept and shown here again. The contacts here are copied on this device first.
+books-new = New address book…
+books-new-where = Where
+books-new-name = Its name
+books-make = Make it
+books-made = Address book made: { $name }.
+books-rename = Rename
+books-renamed = Address book renamed: { $name }.
+books-merge = Merge into…
+books-merge-into = Merge into
+books-merge-go = Merge
+books-merge-cannot = { $n ->
+    [one] One contact cannot move there: { $why }. Nothing was merged.
+   *[other] { $n } contacts cannot move there: { $why }. Nothing was merged.
+}
+books-merge-kept = “{ $name }” stays: not all its contacts moved.
+books-remove = Remove…
+books-remove-go = Remove it
+books-remove-move = Move them to
+books-remove-move-go = Move them, then remove it
+books-remove-delete = Delete them with it
+books-removed = Address book removed: { $name }. A copy of its contacts: { $copy }
+books-removed-empty = Address book removed: { $name }.
+books-leave = Stop showing
+books-left = No longer shown: { $name }.
+books-gone = This address book is gone.
+books-share-asking = Asking its server who sees it…
+books-share-who = A user or a group of this server (its user name)
+books-share-group = It is a group
+books-share-write = May change contacts
+books-share-go = Share
+books-share-stop = Stop
+books-shared-none = Only you.
+books-shared-read = { $who } can read it.
+books-shared-write = { $who } can change it.
+books-unshared = No longer shared with { $who }.
+books-share-elsewhere = Only a user or a group of the same server: their user name.
+books-share-not-here = This server does not share address books from Sioul.
+books-share-not-yet = On its server at the next sync; it can be shared then.
+books-import = Import…
+import-title = Import contacts
+import-file-kinds = vCard or CSV files
+import-reading = Reading the file…
+import-too-big = This file is larger than { $mb } MB: it is not read.
+import-unreadable = This file cannot be read: { $error }
+import-kind-not = Only a vCard file (.vcf) or a CSV file (.csv) is read.
+import-on-a-phone = On a phone, open the file with Sioul from where it is (Files, a message): Android hands it over.
+import-gone = This file is no longer open here.
+import-found-vcf = { $n ->
+    [one] One card in this file.
+   *[other] { $n } cards in this file.
+}
+import-found-csv = { $n ->
+    [one] One row in this file.
+   *[other] { $n } rows in this file.
+}
+import-broken = { $n ->
+    [one] Line { $lines } does not read.
+   *[other] Lines { $lines } do not read.
+}
+import-export-of = Recognised: an export of { $name }.
+import-mapping-kept = The columns as you kept them: { $name }.
+import-columns = Which column is what
+import-keep-as = Keep these columns under a name (optional)
+import-into = Into the address book
+import-into-new = A new address book…
+import-groups = Add every new contact to these groups (optional, separated by commas)
+import-titles = Move a title found at the start of a name into its field, where it cannot be anything but a title
+import-summary = { $new ->
+    [0] No new contact.
+    [one] One new contact, into “{ $book }”.
+   *[other] { $new } new contacts, into “{ $book }”.
+}
+import-read-only = { $n ->
+    [one] One already here in an address book you only read: left as it is.
+   *[other] { $n } already here in an address book you only read: left as they are.
+}
+import-titled = { $n ->
+    [one] One name begins with a title: the box above moves it into its field.
+   *[other] { $n } names begin with a title: the box above moves them into their field.
+}
+import-check = Count them
+import-go = Import
+import-field-skip = Leave out
+import-field-title = Title (Mr, Mrs…)
+import-field-given = Given names
+import-field-additional = Middle names
+import-field-family = Family name
+import-field-name = The whole name
+import-field-suffix = Suffix
+import-field-company = Organisation
+import-field-role = Role
+import-field-mobile = Mobile
+import-field-phone = Phone
+import-field-email = E-mail address
+import-field-street = Street
+import-field-postcode = Postcode
+import-field-town = Town
+import-field-region = Region
+import-field-country = Country
+import-field-address = Whole postal address
+import-field-birthday = Birthday
+import-field-note = Note
+import-field-groups = Groups
+import-field-web = Web site
+batch-undone-left = { $n ->
+    [one] One stays as it is, said below.
+   *[other] { $n } stay as they are, said below.
+}
+batch-why-changed-since = it changed since this was planned
+batch-why-taken = another card took its place since
+batch-why-gone-since = it was moved or deleted since
+batch-why-changed-since-undo = it changed since: that version stays
+batch-why-book-gone = its address book is gone
+batch-why-elsewhere-now = it is in another address book now
+batch-why-undo-gone = This change can no longer be undone: its record is gone.
+batch-why-nothing-done = nothing was changed
+batch-why-household = its name holds two people: left as written
+batch-why-no-name-line = its name comes from another line of its card: change it from its card
+batch-why-target-refused = its server did not make that address book
+batch-title-group-only = Its title is in its field already: only the group is added.
+batch-title-sure-help = Ticked: the word cannot be anything but a title. Not ticked: it may be part of a name or a company; tick it if it is a title.
+batch-shared-theirs = “{ $book }” is someone else’s: its owner, and whoever it is shared with, will see what goes into it.
+batch-shared-with = “{ $book }” is shared with { $who }: they will see what goes into it.
+batch-shared-maybe = “{ $book }” may be shared with other people: its server is asked who sees it.
+batch-listed = { $when } · { $what }
+batch-listed-partly = Stopped after { $done } of { $planned }.
+batch-cannot-undo = Cannot be undone: { $why }.
+batch-undo-ask = { $n ->
+    [one] Put back the contact this change touched, as it was before? A contact changed since stays as it is.
+   *[other] Put back the { $n } contacts this change touched, as they were before? Those changed since stay as they are.
+}
+batch-undo = Undo…
+batch-undo-go = Put them back
+book-refused = Its server did not make this address book: it stays on this device alone, and nothing moves into it.
+book-kept-held = Kept: its server holds contacts that were added there since; they are here again.
+import-file-groups = The file gives its new contacts these groups: { $groups }.
+import-keep-listed-one = { $group } ({ $list }), { $n ->
+    [one] one card
+   *[other] { $n } cards
+}
+import-keep-listed = Also keep the groups that decide who may reach you: { $groups }
+import-other-names = { $n ->
+    [one] One has an identifier already here under another name: it is left alone; its own box below completes it all the same.
+   *[other] { $n } have an identifier already here under another name: each is left alone; its own box below completes it all the same.
+}
+import-other-name = same identifier, another name: { $name }
+batch-why-unrecorded = its record cannot be written on this device: stopped before it
+books-groups-notice-title = “{ $name }”: its groups no longer decide who reaches you
+books-groups-notice-body = { $who } can now write this address book. Its contacts stay yours; turn its groups on in Contacts ⚙ ▸ Address books if you trust them.
+books-groups-notice-title-many = { $n } address books: their groups no longer decide who reaches you
+books-groups-notice-line = “{ $name }” ({ $who })
+books-groups-notice-body-many = Someone else can now write { $books }. Their contacts stay yours; turn their groups on in Contacts ⚙ ▸ Address books if you trust them.
+batch-reach-stays = Who may reach you stays as its groups say.
+batch-reach-held = { $n ->
+    [one] One of these is on your { $list } list through a group; in this book it counts as a plain contact until you turn its groups on.
+   *[other] { $n } of these are on your { $list } list through a group; in this book they count as plain contacts until you turn its groups on.
+}
+batch-reach-let = { $n ->
+    [one] One of these carries a group that is on one of your lists ({ $lists }); once moved, it is let through as that list says.
+   *[other] { $n } of these carry a group that is on one of your lists ({ $lists }); once moved, they are let through as that list says.
+}
+batch-reach-group-held = { $n ->
+    [one] One of these is in an address book whose groups do not decide who may reach you: there, this group counts only once its groups are turned on ({ $lists }).
+   *[other] { $n } of these are in an address book whose groups do not decide who may reach you: there, this group counts only once its groups are turned on ({ $lists }).
+}
+import-reach-held = { $n ->
+    [one] In “{ $book }”, whose groups do not decide who may reach you, one new contact carries a group on one of your lists ({ $lists }): it counts as a plain contact until you turn its groups on.
+   *[other] In “{ $book }”, whose groups do not decide who may reach you, { $n } new contacts carry a group on one of your lists ({ $lists }): they count as plain contacts until you turn its groups on.
+}
+book-writers-unsaid = This server does not say who can write this book.
+book-groups-count = Its groups decide who may reach me
+book-groups-owner = Its owner
+book-groups-stopped = { $who } can write this address book, so its groups no longer decide who may reach you: someone who can write it could otherwise add a card in a group that a list lets through. Turn on “Its groups decide who may reach me” if you trust them.
+books-groups-on = The groups of “{ $name }” now decide who may reach you.
+books-groups-off = The groups of “{ $name }” no longer decide who may reach you; its contacts stay yours.
+books-groups-failed = This choice could not be kept: the settings file cannot be written.
+book-remove-copy-here = They are copied on this device first, then deleted.
+book-not-yours-to-rename = Its server does not say this address book is yours: it is not renamed from here.
+book-not-yours-to-share = Its server does not say this address book is yours: it is not shared from here.
+books-merge-itself = An address book cannot be merged into itself.
+books-merge-ask = { $n ->
+    [one] Move the one contact of “{ $name }” into “{ $into }”, then remove “{ $name }”?
+   *[other] Move the { $n } contacts of “{ $name }” into “{ $into }”, then remove “{ $name }”?
+}
+books-rename-failed = This address book could not be renamed: its folder on this device cannot be written.
+books-remove-failed = This address book could not be removed: its folder on this device cannot be written.
+books-remove-undone = “{ $name }” is back, with its contacts.
+books-remove-too-late = Too late: its server deleted it already. Its contacts are kept in { $copy }; Import… brings them back.
+books-batches = Changes to many contacts, the last thirty days
+books-batches-none = No change to many contacts in the last thirty days.
+dav-kept-both = { $n ->
+    [one] One contact changed elsewhere before its move reached its server: it is kept in both address books, as you left it and as they changed it. { $names }
+   *[other] { $n } contacts changed elsewhere before their move reached their server: each is kept in both address books, as you left it and as they changed it. { $names }
+}
+import-birthday-as-written = Birthday, as the file writes it: { $day }
+import-lines-more = { $lines } and { $more } more
+import-encoding = Read as { $encoding ->
+    [utf8] UTF-8.
+    [utf16] UTF-16, a spreadsheet’s “Unicode text”.
+   *[windows1252] Windows-1252, as a French spreadsheet saves it. If accents look wrong, save the file again as UTF-8.
+}
+import-limit-card = { $n ->
+    [one] One card is larger than { $mb } MB and is not read: line { $lines }.
+   *[other] { $n } cards are larger than { $mb } MB and are not read: lines { $lines }.
+}
+import-limit-cards = Only the first { $most } cards are read: from line { $line } on, the file is not read.
+import-limit-columns = This file has { $n } columns: the first { $most } are offered, the others are not read.
+import-limit-rows = Only the first { $most } rows are read: from line { $line } on, the file is not read.
+import-limit-cell = { $n ->
+    [one] One row holds a cell larger than { $kb } KB and is not read: line { $lines }.
+   *[other] { $n } rows hold a cell larger than { $kb } KB and are not read: lines { $lines }.
+}
+import-unclosed = { $n ->
+    [one] A quote opened on line { $line } is never closed: from there, the one line to the end is not read.
+   *[other] A quote opened on line { $line } is never closed: from there, the { $n } lines to the end are not read.
+}
+import-overflow = { $n ->
+    [one] Line { $lines } has more cells than the file has columns: a separator inside an address may have shifted it. Look at it after the import.
+   *[other] { $n } rows have more cells than the file has columns: a separator inside an address may have shifted them (lines { $lines }). Look at them after the import.
+}
+import-separator = Columns separated by
+import-separator-semicolon = Semicolons (;)
+import-separator-comma = Commas (,)
+import-separator-tab = Tabs
+import-international = Write the numbers without a country code in their international form, as numbers of { $country } (Contacts ⚙)
+import-international-none = Numbers stay as the file writes them: no country is set for numbers without a country code (Contacts ⚙).
+import-groups-here = Also to those already here
+import-complete = Complete them with what the file adds
+import-complete-help = Off, a contact already here is left exactly as it is. On, it gains what is listed below; nothing it holds is replaced.
+import-gains = Already here, and what the file would add:
+import-gain-in-file = (twice in the file)
+import-gain-email = e-mail address { $value }
+import-gain-phone = number { $value }
+import-gain-address = address { $value }
+import-gain-web = web site { $value }
+import-gain-org = organisation { $value }
+import-gain-role = role { $value }
+import-gain-birthday = birthday { $value }
+import-gain-note = note “{ $value }”
+import-gain-title = title { $value }
+import-gain-given = given names { $value }
+import-gain-family = family name { $value }
+import-gain-suffix = suffix { $value }
+import-gain-group = group { $value }
+import-read-of = { $read } of the file’s { $rows } rows read as contacts.
+import-here = { $n ->
+    [one] One is already here (the same identifier, or the same name with the same address or number): left as it is.
+   *[other] { $n } are already here (the same identifier, or the same name with the same address or number): left as they are.
+}
+import-twice = { $n ->
+    [one] One is in the file twice: imported once.
+   *[other] { $n } are in the file twice: each imported once.
+}
+import-apart = { $n ->
+    [one] One shares a number or an address with a card already here, under another name: imported apart.
+   *[other] { $n } share a number or an address with a card already here: imported apart.
+}
+import-completed = { $n ->
+    [one] One contact already here will change, as listed below.
+   *[other] { $n } contacts already here will change, as listed below.
+}
+import-rewritten = { $n ->
+    [one] One number is written in its international form.
+   *[other] { $n } numbers are written in their international form.
+}
+import-birthdays = { $n ->
+    [one] One birthday reads two ways, or none: it is kept as written, in its note.
+   *[other] { $n } birthdays read two ways, or none: each is kept as written, in its note.
+}
+
+## Export (wave D, its own commit).
+
+books-export = Export…
+books-export-kind = vCard files
+books-export-where = Choose a file outside Sioul's address books.
+books-export-on-a-phone = On a phone, choose a folder of the phone's storage (Download, Documents).
+books-exported = { $n ->
+    [one] One contact saved as a vCard file: { $path }
+   *[other] { $n } contacts saved as one vCard file: { $path }
+}
+batch-export = Export…
+# What lives where (docs/notes-folder.md): why a move of Sioul's lists did not happen, in one sentence (sioul_core::storage::Fault).
+storage-link = A link stands among the files to move ({ $what }), and Sioul cannot tell which file it means: put the file itself in its place, then move again.
+storage-unreadable = A file to move could not be read ({ $what }): nothing moved, and your lists stay where they are.
+storage-folder-not-absolute = Choose the folder whole, from the top of your disk.
+storage-folder-in-notes = This folder is inside your notes folder, or holds it ({ $what }): choose one beside it.
+storage-folder-in-sioul = This folder is one of Sioul's own, or holds one ({ $what }): choose another one.
+storage-folders-same = Papers and letters each need a folder of their own ({ $what }).
+storage-journal = Sioul could not note where the move stands ({ $what }): nothing moved, and your lists stay where they are.
+storage-copy = A file could not be copied, a full disk or a folder that cannot be written ({ $what }): nothing moved, and your lists stay where they are.
+storage-changed = A file changed while it was being copied ({ $what }): nothing moved. Try again in a moment.
+storage-keep = The dated copy could not be made ({ $what }): nothing moved, and your lists stay where they are.
+storage-records-taken = Another file is already where your lists go ({ $what }), and Sioul never writes over it: nothing moved.
+storage-list-unreadable = A list does not read as it should ({ $what }): nothing moved, and it stays as it is.
+storage-switch = The move could not be finished ({ $what }): your lists stay where they are.
+storage-busy = An exchange with your other devices is running: try again in a moment.
+storage-move-title = Sioul's lists get a place of their own
+storage-move-what = Your projects, client profiles, budgets, the bank's lines, contracts, money movements and the lists of your papers and letters leave your notes folder for Sioul's own folder on this device, where they stay plain text files you may open and edit by hand ({ $lists } files).
+storage-move-papers = Your papers' files ({ $count }) go to this folder:
+storage-move-letters = Your letters' scans ({ $count }), with the folder scans arrive in, go to this folder:
+storage-move-choose = Choose…
+storage-move-notes = Your notes stay where they are, in { $notes }, and nothing is taken out of that folder now. Sioul's old files stay there until you take them out, once every one of your devices has moved (Settings ▸ Sharing).
+storage-move-no-notes = This device has no notes folder: there is nothing to move, and your lists begin in Sioul's own folder.
+storage-move-kept = A dated copy of everything moved stays in Sioul's own folder until thirty days after you take the old files out.
+storage-move-no-sharing = Sioul's sharing is not set up on this device. If your lists reached your other devices through the sync of your notes folder, they no longer will after the move: set up the sharing on each device first (Settings ▸ Sharing), then move on each.
+storage-move-carry = Carry them through Sioul's sharing from this device (Projects and money)
+storage-move-carry-help = Off on this device until now. After the move, your lists reach your other devices through it alone.
+storage-move-others = Move every device the same day. Until all have moved, change these lists on one device only. Still to move: { $devices }.
+storage-move-now = Move now
+storage-move-later = Later
+storage-move-moving = Moving… Your lists stay where they are until every copy is checked.
+storage-move-done = Your lists are in Sioul's own folder now, your papers and letters in their folders. The old files stay in the notes folder until you take them out, once every device has moved (Settings ▸ Sharing).
+storage-moved = Your lists moved to Sioul's own folder; your notes stay where they were.
+storage-folder-moved = The files are now in { $folder }; the old folder stays as it was.
+storage-move-open = Where Sioul keeps its lists
+storage-line-moved = Sioul's lists are in its own folder on this device; the papers in { $papers }, the letters in { $letters }.
+storage-line-not = Sioul's lists are still in your notes folder on this device: they move to its own folder on your word, once every device knows where.
+storage-waiting = Your lists move once every device knows where they go: { $devices } runs an older Sioul. Update it, or forget it in Settings ▸ Devices.
+storage-moved-already = Your lists have already moved on this device.
+storage-stopped = The move stopped before its end: nothing moved.
+storage-move-scans-stop = Your letters' scans travelled with your notes through Sioul's sharing. After the move they travel in Papers, which is off on this device: switch Papers on in Settings ▸ Sharing for them to keep reaching your other devices.
+storage-move-scans-start = After the move, your letters' scans ({ $count }) travel sealed in Papers to your other devices, where they did not before.
+storage-trial-own = The folder given with { $flag } is, holds or sits inside this device's own { $own } folder: a trial of the move runs on copies only.
+storage-move-carried = A sync program carries { $carrier }: the files of this folder would travel there too, readable on that program's server, not sealed by Sioul.
+storage-folder-empty = Choose a folder: an empty row would leave the files where they are and look for them elsewhere.
+storage-move-left = These stay in your notes folder, since no list of Sioul's names them: { $files }.
+storage-folder-not-empty = { $what } already holds files: choose an empty folder, or a new one. Everything in that folder is shared by Sioul with your other devices.
+storage-porch-unfinished = The move of Sioul's lists did not finish on this device: your lists stay where they were. Open it to try again.
+storage-porch-changed = Changed in your notes folder since your lists left it: { $files }. Sioul reads your lists in its own folder now and merges nothing by itself: copy over what you need.
+storage-porch-seen = Seen
+storage-sharing-unreadable = Sioul's sharing is set up on this device, but its key cannot be read now (the system's keyring locked?): nothing moves and nothing is taken out until Sioul can tell where your other devices stand.
+storage-old-files = Sioul's old files are still in your notes folder ({ $count } files). Nothing reads them any more; they leave only when you say.
+storage-old-files-waiting = They can be taken out once every device has moved: { $devices } has not yet.
+storage-take-out = Take them out
+storage-taken-out = Taken out of your notes folder: { $count } files. A dated copy stays in Sioul's own folder for thirty days.
+storage-kept-changed = Changed in your notes folder since the move, so left there: { $files }. Your lists live in Sioul's own folder now: copy over what you need, then take them out again.
+storage-kept-link = Reached through a link, so left there: { $files }.
+storage-kept-copy-missing = Their copy is not where the move put it (a drive not plugged in?), so left there: { $files }.
+storage-kept-copy-differs = Their copy is no longer the same, so left there: { $files }.
+storage-kept-same-file = Their copy is the very same file under another name, so left there: { $files }.
+storage-kept-not-removed = The system did not let Sioul take them out (open in another program?), so left there: { $files }.
+storage-notes-unreadable = Your notes folder, { $what }, cannot be read now (a drive not plugged in, a vault not opened): your lists stay where they are, and nothing moves until it reads again. The Notes page asks for it.
+storage-notes-empty = Your notes folder, { $what }, holds nothing at all now: if it lives on a drive, plug it in. Nothing moves while it looks empty.
+storage-state-unreadable = Sioul cannot read the note that says where this device keeps its lists ({ $what }): until it can, it leaves every list as it is, reads none and moves nothing.
+storage-state-missing = The note that says where this device keeps its lists is gone, and the copies its move made are not all where it put them: until they are, Sioul leaves every list as it is, reads none and moves nothing. If your papers' or letters' folder is on a drive, plug it in.
+storage-journal-unreadable = The journal of the move on this device does not read ({ $what }): until it does, Sioul leaves every list as it is, reads none and moves nothing.
+storage-move-alone = Files no longer in your notes folder ({ $count }): the copies an earlier try made of them stay where they are.
+storage-move-earlier = An earlier try left copies in { $folders }: Sioul does not read them, and you may delete them.

@@ -465,6 +465,13 @@ fn as_vcard3_line(line: &str) -> Option<String> {
 /// their own; a vCard 4.0 line going into a 3.0 card is written as 3.0.
 /// REV renewed.
 pub fn merge(lead: &str, other: &str, region: Option<&Region>) -> String {
+    merge_with(lead, other, region, true)
+}
+
+/// `merge`, the other card's groups taken into the one kept only when
+/// `groups` (review L2: from a book whose groups do not decide who may reach
+/// the person into one whose groups do, they are left out unless asked).
+pub fn merge_with(lead: &str, other: &str, region: Option<&Region>, take_groups: bool) -> String {
     let mine = lines::unfold(lead);
     let theirs = lines::unfold(other);
     let version4 = |card: &[String]| card.iter().any(|l| l.eq_ignore_ascii_case("VERSION:4.0"));
@@ -532,7 +539,7 @@ pub fn merge(lead: &str, other: &str, region: Option<&Region>) -> String {
     // Their categories with the leading card's, as one line.
     let ours = contacts::categories_of(&mine);
     let mut united = ours.clone();
-    for name in contacts::categories_of(&theirs) {
+    for name in contacts::categories_of(&theirs).into_iter().filter(|_| take_groups) {
         if !united.iter().any(|n| contacts::category_key(n) == contacts::category_key(&name)) {
             united.push(name);
         }
@@ -690,6 +697,14 @@ pub fn undo(dir: &Path, id: &str, root: &Path) -> Result<(Vec<PathBuf>, usize), 
             continue;
         }
         let now = std::fs::read_to_string(&change.path).ok();
+        // A card moved to another book since (its file gone here, its UID there): left where it
+        // is now, never written back beside itself (review F23).
+        if now.is_none()
+            && let Some(uid) = change.before.as_deref().and_then(crate::contactbatch::uid_of)
+            && crate::contactbatch::uid_here(&uid)
+        {
+            continue;
+        }
         if now.is_some() && now != change.after && now != change.before {
             std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default()).map_err(|e| format!("{}: {e}", dir.display()))?;
             aside += 1;
@@ -719,15 +734,16 @@ pub fn clean_files(paths: &[PathBuf], region: Option<&Region>, dir: &Path, now: 
     apply(dir, "clean", names, changes, now).map(Some)
 }
 
-/// Merges two cards (`merge`): the leading one's file holds them both, the
-/// other's is deleted; both kept as they were first in `dir`.
-pub fn merge_files(lead: &Path, other: &Path, region: Option<&Region>, dir: &Path, now: i64) -> Result<Done, String> {
+/// Merges two cards (`merge_with`): the leading one's file holds them both,
+/// the other's groups only when `groups`; the other's file is deleted; both
+/// kept as they were first in `dir`.
+pub fn merge_files(lead: &Path, other: &Path, region: Option<&Region>, dir: &Path, now: i64, groups: bool) -> Result<Done, String> {
     if lead == other {
         return Err(format!("{}: the same card", lead.display()));
     }
     let read = |path: &Path| std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
     let (lead_text, other_text) = (read(lead)?, read(other)?);
-    let merged = merge(&lead_text, &other_text, region);
+    let merged = merge_with(&lead_text, &other_text, region, groups);
     let names = vec![contacts::display_name(&lines::unfold(&lead_text)), contacts::display_name(&lines::unfold(&other_text))];
     let changes = vec![Change { path: lead.to_path_buf(), before: Some(lead_text), after: Some(merged) }, Change { path: other.to_path_buf(), before: Some(other_text), after: None }];
     apply(dir, "merge", names, changes, now)
@@ -961,7 +977,7 @@ mod tests {
         assert_eq!(cleaned.changes[0].before.as_deref(), Some(text_a.as_str()));
         assert!(!std::fs::read_to_string(&a).unwrap().contains("04 65 71 12 34"));
         // Merging: the other card's file goes.
-        let merged = merge_files(&a, &b, france(), &dir, now + 60).unwrap();
+        let merged = merge_files(&a, &b, france(), &dir, now + 60, true).unwrap();
         assert!(!b.exists() && std::fs::read_to_string(&a).unwrap().contains("jean@example.org"));
         assert_eq!(merged.changes[1], Change { path: b.clone(), before: Some(text_b.clone()), after: None });
         let listed = done(&dir, now + 120);

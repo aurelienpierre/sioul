@@ -678,6 +678,16 @@ impl TaskAreas {
 
     /// What a task's categories, projects and list say, its own area aside.
     pub fn by_tags(&self, task: &crate::tasks::Task) -> Area {
+        let mut area = self.by_categories(task);
+        // Each of its projects' areas, as the project says it (`Project::area_of`).
+        for (_, of) in self.projects.iter().filter(|(id, _)| task.projects.contains(id)) {
+            area = area.with(*of);
+        }
+        if area.is_empty() { Area::ADMIN } else { area }
+    }
+
+    /// What a task's categories and list alone say: nothing when they say nothing.
+    fn by_categories(&self, task: &crate::tasks::Task) -> Area {
         let fold = |s: &str| crate::text::fold(s.trim()).into_iter().collect::<String>();
         let has = |list: &[String]| {
             let list: Vec<String> = list.iter().map(|c| fold(c)).collect();
@@ -693,17 +703,55 @@ impl TaskAreas {
         if has(&self.personal_categories) {
             area = area.with(Area::PERSONAL);
         }
-        // Each of its projects' areas, as the project says it (`Project::area_of`).
-        for (_, of) in self.projects.iter().filter(|(id, _)| task.projects.contains(id)) {
-            area = area.with(*of);
+        area
+    }
+
+    /// Where a task leans, for a sum by area that counts each task once (the
+    /// Time page's comparison): its own area when it says one; else, among
+    /// the areas it is in, those its categories alone say (a leisure task in
+    /// a personal project leans to leisure); else every area it is in.
+    pub fn leaning(&self, task: &crate::tasks::Task) -> Area {
+        let whole = self.of(task);
+        if Area::parse(&task.area).is_some() {
+            return whole;
         }
-        if area.is_empty() { Area::ADMIN } else { area }
+        let said = self.by_categories(task).both(whole);
+        if said.is_empty() { whole } else { said }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_task_leans_to_what_its_categories_say() {
+        let areas = TaskAreas {
+            work_categories: vec!["work".into()],
+            leisure_categories: vec!["leisure".into()],
+            personal_categories: vec!["health".into()],
+            projects: vec![("choir".into(), Area::PERSONAL), ("lumen".into(), Area::WORK)],
+        };
+        let task = |categories: &[&str], projects: &[&str], own: &str| crate::tasks::Task {
+            categories: categories.iter().map(|c| c.to_string()).collect(),
+            projects: projects.iter().map(|p| p.to_string()).collect(),
+            area: own.into(),
+            ..Default::default()
+        };
+        // A leisure task in a personal project: in admin and leisure, leaning to leisure.
+        let score = task(&["leisure"], &["choir"], "");
+        assert_eq!(areas.of(&score), Area::PERSONAL);
+        assert_eq!(areas.leaning(&score), Area::LEISURE);
+        // Nothing but the project: every area it is in.
+        assert_eq!(areas.leaning(&task(&[], &["choir"], "")), Area::PERSONAL);
+        // A work category in a personal project leans to work.
+        assert_eq!(areas.leaning(&task(&["work"], &["choir"], "")), Area::WORK);
+        // Its own area, as said, whatever its categories.
+        assert_eq!(areas.leaning(&task(&["leisure"], &["choir"], "admin")), Area::ADMIN);
+        // Categories outside the areas it is in say nothing more: an own area wins.
+        assert_eq!(areas.leaning(&task(&[], &["lumen"], "")), Area::WORK);
+        assert_eq!(areas.leaning(&task(&[], &[], "")), Area::ADMIN);
+    }
 
     #[test]
     fn what_comes_when() {
@@ -1088,7 +1136,7 @@ mod tests {
             ("sioul-app/src/homecard.rs", 0, 0, 2, 2, "the home card's next step and its frames on this device"),
             ("sioul-app/src/appnotes.rs", 0, 0, 1, 1, "another app's notifications on a phone, on this device (`Clock::on`)"),
             ("sioul-app/src/agenda.rs", 0, 0, 1, 0, "the agenda's filter by time in What comes (the Day, the Week and the Month by hand alone): the hours of your agendas, the person's week, on every device alike"),
-            ("sioul-app/src/calls.rs", 0, 0, 1, 0, "calls keep their own matrix: never a device's"),
+            ("sioul-app/src/calls.rs", 0, 0, 2, 0, "calls keep their own matrix, never a device's: the phone's table (`make`), and what a phone whose line says nothing does today, said on its card in Settings ▸ Devices on any device (`today`, review of `phones`, M5), both by the hours alone as the phone reads them; this device's lines would describe the device showing the card, not the phone"),
             ("sioul-app/src/phonemsgs.rs", 0, 0, 1, 0, "the phone's texts keep their own matrix: never a device's"),
             ("sioul-app/src/everywhere.rs", 0, 0, 1, 0, "do-not-disturb's look at the hours: no area"),
             ("sioul-app/src/persons.rs", 0, 0, 1, 0, "whether offices are open now, to call one: the person's week"),

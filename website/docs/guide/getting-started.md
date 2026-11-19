@@ -166,14 +166,14 @@ Each device keeps all of its data, and works without the others. Three things ke
 | What | How it reaches your other devices |
 |---|---|
 | Mail, contacts, events and tasks | through their own servers, as with any program |
-| What Sioul keeps on the device: your settings, your accounts (never their passwords), your hours, who may reach you, the ties between things, drafts | through Sioul's **sharing**: a folder that carries sealed changes |
+| What Sioul keeps on the device: your settings, your accounts (never their passwords), your hours, who may reach you, the ties between things, drafts, and its own lists (projects, budgets…) once they have left your notes folder | through Sioul's **sharing**: a folder that carries sealed changes |
 | Your notes folder | by its own sync app, or through the sharing once you switch it on |
 
 A sync app you already use carries the sharing folder (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive or another), or Sioul carries it itself when you have a Nextcloud account. Every change is encrypted on your device before it is written there, with a key made from a passphrase you choose: the folder and its server can read nothing. There is no server of ours.
 
 ### On the first device: start sharing {#start-sharing}
 
-1. Open **Settings ▸ Your folder and sharing**, and find **Between your devices**.
+1. Open **Settings ▸ Sharing**, and find **Between your devices**.
 2. **Folder**: choose a folder inside the one your sync app carries, such as a new folder `Sioul` in your Nextcloud folder. With a Nextcloud account in Sioul, you can choose **Sioul keeps it in step with your Nextcloud itself** instead, and need no sync app.
 3. **Passphrase**, then **Once more**: a few words you will not forget, at least 12 characters.
 4. **Share**.

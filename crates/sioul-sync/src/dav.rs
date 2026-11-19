@@ -47,6 +47,9 @@ pub(crate) const CALSERVER: &str = "http://calendarserver.org/ns/";
 pub(crate) const APPLE: &str = "http://apple.com/ns/ical/";
 /// Nextcloud's (ownCloud's) namespace: its sharing and a calendar's owner.
 pub(crate) const OWNCLOUD: &str = "http://owncloud.org/ns";
+/// Nextcloud's own: a card's favourite (`favorite`), a property of the
+/// person's on each card, kept outside the vCard.
+pub(crate) const NEXTCLOUD: &str = "http://nextcloud.com/ns";
 
 /// Items asked for in one multiget, at most: the batch after quick answers.
 const BATCH: usize = 50;
@@ -229,7 +232,21 @@ impl Client {
         Ok(Answer { status, etag, location, dav, body })
     }
 
-    fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
+    /// A PROPFIND, its answer whole: a multistatus (207) read, its responses;
+    /// any other answer an error with its status (review F1: a 503 read as an
+    /// empty listing let a merged book be deleted with its cards). A body that
+    /// does not read is an error too.
+    fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<Vec<Response>, SyncError> {
+        let (status, responses) = self.propfind_answer(url, depth, props)?;
+        if status != 207 {
+            return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
+        }
+        Ok(responses)
+    }
+
+    /// A PROPFIND and its status, for a caller that tells "not here" (404,
+    /// 403…) from a failure; the responses of a 207 only.
+    fn propfind_answer(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
         let body = format!(
             r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="{CALDAV}" xmlns:a="{CARDDAV}" xmlns:cs="{CALSERVER}" xmlns:ic="{APPLE}" xmlns:oc="{OWNCLOUD}"><d:prop>{props}</d:prop></d:propfind>"#
         );
@@ -279,6 +296,9 @@ pub(crate) struct Prop {
     children: Vec<(String, String)>,
     /// `name` attributes of `comp` children (supported-calendar-component-set).
     comps: Vec<String>,
+    /// For Nextcloud's `oc:invite`: those it is shared with to write, by the
+    /// last segment of their principal, `"group:<name>"` for a group.
+    writers: Vec<String>,
 }
 
 impl Response {
@@ -331,6 +351,16 @@ pub(crate) fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), 
                         hrefs: elements.iter().filter(|d| d.has_tag_name((DAV, "href"))).filter_map(|d| d.text()).map(|t| t.trim().to_string()).collect(),
                         children: elements.iter().map(|d| (d.tag_name().namespace().unwrap_or("").to_string(), d.tag_name().name().to_string())).collect(),
                         comps: elements.iter().filter(|d| d.tag_name().name() == "comp").filter_map(|d| d.attribute("name")).map(str::to_string).collect(),
+                        writers: elements
+                            .iter()
+                            .filter(|d| d.has_tag_name((OWNCLOUD, "user")) && d.descendants().any(|a| a.has_tag_name((OWNCLOUD, "read-write"))))
+                            .filter_map(|u| u.children().find(|c| c.has_tag_name((DAV, "href"))).and_then(|h| h.text()))
+                            .map(|href| {
+                                let href = href.trim().trim_end_matches('/');
+                                let name = href.rsplit('/').next().unwrap_or(href).to_string();
+                                if href.contains("/groups/") { format!("group:{name}") } else { name }
+                            })
+                            .collect(),
                     });
                 }
             }
@@ -579,13 +609,19 @@ fn home(client: &Client, kind: Kind, start: &str) -> Result<Option<String>, Sync
                     Kind::Calendars => "<c:calendar-home-set/>",
                     Kind::Contacts => "<a:addressbook-home-set/>",
                 };
-                let (_, responses) = client.propfind(&principal, "0", prop)?;
+                // No home there (404, 403, 405, 501): none; a passing failure (5xx, 429): an error, never "none".
+                let (status, responses) = client.propfind_answer(&principal, "0", prop)?;
+                if status != 207 && !matches!(status, 403 | 404 | 405 | 501) {
+                    return Err(SyncError::Server(format!("PROPFIND {principal}: {status}")));
+                }
                 let home = responses.iter().find_map(|r| r.prop(ns, name).and_then(|p| p.hrefs.first().cloned())).map(|href| absolute(&principal, &href));
                 if let Some(home) = &home {
                     ours(home)?;
                 }
                 return Ok(home);
             }
+            // A passing failure (throttled, the server down): an error, asked again, never "no home" (review V9).
+            429 | 500..=599 => return Err(SyncError::Server(format!("PROPFIND {url}: {}", answer.status))),
             _ => return Ok(None),
         }
     }
@@ -612,6 +648,11 @@ pub struct Listed {
     pub transparent: bool,
     /// Whose it is, as the server says (`owned_by_you`); none when it does not.
     pub owned: Option<bool>,
+    /// For address books: those it is shared with to write (Nextcloud's
+    /// `oc:invite`); none when it says nothing.
+    pub writers: Vec<String>,
+    /// Whether the server said with whom it is shared (an `oc:invite` answered).
+    pub writers_known: bool,
 }
 
 /// Whether the server says a collection is yours: its owner (Nextcloud's
@@ -666,10 +707,12 @@ fn percent_decoded(text: &str) -> String {
 /// The collections in a home.
 pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed>, SyncError> {
     let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/><c:schedule-calendar-transp/><d:owner/><d:current-user-principal/><oc:owner-principal/>";
-    let (status, responses) = client.propfind(home, "1", props)?;
-    if status != 207 {
-        return Err(SyncError::Server(format!("PROPFIND {home}: {status}")));
-    }
+    // An address book's writers (`oc:invite`): whether its groups count for who may reach you.
+    let props = match kind {
+        Kind::Contacts => format!("{props}<oc:invite/>"),
+        Kind::Calendars => props.to_string(),
+    };
+    let responses = client.propfind(home, "1", &props)?;
     let (ns, wanted) = match kind {
         Kind::Calendars => (CALDAV, "calendar"),
         Kind::Contacts => (CARDDAV, "addressbook"),
@@ -701,6 +744,8 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             components: response.prop(CALDAV, "supported-calendar-component-set").map(|p| p.comps.clone()).unwrap_or_default(),
             transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
             owned: owned_by_you(response, me.as_deref()),
+            writers: response.prop(OWNCLOUD, "invite").map(|p| p.writers.clone()).unwrap_or_default(),
+            writers_known: response.prop(OWNCLOUD, "invite").is_some(),
             url,
             id,
         });
@@ -729,6 +774,10 @@ pub struct Report {
     /// holds, and what changed there is kept among the earlier versions, said
     /// once (review of round 4, R4-F).
     pub moved_changed: Vec<(String, String)>,
+    /// Contacts moved to another book here whose old copy someone changed on
+    /// its server before the move reached it: kept in both books, never one
+    /// taken off the server (review F16); each one's kind and name, said once.
+    pub kept_both: Vec<(String, String)>,
     /// Moved to another calendar here, its old copy a meeting with others on
     /// its server by then, and its new copy one too: neither can go without
     /// telling its guests, so both stay, each its calendar's, and the person
@@ -860,6 +909,13 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             if let Err(e) = create_pending(client, &account.id, kind, home) {
                 report.problems.push(e);
             }
+            // Cards moved here between two of its address books: moved there by its own MOVE where it has one.
+            if kind == Kind::Contacts {
+                match move_on_server(client, &account.id) {
+                    Ok(moved) => report.sent += moved,
+                    Err(e) => report.problems.push(e),
+                }
+            }
         } else if kind == Kind::Calendars
             && google_changes_due(&account.id)
             && let Err(e) = crate::calendars::GoogleApi::new(account.address.as_deref().unwrap_or(login)).and_then(|api| google_changes(&api, &account.id))
@@ -899,17 +955,38 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         // here, and not gone there yet, is not pulled.
         let mut pending: Vec<&Listed> = listed.iter().filter(|l| !State::load(&vdir::state_path(&account.id, l.kind, &l.id)).removed).collect();
         let mut first = true;
+        // The books whose sync went through: only their favourites are looked at (H4).
+        let mut whole: Vec<String> = Vec::new();
         while !pending.is_empty() {
             let mut again = Vec::new();
             for collection in pending {
                 match sync_part(client, &account.id, collection, &mut report, first, Some(Instant::now() + SLICE)) {
-                    Ok(true) => report.collections += 1,
+                    Ok(true) => {
+                        report.collections += 1;
+                        whole.push(collection.id.clone());
+                    }
                     Ok(false) => again.push(collection),
                     Err(e) => report.problems.push(e),
                 }
             }
             pending = again;
             first = false;
+        }
+        // Starred people both ways, off: each book's memory forgotten, so that turned on again the first look
+        // takes nobody off (H3).
+        if kind == Kind::Contacts && !drafts_config().dnd.stars {
+            for collection in &listed {
+                sioul_core::stars::Memory::forget(&sioul_core::stars::folder().join(&account.id).join(format!("{}.json", collection.id)));
+            }
+        }
+        // Starred people both ways, on the address books of yours whose server keeps a favourite per card.
+        if kind == Kind::Contacts && drafts_config().dnd.stars {
+            // Never after a sync that failed: a card gone there may still be here, read as unmarked (H4).
+            for collection in listed.iter().filter(|l| whole.contains(&l.id)) {
+                if let Err(e) = keep_stars(client, &account.id, collection, jiff::Timestamp::now().as_second()) {
+                    eprintln!("sioul: stars: {}: {e}", collection.name);
+                }
+            }
         }
         if kind == Kind::Calendars {
             // Whether its server sends your meetings' invitations itself (RFC 6638), once a day: who tells
@@ -938,6 +1015,158 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         }
     }
     account_error.map_or(Ok(report), Err)
+}
+
+// ---------------------------------------------------------------- favourites: starred people
+
+/// A book's stars are looked at again at least this often (seconds), the
+/// list unchanged: a favourite set in another app may move no card's tag.
+const STARS_EVERY: i64 = 15 * 60;
+
+/// A book not known to keep favourites is asked once a day at most, not at
+/// every sync (review of `phones`, L11).
+const STARS_UNKNOWN_EVERY: i64 = 24 * 3600;
+
+/// Each card of an address book with its favourite as its server says it
+/// (`{http://nextcloud.com/ns}favorite`, "1" set, Nextcloud's contacts of
+/// May 2026): by its address there; and whether the server answered the
+/// property as its own for any card (200, with its value). A card that is
+/// not a favourite is answered 404 by a Nextcloud that keeps them and by a
+/// server that keeps none alike: only a favourite set tells them apart.
+/// Any answer but a multistatus that reads is an error (`Client::propfind`),
+/// so nothing is concluded from a failed one (review of `phones`, H4).
+fn favourites(client: &Client, url: &str) -> Result<(BTreeMap<String, bool>, bool), SyncError> {
+    let responses = client.propfind(url, "1", &format!(r#"<d:getetag/><nc:favorite xmlns:nc="{NEXTCLOUD}"/>"#))?;
+    let (mut cards, mut answered) = (BTreeMap::new(), false);
+    // A card the answer names, present (its etag read): favourite or not. One the answer does not
+    // name, or names as gone, is left out: unknown, never "not a favourite" (review of `phones`, H4).
+    for response in responses.iter().filter(|r| !r.href.ends_with('/') && r.prop(DAV, "getetag").is_some()) {
+        let favourite = response.prop(NEXTCLOUD, "favorite");
+        answered |= favourite.is_some();
+        cards.insert(response.href.clone(), favourite.is_some_and(|p| matches!(p.text.trim(), "1" | "true")));
+    }
+    Ok((cards, answered))
+}
+
+/// A card's favourite set ("1") or cleared (an empty value, which the
+/// server reads as none and deletes), as Nextcloud's own contacts app
+/// writes it (cdav-library's `vcardPropSet`): a PROPPATCH of that property
+/// alone, never the card. Whether the server kept it.
+fn set_favourite(client: &Client, url: &str, on: bool) -> Result<bool, SyncError> {
+    let value = if on { "<nc:favorite>1</nc:favorite>" } else { "<nc:favorite/>" };
+    let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="DAV:" xmlns:nc="{NEXTCLOUD}"><d:set><d:prop>{value}</d:prop></d:set></d:propertyupdate>"#);
+    let answer = client.send("PROPPATCH", url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+    match answer.status {
+        207 => Ok(multistatus(&answer.body)?.0.iter().any(|r| r.props.iter().any(|p| p.ns == NEXTCLOUD && p.name == "favorite" && p.status / 100 == 2))),
+        200 | 204 => Ok(true),
+        status if (400..500).contains(&status) => Ok(false),
+        status => Err(SyncError::Server(format!("PROPPATCH {url}: {status}"))),
+    }
+}
+
+/// Starred people both ways on one address book of yours
+/// (`sioul_core::stars`), after its sync, while `[dnd] stars` is on: where
+/// its server keeps a favourite per card, a card marked favourite adds its
+/// person to Always through, and everyone on it is marked favourite there,
+/// by the same rules as a phone's stars (never lost). Whether the server
+/// keeps favourites is learnt by reading only, never by writing nor from
+/// its name: a PROPFIND of the property on the book and its cards, the
+/// server answering it as its own (a card marked favourite, by the
+/// person's own contacts app). Until one is, nothing is written there, and
+/// the list's block says that this book's favourites cannot be kept in step
+/// yet (a card that is not a favourite reads alike on a server that keeps
+/// them and on one that keeps none: Nextcloud stores the property as any
+/// other of the person's, `CustomPropertiesBackend`, and answers a card
+/// without it 404). Once known, it is remembered. A book you only read, or
+/// one shared with you, is left. Looked at again when the list changed, the
+/// book changed here, or every quarter of an hour. Whether the list changed.
+fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Result<bool, SyncError> {
+    if listed.kind != Kind::Contacts || listed.read_only || listed.owned == Some(false) {
+        return Ok(false);
+    }
+    let disk = |e: String| SyncError::Disk(e);
+    let memory_path = sioul_core::stars::folder().join(account).join(format!("{}.json", listed.id));
+    let mut memory = sioul_core::stars::Memory::load(&memory_path);
+    let list = sioul_core::everywhere::People::default_path();
+    let state_path = vdir::state_path(account, Kind::Contacts, &listed.id);
+    let changed = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+    if memory.looked > 0 && now - memory.looked < STARS_EVERY && changed(&list) < memory.looked && changed(&state_path) < memory.looked {
+        return Ok(false);
+    }
+    // Not known to keep favourites: asked again once a day, whatever changed (L11).
+    if memory.kept != Some(true) && memory.looked > 0 && now - memory.looked < STARS_UNKNOWN_EVERY {
+        return Ok(false);
+    }
+    let (marked, answered) = favourites(client, &listed.url)?;
+    memory.looked = now;
+    if answered {
+        memory.kept = Some(true);
+    }
+    let place = format!("book:{account}/{}", listed.id);
+    if memory.kept != Some(true) {
+        // Not known to keep favourites: nothing written, nothing taken from it; said on the page.
+        memory.save(&memory_path).map_err(disk)?;
+        return Ok(false);
+    }
+    let state = State::load(&state_path);
+    let Some(book) = vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == account && c.id == listed.id) else { return Ok(false) };
+    // A card the answer does not name is unknown: left out of the look, never read as unmarked (H4).
+    let marked_at = |href: &str| marked.get(href).or_else(|| marked.get(&percent_decoded(href))).copied();
+    let seen: Vec<sioul_core::stars::Seen> = state
+        .items
+        .iter()
+        .filter_map(|item| {
+            let starred = marked_at(&item.href)?;
+            let card = sioul_core::contacts::read(&book.dir.join(&item.file), &book)?;
+            Some(sioul_core::stars::Seen {
+                id: item.href.clone(),
+                name: card.name.trim().to_string(),
+                phones: card.phones.iter().map(|p| p.value.trim().to_string()).collect(),
+                emails: card.emails.iter().map(|e| e.value.trim().to_string()).collect(),
+                uid: card.uid.trim().to_string(),
+                starred,
+            })
+        })
+        .collect();
+    // An answer that names none of the cards held here (a proxy that drops the depth, a book that
+    // moved, its addresses changed): nothing read, nothing changed, the memory kept (H4).
+    if seen.is_empty() {
+        memory.save(&memory_path).map_err(disk)?;
+        return Ok(false);
+    }
+    let config = drafts_config();
+    let senders = sioul_core::porch::Senders::load(&config);
+    let blocked = |c: &sioul_core::stars::Seen| c.phones.iter().any(|n| senders.judge_number(n).who == sioul_core::reach::Who::Blocked) || c.emails.iter().any(|e| senders.who(e) == sioul_core::reach::Who::Blocked);
+    // A card the server refused a favourite for is never written again (L11): left as not written.
+    let refused_before = memory.refused.clone();
+    let refused_now = std::cell::RefCell::new(Vec::new());
+    let mut write = |star: &[String], unstar: &[String]| -> Vec<String> {
+        star.iter()
+            .map(|h| (h, true))
+            .chain(unstar.iter().map(|h| (h, false)))
+            .filter(|(href, on)| {
+                if refused_before.contains(*href) {
+                    return true;
+                }
+                match set_favourite(client, &absolute(&listed.url, href), *on) {
+                    Ok(true) => false,
+                    Ok(false) => {
+                        refused_now.borrow_mut().push((*href).clone());
+                        true
+                    }
+                    Err(_) => true,
+                }
+            })
+            .map(|(href, _)| href.clone())
+            .collect()
+    };
+    let result = sioul_core::stars::look(&list, &mut memory, &place, &seen, senders.region(), &blocked, Some(&mut write));
+    memory.refused.extend(refused_now.into_inner());
+    memory.save(&memory_path).map_err(disk)?;
+    let looked = result.map_err(disk)?;
+    // People kept whose favourites went at once: told by the window (H3).
+    sioul_core::stars::note_kept(&place, &looked.kept).map_err(disk)?;
+    Ok(looked.changed)
 }
 
 /// What a check of named calendars found (`check_named`), by folder id.
@@ -975,6 +1204,8 @@ fn listed_here(account: &str, id: &str) -> Option<Listed> {
         components: state.components.clone(),
         transparent: state.transparent,
         owned: state.owned,
+        writers: state.writers.clone(),
+        writers_known: state.writers_known,
     })
 }
 
@@ -1073,6 +1304,11 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             if collection.owned.is_some() {
                 state.owned = collection.owned;
             }
+            // Who else writes an address book, as listed now: its groups count once you say so for them.
+            if collection.kind == Kind::Contacts {
+                state.writers = collection.writers.clone();
+                state.writers_known = collection.writers_known;
+            }
             state.save(&path).map_err(SyncError::Disk)
         });
         if let Err(e) = made {
@@ -1170,7 +1406,30 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
             continue;
         }
+        // An address book removed with its cards (review F5): deleted there only after a whole
+        // listing (207) shows that its server holds nothing this device has not; a card added
+        // or changed there since keeps the book, shown again, and its line says why. Any other
+        // answer keeps it hidden, asked again at the next sync.
+        // The listing must be whole (review V4): the book itself named, each member answered,
+        // and every card this device holds a row for among them; else kept, asked again.
+        if state.removed && kind == Kind::Contacts && !state.leave {
+            let Ok(found) = client.propfind(&state.url, "1", "<d:getetag/>") else { continue };
+            let Some(members) = whole_listing(&state.url, &found) else { continue };
+            if holds_unknown(&state, &members) {
+                state.removed = false;
+                state.kept = "held".into();
+                go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+                continue;
+            }
+            if misses_rows(&state, &members) {
+                continue;
+            }
+        }
         if state.removed {
+            // Undone meanwhile (its Undo, while this sync ran): not deleted (review V9).
+            if !State::load(&path).removed {
+                continue;
+            }
             let answer = client.send("DELETE", &state.url, &[], None)?;
             if (200..300).contains(&answer.status) || answer.status == 404 {
                 let _ = std::fs::remove_dir_all(&collection.dir);
@@ -1197,11 +1456,31 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
         }
         if state.deleted {
-            let (_, found) = client.propfind(&state.url, "1", "<d:getetag/>")?;
-            let held = found.iter().filter(|r| path_key(&r.href) != path_key(&state.url)).count();
+            // Deleted there only after a whole listing (207) shows it empty, taken right
+            // before the DELETE (review F1): any other answer (429, 503, 504, a timeout, a
+            // body that does not read) keeps it, asked again at the next sync.
+            let Ok(found) = client.propfind(&state.url, "1", "<d:getetag/>") else { continue };
+            // A whole listing (review V4): the book itself named, each member answered; else kept.
+            let Some(members) = whole_listing(&state.url, &found) else { continue };
+            let held = members.len();
+            // An address book emptied here by a merge or a removal (wave D): its cards
+            // still wait for their old copies' deletion there, after their new copies;
+            // it is deleted once they are gone, never shown again meanwhile.
+            if held > 0 && cards_leaving(&collection.dir, &state) {
+                continue;
+            }
             if held > 0 {
+                // Something added there since (another person, another device): the book stays, said on its line.
                 state.deleted = false;
+                if kind == Kind::Contacts {
+                    state.kept = "held".into();
+                }
             } else {
+                // Empty there, but this device still holds rows of its cards: the listing and
+                // this device disagree, kept and asked again (review V4); undone meanwhile, kept (V9).
+                if !state.items.is_empty() || !State::load(&path).deleted {
+                    continue;
+                }
                 let answer = client.send("DELETE", &state.url, &[], None)?;
                 if !(200..300).contains(&answer.status) && answer.status != 404 {
                     refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
@@ -1215,6 +1494,51 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         }
     }
     refused.map_or(Ok(()), Err)
+}
+
+/// A collection's listing as its deletion needs it (review V4): the
+/// collection itself named, and each member answered (no error inside the
+/// 207, its ETag given); its members then. None otherwise: a 207 of no
+/// response, one naming the collection alone where it lists members as
+/// errors, or any other answer that cannot tell what it holds.
+fn whole_listing<'a>(url: &str, found: &'a [Response]) -> Option<Vec<&'a Response>> {
+    let me = path_key(url);
+    if !found.iter().any(|r| path_key(&absolute(url, &r.href)) == me) {
+        return None;
+    }
+    let members: Vec<&Response> = found.iter().filter(|r| path_key(&absolute(url, &r.href)) != me).collect();
+    let answered = |r: &&Response| r.status.is_none_or(|s| s / 100 == 2) && r.props.iter().all(|p| p.status / 100 == 2) && r.text(DAV, "getetag").is_some();
+    members.iter().all(answered).then_some(members)
+}
+
+/// Whether a listing holds an item this device does not know as it is
+/// there: one it never had, one changed there since, or one whose ETag this
+/// device never learnt (review V9: it cannot tell it unchanged).
+fn holds_unknown(state: &State, members: &[&Response]) -> bool {
+    let known: BTreeMap<String, &str> = state.items.iter().map(|i| (path_key(&absolute(&state.url, &i.href)), i.etag.as_str())).collect();
+    members.iter().any(|r| {
+        let key = path_key(&absolute(&state.url, &r.href));
+        match (known.get(&key), r.text(DAV, "getetag")) {
+            (None, _) => true,
+            (Some(mine), Some(theirs)) => mine.is_empty() || *mine != theirs,
+            (Some(_), None) => true,
+        }
+    })
+}
+
+/// Whether a listing leaves out a card this device holds a row for: it and
+/// this device disagree on what the collection holds (review V4).
+fn misses_rows(state: &State, members: &[&Response]) -> bool {
+    let listed: BTreeSet<String> = members.iter().map(|r| path_key(&absolute(&state.url, &r.href))).collect();
+    state.items.iter().any(|i| !listed.contains(&path_key(&absolute(&state.url, &i.href))))
+}
+
+/// Whether cards moved out of the collection at `dir` still wait for their
+/// old copies' deletion on its server: those it still holds a row for. A
+/// move whose old copy was never there (made here, moved before its first
+/// sync) waits for nothing (review F23).
+fn cards_leaving(dir: &Path, state: &State) -> bool {
+    vdir::moves_waiting().iter().any(|(old, _)| old.parent() == Some(dir) && old.file_name().and_then(|n| n.to_str()).is_some_and(|file| state.items.iter().any(|i| i.file == file)))
 }
 
 /// Each listed collection known here by its address keeps its folder's id,
@@ -1340,7 +1664,7 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
     for collection in vdir::collections(kind).into_iter().filter(|c| c.account == account) {
         let path = collection.state_path();
         let mut state = State::load(&path);
-        if !state.pending {
+        if !state.pending || state.refused {
             continue;
         }
         let url = format!("{}/{}/", home.trim_end_matches('/'), url_segment(&collection.id));
@@ -1361,8 +1685,29 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
             ),
         };
         let answer = client.send(method, &url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+        // An address book answered 405 is made only when an address book is there now (review F6):
+        // 405 is also the answer of a server that makes none. Else refused, kept here, said.
+        let made = match (kind, answer.status) {
+            (_, 200..=299) => true,
+            (Kind::Calendars, 405) => true,
+            // Its check failing for a passing reason: asked again at the next sync, never refused for good (review V9).
+            (Kind::Contacts, 405) => match client.propfind_answer(&url, "0", "<d:resourcetype/>") {
+                Ok((207, found)) => found.iter().any(|r| r.is(CARDDAV, "addressbook")),
+                // Nothing there: not made. A passing failure (5xx, 429, the network): asked again.
+                Ok((404 | 403 | 405 | 410, _)) => false,
+                _ => continue,
+            },
+            _ => false,
+        };
+        // Refused for good (4xx but 429): never asked again; a passing error (5xx, 429): asked at the next sync.
+        if kind == Kind::Contacts && !made && (400..500).contains(&answer.status) && answer.status != 429 {
+            state.refused = true;
+            go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+            refused.get_or_insert(SyncError::Server(format!("{method} {url}: {}", answer.status)));
+            continue;
+        }
         match answer.status {
-            200..=299 | 405 => {
+            _ if made => {
                 state.pending = false;
                 state.url = url;
                 // Made by you: yours, until the listing says otherwise.
@@ -1375,6 +1720,110 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
         }
     }
     refused.map_or(Ok(()), Err)
+}
+
+/// A file of an account's address books, as (book's folder id, file name);
+/// none elsewhere.
+fn card_place(account: &str, path: &Path) -> Option<(String, String)> {
+    let rest = path.strip_prefix(Kind::Contacts.root().join(account)).ok()?;
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    match parts.as_slice() {
+        [id, file] => Some((id.clone(), file.clone())),
+        _ => None,
+    }
+}
+
+/// Cards moved here from one address book of the account to another (a
+/// batch, a merge, a card's own chooser: `vdir::move_item`), moved on their
+/// server by WebDAV's own MOVE (RFC 4918 §9.9; RFC 6352 §6.3.2.1 holds a
+/// move into an address book to the rules of a PUT, the UID's among them),
+/// so that the card is never in two books there, nor in none: its old copy
+/// conditional on its ETag (a change made there meanwhile refuses it), the
+/// new name never written over (`Overwrite: F`). Done, both books' states
+/// follow at once, the new copy known by its address and its hash (its ETag
+/// when the server says it, else at the pull, `ItemState::sent`), and
+/// nothing waits for a deletion any more. Refused, or a server without MOVE
+/// (Google says so; 405, 501 elsewhere, after which no other is tried in
+/// this sync), the copy's way goes on as before: the new copy sent, then the
+/// old one deleted once it is there (`deletion_waits_for`). How many moved.
+fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
+    if client.is_google() {
+        return Ok(0);
+    }
+    let mut moved = 0;
+    for (old, new) in vdir::moves_waiting() {
+        let (Some((from_id, old_file)), Some((to_id, new_file))) = (card_place(account, &old), card_place(account, &new)) else { continue };
+        if from_id == to_id || old.exists() || !new.exists() {
+            continue;
+        }
+        let (from_path, to_path) = (vdir::state_path(account, Kind::Contacts, &from_id), vdir::state_path(account, Kind::Contacts, &to_id));
+        let (mut from, mut to) = (State::load(&from_path), State::load(&to_path));
+        // Both on the server, both written: else the copy's way (a book made here waits for its MKCOL).
+        if from.url.is_empty() || to.url.is_empty() || from.pending || to.pending || from.read_only || to.read_only || from.removed || to.removed {
+            continue;
+        }
+        // Never on the server (made here since its last sync): its PUT makes it in its new book,
+        // and nothing waits for a deletion there (review F23).
+        let Some(at) = from.items.iter().position(|i| i.file == old_file) else {
+            if !from.url.is_empty() {
+                vdir::deletion_done(&old);
+            }
+            continue;
+        };
+        if to.items.iter().any(|i| i.file == new_file) || from.items[at].etag.is_empty() {
+            continue;
+        }
+        let source = absolute(&from.url, &from.items[at].href);
+        let target = format!("{}/{}", to.url.trim_end_matches('/'), url_segment(&new_file));
+        let (size, mtime) = std::fs::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
+        let text = read_text(&new)?;
+        let (mut etag, mut agreed) = (from.items[at].etag.clone(), from.items[at].hash.clone());
+        // Changed here and not sent yet (review F15): sent first, at its old place, then moved;
+        // its server's word on it (an ETag) needed, else the copy's way, which sends it too.
+        if vdir::content_hash(text.as_bytes()) != agreed {
+            let put = client.send("PUT", &source, &[("If-Match", etag.as_str()), ("Content-Type", Kind::Contacts.media_type())], Some(&text))?;
+            match put.etag.filter(|e| !e.is_empty()) {
+                Some(new_etag) if (200..300).contains(&put.status) => {
+                    etag = new_etag;
+                    agreed = vdir::content_hash(text.as_bytes());
+                    from.items[at].etag = etag.clone();
+                    from.items[at].hash = agreed.clone();
+                    from.save(&from_path).map_err(SyncError::Disk)?;
+                }
+                // Taken without its ETag (review V9): known as sent, its ETag (and the server's
+                // own version, should it alter it) learnt at the next pull of its book; moved then.
+                None if (200..300).contains(&put.status) => {
+                    from.items[at].etag = String::new();
+                    from.items[at].hash = vdir::content_hash(text.as_bytes());
+                    from.items[at].sent = sent_hash(&text);
+                    from.save(&from_path).map_err(SyncError::Disk)?;
+                    continue;
+                }
+                _ => continue,
+            }
+        }
+        let answer = client.send("MOVE", &source, &[("Destination", target.as_str()), ("Overwrite", "F"), ("If-Match", etag.as_str())], None)?;
+        match answer.status {
+            201 | 204 => {
+                // What is agreed is what the server holds: the copy it moved, as last agreed (or as
+                // just sent); its new ETag when said, else at the next pull (`ItemState::sent`).
+                let etag = answer.etag.unwrap_or_default();
+                let sent = if etag.is_empty() { sent_hash(&text) } else { String::new() };
+                to.items.push(ItemState { href: path_key(&target), file: new_file, etag, hash: agreed, size, mtime, sent, ..ItemState::default() });
+                to.save(&to_path).map_err(SyncError::Disk)?;
+                from.items.remove(at);
+                from.save(&from_path).map_err(SyncError::Disk)?;
+                vdir::deletion_done(&old);
+                moved += 1;
+            }
+            // This server moves nothing: the copy's way for every card.
+            405 | 501 => break,
+            // Not this one (its old copy changed there: 412; the new book holds its UID: 409, 403;
+            // gone there: 404): the copy's way, which says each as it always did.
+            _ => {}
+        }
+    }
+    Ok(moved)
 }
 
 fn hash_of(path: &Path) -> Option<String> {
@@ -2186,10 +2635,7 @@ fn changes_since(client: &Client, url: &str, token: &str) -> Result<Option<(Vec<
 /// Every item's ETag, compared with what is known: (changed, gone, no token).
 #[allow(clippy::type_complexity)]
 fn everything(client: &Client, url: &str, state: &State, known: &BTreeMap<String, usize>) -> Result<(Vec<(String, Option<String>)>, Vec<String>, Option<String>), SyncError> {
-    let (status, responses) = client.propfind(url, "1", "<d:getetag/><d:resourcetype/>")?;
-    if status != 207 {
-        return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
-    }
+    let responses = client.propfind(url, "1", "<d:getetag/><d:resourcetype/>")?;
     let collection = path_key(url);
     let items: Vec<&Response> = responses.iter().filter(|r| path_key(&absolute(url, &r.href)) != collection && !r.is(DAV, "collection")).collect();
     let present: BTreeSet<String> = items.iter().map(|r| path_key(&absolute(url, &r.href))).collect();
@@ -2295,6 +2741,18 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         let meeting = kind == Kind::Calendars && sioul_core::agenda::meeting_with_others(data, &own());
         if !meeting {
             let changed = hash != state.items[i].hash && !read_item(&new).is_ok_and(|mine| same_text(&mine, data));
+            // A card someone changed there before its move reached its server (review F16):
+            // both kept, never one taken off the server. Its old copy back in its old book as
+            // its server holds it, the moved one in its new book; said once.
+            if changed && kind == Kind::Contacts {
+                vdir::store_item(&path, &crlf(data)).map_err(SyncError::Disk)?;
+                vdir::deletion_done(&path);
+                report.kept_both.push((kind_word(kind, data).to_string(), title_of(kind, data)));
+                state.items[i] = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash, ..ItemState::default() };
+                report.received += 1;
+                report.brought.insert(path.clone());
+                return Ok(());
+            }
             if changed {
                 set_aside(&path, data.as_bytes())?;
                 report.moved_changed.push((kind_word(kind, data).to_string(), title_of(kind, data)));
@@ -2828,6 +3286,23 @@ pub(crate) mod stand_in {
         /// REPORT, its ETag unchanged (as Google's calendar feeds stamp the
         /// time they are read): `rewrites_dtstamp`.
         rewrites_dtstamp: bool,
+        /// A CardDAV server (`start_books`): its collections address books,
+        /// made by an extended MKCOL, renamed by PROPPATCH, deleted, shared as
+        /// Nextcloud shares them (`oc:share`, `oc:invite`), a card moved
+        /// between two by MOVE (wave D).
+        books: bool,
+        /// Each collection's name, when it is not its folder's.
+        names: BTreeMap<String, String>,
+        /// It answers MOVE with 405, as a server without it does.
+        no_move: bool,
+        /// Each address book's shares: (principal, may write).
+        shares: BTreeMap<String, Vec<(String, bool)>>,
+        /// Address books someone else owns, said by the standard `DAV:owner` alone: their owner.
+        owners: BTreeMap<String, String>,
+        /// A server that says neither Nextcloud's owner nor its shares (`oc:invite`).
+        plain: bool,
+        /// How a book's PROPFIND lists (review V4): 0 whole, 1 the book alone, 2 no response at all.
+        lists: u8,
     }
 
     impl Dav {
@@ -2901,6 +3376,45 @@ pub(crate) mod stand_in {
         pub(crate) fn rewrites_dtstamp(&self) {
             self.held().rewrites_dtstamp = true;
         }
+
+        /// A CardDAV server with these address books, empty, as Nextcloud
+        /// keeps them (`Held::books`); and the address of their home.
+        pub(crate) fn start_books(books: &[&str]) -> (Arc<Dav>, String) {
+            let (dav, home) = Dav::start(books);
+            dav.held().books = true;
+            (dav, home)
+        }
+
+        /// The address books it holds now, each with its name.
+        pub(crate) fn books(&self) -> BTreeMap<String, String> {
+            let held = self.held();
+            held.calendars.keys().map(|k| (k.clone(), held.names.get(k).cloned().unwrap_or_else(|| k.clone()))).collect()
+        }
+
+        /// An address book's shares now: (principal, may write).
+        pub(crate) fn shares(&self, book: &str) -> Vec<(String, bool)> {
+            self.held().shares.get(book).cloned().unwrap_or_default()
+        }
+
+        /// From now on, MOVE is answered 405, as by a server without it.
+        pub(crate) fn refuse_moves(&self) {
+            self.held().no_move = true;
+        }
+
+        /// From now on, this address book is `owner`'s, as the standard `DAV:owner` says it.
+        pub(crate) fn owned_by(&self, book: &str, owner: &str) {
+            self.held().owners.insert(book.to_string(), owner.to_string());
+        }
+
+        /// From now on, it says neither Nextcloud's owner nor the shares of a book.
+        pub(crate) fn says_little(&self) {
+            self.held().plain = true;
+        }
+
+        /// From now on, a book's PROPFIND lists: 0 whole, 1 the book alone, 2 no response at all.
+        pub(crate) fn lists(&self, how: u8) {
+            self.held().lists = how;
+        }
     }
 
     /// An item's text as it is read there: its DTSTAMP lines the time now
@@ -2957,7 +3471,13 @@ pub(crate) mod stand_in {
     }
 
     fn multistatus(responses: &str) -> Reply {
-        Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">{responses}</d:multistatus>"#))
+        Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:card="urn:ietf:params:xml:ns:carddav" xmlns:oc="http://owncloud.org/ns">{responses}</d:multistatus>"#))
+    }
+
+    /// The text of the first element named `name` in an XML body, whatever its namespace.
+    fn text_of(body: &str, name: &str) -> Option<String> {
+        let doc = roxmltree::Document::parse(body).ok()?;
+        doc.descendants().find(|n| n.tag_name().name() == name).and_then(|n| n.text()).map(|t| t.trim().to_string())
     }
 
     fn etag_prop(etag: &str) -> String {
@@ -2985,8 +3505,33 @@ pub(crate) mod stand_in {
             self.changes.iter().filter(|(_, c, _)| c == calendar).map(|(v, _, _)| *v).max().unwrap_or(0)
         }
 
+        /// An address book's shares, as `oc:invite` lists them.
+        fn invite(&self, book: &str) -> String {
+            self.shares
+                .get(book)
+                .into_iter()
+                .flatten()
+                .map(|(who, write)| {
+                    let href = who.trim_start_matches("principal:");
+                    let access = if *write { "<oc:read-write/>" } else { "<oc:read/>" };
+                    format!("<oc:user><d:href>{href}</d:href><oc:access>{access}</oc:access></oc:user>")
+                })
+                .collect()
+        }
+
         fn calendar_props(&self, calendar: &str) -> String {
             let last = self.last(calendar);
+            if self.books {
+                let name = self.names.get(calendar).map_or(calendar, String::as_str);
+                // Its owner as Nextcloud says it, or by the standard property alone; with or without its shares.
+                let owner = match self.owners.get(calendar) {
+                    Some(owner) => format!("<d:owner><d:href>/principals/users/{owner}/</d:href></d:owner>"),
+                    None if self.plain => String::new(),
+                    None => "<oc:owner-principal>principals/users/jane</oc:owner-principal>".to_string(),
+                };
+                let invite = if self.plain { String::new() } else { format!("<oc:invite>{}</oc:invite>", self.invite(calendar)) };
+                return format!("<d:resourcetype><d:collection/><card:addressbook/></d:resourcetype><d:displayname>{}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{owner}<d:current-user-principal><d:href>/principals/users/jane/</d:href></d:current-user-principal>{invite}", super::xml_escape(name));
+            }
             let set = self.components.get(calendar).map(|comps| format!("<c:supported-calendar-component-set>{}</c:supported-calendar-component-set>", comps.iter().map(|c| format!(r#"<c:comp name="{c}"/>"#)).collect::<String>())).unwrap_or_default();
             format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{set}")
         }
@@ -2995,6 +3540,17 @@ pub(crate) mod stand_in {
             let path = super::path_key(&request.path);
             let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
             match (request.method.as_str(), parts.as_slice()) {
+                // An address book made (RFC 5689's extended MKCOL), its name from the body; one there already, 405.
+                ("MKCOL", ["cal", book]) if self.books => {
+                    if self.calendars.contains_key(*book) || !request.body.contains("addressbook") {
+                        return Reply::new(405, "");
+                    }
+                    self.calendars.insert(book.to_string(), BTreeMap::new());
+                    if let Some(name) = text_of(&request.body, "displayname") {
+                        self.names.insert(book.to_string(), name);
+                    }
+                    Reply::new(201, "")
+                }
                 ("PROPFIND", ["cal"]) => {
                     let mut out = found("/cal/", "<d:resourcetype><d:collection/></d:resourcetype>");
                     for calendar in self.calendars.keys() {
@@ -3006,15 +3562,77 @@ pub(crate) mod stand_in {
                     multistatus(&out)
                 }
                 (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
+                ("PROPFIND", ["cal", book]) if self.books && request.body.contains("invite") => multistatus(&found(&format!("/cal/{book}/"), &format!("<oc:invite>{}</oc:invite>", self.invite(book)))),
                 ("PROPFIND", ["cal", calendar]) => {
+                    if self.lists == 2 {
+                        return multistatus("");
+                    }
                     let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
-                    for (item, (etag, _)) in &self.calendars[*calendar] {
+                    for (item, (etag, _)) in self.calendars[*calendar].iter().filter(|_| self.lists == 0) {
                         out += &found(&format!("/cal/{calendar}/{item}"), &format!("{}<d:resourcetype/>", etag_prop(etag)));
                     }
                     if let Some(base) = &self.elsewhere {
                         out += &found(&format!("{base}/cal/{calendar}/there.ics"), &format!("{}<d:resourcetype/>", etag_prop("\"there\"")));
                     }
                     multistatus(&out)
+                }
+                // Renamed, deleted whole, shared, its shares read (Nextcloud's sharing plugin), a card moved.
+                ("PROPPATCH", ["cal", book]) if self.books => {
+                    if let Some(name) = text_of(&request.body, "displayname") {
+                        self.names.insert(book.to_string(), name);
+                    }
+                    multistatus(&found(&format!("/cal/{book}/"), "<d:displayname/>"))
+                }
+                ("DELETE", ["cal", book]) if self.books => {
+                    let items: Vec<String> = self.calendars[*book].keys().cloned().collect();
+                    for item in items {
+                        self.delete(book, &item);
+                    }
+                    self.calendars.remove(*book);
+                    self.names.remove(*book);
+                    self.shares.remove(*book);
+                    Reply::new(204, "")
+                }
+                ("OPTIONS", ["cal", _]) if self.books => Reply { status: 200, headers: vec![("DAV", "1, 3, extended-mkcol, access-control, addressbook, oc-resource-sharing".into())], body: String::new() },
+                ("POST", ["cal", book]) if self.books && request.body.contains("share") => {
+                    let doc = roxmltree::Document::parse(&request.body).unwrap();
+                    let shares = self.shares.entry(book.to_string()).or_default();
+                    for set in doc.descendants().filter(|n| n.tag_name().name() == "set") {
+                        let who = set.descendants().find(|n| n.tag_name().name() == "href").and_then(|n| n.text()).unwrap_or("").to_string();
+                        let write = set.descendants().any(|n| n.tag_name().name() == "read-write");
+                        shares.retain(|(w, _)| *w != who);
+                        shares.push((who, write));
+                    }
+                    for remove in doc.descendants().filter(|n| n.tag_name().name() == "remove") {
+                        let who = remove.descendants().find(|n| n.tag_name().name() == "href").and_then(|n| n.text()).unwrap_or("").to_string();
+                        shares.retain(|(w, _)| *w != who);
+                    }
+                    Reply::new(200, "")
+                }
+                ("MOVE", ["cal", book, item]) if self.books => {
+                    if self.no_move {
+                        return Reply::new(405, "");
+                    }
+                    let Some((etag, text)) = self.calendars[*book].get(*item).cloned() else { return Reply::new(404, "") };
+                    if request.header("If-Match").is_some_and(|wanted| wanted != etag) {
+                        return Reply::new(412, "");
+                    }
+                    let destination = request.header("Destination").map(super::path_key).unwrap_or_default();
+                    let to: Vec<&str> = destination.trim_start_matches('/').split('/').collect();
+                    let ["cal", target, name] = to.as_slice() else { return Reply::new(400, "") };
+                    let Some(there) = self.calendars.get(*target) else { return Reply::new(409, "") };
+                    if there.contains_key(*name) && request.header("Overwrite") == Some("F") {
+                        return Reply::new(412, "");
+                    }
+                    // RFC 6352 §6.3.2.1: one UID per address book.
+                    if uid_line(&text).is_some() && there.values().any(|(_, t)| uid_line(t) == uid_line(&text)) {
+                        return Reply::new(409, r#"<?xml version="1.0" encoding="utf-8"?><d:error xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav"><card:no-uid-conflict/></d:error>"#);
+                    }
+                    let (target, name) = (target.to_string(), name.to_string());
+                    self.delete(book, item);
+                    self.store(&target, &name, &text);
+                    // As Nextcloud: made there, its new ETag unsaid.
+                    Reply::new(201, "")
                 }
                 ("REPORT", ["cal", calendar]) if request.body.contains("sync-collection") => self.changes_since(calendar, &request.body),
                 ("REPORT", ["cal", calendar]) if request.body.contains("calendar-query") => self.query(calendar, &request.body),
@@ -3126,8 +3744,9 @@ pub(crate) mod stand_in {
             for href in doc.descendants().filter(|n| n.has_tag_name(("DAV:", "href"))).filter_map(|n| n.text()) {
                 let key = super::path_key(href);
                 let item = key.rsplit('/').next().unwrap_or("");
+                let data = if self.books { "card:address-data" } else { "c:calendar-data" };
                 out += &match self.calendars[calendar].get(item) {
-                    Some((etag, text)) => found(href, &format!("{}<c:calendar-data>{}</c:calendar-data>", etag_prop(etag), super::xml_escape(&as_read(text, self.rewrites_dtstamp)))),
+                    Some((etag, text)) => found(href, &format!("{}<{data}>{}</{data}>", etag_prop(etag), super::xml_escape(&as_read(text, self.rewrites_dtstamp)))),
                     None => missing(href),
                 };
             }
@@ -3135,6 +3754,10 @@ pub(crate) mod stand_in {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "dav_books_tests.rs"]
+mod books_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3223,7 +3846,7 @@ mod tests {
         let state = State::load(&club.state_path());
         assert!(!state.renamed && !state.recoloured);
         // A listing names it otherwise: it keeps its folder's id by its address.
-        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true) }];
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true), writers: Vec::new(), writers_known: false }];
         keep_ids("p5-sync", Kind::Calendars, &mut listed);
         assert_eq!(listed[0].id, club.id);
         // Whose it is, from the listing: its owner against your principal; else unknown.
@@ -3384,6 +4007,28 @@ mod tests {
         assert_eq!(local_files(&folder("resumes", "big"), Kind::Calendars).len(), 120);
         assert_eq!(dav.items("big").len(), 120);
         assert!(puts(&dav).is_empty(), "{:?}", dav.seen());
+    }
+
+    /// A series that pauses (18 November 2026) travels as Sioul wrote it:
+    /// its left-out times (EXDATE) and Sioul's own lines of what it pauses
+    /// for and which times it left out, sent and pulled back byte for byte by
+    /// a server that keeps what it is given, as the stand-in does.
+    #[test]
+    fn a_series_pauses_travel_as_written() {
+        home();
+        let (dav, home) = Dav::start(&["classes"]);
+        let client = client();
+        sync_one(&client, "series-pauses", &home, "classes").unwrap();
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VEVENT\r\nUID:swimming\r\nDTSTAMP:20301001T080000Z\r\nDTSTART:20301002T150000Z\r\nDTEND:20301002T160000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20310625T215959Z\r\nSUMMARY:Swimming\r\nX-SIOUL-PAUSE-DURING:public\r\nX-SIOUL-PAUSE-DURING:school/zone-a\r\nEXDATE:20301023T150000Z\r\nEXDATE:20301225T160000Z\r\nX-SIOUL-PAUSED;X-SOURCE=school/zone-a:20301023T150000Z\r\nX-SIOUL-PAUSED;X-SOURCE=public:20301225T160000Z\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=public:0123456789abcdef\r\nX-SIOUL-PAUSED-VERSION;X-SOURCE=school/zone-a:fedcba9876543210\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(folder("series-pauses", "classes").join("swimming.ics"), series).unwrap();
+        let report = sync_one(&client, "series-pauses", &home, "classes").unwrap();
+        assert_eq!(report.sent, 1, "{report:?}");
+        assert_eq!(dav.items("classes").values().next().map(String::as_str), Some(series), "kept as sent");
+        let zone = jiff::tz::TimeZone::UTC;
+        let there = dav.items("classes").values().next().cloned().unwrap();
+        assert_eq!(sioul_core::series::sources_of(&there).len(), 2);
+        assert_eq!(sioul_core::series::paused_of(&there, &zone).values().map(std::collections::BTreeSet::len).sum::<usize>(), 2);
+        assert_eq!(sioul_core::series::versions_of(&there).len(), 2, "each source's version, kept as sent");
     }
 
     /// F1: an event made here is sent, then the network drops before the
@@ -5237,3 +5882,249 @@ mod tests {
         assert_eq!(xml_escape(r#"a<"b"&"#), "a&lt;&quot;b&quot;&amp;");
     }
 }
+
+/// Starred people on a server that keeps a favourite per card
+/// (`keep_stars`), against a stand-in of Nextcloud's contacts (its property
+/// `{http://nextcloud.com/ns}favorite` as cdav-library writes it) and one of
+/// a server that keeps none. Untested against a real Nextcloud.
+#[cfg(test)]
+mod stars_tests {
+    use super::stand_in::{Fault, Reply, Request, Server, home, serve};
+    use super::*;
+    use sioul_core::everywhere::{People, Person};
+    use std::sync::Arc;
+
+    /// These tests clear and fill the one list of people of the tests' home: one at a
+    /// time, or one reads what another just cleared.
+    static LIST: Mutex<()> = Mutex::new(());
+
+    /// An address book of two cards, each with its favourite, kept per card
+    /// when `keeps`; every PROPPATCH counted.
+    struct Book {
+        keeps: bool,
+        favourites: Mutex<BTreeMap<String, bool>>,
+        patches: Mutex<usize>,
+        /// Its PROPFIND names its cards; false: the collection alone (a proxy that drops the depth).
+        names: std::sync::atomic::AtomicBool,
+        /// Every PROPFIND counted.
+        propfinds: std::sync::atomic::AtomicUsize,
+    }
+
+    const BOOK: &str = "/remote.php/dav/addressbooks/users/alex/contacts/";
+
+    impl Server for Book {
+        fn misbehaves(&self, _: &Request) -> Option<Fault> {
+            None
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            match request.method.as_str() {
+                "PROPFIND" => {
+                    self.propfinds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let named: &[&str] = if self.names.load(std::sync::atomic::Ordering::Relaxed) { &["claire.vcf", "fred.vcf"] } else { &[] };
+                    let cards: String = named
+                        .iter()
+                        .map(|card| {
+                            let href = format!("{BOOK}{card}");
+                            let favourite = self.keeps && self.favourites.lock().unwrap().get(&href).copied().unwrap_or(false);
+                            let (found, missing) = if favourite { ("<nc:favorite>1</nc:favorite>", "") } else { ("", "<nc:favorite/>") };
+                            let missing = if missing.is_empty() { String::new() } else { format!("<d:propstat><d:prop>{missing}</d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>") };
+                            format!(r#"<d:response><d:href>{href}</d:href><d:propstat><d:prop><d:getetag>"1"</d:getetag>{found}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>{missing}</d:response>"#)
+                        })
+                        .collect();
+                    Reply::new(207, format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.com/ns"><d:response><d:href>{BOOK}</d:href><d:propstat><d:prop><d:getetag/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>{cards}</d:multistatus>"#))
+                }
+                "PROPPATCH" => {
+                    *self.patches.lock().unwrap() += 1;
+                    let doc = roxmltree::Document::parse(&request.body).unwrap();
+                    let only = doc.descendants().filter(|n| n.is_element() && n.parent().is_some_and(|p| p.has_tag_name((DAV, "prop")))).all(|n| n.has_tag_name((NEXTCLOUD, "favorite")));
+                    assert!(only, "the favourite alone: {}", request.body);
+                    let on = doc.descendants().find(|n| n.has_tag_name((NEXTCLOUD, "favorite"))).and_then(|n| n.text()) == Some("1");
+                    let status = if self.keeps {
+                        self.favourites.lock().unwrap().insert(request.path.clone(), on);
+                        "200 OK"
+                    } else {
+                        "403 Forbidden"
+                    };
+                    Reply::new(207, format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.com/ns"><d:response><d:href>{}</d:href><d:propstat><d:prop><nc:favorite/></d:prop><d:status>HTTP/1.1 {status}</d:status></d:propstat></d:response></d:multistatus>"#, request.path))
+                }
+                _ => Reply::new(405, ""),
+            }
+        }
+    }
+
+    /// The book's cards on disk, as a sync left them, for `account`.
+    fn synced(account: &str, base: &str) -> Listed {
+        let id = "contacts";
+        let dir = vdir::prepare(Kind::Contacts, account, id, "Contacts", None).unwrap();
+        let mut state = State { url: format!("{base}{BOOK}"), ..State::default() };
+        for (file, name, phone) in [("claire.vcf", "Claire", "01 99 00 00 06"), ("fred.vcf", "Fred", "01 99 00 00 02")] {
+            std::fs::write(dir.join(file), format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{name}\r\nFN:{name}\r\nTEL:{phone}\r\nEND:VCARD\r\n")).unwrap();
+            state.items.push(ItemState { href: format!("{BOOK}{file}"), file: file.to_string(), etag: "\"1\"".into(), hash: String::new(), size: 0, mtime: 0, ..ItemState::default() });
+        }
+        state.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+        Listed { kind: Kind::Contacts, url: format!("{base}{BOOK}"), id: id.into(), name: "Contacts".into(), color: None, read_only: false, ctag: None, sync_token: None, components: Vec::new(), transparent: false, owned: Some(true), writers: Vec::new(), writers_known: true }
+    }
+
+    /// A favourite added; someone on the list marked; unmarked there, off
+    /// the list; taken off in Sioul, unmarked there; the property alone,
+    /// never the card. A book with no favourite yet, and a server that keeps
+    /// none: nothing written, known by reading only, said on the page.
+    #[test]
+    fn nextcloud_s_favourites_kept_in_step() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
+        let _ = home();
+        let list = People::default_path();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.people.clear();
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let client = Client::new("alex", "secret");
+        // A Nextcloud with no favourite yet: it cannot be told from a server that keeps none; nothing written.
+        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let listed = synced("stars-unmarked", &serve(quiet.clone()));
+        assert!(!keep_stars(&client, "stars-unmarked", &listed, 1_800_000_000).unwrap());
+        assert_eq!(*quiet.patches.lock().unwrap(), 0, "never written to learn");
+        assert_eq!(sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-unmarked").join("contacts.json")).kept, None);
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let base = serve(server.clone());
+        let listed = synced("stars-nextcloud", &base);
+        let client = Client::new("alex", "secret");
+        let mut now = 1_800_000_000;
+        assert!(keep_stars(&client, "stars-nextcloud", &listed, now).unwrap());
+        let names = || People::load(&list).people.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(), ["Fred", "Claire"], "a favourite adds its person");
+        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}fred.vcf")), Some(&true), "someone on the list marked");
+        assert!(People::load(&list).people.iter().all(|p| p.starred.get("book:stars-nextcloud/contacts").map(String::as_str) == Some("starred")));
+        // Within the quarter of an hour, nothing changed: not asked again.
+        let patches = *server.patches.lock().unwrap();
+        assert!(!keep_stars(&client, "stars-nextcloud", &listed, now + 60).unwrap());
+        // Claire unmarked in Nextcloud: that favourite was set by hand, so Claire stays (H3).
+        server.favourites.lock().unwrap().insert(format!("{BOOK}claire.vcf"), false);
+        now += STARS_EVERY;
+        keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
+        assert_eq!(names(), ["Fred", "Claire"], "a favourite of the person's own, unmarked, takes nobody off");
+        assert_eq!(*server.patches.lock().unwrap(), patches, "nothing written for it");
+        // Fred's, which Sioul wrote, unmarked in Nextcloud: off the list.
+        server.favourites.lock().unwrap().insert(format!("{BOOK}fred.vcf"), false);
+        now += STARS_EVERY;
+        assert!(keep_stars(&client, "stars-nextcloud", &listed, now).unwrap());
+        assert_eq!(names(), ["Claire"]);
+        // Claire taken off in Sioul, then put back and marked by Sioul, then taken off again: unmarked there.
+        sioul_core::everywhere::change_people(&list, |people| people.people.clear()).unwrap();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.add(Person { name: "Claire".into(), phones: vec!["01 99 00 00 06".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        now += STARS_EVERY;
+        keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
+        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}claire.vcf")), Some(&true), "marked by Sioul");
+        sioul_core::everywhere::change_people(&list, |people| people.people.clear()).unwrap();
+        now += STARS_EVERY;
+        keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
+        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}claire.vcf")), Some(&false), "Sioul's own favourite, its person taken off in Sioul: unmarked");
+        assert!(names().is_empty(), "and nobody added back");
+
+        // A server that keeps none: read, never written to, nothing added nor marked.
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let listed = synced("stars-plain", &serve(plain.clone()));
+        keep_stars(&client, "stars-plain", &listed, now).unwrap();
+        let asked = plain.propfinds.load(std::sync::atomic::Ordering::Relaxed);
+        keep_stars(&client, "stars-plain", &listed, now + 2 * STARS_EVERY).unwrap();
+        assert_eq!(plain.propfinds.load(std::sync::atomic::Ordering::Relaxed), asked, "not known to keep favourites: asked once a day (L11)");
+        keep_stars(&client, "stars-plain", &listed, now + STARS_UNKNOWN_EVERY).unwrap();
+        assert_eq!(plain.propfinds.load(std::sync::atomic::Ordering::Relaxed), asked + 1);
+        assert_eq!(*plain.patches.lock().unwrap(), 0, "nothing written there");
+        let memory = sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-plain").join("contacts.json"));
+        assert_eq!((memory.kept, memory.looked > 0), (None, true), "looked at, not known to keep favourites");
+        assert!(People::load(&list).people.iter().all(|p| !p.starred.contains_key("book:stars-plain/contacts")), "never shown as a place to be starred in");
+        // A book shared with you is left.
+        let shared = Listed { owned: Some(false), ..synced("stars-shared", &base) };
+        assert!(!keep_stars(&client, "stars-shared", &shared, now).unwrap());
+    }
+
+    /// An answer that names no card removes nobody and writes nothing
+    /// (review of `phones`, H4; the reviewer's sketch): Claire marked, Fred
+    /// marked by Sioul; then the server answers the collection alone.
+    #[test]
+    fn an_answer_that_names_no_card_changes_nothing() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
+        let _ = home();
+        let list = People::default_path();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.people.clear();
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let listed = synced("stars-unnamed", &serve(server.clone()));
+        let client = Client::new("alex", "secret");
+        let now = 1_800_000_000;
+        keep_stars(&client, "stars-unnamed", &listed, now).unwrap();
+        let names = || People::load(&list).people.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(), ["Fred", "Claire"]);
+        let patches = *server.patches.lock().unwrap();
+        let memory_path = sioul_core::stars::folder().join("stars-unnamed").join("contacts.json");
+        let written = sioul_core::stars::Memory::load(&memory_path).written;
+        assert!(written.contains_key(&format!("{BOOK}fred.vcf")), "Fred marked by Sioul");
+        server.names.store(false, std::sync::atomic::Ordering::Relaxed);
+        assert!(!keep_stars(&client, "stars-unnamed", &listed, now + STARS_EVERY).unwrap());
+        assert_eq!(names(), ["Fred", "Claire"], "nobody leaves the list");
+        assert_eq!(*server.patches.lock().unwrap(), patches, "nothing written");
+        assert_eq!(sioul_core::stars::Memory::load(&memory_path).written, written, "the memory kept");
+    }
+
+    /// The book, its PROPFIND failing on demand (a 503 with no listing).
+    struct Failing {
+        book: Arc<Book>,
+        fails: std::sync::atomic::AtomicBool,
+    }
+
+    impl Server for Failing {
+        fn misbehaves(&self, request: &Request) -> Option<Fault> {
+            (request.method == "PROPFIND" && self.fails.load(std::sync::atomic::Ordering::Relaxed)).then_some(Fault::Status(503))
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            self.book.answer(request)
+        }
+    }
+
+    /// A failed answer concludes nothing (review of `phones`, H4), through
+    /// the PROPFIND that the address books' own rules share (`Client::propfind`,
+    /// review of `contacts`, F1): an error, nobody taken off the list, nothing
+    /// written there, the memory kept.
+    #[test]
+    fn a_failed_answer_changes_nothing() {
+        let _one = LIST.lock().unwrap_or_else(|held| held.into_inner());
+        let _ = home();
+        let list = People::default_path();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.people.clear();
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let book = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true), propfinds: std::sync::atomic::AtomicUsize::new(0) });
+        let server = Arc::new(Failing { book: book.clone(), fails: std::sync::atomic::AtomicBool::new(false) });
+        let listed = synced("stars-failed", &serve(server.clone()));
+        let client = Client::new("alex", "secret");
+        let now = 1_800_000_000;
+        keep_stars(&client, "stars-failed", &listed, now).unwrap();
+        let names = || People::load(&list).people.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(), ["Fred", "Claire"]);
+        let patches = *book.patches.lock().unwrap();
+        let memory_path = sioul_core::stars::folder().join("stars-failed").join("contacts.json");
+        let memory = std::fs::read(&memory_path).unwrap();
+        server.fails.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(keep_stars(&client, "stars-failed", &listed, now + STARS_EVERY).is_err(), "a 503 is an error, not an empty book");
+        assert_eq!(names(), ["Fred", "Claire"], "nobody leaves the list");
+        assert_eq!(*book.patches.lock().unwrap(), patches, "nothing written");
+        assert_eq!(std::fs::read(&memory_path).unwrap(), memory, "the memory kept");
+    }
+}
+

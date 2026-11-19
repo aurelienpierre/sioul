@@ -60,6 +60,11 @@ pub struct Said {
     /// phase 2, N3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changed: Option<i64>,
+    /// What this phone lets ring (`calls_line`, `[device."<id>".calls]`),
+    /// when it says something this Sioul reads; none: the phone keeps the
+    /// shared call screening, as before.
+    #[serde(default, deserialize_with = "calls", skip_serializing_if = "Option::is_none")]
+    pub calls: Option<crate::calls_line::Said>,
 }
 
 /// The key of `Said::changed` in `[device."<id>"]`.
@@ -70,6 +75,11 @@ pub const CHANGED: &str = "changed";
 /// an error that would stop the configuration from reading.
 fn cells<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, String>, D::Error> {
     Ok(toml::Value::deserialize(deserializer).map(|value| cells_of(&value)).unwrap_or_default())
+}
+
+/// `[device."<id>".calls]`, leniently (`calls_line::read`): anything that does not read is no line.
+fn calls<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<crate::calls_line::Said>, D::Error> {
+    Ok(toml::Value::deserialize(deserializer).ok().as_ref().and_then(crate::calls_line::read))
 }
 
 /// The same from a value already read: the keys of a table whose values are texts.
@@ -137,7 +147,7 @@ fn read(value: &toml::Value) -> BTreeMap<String, Said> {
     let word = |line: &toml::Table, field: &str| line.get(field).and_then(toml::Value::as_str).map(str::to_string);
     let cells = |line: &toml::Table| line.get("at").map(cells_of).unwrap_or_default();
     let changed = |line: &toml::Table| line.get(CHANGED).and_then(toml::Value::as_integer);
-    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line), changed: changed(line) }))).collect()
+    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line), changed: changed(line), calls: line.get(crate::calls_line::KEY).and_then(crate::calls_line::read) }))).collect()
 }
 
 /// The longest name a device is given, in characters: a line of a card.

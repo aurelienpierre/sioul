@@ -350,7 +350,7 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
 
 // ---------------------------------------------------------------- the phone's choices
 
-/// The phone's tab, Settings ▸ This phone ▸ On your computers
+/// The phone's tab, Settings ▸ Devices ▸ this phone's card ▸ On your computers
 /// (PhoneMessagesSetup.qml): {android, sharing (a sharing folder is set),
 /// part, apps}, each a row as `SettingRow.qml` shows it ({key, kind, label,
 /// help, value, choices}): the part's switch here, then each app seen

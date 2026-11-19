@@ -66,6 +66,22 @@ impl Resolver for PublicOnly {
     }
 }
 
+/// Whether the name of `uri` resolves to public addresses alone, as
+/// `PublicOnly` checks it, asked here before a request goes through a proxy
+/// (which resolves the name itself: the review of the subscribed calendars,
+/// F1). An address written as such is checked without asking anyone;
+/// `localhost` reads the system's own list. No connection is made.
+pub(crate) fn resolves_public(uri: &ureq::http::Uri) -> bool {
+    use std::net::ToSocketAddrs;
+    let Some(host) = uri.host() else { return false };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    let port = uri.port_u16().unwrap_or(443);
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return public_only(&[SocketAddr::new(ip, port)]);
+    }
+    (host, port).to_socket_addrs().is_ok_and(|found| public_only(&found.collect::<Vec<_>>()))
+}
+
 /// Whether addresses are all on the public Internet (`trust::is_public`), and
 /// none multicast; none at all is not.
 pub(crate) fn public_only(addresses: &[SocketAddr]) -> bool {

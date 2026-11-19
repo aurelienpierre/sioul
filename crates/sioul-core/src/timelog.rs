@@ -264,6 +264,11 @@ pub struct Running {
     /// Seconds spent paused, before the current pause.
     #[serde(default)]
     pub paused: i64,
+    /// Its task is marked busy (`busy::TASK_MARK`), as the window found it
+    /// when the timer started or the mark changed since: the person is busy
+    /// while it runs (`busy::timer`). Unsaid, not busy (an older Sioul's timer).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub busy: bool,
 }
 
 impl Running {

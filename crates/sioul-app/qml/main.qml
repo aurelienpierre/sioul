@@ -724,6 +724,19 @@ SioulWindow {
         doseTaken.item.ask(key)
     }
 
+    // The window of the move of Sioul's lists out of the notes folder
+    // (StorageMove.qml, made the first time): by itself once, when every
+    // device knows the new places; from Settings ▸ Sharing at any time.
+    function showStorageMove() {
+        if (storageMove.item === null) {
+            storageMove.setSource("StorageMove.qml", { sioul: sioul, theme: theme })
+        }
+        const shown = storageMove.item as StorageMove
+        if (shown !== null) {
+            shown.show()
+        }
+    }
+
     // A meal's, a nap's or the night's question (later, at another time, not
     // today), or "" to note where you stopped alone (Interruption.qml, made
     // the first time); the pages showing them read again.
@@ -881,13 +894,24 @@ SioulWindow {
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
+        // "Subscribe to a calendar…" from Settings ▸ Hours ▸ Vacations and holidays: the Agenda's ⚙, its form open.
+        else if (item.kind === "settings:agendas.subscribe") {
+            window.page = 4
+            Qt.callLater(() => agendaPage.askSubscribe())
+        }
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
+        // Where Sioul keeps its lists (Settings ▸ Sharing): the window of the move.
+        else if (item.kind === "storage-move")
+            window.showStorageMove()
         else if (item.kind === "agenda")
             window.page = 4
         else if (item.kind === "sites")
             window.page = 3
+        // What reaches you's line of what is set elsewhere: a person's own times are on their sheet, in Contacts.
+        else if (item.kind === "contacts")
+            window.page = 5
         else if (item.kind === "porch")
             window.page = 0
         // New mail's notification of several messages: the mailbox at its top (decision 3).
@@ -925,8 +949,12 @@ SioulWindow {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
         }
-        else if (item.key !== "")
-            Qt.openUrlExternally(item.key)
+        // Anything else, outside Sioul; a link to a paper's or a scan's old place in the notes
+        // folder (a task's or an event's, never rewritten) opens the moved file (`storage::moved_to`).
+        else if (item.key !== "") {
+            const moved = item.key.startsWith("file:") ? sioul.movedFile(item.key) : ""
+            Qt.openUrlExternally(moved !== "" ? moved : item.key)
+        }
     }
 
     // A message, from anywhere but Mail's own list and the Porch's own rows (the
@@ -1295,6 +1323,27 @@ SioulWindow {
             calendarFile.now().show(view)
             window.bringBack()
         }
+
+        // A file of contacts read (contactimport.rs: "Import…", or opened with Sioul): its window.
+        function onContactsImportChanged() {
+            const step = sioul.contactsImport ? JSON.parse(sioul.contactsImport).step : "closed"
+            if (step !== "closed" && !contactImport.active) {
+                contactImport.now().follow()
+                window.bringBack()
+            }
+        }
+    }
+
+    // Contacts imported from a vCard or a CSV file (ContactImport.qml): made the first time one is read.
+    Later {
+        id: contactImport
+
+        sourceComponent: Component {
+            ContactImport {
+                sioul: sioul
+                theme: theme
+            }
+        }
     }
 
     // The end of the work day ("Done for today") or of the day before sleep
@@ -1386,7 +1435,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -3459,6 +3508,309 @@ SioulWindow {
             // tabs scrolling (pictures alone). First, in the log, whether Sioul's overrides of the
             // Basic style are in place (cpp/style.cpp): a flat button with words drawn with its
             // outline, a text area with its ground; the release's Flatpak job reads that line.
+            // The second wave of the full views: the Week's steps by area, at a computer's width and a
+            // phone's (SIOUL_GRAB_PHONE), the filter unfolded, then admin and leisure alone; the Time
+            // page's month with its comparison by area (pictures alone; docs/areas.md, docs/capacity.md).
+            readonly property var viewsSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    sioul.stepAreasEverything()
+                    window.page = 4
+                    agendaPage.mode = "week"
+                },
+                () => {},
+                () => {},
+                () => grabber.save("agenda-week-steps-filter"),
+                () => sioul.tickStepAreas("admin+leisure"),
+                () => {},
+                () => {},
+                () => grabber.save("agenda-week-admin-leisure"),
+                () => agendaPage.openStepAreas(),
+                () => {},
+                // A popup lies above the page: its own picture, two areas ticked, "Everything" offered.
+                () => grabber.savePopup(agendaPage.openStepAreas(), "agenda-week-steps-filter-open"),
+                () => {
+                    agendaPage.closeStepAreas()
+                    sioul.stepAreasEverything()
+                },
+                () => {
+                    window.page = 8
+                    timePage.period = "month"
+                },
+                () => {},
+                // Every area ticked, so that the table has a line for each area with time in it.
+                () => timePage.showAll(),
+                () => {},
+                () => {},
+                () => grabber.save("time-by-area"),
+                () => window.close()
+            ]
+            // Address books and contacts in bulk (wave D; SIOUL_GRAB_STEPS=address-books, SIOUL_GRAB_PHONE
+            // for a phone's): the filter row (on a phone, folded, then unfolded), a selection and its bar, the title's preview on the
+            // co-workers' cards, Contacts ⚙ with a book a co-worker can write and its switch, and the
+            // import's three steps on the demo's small file of invented people.
+            readonly property var addressBookSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.page = 5
+                },
+                () => {},
+                () => {},
+                () => grabber.save("contacts-filters"),
+                // On a phone, the filters unfolded by their button, then folded again.
+                () => {
+                    if (window.phoneGrab)
+                        grabber.named(contactsPage, "contactFilters").unfolded = true
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("contacts-filters-open")
+                },
+                () => {
+                    grabber.named(contactsPage, "contactFilters").unfolded = false
+                },
+                () => {
+                    contactsPage.selecting = true
+                    contactsPage.selectShown()
+                },
+                () => {},
+                () => grabber.save("contacts-selection"),
+                // The title's move on the co-workers' cards: each before and after, with its box.
+                () => {
+                    const next = {}
+                    for (const c of contactsPage.shown.contacts.filter(c => (c.place || "").endsWith("/team")))
+                        next[c.key] = true
+                    contactsPage.selected = next
+                },
+                () => grabber.named(contactsPage, "contactSelection").act("title"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("title-preview"),
+                () => {
+                    // The dialog is a pop-up, out of the overlay's children: closed through the bar that made it.
+                    grabber.named(contactsPage, "contactSelection").act("title").close()
+                    contactsPage.selecting = false
+                    contactsPage.selected = {}
+                },
+                // Contacts ⚙ at its address books, the co-workers' book opened: its switch, off, and why.
+                () => contactsPage.openSettings(true, "addressbooks"),
+                () => {},
+                () => {
+                    const setup = contactsPage.settingsPart("addressBooksSetup")
+                    const team = setup ? (setup.view.books || []).find(b => b.place.endsWith("/team")) : null
+                    if (team)
+                        setup.toggle(team.place)
+                },
+                () => {},
+                () => {},
+                () => grabber.saveWindow("address-books"),
+                () => contactsPage.openSettings(false, ""),
+                // The import's three steps: what the file holds, where the cards go, the count.
+                () => sioul.importContacts("/home/demo/.cache/demo-import/clients.csv"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("import-1-file"),
+                () => contactImport.item.reveal("importBook"),
+                () => {},
+                () => grabber.saveWindow("import-2-where"),
+                () => contactImport.item.count(),
+                () => {},
+                () => {},
+                () => contactImport.item.reveal("importSummary"),
+                () => {},
+                () => grabber.saveWindow("import-3-count"),
+                () => window.close()
+            ]
+            // Calls per phone, starred people and the phone's permissions (SIOUL_GRAB_STEPS=phones;
+            // the demo with SIOUL_DEMO_STARS=1): on a computer, a phone stood in beside this device,
+            // its section Calls first while its line says nothing (today's table, Varies), then set
+            // Personal with a group's row, then the Always through list saying
+            // where each is starred; on a phone, this device stood in as the phone, its card's
+            // sections unfolded one by one: Calls, what Android must allow, the restricted settings'
+            // three steps (`phonecard::demo`).
+            property string phonesId: ""
+            function phonesFold(name, open) {
+                const fold = grabber.named(parametersPage, name)
+                if (fold)
+                    fold.open = open
+                return fold
+            }
+            // The phone's card: on a computer, the demo's stand-in phone ("phone-id", `share::devices`);
+            // on a phone's layout, this device. `say`: a Personal table with the group School said first.
+            function phonesShow(say) {
+                const devices = parametersPage.devices
+                const own = (devices.view.rows || []).filter(row => row.here === true)
+                grabber.phonesId = window.phoneGrab && own.length > 0 ? own[0].id : "phone-id"
+                if (say) {
+                    sioul.deviceSay(grabber.phonesId, "calls.profile", "personal")
+                    sioul.deviceSay(grabber.phonesId, "calls.group.add", grabber.demoFrench ? "École" : "School")
+                }
+                devices.reloadAll()
+                const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                const mine = (devices.view.rows || []).filter(row => row.here === true)
+                if (window.phoneGrab) {
+                    // This device, a phone.
+                    const rows = (devices.view.rows || []).map(row => row.here === true ? Object.assign({}, row, { form: "phone", form_words: sioul.text("set-device-kind-phone") }) : row)
+                    devices.view = Object.assign({}, devices.view, { rows: rows })
+                } else {
+                    const phone = { id: "phone-id", here: false, name: "Moss", given: "Moss", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "admin+leisure", area_words: "", parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: false }
+                    devices.view = Object.assign({}, devices.view, { on: true, rows: mine.concat([phone]) })
+                }
+            }
+            readonly property var phonesSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.showParameters("devices")
+                },
+                () => {},
+                // On a computer, the phone's card while its line says nothing: what it does today, Varies.
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.phonesShow(false)
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldCalls", true)
+                    parametersPage.bringIntoView(grabber.named(parametersPage, "phoneCard-phone-id"))
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.save("devices-calls-today")
+                },
+                () => grabber.phonesShow(true),
+                () => {},
+                () => {
+                    grabber.phonesFold("foldCalls", true)
+                    parametersPage.bringIntoView(grabber.named(parametersPage, window.phoneGrab ? "foldCalls" : "phoneCard-phone-id"))
+                },
+                () => {},
+                () => grabber.save("devices-calls"),
+                () => parametersPage.scrollBy(0.25),
+                () => grabber.save("devices-calls-down"),
+                // On a phone: what Android must allow, then the restricted settings' three steps.
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldCalls", false)
+                    // The restricted settings' card open under it: room for the list's first line at the top.
+                    grabber.phonesFold("foldRestricted", true)
+                    grabber.phonesFold("foldAllow", true)
+                },
+                () => {},
+                // Laid out: the fold brought to the top.
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldAllow"))
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("devices-allow")
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-0")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("notice") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-1")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("info") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-2")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.devices.own = JSON.parse(sioul.restrictedStep("back") || "{}")
+                },
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        return
+                    grabber.phonesFold("foldAllow", false)
+                    grabber.phonesFold("foldRestricted", true)
+                },
+                () => {
+                    if (window.phoneGrab)
+                        parametersPage.bringIntoView(grabber.named(parametersPage, "foldRestricted"))
+                },
+                () => {
+                    if (window.phoneGrab)
+                        grabber.save("restricted-3")
+                },
+                // The Always through list, with where each is starred (What reaches you ▸ Exceptions).
+                () => window.showParameters("attention.exceptions"),
+                () => {},
+                () => {},
+                () => parametersPage.bringIntoView(grabber.named(parametersPage, "starsSwitch")),
+                () => {},
+                () => grabber.save("always-through"),
+                () => window.close()
+            ]
             readonly property var shellSteps: [
                 () => {
                     const button = Qt.createQmlObject("import QtQuick.Controls.Basic; Button { opacity: 0; flat: true; text: \"Probe\" }", window.contentItem)
@@ -3650,6 +4002,55 @@ SioulWindow {
             // pictures): a project's page with its client's profile, its Make the invoice in
             // the editor, its time unfolded and its preview; issued, its pane; Paid…; the
             // list; Settings ▸ Invoices. A phone's layout with "phone" (run.sh).
+            // Calendars by their address, vacations, a series that pauses (SIOUL_GRAB_STEPS=calendars;
+            // SIOUL_GRAB_PHONE for a phone's): Agenda ⚙ ▸ Your agendas with the subscribed calendars
+            // and their lines, one opened; the subscription form; Settings ▸ Hours ▸ Vacations and
+            // holidays; the choir's card with its next pause; its form at its repeat's end and its
+            // pauses. Nothing is saved, nothing fetched (SIOUL_DEMO).
+            readonly property var calendarSteps: [
+                // The minute's rounds at once (the series' pauses kept), not half a minute or more after the start.
+                () => sioul.refreshMode(),
+                () => window.page = 4,
+                () => {},
+                () => {},
+                () => agendaPage.openSettings(true, "agendas"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/calendars-agendas.png"),
+                () => agendaPage.openAgendaLine("subscribed/fr-school-zone-a"),
+                () => {},
+                () => {},
+                () => agendaPage.revealSetting("subscriptionLine"),
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/calendars-agenda-line.png"),
+                () => agendaPage.askSubscribe(),
+                () => {},
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/calendars-subscribe.png"),
+                () => agendaPage.openSettings(false),
+                () => window.showParameters("time_off"),
+                () => {},
+                () => {},
+                () => grabber.save("calendars-vacations"),
+                () => window.page = 4,
+                () => agendaPage.mode = "week",
+                () => {},
+                () => {},
+                () => agendaPage.openTitled(sioul.text("qt-locale").indexOf("fr") === 0 ? "Répétition" : "Choir"),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("calendars-card", cardHost),
+                () => agendaPage.eventForm().edit(cardHost.eventCard.event.key, ""),
+                () => {},
+                () => {},
+                () => agendaPage.eventForm().showRepeat(),
+                () => {},
+                () => {},
+                () => grabber.savePopup(agendaPage.eventForm(), "calendars-event-form"),
+                () => agendaPage.eventForm().close(),
+                () => window.close()
+            ]
             readonly property var invoicesSteps: [
                 () => {
                     window.page = 7
@@ -4007,60 +4408,59 @@ SioulWindow {
                 () => window.close()
             ]
             // What reaches you (SIOUL_GRAB_STEPS=attention; SIOUL_GRAB_PHONE for a
-            // phone's): Settings ▸ What reaches you by time, a time's rows and a
-            // cell's choices; by person (mail, then calls), a row's times on a
-            // phone; Sioul's own and a fixed cell's why; the exceptions; do not
-            // disturb; then a contact's card and how they reach you.
+            // phone's; a computer's at 1400 wide): Your rules top to bottom, Sioul's own,
+            // Moments, a circle's choices, Who is in which circle; What comes when, a
+            // fixed cell's why, a row's times on a phone; a contact's card and how they
+            // reach you; then Busy on an event's card and on a task's panel.
             readonly property var attentionSteps: [
-                () => window.showParameters("attention"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-time"),
-                () => parametersPage.scrollBy(0.5),
-                () => {},
-                () => grabber.save("attention-time-more"),
-                // A time's rows, sleep's; a cell's choices in words.
-                () => window.showParameters("attention.sleep"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-sleep"),
-                () => window.reachesTab().openCell("mail.safe", "sleep"),
-                () => {},
-                () => grabber.saveWindow("attention-choices"),
-                () => window.reachesTab().closeChoices(),
-                // By person: mail, then calls; on a phone, a row's nine values.
-                () => window.showParameters("attention.mail"),
-                () => {},
-                () => {},
-                () => grabber.save("attention-person-mail"),
-                () => window.showParameters("attention.calls"),
-                () => {},
-                () => grabber.save("attention-person-calls"),
+                // Settings ▸ What reaches you: Your rules, top to bottom; a circle's choices.
                 () => {
-                    window.showParameters("attention.mail")
-                    window.reachesTab().rowOpen = "mail.neutral"
+                    if (!window.phoneGrab)
+                        window.width = 1400
+                    window.showParameters("attention")
                 },
                 () => {},
-                () => grabber.save("attention-row"),
-                // Sioul's own, and a fixed cell's why.
+                () => {},
+                () => grabber.save("attention-rules"),
+                () => parametersPage.scrollBy(0.45),
+                () => {},
+                () => grabber.save("attention-rules-2"),
+                () => parametersPage.scrollBy(0.45),
+                () => {},
+                () => grabber.save("attention-rules-3"),
                 () => window.showParameters("attention.own"),
                 () => {},
                 () => {},
                 () => grabber.save("attention-own"),
-                () => window.reachesTab().openCell("doses", "dnd"),
+                () => window.showParameters("attention.dnd"),
                 () => {},
-                () => grabber.saveWindow("attention-fixed"),
+                () => {},
+                () => grabber.save("attention-moments"),
+                () => window.showParameters("attention.person"),
+                () => {},
+                () => {},
+                () => window.reachesTab().openChoice("contacts", "mail"),
+                () => {},
+                () => grabber.saveWindow("attention-choices"),
                 () => window.reachesTab().closeChoices(),
-                // The exceptions, your safe senders put on Always through; and do not disturb.
+                // Who is in which circle: your safe senders put on Always through first.
                 () => sioul.dndChange("add-safe", "{}"),
                 () => window.showParameters("attention.exceptions"),
                 () => {},
                 () => {},
-                () => grabber.save("attention-exceptions"),
-                () => window.showParameters("attention.dnd"),
+                () => grabber.save("attention-circles"),
+                // What comes when: the grid in words; a fixed cell's why; on a phone, a row's values.
+                () => window.showParameters("attention.table"),
                 () => {},
                 () => {},
-                () => grabber.save("attention-dnd"),
+                () => grabber.save("attention-table"),
+                () => window.reachesTab().openCell("doses", "dnd"),
+                () => {},
+                () => grabber.saveWindow("attention-fixed"),
+                () => window.reachesTab().closeChoices(),
+                () => window.reachesTab().rowOpen = "mail.neutral",
+                () => {},
+                () => grabber.save("attention-row"),
                 // A contact's card, and their sheet.
                 () => window.page = 5,
                 () => {},
@@ -4072,6 +4472,22 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(personSheet.item, "attention-sheet"),
                 () => personSheet.item.close(),
+                // Busy: an event's card, a task's panel.
+                () => window.page = 4,
+                () => agendaPage.mode = "week",
+                () => {},
+                () => {},
+                () => agendaPage.openTitled("Dr Varga"),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("busy-event-card", cardHost),
+                () => cardHost.close(),
+                () => window.page = 1,
+                () => {},
+                () => tasksPage.openFirst(),
+                () => {},
+                () => {},
+                () => grabber.save("busy-task"),
                 () => window.close()
             ]
             // Settings in tabs; the Health page in its order; a site's menu by a right
@@ -4401,6 +4817,61 @@ SioulWindow {
                 () => parametersPage.toEnd(),
                 () => {},
                 () => grabber.save("share-on"),
+                () => window.close()
+            ]
+            // Where Sioul keeps its lists, on a demo profile of the old layout
+            // (SIOUL_DEMO_OLD_LAYOUT=1 SIOUL_GRAB_STEPS=storage, a phone's with
+            // SIOUL_GRAB_PHONE): the window of the move before the press, top and
+            // end; the move made on the demo profile; then Settings ▸ Sharing's line
+            // of the old files with "Take them out", and what the press said.
+            readonly property var storageSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.showStorageMove()
+                },
+                () => {},
+                () => {},
+                () => grabber.saveWindow("storage-move"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.toEnd()
+                },
+                () => {},
+                () => grabber.saveWindow("storage-move-end"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.moveNow()
+                },
+                () => {},
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("storage-moved"),
+                () => {
+                    const shown = storageMove.item as StorageMove
+                    if (shown !== null)
+                        shown.close()
+                },
+                () => {
+                    window.page = 12
+                    parametersPage.section = "files"
+                },
+                () => {},
+                () => parametersPage.revealNamed("shareStorage"),
+                () => {},
+                () => grabber.save("storage-old-files"),
+                () => sioul.takeOutOldFiles(),
+                () => {},
+                () => {},
+                () => {},
+                () => parametersPage.revealNamed("shareStorage"),
+                () => {},
+                () => grabber.save("storage-taken"),
                 () => window.close()
             ]
             // Settings ▸ Your folder and sharing before sharing, pictures only
@@ -5588,6 +6059,19 @@ SioulWindow {
     }
     Loader {
         id: doseTaken
+    }
+    Loader {
+        id: storageMove
+    }
+    // Every device knows the new places, nothing moved here yet: the window of the move, once.
+    Connections {
+        target: sioul
+
+        function onStorageMoveChanged() {
+            const view = sioul.storageMove ? JSON.parse(sioul.storageMove) : ({})
+            if (view.offer === true && !sioul.viewFlag("storage-move-said"))
+                window.showStorageMove()
+        }
     }
     // Recents' picture of Sioul kept out while a health card is open (Android
     // 13 and later; RecentsGuard.qml): the Health page, a dose's question, a

@@ -63,7 +63,7 @@ pub enum Kind {
     /// A secret kept in the system keyring, typed and never shown: `value` says whether one is kept.
     Secret,
     /// Nothing to change here: a button to where it is changed (`value`: the
-    /// window's `openThing` kind, "settings:<key>" for another setting).
+    /// window's `openThing` kind, `"settings:<key>"` for another setting).
     Link,
     /// Nothing to change: a sentence (`help`) and a button (`label`) that
     /// does one thing when pressed, never by itself; pressing it saves `true`
@@ -96,6 +96,16 @@ pub enum Kind {
     /// reads and writes them itself (`availability`, `share_availability`).
     /// Nothing in `value`.
     Availability,
+    /// The address books, the window's own block (`AddressBooksSetup.qml`,
+    /// wave D): each book's line, whose it is, shared with whom, written or
+    /// read only; made, renamed, merged, removed, shared, imported into and
+    /// exported (`addressbooks`). The window reads and writes them itself
+    /// (`address_books_setup`…). Nothing in `value`.
+    AddressBooks,
+    /// The changes to many contacts of the last thirty days, each undone as a
+    /// whole, the window's own block (`ContactBatches.qml`, review F2), under
+    /// its own heading. Nothing in `value`.
+    ContactBatches,
     /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
@@ -187,8 +197,9 @@ impl Builder<'_> {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does).
-            .filter(|c| (holding.is_empty() || c.holds(holding)) && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
+            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does);
+            // nor a calendar subscribed by its address, renamed and stopped on its own line in Your agendas.
+            .filter(|c| (holding.is_empty() || c.holds(holding)) && c.account != crate::vdir::SUBSCRIBED && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars change through its Calendar API (part 5);
@@ -268,7 +279,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The pages whose ⚙ holds settings that only they read, and that a link
 /// by key opens there rather than in Settings (the settings rework of 18
 /// November 2026: a setting one page reads lives behind that page's ⚙).
-pub const PAGES: &[&str] = &["sites", "bitwarden", "agenda", "tasks", "money", "texts"];
+pub const PAGES: &[&str] = &["notes", "sites", "bitwarden", "agenda", "tasks", "money", "texts"];
 
 /// Where a setting lives, by its key or by its page's own name: the page of
 /// `PAGES` whose ⚙ holds it, or None for Settings. The window opens a link
@@ -340,8 +351,17 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         // before, `[letters] inbox` as it was: the old setting is the one read).
         "letters" => {
             b.group = tr.text("set-letters-group", None);
-            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
+            // The letters' folder, this device's own: read once Sioul's lists left the notes
+            // folder (docs/notes-folder.md, "What lives where"); chosen again, its scans follow.
+            b.push("letters.folder", "letters-folder", Kind::Folder, SettingValue::Text(config.letters_folder().display().to_string()));
+            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.letters_inbox().map(|inbox| inbox.display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+        }
+        // The Papers page's own: the papers' folder, this device's own, read once
+        // Sioul's lists left the notes folder; chosen again, the files follow.
+        "papers" => {
+            b.group = tr.text("set-papers-group", None);
+            b.push("papers.folder", "papers-folder", Kind::Folder, SettingValue::Text(config.papers_folder().display().to_string()));
         }
         "porch" => {
             // Working hours and days off are Sioul's as a whole: in the settings page.
@@ -460,26 +480,42 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who is on which list, under Settings ▸ What reaches you ▸ By person
-        // (its grids say when each list reaches you): the four lists; the
-        // people placed on them; your contacts' categories, each on a list or none.
+        // Who is in which circle, under Settings ▸ What reaches you ▸ People:
+        // three lists (Safe, Restricted, Blocked); the people placed on them; the
+        // groups of your contacts (their cards' categories), each on a list or none.
+        // Your contacts are everyone in your address books, with nothing to set:
+        // the list of them and the choice of them leave the page. The lines
+        // `neutral-senders.txt` holds keep being read (`porch::Senders`), so that
+        // nothing changes for someone set so, and stay in view (review C1): the
+        // addresses, numbers and domains named there in one line, shown only
+        // when there are some, to read and remove; a card or a group on it shows
+        // as what it is, "Your contacts", never "No list". A sheet and unblocking
+        // may still write there (`reaches::person_change`, `porch::unblock`):
+        // what they write appears in that line.
         "senders" => {
-            for (key, id, path) in [
-                ("safe", "safe", config.safe_senders_path()),
-                ("neutral", "neutral", config.neutral_senders_path()),
-                ("restricted", "restricted", config.restricted_senders_path()),
-                ("blocked", "blocked-all", config.blocked_senders_path()),
-            ] {
+            for (key, id, path) in [("safe", "safe", config.safe_senders_path()), ("restricted", "restricted", config.restricted_senders_path()), ("blocked", "blocked-all", config.blocked_senders_path())] {
                 // Addresses and patterns, then numbers as written.
                 let list = SenderList::load(&path);
                 b.push(key, id, Kind::Senders, SettingValue::Texts(list.entries().into_iter().chain(list.numbers().iter().cloned()).collect()));
             }
+            let named = SenderList::load(&config.neutral_senders_path());
+            let named: Vec<String> = named.entries().into_iter().chain(named.numbers().iter().cloned()).collect();
+            if !named.is_empty() {
+                let mut args = crate::i18n::args();
+                args.set("n", named.len());
+                let s = b.push("neutral", "sender-named-contacts", Kind::Senders, SettingValue::Texts(named));
+                s.label = tr.text("set-sender-named-contacts", Some(&args));
+            }
             let senders = crate::porch::Senders::load(config);
-            let choices = |none: &str| -> Vec<Choice> {
+            // No list, Safe, Restricted, Blocked: your contacts are no choice. A group or a card
+            // on the list of your contacts (an older page, a sheet) shows so, with that choice
+            // too, so that No list takes it off.
+            let choices = |none: &str, named: bool| -> Vec<Choice> {
                 std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text(none, None) })
-                    .chain(crate::porch::Standing::ALL.iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
+                    .chain(crate::porch::Standing::ALL.iter().filter(|l| named || **l != crate::porch::Standing::Neutral).map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
                     .collect()
             };
+            let shown = |standing: Option<crate::porch::Standing>| standing.map_or("", |s| s.as_str());
             // The people placed on a list themselves (their card): changed here or on their card.
             let mut cards: Vec<String> = Vec::new();
             for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
@@ -501,14 +537,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                     .collect();
                 named.sort_by_key(|(name, _)| crate::text::fold(name).into_iter().collect::<String>().to_lowercase());
                 for (name, uid) in named {
-                    let standing = senders.card_standing(&uid).map_or("", |s| s.as_str());
+                    let standing = shown(senders.card_standing(&uid));
                     let s = b.push(&format!("{}{uid}", crate::porch::CONTACT), "sender-person", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices("sender-no-choice");
+                    s.choices = choices("sender-no-choice", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
-            // Your contacts' categories, those in use and those on a list.
+            // The groups of your contacts, those in use and those on a list.
             let mut names = senders.contacts.names();
             for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
                 for name in list.categories() {
@@ -520,13 +556,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             if !names.is_empty() {
                 b.group = tr.text("set-sender-categories-group", None);
                 b.note(tr.text("set-sender-categories-note", None), Vec::new());
-                let choices = choices("sender-no-list");
                 for name in names {
-                    let standing = senders.category_standing(&name).map_or("", |s| s.as_str());
+                    let standing = shown(senders.category_standing(&name));
                     let s = b.push(&format!("{}{name}", crate::porch::CATEGORY), "sender-category", Kind::Choice, SettingValue::Text(standing.into()));
                     s.label = name;
                     s.help = String::new();
-                    s.choices = choices.clone();
+                    s.choices = choices("sender-no-list", standing == crate::porch::Standing::Neutral.as_str());
                 }
             }
         }
@@ -623,7 +658,21 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.push("github.mentioned", "github-mentioned", Kind::Bool, SettingValue::Bool(config.github.mentioned));
             }
         }
+        // The Notes page's own: the notes folder first (this device's own, `case_store`),
+        // your Markdown notes, which stay yours; then where new notes go.
         "notes" => {
+            b.group = tr.text("set-files-group", None);
+            b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
+            // The projects' file under its first name: renamed only when you say
+            // so (`projects::rename_file`); with both names there, which one is read,
+            // where Sioul's lists are (the notes folder until they moved: `Config::records_root`).
+            if let Some(root) = config.records_root() {
+                if crate::projects::only_old_in(&root) {
+                    b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
+                } else if crate::projects::both_in(&root) {
+                    b.note(tr.text("set-projects-both", None), Vec::new());
+                }
+            }
             b.push("notes_folder", "notes-folder", Kind::Text, SettingValue::Text(config.notes_folder.clone().unwrap_or_else(|| "notes".into())));
         }
         // How long text reads, behind "Aa" where it is read: a message, a note.
@@ -677,7 +726,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 0.0, 10.0, 1.0, "");
         }
         "contacts" => {
-            b.collections(config, "address-books", crate::vdir::Kind::Contacts, "");
+            // The address books' own block (wave D), under its heading: their lines, made, renamed, merged, removed, shared.
+            b.group = tr.text("set-address-books", None);
+            b.push("addressbooks", "address-books", Kind::AddressBooks, SettingValue::Text(String::new()));
+            // The changes to many contacts of the last thirty days, each undone (review F2), under its own heading.
+            b.group = tr.text("books-batches", None);
+            b.push("contacts.batches", "contacts-batches", Kind::ContactBatches, SettingValue::Text(String::new()));
+            b.group = tr.text("set-contacts-more-group", None);
             b.push("map.geocode", "map-geocode", Kind::Bool, SettingValue::Bool(config.map.geocode));
             b.push("map.tiles", "map-tiles", Kind::Text, SettingValue::Text(config.map.tiles.clone().unwrap_or_default()));
             // The country of numbers written without one: "04 65…" found as "+33 4 65…" (phones.rs).
@@ -698,30 +753,18 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
             // The sites' colours are the Sites page's own, behind its ⚙ (only it reads them).
             // What this device is for what follows you (`device_kind`, docs/android.md,
-            // "Tablets"), this device's own: in its own tab on Android (Settings ▸ This
-            // phone, or This tablet), in Display elsewhere. "" as the system says, which
-            // the window names (backend.rs: Android's width is the app's to read).
-            b.section = if cfg!(target_os = "android") { "phone".into() } else { "look".into() };
+            // "Tablets"), this device's own: in Settings ▸ Devices on Android (its card there
+            // reads the row by its key: review of `phones`, L20), in Display elsewhere. "" as
+            // the system says, which the window names (backend.rs: Android's width is the app's to read).
+            b.section = if cfg!(target_os = "android") { "devices".into() } else { "look".into() };
             b.group = tr.text("set-device-group", None);
             let s = b.push("device_kind", "device-kind", Kind::Choice, SettingValue::Text(config.device_kind.clone().unwrap_or_default()));
             let found = crate::device_kind::DeviceKind::guessed(cfg!(target_os = "android"), None);
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: device_kind_found(tr, found) })
                 .chain(crate::device_kind::DeviceKind::ALL.iter().map(|kind| Choice { value: SettingValue::Text(kind.word().to_string()), label: tr.text(&format!("set-device-kind-{}", kind.word()), None) }))
                 .collect();
-            // Your folder: notes, and beside them projects, budgets, letters. How far back
-            // mail and calendars go is the accounts', at the top of Accounts.
-            b.section = "files".into();
-            b.group = tr.text("set-files-group", None);
-            b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
-            // The projects' file under its first name: renamed only when you say
-            // so (`projects::rename_file`); with both names there, which one is read.
-            if let Some(root) = config.notes_root_path() {
-                if crate::projects::only_old_in(&root) {
-                    b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
-                } else if crate::projects::both_in(&root) {
-                    b.note(tr.text("set-projects-both", None), Vec::new());
-                }
-            }
+            // The notes folder is the Notes page's (its ⚙), the sharing Settings' own
+            // tab ("files", its id kept for older links: SharePanel.qml).
             b.section = "hours".into();
             b.group = tr.text("set-hours-group", None);
             let week = |windows: &[crate::window::AdminWindow]| SettingValue::Windows(windows.iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect());
@@ -735,7 +778,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("needs-title", None);
             b.said("needs", Kind::Needs, tr.text("needs-title", None), tr.text("needs-help", None), SettingValue::Text(String::new()));
             b.group = tr.text("set-time-off-group", None);
-            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
+            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone(), kind: t.kind.clone() }).collect();
             b.push("time_off", "time-off", Kind::TimeOff, SettingValue::TimeOff(off));
             // What reaches you, and when (docs/attention.md): the matrix is the tab's own
             // (`attention::grid`, the window's `reachesView`); these are the switches beside it.
@@ -749,6 +792,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long informative notices last, one length for all (docs/notifications.md).
             let s = b.push("notices.informative_minutes", "notices-informative", Kind::Int, SettingValue::Int(i64::from(config.notices.minutes())));
             Builder::range(s, f64::from(crate::notice::SHORTEST), f64::from(crate::notice::LONGEST), 1.0, "min");
+            // The times sites and other apps' automatons are gathered at (their cells say "gathered"):
+            // under Sioul's own notices ▸ Sites and apps, on the page.
+            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // Free time's "Nothing at all": its card's switch.
             b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
@@ -767,8 +813,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
-            // The times sites and other apps' automatons are gathered at: their cells say "gathered".
-            b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
@@ -821,7 +865,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.push("mcp.work_accounts", "mcp-work-accounts", Kind::Bool, SettingValue::Bool(config.mcp.work_accounts));
             }
             b.group = tr.text("set-ai-projects-group", None);
-            let projects = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+            let projects = config.records_root().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
             b.note(tr.text(if projects.is_empty() { "set-ai-projects-none" } else { "set-ai-projects-note" }, None), Vec::new());
             for project in projects {
                 b.said(&format!("project.{}.ai", project.id), Kind::Bool, project.title.clone(), String::new(), SettingValue::Bool(project.ai));
@@ -1237,7 +1281,7 @@ pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value
                 _ => config.blocked_senders_path(),
             }
         }
-        _ if key.starts_with("project.") => config()?.notes_root_path().map_or_else(|| config_path.to_path_buf(), |root| crate::projects::file_in(&root)),
+        _ if key.starts_with("project.") => config()?.records_root().map_or_else(|| config_path.to_path_buf(), |root| crate::projects::file_in(&root)),
         _ => config_path.to_path_buf(),
     };
     crate::filelock::with_lock(&kept_in, || {
@@ -1253,7 +1297,7 @@ pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value
 /// A setting's value as the files hold it now: its row's, in whichever view shows it.
 fn current_value(config: &Config, key: &str) -> Option<SettingValue> {
     let tr = crate::i18n::Translator::new("en");
-    let store = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok());
+    let store = config.records_root().and_then(|root| crate::projects::ProjectStore::load(&root).ok());
     let own = key.strip_prefix("project.").and_then(|k| k.strip_suffix(".routes")).map(|id| format!("project:{id}")).or_else(|| key.strip_prefix("account.").and_then(|k| k.split('.').next()).map(|id| format!("account:{id}")));
     let views: Vec<String> = own.into_iter().chain(VIEWS.iter().map(|v| (*v).to_string())).collect();
     views.iter().find_map(|view| for_view(view, config, &tr, &[], store.as_ref()).into_iter().find(|row| row.key == key).map(|row| row.value))
@@ -1429,21 +1473,21 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ if none => &[],
                 _ => return Err(format!("{key}: a list expected")),
             };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             let store = crate::projects::ProjectStore::load(&root).map_err(|e| e.to_string())?;
             let hidden: Vec<String> = store.projects.iter().map(|c| c.id.clone()).filter(|id| !shown.contains(id)).collect();
             set_value(config_path, "porch.hidden_projects", &SettingValue::Texts(hidden))
         }
         // The projects' file renamed, when its button is pressed (`projects::rename_file`).
         "projects.rename" => {
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::rename_file(&root).map(|_| ())
         }
         // A project opened to AI agents, or closed: `ai` on its entry in the projects' file (docs/ai.md).
         _ if key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).is_some_and(|id| !id.is_empty()) => {
             let id = key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).unwrap_or_default();
             let SettingValue::Bool(open) = value else { return Err(format!("{key}: on or off expected")) };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::set_ai(&crate::projects::file_in(&root), id, *open)
         }
         _ if key.starts_with("project.") && key.ends_with(".routes") => {
@@ -1453,7 +1497,7 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ if none => &[],
                 _ => return Err(format!("{key}: routes expected")),
             };
-            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let root = config.records_root().ok_or_else(|| format!("{key}: no notes folder"))?;
             crate::projects::set_routes(&crate::projects::file_in(&root), id, routes)
         }
         // A row of the matrix of what reaches you, its words: read, checked, written whole
@@ -1501,7 +1545,7 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             }
             set_value(config_path, key, &SettingValue::Float(wanted))
         }
-        // The call screening (Settings ▸ This phone ▸ Call screening): a key at a time, its words checked.
+        // The call screening (Settings ▸ Devices ▸ this phone's card ▸ Call screening): a key at a time, its words checked.
         _ if key.starts_with("screening.") => crate::screening::set(config_path, key, value),
         // How long informative notices last: written within what is read (one to sixty minutes).
         "notices.informative_minutes" => {
@@ -1634,7 +1678,9 @@ mod tests {
         // and depend on what this computer holds: left out.
         // Your contacts' categories are this computer's: left out too.
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
-        assert_eq!(keys("notes"), vec!["notes_folder"]);
+        // The notes folder first (the projects' file's renaming shows only for a folder holding its
+        // first name: `the_projects_file_is_renamed_on_demand`), then where new notes go.
+        assert_eq!(keys("notes"), vec!["case_store", "notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
         assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "mail.leave_on_spam", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing", "mail.leave_spam"]);
         // An address's own, on its card in Accounts; what all share, under them.
@@ -1650,7 +1696,8 @@ mod tests {
         assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
         assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
-        assert_eq!(keys("letters"), vec!["letters.inbox"]);
+        assert_eq!(keys("letters"), vec!["letters.folder", "letters.inbox"]);
+        assert_eq!(keys("papers"), vec!["papers.folder"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).
@@ -1660,8 +1707,8 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
-                "language", "theme", "places_named", "passwords_shown", "device_kind", "case_store", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed", "reminders.gathered",
+                "language", "theme", "places_named", "passwords_shown", "device_kind", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
@@ -1685,11 +1732,11 @@ mod tests {
         let hours: Vec<(String, Kind, String)> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "hours").map(|s| (s.key, s.kind, s.group)).collect();
         assert_eq!(
             hours,
-            [("window", Kind::Windows, "Working hours and quiet time"), ("window.admin", Kind::Windows, "Working hours and quiet time"), ("needs", Kind::Needs, "Meals, rest and sleep"), ("time_off", Kind::TimeOff, "Days off")].map(|(k, kind, g)| (k.to_string(), kind, g.to_string()))
+            [("window", Kind::Windows, "Working hours and quiet time"), ("window.admin", Kind::Windows, "Working hours and quiet time"), ("needs", Kind::Needs, "Meals, rest and sleep"), ("time_off", Kind::TimeOff, "Vacations and holidays")].map(|(k, kind, g)| (k.to_string(), kind, g.to_string()))
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
-        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
@@ -1698,8 +1745,9 @@ mod tests {
         let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
-        assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
-        assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
+        assert_eq!(keys("senders"), vec!["safe", "restricted", "blocked"]);
+        // The address books' own block first (wave D), whatever this computer holds.
+        assert_eq!(keys("contacts"), vec!["addressbooks", "contacts.batches", "map.geocode", "map.tiles", "contacts.region"]);
         // The sites' colours, which only the Sites page reads, then where Bitwarden is set.
         assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "link.bitwarden"]);
         // Bitwarden, Accounts' card: its account, its server, the lock after a time (the
@@ -1734,13 +1782,15 @@ mod tests {
     fn a_link_by_key_opens_the_page_that_holds_it() {
         let config: Config = toml::from_str("").unwrap();
         let tr = Translator::new("en");
-        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("texts", Some("texts")), ("texts.sending", Some("texts")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
+        for (key, page) in [("screen_colours", Some("sites")), ("calmer_colours", Some("sites")), ("sites", Some("sites")), ("case_store", Some("notes")), ("notes_folder", Some("notes")), ("files", None), ("link.bitwarden", Some("sites")), ("bitwarden", Some("bitwarden")), ("bitwarden.email", Some("bitwarden")), ("bitwarden.server", Some("bitwarden")), ("bitwarden.lock_after", Some("bitwarden")), ("reminders.before_event", Some("agenda")), ("reminders.waits", Some("tasks")), ("reminders.payment_days", Some("money")), ("money", Some("money")), ("texts", Some("texts")), ("texts.sending", Some("texts")), ("reminders.asked_days", None), ("reminders_closed", None), ("reminders.gathered", None), ("theme", None), ("window", None), ("needs", None), ("time_off", None), ("words.languages", None), ("attention.pause", None)] {
             assert_eq!(page_of(key, &config, &tr), page, "{key}");
         }
         // Each page's settings are its own: none of them is in Settings too.
         let parameters: Vec<String> = for_view("parameters", &config, &tr, &[], None).into_iter().map(|s| s.key).collect();
         for page in PAGES {
-            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note) {
+            // "collections" is the Agenda's and Tasks' alike, each listing its own kind: it is
+            // there only when the folders hold some, which another test's stand-ins may.
+            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections") {
                 assert!(!parameters.contains(&row.key), "{} is in {page} and in Settings", row.key);
                 assert_eq!(page_of(&row.key, &config, &tr), Some(*page), "{}", row.key);
             }
@@ -1868,7 +1918,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
-        let day = |id: &str, label: &str| TimeOffValue { id: id.into(), from: "2026-08-01".into(), until: "2026-08-15".into(), label: label.into() };
+        let day = |id: &str, label: &str| TimeOffValue { id: id.into(), from: "2026-08-01".into(), until: "2026-08-15".into(), label: label.into(), kind: String::new() };
         std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer\"\n").unwrap();
         // Another device names it otherwise meanwhile; this one changes its label from what it showed.
         std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer holidays\"\n").unwrap();
@@ -2051,7 +2101,7 @@ mod tests {
         std::fs::write(&path, format!("case_store = \"{}\"\n", notes.display().to_string().replace('\\', "/"))).unwrap();
         let config = Config::load(&path).unwrap();
         let tr = Translator::new("en");
-        let row = || for_view("parameters", &config, &tr, &[], None).into_iter().find(|s| s.section == "files" && (s.key == "projects.rename" || s.kind == Kind::Note));
+        let row = || for_view("notes", &config, &tr, &[], None).into_iter().find(|s| s.key == "projects.rename" || s.kind == Kind::Note);
         // No projects' file yet: nothing to say.
         assert!(row().is_none());
         // Its first name only: a button, never pressed by itself.

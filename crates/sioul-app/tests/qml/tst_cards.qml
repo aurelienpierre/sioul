@@ -54,8 +54,8 @@ Item {
         property string mealTo: "13:00"
         property var events: ({
             "/c/bus.ics": { id: "event:c/bus.ics", key: "/c/bus.ics", uid: "bus", start: 3999997800, end: 3999999300, all_day: false, summary: "Bus 24", when: "Monday · 08:30 – 08:55", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
-            "/c/dentist.ics": { id: "event:c/dentist.ics", key: "/c/dentist.ics", uid: "dentist", start: 4000000000, end: 4000003600, all_day: false, summary: "Dentist", when: "Monday · 09:00 – 10:00", before: 15, after: 0, location: "Rue Blanche", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
-            "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "" },
+            "/c/dentist.ics": { id: "event:c/dentist.ics", key: "/c/dentist.ics", uid: "dentist", start: 4000000000, end: 4000003600, all_day: false, summary: "Dentist", when: "Monday · 09:00 – 10:00", before: 15, after: 0, location: "Rue Blanche", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "", marked_busy: true, busy_writable: true },
+            "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "", marked_busy: true, busy_writable: false },
             "/c/lea/swim.ics": { id: "event:c/lea/swim.ics", key: "/c/lea/swim.ics", uid: "swim", start: 4000010000, end: 4000013600, all_day: false, summary: "Swimming", when: "Monday · 11:46 – 12:46", before: 0, after: 0, location: "Pool", calendar: "Léa", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "",
                 child: { kind: "activity", kinds: [{ id: "activity", label: "holder-kind-activity" }, { id: "dentist", label: "holder-kind-dentist" }], state: "nobody", line: "holder-line-nobody", back: "", other: "Sam", proposal: "other", why: "holder-why-custody", busy: "holder-busy", writable: true } },
             // A meeting with others, to be confirmed, at a place with its point (the event card, 5 November 2026).
@@ -105,6 +105,11 @@ Item {
         function textArgs(key, args) { return key }
         // An event's time by its start (0: its next), as `agenda::event_card` reads it.
         function eventCard(key, start) {
+            // One changed time of a series (its RECURRENCE-ID), and an event of a calendar free as a whole (review B7).
+            if (key === "/c/choir.ics")
+                return JSON.stringify({ id: "event:c/choir.ics", key: key, uid: "choir", start: 4000400000, end: 4000403600, all_day: false, summary: "Choir", when: "Friday", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: true, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "", marked_busy: true, busy_writable: true, busy_why: "", rid: "20961005T090000Z" })
+            if (key === "/c/market.ics")
+                return JSON.stringify({ id: "event:c/market.ics", key: key, uid: "market", start: 4000500000, end: 4000503600, all_day: false, summary: "Market", when: "Saturday", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "", marked_busy: false, busy_writable: false, busy_why: "Its calendar is free as a whole.", rid: "" })
             if (key === "/c/yoga.ics") {
                 const at = start === 0 ? mock.s1 : start
                 if (at !== mock.s1 && at !== mock.s2)
@@ -115,6 +120,11 @@ Item {
             return event && (start === 0 || start === event.start) ? JSON.stringify(event) : "{}"
         }
         function eventReminder(key, start) { return "{}" }
+        // Busy or free from the card (`pim::set_event_busy`): what was asked, recorded.
+        function setEventBusy(key, busy, rid) {
+            mock.calls.push({ what: "setEventBusy", key: key, busy: busy, rid: rid })
+            return ""
+        }
         function reminderChoices(current) { return "[]" }
         function eventPairing(key) { return "null" }
         function related(uri) { return "[]" }
@@ -165,6 +175,9 @@ Item {
             mock.calls.push({ what: "eventForm", key: key })
             if (key === "/c/board.ics")
                 return JSON.stringify({ edit: { title: "Board", location: "", notes: "", start: "2096-10-02T09:00", end: "2096-10-02T10:00", all_day: false, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "event-change-with-others", read_only: false, with_others: true, organized: false, guests: [] })
+            // An away day its file says busy (TRANSP:OPAQUE): a mark said (review B13).
+            if (key === "/c/away.ics")
+                return JSON.stringify({ edit: { title: "Away", location: "", notes: "", start: "2096-10-06", end: "2096-10-06", all_day: true, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "", busy: true }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "", read_only: false, with_others: false, organized: false, guests: [] })
             if (key === "/c/planning.ics")
                 return JSON.stringify({ edit: { title: "Planning", location: "", notes: "", start: "2096-10-03T09:00", end: "2096-10-03T10:00", all_day: false, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "", read_only: false, with_others: false, organized: true, guests: [{ address: "anne@example.org", name: "Anne Exemple" }] })
             return JSON.stringify({ edit: { title: "Dentist", location: "Rue Blanche", notes: "", start: mock.formStart, end: mock.formEnd, all_day: false, repeat: "", margins: { before: 15, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "", read_only: false })
@@ -1004,6 +1017,118 @@ Item {
         // The task's card: a field being typed in is saved before the card goes
         // to another task (review of 590eb18, later 9); a new task's form makes
         // the task when its title is given, and goes on as its card.
+        // Busy (« Indisponible ») on an event's card: its mark shown, changed at once; a
+        // meeting with others keeps its organizer's, shown, never written.
+        function test_busy_on_an_event_s_card() {
+            const host = makeHost()
+            verify(host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 }))
+            const busy = root.find(host.eventCard, "eventCardBusy")
+            verify(busy !== null && busy.visible && busy.enabled && busy.checked, "busy, as a time is unless said free")
+            busy.toggle()
+            busy.toggled()
+            const asked = mock.calls.filter(c => c.what === "setEventBusy")
+            compare(asked.length, 1, JSON.stringify(mock.calls))
+            compare(asked[0].key + " " + asked[0].busy, "/c/dentist.ics false")
+            // One changed time: its RECURRENCE-ID goes with it, so that only that time changes (review B7).
+            verify(host.show({ kind: "event", srcKey: "/c/choir.ics", srcStart: 4000400000 }))
+            wait(20)
+            mock.calls = []
+            const choir = root.find(host.eventCard, "eventCardBusy")
+            choir.toggle()
+            choir.toggled()
+            compare(mock.calls.filter(c => c.what === "setEventBusy")[0].rid, "20961005T090000Z")
+            // A calendar free as a whole: greyed, saying why.
+            verify(host.show({ kind: "event", srcKey: "/c/market.ics", srcStart: 4000500000 }))
+            wait(20)
+            const free = root.find(host.eventCard, "eventCardBusy")
+            verify(free.visible && !free.enabled, "greyed")
+            host.show({ kind: "event", srcKey: "/c/board.ics", srcStart: 4000172800 })
+            wait(20)
+            const theirs = root.find(host.eventCard, "eventCardBusy")
+            verify(theirs.visible && !theirs.enabled, "a meeting with others: shown, not written")
+        }
+
+        // Busy in an event's form: a time busy, a whole day free, unless the switch was
+        // pressed; saved with the form; a meeting with others' greyed.
+        function test_busy_in_an_event_s_form() {
+            const dialog = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            dialog.edit("/c/dentist.ics", "")
+            const busy = root.find(dialog.contentItem, "eventBusy")
+            verify(busy !== null && busy.visible && busy.enabled && busy.checked)
+            busy.toggle()
+            busy.toggled()
+            mock.calls = []
+            dialog.save()
+            const saved = mock.calls.filter(c => c.what === "saveEvent")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare(saved[0].edit.busy, false, "said free")
+            // A new event made a whole day: free, as Google makes it; once pressed, the switch stays.
+            dialog.edit("", "2096-10-05")
+            const allDay = root.find(dialog.contentItem, "eventAllDay")
+            verify(busy.checked)
+            allDay.toggle()
+            allDay.toggled()
+            verify(!busy.checked, "a whole day: free")
+            busy.toggle()
+            busy.toggled()
+            allDay.toggle()
+            allDay.toggled()
+            verify(busy.checked, "pressed: kept as said")
+            dialog.close()
+            // Untouched, nothing said of Busy: no mark frozen when the kind changes (B6).
+            const quiet = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            quiet.edit("/c/dentist.ics", "")
+            const quietAllDay = root.find(quiet.contentItem, "eventAllDay")
+            quietAllDay.toggle()
+            quietAllDay.toggled()
+            mock.calls = []
+            quiet.save()
+            compare(mock.calls.filter(c => c.what === "saveEvent")[0].edit.busy, null, "unsaid, left unsaid")
+            quiet.close()
+            // A whole day its file says busy: All day off and on again keeps it busy (B13).
+            const away = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            away.edit("/c/away.ics", "")
+            const awayBusy = root.find(away.contentItem, "eventBusy")
+            const awayAllDay = root.find(away.contentItem, "eventAllDay")
+            verify(awayBusy.checked, "said busy")
+            awayAllDay.toggle()
+            awayAllDay.toggled()
+            awayAllDay.toggle()
+            awayAllDay.toggled()
+            verify(awayBusy.checked, "still busy")
+            mock.calls = []
+            away.save()
+            compare(mock.calls.filter(c => c.what === "saveEvent")[0].edit.busy, true)
+            away.close()
+            const meeting = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            meeting.edit("/c/board.ics", "")
+            verify(!root.find(meeting.contentItem, "eventBusy").enabled, "a meeting with others: greyed")
+        }
+
+        // Busy while I work on it, on a task's panel: saved at once with the task's form.
+        function test_busy_on_a_task() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t1" })
+            wait(50)
+            const panel = host.taskPanel
+            const busy = root.find(panel, "taskBusy")
+            verify(busy !== null && busy.visible && busy.enabled && !busy.checked, "not busy unless said")
+            mock.calls = []
+            busy.toggle()
+            busy.toggled()
+            const saved = mock.calls.filter(c => c.what === "saveTask")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare(saved[0].uid + " " + saved[0].edit.busy, "t1 true")
+            verify(busy.checked)
+            // What the availability holds for it, under the switch (review B4); nothing to say, no line.
+            const none = root.find(panel, "taskBusyLine")
+            verify(none === null || !none.visible, "no line when there is nothing to say")
+            panel.detail = Object.assign({}, panel.detail, { busy_line: "Its time is not known yet." })
+            wait(10)
+            const line = root.find(panel, "taskBusyLine")
+            verify(line !== null && line.visible && line.text === "Its time is not known yet.")
+        }
+
         function test_the_task_s_card() {
             const host = makeHost()
             host.show({ kind: "step", owner: "t1" })

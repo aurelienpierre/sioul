@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ This phone ▸ Calls (CallsSetup.qml): the call screening's own
+// Settings ▸ Devices ▸ this phone's card ▸ Calls (CallsSetup.qml): the call screening's own
 // section, apart from do-not-disturb: its rows as calls.rs's `setup` gives
 // them, each change sent back as "set" with its key and value, the page
 // drawn again from the answer. On a stand-in for Sioul: no Sioul started,

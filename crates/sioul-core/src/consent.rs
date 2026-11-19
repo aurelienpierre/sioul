@@ -324,11 +324,11 @@ impl Consent {
         // address, or links its scan), made before the letter had its project or before
         // "Into the agenda" gave it one, as a time block is in its task's (review of
         // e5bd27b, later 3).
-        if let Some(letters) = loaded.vault.as_ref().and_then(|vault| crate::letters::Letters::load(&vault.root).ok()) {
+        if let Some(letters) = crate::letters::Letters::of(loaded.places.as_ref(), loaded.vault.as_ref().map(|vault| vault.root.as_path())) {
             for letter in letters.list.iter().filter(|l| !l.project.trim().is_empty()) {
                 let address = links::letter_uri(&letter.id);
                 consent.tie(&address, letter.project.trim());
-                let stands = |e: &&crate::agenda::EventRef| e.links.iter().any(|l| l.uri.trim() == address || (!letter.file.is_empty() && crate::dated::links_scan(l.uri.trim(), &letter.file, &letters.root)));
+                let stands = |e: &&crate::agenda::EventRef| e.links.iter().any(|l| l.uri.trim() == address || (!letter.file.is_empty() && crate::dated::links_scan(l.uri.trim(), &letter.file, &letters.docs.base)));
                 for event in loaded.events.iter().filter(stands) {
                     consent.tie(&links::event_uri(&event.uid), letter.project.trim());
                 }
@@ -703,7 +703,7 @@ mod tests {
         }
         let index = MailIndex::build(std::slice::from_ref(&root));
         let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: vec!["mx.provider.example".into()], priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
-        let store = crate::projects::ProjectStore { root: root.clone(), projects: projects.to_vec(), ties: Default::default() };
+        let store = crate::projects::ProjectStore { root: root.clone(), notes: root.clone(), projects: projects.to_vec(), ties: Default::default() };
         let gate = crate::porch::Gate::new(vec![source], Some(store), crate::porch::SenderList::default(), crate::porch::Senders::default(), 1_791_000_000);
         (root, index, gate)
     }

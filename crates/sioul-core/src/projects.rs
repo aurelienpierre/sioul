@@ -567,10 +567,14 @@ fn domain_matches(domain: &str, pattern: &str) -> bool {
 }
 
 
-/// The projects of one notes folder.
+/// The projects' list, and the notes folder their notes are named from.
 #[derive(Debug, Clone)]
 pub struct ProjectStore {
+    /// Where the list is (`file_in`): Sioul's lists' folder.
     pub root: PathBuf,
+    /// The notes folder a project's `files` are named from: `root` until
+    /// this device's lists moved (`ProjectStore::open`).
+    pub notes: PathBuf,
     pub projects: Vec<Project>,
     /// Messages tied to a project, by Message-ID (bare): by hand, or when they
     /// arrived. A reply in their conversation goes to the same project.
@@ -591,7 +595,16 @@ impl ProjectStore {
         let path = file_in(root);
         let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let projects = read_projects(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        Ok(ProjectStore { root: root.to_path_buf(), projects, ties: Default::default() })
+        Ok(ProjectStore { root: root.to_path_buf(), notes: root.to_path_buf(), projects, ties: Default::default() })
+    }
+
+    /// The projects where this device keeps them (`Config::places`), their notes named from its notes folder.
+    pub fn open(places: &crate::storage::Places) -> Result<ProjectStore, String> {
+        let mut store = ProjectStore::load(&places.records)?;
+        if let Some(notes) = &places.notes {
+            store.notes.clone_from(notes);
+        }
+        Ok(store)
     }
 
     /// The file its projects are written to (`file_in`).
@@ -634,7 +647,7 @@ impl ProjectStore {
         self.projects
             .iter()
             .flat_map(|p| p.files.iter().map(move |f| (p.id.clone(), f.clone())))
-            .filter(|(_, f)| !self.root.join(f).exists())
+            .filter(|(_, f)| !self.notes.join(f).exists())
             .collect()
     }
 
@@ -1125,7 +1138,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        ProjectStore { root: PathBuf::from("."), projects, ties: Default::default() }
+        ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects, ties: Default::default() }
     }
 
     #[test]
@@ -1142,7 +1155,7 @@ mod tests {
     #[test]
     fn attachments_and_conversations() {
         let projects = read_projects("[[case]]\nid = \"lumen\"\ntitle = \"Studio Lumen\"\n[[case.route]]\nattachment_contains = [\"devis\"]\n").unwrap();
-        let mut store = ProjectStore { root: PathBuf::from("."), projects, ties: Default::default() };
+        let mut store = ProjectStore { root: PathBuf::from("."), notes: PathBuf::from("."), projects, ties: Default::default() };
         let quote = "From: Jane <jane@lumen.example.net>\r\nSubject: Our offer\r\nMessage-ID: <q1@lumen.example.net>\r\nMIME-Version: 1.0\r\n\
             Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nHere it is.\r\n--b\r\n\
             Content-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"Devis_Lumen_2026.pdf\"\r\n\r\nJVBERi0=\r\n--b--\r\n";

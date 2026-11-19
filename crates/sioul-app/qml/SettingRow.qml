@@ -47,7 +47,8 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        // A block under a heading of its own (the panel's Section) says no title again.
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -391,6 +392,33 @@ ColumnLayout {
                 theme: field.theme
                 about: field.setting.help
                 onAvailabilityAsked: field.goTo("availability")
+            }
+        }
+    }
+    // The address books (AddressBooksSetup.qml), Contacts ⚙'s own block (wave D): its sentence said first there, once.
+    Loader {
+        active: field.setting.kind === "addressbooks"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            AddressBooksSetup {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+    // The changes to many contacts of the last thirty days (ContactBatches.qml), under their own heading.
+    Loader {
+        active: field.setting.kind === "contactbatches"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ContactBatches {
+                sioul: field.sioul
+                theme: field.theme
             }
         }
     }
@@ -1040,7 +1068,9 @@ ColumnLayout {
         }
     }
 
-    // Days off: from a day to another, and a word on them.
+    // Vacations and holidays (18 November 2026): your vacations, from a day to another, a
+    // word and a kind on them (vacation, sick leave, other); then each calendar of holidays
+    // with its switch, and a door to subscribe to one (VacationsCalendars.qml).
     Loader {
         active: field.setting.kind === "timeoff"
         visible: active
@@ -1048,6 +1078,10 @@ ColumnLayout {
 
         sourceComponent: Component {
             ColumnLayout {
+                id: vacations
+
+                readonly property var kinds: ["vacation", "sick", "other"]
+
                 spacing: 4
 
                 Repeater {
@@ -1059,13 +1093,17 @@ ColumnLayout {
                         required property var modelData
                         required property int index
 
+                        Layout.fillWidth: true
                         spacing: 6
 
+                        // On a phone its word goes to the next line rather than out of sight.
                         Label {
+                            objectName: "vacationLine"
                             Layout.fillWidth: true
-                            text: off.modelData.from + " → " + off.modelData.until + (off.modelData.label ? "  ·  " + off.modelData.label : "")
+                            Layout.preferredWidth: 0
+                            text: off.modelData.from + " → " + off.modelData.until + "  ·  " + field.sioul.text("vacations-kind-" + (vacations.kinds.indexOf(off.modelData.kind || "") > 0 ? off.modelData.kind : "vacation")) + (off.modelData.label ? "  ·  " + off.modelData.label : "")
                             textFormat: Text.PlainText
-                            elide: Text.ElideRight
+                            wrapMode: Text.Wrap
                             color: field.theme.text
                         }
                         ToolButton {
@@ -1096,21 +1134,48 @@ ColumnLayout {
                         placeholderText: "2027-01-02"
                         inputMask: "9999-99-99;_"
                     }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
                     TextField {
                         id: offLabel
 
-                        Layout.fillWidth: true
+                        objectName: "vacationLabel"
+                        width: Math.min(260, vacations.width)
                         placeholderText: field.sioul.text("set-time-off-label")
                     }
+                    PlainComboBox {
+                        id: offKind
+
+                        objectName: "vacationKind"
+                        width: 170
+                        model: vacations.kinds.map(k => field.sioul.text("vacations-kind-" + k))
+                        Accessible.name: field.sioul.text("vacations-kind")
+                    }
                     Button {
+                        objectName: "vacationAdd"
                         text: field.sioul.text("set-time-off-add")
                         enabled: /^\d{4}-\d\d-\d\d$/.test(offFrom.text) && /^\d{4}-\d\d-\d\d$/.test(offUntil.text)
                         onClicked: {
-                            field.save(field.setting.key, field.setting.value.concat([{ from: offFrom.text, until: offUntil.text, label: offLabel.text }]), field.setting.value)
+                            const kind = vacations.kinds[offKind.currentIndex]
+                            field.save(field.setting.key, field.setting.value.concat([{ from: offFrom.text, until: offUntil.text, label: offLabel.text, kind: kind === "vacation" ? "" : kind }]), field.setting.value)
                             offFrom.text = ""
                             offUntil.text = ""
                             offLabel.text = ""
+                            offKind.currentIndex = 0
                         }
+                    }
+                }
+                VacationsCalendars {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    sioul: field.sioul
+                    theme: field.theme
+                    onSubscribeAsked: {
+                        field.followed()
+                        field.sioul.reminderOpened("settings:agendas.subscribe", "", "")
                     }
                 }
             }
@@ -1172,6 +1237,8 @@ ColumnLayout {
                     }
                 }
                 TextField {
+                    // The addresses named as your contacts are read and removed, never added to (review C1).
+                    visible: field.setting.key !== "neutral"
                     Layout.fillWidth: true
                     // The four lists take numbers too; the senders you let in, addresses only.
                     placeholderText: field.sioul.text(field.setting.kind === "words" ? "set-words-add" : field.setting.key === "known" ? "set-senders-add" : "set-senders-add-number")
@@ -1343,7 +1410,7 @@ ColumnLayout {
 
     Label {
         // The blocks say their sentence first themselves.
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText
