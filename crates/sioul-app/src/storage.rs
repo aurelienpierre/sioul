@@ -256,8 +256,23 @@ pub(crate) fn view_json() -> String {
         crate::devices::storage_now();
     }
     let config = load_config();
-    let here = Storage::here();
     let stand = crate::share::storage_stand();
+    // Nothing of Sioul's in the old places, no device to wait for: the new layout from the
+    // start (`storage::start_moved`, review S29).
+    if !Storage::here().is_moved()
+        && move_gate(stand.as_ref()).is_ok()
+        && !matches!(config.notes_folder(), NotesFolder::Unreadable(_))
+    {
+        let notes = match config.notes_folder() {
+            NotesFolder::Ready(path) => sioul_core::config::expand_home(&path),
+            _ => PathBuf::new(),
+        };
+        if storage::start_moved(&Folders::here(&notes, &config.papers_folder(), &config.letters_folder()), jiff::Timestamp::now().as_second()).unwrap_or(false) {
+            crate::devices::storage_now();
+        }
+    }
+    let config = load_config();
+    let here = Storage::here();
     let (notes, notes_state) = match config.notes_folder() {
         NotesFolder::Ready(path) => (Some(sioul_core::config::expand_home(&path)), "ready"),
         NotesFolder::Unreadable(path) => (Some(sioul_core::config::expand_home(&path)), "unreadable"),

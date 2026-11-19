@@ -916,3 +916,29 @@ fn the_copy_leaves_no_half_and_writes_over_nothing_of_the_persons() {
         assert_eq!(mode, 0o644);
     }
 }
+
+/// A profile with nothing of Sioul's in its notes folder starts in the new
+/// layout; one with a list, a `papers/` or `letters/`, a journal, a notes
+/// folder that does not read or holds nothing, never (review S29).
+#[test]
+fn a_profile_with_nothing_of_sioul_s_starts_moved() {
+    let stand = stand("start-moved");
+    assert!(!start_moved(&stand.folders, NOW).unwrap(), "the fixture holds lists");
+    let base = stand.base.join("fresh");
+    let notes = base.join("Notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    let folders = Folders { notes: notes.clone(), records: base.join("data").join(RECORDS), papers: base.join("Papers"), letters: base.join("Letters"), kept: base.join("data").join(KEPT), state: base.join("state") };
+    assert!(!start_moved(&folders, NOW).unwrap(), "a notes folder holding nothing at all: never on a guess");
+    std::fs::create_dir_all(notes.join("admin")).unwrap();
+    std::fs::write(notes.join("admin").join("todo.md"), "# To do\n").unwrap();
+    std::fs::create_dir_all(notes.join("letters")).unwrap();
+    assert!(!start_moved(&folders, NOW).unwrap(), "a letters/ folder there");
+    std::fs::remove_dir(notes.join("letters")).unwrap();
+    assert!(start_moved(&folders, NOW).unwrap());
+    assert!(Storage::read(&folders.state).is_moved());
+    assert!(!start_moved(&folders, NOW).unwrap(), "once");
+    let gone = Folders { notes: base.join("unplugged"), state: base.join("state-2"), ..folders.clone() };
+    assert!(!start_moved(&gone, NOW).unwrap());
+    let none = Folders { notes: PathBuf::new(), state: base.join("state-3"), ..folders };
+    assert!(start_moved(&none, NOW).unwrap(), "no notes folder set: nothing of Sioul's anywhere");
+}

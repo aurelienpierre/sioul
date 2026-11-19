@@ -1317,6 +1317,32 @@ pub fn move_now<G>(folders: &Folders, now: i64, hold: impl FnOnce() -> Result<G,
     })
 }
 
+/// A profile that holds nothing of Sioul's in the old places starts in the
+/// new layout (review S29): no state file, no journal, a notes folder set
+/// that reads and holds notes but no list, no `papers/` nor `letters/` (or
+/// none set), nothing in Sioul's records. Written as a move made with
+/// nothing in it. A notes folder that does not read, or holds nothing at all
+/// (a drive's mount point unmounted), never starts so: absence proves
+/// nothing. Whether it was.
+pub fn start_moved(folders: &Folders, now: i64) -> Result<bool, Fault> {
+    crate::filelock::with_lock(&Journal::path(&folders.state), || {
+        if std::fs::symlink_metadata(folders.state.join(STATE_FILE)).is_ok() || std::fs::symlink_metadata(Journal::path(&folders.state)).is_ok() {
+            return Ok(false);
+        }
+        let Ok(survey) = survey(folders) else { return Ok(false) };
+        let old = |name: &str| !folders.notes.as_os_str().is_empty() && std::fs::symlink_metadata(folders.notes.join(name)).is_ok();
+        if !survey.entries.is_empty() || !survey.left.is_empty() || old(OLD_PAPERS) || old(OLD_LETTERS) {
+            return Ok(false);
+        }
+        let mut there = Vec::new();
+        if walk(&folders.records, &folders.records, &mut there).is_err() || !there.is_empty() {
+            return Ok(false);
+        }
+        Storage { moved: now, from: folders.notes.display().to_string(), ..Storage::default() }.write(&folders.state).map_err(|e| Fault::new("switch", e))?;
+        Ok(true)
+    })
+}
+
 /// What this run made, taken back after its failure, before any switch:
 /// each copy it made that still holds the bytes it wrote while its source is
 /// still there with those bytes (a copy whose source is gone is the only one
