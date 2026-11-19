@@ -1,0 +1,324 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+// Settings ▸ Extensions (docs/extensions.md): what the signed list offers,
+// each with what it brings, the sites it talks to and whether it keeps a
+// sign-in, said before anything is enabled; then Enable, Sign in…, its state
+// and its last problem in one sentence, Disable, Remove (which asks whether
+// to keep its agendas), and the yes an update asks when it wants more.
+// Opening it reads the list (`extensionsPage`); the view comes back as
+// `sioul.extensions` (extensions.rs). A sign-in that needs a choice first (a
+// platform) asks it here (`extensionChoices`).
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+
+Item {
+    id: tab
+
+    required property var sioul
+    required property var theme
+
+    readonly property var view: {
+        const text = tab.sioul.extensions
+        return text ? JSON.parse(text) : { offers: [], where: "", problem: "", reading: true }
+    }
+
+    // The two questions, over the window (their tests reach them so).
+    readonly property alias removeDialog: removing
+    readonly property alias chooseDialog: choosing
+
+    implicitHeight: column.implicitHeight
+    Component.onCompleted: tab.sioul.extensionsPage()
+
+    ColumnLayout {
+        id: column
+
+        width: tab.width
+        spacing: 6
+
+        Label {
+            Layout.fillWidth: true
+            text: tab.sioul.text("extensions-intro")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: tab.theme.muted
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: text !== ""
+            text: tab.view.reading ? tab.sioul.text("extensions-reading") : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: tab.theme.muted
+        }
+        Label {
+            objectName: "extensionsProblem"
+            Layout.fillWidth: true
+            visible: text !== ""
+            text: tab.view.problem || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: tab.theme.warm
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: !tab.view.reading && tab.view.offers.length === 0
+            text: tab.sioul.text("extensions-none")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: tab.theme.text
+        }
+
+        Repeater {
+            model: tab.view.offers
+
+            delegate: Section {
+                id: offer
+
+                required property var modelData
+
+                objectName: "extension:" + offer.modelData.id
+                Layout.fillWidth: true
+                Layout.topMargin: 14
+                theme: tab.theme
+                title: tab.theme.plain(offer.modelData.name)
+                body.spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    text: offer.modelData.about
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.text
+                }
+                // What it brings, the sites it talks to, whether it keeps a sign-in: said before anything is enabled.
+                Repeater {
+                    model: [offer.modelData.brings, offer.modelData.sites, offer.modelData.signIn]
+
+                    delegate: Label {
+                        required property string modelData
+
+                        Layout.fillWidth: true
+                        text: modelData
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: tab.theme.muted
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: offer.modelData.running ? tab.sioul.text("extension-running") : offer.modelData.line
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.text
+                }
+                Repeater {
+                    model: [offer.modelData.unusable, offer.modelData.problem, offer.modelData.waiting]
+
+                    delegate: Label {
+                        required property string modelData
+
+                        Layout.fillWidth: true
+                        visible: modelData !== ""
+                        text: modelData
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: tab.theme.warm
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: offer.modelData.agendas.length > 0
+                    text: tab.sioul.textWith("extension-agendas", "names", offer.modelData.agendas.map(a => a.name).join(", "))
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.muted
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 8
+
+                    Button {
+                        objectName: "extensionEnable:" + offer.modelData.id
+                        visible: offer.modelData.usable && !offer.modelData.enabled
+                        text: tab.sioul.text("extension-enable")
+                        onClicked: tab.sioul.extensionEnable(offer.modelData.id)
+                    }
+                    Button {
+                        objectName: "extensionSignIn:" + offer.modelData.id
+                        visible: offer.modelData.enabled && offer.modelData.needsSignIn
+                        enabled: !offer.modelData.running
+                        highlighted: !offer.modelData.signedIn
+                        text: tab.sioul.text(offer.modelData.signedIn ? "extension-sign-in-again" : "extension-sign-in")
+                        onClicked: tab.sioul.extensionSignIn(offer.modelData.id, "")
+                    }
+                    Button {
+                        objectName: "extensionAccept:" + offer.modelData.id
+                        visible: offer.modelData.waiting !== ""
+                        text: tab.sioul.text("extension-accept")
+                        onClicked: tab.sioul.extensionAccept(offer.modelData.id)
+                    }
+                    Button {
+                        objectName: "extensionDisable:" + offer.modelData.id
+                        visible: offer.modelData.enabled
+                        text: tab.sioul.text("extension-disable")
+                        onClicked: tab.sioul.extensionDisable(offer.modelData.id)
+                    }
+                    Button {
+                        objectName: "extensionRemove:" + offer.modelData.id
+                        visible: offer.modelData.installed
+                        text: tab.sioul.text("extension-remove")
+                        onClicked: removing.ask(offer.modelData)
+                    }
+                }
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            Layout.topMargin: 14
+            visible: text !== ""
+            text: tab.view.where || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: tab.theme.muted
+        }
+
+    }
+
+    Connections {
+        target: tab.sioul
+
+        function onExtensionChoices(id, choices) {
+            choosing.ask(id, JSON.parse(choices))
+        }
+    }
+
+    // Remove: its sign-in forgotten, its file taken out; its agendas kept, or not.
+    SafeDialog {
+        id: removing
+
+        property string id: ""
+
+        function ask(offer) {
+            removing.id = offer.id
+            removing.title = tab.theme.plain(tab.sioul.textWith("extension-remove-title", "name", offer.name))
+            keep.checked = true
+            removing.open()
+        }
+
+        objectName: "extensionRemoving"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(460, removing.roomWidth - 2 * tab.theme.gap)
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: tab.sioul.text("extension-remove-says")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: tab.theme.text
+            }
+            CheckBox {
+                id: keep
+
+                objectName: "extensionKeepAgendas"
+                Layout.fillWidth: true
+                checked: true
+                text: tab.sioul.text("extension-keep-agendas")
+            }
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                text: tab.sioul.text("extension-remove-now")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button {
+                text: tab.sioul.text("ui-cancel")
+                highlighted: true
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+        }
+
+        onAccepted: tab.sioul.extensionRemove(removing.id, keep.checked)
+    }
+
+    // A choice the extension asks before its sign-in (a platform), the names searchable.
+    SafeDialog {
+        id: choosing
+
+        property string id: ""
+        property var choices: []
+        readonly property var shown: {
+            const typed = filter.text.trim().toLowerCase()
+            return typed === "" ? choosing.choices : choosing.choices.filter(c => c.name.toLowerCase().indexOf(typed) >= 0)
+        }
+
+        function ask(id, choices) {
+            choosing.id = id
+            choosing.choices = choices
+            filter.text = ""
+            choosing.open()
+        }
+
+        objectName: "extensionChoosing"
+        title: tab.sioul.text("extension-choose-title")
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(460, choosing.roomWidth - 2 * tab.theme.gap)
+        height: Math.min(560, choosing.roomHeight - 2 * tab.theme.gap)
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            TextField {
+                id: filter
+
+                objectName: "extensionChooseFilter"
+                Layout.fillWidth: true
+                placeholderText: tab.sioul.text("extension-choose-filter")
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: choosing.shown
+
+                delegate: BareButton {
+                    id: choice
+
+                    required property var modelData
+
+                    objectName: "extensionChoice:" + choice.modelData.id
+                    width: ListView.view.width
+                    text: tab.theme.plain(choice.modelData.name)
+                    onClicked: {
+                        choosing.close()
+                        tab.sioul.extensionSignIn(choosing.id, choice.modelData.id)
+                    }
+                }
+            }
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                text: tab.sioul.text("ui-cancel")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+        }
+    }
+}

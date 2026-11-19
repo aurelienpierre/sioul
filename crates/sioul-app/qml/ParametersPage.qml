@@ -6,7 +6,7 @@
 // reaches you and when (ReachesTab.qml), the words Sioul looks for
 // (WordsTab.qml), reminders, the pauses, on a phone what sets it up
 // (PhoneSetup.qml), your folder and sharing, your devices (DevicesTab.qml),
-// invoices. What one page alone reads is behind that page's ⚙ (SettingDoor.qml
+// invoices, extensions (ExtensionsTab.qml). What one page alone reads is behind that page's ⚙ (SettingDoor.qml
 // opens it by its key). Each setting says in a sentence what it changes and
 // is saved at once.
 //
@@ -45,10 +45,10 @@ Item {
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
     // reminders, the pauses; on Android, what sets it up (its system's); your
-    // folder and sharing, your devices, invoices; what AI agents may use (each
-    // project closed to them until opened). The texts a device without
+    // folder and sharing, your devices, invoices; extensions (docs/extensions.md);
+    // what AI agents may use (each project closed to them until opened). The texts a device without
     // telephony sends through the phone are the Texts page's ⚙.
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(page.android ? ["phone"] : []).concat(["files", "devices", "invoices", "ai"])
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(page.android ? ["phone"] : []).concat(["files", "devices", "invoices", "extensions", "ai"])
     // On Android: its own tab (This phone). The system's; the layout test of the
     // tabs sets it to measure a phone's row (tst_settingstabs.qml).
     property bool android: Qt.platform.os === "android"
@@ -84,6 +84,8 @@ Item {
             return page.sioul.text("settings-about-devices")
         case "invoices":
             return page.sioul.text("settings-about-invoices")
+        case "extensions":
+            return page.sioul.text("settings-about-extensions")
         case "ai":
             return page.sioul.text("settings-about-ai")
         }
@@ -527,6 +529,21 @@ Item {
                             sioul: page.sioul
                             theme: page.theme
                             onDevicesAsked: page.showSetting("devices")
+                        }
+                    }
+                }
+
+                // Extensions: what the signed list offers, each enabled, signed in,
+                // disabled or removed here (ExtensionsTab.qml, docs/extensions.md).
+                Loader {
+                    active: page.section === "extensions"
+                    visible: active
+                    Layout.fillWidth: true
+
+                    sourceComponent: Component {
+                        ExtensionsTab {
+                            sioul: page.sioul
+                            theme: page.theme
                         }
                     }
                 }

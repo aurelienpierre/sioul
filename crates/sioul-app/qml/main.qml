@@ -6128,6 +6128,25 @@ SioulWindow {
         }
     }
 
+    // An extension's sign-in page (SignInWindow.qml, docs/extensions.md), on
+    // computers only: made when the backend asks for one (`signInPage`), gone
+    // when it is answered or given up. A phone has its own (SignIn.java).
+    Connections {
+        target: sioul
+
+        function onSignInPageChanged() {
+            if (Qt.platform.os === "android")
+                return
+            if (sioul.signInPage === "")
+                signInLoader.source = ""
+            else
+                signInLoader.setSource("SignInWindow.qml", { sioul: sioul, theme: theme, page: JSON.parse(sioul.signInPage) })
+        }
+    }
+    Loader {
+        id: signInLoader
+    }
+
     // The holder of the sites' web profile (SitesWeb.qml), declared last of the
     // window's items on purpose: Qt makes them in this order and destroys them in
     // the same order, so it goes after every page and every view that uses its

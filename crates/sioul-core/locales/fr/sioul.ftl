@@ -3772,6 +3772,7 @@ settings-tab-hours = Heures
 settings-tab-reminders = Rappels
 settings-tab-files = Votre dossier et le partage
 settings-tab-invoices = Factures
+settings-tab-extensions = Extensions
 settings-tab-ai = Agents d’IA
 # Les paramètres sur un téléphone : la liste des sections, chacune avec une ligne qui dit ce qu’elle contient.
 settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la saisie.
@@ -3784,7 +3785,83 @@ settings-about-phone = Ce qu’est cet appareil, et ce que son système laisse f
 settings-about-files = Votre dossier de notes, et le partage avec vos autres appareils.
 settings-about-devices = Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun.
 settings-about-invoices = Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.
+settings-about-extensions = Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.
 settings-about-ai = Ce que les agents d’IA peuvent utiliser, projet par projet.
+# Paramètres ▸ Extensions (docs/extensions.md) : des programmes à part de Sioul, isolés, qui apportent un agenda.
+extensions-intro = Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’une école. Chacune tourne à part, avec seulement ce que sa liste lui donne, et apporte un agenda en lecture seule. Sa liste est signée : Sioul refuse celle qui ne l’est pas.
+extensions-reading = Lecture de la liste des extensions…
+extensions-none = Aucune extension n’est proposée pour l’instant.
+extensions-where = La liste est lue depuis { $address }, à l’ouverture de cette page et une fois par jour tant qu’une extension est activée.
+extensions-list-problem = La liste des extensions n’a pas pu être lue : { $detail }
+extension-brings-agenda = Elle apporte un agenda en lecture seule.
+extension-sites = { $count ->
+        [one] Elle parle à un site : { $sites }.
+       *[other] Elle parle à { $count } sites : { $sites }.
+    }
+extension-keeps-sign-in = Elle garde une connexion sur cet appareil, dans son trousseau ; vous vous connectez sur la page du site lui-même.
+extension-keeps-no-sign-in = Elle ne garde aucune connexion.
+extension-needs-newer-sioul = Elle demande un Sioul plus récent.
+extension-never-ran = Activée ; elle n’a pas encore tourné.
+extension-ran = Dernier passage { $when }.
+extension-brought = Dernier passage { $when } : { $agendas ->
+        [one] un agenda
+       *[other] { $agendas } agendas
+    }, { $events ->
+        [one] un événement
+       *[other] { $events } événements
+    }.
+extension-running = En cours…
+extension-agendas = Ses agendas : { $names }
+extension-update-asks = La version { $version } demande plus que celle en service{ $signin ->
+        [yes] {" : une connexion"}
+       *[no] {""}
+    }{ $sites ->
+        [none] {""}
+       *[other] { $signin ->
+            [yes] {" et "}
+           *[no] {" : "}
+        }ces sites : { $sites }
+    }. Elle attend votre accord ; la version en service continue d’ici là.
+extension-enable = Activer
+extension-sign-in = Se connecter…
+extension-sign-in-again = Se reconnecter…
+extension-accept = Prendre la mise à jour
+extension-disable = Désactiver
+extension-remove = Retirer…
+extension-remove-title = Retirer { $name } ?
+extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses agendas peuvent rester, en lecture seule, jusqu’à ce que vous les retiriez de l’Agenda.
+extension-keep-agendas = Garder ses agendas
+extension-remove-now = Retirer
+extension-choose-title = Où vous connectez-vous ?
+extension-choose-filter = Chercher
+extension-enabled = { $name } est activée.
+extension-not-enabled = { $name } n’a pas pu être activée : son fichier n’a pas pu être téléchargé, ou n’est pas celui que sa liste nomme.
+extension-not-listed = Elle n’est plus dans la liste.
+extension-disabled = { $name } ne tourne plus sur cet appareil ; sa connexion et ses agendas restent.
+extension-removed = { $name } est retirée, avec ses agendas.
+extension-removed-kept = { $name } est retirée ; ses agendas restent.
+extension-removed-agendas-stay = { $name } est retirée ; ses agendas n’ont pas pu être enlevés et restent.
+extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas pu être retirée du trousseau : elle y reste sous « extension ».
+extension-updated = { $name } est maintenant en version { $version }.
+extension-signed-in = Connexion faite. { $name } apporte son agenda.
+extension-sign-in-closed = La page de connexion de { $name } a été fermée.
+extension-problem-sign-in = { $name } vous demande de vous reconnecter.
+extension-problem-unreachable = { $name } n’a pas pu joindre son service ; elle réessaiera plus tard.
+extension-problem-refused = Le service de { $name } a refusé : un compte bloqué, ou un établissement qui ne le propose pas.
+extension-problem-changed = Le service de { $name } ne répond plus comme prévu : une mise à jour de l’extension est nécessaire.
+extension-problem-door = { $name } a apporté ses agendas, mais ce Sioul ne les garde pas encore.
+extension-problem-keyring = { $name } n’a pas pu joindre le trousseau.
+extension-problem-other = { $name } a rencontré un problème ; son journal sur cet appareil en dit plus.
+extension-stopped-time = { $name } s’est arrêtée : elle a pris trop de temps.
+extension-stopped-memory = { $name } s’est arrêtée : elle demandait trop de mémoire.
+extension-stopped-error = { $name } s’est arrêtée sur une erreur qui lui est propre.
+extension-stopped-nonsense = { $name } s’est arrêtée : elle a répondu quelque chose que Sioul ne sait pas lire.
+extension-stopped-asks-more = { $name } s’est arrêtée : elle demande plus que ce que dit sa liste.
+extension-stopped-interface = { $name } s’est arrêtée : elle parle une autre version de l’interface de Sioul.
+extension-stopped-unread = { $name } s’est arrêtée : son fichier ne se lit pas, ou a changé depuis sa vérification.
+# La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
+sign-in-window-title = Connexion sur { $host }
+sign-in-site = Vous vous connectez sur : { $host }
 ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.

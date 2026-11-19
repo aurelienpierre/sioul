@@ -3736,6 +3736,7 @@ settings-tab-hours = Hours
 settings-tab-reminders = Reminders
 settings-tab-files = Your folder and sharing
 settings-tab-invoices = Invoices
+settings-tab-extensions = Extensions
 settings-tab-ai = AI agents
 # Settings on a phone: the list of sections, each with one line saying what it holds.
 settings-about-look = Language, colours, the places' names, passwords as you type.
@@ -3748,7 +3749,83 @@ settings-about-phone = What this device is, and what its system lets Sioul do: c
 settings-about-files = Your notes folder, and sharing with your other devices.
 settings-about-devices = Your devices: what each is, what it is for, what comes forward on each.
 settings-about-invoices = Who issues your invoices, their numbers, VAT, bank and legal lines.
+settings-about-extensions = Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.
 settings-about-ai = What AI agents may use, project by project.
+# Settings ▸ Extensions (docs/extensions.md): programs apart from Sioul, run in a sandbox, that bring an agenda.
+extensions-intro = An extension brings data from a service Sioul does not speak to itself, such as a school's timetable. Each runs apart, given only what its list says, and brings a read-only agenda. Its list is signed: Sioul refuses one that is not.
+extensions-reading = Reading the list of extensions…
+extensions-none = No extension is offered yet.
+extensions-where = The list is read from { $address }, when this page opens and once a day while an extension is enabled.
+extensions-list-problem = The list of extensions could not be read: { $detail }
+extension-brings-agenda = It brings a read-only agenda.
+extension-sites = { $count ->
+        [one] It talks to one site: { $sites }.
+       *[other] It talks to { $count } sites: { $sites }.
+    }
+extension-keeps-sign-in = It keeps a sign-in on this device, in its keyring; you sign in on the site's own page.
+extension-keeps-no-sign-in = It keeps no sign-in.
+extension-needs-newer-sioul = It needs a newer Sioul.
+extension-never-ran = Enabled; it has not run yet.
+extension-ran = Last ran { $when }.
+extension-brought = Last ran { $when }: { $agendas ->
+        [one] one agenda
+       *[other] { $agendas } agendas
+    }, { $events ->
+        [one] one event
+       *[other] { $events } events
+    }.
+extension-running = Running now…
+extension-agendas = Its agendas: { $names }
+extension-update-asks = Version { $version } asks for more than the one in use{ $signin ->
+        [yes] : a sign-in
+       *[no] {""}
+    }{ $sites ->
+        [none] {""}
+       *[other] { $signin ->
+            [yes] {" and "}
+           *[no] {": "}
+        }these sites: { $sites }
+    }. It waits for your yes; the version in use goes on meanwhile.
+extension-enable = Enable
+extension-sign-in = Sign in…
+extension-sign-in-again = Sign in again…
+extension-accept = Take the update
+extension-disable = Disable
+extension-remove = Remove…
+extension-remove-title = Remove { $name }?
+extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its agendas can stay, read only, until you remove them from the Agenda.
+extension-keep-agendas = Keep its agendas
+extension-remove-now = Remove
+extension-choose-title = Where do you sign in?
+extension-choose-filter = Search
+extension-enabled = { $name } is enabled.
+extension-not-enabled = { $name } could not be enabled: its file could not be downloaded, or is not the one its list names.
+extension-not-listed = It is no longer in the list.
+extension-disabled = { $name } no longer runs on this device; its sign-in and agendas stay.
+extension-removed = { $name } is removed, with its agendas.
+extension-removed-kept = { $name } is removed; its agendas stay.
+extension-removed-agendas-stay = { $name } is removed; its agendas could not be taken away and stay.
+extension-removed-keyring = { $name } is removed; its sign-in could not be taken out of the keyring: it stays there under "extension".
+extension-updated = { $name } is now at version { $version }.
+extension-signed-in = Signed in. { $name } brings its agenda now.
+extension-sign-in-closed = The sign-in page for { $name } was closed.
+extension-problem-sign-in = { $name } needs you to sign in again.
+extension-problem-unreachable = { $name } could not reach its service; it tries again later.
+extension-problem-refused = { $name }'s service refused: an account blocked, or a school that does not offer it.
+extension-problem-changed = { $name }'s service no longer answers as expected: an update of the extension is needed.
+extension-problem-door = { $name } brought its agendas, but this Sioul does not keep them yet.
+extension-problem-keyring = { $name } could not reach the keyring.
+extension-problem-other = { $name } met a problem; its log on this device says more.
+extension-stopped-time = { $name } stopped: it took too long.
+extension-stopped-memory = { $name } stopped: it asked for too much memory.
+extension-stopped-error = { $name } stopped: it ended in an error of its own.
+extension-stopped-nonsense = { $name } stopped: it answered something Sioul cannot read.
+extension-stopped-asks-more = { $name } stopped: it asks for more than its list says.
+extension-stopped-interface = { $name } stopped: it speaks another version of Sioul's interface.
+extension-stopped-unread = { $name } stopped: its file could not be read, or changed since it was checked.
+# An extension's sign-in page, on a computer: the site's name always in sight above the page.
+sign-in-window-title = Sign in on { $host }
+sign-in-site = You sign in on: { $host }
 ui-refresh-all = Refresh everything: mail, agenda, tasks, contacts (F5)
 ui-refreshing = Refreshing…
 # The column of the places, on the left of the window.
