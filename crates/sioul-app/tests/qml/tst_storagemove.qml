@@ -52,6 +52,9 @@ Item {
             flags[name] = value
             mock.flags = flags
         }
+        function folderCarrier(folder) {
+            return folder.indexOf("/Nextcloud/") >= 0 ? "storage-move-carried " + folder : ""
+        }
         function moveLists(papers, letters, carry) {
             mock.asked = mock.asked.concat([[papers, letters, carry]])
         }
@@ -130,6 +133,19 @@ Item {
             mock.storageMove = root.view({ moved: true, offer: false })
             verify(named("storageMoveDone").visible && !named("storageMoveNow").visible && !named("storageMoveWhat").visible)
             compare(named("storageMoveLater").text, "ui-close")
+        }
+
+        function test_a_folder_a_sync_program_carries_is_said() {
+            mock.storageMove = root.view({})
+            move.show()
+            tryVerify(() => move.opened)
+            verify(!named("storageMoveCarried:papers").visible && !named("storageMoveCarried:letters").visible)
+            const papers = named("storageMoveFolder:papers")
+            papers.text = "/stand-in/Nextcloud/Papers"
+            papers.editingFinished()
+            verify(named("storageMoveCarried:papers").visible)
+            compare(named("storageMoveCarried:papers").text, "storage-move-carried /stand-in/Nextcloud/Papers")
+            verify(!named("storageMoveCarried:letters").visible)
         }
 
         function test_unticked_the_part_stays_as_it_is() {

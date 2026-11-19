@@ -234,6 +234,21 @@ fn carried_for(part: &str, config: &Config, here: &share::Here) -> Option<PathBu
     }
 }
 
+/// The folder a sync program is known to carry that holds `folder`, said
+/// shortly (`~/Nextcloud`): its files would travel there too, unsealed (the
+/// window of the move says so before the press, review S26). On a phone,
+/// guessed as `folder_carried` guesses. None when none is known.
+pub(crate) fn carrier_of(folder: &Path) -> Option<String> {
+    if folder.as_os_str().is_empty() {
+        return None;
+    }
+    if cfg!(target_os = "android") {
+        return folder_carried(folder, &here()).then(|| shorten(folder));
+    }
+    let real = sioul_core::storage::resolved(folder);
+    synced_roots().into_iter().find(|root| folder.starts_with(root) || real.starts_with(sioul_core::storage::resolved(root))).map(|root| shorten(&root))
+}
+
 /// Whether a sync app carries a folder of papers or letters: on a computer,
 /// as for the notes folder; on a phone, guessed as the notes folder is (in
 /// the same top folder of its storage as the sharing folder).

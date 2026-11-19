@@ -1953,6 +1953,10 @@ pub mod qobject {
         /// off the window's thread; said in the status line and in `storageMove`.
         #[qinvokable]
         fn move_lists(self: Pin<&mut Sioul>, papers: &QString, letters: &QString, carry: bool);
+        /// The sentence that says a sync program is known to carry a folder
+        /// chosen for papers or letters (`share::carrier_of`), or "".
+        #[qinvokable]
+        fn folder_carrier(self: &Sioul, folder: &QString) -> QString;
         /// Sioul's old files out of this device's notes folder, on your press
         /// in Settings ▸ Sharing once every device moved (`storage::take_out`).
         /// Off the window's thread; said in the status line and in `storageMove`.
@@ -8687,6 +8691,11 @@ impl qobject::Sioul {
 impl qobject::Sioul {
     fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
         QString::from(&crate::share::set_notes_carried(carried))
+    }
+
+    fn folder_carrier(&self, folder: &QString) -> QString {
+        let folder = local_path(folder.to_string().trim());
+        QString::from(&crate::share::carrier_of(&folder).map(|carrier| say("storage-move-carried", &[("carrier", carrier)])).unwrap_or_default())
     }
 
     fn take_out_old_files(self: Pin<&mut Self>) {

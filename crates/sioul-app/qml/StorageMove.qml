@@ -189,6 +189,18 @@ SafeDialog {
                             onClicked: move.choose(folder.modelData)
                         }
                     }
+                    // A sync program known to carry that folder: its files would travel there too, unsealed.
+                    Label {
+                        objectName: "storageMoveCarried:" + folder.modelData
+                        readonly property string said: move.sioul.folderCarrier(folder.modelData === "papers" ? move.papersShown : move.lettersShown)
+
+                        visible: said !== ""
+                        Layout.fillWidth: true
+                        text: said
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        color: move.theme.warm
+                    }
                 }
             }
             // What stays under papers/ and letters/: no list of Sioul's names it (a note, a scan not read yet).
