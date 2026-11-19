@@ -110,6 +110,8 @@ Section {
             setting: modelData
             sioul: card.sioul
             theme: card.theme
+            // The row follows the card's own reading, made again at each change (`reload`).
+            vaultState: card.vault
             onSave: (key, value, shown) => card.save(key, value, shown)
             onUnlockAsked: card.unlock()
             onChangedElsewhere: {
