@@ -691,7 +691,9 @@ pub(crate) fn devices() -> String {
 /// says it screens calls.
 fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str, bool)>) -> std::collections::BTreeMap<String, serde_json::Value> {
     let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
-    let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config)).names();
+    // Every group in use, held back or not: named to be offered a row, never matched to a caller here
+    // (the same index as the lists', `Senders::load`, kept once for both).
+    let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config), &sioul_core::addressbooks::groups_held_back(config)).names();
     let today = crate::calls::today(config);
     let held = held_words(config);
     devices
