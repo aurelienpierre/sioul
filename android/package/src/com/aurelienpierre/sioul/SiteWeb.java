@@ -565,6 +565,8 @@ final class SiteWeb
         ENGLISH.put("asked_camera", "the camera");
         ENGLISH.put("asked_microphone", "the microphone");
         ENGLISH.put("asked_location", "your location");
+        ENGLISH.put("asked_media", "protected videos");
+        ENGLISH.put("http_auth", "This site asks for a sign-in of its own that Sioul does not show (HTTP authentication): open it in your browser.");
         ENGLISH.put("download_page", "This file is made by the page itself: Sioul cannot save it yet. Open the page in your browser to save it.");
         ENGLISH.put("save_title", "Save this file?");
         ENGLISH.put("save_name", "Name");
@@ -843,16 +845,32 @@ final class SiteWeb
     }
 
     /**
-     * The web view's own user agent, without the marks of a web view
-     * ("; wv" and "Version/4.0"), as a computer's Sioul leaves Qt's name
-     * out: some chats and one large provider refuse browsers they take for
-     * embedded ones (docs/sites.md, "The browser").
+     * The web view's own user agent, saying what it is (a web view, "; wv",
+     * as Android writes it), without the device's model and build (review
+     * S1): of the first parentheses, only "Linux", "Android <version>" and
+     * "wv" stay. Unchanged when it holds no "Android" there. A site that
+     * refuses browsers inside apps then goes through Open in the browser.
      */
     static String userAgent(String agent)
     {
         if (agent == null)
             return null;
-        return agent.replace("; wv)", ")").replace("Version/4.0 ", "").trim();
+        int open = agent.indexOf('(');
+        int close = open < 0 ? -1 : agent.indexOf(')', open);
+        if (close < 0)
+            return agent.trim();
+        java.util.List<String> kept = new java.util.ArrayList<>();
+        boolean android = false;
+        for (String part : agent.substring(open + 1, close).split(";")) {
+            String token = part.trim();
+            if (token.matches("Android [0-9.]{1,12}"))
+                android = true;
+            if (token.equals("Linux") || token.equals("wv") || token.matches("Android [0-9.]{1,12}"))
+                kept.add(token);
+        }
+        if (!android)
+            return agent.trim();
+        return (agent.substring(0, open + 1) + String.join("; ", kept) + agent.substring(close)).trim();
     }
 
     // ---------------------------------------------------------------- Downloads, requests
@@ -1004,16 +1022,17 @@ final class SiteWeb
     /**
      * The line in the bar's menu saying what the site asked for and did
      * not get in this phase (phase 2 asks you): the camera, the
-     * microphone, your location, in that order, joined by commas; null
-     * when it asked for none.
+     * microphone, your location, protected videos (review S4), in that
+     * order, joined by commas; null when it asked for none.
      *
      * @param site the site's words
      * @param camera whether it asked for the camera
      * @param microphone whether it asked for the microphone
      * @param location whether it asked for your location
+     * @param media whether it asked to play protected videos
      * @return the line, or null
      */
-    static String askedLine(Opening site, boolean camera, boolean microphone, boolean location)
+    static String askedLine(Opening site, boolean camera, boolean microphone, boolean location, boolean media)
     {
         java.util.List<String> what = new java.util.ArrayList<>();
         if (camera)
@@ -1022,6 +1041,8 @@ final class SiteWeb
             what.add(site.word("asked_microphone"));
         if (location)
             what.add(site.word("asked_location"));
+        if (media)
+            what.add(site.word("asked_media"));
         return what.isEmpty() ? null : site.word("asked").replace("{what}", String.join(", ", what));
     }
 

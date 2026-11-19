@@ -126,6 +126,11 @@ public final class SiteScreen extends Activity
     private boolean askedCamera;
     private boolean askedMicrophone;
     private boolean askedLocation;
+    private boolean askedMedia;
+    /** The page an HTTP sign-in was refused on, said once for it (review S4). */
+    private String toldHttpAuth = "";
+    /** The service workers' own settings, set once per process (review S3). */
+    private static boolean workersSet;
     /** The page's drawing process ended: the screen goes. */
     private boolean ended;
     /** A web view was made in this screen: until then, nothing is asked of the web view (review L5). */
@@ -392,7 +397,7 @@ public final class SiteScreen extends Activity
     {
         PopupMenu menu = new PopupMenu(this, more);
         Menu items = menu.getMenu();
-        String asked = SiteWeb.askedLine(site, askedCamera, askedMicrophone, askedLocation);
+        String asked = SiteWeb.askedLine(site, askedCamera, askedMicrophone, askedLocation, askedMedia);
         if (asked != null)
             items.add(Menu.NONE, 0, 0, asked).setEnabled(false);
         items.add(Menu.NONE, 1, 1, site.word("browser"));
@@ -528,8 +533,11 @@ public final class SiteScreen extends Activity
         settings.setUserAgentString(SiteWeb.userAgent(settings.getUserAgentString()));
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
-        // As a computer's Sioul: a sign-in in a frame of another site keeps its cookie.
-        cookies.setAcceptThirdPartyCookies(page, true);
+        // Refused (review S2, the coordinator's choice): with one store for every site, what sites
+        // embed would follow the person from one to another. A sign-in through a provider is a
+        // redirect of the page itself, and keeps its cookies.
+        cookies.setAcceptThirdPartyCookies(page, false);
+        workers();
         page.setBackgroundColor(site.background);
         page.setWebViewClient(new Client());
         page.setWebChromeClient(new Chrome());
@@ -539,6 +547,22 @@ public final class SiteScreen extends Activity
                 findCount.setText(count == 0 ? site.word("find_none") : (at + 1) + "/" + count);
         });
         return page;
+    }
+
+    /**
+     * The service workers' own settings, which no web view's settings
+     * reach ("not tied to the lifetime of any WebView"): no file and no
+     * content access either (review S3). Once per process, once a web view
+     * was made.
+     */
+    private static void workers()
+    {
+        if (workersSet)
+            return;
+        android.webkit.ServiceWorkerWebSettings workers = android.webkit.ServiceWorkerController.getInstance().getServiceWorkerWebSettings();
+        workers.setAllowFileAccess(false);
+        workers.setAllowContentAccess(false);
+        workersSet = true;
     }
 
     /** Where each page goes, the host shown, a drawing process that ends. */
@@ -580,6 +604,19 @@ public final class SiteScreen extends Activity
             if ("POST".equalsIgnoreCase(request.getMethod()))
                 SiteWeb.posted(String.valueOf(request.getUrl()), System.currentTimeMillis());
             return null;
+        }
+
+        // A sign-in of the server's own (HTTP authentication): refused, as the web view's
+        // default does, and said once for the page (review S4).
+        @Override
+        public void onReceivedHttpAuthRequest(WebView page, android.webkit.HttpAuthHandler handler, String host, String realm)
+        {
+            handler.cancel();
+            String on = page == popup ? popupCommitted : committed;
+            if (!on.equals(toldHttpAuth)) {
+                toldHttpAuth = on;
+                fetchSaid(site.word("http_auth"), true);
+            }
         }
 
         // The page committed, its own or a same-document change: its address is the one shown.
@@ -625,6 +662,8 @@ public final class SiteScreen extends Activity
                     askedCamera = true;
                 else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource))
                     askedMicrophone = true;
+                else if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource))
+                    askedMedia = true;
             }
             // Refused in this phase: the next asks you, site by site.
             request.deny();

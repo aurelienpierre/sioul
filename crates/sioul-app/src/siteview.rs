@@ -230,6 +230,8 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("asked_camera", "site-screen-asked-camera"),
         ("asked_microphone", "site-screen-asked-microphone"),
         ("asked_location", "site-screen-asked-location"),
+        ("asked_media", "site-screen-asked-media"),
+        ("http_auth", "site-screen-http-auth"),
         ("download_page", "site-screen-download-page"),
         ("save_title", "site-screen-save-title"),
         ("save_name", "site-screen-save-name"),

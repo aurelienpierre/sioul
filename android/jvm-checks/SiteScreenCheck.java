@@ -217,15 +217,18 @@ public final class SiteScreenCheck
         expect("never another scheme, nor a long one", SiteWeb.kept("http://example.org") == null && SiteWeb.kept("about:blank") == null && SiteWeb.kept(null) == null && SiteWeb.kept("https://example.org/" + "a".repeat(8200)) == null);
         String agent = "Mozilla/5.0 (Linux; Android 14; Tablet Build/AP2A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.90 Safari/537.36";
         String cleaned = SiteWeb.userAgent(agent);
-        expect("the user agent without a web view's marks: " + cleaned, !cleaned.contains("; wv") && !cleaned.contains("Version/4.0") && cleaned.contains("Chrome/142.0.7444.90") && cleaned.contains("(Linux; Android 14; Tablet Build/AP2A)"));
+        expect("the user agent says it is a web view, without the device's model (review S1): " + cleaned, cleaned.equals("Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.90 Safari/537.36"));
+        expect("a tablet's agent without wv keeps its Android, drops its model", SiteWeb.userAgent("Mozilla/5.0 (Linux; Android 9; SM-T000 Build/PPR1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36").startsWith("Mozilla/5.0 (Linux; Android 9) AppleWebKit"));
+        expect("an agent that names no Android: unchanged", SiteWeb.userAgent("Mozilla/5.0 (X11; Linux x86_64)").equals("Mozilla/5.0 (X11; Linux x86_64)") && SiteWeb.userAgent(null) == null);
         String[][] names = { { "../../etc/passwd", "passwd" }, { "..\\..\\x.pdf", "x.pdf" }, { ".hidden", "hidden" }, { "a:b*c?.pdf", "a_b_c_.pdf" }, { "report\n.pdf", "report_.pdf" }, { "", "download" }, { null, "download" }, { "...", "download" }, { "Relevé de compte.pdf", "Relevé de compte.pdf" } };
         for (String[] pair : names)
             expect("a file's name: " + pair[0] + " → " + SiteWeb.fileName(pair[0]), SiteWeb.fileName(pair[0]).equals(pair[1]));
         String long_ = SiteWeb.fileName("a".repeat(300) + ".pdf");
         expect("a long name cut, its extension kept", long_.length() == 120 && long_.endsWith(".pdf"));
-        expect("nothing asked: no line", SiteWeb.askedLine(bank, false, false, false) == null);
-        expect("what was asked, in Sioul's words", "Ce site a demandé la caméra, votre position\u202f: pas dans cette version de Sioul.".equals(SiteWeb.askedLine(bank, true, false, true)));
-        expect("the microphone in English when not given", SiteWeb.askedLine(bank, false, true, false).contains("the microphone"));
+        expect("nothing asked: no line", SiteWeb.askedLine(bank, false, false, false, false) == null);
+        expect("what was asked, in Sioul's words", "Ce site a demandé la caméra, votre position\u202f: pas dans cette version de Sioul.".equals(SiteWeb.askedLine(bank, true, false, true, false)));
+        expect("the microphone in English when not given", SiteWeb.askedLine(bank, false, true, false, false).contains("the microphone"));
+        expect("protected videos said too (review S4)", SiteWeb.askedLine(bank, false, false, false, true).contains("protected videos"));
 
         // ------------------------------------------------ What the file chooser hands back (review F1)
         String own = "com.aurelienpierre.sioul";
@@ -452,6 +455,10 @@ public final class SiteScreenCheck
         String drawing = body(web, "private static String[] drawing(", "    ");
         expect("Rust's question asked on Android's main thread, three seconds at most", drawing.contains("new Handler(Looper.getMainLooper()).post(work);") && drawing.contains("done.await(3, java.util.concurrent.TimeUnit.SECONDS)"));
         expect("an answer kept only when whole (review V3)", drawing.contains("if (!found[0].isEmpty() && !found[1].isEmpty())") && body(web, "private static synchronized JSONObject features(", "    ").contains("if (whole) {"));
+        expect("third-party cookies refused (review S2)", screen.contains("cookies.setAcceptThirdPartyCookies(page, false);") && !screen.contains("setAcceptThirdPartyCookies(page, true)"));
+        expect("the service workers' own file and content access off (review S3)", body(screen, "private static void workers()", "    ").contains("workers.setAllowFileAccess(false);") && body(screen, "private static void workers()", "    ").contains("workers.setAllowContentAccess(false);") && body(screen, "private WebView page()", "    ").contains("workers();"));
+        expect("an HTTP sign-in refused and said (review S4)", body(screen, "public void onReceivedHttpAuthRequest(", "        ").contains("handler.cancel();") && !screen.contains("handler.proceed("));
+        expect("protected media refused and said", body(screen, "public void onPermissionRequest(", "        ").contains("RESOURCE_PROTECTED_MEDIA_ID") && body(screen, "public void onPermissionRequest(", "        ").contains("request.deny();"));
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");
