@@ -211,6 +211,13 @@ Quelqu’un ajouté de nouveau par l’une de ses adresses, l’un de ses numér
 
 Sur Android, son propre mode « Ne pas déranger » ne nomme aucune liste : les modes de Sioul laissent passer, autant qu’Android peut le dire, ce que la matrice laisse passer à ce moment ([Ce que fait chaque système](#what-each-system-does)). Sous **En favori sur ce téléphone**, dans Paramètres ▸ Appareils, la carte de ce téléphone, Sioul dit qui, sur votre liste, n’y est pas en favori, avec **Ouvrir son contact**, pour le mettre en favori, ou **Ajouter aux contacts**.
 
+**Les contacts favoris passent toujours, dans les deux sens** (un interrupteur sous la liste, désactivé tant que vous ne l’activez pas) : un contact en favori sur un téléphone, ou sur un serveur qui garde les favoris (Nextcloud le fait), rejoint la liste sur chaque appareil, et chaque personne de la liste est mise en favori là où se trouve son contact. Sioul écrit le favori et rien d’autre d’un contact. Rien ne change tant que vous ne le changez pas, et Sioul ne devine jamais :
+
+- Quelqu’un ne quitte la liste que si vous retirez un favori que Sioul a mis, tant qu’aucun autre de ses contacts n’y est encore en favori. Un favori que vous avez mis vous-même et que vous retirez ne retire personne : retirez la personne de la liste dans Sioul.
+- Des favoris qui disparaissent à deux ou plus à la fois (un compte synchronisé de nouveau, un téléphone restauré) ne retirent personne : une notification les nomme, et la liste reste à vous de changer.
+- Un contact que Sioul n’a pas pu lire cette fois, un numéro que deux contacts ou deux personnes partagent, un contact dont le numéro a changé : rien ne change, et la liste dit combien de contacts n’ont pu être rattachés à une seule personne.
+- Désactivé, l’interrupteur oublie ce que chaque endroit tenait ; réactivé, il ajoute et met en favori, et ne retire personne.
+
 ### Les notifications des autres applications, sur Android {#other-apps-on-a-phone}
 
 Sur Android, Sioul peut retenir les notifications des autres applications jusqu’à leur moment, comme il retient vos courriels. La carte de ce téléphone dans Paramètres ▸ **Appareils** le met en place : l’accès aux notifications d’Android, retenir ou non, et les applications qui ont sonné avant que Sioul les retienne ([Ce téléphone](settings.md#this-phone)).

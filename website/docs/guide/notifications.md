@@ -211,6 +211,13 @@ Someone added again by one of their addresses, numbers or their card stays one p
 
 On Android, its own do-not-disturb names no list: Sioul's modes let through, as far as Android can say it, what the matrix lets through then ([What each system does](#what-each-system-does)). Under **Starred on this phone**, in Settings ▸ Devices, this phone's card, Sioul says who on your list is not starred there, with **Open their contact**, to star it, or **Add to contacts**.
 
+**Starred contacts are Always through, both ways** (a switch under the list, off until you turn it on): a contact starred on a phone, or marked favourite on a server that keeps favourites (Nextcloud does), joins the list on every device, and everyone on the list is starred where their contact is. Sioul writes the star and nothing else of a contact. Nothing changes until you change it, and Sioul never guesses:
+
+- Someone leaves the list only when you unstar a star Sioul set, while no other of their contacts there is still starred. A star you set yourself and take off takes nobody off; take them off the list in Sioul.
+- Stars that go two or more at once (an account synced again, a phone restored) take nobody off: a notice names them, and the list is yours to change.
+- A contact Sioul could not read this time, a number two contacts or two people share, a contact whose number changed: nothing changes, and the list says how many contacts it could not match to one person.
+- Turned off, the switch forgets what each place held; turned on again, it adds and stars, and takes nobody off.
+
 ### Other apps' notifications, on Android {#other-apps-on-a-phone}
 
 On Android, Sioul can hold other apps' notifications until their time, as it holds your mail. This phone's card in Settings ▸ **Devices** sets it up: Android's notification access, holding on or off, and the apps that rang before Sioul held them ([This phone](settings.md#this-phone)).
