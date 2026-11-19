@@ -279,9 +279,25 @@ final class SiteWeb
         ENGLISH.put("asked_camera", "the camera");
         ENGLISH.put("asked_microphone", "the microphone");
         ENGLISH.put("asked_location", "your location");
-        ENGLISH.put("downloading", "Downloading {file} into Downloads: a notice says when it is there.");
         ENGLISH.put("download_page", "This file is made by the page itself: Sioul cannot save it yet. Open the page in your browser to save it.");
-        ENGLISH.put("download_failed", "This file could not be saved here: open the page in your browser to save it.");
+        ENGLISH.put("download_busy", "Sioul is saving another file of this site: try again once it is there.");
+        ENGLISH.put("saving", "Downloading {file}");
+        ENGLISH.put("saved", "{file} is in {place}.");
+        ENGLISH.put("saved_choose", "{file} is saved where you chose.");
+        ENGLISH.put("saved_own", "{file} is in Sioul's own Downloads folder on this device (Android, data, Sioul): Android did not let Sioul write to Downloads.");
+        ENGLISH.put("place_downloads", "Downloads");
+        ENGLISH.put("open", "Open");
+        ENGLISH.put("stop", "Stop");
+        ENGLISH.put("no_app", "No application on this device opens this file.");
+        ENGLISH.put("save_failed", "{file} was not saved: {why}");
+        ENGLISH.put("why_form", "the site made it for a form, which Sioul cannot send again. Open the page in your browser to save it.");
+        ENGLISH.put("why_elsewhere", "the site sends it from another address, where Sioul does not take its sign-in. Open the page in your browser to save it.");
+        ENGLISH.put("why_page", "asked again, the site answered with a page, not the file (a link that works once, or a sign-in asked again). Open the page in your browser to save it.");
+        ENGLISH.put("why_large", "it is larger than 1 GB, the most Sioul saves from a site.");
+        ENGLISH.put("why_room", "this device has not enough room left for it.");
+        ENGLISH.put("why_network", "the connection stopped before the end.");
+        ENGLISH.put("why_write", "it could not be written there.");
+        ENGLISH.put("why_cancelled", "you stopped it.");
         ENGLISH.put("ended", "The page stopped: Android ended what drew it. Sioul goes on; open the site again.");
         ENGLISH.put("no_browser", "No application on this device opens this address.");
         ENGLISH.put("not_https", "Sioul opens encrypted pages only (https): this one was not opened.");
@@ -544,6 +560,124 @@ final class SiteWeb
     }
 
     // ---------------------------------------------------------------- Downloads, requests
+
+    /** The addresses a page sent a form's body to (POST), and when: a few, for a few minutes. */
+    private static final java.util.LinkedHashMap<String, Long> POSTED = new java.util.LinkedHashMap<>();
+    /** How long a form's address is remembered. */
+    static final long POSTED_FOR = 5 * 60_000L;
+
+    /**
+     * A request with a form's body (POST) seen by the screen, by its
+     * address: a file it answers cannot be fetched again (review F2). The
+     * last sixteen, for {@link #POSTED_FOR}. Any thread.
+     *
+     * @param url its address
+     * @param now the time now (Unix ms)
+     */
+    static void posted(String url, long now)
+    {
+        if (url == null || !isHttps(url))
+            return;
+        synchronized (POSTED) {
+            POSTED.remove(url);
+            POSTED.put(url, now);
+            while (POSTED.size() > 16)
+                POSTED.remove(POSTED.keySet().iterator().next());
+        }
+    }
+
+    /**
+     * Whether a file's address was sent a form's body lately ({@link #posted}).
+     *
+     * @param url the file's address
+     * @param now the time now (Unix ms)
+     * @return whether a form made it
+     */
+    static boolean wasPosted(String url, long now)
+    {
+        synchronized (POSTED) {
+            Long at = url == null ? null : POSTED.get(url);
+            return at != null && now - at <= POSTED_FOR && now >= at;
+        }
+    }
+
+    /**
+     * What a download's request names as where it comes from: the origin of
+     * the page shown alone ("https://host/"), as a browser sends it to
+     * another site; "" before a page.
+     *
+     * @param committed the page shown, as committed
+     * @return its origin, or ""
+     */
+    static String origin(String committed)
+    {
+        if (!isHttps(committed))
+            return "";
+        String rest = committed.substring(8);
+        int end = rest.length();
+        for (char stop : new char[] { '/', '?', '#' }) {
+            int at = rest.indexOf(stop);
+            if (at >= 0 && at < end)
+                end = at;
+        }
+        String authority = rest.substring(0, end);
+        authority = authority.substring(authority.lastIndexOf('@') + 1);
+        return "https://" + authority.toLowerCase(Locale.ROOT) + "/";
+    }
+
+    /**
+     * A file's progress in a few characters: "42 %" when its length is
+     * known, else what came so far ("3.1 MB").
+     *
+     * @param fetched bytes so far
+     * @param length its length; -1 when not said
+     * @param locale the words' language, for the decimal mark
+     * @return the progress
+     */
+    static String progress(long fetched, long length, Locale locale)
+    {
+        if (length > 0)
+            return Math.min(100, fetched * 100 / length) + (locale != null && "fr".equals(locale.getLanguage()) ? "\u202f%" : "%");
+        return size(fetched, locale);
+    }
+
+    /**
+     * A size as people read it, in powers of 1000 as Android's own settings
+     * say it: "820 KB", "3.1 MB", "1.2 GB" ("Ko", "Mo", "Go" in French).
+     *
+     * @param bytes the size
+     * @param locale the words' language
+     * @return the size
+     */
+    static String size(long bytes, Locale locale)
+    {
+        boolean french = locale != null && "fr".equals(locale.getLanguage());
+        String[] units = french ? new String[] { "o", "Ko", "Mo", "Go" } : new String[] { "B", "KB", "MB", "GB" };
+        double value = Math.max(0, bytes);
+        int unit = 0;
+        while (value >= 1000 && unit < units.length - 1) {
+            value /= 1000;
+            unit++;
+        }
+        String number = unit == 0 || value >= 100 ? String.valueOf(Math.round(value)) : String.format(Locale.ROOT, "%.1f", value);
+        if (french)
+            number = number.replace('.', ',');
+        return number + "\u00a0" + units[unit];
+    }
+
+    /**
+     * Whether the page in the browser can save a file Sioul could not: a
+     * form's, another address's, a page answered in its place, a file made
+     * by the page; not a file too large, no room, the connection, Sioul's
+     * own writing, nor one stopped.
+     *
+     * @param why why it was not saved
+     * @return whether "Open in the browser" is offered
+     */
+    static boolean browserHelps(SiteDownload.Why why)
+    {
+        return why == SiteDownload.Why.FORM || why == SiteDownload.Why.ELSEWHERE || why == SiteDownload.Why.PAGE;
+    }
 
     /**
      * A downloaded file's name, as the web view guessed it, made safe for

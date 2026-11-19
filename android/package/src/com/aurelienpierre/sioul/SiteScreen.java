@@ -4,7 +4,6 @@
 package com.aurelienpierre.sioul;
 
 import android.app.Activity;
-import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -13,7 +12,6 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Message;
 import android.text.Editable;
 import android.text.TextUtils;
@@ -38,6 +36,7 @@ import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -121,6 +120,12 @@ public final class SiteScreen extends Activity
     private boolean askedLocation;
     /** The page's drawing process ended: the screen goes. */
     private boolean ended;
+    /** A file being fetched (SiteDownload), or null; its line under the bar. */
+    private SiteDownload.Job fetching;
+    private LinearLayout fetchRow;
+    private TextView fetchLine;
+    private TextView fetchAction;
+    private TextView fetchClose;
 
     @Override
     protected void onCreate(Bundle saved)
@@ -196,6 +201,7 @@ public final class SiteScreen extends Activity
         root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(findRow(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(fetchRow(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View line = new View(this);
         line.setBackgroundColor(site.line);
         root.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
@@ -503,7 +509,7 @@ public final class SiteScreen extends Activity
         page.setBackgroundColor(site.background);
         page.setWebViewClient(new Client());
         page.setWebChromeClient(new Chrome());
-        page.setDownloadListener(this::download);
+        page.setDownloadListener((url, agent, disposition, type, length) -> download(page, url, agent, disposition, type, length));
         page.setFindListener((at, count, done) -> {
             if (done)
                 findCount.setText(count == 0 ? site.word("find_none") : (at + 1) + "/" + count);
@@ -540,6 +546,16 @@ public final class SiteScreen extends Activity
             if (inPopup && request.isForMainFrame() && SiteWeb.isEmptyWindow(popupCommitted))
                 closeEmpty(page);
             return true;
+        }
+
+        // A request sent with a form's body (POST), remembered a while by its address: a file it
+        // answered cannot be asked for again (SiteDownload). Nothing else is read; nothing is answered.
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView page, WebResourceRequest request)
+        {
+            if ("POST".equalsIgnoreCase(request.getMethod()))
+                SiteWeb.posted(String.valueOf(request.getUrl()), System.currentTimeMillis());
+            return null;
         }
 
         // The page committed, its own or a same-document change: its address is the one shown.
@@ -704,53 +720,141 @@ public final class SiteScreen extends Activity
     }
 
     /**
-     * A download: an https file is fetched by Android's download service
-     * with the site's cookies, into Downloads, Android's one notice saying
-     * when it is there and opening it; on Android 9 without the storage
-     * permission, into Sioul's own downloads folder. A file the page made
-     * itself cannot be fetched again: said.
+     * A download the page offered (review F3, F2): fetched by Sioul itself
+     * in the site's session, for its host alone, following no redirect to
+     * another host (SiteDownload), into Downloads; its progress and its end
+     * said in a line under the bar, with Open once saved, or why not and
+     * Open in the browser. A file a form made, or the page made itself
+     * ({@code blob:}, {@code data:}), cannot be asked for again: said at
+     * once. A window opened only for it goes.
      */
-    private void download(String url, String agent, String disposition, String type, long length)
+    private void download(WebView page, String url, String agent, String disposition, String type, long length)
     {
-        if (url == null || !SiteWeb.isHttps(url)) {
-            say(url != null && (url.startsWith("blob:") || url.startsWith("data:")) ? site.word("download_page") : site.word("not_https"));
-            return;
-        }
+        if (page == popup && popup != null && SiteWeb.isEmptyWindow(popupCommitted))
+            closeEmpty(page);
         String name = SiteWeb.fileName(URLUtil.guessFileName(url, disposition, type));
-        DownloadManager service = getSystemService(DownloadManager.class);
-        if (service == null) {
-            say(site.word("download_failed"));
+        if (url == null || !SiteWeb.isHttps(url)) {
+            if (url != null && (url.startsWith("blob:") || url.startsWith("data:")))
+                fetchSaid(site.word("download_page"), true);
+            else
+                say(site.word("not_https"));
             return;
         }
-        for (boolean shared : new boolean[] { true, false }) {
-            try {
-                service.enqueue(fetch(url, agent, type, name, shared));
-                say(site.word("downloading").replace("{file}", name));
-                return;
-            } catch (SecurityException | IllegalStateException | IllegalArgumentException e) {
-                Log.i(DoseAlarms.TAG, "Sites: a download refused into " + (shared ? "Downloads" : "Sioul's own folder") + ": " + e.getClass().getSimpleName());
-            }
+        if (SiteWeb.wasPosted(url, System.currentTimeMillis())) {
+            fetchFailed(name, SiteDownload.Why.FORM);
+            return;
         }
-        say(site.word("download_failed"));
+        if (fetching != null) {
+            say(site.word("download_busy"));
+            return;
+        }
+        fetch(new SiteDownload.Job(url, agent, type, SiteWeb.origin(committed), name, SiteDownload.DOWNLOADS, null));
     }
 
-    private DownloadManager.Request fetch(String url, String agent, String type, String name, boolean shared)
+    /** The file fetched, its line under the bar following it. */
+    private void fetch(SiteDownload.Job job)
     {
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-        String cookies = CookieManager.getInstance().getCookie(url);
-        if (cookies != null && !cookies.isEmpty())
-            request.addRequestHeader("Cookie", cookies);
-        if (agent != null && !agent.isEmpty())
-            request.addRequestHeader("User-Agent", agent);
-        if (type != null && !type.isEmpty())
-            request.setMimeType(type);
-        request.setTitle(name);
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_ONLY_COMPLETION);
-        if (shared)
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
-        else
-            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, name);
-        return request;
+        fetching = job;
+        fetchSaid(site.word("saving").replace("{file}", job.name), false);
+        fetchClose.setContentDescription(site.word("stop"));
+        SiteDownload.fetch(getApplicationContext(), job, this::runOnUiThread, new SiteDownload.Heard() {
+            @Override
+            public void progress(long fetched, long length)
+            {
+                if (fetching == job && !isDestroyed())
+                    fetchLine.setText(site.word("saving").replace("{file}", job.name) + " · " + SiteWeb.progress(fetched, length, getResources().getConfiguration().getLocales().get(0)));
+            }
+
+            @Override
+            public void saved(Uri file, boolean own)
+            {
+                if (fetching == job)
+                    fetching = null;
+                if (isDestroyed())
+                    return;
+                String words = own ? site.word("saved_own") : SiteDownload.CHOOSE.equals(job.place) ? site.word("saved_choose") : site.word("saved").replace("{place}", site.word("place_downloads"));
+                fetchSaid(words.replace("{file}", job.name), false);
+                fetchClose.setContentDescription(site.word("close"));
+                fetchAction.setText(site.word("open"));
+                fetchAction.setVisibility(file != null ? View.VISIBLE : View.GONE);
+                fetchAction.setOnClickListener(v -> openSaved(file, job.type));
+            }
+
+            @Override
+            public void failed(SiteDownload.Why why)
+            {
+                if (fetching == job)
+                    fetching = null;
+                if (!isDestroyed())
+                    fetchFailed(job.name, why);
+            }
+        });
+    }
+
+    /** The line under the bar: words, and Open in the browser when asked. */
+    private void fetchSaid(String words, boolean browser)
+    {
+        fetchLine.setText(words);
+        fetchRow.setVisibility(View.VISIBLE);
+        fetchAction.setText(site.word("browser"));
+        fetchAction.setVisibility(browser ? View.VISIBLE : View.GONE);
+        fetchAction.setOnClickListener(v -> browse(shown()));
+        fetchClose.setContentDescription(site.word("close"));
+    }
+
+    /** A file not saved: why, and the page in the browser where that helps. */
+    private void fetchFailed(String name, SiteDownload.Why why)
+    {
+        if (why == SiteDownload.Why.CANCELLED) {
+            fetchRow.setVisibility(View.GONE);
+            return;
+        }
+        String reason = site.word("why_" + why.name().toLowerCase(java.util.Locale.ROOT));
+        fetchSaid(site.word("save_failed").replace("{file}", name).replace("{why}", reason), SiteWeb.browserHelps(why));
+    }
+
+    /** Find's row's sibling: a file's progress, its end, or why it was not saved. */
+    private View fetchRow()
+    {
+        fetchRow = new LinearLayout(this);
+        fetchRow.setOrientation(LinearLayout.HORIZONTAL);
+        fetchRow.setGravity(Gravity.CENTER_VERTICAL);
+        fetchRow.setPadding(dp(12), dp(4), 0, dp(4));
+        fetchRow.setVisibility(View.GONE);
+        fetchLine = new TextView(this);
+        fetchLine.setTextColor(site.text);
+        fetchLine.setTextSize(14);
+        fetchRow.addView(fetchLine, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        fetchAction = textButton("", site.word("open"), v -> {
+        });
+        fetchAction.setTextSize(15);
+        fetchAction.setTypeface(Typeface.DEFAULT_BOLD);
+        fetchAction.setPadding(dp(8), 0, dp(8), 0);
+        fetchRow.addView(fetchAction);
+        fetchClose = textButton("×", site.word("close"), v -> {
+            SiteDownload.Job job = fetching;
+            if (job != null)
+                job.cancelled = true;
+            fetchRow.setVisibility(View.GONE);
+        });
+        fetchRow.addView(fetchClose);
+        return fetchRow;
+    }
+
+    /** A file saved, opened in the app for its type; said when none opens it. */
+    private void openSaved(Uri file, String type)
+    {
+        String kind = SiteDownload.base(type);
+        if (kind.isEmpty() || kind.equals("application/octet-stream")) {
+            String known = getContentResolver().getType(file);
+            kind = known == null || known.isEmpty() ? "application/octet-stream" : known;
+        }
+        Intent open = new Intent(Intent.ACTION_VIEW).setDataAndType(file, kind).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(open);
+        } catch (ActivityNotFoundException e) {
+            say(site.word("no_app"));
+        }
     }
 
     // ---------------------------------------------------------------- Android's calls
@@ -840,6 +944,9 @@ public final class SiteScreen extends Activity
     @Override
     protected void onDestroy()
     {
+        // A file under way stops with its site: nothing half-written stays (SiteDownload).
+        if (fetching != null)
+            fetching.cancelled = true;
         if (files != null) {
             files.onReceiveValue(null);
             files = null;

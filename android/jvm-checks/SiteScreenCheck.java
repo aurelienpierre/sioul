@@ -245,6 +245,49 @@ public final class SiteScreenCheck
         expect("a file to open, or several", SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN) && SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE));
         expect("never a file to save nor a folder", !SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_SAVE) && !SiteWeb.choosesFiles(2));
 
+        // ------------------------------------------------ A file fetched by Sioul itself (review F3, F2)
+        String file = "https://secure.bank.example.co.uk/statements/7";
+        expect("a redirect on the same host is followed", "https://secure.bank.example.co.uk/files/7.pdf".equals(SiteDownload.sameHost(file, "/files/7.pdf")) && "https://secure.bank.example.co.uk/x".equalsIgnoreCase(SiteDownload.sameHost(file, "https://SECURE.bank.example.co.uk/x")));
+        expect("a relative one too", "https://secure.bank.example.co.uk/statements/7.pdf".equals(SiteDownload.sameHost(file, "7.pdf")));
+        expect("never to another host, even of the same site", SiteDownload.sameHost(file, "https://files.example.co.uk/7.pdf") == null && SiteDownload.sameHost(file, "https://storage.example.net/7.pdf") == null);
+        expect("never to another scheme, port, a user, or a host given without a scheme", SiteDownload.sameHost(file, "http://secure.bank.example.co.uk/7.pdf") == null && SiteDownload.sameHost(file, "https://secure.bank.example.co.uk:8443/7.pdf") == null
+            && SiteDownload.sameHost(file, "https://u@secure.bank.example.co.uk/7.pdf") == null && SiteDownload.sameHost(file, "//storage.example.net/7.pdf") == null);
+        expect("nothing to follow: nothing", SiteDownload.sameHost(file, null) == null && SiteDownload.sameHost(file, "") == null && SiteDownload.sameHost(null, "/x") == null && SiteDownload.sameHost(file, "https://exa mple.net/") == null);
+        expect("the file: kept", SiteDownload.verdict(200, "application/pdf", "application/pdf", null) == null && SiteDownload.verdict(200, null, "application/octet-stream", "attachment; filename=a.pdf") == null);
+        expect("a page where a file was expected: never saved under its name", SiteDownload.verdict(200, "application/pdf", "text/html; charset=utf-8", null) == SiteDownload.Why.PAGE && SiteDownload.verdict(200, "", "application/xhtml+xml", "inline") == SiteDownload.Why.PAGE);
+        expect("a page the site gives as an attachment, or a page expected: kept", SiteDownload.verdict(200, "application/pdf", "text/html", "Attachment; filename=a.html") == null && SiteDownload.verdict(200, "text/html", "text/html", null) == null);
+        expect("any other status: not the file", SiteDownload.verdict(404, "application/pdf", "application/pdf", null) == SiteDownload.Why.PAGE && SiteDownload.verdict(206, "application/pdf", "application/pdf", null) == SiteDownload.Why.PAGE && SiteDownload.verdict(403, null, null, null) == SiteDownload.Why.PAGE);
+        expect("larger than the limit: not fetched", SiteDownload.roomFor(SiteDownload.LIMIT + 1, Long.MAX_VALUE / 2) == SiteDownload.Why.LARGE);
+        expect("no room left after it: not fetched", SiteDownload.roomFor(500L << 20, 600L << 20) == SiteDownload.Why.ROOM && SiteDownload.roomFor(-1, 100L << 20) == SiteDownload.Why.ROOM);
+        expect("room enough, length said or not: fetched", SiteDownload.roomFor(5L << 20, 8L << 30) == null && SiteDownload.roomFor(-1, 8L << 30) == null);
+        expect("a program is said as one", SiteDownload.isProgram("setup.APK", null) && SiteDownload.isProgram("update", "application/vnd.android.package-archive") && SiteDownload.isProgram("tool.exe", "application/octet-stream"));
+        expect("a document is not", !SiteDownload.isProgram("Relev\u00e9.pdf", "application/pdf") && !SiteDownload.isProgram("photo.jpg", "image/jpeg") && !SiteDownload.isProgram(null, null));
+        long t = 1_800_000_000_000L;
+        SiteWeb.posted("https://secure.bank.example.co.uk/export", t);
+        expect("a form's address remembered: its file cannot be asked again", SiteWeb.wasPosted("https://secure.bank.example.co.uk/export", t + 60_000));
+        expect("for five minutes, that address alone", !SiteWeb.wasPosted("https://secure.bank.example.co.uk/export", t + SiteWeb.POSTED_FOR + 1) && !SiteWeb.wasPosted("https://secure.bank.example.co.uk/export?x", t) && !SiteWeb.wasPosted(null, t));
+        for (int i = 0; i < 16; i++)
+            SiteWeb.posted("https://example.org/form/" + i, t + i);
+        expect("the last sixteen kept", !SiteWeb.wasPosted("https://secure.bank.example.co.uk/export", t + 20) && SiteWeb.wasPosted("https://example.org/form/0", t + 20) && SiteWeb.wasPosted("https://example.org/form/15", t + 20));
+        SiteWeb.posted("http://example.org/form", t);
+        expect("never an address that is not https", !SiteWeb.wasPosted("http://example.org/form", t));
+        expect("the request names the page's origin alone", SiteWeb.origin("https://user@Secure.Bank.example.co.uk:8443/home?id=7#x").equals("https://secure.bank.example.co.uk:8443/") && SiteWeb.origin("about:blank").isEmpty() && SiteWeb.origin("").isEmpty());
+        expect("progress in English", SiteWeb.progress(42, 100, java.util.Locale.ENGLISH).equals("42%") && SiteWeb.progress(3_100_000, -1, java.util.Locale.ENGLISH).equals("3.1\u00a0MB") && SiteWeb.size(820_000, java.util.Locale.ENGLISH).equals("820\u00a0KB") && SiteWeb.size(999, java.util.Locale.ENGLISH).equals("999\u00a0B"));
+        expect("and in French", SiteWeb.progress(42, 100, java.util.Locale.FRENCH).equals("42\u202f%") && SiteWeb.size(3_100_000, java.util.Locale.FRENCH).equals("3,1\u00a0Mo") && SiteWeb.size(1_200_000_000, java.util.Locale.FRENCH).equals("1,2\u00a0Go"));
+        expect("the browser offered where it can save what Sioul could not", SiteWeb.browserHelps(SiteDownload.Why.FORM) && SiteWeb.browserHelps(SiteDownload.Why.PAGE) && SiteWeb.browserHelps(SiteDownload.Why.ELSEWHERE) && !SiteWeb.browserHelps(SiteDownload.Why.ROOM) && !SiteWeb.browserHelps(SiteDownload.Why.LARGE));
+        for (SiteDownload.Why why : SiteDownload.Why.values())
+            expect("each reason has its words: " + why, SiteWeb.ENGLISH.containsKey("why_" + why.name().toLowerCase(java.util.Locale.ROOT)));
+        java.io.File folder = Files.createTempDirectory("sioul-site-download").toFile();
+        try {
+            new java.io.File(folder, "a.pdf").createNewFile();
+            new java.io.File(folder, "a (2).pdf").createNewFile();
+            expect("a name taken gets a number, never a file replaced", SiteDownload.unique(folder, "a.pdf").getName().equals("a (3).pdf") && SiteDownload.unique(folder, "b.pdf").getName().equals("b.pdf"));
+        } finally {
+            for (java.io.File f : folder.listFiles())
+                f.delete();
+            folder.delete();
+        }
+
         // ------------------------------------------------ As Rust names them
         Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
         expect("Rust's features found", features.find());
@@ -315,6 +358,28 @@ public final class SiteScreenCheck
         expect("the bar's lines from the rule, for the page in front", shown.contains("SiteWeb.bar(site.name, site.domain, popup != null ? popupCommitted : committed, site.word(\"from\"))") && shown.contains("title.setText(bar.first);") && shown.contains("host.setText(bar.second);"));
         expect("the site's name set nowhere else after the bar is made", screen.split("setText\\(site\\.name\\)", -1).length - 1 == 1);
         expect("the line holding a host is cut on the left, read left to right", body(screen, "private void lines(", "    ").contains("hostLine.setEllipsize(TextUtils.TruncateAt.START);") && body(screen, "private void lines(", "    ").contains("hostLine.setTextDirection(View.TEXT_DIRECTION_LTR);"));
+        String fetchSource = code(read(java.resolve("SiteDownload.java")));
+        boolean downloadService = false;
+        try (java.util.stream.Stream<Path> all = Files.list(java)) {
+            for (Path source : (Iterable<Path>) all::iterator)
+                downloadService |= code(read(source)).contains("DownloadManager");
+        }
+        expect("no site's file goes through Android's download service, nor its cookies", !downloadService);
+        expect("the fetch follows no redirect by itself", fetchSource.contains("answer.setInstanceFollowRedirects(false);") && !fetchSource.contains("setInstanceFollowRedirects(true)") && !fetchSource.contains("setFollowRedirects"));
+        expect("a redirect followed on the same host alone", fetchSource.contains("String next = sameHost(address, answer.getHeaderField(\"Location\"));") && fetchSource.contains("return Why.ELSEWHERE;"));
+        expect("the cookies read for each address asked, sent to it alone", body(fetchSource, "private static Why run(", "    ").indexOf("CookieManager.getInstance().getCookie(address)") > body(fetchSource, "private static Why run(", "    ").indexOf("new URL(address).openConnection()"));
+        expect("nothing written before the answer is the file", fetchSource.indexOf("Why not = verdict(") < fetchSource.indexOf("Target target = target(context, job);") && fetchSource.indexOf("roomFor(length,") < fetchSource.indexOf("Target target = target(context, job);"));
+        expect("a file cut short is taken back", fetchSource.contains("if (!done)") && fetchSource.contains("target.undo(context);") && fetchSource.contains("forget(context, job.chosen);"));
+        expect("a file under way stops with its site", body(screen, "protected void onDestroy()", "    ").contains("fetching.cancelled = true;"));
+        expect("a form's address remembered, nothing answered in the page's place", body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("SiteWeb.posted(") && body(screen, "public WebResourceResponse shouldInterceptRequest(", "        ").contains("return null;"));
+        expect("a form's file said at once, never fetched", body(screen, "private void download(WebView page,", "    ").indexOf("SiteWeb.wasPosted(url") < body(screen, "private void download(WebView page,", "    ").indexOf("fetch(new SiteDownload.Job("));
+        Matcher fetchLog = Pattern.compile("Log\\.\\w\\(DoseAlarms\\.TAG, ([^;]*)\\);").matcher(fetchSource);
+        int fetchLogs = 0;
+        while (fetchLog.find()) {
+            fetchLogs++;
+            expect("nothing of a file in a log line: " + fetchLog.group(1), fetchLog.group(1).matches("\"[^\"]*\"(\\s*\\+\\s*(e\\.getClass\\(\\)\\.getSimpleName\\(\\)|\\(target\\.own \\? \"[^\"]*\" : \"[^\"]*\"\\)))?"));
+        }
+        expect("the fetch's log lines read: " + fetchLogs, fetchLogs >= 6);
         String windows = body(screen, "public boolean onCreateWindow(", "        ");
         expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
         String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");

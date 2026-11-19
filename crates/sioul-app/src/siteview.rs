@@ -193,7 +193,19 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("asked_microphone", "site-screen-asked-microphone"),
         ("asked_location", "site-screen-asked-location"),
         ("download_page", "site-screen-download-page"),
-        ("download_failed", "site-screen-download-failed"),
+        ("download_busy", "site-screen-download-busy"),
+        ("place_downloads", "site-screen-place-downloads"),
+        ("open", "site-screen-open"),
+        ("stop", "site-screen-stop"),
+        ("no_app", "site-screen-no-app"),
+        ("why_form", "site-screen-why-form"),
+        ("why_elsewhere", "site-screen-why-elsewhere"),
+        ("why_page", "site-screen-why-page"),
+        ("why_large", "site-screen-why-large"),
+        ("why_room", "site-screen-why-room"),
+        ("why_network", "site-screen-why-network"),
+        ("why_write", "site-screen-why-write"),
+        ("why_cancelled", "site-screen-why-cancelled"),
         ("ended", "site-screen-ended"),
         ("no_browser", "site-screen-no-browser"),
         ("not_https", "site-screen-not-https"),
@@ -203,9 +215,14 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
     let mut args = sioul_core::i18n::args();
     args.set("what", "{what}");
     words.insert("asked".into(), tr.text("site-screen-asked", Some(&args)).into());
-    let mut args = sioul_core::i18n::args();
-    args.set("file", "{file}");
-    words.insert("downloading".into(), tr.text("site-screen-downloading", Some(&args)).into());
+    // A file's words, its name and where it went filled by Java (review F3).
+    for (key, id) in [("saving", "site-screen-saving"), ("saved", "site-screen-saved"), ("saved_choose", "site-screen-saved-choose"), ("saved_own", "site-screen-saved-own"), ("save_failed", "site-screen-save-failed")] {
+        let mut args = sioul_core::i18n::args();
+        args.set("file", "{file}");
+        args.set("place", "{place}");
+        args.set("why", "{why}");
+        words.insert(key.into(), tr.text(id, Some(&args)).into());
+    }
     // The bar's second line on another site's page: the site it came from (review N2).
     let mut args = sioul_core::i18n::args();
     args.set("name", "{name}");
@@ -345,7 +362,10 @@ mod tests {
             assert!(!value.is_empty() && !value.starts_with("site-") && !value.starts_with("ui-"), "{key}: {value}");
         }
         assert!(words["asked"].as_str().unwrap().contains("{what}"));
-        assert!(words["downloading"].as_str().unwrap().contains("{file}"));
+        for key in ["saving", "saved", "saved_choose", "saved_own", "save_failed"] {
+            assert!(words[key].as_str().unwrap().contains("{file}"), "{key}");
+        }
+        assert!(words["saved"].as_str().unwrap().contains("{place}") && words["save_failed"].as_str().unwrap().contains("{why}"));
         assert!(words["from"].as_str().unwrap().contains("{name}") && words["from"].as_str().unwrap().starts_with("depuis"));
         assert_eq!(words["browser"], "Ouvrir dans le navigateur");
         assert_eq!(given("not json")["look"], serde_json::json!({}));
