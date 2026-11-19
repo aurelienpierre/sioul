@@ -219,6 +219,20 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool) -> Va
     })
 }
 
+/// The sentence of a list that did not read, in Sioul's language alone (P3):
+/// its signature refused, an older list than the one accepted here, or a
+/// list that could not be fetched or read. The detail, in English, goes to the
+/// terminal only (`read_list`).
+fn list_problem(detail: &str) -> &'static str {
+    if detail.starts_with("the manifest's signature") {
+        "extensions-list-signature"
+    } else if detail.starts_with("an older manifest") || detail.starts_with("another manifest under serial") {
+        "extensions-list-older"
+    } else {
+        "extensions-list-unread"
+    }
+}
+
 /// The page's view: the offers of the manifest last read, then those this
 /// device has that it no longer lists; where the list is read and how it went.
 fn page_json() -> String {
@@ -242,7 +256,7 @@ fn page_json() -> String {
     json!({
         "reading": READING.lock().map(|r| *r).unwrap_or(false),
         "where": say("extensions-where", &[("address", address)]),
-        "problem": listed.and_then(|l| l.problem.clone()).map(|p| say("extensions-list-problem", &[("detail", p)])).unwrap_or_default(),
+        "problem": listed.and_then(|l| l.problem.as_deref()).map(|p| say(list_problem(p), &[])).unwrap_or_default(),
         "offers": offers,
     })
     .to_string()
@@ -1003,13 +1017,6 @@ fn show_page(qt: &QtThread, id: &str, page: &SignInPage) -> Result<Option<String
     Ok(returned)
 }
 
-/// Whether `address` is the address watched for: it begins with `watch`, and
-/// what follows ends its scheme and host (nothing, a path, a query, a
-/// fragment), as SignInSite.qml and SignIn.java check it.
-fn returns_to(address: &str, watch: &str) -> bool {
-    !watch.is_empty() && address.strip_prefix(watch).is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
-}
-
 /// The sign-in page of `id` closed, when it is the one shown (Remove): its call is told "cancelled".
 fn cancel_page(id: &str) {
     let waiting = PAGE.lock().ok().and_then(|mut w| if w.as_ref().is_some_and(|p| p.id == id) { w.take() } else { None });
@@ -1023,7 +1030,7 @@ fn cancel_page(id: &str) {
 pub(crate) fn returned(address: &str) {
     let waiting = PAGE.lock().ok().and_then(|mut w| w.take());
     if let Some(page) = waiting {
-        let _ = page.said.send(returns_to(address, &page.watch).then(|| address.to_string()));
+        let _ = page.said.send(sioul_core::extensions::manifest::returns_to(address, &page.watch).then(|| address.to_string()));
     }
 }
 
@@ -1210,6 +1217,15 @@ mod tests {
         let _ = std::fs::remove_file(run_lock_path(id));
     }
 
+    /// P3: the list's problem said in one of Sioul's sentences, never with the English detail.
+    #[test]
+    fn a_list_that_does_not_read_is_said_in_sioul_s_words() {
+        assert_eq!(list_problem("the manifest's signature: signed by another key"), "extensions-list-signature");
+        assert_eq!(list_problem("an older manifest (serial 3, 5 at least)"), "extensions-list-older");
+        assert_eq!(list_problem("another manifest under serial 5"), "extensions-list-older");
+        assert_eq!(list_problem("https://example.org/manifest.toml: the server answered 404"), "extensions-list-unread");
+    }
+
     /// R5: a run whose thread panics is not left "running".
     #[test]
     fn a_run_that_panics_is_not_left_running() {
@@ -1254,9 +1270,5 @@ mod tests {
         assert_eq!(answer.recv().unwrap().as_deref(), Some("app://cb?code=x"));
         returned("app://cb?code=again");
         assert!(PAGE.lock().unwrap().is_none(), "once");
-        for (address, watched) in [("app://cb", true), ("app://cb/x", true), ("app://cb#y", true), ("app://cbx", false), ("app://cb-x?code=1", false), ("app://c", false)] {
-            assert_eq!(returns_to(address, "app://cb"), watched, "{address}");
-        }
-        assert!(!returns_to("app://cb", ""), "nothing watched, nothing given back");
     }
 }

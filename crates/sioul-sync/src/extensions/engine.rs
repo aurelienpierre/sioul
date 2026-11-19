@@ -587,7 +587,7 @@ fn sign_in_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     let outcome = visit.services.sign_in(open, watch, &host, wait);
     visit.aside += shown.elapsed();
     match outcome {
-        Ok(Some(returned)) if returned.starts_with(watch) => {
+        Ok(Some(returned)) if sioul_core::extensions::manifest::returns_to(&returned, watch) => {
             visit.hide(&returned);
             // The values of its query and of its fragment (`#access_token=…`), each hidden.
             if let Some((_, query)) = returned.split_once(['?', '#']) {

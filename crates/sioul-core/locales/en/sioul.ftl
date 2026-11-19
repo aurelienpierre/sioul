@@ -3756,7 +3756,9 @@ extensions-intro = An extension brings data from a service Sioul does not speak 
 extensions-reading = Reading the list of extensions…
 extensions-none = No extension is offered yet.
 extensions-where = The list is read from { $address }, when this page opens and once a day while an extension is enabled.
-extensions-list-problem = The list of extensions could not be read: { $detail }
+extensions-list-signature = The list of extensions was not read: its signature does not hold.
+extensions-list-older = The list of extensions was not read: it is older than the one this device took before.
+extensions-list-unread = The list of extensions could not be read.
 extension-brings-agenda = It brings a read-only agenda.
 extension-sites = { $count ->
         [one] It talks to one site: { $sites }.

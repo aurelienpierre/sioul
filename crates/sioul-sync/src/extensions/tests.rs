@@ -214,6 +214,10 @@ fn a_sign_in_is_shown_only_on_a_sign_in_call_and_hidden_from_the_log() {
     assert_eq!(stand.pages, vec!["sso.example.org https://sso.example.org/authorize?x=1".to_string()]);
     let log = outcome.log.join("\n");
     assert!(log.contains("got the code [hidden]") && !log.contains("OC-secret-1234"), "{log}");
+    // D3: an address that begins alike but names another host is no return: the page counts as closed.
+    let stand = Stand { returned: Some("example-app://cb.other.example/?code=OC-other".into()), ..Stand::default() };
+    let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn(None), false), stand, &small(), true);
+    assert_eq!(outcome.reply.unwrap(), r#"{"cancelled":true}"#);
     // A page on a host not named, or a return not the one declared: refused.
     for ask in [r#"{"open":"https://evil.example.net/","watch":"example-app://cb"}"#, r#"{"open":"https://sso.example.org/","watch":"other-app://cb"}"#] {
         let file = module(&["sign_in", "answer", "reply"], &[ask], &echo("sign_in"));
@@ -403,7 +407,7 @@ fn what_sioul_holds_for_a_call_is_bounded_in_bytes() {
 #[test]
 fn calls_are_written_as_the_interface_says() {
     assert_eq!(call_text(Call::Refresh, true), r#"{"call":"refresh","interface":1,"lang":"fr"}"#);
-    assert_eq!(call_text(Call::SignIn(Some("gdest")), false), r#"{"call":"sign-in","choice":"gdest","interface":1,"lang":"en"}"#);
+    assert_eq!(call_text(Call::SignIn(Some("example")), false), r#"{"call":"sign-in","choice":"example","interface":1,"lang":"en"}"#);
     assert_eq!(call_text(Call::SignIn(None), false), r#"{"call":"sign-in","choice":null,"interface":1,"lang":"en"}"#);
 }
 
@@ -416,12 +420,13 @@ fn calls_are_written_as_the_interface_says() {
 fn skolengo_s_file_through_the_engine() {
     let path = std::env::var("SIOUL_EXTENSIONS_SKOLENGO").expect("SIOUL_EXTENSIONS_SKOLENGO names the built file");
     let file = std::fs::read(path).unwrap();
-    let given = grants(&["api.skolengo.com", "sso.monbureaunumerique.fr"], Some("skoapp-prod://sign-in-callback"));
-    // The platforms first.
+    // Neither call below makes a request: the hosts are the tests' own.
+    let given = grants(&["api.example.org", "sso.example.org"], Some("skoapp-prod://sign-in-callback"));
+    // The platforms first, each with its id and its name.
     let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn(None), true), Stand::default(), &Limits::default(), true);
     let reply = sioul_core::extensions::reply::sign_in_reply(&outcome.reply.unwrap()).unwrap();
     let sioul_core::extensions::reply::SignInReply::Choose(choices) = reply else { panic!("{reply:?}") };
-    assert!(choices.iter().any(|(id, name)| id == "gdest" && name == "Mon Bureau Numérique"));
+    assert!(choices.len() > 1 && choices.iter().all(|(id, name)| !id.is_empty() && !name.is_empty()), "{choices:?}");
     // No sign-in kept: a refresh says so, nothing asked.
     let (outcome, stand) = engine::call(&file, &given, &call_text(Call::Refresh, false), Stand::default(), &Limits::default(), false);
     let reply = sioul_core::extensions::reply::refresh_reply(&outcome.reply.unwrap()).unwrap();

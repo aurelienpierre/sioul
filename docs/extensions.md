@@ -174,7 +174,7 @@ interface = 1
 name = { en = "Skolengo timetable", fr = "Emploi du temps Skolengo" }
 about = { en = "…", fr = "…" }
 brings = ["agenda"]
-hosts = ["api.skolengo.com", "sso.monbureaunumerique.fr"]
+hosts = ["api.example.org", "sso.example.org"]
 # The beginning of the address a sign-in returns to; absent when it keeps none.
 sign_in = "skoapp-prod://sign-in-callback"
 file = "https://github.com/<owner>/sioul-extensions/releases/download/skolengo-0.1.0/skolengo.wasm"

@@ -3792,7 +3792,9 @@ extensions-intro = Une extension apporte des données d’un service que Sioul n
 extensions-reading = Lecture de la liste des extensions…
 extensions-none = Aucune extension n’est proposée pour l’instant.
 extensions-where = La liste est lue depuis { $address }, à l’ouverture de cette page et une fois par jour tant qu’une extension est activée.
-extensions-list-problem = La liste des extensions n’a pas pu être lue : { $detail }
+extensions-list-signature = La liste des extensions n’a pas été lue : sa signature ne tient pas.
+extensions-list-older = La liste des extensions n’a pas été lue : elle est plus ancienne que celle que cet appareil a prise avant.
+extensions-list-unread = La liste des extensions n’a pas pu être lue.
 extension-brings-agenda = Elle apporte un agenda en lecture seule.
 extension-sites = { $count ->
         [one] Elle parle à un site : { $sites }.

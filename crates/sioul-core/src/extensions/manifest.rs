@@ -166,6 +166,14 @@ pub fn watched(prefix: &str) -> bool {
     scheme_ok && !forbidden.contains(&scheme) && !rest.is_empty() && prefix.len() <= 200 && !prefix.bytes().any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
 }
 
+/// Whether `address` is the address a sign-in watches for: it begins with
+/// `watch`, and what follows ends its scheme and host (nothing, a path, a
+/// query, a fragment): `app://cb.other.example/…` is not `app://cb` (D3).
+/// The engine, the window's `returned`, SignInSite.qml and SignIn.java hold the same rule.
+pub fn returns_to(address: &str, watch: &str) -> bool {
+    !watch.is_empty() && address.strip_prefix(watch).is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
+}
+
 /// An `https` address, or a plain file name beside the manifest.
 fn file_named(file: &str) -> bool {
     if let Some(rest) = file.strip_prefix("https://") {
@@ -238,6 +246,14 @@ mod tests {
         assert!(parse(&twice).is_err(), "an id offered twice");
         // An interface this Sioul does not speak is listed, not usable.
         assert!(!parse(&SAMPLE.replace("interface = 1", "interface = 2")).unwrap().offers[0].usable());
+    }
+
+    #[test]
+    fn the_address_watched_for_ends_its_scheme_and_host() {
+        for (address, watched) in [("app://cb", true), ("app://cb/x", true), ("app://cb?code=1", true), ("app://cb#y", true), ("app://cbx", false), ("app://cb.other.example/?code=1", false), ("app://c", false)] {
+            assert_eq!(returns_to(address, "app://cb"), watched, "{address}");
+        }
+        assert!(!returns_to("app://cb", ""));
     }
 
     #[test]
