@@ -226,6 +226,9 @@ pub struct Outcome {
     pub log: Vec<String>,
     /// The most bytes Sioul held at once for the call's log and its hidden values.
     pub held: usize,
+    /// When the call's last web answer came (seconds since 1970): the age of
+    /// the data it brought; none when it asked the web nothing.
+    pub answered: Option<i64>,
 }
 
 /// The kinds of ask, each its own import.
@@ -282,6 +285,8 @@ struct Visit<S> {
     store_limits: StoreLimits,
     /// The most bytes held at once for the log and the hidden values (`Outcome::held`).
     held: usize,
+    /// When the last web answer came (`Outcome::answered`).
+    answered: Option<i64>,
 }
 
 impl<S: Services> Visit<S> {
@@ -518,6 +523,7 @@ fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     // A host and a status, never a path (W3): a path may name a pupil or an account.
     match visit.services.web(&request, wait, most) {
         Ok(answer) => {
+            visit.answered = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64);
             visit.said(format!("{method} {host}: {} ({} bytes)", answer.status, answer.body.len()));
             let headers: Vec<[String; 2]> = answer.headers.iter().map(|(n, v)| [n.to_ascii_lowercase(), v.clone()]).collect();
             json!({ "status": answer.status, "headers": headers, "body": answer.body })
@@ -822,6 +828,7 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
         asks: 0,
         stop: None,
         held: 0,
+        answered: None,
         store_limits: StoreLimitsBuilder::new().memory_size(limits.memory).memories(1).tables(1).table_elements(10_000).instances(1).trap_on_grow_failure(true).build(),
     };
     let mut config = Config::default();
@@ -845,7 +852,7 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
     }
     visit.weigh();
     let log = finish(std::mem::take(&mut visit.log), &mut visit.hidden, limits.log_width, visit.hiding_full);
-    (Outcome { reply, log, held: visit.held }, visit.services)
+    (Outcome { reply, log, held: visit.held, answered: visit.answered }, visit.services)
 }
 
 fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], grants: &Grants, call: &str, limits: &Limits) -> Result<String, Stop> {

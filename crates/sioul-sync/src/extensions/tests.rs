@@ -158,7 +158,10 @@ fn it_is_given_only_what_its_manifest_grants() {
 fn a_web_request_reaches_only_the_hosts_named() {
     let named = grants(&["api.example.org"], None);
     let ask = |url: &str| module(&["web", "answer", "reply"], &[&format!(r#"{{"method":"GET","url":"{url}","headers":[["Accept","text/plain"]]}}"#)], &echo("web"));
+    let before = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
     let (outcome, stand) = run_it(&ask("https://API.example.org/a?b=c"), &named, Stand::default(), false);
+    // The age of the data: when its last answer came, never before the call.
+    assert!(outcome.answered.is_some_and(|at| at >= before), "{:?}", outcome.answered);
     let reply: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
     assert_eq!((reply["status"].as_u64(), reply["headers"][0][0].as_str()), (Some(200), Some("content-type")));
     assert_eq!(stand.asked[0].host, "api.example.org");
@@ -173,6 +176,7 @@ fn a_web_request_reaches_only_the_hosts_named() {
         ("file:///etc/passwd", "scheme"),
     ] {
         let (outcome, stand) = run_it(&ask(url), &named, Stand::default(), false);
+        assert_eq!(outcome.answered, None, "nothing answered: {url}");
         assert_eq!(outcome.reply.unwrap(), format!(r#"{{"refused":"{why}"}}"#), "{url}");
         assert!(stand.asked.is_empty(), "{url}");
     }
