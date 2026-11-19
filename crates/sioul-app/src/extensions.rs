@@ -128,12 +128,17 @@ fn note_written(id: &str, fetched: i64) {
 }
 
 /// A refresh's agendas taken in through `door` when `write`, each whole (the
-/// door writes its files). What each holds now.
+/// door writes its files). What each holds now; nothing when nothing was
+/// written (another device's copy is the freshest): "brought" is said only
+/// of what this device wrote (R3).
 pub(crate) fn take_in(door: &dyn AgendaDoor, extension: &str, reply: &RefreshReply, write: bool) -> Result<Vec<Brought>, String> {
     let mut brought = Vec::new();
+    if !write {
+        return Ok(brought);
+    }
     for agenda in &reply.agendas {
         let folder = sioul_core::extensions::agenda_folder(extension, &agenda.id);
-        let events = if write { door.take(&folder, agenda)? } else { agenda.events };
+        let events = door.take(&folder, agenda)?;
         brought.push(Brought { id: agenda.id.clone(), name: agenda.name.clone(), events });
     }
     Ok(brought)
@@ -654,9 +659,22 @@ fn keep_log(id: &str, what: &str, outcome: &Outcome) {
     }
 }
 
-/// Marks `id` running; false when it runs already.
-fn start(id: &str) -> bool {
-    RUNNING.lock().map(|mut r| r.insert(id.to_string())).unwrap_or(false)
+/// The mark of a call running (`RUNNING`), taken away when it is dropped:
+/// at the call's end, or as its thread unwinds from a panic (R5), so that a
+/// run that panicked never stays "running" until Sioul is closed.
+struct Running(String);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if let Ok(mut running) = RUNNING.lock() {
+            running.remove(&self.0);
+        }
+    }
+}
+
+/// Marks `id` running; none when it runs already.
+fn start(id: &str) -> Option<Running> {
+    RUNNING.lock().ok().and_then(|mut r| r.insert(id.to_string()).then(|| Running(id.to_string())))
 }
 
 /// Where the lock of one call of `id` is, beside its log (this device's state).
@@ -683,12 +701,6 @@ fn run_lock(id: &str) -> Option<Option<std::fs::File>> {
     }
 }
 
-fn end(id: &str) {
-    if let Ok(mut running) = RUNNING.lock() {
-        running.remove(id);
-    }
-}
-
 /// One refresh of `id`, here and now (off the window's thread): its agendas
 /// taken in when this device's fetch is the freshest, its state noted.
 pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
@@ -698,20 +710,11 @@ pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
 /// A refresh decided from a record whose last run was `seen` (the minute's
 /// tick, the phone's step): none when another process ran it meanwhile.
 fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
-    if !start(id) {
-        return;
-    }
+    let Some(running) = start(id) else { return };
     // One call of an extension at a time across processes: the other process runs it.
-    let Some(_held) = run_lock(id) else {
-        end(id);
-        return;
-    };
-    let Some(installed) = state::load(&state::path()).get(id).cloned().filter(|i| i.enabled) else {
-        end(id);
-        return;
-    };
+    let Some(_held) = run_lock(id) else { return };
+    let Some(installed) = state::load(&state::path()).get(id).cloned().filter(|i| i.enabled) else { return };
     if seen.is_some_and(|seen| ran_meanwhile(seen, installed.last_run)) {
-        end(id);
         return;
     }
     if let Some(qt) = qt {
@@ -778,7 +781,7 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
             Some("record".to_string())
         }
     };
-    end(id);
+    drop(running);
     if let Some(qt) = qt {
         if let Some(problem) = &problem {
             crate::backend::set_status(qt, problem_line(problem, &name_of(id)));
@@ -810,21 +813,16 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
             crate::backend::set_status(&qt, say("extension-sign-in-busy", &[]));
             return;
         }
-        if !start(&id) {
-            return;
-        }
+        let Some(running) = start(&id) else { return };
         // A refresh of the background service holds it: the sign-in waits for none.
-        let Some(held) = run_lock(&id) else {
-            end(&id);
-            return;
-        };
+        let Some(held) = run_lock(&id) else { return };
         show(&qt);
         let (shower_qt, shower_id) = (qt.clone(), id.clone());
         let shower: store::SignInShower = Box::new(move |page| show_page(&shower_qt, &shower_id, page));
         let (outcome, _) = store::run(&installed.offer, Call::SignIn(choice.as_deref()), french(), Real::new(&id, Some(shower)).removable());
         keep_log(&id, "sign-in", &outcome);
         drop(held);
-        end(&id);
+        drop(running);
         let name = name_of(&id);
         let mut signed = false;
         let problem: Option<String> = match &outcome.reply {
@@ -885,7 +883,7 @@ pub(crate) fn tick(qt: &QtThread) {
         TRIED.store(now, std::sync::atomic::Ordering::Relaxed);
         read_list(Some(qt.clone()));
     }
-    let started = STARTED.lock().map(|s| s.clone()).unwrap_or_default();
+    let started = started_here(&state, STARTED.lock().map(|s| s.clone()).unwrap_or_default());
     for installed in due(&state, now, &started, &attempted()) {
         let seen = state.get(&installed).map(|i| i.last_run);
         let (qt, id) = (qt.clone(), installed);
@@ -925,6 +923,13 @@ pub(crate) fn background_step() {
         let seen = state.get(&id).map(|i| i.last_run);
         refresh_since(None, &id, seen);
     }
+}
+
+/// What counts as refreshed since Sioul started. On a phone the window's
+/// process ends and starts again many times a day: an opening is no start
+/// there, and the three hours alone decide (R4); on a computer, `started`.
+fn started_here(state: &State, started: BTreeSet<String>) -> BTreeSet<String> {
+    if cfg!(target_os = "android") { state.extensions.iter().map(|i| i.offer.id.clone()).collect() } else { started }
 }
 
 /// Whether another process ran an extension since its record said `seen`.
@@ -1082,8 +1087,9 @@ mod tests {
         let second = refreshed(&[("A", "20261119T090000Z")], &[("2026-11-19T23:00:00Z", "2026-11-20T23:00:00Z")]);
         take_in(&door, "timetable", &second, true).unwrap();
         assert_eq!(door.0.borrow()["ext-timetable-pupil-1"].unread, vec![(1_795_129_200, 1_795_215_600)]);
-        // A device whose fetch is not the freshest hands nothing to the door.
+        // A device whose fetch is not the freshest hands nothing to the door, and says nothing brought (R3).
         let third = refreshed(&[], &[]);
+        assert!(take_in(&door, "timetable", &first, false).unwrap().is_empty());
         take_in(&door, "timetable", &third, false).unwrap();
         assert_eq!(door.0.borrow()["ext-timetable-pupil-1"].events, 1);
         // Until the door is merged, nothing is written and the reason is said.
@@ -1202,6 +1208,20 @@ mod tests {
         assert!(!ran_meanwhile(1000, 1000));
         assert!(ran_meanwhile(1000, 1000 + EVERY), "the other process ran it meanwhile: no second run");
         let _ = std::fs::remove_file(run_lock_path(id));
+    }
+
+    /// R5: a run whose thread panics is not left "running".
+    #[test]
+    fn a_run_that_panics_is_not_left_running() {
+        let ran = std::thread::spawn(|| {
+            let _running = start("r5-panics").expect("not running yet");
+            assert!(start("r5-panics").is_none(), "never two at once");
+            panic!("a run that panics");
+        })
+        .join();
+        assert!(ran.is_err());
+        assert!(!RUNNING.lock().unwrap().contains("r5-panics"));
+        assert!(start("r5-panics").is_some(), "free again");
     }
 
     /// K1: Remove closes the sign-in page of the extension removed, and no other's.
