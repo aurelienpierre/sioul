@@ -8885,6 +8885,7 @@ storage-line-not = Sioul's lists are still in your notes folder on this device: 
 storage-waiting = Your lists move once every device knows where they go: { $devices } runs an older Sioul. Update it, or forget it in Settings ▸ Devices.
 storage-moved-already = Your lists have already moved on this device.
 storage-stopped = The move stopped before its end: nothing moved.
+storage-folder-not-empty = { $what } already holds files: choose an empty folder, or a new one. Everything in that folder is shared by Sioul with your other devices.
 storage-porch-unfinished = The move of Sioul's lists did not finish on this device: your lists stay where they were. Open it to try again.
 storage-porch-changed = Changed in your notes folder since your lists left it: { $files }. Sioul reads your lists in its own folder now and merges nothing by itself: copy over what you need.
 storage-porch-seen = Seen

@@ -144,7 +144,7 @@ fn a_move_copies_checks_keeps_names_and_switches() {
     let stand = stand("whole");
     let before = tree(&stand.folders.notes);
     let moved = move_now(&stand.folders, NOW, || Ok(())).unwrap();
-    assert_eq!((moved.lists, moved.papers, moved.letters, moved.found), (10, 3, 2, 0), "{moved:?}");
+    assert_eq!((moved.lists, moved.papers, moved.letters), (10, 3, 2), "{moved:?}");
     assert_eq!(moved.named, 4, "passport, card, the contract's and the letter's paths");
     assert!(Storage::read(&stand.folders.state).is_moved());
     assert_eq!(Storage::read(&stand.folders.state).from_path().unwrap(), stand.folders.notes);
@@ -193,8 +193,7 @@ fn each_point_stopped_then_run_again_finishes_once() {
             continue;
         }
         assert!(!Storage::read(&stand.folders.state).is_moved(), "{k}: not switched");
-        let moved = move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_or_else(|e| panic!("{k}: {e}"));
-        assert_eq!(moved.renamed, Vec::<(String, String)>::new(), "{k}: no file given a second name");
+        move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_or_else(|e| panic!("{k}: {e}"));
         reads_moved(&stand);
         let papers: Vec<String> = tree(&stand.folders.papers).into_keys().collect();
         assert_eq!(papers, ["Passport.pdf", "Power.pdf", "ids/Card.png"], "{k}: once each, nothing beside");
@@ -216,41 +215,54 @@ fn a_failure_before_the_switch_changes_nothing() {
     // Another file of Sioul's lists at its new place: refused, nothing switched.
     std::fs::create_dir_all(&stand.folders.records).unwrap();
     std::fs::write(stand.folders.records.join(crate::budget::LEDGER), "[[budget]]\nid = \"other\"\n").unwrap();
-    std::fs::create_dir_all(&stand.folders.papers).unwrap();
-    std::fs::write(stand.folders.papers.join("Mine.pdf"), "the person's own").unwrap();
     let before = tree(&stand.folders.notes);
     let fault = move_now(&stand.folders, NOW, || Ok(())).unwrap_err();
     assert_eq!(fault.code, "records-taken", "{fault}");
     assert!(!Storage::read(&stand.folders.state).is_moved());
     assert!(Journal::read(&stand.folders.state).is_none(), "its journal gone with what it made");
     assert_eq!(tree(&stand.folders.notes), before);
-    assert_eq!(tree(&stand.folders.papers).into_keys().collect::<Vec<_>>(), ["Mine.pdf"], "the person's file alone stays");
+    assert!(tree(&stand.folders.papers).is_empty(), "nothing of it left");
     assert_eq!(tree(&stand.folders.records).into_keys().collect::<Vec<_>>(), [crate::budget::LEDGER]);
     // The hold refused (an exchange running): the same.
     std::fs::remove_file(stand.folders.records.join(crate::budget::LEDGER)).unwrap();
     let fault = move_now(&stand.folders, NOW, || Err::<(), _>("busy".to_string())).unwrap_err();
     assert_eq!(fault.code, "busy");
     assert!(!Storage::read(&stand.folders.state).is_moved());
-    assert_eq!(tree(&stand.folders.papers).into_keys().collect::<Vec<_>>(), ["Mine.pdf"]);
+    assert!(tree(&stand.folders.papers).is_empty());
     assert!(tree(&stand.folders.records).is_empty());
     // Then it goes.
     move_now(&stand.folders, NOW, || Ok(())).unwrap();
     reads_moved(&stand);
 }
 
-/// A file of the person's where a paper goes: kept, the paper's copy named
-/// beside it, and the paper's record names that copy.
+/// A papers' or letters' folder that holds anything already (a file of the
+/// person's, another name or the same): refused with one sentence, nothing
+/// copied, since everything in it would be shared by Sioul; hidden files
+/// passed over; what an earlier try of this move wrote there is its own
+/// (review S3).
 #[test]
-fn a_file_of_the_persons_at_its_place_is_kept_and_the_copy_named_beside() {
+fn a_folder_that_holds_files_already_is_refused() {
     let stand = stand("taken");
     std::fs::create_dir_all(&stand.folders.papers).unwrap();
     std::fs::write(stand.folders.papers.join("Passport.pdf"), "the person's own passport scan").unwrap();
-    let moved = move_now(&stand.folders, NOW, || Ok(())).unwrap();
-    assert_eq!(moved.renamed.len(), 1, "{moved:?}");
+    let before = tree(&stand.folders.notes);
+    let fault = move_now(&stand.folders, NOW, || Ok(())).unwrap_err();
+    assert_eq!(fault.code, "folder-not-empty", "{fault}");
+    assert_eq!(fault.what, stand.folders.papers.display().to_string());
     assert_eq!(text(&stand.folders.papers.join("Passport.pdf")), "the person's own passport scan");
-    let wallet = crate::papers::Wallet::load_at(&places_of(&stand)).unwrap();
-    assert_eq!(wallet.get("passport").unwrap().file, "Passport-2.pdf");
-    assert_eq!(std::fs::read(wallet.file_path(wallet.get("passport").unwrap()).unwrap()).unwrap(), std::fs::read(stand.folders.notes.join("papers/Passport.pdf")).unwrap());
+    assert!(tree(&stand.folders.records).is_empty() && tree(&stand.folders.notes) == before);
+    std::fs::remove_file(stand.folders.papers.join("Passport.pdf")).unwrap();
+    std::fs::create_dir_all(stand.folders.letters.join("2019")).unwrap();
+    std::fs::write(stand.folders.letters.join("2019").join("old.pdf"), "a scan of the person's").unwrap();
+    assert_eq!(move_now(&stand.folders, NOW, || Ok(())).unwrap_err().code, "folder-not-empty");
+    std::fs::remove_dir_all(stand.folders.letters.join("2019")).unwrap();
+    // A sync app's hidden mark: passed over. An earlier try's copies: its own.
+    std::fs::write(stand.folders.papers.join(".sync-mark"), "").unwrap();
+    STOP_AT.with(|stop| stop.set(4));
+    let _ = prepare(&stand.folders, NOW);
+    STOP_AT.with(|stop| stop.set(0));
+    move_now(&stand.folders, NOW + 60, || Ok(())).unwrap();
+    reads_moved(&stand);
 }
 
 #[test]

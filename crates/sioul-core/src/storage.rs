@@ -453,10 +453,6 @@ pub struct Moved {
     pub letters: usize,
     /// Bytes copied.
     pub bytes: u64,
-    /// Files found at their new place already, the same bytes, not copied again.
-    pub found: usize,
-    /// Papers' and letters' files given another name, a file of the person's being at theirs: (from, to).
-    pub renamed: Vec<(String, String)>,
     /// The lists' paths named from their own folders: how many.
     pub named: usize,
     /// Copies kept whose source is no longer to move (removed since an
@@ -790,17 +786,6 @@ fn copy_into(from: &Path, to: &Path, note: &mut dyn FnMut() -> Result<(), Fault>
     Ok(copied)
 }
 
-/// A free name beside `to` for a file of the person's being at its place:
-/// `name-2.ext`, `name-3.ext`…, as a paper copied in is named.
-fn free_name(to: &Path, taken: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
-    let name = to.file_name()?.to_string_lossy().to_string();
-    let (stem, extension) = match name.rsplit_once('.') {
-        Some((stem, extension)) if !stem.is_empty() => (stem.to_string(), format!(".{extension}")),
-        _ => (name.clone(), String::new()),
-    };
-    (2..10_000).map(|n| to.with_file_name(format!("{stem}-{n}{extension}"))).find(|p| !p.exists() && !taken(p))
-}
-
 /// Steps 1 to 4 of a move, nothing switched: the lists copied to the
 /// records, the papers and letters to their folders, each checked byte for
 /// byte, a dated copy kept, the lists' paths named from their folders.
@@ -845,6 +830,7 @@ fn open(folders: &Folders, now: i64) -> Result<Journal, Fault> {
 /// Steps 1 to 4 on an open journal (`prepare`).
 fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
     check_folders(folders)?;
+    check_empty(folders, journal)?;
     let planned = plan(folders)?;
     let mut moved = Moved::default();
     for mut entry in planned {
@@ -861,7 +847,7 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
         }
         let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
         let source = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
-        let mut to = PathBuf::from(&entry.to);
+        let to = PathBuf::from(&entry.to);
         let _ = std::fs::remove_file(passing(&to));
         // The place it goes is the file itself under another name (a link above it, a
         // folder that folds case): never copied over itself, never cleaned as its own copy.
@@ -875,17 +861,9 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
         let ours = |sha: &str| made && (sha == copied || (!named.is_empty() && sha == named));
         match there.as_deref() {
             Some(sha) if made && (sha == source || ours(sha)) => {}
-            Some(_) => {
-                // The person's file at its place: a list's is refused; a paper's or a letter's goes beside under a free name.
-                if matches!(entry.kind, Some(Kind::List | Kind::LetterRecord)) {
-                    return Err(Fault::new("records-taken", to.display()));
-                }
-                let others: Vec<PathBuf> = journal.files.iter().map(|e| PathBuf::from(&e.to)).collect();
-                to = free_name(&to, &|p| others.iter().any(|o| o == p)).ok_or_else(|| Fault::new("copy", to.display()))?;
-                moved.renamed.push((entry.from.clone(), to.display().to_string()));
-                entry.made = false;
-                entry.rewritten.clear();
-            }
+            // Another file at its place, never written over (the papers' and letters' folders
+            // were checked empty but for this move's: a list's place in Sioul's records).
+            Some(_) => return Err(Fault::new("records-taken", to.display())),
             None => {}
         }
         let needs_copy = !to.exists() || there.as_deref().is_some_and(|sha| sha != source && ours(sha));
@@ -938,6 +916,24 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
     journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
     point("named")?;
     Ok(moved)
+}
+
+/// The papers' and the letters' folders: empty, or not there yet, but for
+/// what this move wrote there at an earlier try (its journal says so).
+/// Everything in them is shared by Sioul, sealed, with every device: a
+/// folder that holds anything else is refused with one sentence, never
+/// filled beside it (review S3). Hidden files (a sync app's marks, a copy
+/// on its way) are passed over.
+fn check_empty(folders: &Folders, journal: &Journal) -> Result<(), Fault> {
+    for folder in [&folders.papers, &folders.letters] {
+        let mut there = Vec::new();
+        walk(folder, folder, &mut there)?;
+        let ours = |relative: &String| journal.files.iter().any(|e| e.made && Path::new(&e.to) == join(folder, relative));
+        if there.iter().any(|relative| !ours(relative)) {
+            return Err(Fault::new("folder-not-empty", folder.display()));
+        }
+    }
+    Ok(())
 }
 
 /// The journal's entry for `entry.from` replaced, or added.
@@ -1261,11 +1257,8 @@ pub fn move_documents(from: &Path, to: &Path, list: &Path, table: &str, switch: 
     let copied = (|| -> Result<(), Fault> {
         for relative in &found {
             let (source, target) = (join(from, relative), join(to, relative));
+            // Another file at its place: never written over, never taken for the copy (review S3, S23).
             if target.exists() {
-                if same_bytes(&source, &target).map_err(|e| Fault::new("unreadable", format!("{}: {e}", target.display())))? {
-                    moved.found += 1;
-                    continue;
-                }
                 return Err(Fault::new("records-taken", target.display()));
             }
             moved.bytes += copy_into(&source, &target, &mut || Ok(()))?;

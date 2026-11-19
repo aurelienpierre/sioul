@@ -9279,6 +9279,7 @@ storage-line-not = Les listes de Sioul sont encore dans votre dossier de notes s
 storage-waiting = Vos listes se déplacent une fois que chaque appareil sait où elles vont : { $devices } a un Sioul plus ancien. Mettez-le à jour, ou oubliez-le dans Paramètres ▸ Appareils.
 storage-moved-already = Vos listes ont déjà été déplacées sur cet appareil.
 storage-stopped = Le déplacement s’est arrêté avant la fin : rien n’a bougé.
+storage-folder-not-empty = { $what } contient déjà des fichiers : choisissez un dossier vide, ou un nouveau. Tout ce qui est dans ce dossier est partagé par Sioul avec vos autres appareils.
 storage-porch-unfinished = Le déplacement des listes de Sioul ne s’est pas terminé sur cet appareil : vos listes restent où elles étaient. Ouvrez-le pour réessayer.
 storage-porch-changed = Modifiés dans votre dossier de notes depuis que vos listes l’ont quitté : { $files }. Sioul lit vos listes dans son propre dossier maintenant et ne fusionne rien de lui-même : recopiez ce qu’il vous faut.
 storage-porch-seen = Vu

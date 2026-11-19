@@ -703,9 +703,12 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
     let now = jiff::Timestamp::now().as_second();
     if !storage::Storage::read(&folders.state).is_moved() {
         let moved = storage::move_now(&folders, now, || Ok::<(), String>(())).map_err(said)?;
-        println!("lists {} · papers {} · letters {} · bytes {} · found there already {} · paths named anew {}", moved.lists, moved.papers, moved.letters, moved.bytes, moved.found, moved.named);
-        for (from, to) in &moved.renamed {
-            println!("given another name, a file being at its place: {}  →  {}", one_line(from), one_line(to));
+        println!("lists {} · papers {} · letters {} · bytes {} · paths named anew {}", moved.lists, moved.papers, moved.letters, moved.bytes, moved.named);
+        for to in &moved.alone {
+            println!("kept, its source no longer in the notes folder: {}", one_line(to));
+        }
+        for to in &moved.earlier {
+            println!("left by an earlier try in folders chosen otherwise since: {}", one_line(to));
         }
     }
     if clean {
