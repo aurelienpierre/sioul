@@ -354,30 +354,50 @@ fn writers_now(qt: &QtThread, shared: &Arc<Shared>, place: &str, now: &Sharing) 
     crate::pim::show_pim(qt, shared);
 }
 
-/// One notice, of the kind for things to know, for each book whose groups
+/// One notice, of the kind for things to know, for the books whose groups
 /// stopped deciding who reaches the person since this device last told of
-/// it (review V3): when its writers change, when it is shared to write here
-/// or elsewhere, and once at the update for a book already so. It names the
-/// book and who can now write it, and says where to turn its groups on;
-/// marked told just before it is posted, so one per book and change.
-/// Posted where someone is at the computer, as Sioul's informative notices
-/// are; a phone posts none.
+/// them (review V3): when their writers change, when one is shared to write
+/// here or elsewhere, and once at the update for a book already so. One
+/// notice for the pass, naming every such book and who can now write it
+/// (review L4: notices of one key replace one another), saying where to
+/// turn their groups on; each book marked told just before the notice that
+/// names it is posted, so one per book and change. Posted where someone is
+/// at the computer, as Sioul's informative notices are; a phone posts none.
 pub(crate) fn tell_groups_stopped() {
     use sioul_core::notice::{Kind, Notice, address};
     let config = load_config();
-    for (book, writers) in addressbooks::groups_to_tell(&config) {
-        let who: Vec<String> = writers.iter().map(|w| if w == "owner" { tr().text("book-groups-owner", None) } else { w.strip_prefix("group:").unwrap_or(w).to_string() }).collect();
-        let pairs = [("name", book.name.clone()), ("who", who.join(", "))];
-        let notice = Notice::new(address::settings("addressbooks"), Kind::Minor, say("books-groups-notice-title", &pairs), say("books-groups-notice-body", &pairs));
-        let claim: crate::tell::Claim = Box::new(move || match addressbooks::mark_groups_told(&book, &writers) {
-            Ok(()) => true,
-            Err(e) => {
+    let books = addressbooks::groups_to_tell(&config);
+    if books.is_empty() {
+        return;
+    }
+    let (title, body) = groups_notice_words(&books.iter().map(|(book, writers)| (book.name.clone(), writers.clone())).collect::<Vec<_>>());
+    let notice = Notice::new(address::settings("addressbooks"), Kind::Minor, title, body);
+    let claim: crate::tell::Claim = Box::new(move || {
+        for (book, writers) in &books {
+            if let Err(e) = addressbooks::mark_groups_told(book, writers) {
                 // Not written: told by none, rather than again and again.
                 eprintln!("Sioul: address books: {e}");
-                false
+                return false;
             }
-        });
-        crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
+        }
+        true
+    });
+    crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
+}
+
+/// The notice's title and words for these books (name, writers): one book
+/// named in full; several named one after the other in one notice.
+fn groups_notice_words(books: &[(String, Vec<String>)]) -> (String, String) {
+    let named = |writers: &[String]| writers.iter().map(|w| if w == "owner" { tr().text("book-groups-owner", None) } else { w.strip_prefix("group:").unwrap_or(w).to_string() }).collect::<Vec<_>>().join(", ");
+    match books {
+        [(name, writers)] => {
+            let pairs = [("name", name.clone()), ("who", named(writers))];
+            (say("books-groups-notice-title", &pairs), say("books-groups-notice-body", &pairs))
+        }
+        many => {
+            let lines: Vec<String> = many.iter().map(|(name, writers)| say("books-groups-notice-line", &[("name", name.clone()), ("who", named(writers))])).collect();
+            (say("books-groups-notice-title-many", &[("n", many.len().to_string())]), say("books-groups-notice-body-many", &[("books", lines.join("; "))]))
+        }
     }
 }
 
@@ -430,6 +450,15 @@ pub(crate) fn sharing(qt: &QtThread, shared: &Arc<Shared>, place: &str, change: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review L4: two books told in one pass are both named, in one notice.
+    #[test]
+    fn two_books_told_in_one_pass_are_both_named() {
+        let (title, body) = groups_notice_words(&[("Team".into(), vec!["sam".into()]), ("Family".into(), vec!["owner".into()])]);
+        assert!(title.contains('2') && body.contains("Team") && body.contains("sam") && body.contains("Family"), "{title} / {body}");
+        let (title, body) = groups_notice_words(&[("Team".into(), vec!["group:office".into()])]);
+        assert!(title.contains("Team") && body.starts_with("office"), "{title} / {body}");
+    }
 
     /// "Delete them with it" undone for a book of this device (review F5):
     /// made again from the copy kept first, with its name, each card's text

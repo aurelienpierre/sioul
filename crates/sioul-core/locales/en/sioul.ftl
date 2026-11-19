@@ -9138,6 +9138,9 @@ import-other-name = same identifier, another name: { $name }
 batch-why-unrecorded = its record cannot be written on this device: stopped before it
 books-groups-notice-title = “{ $name }”: its groups no longer decide who reaches you
 books-groups-notice-body = { $who } can now write this address book. Its contacts stay yours; turn its groups on in Contacts ⚙ ▸ Address books if you trust them.
+books-groups-notice-title-many = { $n } address books: their groups no longer decide who reaches you
+books-groups-notice-line = “{ $name }” ({ $who })
+books-groups-notice-body-many = Someone else can now write { $books }. Their contacts stay yours; turn their groups on in Contacts ⚙ ▸ Address books if you trust them.
 batch-reach-stays = Who may reach you stays as its groups say.
 batch-reach-held = { $n ->
     [one] One of these is on your { $list } list through a group; in this book it counts as a plain contact until you turn its groups on.

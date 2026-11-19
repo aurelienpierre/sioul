@@ -9523,6 +9523,9 @@ import-other-name = même identifiant, autre nom : { $name }
 batch-why-unrecorded = sa trace ne peut pas être écrite sur cet appareil : arrêté avant lui
 books-groups-notice-title = « { $name } » : ses groupes ne décident plus qui vous joint
 books-groups-notice-body = { $who } peut maintenant modifier ce carnet d’adresses. Ses contacts restent les vôtres ; activez ses groupes dans Contacts ⚙ ▸ Carnets d’adresses si vous avez confiance.
+books-groups-notice-title-many = { $n } carnets d’adresses : leurs groupes ne décident plus qui vous joint
+books-groups-notice-line = « { $name } » ({ $who })
+books-groups-notice-body-many = Quelqu’un d’autre peut maintenant modifier { $books }. Leurs contacts restent les vôtres ; activez leurs groupes dans Contacts ⚙ ▸ Carnets d’adresses si vous avez confiance.
 batch-reach-stays = Qui peut vous joindre reste ce que disent ses groupes.
 batch-reach-held = { $n ->
     [one] L’un d’eux est sur votre liste { $list } par un groupe ; dans ce carnet, il compte comme un simple contact tant que vous n’activez pas ses groupes.
