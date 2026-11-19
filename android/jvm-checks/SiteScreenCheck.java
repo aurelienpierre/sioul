@@ -252,6 +252,43 @@ public final class SiteScreenCheck
             }
         }
         expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        expect("opening a site never resets Sioul's task (it would close itself)", !body(web, "private static boolean open(", "    ").contains("RESET_TASK_IF_NEEDED"));
+
+        // ------------------------------------------------ Whatever is tapped outside the site shows at once (review L1)
+        // Android's activity element: finishOnTaskLaunch shuts an activity down, the task's root
+        // excepted, when its task is launched again with FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, and
+        // only then. Every way into Sioul starts the launcher's intent with that flag; Recents
+        // brings the task back without it, and the site with it.
+        expect("the site's screen closes when Sioul's task is launched again", declared.contains("android:finishOnTaskLaunch=\"true\""));
+        expect("and is not moved to another task instead", !declared.contains("allowTaskReparenting"));
+        Matcher windowActivity = Pattern.compile("(?s)<activity\\s+android:name=\"org\\.qtproject\\.qt\\.android\\.bindings\\.QtActivity\"(.*?)</activity>").matcher(manifest);
+        expect("the window is in the manifest", windowActivity.find());
+        expect("the window is the launcher's, the task's root, brought up and never made twice", windowActivity.group(1).contains("android.intent.category.LAUNCHER") && windowActivity.group(1).contains("android:launchMode=\"singleTop\"") && !windowActivity.group(1).contains("taskAffinity"));
+        String[][] openers = {
+            { "ReminderOpener", "a notice" }, { "DoseOpener", "a dose's reminder" }, { "PauseOpener", "Pause, on the tile or the shortcut" }, { "HomeCardOpener", "a line of the home screen's card" },
+            { "ShareActivity", "a share, a mail address, a calendar or contacts file" }, { "HomeCard", "the home screen's card" }, { "WakeAlarms", "the alarm at waking" }, { "StepService", "the background service's notice" }, { "TimeNote", "the time running's notice" },
+        };
+        for (String[] opener : openers) {
+            String source = code(read(java.resolve(opener[0] + ".java")));
+            Matcher launch = Pattern.compile("(?s)getLaunchIntentForPackage\\(.{0,300}?\\.addFlags\\(([^)]*)\\)").matcher(source);
+            boolean found = false;
+            boolean reset = true;
+            while (launch.find()) {
+                found = true;
+                reset &= launch.group(1).contains("Intent.FLAG_ACTIVITY_NEW_TASK") && launch.group(1).contains("Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED");
+            }
+            expect(opener[1] + " (" + opener[0] + ") brings Sioul up as its icon does, closing a site's screen", found && reset);
+        }
+        // A dose's reminder tapped with a site open: the dose is kept for Sioul first, then the
+        // window comes up over the site's screen it closes, and takes the dose as it becomes active.
+        String dose = code(read(java.resolve("DoseOpener.java")));
+        expect("a dose tapped is kept before Sioul comes up", dose.indexOf("DoseAlarms.opened(this, key)") >= 0 && dose.indexOf("DoseAlarms.opened(this, key)") < dose.indexOf("getLaunchIntentForPackage"));
+        expect("a dose's reminder opens DoseOpener", code(read(java.resolve("DoseAlarms.java"))).contains("new Intent(context, DoseOpener.class)"));
+        String windowQml = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "qml", "main.qml"));
+        expect("the window takes what was tapped as it becomes active", Pattern.compile("(?s)Qt\\.application\\.state === Qt\\.ApplicationActive\\)\\s*\\{\\s*sioul\\.backHere\\(\\)").matcher(windowQml).find());
+        String backend = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "backend.rs"));
+        expect("back here, Rust takes the taps, a dose's first", body(backend, "    fn back_here(mut self: Pin<&mut Self>) {", "    ").contains("self.as_mut().take_taps();") && body(backend, "    fn take_taps(mut self: Pin<&mut Self>) {", "    ").contains("crate::alarms::opened()"));
+        expect("the site's screen keeps nothing from the window coming up", !screen.contains("moveTaskToBack") && !screen.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
         expect("a site given is checked before the screen opens", body(web, "private static boolean open(", "    ").contains("Opening.of(asked.toString()) == null"));
         String steps = code(read(java.resolve("StepService.java")));
         expect("StepService's door to the sites' verbs", steps.contains("if (verb.startsWith(\"site-\"))") && steps.contains("return SiteWeb.call(context, verb, asked);"));
