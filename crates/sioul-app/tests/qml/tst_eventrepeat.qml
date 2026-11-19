@@ -31,6 +31,7 @@ Item {
         property var forms: ({
             "/calendars/local/personal/swimming.ics": { edit: { repeat: "weekly", every: 1, ends: "until", until: "2031-06-25", count: 0, pauses: ["school/zone-a", "vacations"] } },
             "/calendars/local/personal/market.ics": { edit: { repeat: "weekly", every: 1, ends: "count", until: "", count: 12, pauses: [] } },
+            "/calendars/local/personal/lessons.ics": { edit: { repeat: "weekly", every: 1, ends: "count", until: "", count: 1095, pauses: ["school/zone-a"] }, count_said: "Every week: 1095 dates, 2 of them in pauses: 1093 take place, the last on Wednesday 4 December." },
             "/calendars/murena/personal/review.ics": { edit: { repeat: "weekly", every: 1, ends: "", until: "", count: 0, pauses: [] }, with_others: true }
         })
 
@@ -55,7 +56,8 @@ Item {
                 here_only: "",
                 stays: "",
                 with_others: found.with_others === true,
-                read_only: false
+                read_only: false,
+                count_said: found.count_said || ""
             })
         }
         function saveEvent(key, edit, calendar) {
@@ -140,6 +142,28 @@ Item {
             const grid = find("eventRepeat").parent
             for (const item of [find("eventRepeatEnds"), find("eventRepeatUntil")].concat(pauses()))
                 tryVerify(() => item.mapToItem(grid, 0, 0).x + item.width <= grid.width + 1, 2000, item.objectName + " fits: " + (item.mapToItem(grid, 0, 0).x + item.width) + " of " + grid.width)
+        }
+
+        // The review's F36 and F38: after a number of times with pauses, the form says how many
+        // take place (its file's own words), or that the number counts the dates in pauses; a count
+        // above 999 written elsewhere comes back as it was.
+        function test_a_counted_series_says_how_many_take_place() {
+            dialog.edit("/calendars/local/personal/lessons.ics", "")
+            tryCompare(dialog, "opened", true)
+            compare(find("eventRepeatCount").value, 1095, "above 999, as written")
+            const said = find("eventCountPaused")
+            verify(said.visible)
+            compare(said.text, "Every week: 1095 dates, 2 of them in pauses: 1093 take place, the last on Wednesday 4 December.")
+            dialog.save()
+            compare(mock.saved.edit.count, 1095)
+            dialog.edit("/calendars/local/personal/market.ics", "")
+            tryCompare(dialog, "opened", true)
+            verify(!find("eventCountPaused").visible, "no pause: nothing said")
+            pauses()[1].toggle()
+            pauses()[1].toggled()
+            verify(find("eventCountPaused").visible)
+            compare(find("eventCountPaused").text, "event-count-pauses", "a new pause: the count's meaning said")
+            dialog.close()
         }
 
         // After a number of times; then never; then no repeat at all: no end, no pause said.

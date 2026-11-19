@@ -1413,6 +1413,12 @@ series-every = { $every ->
            *[yearly] Every { $every } years
         }
     }
+series-count-paused = { $rule }: { $count } dates, { $paused } of them in pauses: { $held ->
+        [0] none takes place.
+        [one] one takes place, on { $last }.
+       *[other] { $held } take place, the last on { $last }.
+    }
+event-count-pauses = The number counts every date of the series, those that fall in a pause included: fewer take place.
 series-until = { $rule } until { $date }
 series-count = { $rule }, { $count ->
         [one] once

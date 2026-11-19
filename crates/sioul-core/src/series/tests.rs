@@ -462,3 +462,23 @@ fn until_follows_the_start_when_it_changes_kind() {
     let york = agenda::apply(&again, &EventEdit { clock: "America/New_York".into(), ..form }, &zone).unwrap();
     assert!(york.contains("UNTIL=20310626T035959Z"), "{york}");
 }
+
+/// The review's F36 (the coordinator's choice): "after a number of times"
+/// keeps the standard meaning, the dates in pauses counted, and the card
+/// says it in plain words when some fall in one.
+#[test]
+fn a_counted_series_says_how_many_take_place() {
+    let zone = paris();
+    let (from, to) = stretch();
+    let ten = agenda::new_event(&EventEdit { title: "Lessons".into(), start: "2030-10-02T17:00".into(), end: "2030-10-02T18:00".into(), repeat: "weekly".into(), every: 1, ends: "count".into(), count: 10, pauses: vec!["school/zone-a".into()], ..EventEdit::default() }, &zone).unwrap();
+    assert!(ten.contains("COUNT=10"), "{ten}");
+    let now = jiff::Timestamp::from_second(at("2030-09-15T09:00")).unwrap().to_zoned(zone.clone());
+    let tr = crate::i18n::Translator::new("en");
+    assert_eq!(count_words(&ten, &now, &tr), "", "nothing in a pause yet");
+    let days = days_of(&Config::default(), &[holidays("zone-a", Holidays::School, &[("2030-10-20", "2030-11-03")], Some(100))]);
+    let paused = keep(&ten, &days, from, to, &zone).unwrap();
+    assert!(paused.contains("COUNT=10"), "the count stays the standard one: {paused}");
+    assert_eq!(count_words(&paused, &now, &tr), "Every week: 10 dates, 2 of them in pauses: 8 take place, the last on Wednesday 4 December.");
+    let fr = crate::i18n::Translator::new("fr");
+    assert!(count_words(&paused, &now, &fr).contains("10 dates, dont 2 en pause"), "{}", count_words(&paused, &now, &fr));
+}

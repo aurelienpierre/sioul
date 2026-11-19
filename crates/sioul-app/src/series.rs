@@ -175,7 +175,9 @@ pub(crate) fn card_lines(text: &str) -> (String, String) {
     let zone = sioul_core::zone::current();
     let now = sioul_core::zone::now();
     let Some(edit) = sioul_core::agenda::edit_of_text(text, &zone) else { return (String::new(), String::new()) };
-    let words = series::rule_words(&edit, now.date(), tr());
+    // After a number of times, some in pauses: how many take place, in plain words (F36).
+    let counted = series::count_words(text, &now, tr());
+    let words = if counted.is_empty() { series::rule_words(&edit, now.date(), tr()) } else { counted };
     if sioul_core::agenda::with_others(text) {
         let noted = text.contains(&format!("{};", series::PAUSED)) || text.contains(series::PAUSE_DURING);
         return (words, if noted { tr().text("series-paused-guests", None) } else { String::new() });

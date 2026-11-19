@@ -573,6 +573,38 @@ pub fn pause_line(text: &str, now: &Zoned, names: &dyn Fn(&Source) -> String, tr
     }
 }
 
+/// A series that ends after a number of times, some of them in pauses
+/// (the review's F36, the coordinator's choice): the number keeps the
+/// standard meaning (RFC 5545's COUNT counts every date of the series, those
+/// left out included), and this says it in plain words: "Every week: 10
+/// dates, 2 of them in pauses: 8 take place, the last on Wednesday 4
+/// December." "" when it does not end so, or none of its dates is in a pause.
+pub fn count_words(text: &str, now: &Zoned, tr: &crate::i18n::Translator) -> String {
+    let zone = now.time_zone().clone();
+    let Some(edit) = crate::agenda::edit_of_text(text, &zone) else { return String::new() };
+    if edit.ends != "count" || edit.count == 0 {
+        return String::new();
+    }
+    let Some(times) = crate::agenda::rule_times(text, i64::MIN / 4, i64::MAX / 4, &zone) else { return String::new() };
+    let paused: BTreeSet<i64> = paused_of(text, &zone).into_values().flatten().collect();
+    let left_out: BTreeSet<i64> = crate::agenda::left_out_times(text, &zone).into_iter().collect();
+    let in_pauses = times.iter().filter(|(at, _)| paused.contains(at)).count();
+    if in_pauses == 0 {
+        return String::new();
+    }
+    let held: Vec<i64> = times.iter().map(|(at, _)| *at).filter(|at| !left_out.contains(at)).collect();
+    let mut every = crate::i18n::args();
+    every.set("unit", edit.repeat.clone());
+    every.set("every", edit.every.max(1));
+    let mut args = crate::i18n::args();
+    args.set("rule", tr.text("series-every", Some(&every)));
+    args.set("count", times.len());
+    args.set("paused", in_pauses);
+    args.set("held", held.len());
+    args.set("last", held.last().and_then(|at| Timestamp::from_second(*at).ok()).map(|t| tr.day_in(t.to_zoned(zone.clone()).date(), now.date())).unwrap_or_default());
+    tr.text("series-count-paused", Some(&args))
+}
+
 /// How a series repeats, in words: "Every week", "Every 2 weeks until
 /// Friday 26 June", "Every day, 10 times"; "" for an event that does not
 /// repeat as the form says it.

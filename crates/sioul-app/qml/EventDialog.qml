@@ -184,6 +184,8 @@ SafeDialog {
     // my vacations, public holidays, each school-holidays calendar by its name.
     property var pauses: []
     property var pauseChoices: []
+    // A series counted in times, some of them in pauses: how many take place (`count_said`, F36).
+    property string countSaid: ""
     // Not offered on a meeting with others, a meeting you organize or one given guests:
     // each date left out would be sent to every guest.
     readonly property bool pausable: dialog.legOf === "" && repeat.currentIndex > 0 && !dialog.withOthers && !dialog.organized && dialog.guests.length === 0 && dialog.pauseChoices.length > 0
@@ -335,6 +337,7 @@ SafeDialog {
         dialog.taskBlock = ""
         dialog.losses = ""
         dialog.problem = ""
+        dialog.countSaid = ""
         dialog.links = []
         dialog.suggestions = []
         dialog.geo = ""
@@ -351,6 +354,7 @@ SafeDialog {
             if (!found)
                 return
             const e = found.edit
+            dialog.countSaid = found.count_said || ""
             title.text = e.title
             place.text = e.location
             notes.text = e.notes
@@ -1277,6 +1281,16 @@ SafeDialog {
                     Label {
                         Layout.fillWidth: true
                         text: dialog.sioul.text("event-pauses-help")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: dialog.theme.muted
+                    }
+                    // After a number of times: the number counts the dates in pauses too (F36).
+                    Label {
+                        objectName: "eventCountPaused"
+                        visible: ends.currentIndex === 2 && dialog.pauses.length > 0
+                        Layout.fillWidth: true
+                        text: dialog.countSaid !== "" ? dialog.countSaid : dialog.sioul.text("event-count-pauses")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: dialog.theme.muted
