@@ -4130,4 +4130,27 @@ mod line_tests {
         let (open, _) = World::new().build(Some(&night_line));
         assert!(rings(&open, safe, "23:30"), "without the box: the line's night");
     }
+
+    /// A screening that lets failed verifications through keeps doing so
+    /// after a first, unrelated change of the phone's table (review of
+    /// `phones`, M3; the reviewer's test, through `decide`).
+    #[test]
+    fn a_first_change_keeps_what_the_screening_let_ring() {
+        use crate::calls_line::{Row, Today, When, set_cell};
+        let screening = screening::Screening { unknown: screening::Rule::Ring, unverified: screening::Spam::Unknown, ..screening::Screening::default() };
+        let world = World { screening, ..World::new() };
+        let failed = Incoming { verified: "failed".into(), ..call("01 99 00 55 55", "10:00") };
+        let (before, _) = world.build(None);
+        assert!(!decide(Some(&before), &failed).refuse, "rings today");
+        let dir = std::env::temp_dir().join(format!("sioul-review-m3-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        let today = Today::of(&world.attention, &world.screening, &world.clock, &at("2026-11-16T00:00"), &at("2026-11-23T00:00"));
+        set_cell(&path, "p", &Row::Safe, When::Night, Cell::Rings, &today.grid()).unwrap();
+        let said = crate::config::Config::load(&path).unwrap().devices["p"].calls.clone().unwrap();
+        let (after, _) = world.build(Some(&said));
+        assert!(!decide(Some(&after), &failed).refuse, "an unrelated change: still rings");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
