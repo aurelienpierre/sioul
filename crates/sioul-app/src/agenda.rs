@@ -2459,6 +2459,11 @@ mod tests {
         let _health_tests = crate::health::health_files_held();
         let _view = view_held();
         sioul_core::config::stand_ins_only();
+        // The head line reads the pauses where every test of this run writes them: its own, none
+        // (`everywhere::FILES`, held by the tests that write them; a pause one of them holds for a
+        // moment was read here as "Paused.").
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
         let health = sioul_core::health::Health::default_path();
         std::fs::create_dir_all(health.parent().unwrap()).unwrap();
         std::fs::write(&health, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n").unwrap();
