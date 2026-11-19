@@ -105,6 +105,8 @@ public final class SiteScreen extends Activity
     private WebView view;
     /** A window the page opened, shown over it; null when none. */
     private WebView popup;
+    /** Whether that window is a new tab (a link with target="_blank"), not a pop-up with a size. */
+    private boolean popupTab;
     /** The address of the page each shows, as committed: never a navigation only asked for. */
     private String committed = "";
     private String popupCommitted = "";
@@ -132,7 +134,7 @@ public final class SiteScreen extends Activity
         }
         setContentView(layout());
         try {
-            view = page(false);
+            view = page();
         } catch (RuntimeException e) {
             // No web view after all (turned off meanwhile, or not loading): the browser, as before.
             Log.w(DoseAlarms.TAG, "Sites: no web view to show the site: " + e.getClass().getSimpleName());
@@ -453,7 +455,7 @@ public final class SiteScreen extends Activity
     // ---------------------------------------------------------------- The pages
 
     /** A web view for the site's page, or for a window it opened: the same settings, the same store. */
-    private WebView page(boolean opened)
+    private WebView page()
     {
         WebView page = new WebView(this);
         WebSettings settings = page.getSettings();
@@ -481,7 +483,7 @@ public final class SiteScreen extends Activity
         // As a computer's Sioul: a sign-in in a frame of another site keeps its cookie.
         cookies.setAcceptThirdPartyCookies(page, true);
         page.setBackgroundColor(site.background);
-        page.setWebViewClient(new Client(opened));
+        page.setWebViewClient(new Client());
         page.setWebChromeClient(new Chrome());
         page.setDownloadListener(this::download);
         page.setFindListener((at, count, done) -> {
@@ -494,32 +496,32 @@ public final class SiteScreen extends Activity
     /** Where each page goes, the host shown, a drawing process that ends. */
     private final class Client extends WebViewClient
     {
-        private final boolean opened;
-
-        Client(boolean opened)
-        {
-            this.opened = opened;
-        }
-
         @Override
         public boolean shouldOverrideUrlLoading(WebView page, WebResourceRequest request)
         {
             String url = request.getUrl().toString();
-            String current = page == popup ? popupCommitted : committed;
-            switch (SiteWeb.where(url, request.isForMainFrame(), request.hasGesture(), request.isRedirect(), current, site.domain, opened)) {
+            boolean inPopup = page == popup && popup != null;
+            String current = inPopup ? popupCommitted : committed;
+            SiteWeb.Window window = !inPopup ? SiteWeb.Window.SITE : popupTab ? SiteWeb.Window.TAB : SiteWeb.Window.POPUP;
+            SiteWeb.Way way = SiteWeb.where(url, request.isForMainFrame(), request.hasGesture(), request.isRedirect(), current, committed, site.domain, window);
+            switch (way) {
             case LOAD:
                 return false;
             case BROWSER:
                 browse(url);
-                return true;
+                break;
             case OTHER_APP:
                 hand(url);
-                return true;
+                break;
             default:
                 if (request.isForMainFrame())
                     say(site.word("not_https"));
-                return true;
+                break;
             }
+            // A window whose first page went elsewhere goes, never a blank page over the site.
+            if (inPopup && request.isForMainFrame() && SiteWeb.isEmptyWindow(popupCommitted))
+                closeEmpty(page);
+            return true;
         }
 
         // The page committed, its own or a same-document change: its address is the one shown.
@@ -610,10 +612,12 @@ public final class SiteScreen extends Activity
             if (!gesture || page != view || popup != null || ended)
                 return false;
             try {
-                popup = page(true);
+                popup = page();
             } catch (RuntimeException e) {
                 return false;
             }
+            // A new tab (no size asked) leaves for the browser when its first page is another site's (SiteWeb.where).
+            popupTab = !dialog;
             popupCommitted = "";
             pages.addView(popup, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             ((WebView.WebViewTransport) result.obj).setWebView(popup);
@@ -635,6 +639,18 @@ public final class SiteScreen extends Activity
             // A page's console never reaches Android's log.
             return true;
         }
+    }
+
+    /**
+     * A window the page opened, still empty, goes once its navigation has
+     * ended elsewhere: after the web view's call returns, never inside it.
+     */
+    private void closeEmpty(WebView window)
+    {
+        pages.post(() -> {
+            if (window == popup && SiteWeb.isEmptyWindow(popupCommitted))
+                closePopup();
+        });
     }
 
     /** The window the page opened goes; the site's page is in front again. */

@@ -389,15 +389,26 @@ final class SiteWeb
     enum Way { LOAD, BROWSER, OTHER_APP, REFUSE }
 
     /**
+     * Which window a navigation is in: the site's page; a new tab the page
+     * opened (a link with {@code target="_blank"}, a {@code window.open}
+     * without a size: the web view's {@code isDialog} false); a pop-up it
+     * opened with a size, as a sign-in does ({@code isDialog} true).
+     */
+    enum Window { SITE, TAB, POPUP }
+
+    /**
      * Where a navigation of a site's screen goes (WebViewClient's
      * shouldOverrideUrlLoading, which a POST and the page's first load never
      * reach). An https page loads, in the page or a frame; a blank page
-     * too, and in a frame a page-made or inline one. A link
-     * the person taps in the site's page (a gesture, not a server's
-     * redirect) to another site than both the site's own domain and the
-     * page's opens in the browser: a sign-in that moves through other
-     * sites by redirects and forms stays here, and a window the site
-     * opened (a sign-in's) keeps every https page. A tapped mail or
+     * too, and in a frame a page-made or inline one. A link the person taps
+     * in the site's page (a gesture, not a server's redirect) to another
+     * site than both the site's own domain and the page's opens in the
+     * browser, and so does a new tab's first page on another site than the
+     * site's and its opener's, redirects included (review N1): a link that
+     * opens a new tab leaves as a tapped link does. A sign-in that moves
+     * through other sites by redirects and forms stays here, and a pop-up
+     * the site opened with a size (a sign-in's) keeps every https page. A
+     * tab with a page of its own is as the site's page. A tapped mail or
      * telephone address goes to the app for it. Anything else is refused:
      * http, files, content, intents, other apps' schemes.
      *
@@ -405,12 +416,13 @@ final class SiteWeb
      * @param mainFrame whether it is the page's own, not a frame's
      * @param gesture whether the person's tap started it
      * @param redirect whether a server redirected to it
-     * @param current the address of the page it leaves
+     * @param current the address of the page it leaves, as committed; "" before any
+     * @param opener the address of the site's page, as committed (for a tab's first page)
      * @param siteDomain the site's own domain (Rust's)
-     * @param popup whether it is in a window the site opened
+     * @param window the window it is in
      * @return where it goes
      */
-    static Way where(String url, boolean mainFrame, boolean gesture, boolean redirect, String current, String siteDomain, boolean popup)
+    static Way where(String url, boolean mainFrame, boolean gesture, boolean redirect, String current, String opener, String siteDomain, Window window)
     {
         if (url == null)
             return Way.REFUSE;
@@ -420,15 +432,34 @@ final class SiteWeb
             return Way.LOAD;
         if (!mainFrame && (lower.startsWith("blob:https://") || lower.startsWith("data:")))
             return Way.LOAD;
+        // A new tab's first page came from a tap: the window opens at a tap only.
+        boolean firstOfTab = window == Window.TAB && mainFrame && !isHttps(current);
+        boolean tapped = gesture || firstOfTab;
         if (lower.startsWith("mailto:") || lower.startsWith("tel:"))
-            return mainFrame && gesture ? Way.OTHER_APP : Way.REFUSE;
+            return mainFrame && tapped ? Way.OTHER_APP : Way.REFUSE;
         if (!isHttps(url))
-            return mainFrame && gesture && lower.startsWith("http://") ? Way.BROWSER : Way.REFUSE;
-        if (!mainFrame || popup || !gesture || redirect)
-            return Way.LOAD;
+            return mainFrame && tapped && lower.startsWith("http://") ? Way.BROWSER : Way.REFUSE;
         String to = domainOf(host(url));
+        if (firstOfTab)
+            return !to.equals(siteDomain) && !to.equals(domainOf(host(opener))) ? Way.BROWSER : Way.LOAD;
+        if (!mainFrame || window == Window.POPUP || !gesture || redirect)
+            return Way.LOAD;
         boolean elsewhere = !to.equals(siteDomain) && !to.equals(domainOf(host(current)));
         return elsewhere ? Way.BROWSER : Way.LOAD;
+    }
+
+    /**
+     * Whether a window the page opened is still empty: nothing https
+     * committed yet. Its first navigation ending elsewhere (the browser,
+     * another app, refused, a download) closes it, so that no blank page
+     * stays over the site (review N4).
+     *
+     * @param committed the window's committed address; "" before any
+     * @return whether it holds no page of its own
+     */
+    static boolean isEmptyWindow(String committed)
+    {
+        return !isHttps(committed);
     }
 
     /**

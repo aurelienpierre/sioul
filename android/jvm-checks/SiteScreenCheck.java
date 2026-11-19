@@ -134,42 +134,62 @@ public final class SiteScreenCheck
         String bankPage = "https://secure.bank.example.co.uk/home";
         String domain = "example.co.uk";
         Object[][] ways = {
-            // url, main frame, gesture, redirect, current, popup, way
-            { "https://www.example.co.uk/help", true, true, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "https://news.example.net/article", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
-            { "https://idp.example.net/authorize", true, false, true, bankPage, false, SiteWeb.Way.LOAD },
-            { "https://idp.example.net/authorize", true, false, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "https://idp.example.net/choose", true, true, false, "https://idp.example.net/authorize", false, SiteWeb.Way.LOAD },
-            { "https://secure.bank.example.co.uk/back", true, true, false, "https://idp.example.net/done", false, SiteWeb.Way.LOAD },
-            { "https://news.example.net/article", true, true, false, "https://accounts.example.com/x", true, SiteWeb.Way.LOAD },
-            { "https://frame.example.net/pay", false, true, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "HTTPS://News.Example.net/", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
-            { "http://old.example.net/", true, true, false, bankPage, false, SiteWeb.Way.BROWSER },
-            { "http://old.example.net/", true, false, true, bankPage, false, SiteWeb.Way.REFUSE },
-            { "http://old.example.net/", false, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "mailto:help@example.co.uk", true, true, false, bankPage, false, SiteWeb.Way.OTHER_APP },
-            { "tel:+33100000000", true, true, false, bankPage, false, SiteWeb.Way.OTHER_APP },
-            { "mailto:help@example.co.uk", true, false, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "tel:+33100000000", false, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "intent://scan/#Intent;scheme=zxing;end", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "file:///sdcard/Download/a.pdf", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "content://com.example.provider/a", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "javascript:alert(1)", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "sioul-open:notice", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "market://details?id=x", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "about:blank", true, false, false, "", true, SiteWeb.Way.LOAD },
-            { "about:srcdoc", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "data:text/html,<p>x</p>", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "data:text/html,<p>x</p>", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "blob:https://secure.bank.example.co.uk/1", false, false, false, bankPage, false, SiteWeb.Way.LOAD },
-            { "blob:https://secure.bank.example.co.uk/1", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { "https://", true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
-            { null, true, true, false, bankPage, false, SiteWeb.Way.REFUSE },
+            // url, main frame, gesture, redirect, current, window, way (the site's page as the opener)
+            { "https://www.example.co.uk/help", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "https://news.example.net/article", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.BROWSER },
+            { "https://idp.example.net/authorize", true, false, true, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "https://idp.example.net/authorize", true, false, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "https://idp.example.net/choose", true, true, false, "https://idp.example.net/authorize", SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "https://secure.bank.example.co.uk/back", true, true, false, "https://idp.example.net/done", SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "https://news.example.net/article", true, true, false, "https://accounts.example.com/x", SiteWeb.Window.POPUP, SiteWeb.Way.LOAD },
+            { "https://frame.example.net/pay", false, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "HTTPS://News.Example.net/", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.BROWSER },
+            { "http://old.example.net/", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.BROWSER },
+            { "http://old.example.net/", true, false, true, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "http://old.example.net/", false, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "mailto:help@example.co.uk", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.OTHER_APP },
+            { "tel:+33100000000", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.OTHER_APP },
+            { "mailto:help@example.co.uk", true, false, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "tel:+33100000000", false, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "intent://scan/#Intent;scheme=zxing;end", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "file:///sdcard/Download/a.pdf", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "content://com.example.provider/a", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "javascript:alert(1)", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "sioul-open:notice", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "market://details?id=x", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "about:blank", true, false, false, "", SiteWeb.Window.POPUP, SiteWeb.Way.LOAD },
+            { "about:srcdoc", false, false, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "data:text/html,<p>x</p>", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "data:text/html,<p>x</p>", false, false, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "blob:https://secure.bank.example.co.uk/1", false, false, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.LOAD },
+            { "blob:https://secure.bank.example.co.uk/1", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { "https://", true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            { null, true, true, false, bankPage, SiteWeb.Window.SITE, SiteWeb.Way.REFUSE },
+            // A new tab (review N1): its first page on another site leaves as a tapped link does, redirects included.
+            { "https://news.example.net/article", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.BROWSER },
+            { "https://news.example.net/article", true, true, false, "about:blank", SiteWeb.Window.TAB, SiteWeb.Way.BROWSER },
+            { "https://news.example.net/article", true, false, true, "", SiteWeb.Window.TAB, SiteWeb.Way.BROWSER },
+            { "https://www.example.co.uk/help", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.LOAD },
+            { "https://www.example.co.uk/statement", true, false, true, "", SiteWeb.Window.TAB, SiteWeb.Way.LOAD },
+            { "http://old.example.net/", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.BROWSER },
+            { "mailto:help@example.co.uk", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.OTHER_APP },
+            { "intent://scan/#Intent;scheme=zxing;end", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.REFUSE },
+            { "about:blank", true, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.LOAD },
+            { "https://frame.example.net/ad", false, false, false, "", SiteWeb.Window.TAB, SiteWeb.Way.LOAD },
+            // A tab with a page of its own: as the site's page.
+            { "https://news.example.net/article", true, true, false, "https://www.example.co.uk/help", SiteWeb.Window.TAB, SiteWeb.Way.BROWSER },
+            { "https://idp.example.net/authorize", true, false, true, "https://www.example.co.uk/help", SiteWeb.Window.TAB, SiteWeb.Way.LOAD },
+            // A pop-up with a size (a sign-in's) keeps every https page.
+            { "https://idp.example.net/authorize", true, false, false, "", SiteWeb.Window.POPUP, SiteWeb.Way.LOAD },
+            { "https://idp.example.net/choose", true, true, false, "https://idp.example.net/authorize", SiteWeb.Window.POPUP, SiteWeb.Way.LOAD },
         };
         for (Object[] way : ways) {
-            SiteWeb.Way found = SiteWeb.where((String) way[0], (Boolean) way[1], (Boolean) way[2], (Boolean) way[3], (String) way[4], domain, (Boolean) way[5]);
-            expect(way[0] + " (main " + way[1] + ", tap " + way[2] + ", redirect " + way[3] + ", pop-up " + way[5] + "): " + way[6] + ", not " + found, found == way[6]);
+            SiteWeb.Way found = SiteWeb.where((String) way[0], (Boolean) way[1], (Boolean) way[2], (Boolean) way[3], (String) way[4], bankPage, domain, (SiteWeb.Window) way[5]);
+            expect(way[0] + " (main " + way[1] + ", tap " + way[2] + ", redirect " + way[3] + ", from " + way[4] + ", " + way[5] + "): " + way[6] + ", not " + found, found == way[6]);
         }
+
+        expect("a new tab's first page on the opener's own site stays", SiteWeb.where("https://idp.example.net/next", true, false, false, "", "https://idp.example.net/authorize", domain, SiteWeb.Window.TAB) == SiteWeb.Way.LOAD);
+        expect("a window still empty: nothing https committed", SiteWeb.isEmptyWindow("") && SiteWeb.isEmptyWindow("about:blank") && SiteWeb.isEmptyWindow(null) && !SiteWeb.isEmptyWindow("https://www.example.co.uk/help"));
 
         // ------------------------------------------------ Kept, the user agent, a file's name, what was asked
         expect("the page shown kept for after a stop", "https://secure.bank.example.co.uk/home?x=1".equals(SiteWeb.kept("https://secure.bank.example.co.uk/home?x=1")));
@@ -270,6 +290,11 @@ public final class SiteScreenCheck
             }
         }
         expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        String windows = body(screen, "public boolean onCreateWindow(", "        ");
+        expect("a new tab told from a pop-up with a size", windows.contains("popupTab = !dialog;"));
+        String override = body(screen, "public boolean shouldOverrideUrlLoading(", "        ");
+        expect("each navigation's window said to the rule", override.contains("SiteWeb.Window.SITE : popupTab ? SiteWeb.Window.TAB : SiteWeb.Window.POPUP") && override.contains("current, committed, site.domain, window"));
+        expect("an empty window whose first page went elsewhere goes, after the call", override.contains("if (inPopup && request.isForMainFrame() && SiteWeb.isEmptyWindow(popupCommitted))") && body(screen, "private void closeEmpty(", "    ").contains("pages.post("));
         String chooser = body(screen, "public boolean onShowFileChooser(", "        ");
         expect("the chooser: another mode answered by nothing", chooser.contains("if (!SiteWeb.choosesFiles(params.getMode()))") && chooser.indexOf("choosesFiles") < chooser.indexOf("startActivityForResult"));
         String result = body(screen, "protected void onActivityResult(", "    ");
