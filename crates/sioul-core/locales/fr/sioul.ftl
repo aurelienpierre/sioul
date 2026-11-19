@@ -4161,6 +4161,7 @@ share-refused = { $file } n’est pas écrit : sa place passe par un lien, ou 
 share-not-text = { $file } reste ici : son nom n’est pas un texte que Sioul peut transporter.
 share-emptied = { $file } est vide ici : rien n’en est retiré sur vos autres appareils pendant dix minutes.
 share-list-back = { $file } avait disparu ou était vide ici : il est réécrit à partir de ce que vos appareils en gardent, et rien n’en est retiré ailleurs.
+share-list-held = Un appareil qui ne sait pas où vivent maintenant les listes de Sioul a retiré presque tout { $file } : cet appareil les garde, et ne suit pas. Mettez Sioul à jour sur cet appareil-là.
 share-not-medicines = Un changement de vos médicaments venu d’un autre appareil ne se lirait pas ici comme des médicaments : il attend, et { $file } reste tel qu’il est.
 share-medicines-take-out-everywhere = Les retirer partout
 share-medicines-take-out-here = Les retirer ici aussi

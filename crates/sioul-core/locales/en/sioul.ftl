@@ -4125,6 +4125,7 @@ share-refused = { $file } is not written: its place goes through a link, or into
 share-not-text = { $file } stays here: its name is not text Sioul can carry.
 share-emptied = { $file } is empty here: nothing of it is taken out on your other devices for ten minutes.
 share-list-back = { $file } was gone or empty here: it is written again from what your devices hold, and nothing of it is taken out elsewhere.
+share-list-held = A device that does not know where Sioul's lists live now took most of { $file } out: this device keeps them, and does not follow. Update Sioul on that device.
 share-not-medicines = A change of your medicines from another device would not read as medicines here: it waits, and { $file } stays as it is.
 share-medicines-take-out-everywhere = Take them out everywhere
 share-medicines-take-out-here = Take them out here too
