@@ -220,6 +220,9 @@ struct View {
     letters: String,
     /// What stays in the notes folder under `papers/` and `letters/`, no list of Sioul's naming it.
     left: Vec<String>,
+    /// How the letters' scans travel changes with the move (their part, "notes" before, "papers"
+    /// after): "stop" (they travelled, and "Papers" is off here), "start" (they did not, and will), "".
+    scans_part: String,
     /// What would move: lists (with the letters' list and texts), papers' files, letters' scans, bytes.
     lists: usize,
     papers_files: usize,
@@ -297,6 +300,13 @@ pub(crate) fn view_json() -> String {
         }
     }
     view.begun = !view.moved && (storage::begun(&sioul_core::config::state_dir()) || !view.said.is_empty());
+    if !view.moved && view.sharing {
+        view.scans_part = match crate::share::scans_travel(&letters) {
+            (true, false) => "stop".into(),
+            (false, true) if view.letters_files > 0 => "start".into(),
+            _ => String::new(),
+        };
+    }
     if view.moved {
         let changed = storage::changed_since(&sioul_core::config::state_dir());
         view.changed_key = if changed.is_empty() { String::new() } else { sioul_core::notices::digest(&changed.iter().map(|(file, sha)| format!("{file} {sha}")).collect::<Vec<_>>().join("\n")) };

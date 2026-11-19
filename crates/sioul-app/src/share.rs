@@ -1740,6 +1740,21 @@ pub(crate) fn notes_carried_now() -> bool {
     notes_carried(&load_config(), &here()).is_some()
 }
 
+/// Where the letters' scans travel from this device before the move and
+/// after it (review S27): before, with the notes (part "notes", unless a
+/// sync app carries the notes folder); after, in "papers" (unless a sync
+/// app carries the letters' folder). (before, after); never without sharing.
+pub(crate) fn scans_travel(letters: &Path) -> (bool, bool) {
+    let here = here();
+    let config = load_config();
+    if here.folder_path().is_none() {
+        return (false, false);
+    }
+    let before = here.shares("notes", &config) && notes_carried(&config, &here).is_none();
+    let after = here.shares("papers", &config) && !folder_carried(letters, &here);
+    (before, after)
+}
+
 /// Whether this device shares the part that carries Sioul's lists ("projects").
 pub(crate) fn carries_lists() -> bool {
     let here = here();

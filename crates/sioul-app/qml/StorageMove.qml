@@ -259,6 +259,17 @@ SafeDialog {
                 font.pixelSize: 13
                 color: move.theme.muted
             }
+            // The letters' scans change part with the move: they stop travelling ("Papers" off
+            // here), or start to, sealed.
+            Label {
+                objectName: "storageMoveScans"
+                visible: move.view.moved !== true && (move.view.scans_part || "") !== ""
+                Layout.fillWidth: true
+                text: move.view.scans_part === "stop" ? move.sioul.text("storage-move-scans-stop") : move.sioul.textArgs("storage-move-scans-start", JSON.stringify({ count: move.view.letters_files || 0 }))
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: move.view.scans_part === "stop" ? move.theme.warm : move.theme.muted
+            }
             Label {
                 objectName: "storageMoveOthers"
                 visible: move.view.moved !== true && (move.view.unmoved || "") !== ""

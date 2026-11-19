@@ -148,6 +148,18 @@ Item {
             verify(!named("storageMoveCarried:letters").visible)
         }
 
+        function test_the_scans_changing_part_is_said() {
+            mock.storageMove = root.view({})
+            move.show()
+            tryVerify(() => move.opened)
+            verify(!named("storageMoveScans").visible)
+            mock.storageMove = root.view({ scans_part: "stop" })
+            verify(named("storageMoveScans").visible)
+            compare(named("storageMoveScans").text, "storage-move-scans-stop")
+            mock.storageMove = root.view({ scans_part: "start" })
+            compare(named("storageMoveScans").text, "storage-move-scans-start " + JSON.stringify({ count: 2 }))
+        }
+
         function test_unticked_the_part_stays_as_it_is() {
             mock.storageMove = root.view({ carries: false })
             move.show()
