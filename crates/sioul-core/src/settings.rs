@@ -714,10 +714,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
             // The sites' colours are the Sites page's own, behind its ⚙ (only it reads them).
             // What this device is for what follows you (`device_kind`, docs/android.md,
-            // "Tablets"), this device's own: in its own tab on Android (Settings ▸ This
-            // phone, or This tablet), in Display elsewhere. "" as the system says, which
-            // the window names (backend.rs: Android's width is the app's to read).
-            b.section = if cfg!(target_os = "android") { "phone".into() } else { "look".into() };
+            // "Tablets"), this device's own: in Settings ▸ Devices on Android (its card there
+            // reads the row by its key: review of `phones`, L20), in Display elsewhere. "" as
+            // the system says, which the window names (backend.rs: Android's width is the app's to read).
+            b.section = if cfg!(target_os = "android") { "devices".into() } else { "look".into() };
             b.group = tr.text("set-device-group", None);
             let s = b.push("device_kind", "device-kind", Kind::Choice, SettingValue::Text(config.device_kind.clone().unwrap_or_default()));
             let found = crate::device_kind::DeviceKind::guessed(cfg!(target_os = "android"), None);

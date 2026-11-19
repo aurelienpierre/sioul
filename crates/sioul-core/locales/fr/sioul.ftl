@@ -478,6 +478,8 @@ device-areas-come = { $areas ->
 device-waits = Cet appareil est pour { $for } : { $waits } sur vos autres appareils.
 device-waits-cell = Sur cet appareil, à cette heure, { $waits } sur vos autres appareils : vous l’avez réglé ainsi dans Paramètres ▸ Appareils.
 mailbox-rests-device = { $address } attend sur vos autres appareils : celui-ci n’est pas pour elle en ce moment.
+devices-door-no-phone = Aucun de vos téléphones n’est encore connu ici : les appels se règlent dans la carte d’un téléphone, qui s’affiche ici dès que ce téléphone partage avec cet appareil.
+devices-door-no-apps = Aucune application ni conversation n’a encore ses propres moments : ils se règlent sur le téléphone, dans sa carte, et s’y affichent ici une fois réglés.
 devices-grid-title = Ce qui arrive, et quand
 devices-grid-help = Pour chaque appareil, ce qui arrive à chaque moment : ce que le moment amène, gardé à ce pour quoi l’appareil est fait. Changez une case pour y laisser passer autre chose, vos amis sur un téléphone pendant le travail, ou rien du tout pendant les repas ; « Selon ce à quoi il sert » la remet. Ce qui n’arrive pas sur un appareil y est replié, jamais retiré : sa page l’ouvre toujours.
 devices-grid-device = Appareil
@@ -7216,7 +7218,7 @@ replies-read-item = Marquer comme lu dans { $app }
 replies-read-title = Marquer comme lu ?
 replies-read-warning = { $app } peut leur dire que vous l’avez lu.
 replies-read-confirm = Marquer comme lu
-# texts: the Texts page, and Settings ▸ This phone ▸ Texts (SMS phase b).
+# texts: the Texts page, and Settings ▸ Devices ▸ this phone's card ▸ Texts (SMS phase b).
 texts-page-title = SMS
 texts-page-off = Vos SMS s’affichent ici une fois la partie SMS du partage activée, sur cet appareil et sur votre téléphone (Paramètres ▸ Partage).
 texts-page-no-phone = Aucun téléphone ne partage ses SMS avec cet ordinateur : activez la partie SMS sur votre téléphone, dans Paramètres ▸ Appareils, la carte de ce téléphone ▸ SMS.
@@ -7391,7 +7393,7 @@ event-alarms-calendar-settings = Ses notifications
 event-alarms-sioul-title = Sioul fait sonner ici les alarmes des événements
 event-alarms-sioul-body = Aucune application d’agenda ne synchronise vos agendas sur cet appareil : Sioul fait donc sonner lui-même les alarmes propres à un événement.
 
-## Paramètres ▸ Ce qui vous joint, en mots : son onglet, ses cartes, la fiche d’une personne, Ce téléphone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
+## Paramètres ▸ Ce qui vous joint, en mots : son onglet, ses cartes, la fiche d’une personne, la carte du téléphone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneCard.qml, docs/attention.md)
 settings-tab-attention = Ce qui vous joint
 set-device-group = Cet appareil
 set-device-kind = Ce qu’est cet appareil

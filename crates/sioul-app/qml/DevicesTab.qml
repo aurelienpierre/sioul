@@ -52,9 +52,9 @@ ColumnLayout {
     // What this phone says of itself, on the phone (`phonecard::view`): {phone, allow, restricted}.
     property var own: ({ phone: false })
     readonly property var rows: tab.view.rows || []
-    // The devices' ids, in the table's order: changed only when a device
-    // comes or goes, so that a reload keeps each card (its folds opened, its
-    // sections) instead of making them again.
+    // The devices' ids, in the table's order when a device last came or went:
+    // changed only then, never by a rename, so that a reload keeps each card
+    // (its folds opened, its sections) instead of making them again.
     property var ids: []
     // The phone card a door lands in, by its part ("calls", "apps"): this
     // device's when it is a phone, else the first phone's (`reveal`).
@@ -62,6 +62,8 @@ ColumnLayout {
     readonly property string appsDoor: tab.doorOf(id => tab.calls[id] !== undefined && (tab.own.phone === true ? tab.rows.some(r => r.id === id && r.here === true) : tab.lists > 0))
     // How many apps, conversations and sites have times of their own (`appNotesSetup`).
     property int lists: 0
+    // A door that found no card to land in, in a line (`reveal`); "" otherwise.
+    property string doorSaid: ""
     // What is said around the cells: the times' names, now on this device,
     // the areas no device is for, what is never kept back (`device_grid::Grid`).
     readonly property var grid: tab.view.grid || ({ times: [], now: "", unheld: "", never: "" })
@@ -117,7 +119,10 @@ ColumnLayout {
     function reveal(part) {
         const id = part === "calls" ? tab.callsDoor : part === "apps" ? tab.appsDoor : ""
         const card = id === "" ? null : tab.cardOf(tab, id)
-        return card ? card.reveal(part) : null
+        const found = card ? card.reveal(part) : null
+        // No card to land in: one line says why, at the tab's top (review of `phones`, L17).
+        tab.doorSaid = found ? "" : tab.sioul.text(part === "calls" ? "devices-door-no-phone" : "devices-door-no-apps")
+        return found
     }
 
     function cardOf(item, id) {
@@ -152,11 +157,17 @@ ColumnLayout {
     }
 
     spacing: 8
-    onVisibleChanged: if (visible) tab.reloadAll()
-    // The cards follow the devices, not each reading of them.
+    onVisibleChanged: {
+        if (visible)
+            tab.reloadAll()
+        else
+            tab.doorSaid = ""
+    }
+    // The cards follow the devices, not each reading of them: a device renamed, which moves in the
+    // table's order, keeps every card as it is (review of `phones`, L14); one that comes or goes makes them anew.
     onRowsChanged: {
         const ids = tab.rows.map(r => r.id || "")
-        if (JSON.stringify(ids) !== JSON.stringify(tab.ids))
+        if (JSON.stringify(ids.slice().sort()) !== JSON.stringify(tab.ids.slice().sort()))
             tab.ids = ids
     }
     Component.onCompleted: tab.reloadAll()
@@ -242,6 +253,16 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: tab.theme.warm
+    }
+    // A door with no card to land in: no phone known, or no app with times of its own yet.
+    Label {
+        objectName: "devicesDoorSaid"
+        visible: tab.doorSaid !== ""
+        Layout.fillWidth: true
+        text: tab.doorSaid
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: tab.theme.text
     }
     // Settings and accounts do not travel from here: what is said in this tab stays here.
     Label {

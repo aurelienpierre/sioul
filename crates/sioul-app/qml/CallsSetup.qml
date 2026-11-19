@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ This phone ▸ Calls (docs/android.md, "Calls"): what Sioul does
+// Settings ▸ Devices ▸ this phone's card ▸ Calls (docs/android.md, "Calls"): what Sioul does
 // with calls, what it never does, what always rings; then this phone: Sioul
 // as Android's "Caller ID & spam app" (Android 10 and later, asked in
 // Android's own dialog), reading the contacts, reading the call history (the

@@ -7090,6 +7090,10 @@ impl qobject::Sioul {
     }
 
     fn device_forget(self: Pin<&mut Self>, id: &QString) -> QString {
+        // A phone forgotten: its word on where each person is starred taken out of the list (review of `phones`, L8).
+        if let Err(e) = sioul_core::stars::forget_place(&sioul_core::everywhere::People::default_path(), &id.to_string()) {
+            eprintln!("sioul: stars: {e}");
+        }
         QString::from(&crate::health::device_forget(&id.to_string()))
     }
 

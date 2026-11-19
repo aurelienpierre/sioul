@@ -197,7 +197,7 @@ public final class StepService extends Service
                 watchKeyboard(context);
                 return keyboard(context.getResources().getConfiguration()) ? "true" : "false";
             case "sms-app":
-                // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
+                // The phone's SMS app, for Settings ▸ Devices ▸ this phone's card ▸ On your computers.
                 return JSONObject.quote(PhoneMessages.smsApp(context));
             case "mail-withdraw":
                 // New mail's notification, each of its messages dealt with on some device (Rust's notices).

@@ -454,6 +454,8 @@ device-areas-come = { $areas ->
 device-waits = This device is for { $for }: { $waits } on your other devices.
 device-waits-cell = On this device, at this time, { $waits } on your other devices: you set it so in Settings ▸ Devices.
 mailbox-rests-device = { $address } waits on your other devices: this one is not for it now.
+devices-door-no-phone = No phone of yours is known here yet: calls are set in a phone's card, which shows here once that phone shares with this device.
+devices-door-no-apps = No app or conversation has times of its own yet: they are set on the phone, in its card, and listed in it here once set.
 devices-grid-title = What comes forward, and when
 devices-grid-help = For each device, what comes forward at each time: what the time brings, kept to what the device is for. Change a cell to let something else through there, friends on a phone during work, or nothing at all during meals; "As its areas say" puts it back. What does not come forward on a device is folded there, never removed: its page still opens it.
 devices-grid-device = Device
@@ -7330,7 +7332,7 @@ event-alarms-calendar-settings = Its notifications
 event-alarms-sioul-title = Sioul rings events' alarms here
 event-alarms-sioul-body = No calendar app syncs your agendas on this device, so Sioul rings an event's own alarms itself.
 
-## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, This phone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
+## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, the phone's card (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneCard.qml, docs/attention.md)
 settings-tab-attention = What reaches you
 set-device-group = This device
 set-device-kind = What this device is

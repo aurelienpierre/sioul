@@ -16,7 +16,7 @@ import android.util.Log;
 /**
  * Android's question for the link to your computer (docs/android.md,
  * "Notifications from other apps"; option 2 of
- * docs/research/android-holding.md), asked from Settings ▸ This phone ("Let
+ * docs/research/android-holding.md), asked from Settings ▸ Devices ▸ this phone's card ("Let
  * Sioul make them silent"): Android's own list of devices, the paired
  * Bluetooth ones first, where you choose the computer Sioul relays this
  * phone's notifications to. The association asks for no device profile and

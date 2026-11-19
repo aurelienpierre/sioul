@@ -424,6 +424,7 @@ Item {
             verify(calls !== null && calls.objectName === "foldCalls" && calls.open, "Calls unfolded in the phone's card")
             verify(named("phoneCard-phone").reveal("calls") === calls)
             compare(tab.reveal("apps"), null, "no app has times of its own")
+            compare(tab.doorSaid, "devices-door-no-apps", "said in a line (L17)")
             verify(named("fold-lists") === null || !showing(named("fold-lists")))
             // Apps with times of their own: listed in the phone's card on a computer, read and changed there.
             mock.lists = 2
@@ -456,6 +457,11 @@ Item {
             verify(named("foldCalls").open, "Calls still unfolded")
             verify(showing(named("callsCell-contacts-night")), "the row still open")
             verify(named("fold-dnd") === dnd && dnd.open, "the tab's blocks kept, unfolded")
+            // A device renamed moves in the table's order: every card kept all the same (L14).
+            const rows = tab.view.rows.slice().reverse()
+            tab.view = Object.assign({}, tab.view, { rows: rows })
+            wait(20)
+            verify(named("setting:devices.here") === card && named("foldCalls").open, "the card kept through a rename")
         }
     }
 }
