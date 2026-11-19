@@ -119,9 +119,6 @@ sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
 # sioul-app/src/projects.rs: what the Projects and Time pages show on this device (state): no item.
 sioul-app/src/projects.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
-# sioul-app/src/projects.rs: how the Projects page is shown on this device (state): no item.
-sioul-app/src/projects.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
-
 # sioul-app/src/remind.rs: the reminders' autostart entry, systemd's word to start their watcher again, and the watcher's own files: no item.
 sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&entry)
 sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&restart)
