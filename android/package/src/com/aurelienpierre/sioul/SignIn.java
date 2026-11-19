@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -20,6 +21,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -36,6 +38,14 @@ import org.json.JSONObject;
  * storage are cleared before and after (Sioul has no other web view on a
  * phone). No scheme is registered with the system: the manifest names
  * nothing for this activity to answer, and it is not exported.
+ *
+ * <p>The screen is part of Sioul's own task, seen in Recents: leaving it to
+ * read a code in another app and coming back (Recents, or Sioul's icon)
+ * finds it as it was. Back goes back one page of the sign-in, and from the
+ * first page ends it. A screen the system makes again after Sioul's process
+ * was ended is no longer waited for: it ends at once and says so. A page
+ * whose renderer ends ends the sign-in, never Sioul; "Sign in…" is free
+ * again at once.
  */
 public final class SignIn extends Activity
 {
@@ -55,6 +65,11 @@ public final class SignIn extends Activity
 
     /** The screen shown, for Rust's "sign-in-close" (the time given up). */
     private static SignIn shown;
+    /**
+     * The page Rust asked to show and waits for, in this process; none once
+     * the screen answered. A screen made again after the process ended finds none.
+     */
+    private static String asked;
 
     private WebView view;
     private TextView site;
@@ -97,6 +112,23 @@ public final class SignIn extends Activity
         return (french ? "Vous vous connectez sur\u202f: " : "You sign in on: ") + host;
     }
 
+    /** What is said when a screen made again is no longer waited for. */
+    static String interrupted(boolean french)
+    {
+        return french ? "La connexion a été interrompue pendant que Sioul était fermé\u202f: appuyez à nouveau sur Se connecter…"
+            : "The sign-in was interrupted while Sioul was closed: press Sign in… again.";
+    }
+
+    /**
+     * Whether a screen being made is the one Rust waits for: never one the
+     * system makes again from its saved state (the process ended meanwhile,
+     * so nothing waits for its answer), nor one whose page is not the page asked.
+     */
+    static boolean waitedFor(boolean remade, String waited, String open)
+    {
+        return !remade && waited != null && waited.equals(open);
+    }
+
     /**
      * Rust's question ({@link StepService#call}, verbs "sign-in-…"):
      * "sign-in-open" {open, watch, host}, answered {asked} or {problem};
@@ -109,12 +141,15 @@ public final class SignIn extends Activity
             String open = asked.optString("open", "");
             if (decide(open, "") != Decision.ALLOWED)
                 return Attachments.said("problem", "scheme").toString();
+            // Into Sioul's own task (the manifest gives the screen no affinity of its own).
             Intent intent = new Intent(context, SignIn.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(OPEN, open).putExtra(WATCH, asked.optString("watch", "")).putExtra(HOST, asked.optString("host", ""));
+            SignIn.asked = open;
             try {
                 context.startActivity(intent);
                 return Attachments.said("asked", true).toString();
             } catch (RuntimeException e) {
+                SignIn.asked = null;
                 Log.w(TAG, "SignIn: the screen could not be shown: " + e.getClass().getSimpleName());
                 return Attachments.said("problem", "refused").toString();
             }
@@ -134,10 +169,18 @@ public final class SignIn extends Activity
     protected void onCreate(Bundle saved)
     {
         super.onCreate(saved);
-        shown = this;
         watch = getIntent().getStringExtra(WATCH);
         String open = getIntent().getStringExtra(OPEN);
         boolean french = getResources().getConfiguration().getLocales().get(0).getLanguage().equals("fr");
+        if (!waitedFor(saved != null, asked, open)) {
+            // Nobody waits for this one: its sign-in ended with the process. Said, then gone.
+            answered = true;
+            Toast.makeText(this, interrupted(french), Toast.LENGTH_LONG).show();
+            forget();
+            finish();
+            return;
+        }
+        shown = this;
         forget();
 
         LinearLayout column = new LinearLayout(this);
@@ -209,6 +252,22 @@ public final class SignIn extends Activity
                 if (request.isForMainFrame() && decide(request.getUrl().toString(), watch) == Decision.WATCHED)
                     returned(request.getUrl().toString());
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView page, RenderProcessGoneDetail detail)
+            {
+                // The page's renderer ended (its own fault, or the system took its memory back):
+                // the sign-in ends here, Sioul stays, and "Sign in…" is free again at once.
+                Log.i(TAG, "SignIn: the page's renderer ended; the sign-in is cancelled.");
+                tell(Attachments.said("cancelled", true));
+                if (page.getParent() instanceof ViewGroup)
+                    ((ViewGroup) page.getParent()).removeView(page);
+                page.destroy();
+                if (view == page)
+                    view = null;
+                finish();
+                return true;
+            }
         });
         column.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(column);
@@ -226,12 +285,24 @@ public final class SignIn extends Activity
         finish();
     }
 
+    /** Back: one page back in the sign-in; from its first page, the sign-in ends. */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed()
+    {
+        if (view != null && view.canGoBack())
+            view.goBack();
+        else
+            super.onBackPressed();
+    }
+
     /** Rust told once, when Sioul's library is loaded. */
     private void tell(JSONObject said)
     {
         if (answered)
             return;
         answered = true;
+        asked = null;
         try {
             nativeReturned(said.toString());
         } catch (UnsatisfiedLinkError e) {

@@ -80,7 +80,7 @@ Asked only during a `sign-in` call, once per call.
 - `open`: the first page, `https` on a host the manifest names.
 - `watch`: the beginning of the address the service returns to after the sign-in. It must begin with the prefix the manifest declares (`sign_in`).
 - Sioul shows the page in a browser of its own, the site's name always in sight above it, and loads nothing but `https` pages. When a navigation reaches an address beginning with `watch`, it is stopped there, never loaded, and returned whole: `{"returned": "…"}`. When the person closes the page, `{"cancelled": true}`.
-- On a computer the page is a window of Sioul's with Qt WebEngine and a profile of its own, kept in memory and emptied when the window closes. On Android it is a screen of Sioul's own (`SignIn.java`) with the system's web view: JavaScript on, since sign-in pages need it; files, content and other schemes off; its cookies and storage cleared when it closes. No scheme is registered with the system.
+- On a computer the page is a window of Sioul's with Qt WebEngine and a profile of its own, kept in memory and emptied when the window closes. On Android it is a screen of Sioul's own (`SignIn.java`) with the system's web view: JavaScript on, since sign-in pages need it; files, content and other schemes off; its cookies and storage cleared when it closes. It is part of Sioul's task, seen in Recents, so that the person can leave it to read a code and come back to it; if Sioul's process ends meanwhile, or the page's renderer does, the sign-in ends and can be started again at once. No scheme is registered with the system.
 - The person has 15 minutes; that time is not counted in the call's limits.
 
 ## The calls

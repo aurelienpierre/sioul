@@ -370,12 +370,11 @@
         <!-- An extension's sign-in page (SignIn.java; docs/extensions.md): the
              system's web view on a screen of Sioul's own, the site's name
              above it. Started by Sioul alone; it answers no address and
-             registers no scheme. -->
+             registers no scheme. Part of Sioul's own task and seen in Recents,
+             so that leaving it to read a code and coming back finds it. -->
         <activity
             android:name="com.aurelienpierre.sioul.SignIn"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
-            android:taskAffinity=""
-            android:excludeFromRecents="true"
             android:exported="false" />
         <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/
              client.md, "Antivirus"): Android's own question where to save it,

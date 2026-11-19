@@ -58,7 +58,51 @@ public final class SignInCheck
             failed++;
             System.out.println("FAIL the line above the page");
         }
-        int total = cases.length + hosts.length + 2;
+        // A1, A2: only the screen Rust waits for, in this process, shows a page.
+        Object[][] waited = {
+            { false, "https://sso.example.org/a", "https://sso.example.org/a", true },
+            { true, "https://sso.example.org/a", "https://sso.example.org/a", false },
+            { false, null, "https://sso.example.org/a", false },
+            { false, "https://sso.example.org/b", "https://sso.example.org/a", false },
+        };
+        for (Object[] w : waited) {
+            if (SignIn.waitedFor((Boolean) w[0], (String) w[1], (String) w[2]) != (Boolean) w[3]) {
+                failed++;
+                System.out.println("FAIL waited for: made again " + w[0] + ", asked " + w[1] + ", page " + w[2]);
+            }
+        }
+        if (!SignIn.interrupted(true).contains("Se connecter…") || !SignIn.interrupted(false).contains("Sign in…")) {
+            failed++;
+            System.out.println("FAIL what an interrupted sign-in says");
+        }
+        // Read from the repository: the screen in Sioul's own task, seen in
+        // Recents; a page's renderer that ends ends the sign-in, never Sioul.
+        int read = 0;
+        try {
+            java.nio.file.Path root = java.nio.file.Path.of(System.getProperty("sioul.root"));
+            String manifest = java.nio.file.Files.readString(root.resolve("android/package/AndroidManifest.xml"));
+            int at = manifest.indexOf("android:name=\"com.aurelienpierre.sioul.SignIn\"");
+            String activity = at < 0 ? "" : manifest.substring(manifest.lastIndexOf("<activity", at), manifest.indexOf("/>", at));
+            String source = java.nio.file.Files.readString(root.resolve("android/package/src/com/aurelienpierre/sioul/SignIn.java"));
+            String[][] expected = {
+                { "the screen is declared", String.valueOf(!activity.isEmpty()) },
+                { "seen in Recents", String.valueOf(!activity.contains("excludeFromRecents")) },
+                { "in Sioul's own task", String.valueOf(!activity.contains("taskAffinity")) },
+                { "never exported", String.valueOf(activity.contains("android:exported=\"false\"")) },
+                { "a renderer that ends is handled", String.valueOf(source.contains("public boolean onRenderProcessGone(") && source.contains("return true;")) },
+            };
+            for (String[] e : expected) {
+                read++;
+                if (!e[1].equals("true")) {
+                    failed++;
+                    System.out.println("FAIL " + e[0]);
+                }
+            }
+        } catch (java.io.IOException | RuntimeException e) {
+            failed++;
+            System.out.println("FAIL the repository's files: " + e);
+        }
+        int total = cases.length + hosts.length + 2 + waited.length + 1 + read;
         System.out.println(failed == 0 ? "all " + total + " sign-in cases agree" : failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }
