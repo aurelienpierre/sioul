@@ -157,7 +157,7 @@ pub fn call_text(call: Call<'_>, french: bool) -> String {
 pub fn run(offer: &Offer, call: Call<'_>, french: bool, services: Real) -> (Outcome, Real) {
     let file = match checked_file(offer) {
         Ok(file) => file,
-        Err(why) => return (Outcome { reply: Err(engine::Stop::NotRead(why)), log: Vec::new() }, services),
+        Err(why) => return (Outcome { reply: Err(engine::Stop::NotRead(why)), log: Vec::new(), held: 0 }, services),
     };
     let may_sign_in = matches!(call, Call::SignIn(_));
     engine::call(&file, &offer.grants(), &call_text(call, french), services, &Limits::default(), may_sign_in)

@@ -17,10 +17,20 @@
 //!   answers nonsense ends with a `Stop`, which the window says in one
 //!   sentence; the module is thrown away, nothing of it is taken in.
 //!
-//! Each ask is checked here (its form, its host, its size, the time left)
-//! before what it reaches does it (`Services`: the network, the keyring, the
-//! person); the log is kept here, every hidden value replaced once the call
-//! has ended. Never run on the window's thread: a call may last minutes.
+//! Each ask is counted, then checked here (its form, its host, its size, the
+//! time left) before what it reaches does it (`Services`: the network, the
+//! keyring, the person); the log is kept here, every hidden value replaced
+//! once the call has ended. Never run on the window's thread: a call may last
+//! minutes.
+//!
+//! **What Sioul holds for a call is bounded in bytes**, outside the module's
+//! own memory: a line is cut when it is kept (`LINE_KEPT`), Sioul's own
+//! lines are counted (`SAID_MOST`), a host its manifest does not name is
+//! kept once, cut short, with a count (`REFUSED_HOSTS`), and the values to
+//! hide are capped in number and in bytes (`HIDE_MOST`, `HIDE_BYTES`, a long
+//! value kept in pieces of `HIDE_PIECE`). When no more can be hidden, the
+//! extension's lines of that call are dropped rather than written unhidden.
+//! `finish` then works on those bounds alone.
 
 use serde_json::{Value, json};
 use sioul_core::extensions::manifest::Grants;
@@ -81,6 +91,40 @@ impl Default for Limits {
             log_width: 300,
         }
     }
+}
+
+/// A line of the log as it is kept, in bytes: the extension's and Sioul's own.
+const LINE_KEPT: usize = 4096;
+/// Sioul's own lines a call (a request each, at most 100, and a few more).
+const SAID_MOST: usize = 160;
+/// The hosts a manifest does not name kept a call, each cut to `HOST_SHOWN` characters.
+const REFUSED_HOSTS: usize = 8;
+const HOST_SHOWN: usize = 80;
+/// The values hidden a call, in number and in bytes; a longer value is kept
+/// in pieces of `HIDE_PIECE` bytes, each hidden, which side by side hide it whole.
+const HIDE_MOST: usize = 256;
+const HIDE_BYTES: usize = 128 << 10;
+const HIDE_PIECE: usize = 2048;
+
+/// `text` cut at `most` bytes, on a character's edge; whether it was cut.
+fn cut_at(text: &str, most: usize) -> (String, bool) {
+    if text.len() <= most {
+        return (text.to_string(), false);
+    }
+    let mut end = most;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[..end].to_string(), true)
+}
+
+/// A line of the call's log: its text, cut at `LINE_KEPT` when kept; whether
+/// it was; whether it is the extension's (dropped when hiding is full).
+#[derive(Debug, Clone)]
+struct Line {
+    text: String,
+    cut: bool,
+    own: bool,
 }
 
 /// How a call ended without a reply: said in one sentence by the window
@@ -171,6 +215,8 @@ pub trait Services {
 pub struct Outcome {
     pub reply: Result<String, Stop>,
     pub log: Vec<String>,
+    /// The most bytes Sioul held at once for the call's log and its hidden values.
+    pub held: usize,
 }
 
 /// The kinds of ask, each its own import.
@@ -210,15 +256,31 @@ struct Visit<S> {
     kept: Vec<u8>,
     reply: Option<Vec<u8>>,
     hidden: Vec<String>,
-    log: Vec<String>,
+    /// The bytes `hidden` holds; whether a value could not be hidden (the bounds reached).
+    hidden_bytes: usize,
+    hiding_full: bool,
+    log: Vec<Line>,
+    /// The extension's lines, and Sioul's own, written this call.
     lines: usize,
+    said_lines: usize,
+    /// Hosts its manifest does not name, cut short, each with how many asks named it; and the rest.
+    refused_hosts: Vec<(String, u32)>,
+    refused_more: u32,
     requests: u32,
     asks: u32,
     stop: Option<Stop>,
     store_limits: StoreLimits,
+    /// The most bytes held at once for the log and the hidden values (`Outcome::held`).
+    held: usize,
 }
 
 impl<S: Services> Visit<S> {
+    /// What the log and the hidden values hold now, in bytes; the most kept.
+    fn weigh(&mut self) {
+        let now = self.log.iter().map(|l| l.text.len()).sum::<usize>() + self.hidden_bytes + self.refused_hosts.iter().map(|(h, _)| h.len()).sum::<usize>();
+        self.held = self.held.max(now);
+    }
+
     fn spent(&self) -> Duration {
         self.started.elapsed().saturating_sub(self.aside)
     }
@@ -227,9 +289,41 @@ impl<S: Services> Visit<S> {
         self.limits.time.saturating_sub(self.spent())
     }
 
+    /// A value never to reach the log: kept whole when short, else in pieces
+    /// that side by side hide it whole; when the bounds are reached, hiding
+    /// is full and the extension's lines of the call will be dropped.
     fn hide(&mut self, value: &str) {
-        if value.len() >= 4 && self.hidden.len() < 2_000 && !self.hidden.iter().any(|h| h == value) {
-            self.hidden.push(value.to_string());
+        if value.len() < 4 {
+            return;
+        }
+        let mut pieces: Vec<&str> = Vec::new();
+        let mut rest = value;
+        while rest.len() > HIDE_PIECE {
+            let mut end = HIDE_PIECE;
+            while !rest.is_char_boundary(end) {
+                end -= 1;
+            }
+            pieces.push(&rest[..end]);
+            rest = &rest[end..];
+        }
+        // A last piece too short to look for joins the one before it.
+        match pieces.last_mut() {
+            Some(last) if rest.len() < 4 => {
+                let start = value.len() - rest.len() - last.len();
+                *last = &value[start..];
+            }
+            _ => pieces.push(rest),
+        }
+        for piece in pieces {
+            if self.hidden.iter().any(|h| h == piece) {
+                continue;
+            }
+            if self.hidden.len() >= HIDE_MOST || self.hidden_bytes + piece.len() > HIDE_BYTES {
+                self.hiding_full = true;
+                return;
+            }
+            self.hidden_bytes += piece.len();
+            self.hidden.push(piece.to_string());
         }
     }
 
@@ -253,10 +347,27 @@ impl<S: Services> Visit<S> {
         }
     }
 
-    /// A line of Sioul's own in the extension's log.
+    /// A line of Sioul's own in the extension's log, cut when kept; past `SAID_MOST`, none.
     fn said(&mut self, line: String) {
+        if self.said_lines >= SAID_MOST {
+            return;
+        }
+        self.said_lines += 1;
         let at = jiff::Timestamp::from_second(self.services.now()).map(|t| t.to_string()).unwrap_or_default();
-        self.log.push(format!("{at} sioul: {line}"));
+        let (text, cut) = cut_at(&format!("{at} sioul: {line}"), LINE_KEPT);
+        self.log.push(Line { text, cut, own: false });
+    }
+
+    /// A host its manifest does not name, asked: kept once a call, cut short, with a count.
+    fn refused_host(&mut self, host: &str) {
+        let shown: String = host.chars().take(HOST_SHOWN).collect();
+        if let Some((_, count)) = self.refused_hosts.iter_mut().find(|(h, _)| *h == shown) {
+            *count += 1;
+        } else if self.refused_hosts.len() < REFUSED_HOSTS {
+            self.refused_hosts.push((shown, 1));
+        } else {
+            self.refused_more += 1;
+        }
     }
 }
 
@@ -273,14 +384,16 @@ fn now_answer<S: Services>(visit: &mut Visit<S>) -> Value {
 
 fn log_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     let Some(line) = ask["line"].as_str() else { return refused("form") };
-    if visit.lines >= visit.limits.log_lines {
+    // Past its lines, or once a value could not be hidden: nothing more of the extension's is kept.
+    if visit.lines >= visit.limits.log_lines || visit.hiding_full {
         return json!({ "logged": false });
     }
     visit.lines += 1;
     let at = jiff::Timestamp::from_second(visit.services.now()).map(|t| t.to_string()).unwrap_or_default();
-    // Cut once hidden values are replaced (`finish`): kept whole meanwhile, 4 KiB at most.
-    let line: String = line.chars().filter(|c| !c.is_control()).take(4096).collect();
-    visit.log.push(format!("{at} {line}"));
+    // Cut again once hidden values are replaced (`finish`): `LINE_KEPT` bytes meanwhile.
+    let line: String = line.chars().filter(|c| !c.is_control()).collect();
+    let (text, cut) = cut_at(&format!("{at} {line}"), LINE_KEPT);
+    visit.log.push(Line { text, cut, own: true });
     json!({ "logged": true })
 }
 
@@ -330,7 +443,7 @@ fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
         Err(why) => return refused(why),
     };
     if !visit.grants.hosts.contains(&host) {
-        visit.said(format!("refused a request to a host its manifest does not name: {host}"));
+        visit.refused_host(&host);
         return refused("host");
     }
     let mut headers = Vec::new();
@@ -485,21 +598,26 @@ fn read<S>(caller: &Caller<'_, Visit<S>>, ptr: i32, len: i32, most: usize) -> Op
     Some(bytes)
 }
 
-/// One ask: read, checked, done, its answer kept for `answer`; its length.
+/// One ask: counted, read, checked, done, its answer kept for `answer`; its length.
 fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len: i32) -> Result<i32, wasmi::Error> {
     let (most, asks) = (caller.data().limits.ask, caller.data().limits.asks);
     if caller.data().spent() > caller.data().limits.time {
         return halt(&mut caller, Stop::TooLong);
     }
-    let Some(bytes) = read(&caller, ptr, len, most) else {
-        return halt(&mut caller, Stop::Trapped("an ask outside its memory, or larger than 1 MiB".into()));
+    // Counted before anything is copied: past the count, the ask is not read.
+    caller.data_mut().asks += 1;
+    let bytes = if caller.data().asks > asks {
+        None
+    } else {
+        match read(&caller, ptr, len, most) {
+            Some(bytes) => Some(bytes),
+            None => return halt(&mut caller, Stop::Trapped("an ask outside its memory, or larger than 1 MiB".into())),
+        }
     };
     let visit = caller.data_mut();
-    visit.asks += 1;
-    let answer = if visit.asks > asks {
-        refused("count")
-    } else {
-        match serde_json::from_slice::<Value>(&bytes) {
+    let answer = match bytes {
+        None => refused("count"),
+        Some(bytes) => match serde_json::from_slice::<Value>(&bytes) {
             Err(_) => refused("form"),
             Ok(ask) => match kind {
                 Kind::Now => now_answer(visit),
@@ -509,7 +627,7 @@ fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len:
                 Kind::Secret => secret_answer(visit, &ask),
                 Kind::SignIn => sign_in_answer(visit, &ask),
             },
-        }
+        },
     };
     let mut text = answer.to_string().into_bytes();
     if text.len() > visit.limits.answer {
@@ -517,6 +635,7 @@ fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len:
     }
     let len = i32::try_from(text.len()).unwrap_or(0);
     visit.kept = text;
+    visit.weigh();
     Ok(len)
 }
 
@@ -598,23 +717,40 @@ fn run<S: Services>(store: &mut Store<Visit<S>>, func: &Func, params: &[Val]) ->
     }
 }
 
-/// The log's lines with every hidden value replaced, then cut.
-fn finish(log: Vec<String>, hidden: &mut [String], width: usize) -> Vec<String> {
+/// The log's lines with every hidden value replaced, then cut at `width`
+/// characters. A line cut when it was kept loses its last `HIDE_PIECE` bytes
+/// more: a value it held across that cut cannot then show in part. When a
+/// value could not be hidden (`full`), the extension's own lines are dropped,
+/// and one line of Sioul's says so. Bounded: at most `HIDE_MOST` values over
+/// lines of `LINE_KEPT` bytes.
+fn finish(log: Vec<Line>, hidden: &mut [String], width: usize, full: bool) -> Vec<String> {
     hidden.sort_by_key(|h| std::cmp::Reverse(h.len()));
-    log.into_iter()
-        .map(|mut line| {
+    let dropped = if full { log.iter().filter(|l| l.own).count() } else { 0 };
+    let mut out: Vec<String> = log
+        .into_iter()
+        .filter(|l| !(full && l.own))
+        .map(|line| {
+            let mut text = line.text;
             for value in hidden.iter() {
-                if line.contains(value.as_str()) {
-                    line = line.replace(value.as_str(), "[hidden]");
+                if text.contains(value.as_str()) {
+                    text = text.replace(value.as_str(), "[hidden]");
                 }
             }
-            let mut cut: String = line.chars().take(width).collect();
-            if cut.len() < line.len() {
+            if line.cut {
+                let (kept, _) = cut_at(&text, text.len().saturating_sub(HIDE_PIECE + 3));
+                text = kept;
+            }
+            let mut cut: String = text.chars().take(width).collect();
+            if line.cut || cut.len() < text.len() {
                 cut.push('…');
             }
             cut
         })
-        .collect()
+        .collect();
+    if dropped > 0 {
+        out.push(format!("sioul: {dropped} lines of this call dropped: a value it named could not be hidden"));
+    }
+    out
 }
 
 /// Runs one call of the extension in `file`, given only what `grants` say:
@@ -632,11 +768,17 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
         kept: Vec::new(),
         reply: None,
         hidden: Vec::new(),
+        hidden_bytes: 0,
+        hiding_full: false,
         log: Vec::new(),
         lines: 0,
+        said_lines: 0,
+        refused_hosts: Vec::new(),
+        refused_more: 0,
         requests: 0,
         asks: 0,
         stop: None,
+        held: 0,
         store_limits: StoreLimitsBuilder::new().memory_size(limits.memory).memories(1).tables(1).table_elements(10_000).instances(1).trap_on_grow_failure(true).build(),
     };
     let mut config = Config::default();
@@ -646,11 +788,21 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
     store.limiter(|visit| &mut visit.store_limits);
     let reply = called(&engine, &mut store, file, grants, call, limits);
     let mut visit = store.into_data();
+    // The hosts its manifest does not name: one line a call, each cut short, with its count.
+    if !visit.refused_hosts.is_empty() {
+        let mut named: Vec<String> = visit.refused_hosts.iter().map(|(host, count)| format!("{host} ({count})")).collect();
+        if visit.refused_more > 0 {
+            named.push(format!("{} more", visit.refused_more));
+        }
+        let asked: u32 = visit.refused_hosts.iter().map(|(_, c)| c).sum::<u32>() + visit.refused_more;
+        visit.said(format!("refused {asked} requests to hosts its manifest does not name: {}", named.join(", ")));
+    }
     if let Err(stop) = &reply {
         visit.said(format!("stopped: {}", stop.detail()));
     }
-    let log = finish(std::mem::take(&mut visit.log), &mut visit.hidden, limits.log_width);
-    (Outcome { reply, log }, visit.services)
+    visit.weigh();
+    let log = finish(std::mem::take(&mut visit.log), &mut visit.hidden, limits.log_width, visit.hiding_full);
+    (Outcome { reply, log, held: visit.held }, visit.services)
 }
 
 fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], grants: &Grants, call: &str, limits: &Limits) -> Result<String, Stop> {

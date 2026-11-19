@@ -267,6 +267,67 @@ fn a_file_runs_only_with_the_hash_the_manifest_signed() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
+/// X1: a module that stays inside every stated limit (asks of 1 MiB at
+/// most, 5,000 asks, 50 lines, its memory) tries to make Sioul hold its
+/// log and its hidden values without end: a host of 100,000 letters asked
+/// forty times, forty values of 100,000 letters each hidden, a long line.
+/// What Sioul holds for the call stays small, and nothing of it reaches the
+/// log uncut or unhidden.
+#[test]
+fn what_sioul_holds_for_a_call_is_bounded_in_bytes() {
+    const N: usize = 100_000;
+    let far = format!(r#"{{"method":"GET","url":"https://{}.example.org/"}}"#, "a".repeat(N));
+    let hidden = format!(r#"{{"values":["{}"]}}"#, "b".repeat(N));
+    let line = format!(r#"{{"line":"{}"}}"#, "b".repeat(N));
+    let (at_far, at_hidden, at_line, at_reply, answers) = (65_536, 196_608, 327_680, 458_752, 917_504);
+    let changed = at_hidden + hidden.find('b').unwrap();
+    let text = format!(
+        r#"(module
+  (import "sioul" "web" (func $web (param i32 i32) (result i32)))
+  (import "sioul" "hide" (func $hide (param i32 i32) (result i32)))
+  (import "sioul" "log" (func $log (param i32 i32) (result i32)))
+  (import "sioul" "answer" (func $answer (param i32)))
+  (import "sioul" "reply" (func $reply (param i32 i32)))
+  (memory (export "memory") 16)
+  (data (i32.const {at_far}) "{far}")
+  (data (i32.const {at_hidden}) "{hidden}")
+  (data (i32.const {at_line}) "{line}")
+  (data (i32.const {at_reply}) "{{}}")
+  (func (export "sioul_interface") (result i32) i32.const 1)
+  (func (export "sioul_alloc") (param i32) (result i32) i32.const 1024)
+  (func (export "sioul_call") (param i32 i32) (result i32) (local $i i32)
+    (loop $more
+      (drop (call $web (i32.const {at_far}) (i32.const {far_len})))
+      (call $answer (i32.const {answers}))
+      (i32.store8 (i32.const {changed}) (i32.add (i32.const 65) (local.get $i)))
+      (drop (call $hide (i32.const {at_hidden}) (i32.const {hidden_len})))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $more (i32.lt_u (local.get $i) (i32.const 40))))
+    (drop (call $log (i32.const {at_line}) (i32.const {line_len})))
+    (call $reply (i32.const {at_reply}) (i32.const 2))
+    i32.const 0))"#,
+        far = data(&far),
+        hidden = data(&hidden),
+        line = data(&line),
+        far_len = far.len(),
+        hidden_len = hidden.len(),
+        line_len = line.len(),
+    );
+    let file = wat::parse_str(&text).unwrap();
+    let limits = Limits { memory: 2 << 20, ..Limits::default() };
+    let (outcome, stand) = engine::call(&file, &grants(&["api.example.org"], None), &call_text(Call::Refresh, false), Stand::default(), &limits, false);
+    assert_eq!(outcome.reply.as_deref(), Ok("{}"));
+    assert!(stand.asked.is_empty(), "no request left");
+    // 40 requests of 100 kB and 40 values of 100 kB: about 8 MB if each were kept.
+    assert!(outcome.held < 256 * 1024, "Sioul held {} bytes for one call", outcome.held);
+    let log = outcome.log.join("\n");
+    assert!(outcome.log.iter().all(|l| l.chars().count() <= 301), "{log}");
+    assert!(!log.contains(&"b".repeat(40)), "a line holding what could not be hidden: {log}");
+    let refused: Vec<&String> = outcome.log.iter().filter(|l| l.contains("does not name")).collect();
+    assert_eq!(refused.len(), 1, "a refused host said once a call: {log}");
+    assert!(refused[0].contains("40") && !refused[0].contains(&"a".repeat(100)), "with its count, its name cut short: {log}");
+}
+
 #[test]
 fn calls_are_written_as_the_interface_says() {
     assert_eq!(call_text(Call::Refresh, true), r#"{"call":"refresh","interface":1,"lang":"fr"}"#);
