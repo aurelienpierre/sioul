@@ -1116,7 +1116,14 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         stores.push(papers);
         stores.push(folder("papers", LETTERS_FILES, config.letters_folder(), Shape::Files, &[]));
         if let Some(notes) = config.notes_root_path() {
-            stores.push(folder("notes", "files/notes/", notes, Shape::Files, NOT_NOTES_MOVED));
+            // The notes' own store carries the move's mark too (where it is, since the move):
+            // read in the first exchange after it, it takes the move in even where no moved
+            // store is shared then ("Projects and money" and "Papers" off), so that the letters'
+            // store, known before by the notes' place, joins when its part comes on later
+            // instead of taking that old memory for its own (review S30).
+            let mut notes_store = folder("notes", "files/notes/", notes.clone(), Shape::Files, NOT_NOTES_MOVED);
+            notes_store.was = was("files/notes/", Some(notes));
+            stores.push(notes_store);
         }
     }
     // From the notes folder each device keeps where it likes: projects,

@@ -62,6 +62,13 @@ impl Device {
         exchange(&Sharing { folder, computer: &self.c.id, key, memory: &self.c.memory, files: true, hurry: None }, &stores, now).unwrap()
     }
 
+    /// An exchange with some parts alone on.
+    fn exchange_with(&self, folder: &Path, key: &[u8; 32], now: i64, parts: &[&str]) -> Outcome {
+        let config = self.config();
+        let stores = stores_of(&config, &self.c.roots, &|part| parts.contains(&part));
+        exchange(&Sharing { folder, computer: &self.c.id, key, memory: &self.c.memory, files: true, hurry: None }, &stores, now).unwrap()
+    }
+
     /// Its sealed entry, written at the tests' clock: every store a version
     /// added, and where its lists stand.
     fn says(&self, folder: &Path, key: &[u8; 32], storage: u32) {
@@ -341,4 +348,27 @@ fn two_moved_devices_share_everything() {
     for d in [&desk, &phone] {
         assert!(!d.notes.join("sioul-budgets.toml").exists() || !std::fs::read_to_string(d.notes.join("sioul-budgets.toml")).unwrap().contains("\"cat\""));
     }
+}
+
+/// The desk moves while "Projects and money" and "Papers" are off on it: its
+/// letters' list then travels in no store it reads, and the phone, not
+/// moved, adds a letter meanwhile. Switched on later, the desk's letters'
+/// store joins as a new device's would and the phone's letter comes, never
+/// passed over for good by an old memory taken for its own (review S30).
+#[test]
+fn the_letters_store_joins_when_its_part_comes_on_after_the_move() {
+    let base = scratch("move-letters-late");
+    let (folder, key, desk, phone) = desk_and_phone(&base);
+    desk.moves(&folder, &key, NOW + 3 * MINUTE);
+    desk.exchange_with(&folder, &key, NOW + 4 * MINUTE, &["notes"]);
+    let list = phone.notes.join("letters").join("letters.toml");
+    put(&list, &format!("{}\n[[letter]]\nid = \"tax\"\nfile = \"letters/2026/tax.pdf\"\nkind = \"other\"\nstatus = \"new\"\n", std::fs::read_to_string(&list).unwrap()));
+    phone.exchange(&folder, &key, NOW + 5 * MINUTE);
+    desk.exchange_with(&folder, &key, NOW + 6 * MINUTE, &["notes"]);
+    assert!(!desk.read("letters/letters.toml").contains("tax"), "not read while its part is off");
+    for at in 7..10 {
+        desk.exchange(&folder, &key, NOW + at * MINUTE);
+    }
+    let letters = desk.read("letters/letters.toml");
+    assert!(letters.contains("tax") && letters.contains("caf"), "{letters}");
 }
