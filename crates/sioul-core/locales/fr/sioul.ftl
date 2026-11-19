@@ -7337,6 +7337,7 @@ restricted-back = Revenir dans Sioul : il redemande chaque accès de lui-même
 restricted-back-done = Android donne maintenant à Sioul ce qu’il retenait.
 restricted-back-button = Redemander maintenant
 restricted-cannot-see = Sioul ne voit pas le paramètre lui-même, seulement si chaque accès fonctionne maintenant.
+phone-allow-greyed = Android grise l’interrupteur ?
 phone-allow-title = Ce qu’Android doit permettre
 phone-allow-role = Appli numéro de l’appelant et spam
 phone-allow-role-for = filtre les appels avant que le téléphone sonne

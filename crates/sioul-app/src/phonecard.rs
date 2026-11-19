@@ -107,13 +107,20 @@ fn allowed_here() -> Option<Allowed> {
 /// This phone's own card, as JSON: {phone, allow: [lines], restricted
 /// (`access::restricted_card`)}; {phone: false} elsewhere. Read when the
 /// window comes back too: back from Sioul's page in Android, the accesses
-/// still held are asked again by themselves (`access::restricted_back`).
+/// still held are asked again by themselves (`back`, `access::restricted_back`).
 pub(crate) fn view() -> String {
-    crate::access::restricted_back();
     match allowed_here() {
         Some(allowed) => json!({ "phone": true, "allow": checklist(&allowed, tr()), "restricted": crate::access::restricted_card() }).to_string(),
         None => json!({ "phone": false }).to_string(),
     }
+}
+
+/// The card when the window comes back (Android's page left): the accesses
+/// still held asked again by themselves first, once for each opening of
+/// Sioul's page (`access::restricted_back`); only then (M10).
+pub(crate) fn back() -> String {
+    crate::access::restricted_back();
+    view()
 }
 
 /// A line's button: Android's question, or its page for that access; "sims":
@@ -145,6 +152,8 @@ pub(crate) fn ask(what: &str) -> String {
         "sims" => {
             crate::steps::java("calls-open-sims", "{}");
         }
+        // "Android greys the switch?": the restricted settings' card, shown from now on (M13).
+        "restricted" => crate::access::restricted_open(),
         _ => {}
     }
     view()

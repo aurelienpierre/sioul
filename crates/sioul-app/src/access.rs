@@ -165,6 +165,11 @@ pub(crate) struct Steps {
     pub info: i64,
     #[serde(default)]
     pub back: i64,
+    /// Opened from what Android must allow ("Android greys the switch?"):
+    /// the card shows from then on, whatever Android says of the install
+    /// (review of `phones`, M13).
+    #[serde(default)]
+    pub opened: i64,
 }
 
 impl Steps {
@@ -205,12 +210,15 @@ impl Restricted {
 /// once; before, its page opened), Sioul's page opened, every access working.
 pub(crate) fn restricted(r: &Restricted, tr: &Translator) -> Option<Value> {
     let texts = r.api >= GUARDED_TEXTS && r.texts_on;
-    if r.api < GUARDED || r.source != "file" || !(r.notifications_needed || texts) {
+    // By itself after an install from a file; always once opened from what Android must allow (M13).
+    let opened = r.steps.opened > 0;
+    if r.api < GUARDED || !(r.source == "file" || opened) || !(r.notifications_needed || texts || opened) {
         return None;
     }
     let works = !r.notifications_held() && !r.texts_held();
-    // From Android 15, a texts permission asked makes Android show its notice; before, the greyed switch on its page.
-    let by_texts = r.api >= GUARDED_TEXTS;
+    // From Android 15, a texts permission asked makes Android show its notice, but only where Texts is on:
+    // never a permission Sioul does not want (M14); else the greyed switch on notification access's page.
+    let by_texts = texts;
     let notice = works || if by_texts { r.texts_asked && (r.texts_at_once || r.texts_given) } else { r.steps.notice > 0 };
     let intro = if texts && r.notifications_needed { "restricted-intro-both" } else if texts { "restricted-intro-texts" } else { "restricted-intro-notifications" };
     let step = |id: &str, said: &str, button: &str, done: bool| json!({ "step": id, "said": tr.text(said, None), "button": tr.text(button, None), "done": done });
@@ -276,7 +284,7 @@ pub(crate) fn restricted_step(step: &str) -> Value {
         return restricted_card();
     }
     match step {
-        "notice" if r.api >= GUARDED_TEXTS => {
+        "notice" if r.api >= GUARDED_TEXTS && r.texts_on => {
             crate::steps::java("texts-ask", "{}");
         }
         "notice" => {
@@ -294,15 +302,26 @@ pub(crate) fn restricted_step(step: &str) -> Value {
     restricted_card()
 }
 
-/// Back in Sioul after its page was opened (the window shown again): the
-/// accesses still held asked again, once for each opening of the page.
+/// The card opened from what Android must allow ("Android greys the
+/// switch?"): shown from now on, whatever Android says of the install (M13).
+pub(crate) fn restricted_open() {
+    let mut steps = Steps::load();
+    if steps.opened == 0 {
+        steps.opened = jiff::Timestamp::now().as_second();
+        steps.save();
+    }
+}
+
+/// Back in Sioul after its page was opened (the window shown again, and only
+/// then: never in answer to a step, M10): the accesses still held asked
+/// again, once for each opening of the page.
 pub(crate) fn restricted_back() {
     // The demo's pictures press each step themselves.
     if crate::phonecard::demo() {
         return;
     }
     let Some(r) = restricted_here() else { return };
-    if r.source != "file" || r.steps.info <= r.steps.back {
+    if (r.source != "file" && r.steps.opened == 0) || r.steps.info <= r.steps.back {
         return;
     }
     let mut steps = r.steps;
@@ -358,6 +377,18 @@ mod tests {
         assert!(!card["intro"].as_str().unwrap().contains("texts"), "{card}");
         assert_eq!(done(&Restricted { steps: Steps { notice: 5, ..Steps::default() }, ..older.clone() }), Some(vec![true, false, false]));
         assert_eq!(restricted(&Restricted { notifications_needed: false, ..older }, &tr), None, "on 14 the texts are not restricted");
+        // Android 16 with Texts off: step 1 by notification access's page, never by a texts permission (M14).
+        let no_texts = Restricted { texts_on: false, ..base.clone() };
+        let card = restricted(&no_texts, &tr).unwrap();
+        assert!(!card["steps"][0]["said"].as_str().unwrap().contains("texts") && !card["intro"].as_str().unwrap().contains("texts"), "{card}");
+        assert_eq!(done(&Restricted { steps: Steps { notice: 5, ..Steps::default() }, ..no_texts.clone() }), Some(vec![true, false, false]), "its notice from the page opened");
+        // Updated through a store after an install from a file, or Android saying nothing: opened from
+        // what Android must allow, the card shows from then on (M13).
+        assert_eq!(restricted(&Restricted { source: "store".into(), ..base.clone() }, &tr), None);
+        let opened_here = Restricted { source: "store".into(), steps: Steps { opened: 9, ..Steps::default() }, ..base.clone() };
+        assert!(restricted(&opened_here, &tr).is_some());
+        let nothing_held = Restricted { source: "".into(), notifications_needed: false, texts_on: false, steps: Steps { opened: 9, ..Steps::default() }, ..base.clone() };
+        assert_eq!(restricted(&nothing_held, &tr).unwrap()["works"], true, "opened with nothing held back: every step done");
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
             for r in [base.clone(), works.clone(), Restricted { api: 33, ..base.clone() }] {

@@ -269,7 +269,7 @@ Item {
             mock.steps = { notice: false, info: false, back: false }
             mock.today = false
             mock.lists = 0
-            tab.reload()
+            tab.reloadAll()
             wait(50)
         }
 
@@ -371,6 +371,11 @@ Item {
             walk(notifications, i => i.objectName === "allowButton", [])[0].clicked()
             compare(mock.asked[mock.asked.length - 1], "allow notifications")
             save("phone-card-allow")
+            // "Android greys the switch?": the restricted settings' card, unfolded (M13).
+            named("allowGreyed").clicked()
+            compare(mock.asked[mock.asked.length - 1], "allow restricted")
+            verify(named("foldRestricted").open, "the card unfolded")
+            named("foldRestricted").open = false
             named("foldAllow").open = false
             // The restricted settings' card: three steps, each a button, ticked once done.
             named("foldRestricted").open = true
@@ -395,7 +400,7 @@ Item {
         function test_a_phone_that_says_nothing_shows_today() {
             reload(1400, false)
             mock.today = true
-            tab.reload()
+            tab.reloadAll()
             wait(50)
             verify(!showing(named("callsProfileSaid")), "no profile's line: the table is today's, not a profile's")
             compare(named("callsProfile-personal").checked, false, "nothing chosen")
@@ -422,7 +427,7 @@ Item {
             verify(named("fold-lists") === null || !showing(named("fold-lists")))
             // Apps with times of their own: listed in the phone's card on a computer, read and changed there.
             mock.lists = 2
-            tab.reload()
+            tab.reloadAll()
             wait(50)
             const lists = tab.reveal("apps")
             verify(lists !== null && lists.objectName === "fold-lists" && lists.open, "each app by time, unfolded")
@@ -445,7 +450,7 @@ Item {
             named("callsRow-contacts").clicked()
             wait(20)
             const dnd = named("fold-dnd")
-            tab.reload()
+            tab.reloadAll()
             wait(50)
             verify(named("setting:devices.here") === card, "the same card")
             verify(named("foldCalls").open, "Calls still unfolded")

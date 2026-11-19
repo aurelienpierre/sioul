@@ -95,11 +95,19 @@ ColumnLayout {
         return Math.floor((tab.width - 2 * tab.pad - 7 * tab.between) * tab.shares[index])
     }
 
+    // The devices again: every 20 seconds while shown, after each change. Never Android's
+    // accesses nor the phone's stars (review of `phones`, L12): those when the tab shows
+    // or the window comes back (`reloadAll`), and in answer to what is asked of them.
     function reload() {
-        // What this device says of itself first: the cards are made knowing it.
+        tab.view = JSON.parse(tab.sioul.devices() || "{}")
+    }
+
+    // Everything the tab shows: what this device says of itself first (the cards are made
+    // knowing it), the devices, the apps with times of their own.
+    function reloadAll() {
         if (typeof tab.sioul.phoneCard === "function")
             tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
-        tab.view = JSON.parse(tab.sioul.devices() || "{}")
+        tab.reload()
         if (typeof tab.sioul.appNotesSetup === "function")
             tab.lists = ((JSON.parse(tab.sioul.appNotesSetup() || "{}") || {}).grid || { rows: [] }).rows.length
     }
@@ -144,14 +152,14 @@ ColumnLayout {
     }
 
     spacing: 8
-    onVisibleChanged: if (visible) tab.reload()
+    onVisibleChanged: if (visible) tab.reloadAll()
     // The cards follow the devices, not each reading of them.
     onRowsChanged: {
         const ids = tab.rows.map(r => r.id || "")
         if (JSON.stringify(ids) !== JSON.stringify(tab.ids))
             tab.ids = ids
     }
-    Component.onCompleted: tab.reload()
+    Component.onCompleted: tab.reloadAll()
 
     // Back from Android's question or page: what it allows here, read again
     // (and, back from Sioul's page, the accesses asked again: `phonecard::view`).
@@ -160,8 +168,9 @@ ColumnLayout {
 
         function onActiveChanged() {
             const window = tab.Window.window
-            if (window && window.active && tab.visible && typeof tab.sioul.phoneCard === "function")
-                tab.own = JSON.parse(tab.sioul.phoneCard() || "{}")
+            // Back from Android's page: the accesses still held asked again by themselves (M10).
+            if (window && window.active && tab.visible && typeof tab.sioul.phoneCardBack === "function")
+                tab.own = JSON.parse(tab.sioul.phoneCardBack() || "{}")
         }
     }
 

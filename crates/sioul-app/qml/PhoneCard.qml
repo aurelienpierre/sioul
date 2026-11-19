@@ -59,7 +59,7 @@ ColumnLayout {
 
     // A door's part in view: its section unfolded, and returned to be scrolled to.
     function reveal(part) {
-        const name = part === "calls" ? "foldCalls" : "fold-lists"
+        const name = part === "calls" ? "foldCalls" : part === "restricted" ? "foldRestricted" : "fold-lists"
         for (let i = 0; i < card.children.length; i++) {
             const fold = card.children[i] as CardFold
             if (fold && fold.objectName === name && fold.visible) {
@@ -118,7 +118,12 @@ ColumnLayout {
             theme: card.theme
             lines: card.own.allow || []
             narrow: card.folds
-            onAsk: what => card.ownSaid(JSON.parse(card.sioul.phoneAllow(what) || "{}"))
+            onAsk: what => {
+                card.ownSaid(JSON.parse(card.sioul.phoneAllow(what) || "{}"))
+                // "Android greys the switch?": the restricted settings' card, unfolded.
+                if (what === "restricted")
+                    card.reveal("restricted")
+            }
         }
     }
     CardFold {

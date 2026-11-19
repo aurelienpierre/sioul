@@ -1485,6 +1485,12 @@ pub mod qobject {
         #[qinvokable]
         fn phone_card(self: Pin<&mut Sioul>) -> QString;
 
+        /// The same, read when the window comes back: back from Sioul's page in
+        /// Android, the accesses still held asked again by themselves first
+        /// (`phonecard::back`); never in answer to a step of the card.
+        #[qinvokable]
+        fn phone_card_back(self: Pin<&mut Sioul>) -> QString;
+
         /// A line of what Android must allow pressed (`phonecard::ask`): "role",
         /// "contacts", "history", "notifications", "texts", "dnd", "alarms",
         /// "battery", "stars": Android's question or its page. The card again.
@@ -7093,6 +7099,10 @@ impl qobject::Sioul {
 
     fn phone_card(self: Pin<&mut Self>) -> QString {
         QString::from(&crate::phonecard::view())
+    }
+
+    fn phone_card_back(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::phonecard::back())
     }
 
     fn phone_allow(self: Pin<&mut Self>, what: &QString) -> QString {

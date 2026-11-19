@@ -3490,7 +3490,7 @@ SioulWindow {
                     grabber.phonesId = window.phoneGrab && own.length > 0 ? own[0].id : "phone-id"
                     sioul.deviceSay(grabber.phonesId, "calls.profile", "personal")
                     sioul.deviceSay(grabber.phonesId, "calls.group.add", grabber.demoFrench ? "École" : "School")
-                    devices.reload()
+                    devices.reloadAll()
                     const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
                     if (window.phoneGrab) {
                         // This device, a phone.

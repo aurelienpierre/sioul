@@ -89,6 +89,14 @@ ColumnLayout {
             }
         }
     }
+    // Android greys a switch Sioul asks for (restricted settings, after an install from a file):
+    // the card of its three steps, which shows by itself after such an install, opened here always (M13).
+    Button {
+        objectName: "allowGreyed"
+        flat: true
+        text: list.sioul.text("phone-allow-greyed")
+        onClicked: list.ask("restricted")
+    }
     // Sioul's own notifications: Android's page for them.
     Button {
         objectName: "allowNotices"

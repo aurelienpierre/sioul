@@ -7276,6 +7276,7 @@ restricted-back = Come back to Sioul: it asks for each access again by itself.
 restricted-back-done = Android now gives Sioul what it held back.
 restricted-back-button = Ask again now
 restricted-cannot-see = Sioul cannot see the setting itself, only whether each access works now.
+phone-allow-greyed = Android greys the switch?
 phone-allow-title = What Android must allow
 phone-allow-role = Caller ID & spam app
 phone-allow-role-for = screens calls before the phone rings
