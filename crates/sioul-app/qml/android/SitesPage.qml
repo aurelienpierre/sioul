@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The Sites page on Android. Qt WebEngine, which keeps sites inside Sioul on
-// a computer (qml/SitesPage.qml), has no Android version: your sites are
-// listed here, and each opens in the browser. Same name and same calls as
-// the computer's page, as far as the window uses them (open).
+// The Sites page on Android. The computer's list, menu and forms
+// (SitesList.qml, SiteMenu.qml, SiteEditDialog.qml, SiteAddDialog.qml): a
+// site added from the usual sites or by hand, changed, removed, its type and
+// what it is for, the filter, the order, each site's icon and news. Qt
+// WebEngine has no Android version: a site opens in a screen of Sioul's own
+// around the system's web view (SiteScreen.java), or in the browser where
+// this device's web view cannot carry it; each line says which, and why
+// (siteview.rs). Same name and same calls as the computer's page, as far as
+// the window uses them (open, clickNotice, openSettings, sites, menuId,
+// siteMenu, presetsMenu, filterMenu).
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+// The window's own files, beside this folder.
+import ".."
 
 Item {
     id: page
@@ -20,22 +28,54 @@ Item {
     required property var window
 
     property var sites: []
+    // What went wrong last, said above the list.
+    property string problem: ""
+    // The site the menu acts on: the one long-pressed.
+    property string menuId: ""
+    readonly property var menuSite: page.sites.find(s => s.id === page.menuId) || null
+    readonly property int menuIndex: page.sites.findIndex(s => s.id === page.menuId)
+    property alias siteMenu: siteMenu
+    property alias presetsMenu: list.presetsMenu
+    property alias filterMenu: list.filterMenu
+    property alias laterShown: list.laterShown
 
     function reload() {
         page.sites = JSON.parse(page.sioul.siteList() || "[]")
     }
 
-    // A site asked for, by a link or from the Porch: in the browser.
+    // A site asked for, by its line, a link, the Porch or a notice: in Sioul's
+    // own screen, over the window, or in the browser (siteview.rs decides). Its
+    // news is seen either way. The screen's bar takes Sioul's colours.
     function open(id) {
-        const site = page.sites.find(s => s.id === id)
-        if (!site)
-            return
-        page.sioul.siteSeen(id)
-        Qt.openUrlExternally(site.url)
+        const answer = JSON.parse(page.sioul.siteOpen(id, JSON.stringify(page.look)) || "{}")
+        page.problem = answer.problem || ""
+        if (answer.browser)
+            page.outside(answer.browser)
+        if (answer.browser || answer.here === true)
+            page.sioul.siteSeen(id)
+    }
+    // The browser, given an address (a test stands one in).
+    property var outside: address => Qt.openUrlExternally(address)
+    readonly property var look: ({ dark: page.theme.dark, background: String(page.theme.background), surface: String(page.theme.surface), text: String(page.theme.text), muted: String(page.theme.muted), line: String(page.theme.line), accent: String(page.theme.accent) })
+
+    // A site's notice clicked: its web notice is a computer's; the site alone opens here.
+    function clickNotice(id, key) {
+        return false
+    }
+    // This page has no ⚙ on Android: calmer colours are a computer's, and the vault's fill comes later.
+    function openSettings(open, key) {
     }
 
     Component.onCompleted: page.reload()
-    onVisibleChanged: if (visible) page.reload()
+    onVisibleChanged: if (page.visible) page.reload()
+
+    Connections {
+        target: page.sioul
+
+        function onSitesChanged() {
+            page.reload()
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -43,41 +83,92 @@ Item {
         spacing: page.theme.gap
 
         Label {
+            visible: page.problem !== ""
             Layout.fillWidth: true
-            text: page.sioul.text("ui-sites")
-            font.pixelSize: 20
-            color: page.theme.text
-        }
-        Label {
-            Layout.fillWidth: true
-            text: page.sioul.text("site-android")
+            text: page.problem
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
-            color: page.theme.muted
+            color: page.theme.warm
         }
-        Label {
-            visible: page.sites.length === 0
-            Layout.fillWidth: true
-            text: page.sioul.text("site-none")
-            wrapMode: Text.Wrap
-            color: page.theme.muted
-        }
-        ListView {
+        SitesList {
             id: list
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            model: page.sites
+            sioul: page.sioul
+            theme: page.theme
+            sites: page.sites
+            note: page.sioul.text("site-android")
+            onChosen: id => page.open(id)
+            onMenuAsked: id => {
+                page.menuId = id
+                siteMenu.popup()
+            }
+            onAddAsked: adding.now().open()
+            onPinned: problem => {
+                page.problem = problem
+                page.reload()
+            }
+        }
+    }
 
-            delegate: ItemDelegate {
-                id: row
+    // A site's menu, at a long press: what only Qt WebEngine carries is a computer's.
+    SiteMenu {
+        id: siteMenu
 
-                required property var modelData
+        sioul: page.sioul
+        window: page.window
+        site: page.menuSite
+        index: page.menuIndex
+        total: page.sites.length
+        calls: false
+        onSaid: problem => page.problem = problem
+        onChanged: page.reload()
+        onEditAsked: editing.now().begin(page.menuSite)
+        onRemoveAsked: removing.now().ask(page.menuSite ? page.menuSite.name : "", page.sioul.text("site-remove-ask"), page.sioul.text("site-remove"))
+    }
 
-                width: list.width
-                // A site's name is yours or a preset's: plain text in a list line.
-                text: page.theme.plain(row.modelData.name || row.modelData.url)
-                onClicked: page.open(row.modelData.id)
+    // The forms, made the first time they are asked for (Later.qml).
+    Later {
+        id: editing
+
+        sourceComponent: Component {
+            SiteEditDialog {
+                sioul: page.sioul
+                theme: page.theme
+                room: page.width
+                onSaved: page.reload()
+            }
+        }
+    }
+    Later {
+        id: adding
+
+        sourceComponent: Component {
+            SiteAddDialog {
+                sioul: page.sioul
+                theme: page.theme
+                room: page.width
+                roomTall: page.height
+                onAdded: id => {
+                    page.reload()
+                    page.open(id)
+                }
+            }
+        }
+    }
+    // Out of Sioul: its sign-in stays on this device until Android's data of Sioul is cleared.
+    Later {
+        id: removing
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onConfirmed: {
+                    page.problem = page.sioul.removeSite(page.menuId)
+                    page.reload()
+                }
             }
         }
     }

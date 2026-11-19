@@ -300,13 +300,14 @@ SioulWindow {
         }
     }
     // Sites kept open (their notifications) live in the Sites page: made a
-    // moment after the window shows, when there are such sites.
+    // moment after the window shows, when there are such sites. Not on
+    // Android, whose screen of a site keeps nothing open (docs/android.md, "Sites").
     Timer {
         id: sitesWarm
 
         interval: 1500
         onTriggered: {
-            if (window.made[3] !== true && JSON.parse(sioul.siteList() || "[]").some(s => s.background)) {
+            if (Qt.platform.os !== "android" && window.made[3] !== true && JSON.parse(sioul.siteList() || "[]").some(s => s.background)) {
                 const made = Object.assign({}, window.made)
                 made[3] = true
                 window.made = made
