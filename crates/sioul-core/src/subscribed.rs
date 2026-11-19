@@ -446,6 +446,12 @@ pub fn read(bytes: &[u8]) -> Result<Feed, Problem> {
     if events > MOST_EVENTS {
         return Err(Problem::TooMany);
     }
+    // What comes from outside is never read as your settings: the calendar's
+    // own lines of Sioul's (a reminder, the time kept around, costs, ties) are
+    // dropped (F21), as another person's Sioul that publishes its agenda writes them.
+    let foreign: Vec<String> = crate::lines::unfold(text).into_iter().filter(|l| !crate::lines::raw_name(l).starts_with("X-SIOUL-")).collect();
+    let text = &crate::lines::fold(&foreign);
+    drop(foreign);
     // Each event with what it needs, the whole weighed against what came (F7).
     let objects = match crate::agenda::calendar_objects(text, &|lines: &[String]| stable_uid(lines), crate::agenda::kept_most(bytes.len())) {
         Ok(objects) => objects,

@@ -413,3 +413,17 @@ fn unchanged_is_judged_against_the_copy_on_the_disk() {
     assert!(intact(id, &Fetched::load(id)));
     vdir::remove_subscribed(id).unwrap();
 }
+
+/// The review's F21: what comes from outside is never read as your
+/// settings: a published agenda's own lines of Sioul's (its owner's
+/// reminder, the time kept around, costs, ties) are dropped when taken in;
+/// Sioul's own copy of the organizer's sequence is the only such line kept.
+#[test]
+fn a_subscribed_calendar_s_sioul_lines_are_not_yours() {
+    let published = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-SIOUL-SOMETHING:head\r\nBEGIN:VEVENT\r\nUID:shared-1@example.org\r\nDTSTAMP:20301001T000000Z\r\nDTSTART:20301002T160000Z\r\nDTEND:20301002T170000Z\r\nSUMMARY:Rehearsal\r\nX-SIOUL-REMIND:15\r\nX-SIOUL-BEFORE:30\r\nX-SIOUL-COST:body=3\r\nX-SIOUL-RELATED-TO;RELTYPE=X-SIOUL-TASK:task-1\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT1H\r\nX-SIOUL-ALARM:block\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let feed = read(published.as_bytes()).unwrap();
+    let text = &feed.items[0].1;
+    let own: Vec<String> = crate::lines::unfold(text).into_iter().filter(|l| crate::lines::raw_name(l).starts_with("X-SIOUL-")).map(|l| crate::lines::raw_name(&l)).collect();
+    assert_eq!(own, [crate::agenda::ORGANIZER_SEQUENCE.to_string(), crate::agenda::ORGANIZER_DTSTAMP.to_string()], "{text}");
+    assert!(text.contains("SUMMARY:Rehearsal") && text.contains("TRIGGER:-PT1H"), "the publisher's own lines stay: {text}");
+}
