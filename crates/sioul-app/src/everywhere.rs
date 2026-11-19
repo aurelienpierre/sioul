@@ -427,6 +427,8 @@ fn apply_once() {
     crate::steps::next(look.next_change());
     // Starred people both ways on this phone, every five minutes at most (`stars::here`): the list may change.
     let starred = crate::stars::here(false);
+    // People kept on the list whose stars went at once, here or on a server (H3): told once.
+    crate::stars::tell_kept();
     // The calls' table follows the pauses, the times and the switch at once (`calls::refresh`:
     // written again only when what it is made of changed, or every ten minutes).
     crate::calls::refresh(starred);

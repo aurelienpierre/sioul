@@ -914,6 +914,13 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             pending = again;
             first = false;
         }
+        // Starred people both ways, off: each book's memory forgotten, so that turned on again the first look
+        // takes nobody off (H3).
+        if kind == Kind::Contacts && !drafts_config().dnd.stars {
+            for collection in &listed {
+                sioul_core::stars::Memory::forget(&sioul_core::stars::folder().join(&account.id).join(format!("{}.json", collection.id)));
+            }
+        }
         // Starred people both ways, on the address books of yours whose server keeps a favourite per card.
         if kind == Kind::Contacts && drafts_config().dnd.stars {
             for collection in &listed {
@@ -1064,7 +1071,10 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     };
     let result = sioul_core::stars::look(&list, &mut memory, &place, &seen, senders.region(), &blocked, Some(&mut write));
     memory.save(&memory_path).map_err(disk)?;
-    result.map_err(disk)
+    let looked = result.map_err(disk)?;
+    // People kept whose favourites went at once: told by the window (H3).
+    sioul_core::stars::note_kept(&place, &looked.kept).map_err(disk)?;
+    Ok(looked.changed)
 }
 
 /// What a check of named calendars found (`check_named`), by folder id.
@@ -5471,17 +5481,30 @@ mod stars_tests {
         // Within the quarter of an hour, nothing changed: not asked again.
         let patches = *server.patches.lock().unwrap();
         assert!(!keep_stars(&client, "stars-nextcloud", &listed, now + 60).unwrap());
-        // Claire unmarked in Nextcloud: off the list.
+        // Claire unmarked in Nextcloud: her favourite was the person's own, so she stays (H3).
         server.favourites.lock().unwrap().insert(format!("{BOOK}claire.vcf"), false);
         now += STARS_EVERY;
-        assert!(keep_stars(&client, "stars-nextcloud", &listed, now).unwrap());
-        assert_eq!(names(), ["Fred"]);
+        keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
+        assert_eq!(names(), ["Fred", "Claire"], "a favourite of the person's own, unmarked, takes nobody off");
         assert_eq!(*server.patches.lock().unwrap(), patches, "nothing written for it");
-        // Fred taken off in Sioul: unmarked there.
+        // Fred's, which Sioul wrote, unmarked in Nextcloud: off the list.
+        server.favourites.lock().unwrap().insert(format!("{BOOK}fred.vcf"), false);
+        now += STARS_EVERY;
+        assert!(keep_stars(&client, "stars-nextcloud", &listed, now).unwrap());
+        assert_eq!(names(), ["Claire"]);
+        // Claire taken off in Sioul, then put back and marked by Sioul, then taken off again: unmarked there.
+        sioul_core::everywhere::change_people(&list, |people| people.people.clear()).unwrap();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.add(Person { name: "Claire".into(), phones: vec!["01 99 00 00 06".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        now += STARS_EVERY;
+        keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
+        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}claire.vcf")), Some(&true), "marked by Sioul");
         sioul_core::everywhere::change_people(&list, |people| people.people.clear()).unwrap();
         now += STARS_EVERY;
         keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
-        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}fred.vcf")), Some(&false));
+        assert_eq!(server.favourites.lock().unwrap().get(&format!("{BOOK}claire.vcf")), Some(&false), "Sioul's own favourite, its person taken off in Sioul: unmarked");
         assert!(names().is_empty(), "and nobody added back");
 
         // A server that keeps none: read, never written to, nothing added nor marked.

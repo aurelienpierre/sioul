@@ -38,6 +38,8 @@ pub(crate) fn here(force: bool) -> bool {
     }
     let config = load_config();
     if !config.dnd.stars {
+        // Off: the memory forgotten, so that turned on again the first look takes nobody off (H3).
+        Memory::forget(&memory_path());
         return false;
     }
     let now = jiff::Timestamp::now().as_second();
@@ -75,10 +77,43 @@ pub(crate) fn here(force: bool) -> bool {
         eprintln!("sioul: stars: {e}");
     }
     match result {
-        Ok(changed) => changed,
+        Ok(looked) => {
+            if let Err(e) = stars::note_kept(&place(), &looked.kept) {
+                eprintln!("sioul: stars: {e}");
+            }
+            looked.changed
+        }
         Err(e) => {
             eprintln!("sioul: stars: {e}");
             false
+        }
+    }
+}
+
+/// People kept on the list whose stars went at once at a place (H3), told
+/// once, informative: their names, where, and that the list is theirs to
+/// change; it opens the list. On a phone through Java's notices, on a
+/// computer through the window's.
+pub(crate) fn tell_kept() {
+    let waiting = stars::take_kept();
+    if waiting.is_empty() {
+        return;
+    }
+    let config = load_config();
+    let books = sioul_core::vdir::collections(sioul_core::vdir::Kind::Contacts);
+    let here = place();
+    let tr = crate::backend::tr();
+    for (at, names) in waiting {
+        let mut args = sioul_core::i18n::args();
+        args.set("names", names.join(", "));
+        args.set("place", place_name(&at, &here, &config, &books, tr));
+        let notice = sioul_core::notice::Notice::new("sioul:settings/dnd.people", sioul_core::notice::Kind::Minor, tr.text("stars-kept-title", None), tr.text("stars-kept", Some(&args)));
+        if cfg!(target_os = "android") {
+            if let Some(json) = crate::eventalarms::notice_json(&notice.key(), &notice, false, None, jiff::Timestamp::now().as_second()) {
+                crate::steps::java("notice", &json.to_string());
+            }
+        } else {
+            let _ = crate::tell::tell(notice);
         }
     }
 }
@@ -93,6 +128,10 @@ pub(crate) fn writable_here() -> bool {
 /// contacts, when it was not given; the first look comes once it is.
 pub(crate) fn turn(on: bool) -> Result<(), String> {
     sioul_core::config::set_value(&crate::backend::config_path(), "dnd.stars", &sioul_core::config::SettingValue::Bool(on))?;
+    if !on {
+        // Forgotten at once here; each device forgets its own at its next look (H3).
+        let _ = std::fs::remove_dir_all(stars::folder());
+    }
     if on && cfg!(target_os = "android") && !writable_here() {
         crate::steps::java("calls-ask-stars", "{}");
     }
