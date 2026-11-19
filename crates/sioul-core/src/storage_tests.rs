@@ -694,3 +694,25 @@ fn a_file_at_its_place_is_the_moves_only_when_the_journal_says_so() {
     assert!(cleaned.kept.contains(&("papers/Power.pdf".to_string(), "same-file")), "{cleaned:?}");
     assert!(stand.folders.notes.join("papers").join("Power.pdf").is_file());
 }
+
+/// A copy gone from the papers' folder before the take-out (a disk not
+/// plugged in, a mistake), or a list's dated copy gone: the old file stays,
+/// said (rule 1, review S15).
+#[test]
+fn clean_keeps_an_old_file_whose_copy_is_gone() {
+    let stand = stand("copy-gone");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    std::fs::remove_file(stand.folders.papers.join("Passport.pdf")).unwrap();
+    std::fs::write(stand.folders.papers.join("Power.pdf"), "another file now").unwrap();
+    let journal = Journal::read(&stand.folders.state).unwrap();
+    std::fs::remove_file(&journal.files.iter().find(|e| e.from == crate::bank::MANIFEST).unwrap().kept).unwrap();
+    let cleaned = clean(&stand.folders.state, NOW + 86_400).unwrap();
+    assert!(stand.folders.notes.join("papers").join("Passport.pdf").is_file(), "the last copy in view stays");
+    assert!(stand.folders.notes.join("papers").join("Power.pdf").is_file(), "its copy is another file now");
+    assert!(stand.folders.notes.join(crate::bank::MANIFEST).is_file(), "the bank's lines, their dated copy gone");
+    assert!(cleaned.kept.contains(&("papers/Passport.pdf".to_string(), "copy-missing")), "{cleaned:?}");
+    assert!(cleaned.kept.contains(&("papers/Power.pdf".to_string(), "copy-differs")), "{cleaned:?}");
+    assert!(cleaned.kept.contains(&(crate::bank::MANIFEST.to_string(), "copy-missing")), "{cleaned:?}");
+    assert!(!stand.folders.notes.join(crate::budget::LEDGER).exists(), "the others went, each against its copy");
+    assert_eq!(Storage::read(&stand.folders.state).cleaned, 0);
+}

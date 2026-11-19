@@ -400,6 +400,15 @@ impl Journal {
         self.files.iter().all(|entry| std::fs::symlink_metadata(&entry.to).is_ok_and(|meta| meta.is_file()))
     }
 
+    /// Whether a copy this move put in one of its folders (records, papers,
+    /// letters) is there, a plain file reached through no link below that folder.
+    fn reached(&self, copy: &Path) -> bool {
+        [&self.records, &self.papers, &self.letters].into_iter().filter(|root| !root.is_empty()).map(PathBuf::from).find(|root| copy.starts_with(root)).is_some_and(|root| {
+            let rest = copy.strip_prefix(&root).map(|rest| rest.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            plain_below(&root, &rest).unwrap_or(false)
+        })
+    }
+
     fn write(&self, state: &Path) -> Result<(), String> {
         std::fs::create_dir_all(state).map_err(|e| format!("{}: {e}", state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
@@ -1320,6 +1329,9 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
     let mut storage = Storage::read(state);
     let Some(notes) = storage.from_path() else { return Ok(Cleaned::default()) };
     let journal = Journal::read(state).ok_or("no journal")?;
+    // A notes folder not there now (a drive not plugged in, a permission taken back) is no
+    // folder whose old files are gone: nothing is taken out, nothing said done (rule 3).
+    std::fs::read_dir(&notes).map_err(|e| format!("{}: {e}", notes.display()))?;
     let mut cleaned = Cleaned::default();
     for entry in journal.files.iter().filter(|e| !e.alone) {
         let from = join(&notes, &entry.from);
@@ -1351,18 +1363,45 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
             cleaned.kept.push((entry.from.clone(), "same-file"));
             continue;
         }
-        let removed = match sha_of(&from) {
-            Ok(sha) if sha == entry.sha => {
-                let gone = std::fs::remove_file(&from).is_ok();
-                cleaned.removed += usize::from(gone);
-                gone
-            }
+        // Rule 1: an old file goes only against its copy. Itself as it was copied (one
+        // written there since is someone's change: kept, said)…
+        match sha_of(&from) {
+            Ok(sha) if sha == entry.sha => {}
             Ok(_) => {
                 cleaned.changed.push(entry.from.clone());
-                false
+                continue;
             }
-            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
-        };
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                cleaned.kept.push((entry.from.clone(), "not-removed"));
+                continue;
+            }
+        }
+        // …its copy at the new place, a plain file reached through no link…
+        let copy = PathBuf::from(&entry.to);
+        if !journal.reached(&copy) {
+            cleaned.kept.push((entry.from.clone(), "copy-missing"));
+            continue;
+        }
+        // …and the same bytes at this moment: a paper's or a scan's copy itself; a list's, which
+        // Sioul's writers change by use since the move (and whose paths were named anew), its
+        // dated copy, a copy of its own in Sioul's folder, as the copy of what it held then.
+        let against = if matches!(entry.kind, Some(Kind::List | Kind::LetterRecord)) { PathBuf::from(&entry.kept) } else { copy };
+        let dated_plain = against.starts_with(&journal.kept) && std::fs::symlink_metadata(&against).is_ok_and(|meta| meta.is_file());
+        if (against != PathBuf::from(&entry.to) && !dated_plain) || against.as_os_str().is_empty() {
+            cleaned.kept.push((entry.from.clone(), "copy-missing"));
+            continue;
+        }
+        if same_file(&from, &against) || !same_bytes(&from, &against).unwrap_or(false) {
+            cleaned.kept.push((entry.from.clone(), "copy-differs"));
+            continue;
+        }
+        let removed = std::fs::remove_file(&from).is_ok();
+        if removed {
+            cleaned.removed += 1;
+        } else {
+            cleaned.kept.push((entry.from.clone(), "not-removed"));
+        }
         // Its lock, beside it, once it is gone: Sioul's own, hidden.
         if removed {
             let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
