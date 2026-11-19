@@ -198,13 +198,13 @@ mod tests {
     /// (review B2); unanswered, it is still busy for the availability shared.
     #[test]
     fn an_invitation_holds_you_once_accepted() {
-        let invited = |uid: &str, answer: &str, accepted: bool| Occurrence { invited: true, accepted, answer: answer.into(), ..event(uid, 1_000, 2_000) };
-        let unanswered = invited("asked", "needs-action", false);
+        // `accepted`: the guest that is you answered accepted, or tentative (`agenda::mark_answers`).
+        let invited = |uid: &str, accepted: bool| Occurrence { invited: true, accepted, ..event(uid, 1_000, 2_000) };
+        let unanswered = invited("asked", false);
         assert!(!holds_you(&unanswered) && event_marked(&unanswered), "busy for the availability, not for do-not-disturb");
         assert!(stretches_of(std::slice::from_ref(&unanswered), None, 0, 10_000).is_empty());
-        assert!(holds_you(&invited("yes", "accepted", true)));
-        assert!(holds_you(&invited("maybe", "tentative", true)));
-        assert_eq!(holding_of(&[invited("yes", "accepted", true)], None, 1_500), Some((1_000, 2_000)));
+        assert!(holds_you(&invited("yes", true)));
+        assert_eq!(holding_of(&[invited("yes", true)], None, 1_500), Some((1_000, 2_000)));
         assert_eq!(holding_of(&[unanswered], None, 1_500), None);
     }
 
