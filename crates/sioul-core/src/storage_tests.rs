@@ -574,3 +574,41 @@ fn a_failure_takes_back_only_what_its_own_run_made() {
     move_now(&stand.folders, NOW + 120, || Ok(())).unwrap();
     reads_moved(&stand);
 }
+
+/// A notes folder set and not there now (a drive not plugged in) is no
+/// "nothing to move": the move refuses and switches nothing; one that holds
+/// nothing at all, as an unmounted drive's mount point, the same; a papers'
+/// folder there that does not list is never taken for an empty one; none
+/// set: nothing to move, nothing switched to empty (review S1).
+#[test]
+fn a_notes_folder_that_is_not_there_now_switches_nothing() {
+    let stand = stand("no-notes-now");
+    let gone = Folders { notes: stand.base.join("unplugged").join("Notes"), ..stand.folders.clone() };
+    assert_eq!(move_now(&gone, NOW, || Ok(())).unwrap_err().code, "notes-unreadable");
+    assert!(!Storage::read(&gone.state).is_moved());
+    assert!(tree(&gone.records).is_empty() && tree(&gone.papers).is_empty());
+    let mount = stand.base.join("mount-point");
+    std::fs::create_dir_all(&mount).unwrap();
+    let empty = Folders { notes: mount, ..stand.folders.clone() };
+    assert_eq!(move_now(&empty, NOW, || Ok(())).unwrap_err().code, "notes-empty");
+    assert!(!Storage::read(&empty.state).is_moved());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let papers = stand.folders.notes.join("papers");
+        std::fs::set_permissions(&papers, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Read all the same by a user above permissions (root in a container): nothing to show then.
+        if std::fs::read_dir(&papers).is_err() {
+            assert_eq!(plan(&stand.folders).unwrap_err().code, "unreadable");
+            assert_eq!(move_now(&stand.folders, NOW, || Ok(())).unwrap_err().code, "unreadable");
+            assert!(!Storage::read(&stand.folders.state).is_moved());
+        }
+        std::fs::set_permissions(&papers, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    // None set on this device: nothing to move, the lists begin in the records.
+    let none = Folders { notes: PathBuf::new(), ..stand.folders.clone() };
+    let moved = move_now(&none, NOW, || Ok(())).unwrap();
+    assert_eq!((moved.lists, moved.papers, moved.letters), (0, 0, 0));
+    assert!(Storage::read(&none.state).is_moved() && Storage::read(&none.state).from_path().is_none());
+    assert!(tree(&none.records).is_empty(), "nothing written there");
+}

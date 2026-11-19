@@ -11,6 +11,7 @@
 use crate::backend::{QtThread, Shared, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde::Serialize;
+use sioul_core::config::NotesFolder;
 use sioul_core::storage::{self, Folders, Storage};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,18 +59,21 @@ fn moved_now(papers: &str, letters: &str, carry: bool) -> Result<String, String>
     }
     let pick = |chosen: &str, default: PathBuf| if chosen.trim().is_empty() { default } else { crate::backend::local_path(chosen.trim()) };
     let (papers, letters) = (pick(papers, config.papers_folder()), pick(letters, config.letters_folder()));
-    let notes = config.notes_root_path().filter(|notes| notes.is_dir()).unwrap_or_default();
-    let mut folders = Folders::here(&notes, &papers, &letters);
-    folders.notes = notes;
-    if let Err(fault) = storage::check_folders(&folders) {
-        return Err(tr().text(&format!("storage-{}", fault.code), None));
-    }
+    // The notes folder in its three states (`Config::notes_folder`): set and not read now
+    // is never "no notes folder" (rule 3); none set, nothing to move.
+    let notes = match config.notes_folder() {
+        NotesFolder::Ready(path) => sioul_core::config::expand_home(&path),
+        NotesFolder::Unreadable(path) => return Err(say("storage-notes-unreadable", &[("what", path)])),
+        NotesFolder::Unset => PathBuf::new(),
+    };
+    let folders = Folders::here(&notes, &papers, &letters);
+    storage::check_folders(&folders).map_err(said)?;
     let path = crate::backend::config_path();
     for (key, folder) in [("papers.folder", &papers), ("letters.folder", &letters)] {
         sioul_core::config::set_value(&path, key, &sioul_core::config::SettingValue::Text(folder.display().to_string()))?;
     }
     let now = jiff::Timestamp::now().as_second();
-    let moved = storage::move_now(&folders, now, crate::share::hold_exchanges).map_err(|fault| tr().text(&format!("storage-{}", fault.code), None))?;
+    let moved = storage::move_now(&folders, now, crate::share::hold_exchanges).map_err(said)?;
     if carry && !crate::share::carries_lists() {
         let problem = crate::share::carry_lists();
         if !problem.is_empty() {
@@ -90,6 +94,11 @@ fn moved_now(papers: &str, letters: &str, carry: bool) -> Result<String, String>
         line.push(say("storage-move-earlier", &[("folders", folders.into_iter().collect::<Vec<_>>().join(", "))]));
     }
     Ok(line.join(" "))
+}
+
+/// A move's fault in one sentence, naming what it is about (`storage-<code>`, `$what`).
+pub(crate) fn said(fault: storage::Fault) -> String {
+    say(&format!("storage-{}", fault.code), &[("what", fault.what)])
 }
 
 /// The devices named, as a list in words.
@@ -149,6 +158,9 @@ struct View {
     notes_carried: bool,
     /// The notes folder, the papers' and the letters' folders (as set, or by default).
     notes: String,
+    /// The notes folder's state (`Config::notes_folder`): "ready", "unreadable" (set, not read
+    /// now: no move, the Notes page asks for it) or "unset" (nothing to move).
+    notes_state: String,
     papers: String,
     letters: String,
     /// What would move: lists (with the letters' list and texts), papers' files, letters' scans, bytes.
@@ -172,7 +184,11 @@ pub(crate) fn view_json() -> String {
     let config = load_config();
     let here = Storage::here();
     let stand = crate::share::storage_stand();
-    let notes = config.notes_root_path().filter(|notes| notes.is_dir());
+    let (notes, notes_state) = match config.notes_folder() {
+        NotesFolder::Ready(path) => (Some(sioul_core::config::expand_home(&path)), "ready"),
+        NotesFolder::Unreadable(path) => (Some(sioul_core::config::expand_home(&path)), "unreadable"),
+        NotesFolder::Unset => (None, "unset"),
+    };
     let (papers, letters) = (config.papers_folder(), config.letters_folder());
     let mut view = View {
         moved: here.is_moved(),
@@ -187,12 +203,14 @@ pub(crate) fn view_json() -> String {
         carries: crate::share::carries_lists(),
         notes_carried: crate::share::notes_carried_now(),
         notes: notes.as_ref().map(|n| n.display().to_string()).unwrap_or_default(),
+        notes_state: notes_state.to_string(),
         papers: papers.display().to_string(),
         letters: letters.display().to_string(),
         lost: here.lost.map(|lost| say(&format!("storage-{lost}"), &[("what", sioul_core::config::state_dir().join(storage::STATE_FILE).display().to_string())])).unwrap_or_default(),
         ..View::default()
     };
     if !view.moved
+        && notes_state == "ready"
         && let Some(notes) = &notes
         && let Ok(plan) = storage::plan(&Folders::here(notes, &papers, &letters))
     {
@@ -205,7 +223,7 @@ pub(crate) fn view_json() -> String {
             view.bytes += std::fs::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
         }
     }
-    view.offer = !view.moved && view.open && view.lost.is_empty();
+    view.offer = !view.moved && view.open && view.lost.is_empty() && notes_state != "unreadable";
     serde_json::to_string(&view).unwrap_or_default()
 }
 

@@ -478,9 +478,19 @@ fn list_names() -> Vec<&'static str> {
 pub fn plan(folders: &Folders) -> Result<Vec<Entry>, Fault> {
     let notes = &folders.notes;
     let mut planned = Vec::new();
-    // No notes folder (none set, or not there): nothing to move, the lists begin in the records.
-    if !notes.is_absolute() {
+    // No notes folder set on this device: nothing to move, the lists begin in the records.
+    if notes.as_os_str().is_empty() {
         return Ok(planned);
+    }
+    if !notes.is_absolute() {
+        return Err(Fault::new("folder-not-absolute", notes.display()));
+    }
+    // A notes folder set and not there now (a drive not plugged in, a vault not
+    // opened, a network folder offline) is never "nothing to move" (rule 3), nor
+    // one that holds nothing at all, as a drive's mount point looks unmounted.
+    let mut listing = std::fs::read_dir(notes).map_err(|e| Fault::new("notes-unreadable", format!("{}: {e}", notes.display())))?;
+    if listing.next().is_none() {
+        return Err(Fault::new("notes-empty", notes.display()));
     }
     let regular = |path: &Path| -> Result<bool, Fault> {
         match std::fs::symlink_metadata(path) {
@@ -522,9 +532,14 @@ pub fn plan(folders: &Folders) -> Result<Vec<Entry>, Fault> {
 
 /// Every file below `dir`, by its path from `root` with `/`; hidden ones
 /// (sync apps', editors', Sioul's own locks and passing files) left out; a
-/// link refused (`plan`).
+/// link refused (`plan`). A folder that is not there holds nothing; one
+/// there that does not list is never taken for an empty one.
 fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
-    let Ok(read) = std::fs::read_dir(dir) else { return Ok(()) };
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(Fault::new("unreadable", format!("{}: {e}", dir.display()))),
+    };
     let mut entries: Vec<_> = read.flatten().collect();
     entries.sort_by_key(std::fs::DirEntry::file_name);
     for entry in entries {

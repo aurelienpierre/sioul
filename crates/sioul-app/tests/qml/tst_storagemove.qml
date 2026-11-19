@@ -58,7 +58,7 @@ Item {
     }
 
     function view(more) {
-        return JSON.stringify(Object.assign({ moved: false, cleaned: false, moving: false, said: "", open: true, alone: false, sharing: true, waiting: "", unmoved: "", carries: true, notes_carried: false, notes: "/stand-in/Notes", lost: "", papers: "/stand-in/Documents/Papers", letters: "/stand-in/Documents/Letters", lists: 9, papers_files: 3, letters_files: 2, bytes: 4096, offer: true }, more))
+        return JSON.stringify(Object.assign({ moved: false, cleaned: false, moving: false, said: "", open: true, alone: false, sharing: true, waiting: "", unmoved: "", carries: true, notes_carried: false, notes: "/stand-in/Notes", notes_state: "ready", lost: "", papers: "/stand-in/Documents/Papers", letters: "/stand-in/Documents/Letters", lists: 9, papers_files: 3, letters_files: 2, bytes: 4096, offer: true }, more))
     }
 
     StorageMove {
@@ -148,6 +148,17 @@ Item {
             verify(named("storageMoveSaid").visible)
             compare(named("storageMoveSaid").text, "storage-copy")
             verify(named("storageMoveNow").enabled, "tried again")
+        }
+
+        function test_a_notes_folder_not_read_now_holds_the_move() {
+            mock.storageMove = root.view({ notes_state: "unreadable", notes: "/stand-in/Unplugged/Notes", offer: false })
+            move.show()
+            tryVerify(() => move.opened)
+            compare(named("storageMoveNotes").text, "storage-notes-unreadable /stand-in/Unplugged/Notes")
+            verify(!named("storageMoveNow").enabled, "no move while it does not read")
+            mock.storageMove = root.view({ notes_state: "unset", notes: "" })
+            compare(named("storageMoveNotes").text, "storage-move-no-notes")
+            verify(named("storageMoveNow").enabled, "none set: nothing to move, the switch alone")
         }
 
         function test_where_the_lists_are_lost_holds_everything() {

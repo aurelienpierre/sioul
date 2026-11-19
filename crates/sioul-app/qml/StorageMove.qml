@@ -194,10 +194,11 @@ SafeDialog {
                 objectName: "storageMoveNotes"
                 visible: move.view.moved !== true
                 Layout.fillWidth: true
-                text: (move.view.notes || "") !== "" ? move.sioul.textWith("storage-move-notes", "notes", move.view.notes) : move.sioul.text("storage-move-no-notes")
+                // The notes folder in its three states: ready, set and not read now (no move), none set.
+                text: move.view.notes_state === "unreadable" ? move.sioul.textWith("storage-notes-unreadable", "what", move.view.notes || "") : ((move.view.notes || "") !== "" ? move.sioul.textWith("storage-move-notes", "notes", move.view.notes) : move.sioul.text("storage-move-no-notes"))
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
-                color: move.theme.text
+                color: move.view.notes_state === "unreadable" ? move.theme.warm : move.theme.text
             }
             Label {
                 visible: move.view.moved !== true
@@ -275,7 +276,7 @@ SafeDialog {
         Button {
             objectName: "storageMoveNow"
             visible: move.view.moved !== true
-            enabled: move.view.open === true && (move.view.lost || "") === "" && move.view.moving !== true && !(move.pressed && (move.view.said || "") === "")
+            enabled: move.view.open === true && (move.view.lost || "") === "" && move.view.notes_state !== "unreadable" && move.view.moving !== true && !(move.pressed && (move.view.said || "") === "")
             highlighted: true
             text: move.sioul.text("storage-move-now")
             // An action, never the dialog's accept: the window stays to say how the move went.
