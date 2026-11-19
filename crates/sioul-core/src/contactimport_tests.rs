@@ -315,7 +315,18 @@ fn a_file_s_own_groups_are_said_and_listed_ones_kept_only_when_asked() {
     assert_eq!(held.file_groups, [FileGroup { name: "Famille".into(), cards: 1, listed: true }, FileGroup { name: "Voisins".into(), cards: 1, listed: false }]);
     let Step::Write { after, .. } = &held.plan.steps[0].1 else { panic!("a new card") };
     assert!(!after.contains("Famille") && after.contains("Voisins"), "{after}");
-    let kept = plan(&file, &[], &book_stub(), &Options { listed, keep_listed: true, ..Options::default() }, france());
+    let kept = plan(&file, &[], &book_stub(), &Options { listed: listed.clone(), keep_listed: true, ..Options::default() }, france());
     let Step::Write { after, .. } = &kept.plan.steps[0].1 else { panic!("a new card") };
     assert!(after.contains("Famille") && after.contains("Voisins"), "{after}");
+    // The last check: a card already here, completed, follows the same box.
+    let here = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:here-sam\r\nFN:Sam Inconnu\r\nTEL:+33465710077\r\nEND:VCARD\r\n";
+    let book = here_book("import-listed-here", &[("sam.vcf", here)]);
+    let completing = plan(&file, &in_book(&book), &book, &Options { listed: listed.clone(), complete: true, ..Options::default() }, france());
+    let Step::Write { after, .. } = &completing.plan.steps[0].1 else { panic!("the card here completed") };
+    assert!(!after.contains("Famille") && after.contains("Voisins"), "{after}");
+    assert!(completing.file_groups.iter().any(|g| g.name == "Famille" && g.listed), "its box offered");
+    let with_box = plan(&file, &in_book(&book), &book, &Options { listed, complete: true, keep_listed: true, ..Options::default() }, france());
+    let Step::Write { after, .. } = &with_box.plan.steps[0].1 else { panic!("the card here completed") };
+    assert!(after.contains("Famille"), "{after}");
+    let _ = std::fs::remove_dir_all(&book.dir);
 }

@@ -723,7 +723,19 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &
                     out.here += 1;
                 }
                 let groups: &[String] = if (options.groups_here && (!other_name || complete)) || in_file { &options.groups } else { &[] };
-                let (changed, adds) = completed(&planned[at].after, &incoming, groups, complete, region);
+                // A file's group that a list reads goes to a card here, too, only with its box (review V6, last check).
+                let held = |g: &str| options.listed.contains(&crate::porch::category_key(g)) && !options.keep_listed;
+                if complete {
+                    for group in incoming.categories.iter().map(|g| g.trim()).filter(|g| !g.is_empty() && options.listed.contains(&crate::porch::category_key(g))) {
+                        if !out.file_groups.iter().any(|f| crate::porch::category_key(&f.name) == crate::porch::category_key(group)) {
+                            out.file_groups.push(FileGroup { name: group.to_string(), cards: 0, listed: true });
+                        }
+                        if let Some(found) = out.file_groups.iter_mut().find(|f| crate::porch::category_key(&f.name) == crate::porch::category_key(group)) {
+                            found.cards += 1;
+                        }
+                    }
+                }
+                let (changed, adds) = completed(&planned[at].after, &incoming, groups, complete, &held, region);
                 out.matches.push(Match { name: planned[at].name.clone(), adds, in_file, key, other_name: if other_name { incoming.name.clone() } else { String::new() } });
                 if (complete || (options.groups_here && !in_file && !other_name)) && let Some(after) = changed {
                     planned[at].after = after;
@@ -786,7 +798,7 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &
 /// there is never overwritten, and a card's several `ORG` or `TITLE` lines
 /// stay (review F21). The card as it would be (None: nothing added), and what
 /// is added, as (kind, value), whether asked or not.
-fn completed(text: &str, incoming: &Contact, groups: &[String], complete: bool, region: Option<&Region>) -> (Option<String>, Vec<(String, String)>) {
+fn completed(text: &str, incoming: &Contact, groups: &[String], complete: bool, held: &dyn Fn(&str) -> bool, region: Option<&Region>) -> (Option<String>, Vec<(String, String)>) {
     let card = lines::unfold(text);
     let here = contacts::contact_quiet(&card, Path::new(""), &Collection { kind: crate::vdir::Kind::Contacts, account: String::new(), id: String::new(), dir: PathBuf::new(), name: String::new(), color: None, read_only: false, components: Vec::new() });
     let mut adds: Vec<(String, String)> = Vec::new();
@@ -852,7 +864,8 @@ fn completed(text: &str, incoming: &Contact, groups: &[String], complete: bool, 
         suffix: part("suffix", &here.suffix, &incoming.suffix),
     };
     let mut categories = here.categories.clone();
-    for name in incoming.categories.iter().filter(|_| complete).chain(groups) {
+    // The file's groups, but one that a list of the person's reads while its box is off (review V6, last check).
+    for name in incoming.categories.iter().filter(|g| complete && !held(g)).chain(groups) {
         if !categories.iter().any(|c| contacts::category_key(c) == contacts::category_key(name)) {
             said("group", name);
             categories.push(name.clone());
