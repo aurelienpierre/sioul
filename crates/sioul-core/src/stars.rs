@@ -258,10 +258,27 @@ fn matched_and_near(people: &People, seen: &[Seen], region: Option<&crate::phone
     (matches, near, unmatched)
 }
 
+/// The id of someone added from a starred contact, the same on every device
+/// that sees that star (review of `phones`, L6): from the contact's first
+/// key (a whole number, an address, its card), so that two devices adding
+/// the same person before they hear each other write one entry of the list.
+fn star_id(seen: &Seen, region: Option<&crate::phones::Region>) -> String {
+    use sha2::Digest;
+    let mut keys: Vec<String> = seen.phones.iter().map(|n| crate::phones::key(n, region)).filter(|k| crate::phones::is_whole(k)).map(|k| format!("tel:{k}")).collect();
+    keys.extend(seen.emails.iter().map(|e| address_key(e)).filter(|a| a.contains('@')).map(|a| format!("mail:{a}")));
+    if !seen.uid.trim().is_empty() {
+        keys.push(format!("card:{}", seen.uid.trim()));
+    }
+    keys.sort();
+    let Some(first) = keys.first() else { return String::new() };
+    let digest = sha2::Sha256::digest(first.as_bytes());
+    format!("star-{}", digest.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 /// Someone for the list from a starred contact.
-fn person_of(seen: &Seen) -> Person {
+fn person_of(seen: &Seen, region: Option<&crate::phones::Region>) -> Person {
     Person {
-        id: String::new(),
+        id: star_id(seen, region),
         name: seen.name.trim().to_string(),
         phones: seen.phones.iter().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect(),
         emails: seen.emails.iter().map(|e| e.trim().to_string()).filter(|e| !e.is_empty()).collect(),
@@ -312,7 +329,7 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
             if m.is_empty() && !ambiguous(c) && !memory.seen.contains(&c.id) && written_for.is_none() {
                 // Starred since the last look, on the list nowhere: added; a blocked one is left as it is.
                 if !blocked(c) {
-                    plan.add.push(person_of(c));
+                    plan.add.push(person_of(c, region));
                 }
             }
             if let Some(person) = written_for
@@ -519,13 +536,13 @@ mod tests {
         let mut memory = wrote(&[("claire", &claire), ("bob", "gone-bob")]);
         memory.seen.insert("ann".into());
         memory.seen.insert("own".into());
-        // Claire unstarred where Sioul starred her; Ann unstarred, her star her own; Bob still starred,
+        // Claire unstarred where Sioul starred that contact; Ann unstarred, a star set by hand; Bob still starred,
         // taken off the list in Sioul; a star of the person's own whose person was taken off in Sioul.
         let place = [seen("claire", "01 99 00 00 06", false), seen("ann", "01 99 00 00 07", false), seen("bob", "01 99 00 00 08", true), seen("own", "01 99 00 00 11", true)];
         let plan = plan(&people, &place, &memory, fr(), &nobody);
         assert_eq!(plan.remove, [claire]);
         assert_eq!(plan.unstar, ["bob"]);
-        assert!(plan.add.is_empty() && plan.star.is_empty(), "Ann unstarred her own: left so, and on the list: {plan:?}");
+        assert!(plan.add.is_empty() && plan.star.is_empty(), "Ann's star was set by hand: left so, and Ann stays on the list: {plan:?}");
         assert!(people.people.iter().any(|p| p.id == ann));
         assert_eq!(ids(&plan.memory.seen), ["own"]);
         assert!(plan.memory.written.is_empty());
@@ -568,7 +585,7 @@ mod tests {
         let claire = listed(&mut people, "Claire", "01 99 00 00 06");
         wrote(&[("claire", &claire)]).save(&path).unwrap();
         assert!(Memory::forget(&path), "switched off: forgotten");
-        // Meanwhile unstarred by hand: on again, she is starred again, not taken off.
+        // Meanwhile unstarred by hand: on again, Claire is starred again, not taken off.
         let plan = plan(&people, &[seen("claire", "01 99 00 00 06", false)], &Memory::load(&path), fr(), &nobody);
         assert!(plan.remove.is_empty() && plan.star == ["claire"], "{plan:?}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -583,7 +600,7 @@ mod tests {
         listed(&mut people, "Claire", "01 99 00 00 06");
         let both = Person { name: "Dan".into(), phones: vec!["01 99 00 00 10".into(), "06 39 98 99 10".into()], ..Person::default() };
         let dan = people.add(both, fr());
-        // Dan's home number, starred by Sioul, unstarred here; his mobile starred anew in another contact: he stays.
+        // Dan's home number, starred by Sioul, unstarred here; Dan's mobile starred anew in another contact: Dan stays.
         let memory = wrote(&[("dan-home", &dan)]);
         let place = [seen("dan-home", "01 99 00 00 10", false), seen("dan-mobile", "06 39 98 99 10", true), seen("never", "01 99 00 00 11", false), seen("pest", "01 99 00 00 05", true)];
         let blocked = |c: &Seen| c.id == "pest";
@@ -609,7 +626,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let list = dir.join("dnd-people.toml");
         let (mut a, mut b) = (Memory::default(), Memory::default());
-        // Phone A stars Claire; B holds her unstarred.
+        // Phone A stars Claire; B holds Claire's contact unstarred.
         let on_a = |starred: bool| [seen("a-claire", "01 99 00 00 06", starred)];
         let on_b = |starred: bool| [seen("b-claire", "+33199000006", starred)];
         let step = |memory: &mut Memory, place: &[Seen]| {
@@ -627,14 +644,14 @@ mod tests {
         // The star not written on B: tried again at the next look.
         b = second.memory_after(&second.star, &before);
         assert_eq!(step(&mut b, &on_b(false)).star, ["b-claire"]);
-        // Written: B holds her starred, nothing to do.
+        // Written: B holds that contact starred, nothing to do.
         assert!(step(&mut b, &on_b(true)).is_empty());
-        // Unstarred on B by hand, where Sioul starred her: off the list.
+        // Unstarred on B by hand, where Sioul starred that contact: off the list.
         let gone = step(&mut b, &on_b(false));
-        assert_eq!(gone.remove.len(), 1, "unstarred where Sioul starred her");
+        assert_eq!(gone.remove.len(), 1, "unstarred where Sioul starred that contact");
         assert!(People::load(&list).people.is_empty());
         let after = step(&mut a, &on_a(true));
-        assert!(after.unstar.is_empty(), "A's star is the person's own: left");
+        assert!(after.unstar.is_empty(), "A's star was set by hand: left");
         assert!(People::load(&list).people.is_empty(), "and adds no one back");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -666,7 +683,7 @@ mod tests {
 
     /// A match needs one contact and one person (M8): a landline that Mum's
     /// contact and Dad's share matches nobody; Dad is never starred nor
-    /// added for it, and is counted; Mum matches by her own mobile.
+    /// added for it, and is counted; Mum matches by the mobile only Mum holds.
     #[test]
     fn a_shared_number_matches_nobody() {
         let mut people = People::default();
@@ -703,5 +720,17 @@ mod tests {
         let looked = look(&list, &mut memory, "phone", &[], fr(), &nobody, None).unwrap();
         assert_eq!((memory, looked), (before, Looked::default()), "nothing read: nothing forgotten, nothing changed");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One person, whoever saw the star first (L6): two devices adding the
+    /// same starred contact before they hear each other give the same id,
+    /// so the list holds one entry.
+    #[test]
+    fn a_star_seen_on_two_devices_adds_one_person() {
+        let on_phone = seen("p-claire", "01 99 00 00 06", true);
+        let on_server = Seen { id: "/books/claire.vcf".into(), name: "Claire".into(), phones: vec!["+33 1 99 00 00 06".into()], starred: true, ..Seen::default() };
+        let (a, b) = (plan(&People::default(), &[on_phone], &Memory::default(), fr(), &nobody), plan(&People::default(), &[on_server], &Memory::default(), fr(), &nobody));
+        assert_eq!(a.add[0].id, b.add[0].id);
+        assert!(a.add[0].id.starts_with("star-"));
     }
 }

@@ -5500,7 +5500,7 @@ mod stars_tests {
         // Within the quarter of an hour, nothing changed: not asked again.
         let patches = *server.patches.lock().unwrap();
         assert!(!keep_stars(&client, "stars-nextcloud", &listed, now + 60).unwrap());
-        // Claire unmarked in Nextcloud: her favourite was the person's own, so she stays (H3).
+        // Claire unmarked in Nextcloud: that favourite was set by hand, so Claire stays (H3).
         server.favourites.lock().unwrap().insert(format!("{BOOK}claire.vcf"), false);
         now += STARS_EVERY;
         keep_stars(&client, "stars-nextcloud", &listed, now).unwrap();
