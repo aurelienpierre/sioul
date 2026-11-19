@@ -2465,6 +2465,7 @@ mod tests {
             ("sioul-core/src/agenda.rs", "events' categories"),
             ("sioul-core/src/appointments.rs", "tasks' tags"),
             ("sioul-core/src/areas.rs", "tasks' categories for their areas"),
+            ("sioul-core/src/calls_line.rs", "a phone's card: the groups offered a row, by name (`Book::names`), shown; who is in a group's row is read in calls.rs through the index (`calls::group_rows`)"),
             ("sioul-core/src/capabilities.rs", "what a task's server keeps"),
             ("sioul-core/src/capture.rs", "a task's tags, typed"),
             ("sioul-core/src/composed.rs", "a step's categories"),

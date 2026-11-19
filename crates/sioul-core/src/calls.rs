@@ -614,7 +614,11 @@ pub struct GroupRow {
 
 /// Each number of your address books in a group given a row, with its table
 /// row; numbers in the same groups share one. Blocked numbers and numbers
-/// nobody knows aside. In the numbers' order.
+/// nobody knows aside. In the numbers' order. A card is in a group as the
+/// lists read its groups, through their index (`Book::categories_of`, each
+/// card's `porch::deciding_groups`): a card of a book whose groups are held
+/// back is in none (`addressbooks::groups_held_back`, read by `Senders::load`).
+/// Java is handed the numbers alone, each with its row.
 pub fn group_rows(grid: &crate::calls_line::Grid, senders: &crate::porch::Senders, numbers: &[(String, String)]) -> (Vec<(String, String)>, Vec<GroupRow>) {
     let keys: Vec<String> = grid.groups.iter().map(|(name, _)| crate::porch::category_key(name)).collect();
     let (mut out, mut rows): (Vec<(String, String)>, Vec<GroupRow>) = (Vec::new(), Vec::new());
@@ -4103,6 +4107,44 @@ mod line_tests {
         let fred = decide(Some(&table), &call("01 99 00 00 02", "23:00"));
         assert_eq!((fred.refuse, fred.why), (true, "group"), "a plain contact: the group's row");
         assert!(!table.groups.contains_key("+33199000001"), "no group's row for someone placed by hand");
+    }
+
+    /// A group's row reads a card's groups as the lists do
+    /// (`porch::deciding_groups`, the owner's answer of 18 November 2026):
+    /// the teacher's card with the group School, kept in an address book
+    /// someone else can write whose groups were not said to count
+    /// (`addressbooks::groups_held_back`), rings as one of your contacts, never
+    /// through School's row; the same card in a book of your own rings through
+    /// it. School rings at night, your contacts do not.
+    #[test]
+    fn a_group_s_row_reads_only_the_groups_that_decide() {
+        use crate::vdir::{self, Kind, State};
+        crate::config::stand_ins_only();
+        let account = "calls-groups-cloud";
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
+        for (id, writers) in [("mine", Vec::new()), ("team", vec!["sam".to_string()])] {
+            vdir::prepare(Kind::Contacts, account, id, id, None).unwrap();
+            State { url: format!("https://cloud.example.org/{id}/"), owned: Some(true), writers, writers_known: true, ..State::default() }.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
+        }
+        let held = crate::addressbooks::groups_held_back(&crate::config::Config::default());
+        assert!(held.contains(&format!("{account}/team")) && !held.contains(&format!("{account}/mine")), "{held:?}");
+        let mut said = line(Profile::Personal);
+        said.grid.groups.push(("School".into(), [Cell::Rings; 4]));
+        let teacher = "01 99 00 00 03";
+        for (book, through) in [("team", false), ("mine", true)] {
+            let card = crate::contacts::Contact { place: format!("{account}/{book}"), ..card("teacher", teacher, &["School"]) };
+            let world = World { senders: Senders { contacts: std::sync::Arc::new(Book::trusting(&[card], fr(), &held)), ..Senders::default() }, ..World::new() };
+            let (table, _) = world.build(Some(&said));
+            let night = decide(Some(&table), &call(teacher, "23:00"));
+            if through {
+                assert_eq!((night.refuse, night.why), (false, "group"), "a book of your own: School's row");
+                assert_eq!(table.groups.get("+33199000003").map(String::as_str), Some("group-0"));
+            } else {
+                assert_eq!((night.refuse, night.why), (true, "matrix"), "groups held back: one of your contacts, never School's row");
+                assert!(!table.groups.contains_key("+33199000003"), "no group's row for a card whose groups are held back");
+            }
+        }
+        let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
     /// A pause, do-not-disturb's switch and the night where its box turns
