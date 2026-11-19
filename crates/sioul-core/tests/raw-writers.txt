@@ -934,3 +934,11 @@ sioul-sync/src/verify.rs	write_in_place	1	std::fs::remove_file(&temporary)
 
 # sioul-core/src/changes.rs: the time another program changed a kind of thing, for the window to read (state): no item.
 sioul-core/src/changes.rs	stamp_in	1	std::fs::write(dir.join(kind.id()), jiff::Timestamp::now().as_millisecond().to_string())
+
+# sioul-app/src/stars.rs: starred people both ways turned off, the memories of this device's places forgotten (state, its own): no item.
+sioul-app/src/stars.rs	turn	1	std::fs::remove_dir_all(stars::folder())
+
+# sioul-core/src/stars.rs: a place's memory forgotten when starred people both ways is off, and the people kept on the list waiting to be told (state, this device's own): no item.
+sioul-core/src/stars.rs	forget	1	std::fs::remove_file(path)
+sioul-core/src/stars.rs	note_kept	1	crate::filelock::replace(&path, text.as_bytes())
+sioul-core/src/stars.rs	take_kept	1	std::fs::remove_file(&path)

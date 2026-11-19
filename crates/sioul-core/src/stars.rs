@@ -83,6 +83,11 @@ pub struct Memory {
     /// until the memory is forgotten (review of `phones`, L11).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub refused: BTreeSet<String>,
+    /// The contacts the person unstarred by hand while their person stayed on
+    /// the list, with that person's id: their act, never undone by Sioul while
+    /// the same person is on it (H3).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub left: std::collections::BTreeMap<String, String>,
 }
 
 impl Memory {
@@ -330,6 +335,7 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
     for (c, m) in seen.iter().zip(&matches) {
         let written_for = memory.written.get(&c.id);
         if c.starred {
+            plan.memory.left.remove(&c.id);
             if m.is_empty() && !ambiguous(c) && !memory.seen.contains(&c.id) && written_for.is_none() {
                 // Starred since the last look, on the list nowhere: added; a blocked one is left as it is.
                 if !blocked(c) {
@@ -339,25 +345,41 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
             if let Some(person) = written_for
                 && !on_list(person)
             {
-                // A star Sioul wrote for someone taken off the list in Sioul: taken off there.
-                plan.unstar.push(c.id.clone());
-                plan.memory.written.remove(&c.id);
-                plan.memory.seen.remove(&c.id);
-                continue;
+                match m.first() {
+                    // Someone on the list it stands for now (taken off and put back): still Sioul's, for them.
+                    Some(&i) => {
+                        plan.memory.written.insert(c.id.clone(), people.people[i].id.clone());
+                    }
+                    // A star Sioul wrote for someone taken off the list in Sioul: taken off there.
+                    None => {
+                        plan.unstar.push(c.id.clone());
+                        plan.memory.written.remove(&c.id);
+                        plan.memory.seen.remove(&c.id);
+                        continue;
+                    }
+                }
             }
             plan.memory.seen.insert(c.id.clone());
         } else {
             // Read present and unstarred: no longer Sioul's star, nor seen starred, whatever follows.
             plan.memory.written.remove(&c.id);
             plan.memory.seen.remove(&c.id);
-            // Someone on the list, held here without a star, never unstarred here since the last look: starred.
-            let unstarred_here = memory.seen.contains(&c.id) || written_for.is_some();
-            if let Some(&i) = m.iter().find(|&&i| !leaves(i))
-                && !unstarred_here
-            {
-                plan.star.push(c.id.clone());
-                plan.memory.written.insert(c.id.clone(), people.people[i].id.clone());
-                plan.memory.seen.insert(c.id.clone());
+            if let Some(&i) = m.iter().find(|&&i| !leaves(i)) {
+                let person = &people.people[i].id;
+                // A star of the person's own, unstarred since the last look, its person staying: their act,
+                // remembered, never undone while that person is on the list (H3).
+                let by_hand_now = memory.seen.contains(&c.id) && written_for.is_none();
+                if by_hand_now {
+                    plan.memory.left.insert(c.id.clone(), person.clone());
+                }
+                let left_for_them = memory.left.get(&c.id) == Some(person);
+                // Someone on the list, held here without a star, not unstarred by hand, not a star of
+                // Sioul's gone this look (those come back at the next look, H3's guard): starred.
+                if !by_hand_now && !left_for_them && written_for.is_none() {
+                    plan.star.push(c.id.clone());
+                    plan.memory.written.insert(c.id.clone(), person.clone());
+                    plan.memory.seen.insert(c.id.clone());
+                }
             }
         }
     }
@@ -698,10 +720,11 @@ mod tests {
         assert_eq!(ids(&plan.unmatched), ["dad"], "counted, for the list's block");
         let states = where_starred(&people, &place, fr());
         assert_eq!(states, [(mum, "starred")]);
-        // Two people sharing a switchboard: a contact holding only it matches neither.
+        // Two people sharing a switchboard (the list keeps them apart when written so): a contact holding only it matches neither.
         let mut colleagues = People::default();
-        listed(&mut colleagues, "Ann", "01 99 00 00 30");
-        listed(&mut colleagues, "Ben", "01 99 00 00 30");
+        for (id, name) in [("ann", "Ann"), ("ben", "Ben")] {
+            colleagues.people.push(Person { id: id.into(), name: name.into(), phones: vec!["01 99 00 00 30".into()], ..Person::default() });
+        }
         let plan = super::plan(&colleagues, &[seen("desk", "01 99 00 00 30", false)], &Memory::default(), fr(), &nobody);
         assert!(plan.star.is_empty() && plan.unmatched.contains("desk"));
     }
@@ -736,5 +759,25 @@ mod tests {
         let (a, b) = (plan(&People::default(), &[on_phone], &Memory::default(), fr(), &nobody), plan(&People::default(), &[on_server], &Memory::default(), fr(), &nobody));
         assert_eq!(a.add[0].id, b.add[0].id);
         assert!(a.add[0].id.starts_with("star-"));
+    }
+
+    /// A star of the person's own, unstarred by hand while the person stays
+    /// on the list, is left unstarred at the next looks; put back on the list
+    /// in Sioul after being taken off, the person is starred again (H3).
+    #[test]
+    fn a_star_taken_off_by_hand_is_not_put_back() {
+        let mut people = People::default();
+        let claire = listed(&mut people, "Claire", "01 99 00 00 06");
+        let memory = Memory { seen: ["claire".to_string()].into_iter().collect(), ..Memory::default() };
+        let place = [seen("claire", "01 99 00 00 06", false)];
+        let first = plan(&people, &place, &memory, fr(), &nobody);
+        assert!(first.star.is_empty() && first.remove.is_empty());
+        assert_eq!(first.memory.left.get("claire"), Some(&claire));
+        let second = super::plan(&people, &place, &first.memory, fr(), &nobody);
+        assert!(second.star.is_empty(), "never undone by Sioul: {second:?}");
+        let mut again = People::default();
+        listed(&mut again, "Claire", "01 99 00 00 06");
+        let third = super::plan(&again, &place, &second.memory, fr(), &nobody);
+        assert_eq!(third.star, ["claire"], "put back on the list in Sioul: starred again");
     }
 }
