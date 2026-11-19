@@ -513,24 +513,104 @@ final class SiteWeb
     }
 
     /**
+     * Whether the chooser asked for is one Sioul answers: a file to open, or
+     * several; never a file to save nor a folder (FileChooserParams' other
+     * modes, which a recent web view may ask for), answered by nothing.
+     *
+     * @param mode FileChooserParams' mode
+     * @return whether Android's file chooser opens for it
+     */
+    static boolean choosesFiles(int mode)
+    {
+        return mode == android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN || mode == android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+    }
+
+    /**
+     * Whether a file the chooser handed back may go to a page (review F1;
+     * Android's reference for FileChooserParams: "The received result must
+     * be treated as untrusted as it can contain Uris pointing to your own
+     * app's sensitive data files"): a document another app lends
+     * ({@code content:}), never one of Sioul's own providers (its package's
+     * name, or a name under it, a user's number before {@code @} taken
+     * off, as Android reads it), never a {@code file:} path, which the web
+     * view would read as Sioul (its data, its web store, its cookies), and
+     * nothing else.
+     *
+     * @param scheme the address's scheme, as Android's Uri reads it, or null
+     * @param authority its authority, as Android's Uri reads it, or null
+     * @param own Sioul's package
+     * @return whether it may be uploaded
+     */
+    static boolean mayUpload(String scheme, String authority, String own)
+    {
+        if (scheme == null || !scheme.equalsIgnoreCase("content") || authority == null || own == null || own.isEmpty())
+            return false;
+        String provider = authority.substring(authority.lastIndexOf('@') + 1);
+        int port = provider.indexOf(':');
+        if (port >= 0)
+            provider = provider.substring(0, port);
+        provider = provider.trim().toLowerCase(Locale.ROOT);
+        String sioul = own.toLowerCase(Locale.ROOT);
+        return !provider.isEmpty() && !provider.equals(sioul) && !provider.startsWith(sioul + ".");
+    }
+
+    /**
+     * {@link #mayUpload(String, String, String)} for an address as text: its
+     * scheme, then its authority up to the path.
+     *
+     * @param address the address, or null
+     * @param own Sioul's package
+     * @return whether it may be uploaded
+     */
+    static boolean mayUpload(String address, String own)
+    {
+        if (address == null)
+            return false;
+        int colon = address.indexOf(':');
+        if (colon <= 0)
+            return false;
+        String scheme = address.substring(0, colon);
+        if (!address.startsWith("//", colon + 1))
+            return mayUpload(scheme, null, own);
+        String rest = address.substring(colon + 3);
+        int end = rest.length();
+        for (char stop : new char[] { '/', '?', '#' }) {
+            int at = rest.indexOf(stop);
+            if (at >= 0 && at < end)
+                end = at;
+        }
+        return mayUpload(scheme, rest.substring(0, end), own);
+    }
+
+    /**
      * The files chosen in Android's picker for a page's upload: each one
-     * picked (several, where the page took several), or the one; none when
-     * the picker was left.
+     * picked (several, where the page took several), or the one, kept only
+     * when it may be uploaded ({@link #mayUpload(String, String, String)});
+     * none (the upload cancelled) when the picker was left or nothing is left.
      *
      * @param ok whether the picker answered with a choice
      * @param data its answer, or null
+     * @param own Sioul's package
      * @return the files, or null
      */
-    static Uri[] chosen(boolean ok, Intent data)
+    static Uri[] chosen(boolean ok, Intent data, String own)
     {
         if (!ok || data == null)
             return null;
+        java.util.List<Uri> given = new java.util.ArrayList<>();
         if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-            Uri[] files = new Uri[data.getClipData().getItemCount()];
-            for (int i = 0; i < files.length; i++)
-                files[i] = data.getClipData().getItemAt(i).getUri();
-            return files;
+            for (int i = 0; i < data.getClipData().getItemCount(); i++)
+                given.add(data.getClipData().getItemAt(i).getUri());
+        } else {
+            given.add(data.getData());
         }
-        return data.getData() == null ? null : new Uri[] { data.getData() };
+        java.util.List<Uri> kept = new java.util.ArrayList<>();
+        for (Uri file : given) {
+            if (file != null && mayUpload(file.getScheme(), file.getAuthority(), own))
+                kept.add(file);
+            else if (file != null)
+                Log.w(DoseAlarms.TAG, "Sites: a file the chooser handed back was not given to the page (not another app's document).");
+        }
+        return kept.isEmpty() ? null : kept.toArray(new Uri[0]);
     }
 }

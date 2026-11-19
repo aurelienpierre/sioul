@@ -186,6 +186,24 @@ public final class SiteScreenCheck
         expect("what was asked, in Sioul's words", "Ce site a demandé la caméra, votre position\u202f: pas dans cette version de Sioul.".equals(SiteWeb.askedLine(bank, true, false, true)));
         expect("the microphone in English when not given", SiteWeb.askedLine(bank, false, true, false).contains("the microphone"));
 
+        // ------------------------------------------------ What the file chooser hands back (review F1)
+        String own = "com.aurelienpierre.sioul";
+        expect("a document of another app goes to the page", SiteWeb.mayUpload("content://com.android.providers.media.documents/document/image%3A12", own));
+        expect("a downloaded file another app lends", SiteWeb.mayUpload("content://com.android.providers.downloads.documents/document/msf%3A31", own));
+        expect("never a file's path into Sioul's data", !SiteWeb.mayUpload("file:///data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1", own));
+        expect("never the sites' own cookies", !SiteWeb.mayUpload("file:///data/data/com.aurelienpierre.sioul/app_webview/Default/Cookies", own));
+        expect("never a file's path at all", !SiteWeb.mayUpload("file:///sdcard/Download/a.pdf", own) && !SiteWeb.mayUpload("FILE:///sdcard/a.pdf", own));
+        expect("never Sioul's own provider", !SiteWeb.mayUpload("content://com.aurelienpierre.sioul.qtprovider/attachments/a.pdf", own));
+        expect("never Sioul's start provider", !SiteWeb.mayUpload("content://com.aurelienpierre.sioul.start/x", own));
+        expect("never Sioul's provider named by a user's number", !SiteWeb.mayUpload("content://0@com.aurelienpierre.sioul.qtprovider/files_path/notes/a.md", own));
+        expect("never Sioul's provider in capitals or with a port", !SiteWeb.mayUpload("content://COM.AurelienPierre.Sioul.QtProvider/a", own) && !SiteWeb.mayUpload("content://com.aurelienpierre.sioul.qtprovider:1/a", own));
+        expect("never Sioul's package itself as a provider", !SiteWeb.mayUpload("content://com.aurelienpierre.sioul/a", own));
+        expect("a provider whose name only starts like Sioul's is another app's", SiteWeb.mayUpload("content://com.aurelienpierre.sioulother.files/a", own));
+        expect("no other scheme, no address, no provider", !SiteWeb.mayUpload("https://example.org/a", own) && !SiteWeb.mayUpload((String) null, own) && !SiteWeb.mayUpload("content:///a", own) && !SiteWeb.mayUpload("content:a", own));
+        expect("as Android's Uri parts", SiteWeb.mayUpload("content", "com.android.externalstorage.documents", own) && !SiteWeb.mayUpload("content", "10@com.aurelienpierre.sioul.qtprovider", own) && !SiteWeb.mayUpload("file", "", own) && !SiteWeb.mayUpload("content", null, own));
+        expect("a file to open, or several", SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN) && SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE));
+        expect("never a file to save nor a folder", !SiteWeb.choosesFiles(android.webkit.WebChromeClient.FileChooserParams.MODE_SAVE) && !SiteWeb.choosesFiles(2));
+
         // ------------------------------------------------ As Rust names them
         Matcher features = Pattern.compile("pub\\(crate\\) const FEATURES: \\[&str; \\d+\\] = \\[([^\\]]*)\\]").matcher(rust);
         expect("Rust's features found", features.find());
@@ -252,6 +270,11 @@ public final class SiteScreenCheck
             }
         }
         expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        String chooser = body(screen, "public boolean onShowFileChooser(", "        ");
+        expect("the chooser: another mode answered by nothing", chooser.contains("if (!SiteWeb.choosesFiles(params.getMode()))") && chooser.indexOf("choosesFiles") < chooser.indexOf("startActivityForResult"));
+        String result = body(screen, "protected void onActivityResult(", "    ");
+        expect("the chooser's answer checked, for the request waiting alone", result.contains("request == filesAsked && files != null") && result.contains("SiteWeb.chosen(result == RESULT_OK, data, getPackageName())"));
+        expect("nothing else hands the page a file", screen.split("onReceiveValue\\(", -1).length - 1 == screen.split("onReceiveValue\\(null\\)", -1).length - 1 + 1);
         expect("opening a site never resets Sioul's task (it would close itself)", !body(web, "private static boolean open(", "    ").contains("RESET_TASK_IF_NEEDED"));
 
         // ------------------------------------------------ Whatever is tapped outside the site shows at once (review L1)

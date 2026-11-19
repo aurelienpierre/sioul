@@ -90,8 +90,9 @@ public final class SiteScreen extends Activity
     static final String SITE = "com.aurelienpierre.sioul.extra.SITE";
     /** The page shown, kept in the screen's saved state. */
     private static final String SHOWN = "shown";
-    /** Android's file chooser, for a page's upload. */
+    /** Android's file chooser, for a page's upload: its requests' codes, one per request, from here. */
     private static final int FILES = 4301;
+    private static final int FILES_SPAN = 64;
 
     private SiteWeb.Opening site;
     private TextView host;
@@ -107,8 +108,9 @@ public final class SiteScreen extends Activity
     /** The address of the page each shows, as committed: never a navigation only asked for. */
     private String committed = "";
     private String popupCommitted = "";
-    /** A page's upload waiting for the chooser. */
+    /** A page's upload waiting for the chooser, and the code of the one request it answers. */
     private ValueCallback<Uri[]> files;
+    private int filesAsked = FILES;
     /** What the site asked for and did not get. */
     private boolean askedCamera;
     private boolean askedMicrophone;
@@ -580,12 +582,20 @@ public final class SiteScreen extends Activity
         {
             if (files != null)
                 files.onReceiveValue(null);
+            files = null;
+            // A file to save or a folder (a recent web view's other modes): not answered.
+            if (!SiteWeb.choosesFiles(params.getMode())) {
+                callback.onReceiveValue(null);
+                return true;
+            }
             files = callback;
             Intent pick = params.createIntent();
             if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE)
                 pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            // Each request its own code: a late answer to an earlier one never reaches this one.
+            filesAsked = FILES + (filesAsked - FILES + 1) % FILES_SPAN;
             try {
-                startActivityForResult(pick, FILES);
+                startActivityForResult(pick, filesAsked);
             } catch (ActivityNotFoundException e) {
                 files = null;
                 callback.onReceiveValue(null);
@@ -751,10 +761,12 @@ public final class SiteScreen extends Activity
     @Override
     protected void onActivityResult(int request, int result, Intent data)
     {
-        if (request == FILES) {
-            if (files != null)
-                files.onReceiveValue(SiteWeb.chosen(result == RESULT_OK, data));
-            files = null;
+        if (request >= FILES && request < FILES + FILES_SPAN) {
+            // Only the answer to the request waiting, checked before the page has it (review F1).
+            if (request == filesAsked && files != null) {
+                files.onReceiveValue(SiteWeb.chosen(result == RESULT_OK, data, getPackageName()));
+                files = null;
+            }
             return;
         }
         super.onActivityResult(request, result, data);
