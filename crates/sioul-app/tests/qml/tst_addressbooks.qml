@@ -13,7 +13,9 @@
 // the batches of the last thirty days are listed, each undone after its
 // question (review F2); "Its groups decide who may reach me" on for a book
 // only you write, off with its sentence for one someone else can write,
-// and sent when switched. Fiction only. Run by tools/qml-test.sh.
+// and sent when switched; "Merge into…", "Export…" and "Remove…" in one row,
+// within the edge on a phone, the merge's choices in a row under it.
+// Fiction only. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -206,6 +208,38 @@ Item {
             compare(root.calls("question")[1], JSON.stringify(["question", "cloud/contacts", "local/home"]))
             mouseClick(root.named(contacts, "addressBookMergeConfirm")[0])
             compare(root.calls("remove")[1], JSON.stringify(["remove", "cloud/contacts", "move:local/home"]))
+        }
+
+        // A book's actions in one row, at a computer's width and a phone's (the
+        // Settings column, 392 points), each within the edge; merging, its choices
+        // in a row under them; the line closed and opened again, the row is back.
+        function test_the_actions_in_one_row() {
+            for (const width of [1000, 392]) {
+                const setup = make(width)
+                setup.toggle("cloud/contacts")
+                wait(30)
+                const contacts = book(setup, 0)
+                const actions = ["addressBookMerge", "addressBookExport", "addressBookRemove"].map(n => root.named(contacts, n)[0])
+                verify(actions.every(a => a.visible), "the three offered")
+                const ys = actions.map(a => a.mapToItem(setup, 0, 0).y)
+                compare([ys[1], ys[2]], [ys[0], ys[0]], "one row at " + width)
+                for (const item of actions) {
+                    const x = item.mapToItem(setup, 0, 0).x
+                    verify(x >= 0 && x + item.width <= width + 1, item.objectName + " within " + width + ": " + x + " + " + item.width)
+                }
+                mouseClick(actions[0])
+                wait(30)
+                verify(!actions[0].visible && actions[1].visible && actions[2].visible, "merging: Merge into… gives way to its choices")
+                const into = root.named(contacts, "addressBookMergeInto")[0]
+                verify(into.visible && into.mapToItem(setup, 0, 0).y > actions[1].mapToItem(setup, 0, 0).y, "the choices under the row")
+                setup.merging = ""
+                setup.toggle("cloud/contacts")
+                wait(30)
+                setup.toggle("cloud/contacts")
+                wait(30)
+                const again = book(setup, 0)
+                verify(root.named(again, "addressBookActions")[0].visible && root.named(again, "addressBookMerge")[0].visible, "closed and opened again: the row is back")
+            }
         }
 
         // The book chosen in "Merge into" and a name being typed stay when a

@@ -17,7 +17,8 @@
 // while the lines are drawn again at each sync (review F4). The changes to
 // many contacts of the last thirty days are a block of their own, under
 // their heading (ContactBatches.qml). A book's line is a row (BareButton);
-// what acts on it is an outlined button. Books say where contacts are kept and with whom
+// what acts on it is an outlined button, Merge into…, Export… and Remove… in
+// one row that wraps on a phone. Books say where contacts are kept and with whom
 // they are shared; who may reach you is decided by a contact's groups,
 // never by its book, with one switch about trust: "Its groups decide who
 // may reach me", on for a book only you can write, off until you turn it on
@@ -172,6 +173,10 @@ ColumnLayout {
             required property var modelData
             readonly property bool open: setup.opened[line.modelData.place] === true
             readonly property var shared: setup.sharing[line.modelData.place] || null
+            // What may be done with it: merged into another, exported (a computer's), removed or left.
+            readonly property bool mergeable: line.modelData.can_remove && setup.others(line.modelData.place).length > 0
+            readonly property bool exportable: line.modelData.count > 0 && Qt.platform.os !== "android"
+            readonly property bool removable: line.modelData.can_remove || line.modelData.can_leave
 
             objectName: "addressBook"
             Layout.fillWidth: true
@@ -360,26 +365,56 @@ ColumnLayout {
                     }
                 }
 
-                // Merged into another: its contacts moved there, then it removed.
+                // What may be done with it, in one row (wrapping on a phone): merged into another,
+                // exported, removed. Each opens its own row of choices under it.
                 Flow {
-                    visible: line.modelData.can_remove && setup.others(line.modelData.place).length > 0
+                    objectName: "addressBookActions"
+                    // From what may be done, not from its buttons' `visible`: hidden, a row hides them too.
+                    visible: (line.mergeable && setup.merging !== line.modelData.place) || line.exportable || (line.removable && setup.removing !== line.modelData.place)
                     Layout.fillWidth: true
                     spacing: 6
 
+                    // Merged into another: its contacts moved there, then it removed.
                     Button {
                         objectName: "addressBookMerge"
-                        visible: setup.merging !== line.modelData.place
+                        visible: line.mergeable && setup.merging !== line.modelData.place
                         flat: true
                         text: setup.sioul.text("books-merge")
                         onClicked: setup.merging = line.modelData.place
                     }
+                    // Its cards as one vCard file, where you choose.
+                    Button {
+                        objectName: "addressBookExport"
+                        visible: line.exportable
+                        flat: true
+                        text: setup.sioul.text("books-export")
+                        onClicked: {
+                            exportFile.place = line.modelData.place
+                            exportFile.open()
+                        }
+                    }
+                    // Removed, asked first; someone else's, no longer shown.
+                    Button {
+                        objectName: "addressBookRemove"
+                        visible: line.removable && setup.removing !== line.modelData.place
+                        flat: true
+                        text: setup.sioul.text(line.modelData.can_leave ? "books-leave" : "books-remove")
+                        onClicked: setup.askRemoval(line.modelData.place)
+                    }
+                }
+
+                // Merging: the book it goes into, then Merge (its question below).
+                Flow {
+                    visible: line.mergeable && setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
+                    Layout.fillWidth: true
+                    spacing: 6
+
                     PlainComboBox {
                         id: mergeInto
 
                         readonly property var places: setup.others(line.modelData.place).map(b => b.place)
 
                         objectName: "addressBookMergeInto"
-                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         width: Math.min(260, parent.width)
                         model: setup.others(line.modelData.place).map(b => setup.theme.plain(b.name))
                         currentIndex: Math.max(0, mergeInto.places.indexOf(setup.choice(line.modelData.place, mergeInto.places)))
@@ -388,12 +423,10 @@ ColumnLayout {
                     }
                     Button {
                         objectName: "addressBookMergeGo"
-                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         text: setup.sioul.text("books-merge-go")
                         onClicked: setup.ask(line.modelData.place, setup.choice(line.modelData.place, mergeInto.places))
                     }
                     Button {
-                        visible: setup.merging === line.modelData.place && setup.question.from !== line.modelData.place
                         flat: true
                         text: setup.sioul.text("ui-cancel")
                         onClicked: setup.merging = ""
@@ -457,26 +490,7 @@ ColumnLayout {
                     }
                 }
 
-                // Its cards as one vCard file, where you choose.
-                Button {
-                    objectName: "addressBookExport"
-                    visible: line.modelData.count > 0 && Qt.platform.os !== "android"
-                    flat: true
-                    text: setup.sioul.text("books-export")
-                    onClicked: {
-                        exportFile.place = line.modelData.place
-                        exportFile.open()
-                    }
-                }
-
-                // Removed, asked first; someone else's, no longer shown.
-                Button {
-                    objectName: "addressBookRemove"
-                    visible: (line.modelData.can_remove || line.modelData.can_leave) && setup.removing !== line.modelData.place
-                    flat: true
-                    text: setup.sioul.text(line.modelData.can_leave ? "books-leave" : "books-remove")
-                    onClicked: setup.askRemoval(line.modelData.place)
-                }
+                // Removing: where its contacts go, asked first.
                 ColumnLayout {
                     visible: setup.removing === line.modelData.place
                     Layout.fillWidth: true
