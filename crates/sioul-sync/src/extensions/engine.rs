@@ -7,8 +7,8 @@
 //! on Linux, in the Flatpak, on Windows, on macOS and on Android.
 //!
 //! - **Only what its manifest grants**: the module may import the time, its
-//!   log and `hide` always; `web` when its manifest names hosts; `secret`
-//!   and `sign_in` when it signs in. A module that imports anything else is
+//!   log, `hide` and `random` always; `web` when its manifest names hosts;
+//!   `secret` and `sign_in` when it signs in. A module that imports anything else is
 //!   not started (`Stop::AsksMore`).
 //! - **Limits**: one memory of 64 MiB at most, one table; computation given
 //!   in slices of fuel, 4 billion steps in all; 5 minutes for a call, the
@@ -225,6 +225,7 @@ enum Kind {
     Now,
     Log,
     Hide,
+    Random,
     Web,
     Secret,
     SignIn,
@@ -232,7 +233,7 @@ enum Kind {
 
 /// The imports an extension may be given by its grants.
 fn granted(grants: &Grants) -> Vec<&'static str> {
-    let mut names = vec!["answer", "reply", "now", "log", "hide"];
+    let mut names = vec!["answer", "reply", "now", "log", "hide", "random"];
     if !grants.hosts.is_empty() {
         names.push("web");
     }
@@ -395,6 +396,27 @@ fn log_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     let (text, cut) = cut_at(&format!("{at} {line}"), LINE_KEPT);
     visit.log.push(Line { text, cut, own: true });
     json!({ "logged": true })
+}
+
+/// The most random bytes an ask gives.
+const RANDOM_MOST: u64 = 64;
+
+/// Random bytes from the system (E1): a sign-in's `state`, PKCE's verifier.
+/// Never logged; given in URL-safe base64 without padding.
+fn random_answer(ask: &Value) -> Value {
+    use base64::Engine;
+    use chacha20poly1305::aead::OsRng;
+    use chacha20poly1305::aead::rand_core::RngCore;
+    let bytes = match &ask["bytes"] {
+        Value::Null => 32,
+        value => match value.as_u64() {
+            Some(n @ 1..=RANDOM_MOST) => n,
+            _ => return refused("form"),
+        },
+    };
+    let mut drawn = vec![0u8; bytes as usize];
+    OsRng.fill_bytes(&mut drawn);
+    json!({ "random": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&drawn) })
 }
 
 fn hide_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
@@ -623,6 +645,7 @@ fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len:
                 Kind::Now => now_answer(visit),
                 Kind::Log => log_answer(visit, &ask),
                 Kind::Hide => hide_answer(visit, &ask),
+                Kind::Random => random_answer(&ask),
                 Kind::Web => web_answer(visit, &ask),
                 Kind::Secret => secret_answer(visit, &ask),
                 Kind::SignIn => sign_in_answer(visit, &ask),
@@ -664,6 +687,7 @@ fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>, grants: &Grants) -
     linker.func_wrap("sioul", "now", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Now, ptr, len))?;
     linker.func_wrap("sioul", "log", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Log, ptr, len))?;
     linker.func_wrap("sioul", "hide", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Hide, ptr, len))?;
+    linker.func_wrap("sioul", "random", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Random, ptr, len))?;
     if !grants.hosts.is_empty() {
         linker.func_wrap("sioul", "web", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Web, ptr, len))?;
     }

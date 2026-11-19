@@ -40,7 +40,7 @@ An ask that Sioul refuses is answered, never trapped: `{"refused": "<why>"}`, wh
 
 ## What it imports
 
-From the module `sioul`. The first five are given to every extension; `web` only to one whose manifest names hosts; `secret` and `sign_in` only to one whose manifest says it signs in.
+From the module `sioul`. The first six are given to every extension; `web` only to one whose manifest names hosts; `secret` and `sign_in` only to one whose manifest says it signs in.
 
 | Import | Ask | Answer |
 |---|---|---|
@@ -49,6 +49,7 @@ From the module `sioul`. The first five are given to every extension; `web` only
 | `now` | `{}` | `{"now": "2026-11-18T21:04:05Z", "unix": 1795035845}` |
 | `log` | `{"line": "…"}` | `{"logged": true}` |
 | `hide` | `{"values": ["…"]}` | `{"hidden": 1}` |
+| `random` | `{"bytes": 32}` (1 to 64; 32 when absent) | `{"random": "<URL-safe base64, no padding>"}` |
 | `web` | `{"method": "GET", "url": "https://…", "headers": [["Accept", "application/json"]], "body": "…"}` | `{"status": 200, "headers": [["content-type", "…"]], "body": "…"}` |
 | `secret` | `{"get": true}`, `{"keep": "…"}` or `{"forget": true}` | `{"secret": "…"}` or `{"secret": null}`, `{"kept": true}`, `{"forgotten": true}` |
 | `sign_in` | `{"open": "https://…", "watch": "scheme://prefix"}` | `{"returned": "scheme://prefix?…"}` or `{"cancelled": true}` |
@@ -57,6 +58,7 @@ From the module `sioul`. The first five are given to every extension; `web` only
 
 - `now` gives the time in UTC, to the second. Nothing else of the device is given: no zone, no name, no language beyond the call's `lang`.
 - `log` writes one line in the extension's own log, kept on this device (`$XDG_STATE_HOME/sioul/extensions/<id>.log` on Linux), never shared, never sent. A line is cut at 300 characters; 50 lines a call at most, the next ones dropped; the log keeps its last 400 lines.
+- `random` gives bytes from the system's own source of randomness, which `wasm32-unknown-unknown` lacks: a sign-in's `state`, a PKCE verifier. The `state` is what ties the address a sign-in returns to the sign-in that was asked; a guessable one (the time) lets a page that gets into the sign-in end it with a code of its own account. Never logged.
 - `hide` names values that must never reach the log (a token, a code): from then on in this call, any line holding one has it replaced by `[hidden]`. Values shorter than four characters are ignored. A call hides 256 values and 128 KiB at most, a value longer than 2 KiB kept in pieces that side by side hide it whole; past that, the extension's lines of the call are dropped (Sioul says how many), never written with a value it could not hide.
 - **What Sioul holds for a call is bounded in bytes**, outside the module's own memory: each line is cut to 4 KiB when it is kept (a line cut so loses 2 KiB more when it is written, so that a value it held across the cut cannot show in part), Sioul's own lines are 160 at most, and a request to a host the manifest does not name is said once a call, the host cut to 80 characters, with how many asks named it. The secret kept, the address a sign-in returned and each value of its query, and the value of every `Authorization` header are hidden without asking. Sioul's own lines in that log (a call's start and end, each web request's method, host, path and status, never its query or body) go through the same hiding.
 

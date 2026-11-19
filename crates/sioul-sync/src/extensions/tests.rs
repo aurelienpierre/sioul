@@ -108,6 +108,30 @@ fn a_module_replies_through_its_memory() {
     assert_eq!(reply, serde_json::json!({ "now": "2026-11-18T10:00:00Z", "unix": 1_794_996_000 }));
 }
 
+/// E1: randomness for every extension (a sign-in's `state`, PKCE), never the
+/// same twice, 1 to 64 bytes.
+#[test]
+fn an_extension_is_given_randomness() {
+    let asks = [r#"{"bytes":32}"#, r#"{}"#, r#"{"bytes":65}"#];
+    let body = "(local.set $n (call $random (i32.const $at_0) (i32.const $len_0)))
+    (call $answer (i32.const 49152))
+    (drop (call $random (i32.const $at_1) (i32.const $len_1)))
+    (call $answer (i32.const 50176))
+    (drop (call $random (i32.const $at_2) (i32.const $len_2)))
+    (call $answer (i32.const 51200))
+    (call $reply (i32.const 49152) (i32.const 3072))
+    i32.const 0";
+    let file = module(&["random", "answer", "reply"], &asks, body);
+    let (outcome, _) = run_it(&file, &grants(&[], None), Stand::default(), false);
+    let reply = outcome.reply.unwrap();
+    let answers: Vec<serde_json::Value> = reply.split('\0').filter(|a| !a.is_empty()).map(|a| serde_json::from_str(a).unwrap()).collect();
+    let (first, second) = (answers[0]["random"].as_str().unwrap(), answers[1]["random"].as_str().unwrap());
+    assert_eq!((first.len(), second.len()), (43, 43), "32 bytes each, in URL-safe base64");
+    assert_ne!(first, second);
+    assert!(first.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
+    assert_eq!(answers[2], serde_json::json!({ "refused": "form" }));
+}
+
 #[test]
 fn it_is_given_only_what_its_manifest_grants() {
     // A web request where no host is named: the import is not given, the module not started.
