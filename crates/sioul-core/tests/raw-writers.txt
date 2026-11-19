@@ -94,7 +94,7 @@ sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(
 sioul-app/src/ledger.rs	save_csv	1	std::fs::write(path, csv)
 
 # sioul-app/src/letters.rs: a letter's scan copied into the letters' inbox: no item.
-sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
+sioul-app/src/letters.rs	place_scan	1	sioul_core::filelock::place_new(source, inbox, &names, false)
 
 # sioul-app/src/mail.rs: your answer to a cancellation its organizer sent (`agenda::cancellation`, read again just before, refused otherwise): the one removal of a meeting with others.
 sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
@@ -304,6 +304,9 @@ sioul-core/src/contacts.rs	photo_shown	1	std::fs::write(&path, &bytes)
 # sioul-core/src/contracts.rs: contracts (a file of their own): no item.
 sioul-core/src/contracts.rs	write	1	std::fs::write(&temporary, doc.to_string())
 
+# sioul-core/src/downloads.rs: the place a file from each site went last (state, this device's own): no item.
+sioul-core/src/downloads.rs	save	1	crate::filelock::replace(path, format!(
+
 # sioul-core/src/dose_backs.rs: the doses' moves to put back (a file of its own, written witnessed): no item.
 sioul-core/src/dose_backs.rs	update	1	crate::health::write_witnessed(path, text.as_bytes())
 
@@ -337,10 +340,16 @@ sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::rename(&fresh, path)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::remove_file(&fresh)
 
-# sioul-core/src/filelock.rs: Sioul's own writers and removers themselves (`replace`, `save_merged`, `remove_wiping`): their callers are named where they write.
+# sioul-core/src/filelock.rs: Sioul's own writers and removers themselves (`replace`, `save_merged`, `place_new`, `remove_wiping`): their callers are named where they write.
 sioul-core/src/filelock.rs	replace	1	std::fs::write(&temporary, bytes)
 sioul-core/src/filelock.rs	replace	1	std::fs::remove_file(&temporary)
 sioul-core/src/filelock.rs	rename_over	1	std::fs::rename(from, to)
+sioul-core/src/filelock.rs	place_new	1	std::fs::rename(source, &hidden)
+sioul-core/src/filelock.rs	place_new	1	std::fs::rename(hidden, source)
+sioul-core/src/filelock.rs	place_new	1	std::fs::remove_file(hidden)
+sioul-core/src/filelock.rs	place_new	1	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	place_new	1	std::fs::hard_link(&hidden, &target)
+sioul-core/src/filelock.rs	place_new	1	std::fs::remove_file(&hidden)
 sioul-core/src/filelock.rs	new	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	place	2	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	place	1	std::fs::rename(&self.temporary, &self.path)
@@ -490,7 +499,7 @@ sioul-core/src/overlaps.rs	save	1	std::fs::write(path, toml::to_string(self).map
 sioul-core/src/overlaps.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 
 # sioul-core/src/papers.rs: papers in their folder: no item.
-sioul-core/src/papers.rs	keep_file	1	std::fs::copy(source, &target)
+sioul-core/src/papers.rs	keep_file	1	crate::filelock::place_new(source, &folder, &names, false)
 sioul-core/src/papers.rs	write	1	std::fs::write(&temporary, doc.to_string())
 
 # sioul-core/src/persons.rs: the persons your admin is done for (data), written whole beside their place: no item.

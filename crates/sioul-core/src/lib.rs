@@ -239,6 +239,7 @@ pub mod device_kind;
 pub mod device_said;
 pub mod description;
 pub mod doses;
+pub mod downloads;
 pub mod draftcopies;
 pub mod dose_backs;
 pub mod dose_reminders;

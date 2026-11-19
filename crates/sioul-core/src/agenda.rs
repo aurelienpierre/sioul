@@ -4822,6 +4822,7 @@ mod tests {
             "OpenOptions::new(",
             "filelock::replace",
             "filelock::save_merged",
+            "filelock::place_new",
             "write_atomically(",
             "write_synced(",
             "write_witnessed(",

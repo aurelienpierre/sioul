@@ -79,6 +79,96 @@ pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     written
 }
 
+/// `source`'s bytes as a new file in `folder`, under the first name of
+/// `names(1)`, `names(2)`… that nothing holds there, never over a file
+/// (a file a site offers, a paper's scan, a letter's: docs/sites.md,
+/// "Downloads"). Written whole beside it first, under a hidden name, its
+/// bytes synced; then given its name by a link, which fails when the name is
+/// taken, so that a file appearing meanwhile is never replaced; where the
+/// file system makes no links (FAT, some phones' storage), renamed when the
+/// name is free. `moved`: `source` is renamed rather than copied when it is
+/// on the same file system (a download held in Sioul's cache), and put back
+/// if the placing fails. Whatever fails, nothing is left in `folder`. A name
+/// that is not one plain name (a separator, ".", "..", nothing) is refused:
+/// the file never lands outside `folder`. Returns its path.
+pub fn place_new(source: &Path, folder: &Path, names: &dyn Fn(u32) -> String, moved: bool) -> std::io::Result<PathBuf> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let plain = |name: &str| !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']) && !(cfg!(windows) && name.contains(':'));
+    let first = names(1);
+    if !plain(&first) {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{first}: not one file name")));
+    }
+    std::fs::create_dir_all(folder)?;
+    let hidden = folder.join(format!(".{}.{}-{}.part", first.chars().take(64).collect::<String>(), std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let renamed = moved && std::fs::rename(source, &hidden).is_ok();
+    // What was made in `folder` taken out, the source put back where it was moved from.
+    let undo = |hidden: &Path| {
+        if renamed {
+            let _ = std::fs::rename(hidden, source);
+        } else {
+            let _ = std::fs::remove_file(hidden);
+        }
+    };
+    let filled = if renamed {
+        std::fs::File::open(&hidden).and_then(|f| f.sync_all())
+    } else {
+        (|| {
+            let mut from = std::fs::File::open(source)?;
+            let mut to = std::fs::OpenOptions::new().write(true).create_new(true).open(&hidden)?;
+            std::io::copy(&mut from, &mut to)?;
+            to.sync_all()
+        })()
+    };
+    if let Err(e) = filled {
+        undo(&hidden);
+        return Err(e);
+    }
+    for n in 1..=9999 {
+        let name = names(n);
+        if !plain(&name) {
+            undo(&hidden);
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{name}: not one file name")));
+        }
+        let target = folder.join(&name);
+        match std::fs::hard_link(&hidden, &target) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&hidden);
+                sync_folder(folder);
+                return Ok(target);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            // No links on this file system: renamed when the name is free.
+            Err(_) => {
+                if target.symlink_metadata().is_ok() {
+                    continue;
+                }
+                return match rename_over(&hidden, &target) {
+                    Ok(()) => {
+                        sync_folder(folder);
+                        Ok(target)
+                    }
+                    Err(e) => {
+                        undo(&hidden);
+                        Err(e)
+                    }
+                };
+            }
+        }
+    }
+    undo(&hidden);
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{}: no free name for {first}", folder.display())))
+}
+
+/// A folder's new name made to last; nothing to do where folders cannot be opened.
+fn sync_folder(folder: &Path) {
+    #[cfg(unix)]
+    if let Ok(opened) = std::fs::File::open(folder) {
+        let _ = opened.sync_all();
+    }
+    #[cfg(not(unix))]
+    let _ = folder;
+}
+
 /// `from` renamed over `to`. On Windows a file another thread or program has
 /// open for a moment (a reader of the same state) refuses to be replaced:
 /// tried again a few times, for a tenth of a second at most (CI's Windows job
@@ -883,5 +973,80 @@ lighter = [2026-10-01, 2026-10-03]
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "800");
         assert!(dir.join(".count.txt.lock").exists(), "hidden, so never shared");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The names a test folder holds, hidden ones included, sorted.
+    fn names_in(folder: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(folder).map(|r| r.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// A file placed whole under a free name: a name taken gets its number,
+    /// never replaced; copied or moved; nothing hidden left behind.
+    #[test]
+    fn a_file_is_placed_under_a_free_name_never_over_one() {
+        let base = std::env::temp_dir().join(format!("sioul-place-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (held, folder) = (base.join("held"), base.join("Downloads"));
+        std::fs::create_dir_all(&held).unwrap();
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("statement.pdf"), b"older").unwrap();
+        let names = |n: u32| if n == 1 { "statement.pdf".to_string() } else { format!("statement ({n}).pdf") };
+        let source = held.join("statement.pdf");
+        std::fs::write(&source, b"%PDF-new").unwrap();
+        let placed = place_new(&source, &folder, &names, false).unwrap();
+        assert_eq!(placed, folder.join("statement (2).pdf"));
+        assert_eq!(std::fs::read(&placed).unwrap(), b"%PDF-new");
+        assert_eq!(std::fs::read(folder.join("statement.pdf")).unwrap(), b"older", "never replaced");
+        assert!(source.exists(), "copied: the source stays");
+        // Moved: the source goes, its bytes in the third name.
+        let placed = place_new(&source, &folder, &names, true).unwrap();
+        assert_eq!(placed, folder.join("statement (3).pdf"));
+        assert!(!source.exists());
+        assert_eq!(names_in(&folder), ["statement (2).pdf", "statement (3).pdf", "statement.pdf"], "nothing hidden left");
+        // A folder not there yet is made.
+        std::fs::write(&source, b"x").unwrap();
+        assert_eq!(place_new(&source, &base.join("new/inside"), &names, false).unwrap(), base.join("new/inside/statement.pdf"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Whatever fails leaves nothing in the folder: a source that does not
+    /// read, a name that is not one plain name, a folder that refuses writes.
+    #[test]
+    fn a_failed_placing_leaves_nothing() {
+        let base = std::env::temp_dir().join(format!("sioul-place-fails-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let folder = base.join("Notes");
+        std::fs::create_dir_all(&folder).unwrap();
+        let source = base.join("held.pdf");
+        assert!(place_new(&source, &folder, &|_| "held.pdf".into(), false).is_err(), "no source");
+        assert!(place_new(&source, &folder, &|_| "held.pdf".into(), true).is_err(), "no source to move");
+        assert_eq!(names_in(&folder), Vec::<String>::new());
+        std::fs::write(&source, b"bytes").unwrap();
+        for name in ["../out.pdf", "a/b.pdf", "..", ".", "", "a\\b"] {
+            assert!(place_new(&source, &folder, &|_| name.to_string(), true).is_err(), "{name:?}");
+        }
+        // A first name that is plain and a numbered one that is not: refused at that name, the source put back.
+        std::fs::write(folder.join("held.pdf"), b"there").unwrap();
+        assert!(place_new(&source, &folder, &|n| if n == 1 { "held.pdf".into() } else { "../held.pdf".into() }, true).is_err());
+        assert_eq!(std::fs::read(&source).unwrap(), b"bytes", "moved back where it was");
+        assert_eq!(names_in(&folder), ["held.pdf"]);
+        assert_eq!(names_in(&base), ["Notes", "held.pdf"], "nothing outside the folder either");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let closed = base.join("closed");
+            std::fs::create_dir_all(&closed).unwrap();
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o500)).unwrap();
+            // Root writes anyway: the check means something only for a user.
+            if std::fs::write(closed.join("probe"), b"").is_err() {
+                assert!(place_new(&source, &closed, &|_| "held.pdf".into(), true).is_err());
+                assert_eq!(names_in(&closed), Vec::<String>::new());
+                assert!(source.exists(), "the held file kept where it was");
+            }
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
