@@ -20,6 +20,10 @@ public final class SignInCheck
             { "skoapp-prod://sign-in-callback?code=OC-1&state=s", SignIn.Decision.WATCHED },
             { "skoapp-prod://sign-in-callback", SignIn.Decision.WATCHED },
             { "skoapp-prod://elsewhere?code=OC-1", SignIn.Decision.REFUSED },
+            { "skoapp-prod://sign-in-callback/x?code=OC-1", SignIn.Decision.WATCHED },
+            { "skoapp-prod://sign-in-callback#code=OC-1", SignIn.Decision.WATCHED },
+            { "skoapp-prod://sign-in-callback.other.example/?code=OC-1", SignIn.Decision.REFUSED },
+            { "skoapp-prod://sign-in-callback-x?code=OC-1", SignIn.Decision.REFUSED },
             { "http://sso.example.org/login", SignIn.Decision.REFUSED },
             { "file:///sdcard/Download/page.html", SignIn.Decision.REFUSED },
             { "content://com.example.provider/page", SignIn.Decision.REFUSED },
@@ -90,6 +94,9 @@ public final class SignInCheck
                 { "in Sioul's own task", String.valueOf(!activity.contains("taskAffinity")) },
                 { "never exported", String.valueOf(activity.contains("android:exported=\"false\"")) },
                 { "a renderer that ends is handled", String.valueOf(source.contains("public boolean onRenderProcessGone(") && source.contains("return true;")) },
+                { "resized by the keyboard: the site's name in sight", String.valueOf(activity.contains("android:windowSoftInputMode=\"adjustResize\"")) },
+                { "the watched address from the main frame only", String.valueOf(source.contains("case WATCHED:\n                    // From the main frame only") && source.contains("if (request.isForMainFrame())\n                        returned(url);")) },
+                { "Sioul's language, not the phone's", String.valueOf(source.contains("getIntent().getBooleanExtra(FRENCH, false)") && !source.contains("getLocales()")) },
             };
             for (String[] e : expected) {
                 read++;
@@ -101,6 +108,29 @@ public final class SignInCheck
         } catch (java.io.IOException | RuntimeException e) {
             failed++;
             System.out.println("FAIL the repository's files: " + e);
+        }
+        // A5: the web view's folders emptied, a link taken out and never followed.
+        try {
+            java.nio.file.Path base = java.nio.file.Files.createTempDirectory("sioul-signin-wipe");
+            java.nio.file.Path web = java.nio.file.Files.createDirectories(base.resolve("app_webview/Default/Service Worker/CacheStorage"));
+            java.nio.file.Files.writeString(web.resolve("entry"), "kept by a site");
+            java.nio.file.Path outside = java.nio.file.Files.createDirectories(base.resolve("outside"));
+            java.nio.file.Files.writeString(outside.resolve("mine"), "not the web view's");
+            java.nio.file.Files.createSymbolicLink(base.resolve("app_webview/link"), outside);
+            SignIn.wipe(new java.io.File[] { base.resolve("app_webview").toFile(), base.resolve("absent").toFile() });
+            read += 2;
+            if (base.resolve("app_webview").toFile().list().length != 0 || !java.nio.file.Files.isDirectory(base.resolve("app_webview"))) {
+                failed++;
+                System.out.println("FAIL the web view's folder emptied, itself kept");
+            }
+            if (!java.nio.file.Files.exists(outside.resolve("mine"))) {
+                failed++;
+                System.out.println("FAIL a link followed out of the web view's folder");
+            }
+            SignIn.wipe(new java.io.File[] { base.toFile() });
+            java.nio.file.Files.deleteIfExists(base);
+        } catch (java.io.IOException | UnsupportedOperationException e) {
+            System.out.println("the wipe not checked here: " + e);
         }
         int total = cases.length + hosts.length + 2 + waited.length + 1 + read;
         System.out.println(failed == 0 ? "all " + total + " sign-in cases agree" : failed + " failed");

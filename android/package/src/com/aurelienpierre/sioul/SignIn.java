@@ -56,6 +56,8 @@ public final class SignIn extends Activity
     static final String WATCH = "com.aurelienpierre.sioul.extra.WATCH";
     /** The site's name, shown above the page until it moves on. */
     static final String HOST = "com.aurelienpierre.sioul.extra.HOST";
+    /** Whether Sioul speaks French now: the screen's words follow Sioul's, not the phone's. */
+    static final String FRENCH = "com.aurelienpierre.sioul.extra.FRENCH";
 
     /** What a navigation is, for this screen. */
     enum Decision { WATCHED, ALLOWED, REFUSED }
@@ -70,6 +72,8 @@ public final class SignIn extends Activity
      * the screen answered. A screen made again after the process ended finds none.
      */
     private static String asked;
+    /** Whether a web view was made in this process: until then its folders may be emptied. */
+    private static boolean loaded;
 
     private WebView view;
     private TextView site;
@@ -84,9 +88,21 @@ public final class SignIn extends Activity
     {
         if (url == null)
             return Decision.REFUSED;
-        if (watch != null && !watch.isEmpty() && url.startsWith(watch))
+        if (watched(url, watch))
             return Decision.WATCHED;
         return url.startsWith("https://") ? Decision.ALLOWED : Decision.REFUSED;
+    }
+
+    /**
+     * Whether {@code url} is the address watched for: it begins with
+     * {@code watch}, and what follows ends its scheme and host (nothing, a
+     * path, a query, a fragment), as Rust and the computer's window check it.
+     */
+    static boolean watched(String url, String watch)
+    {
+        if (url == null || watch == null || watch.isEmpty() || !url.startsWith(watch))
+            return false;
+        return url.length() == watch.length() || "/?#".indexOf(url.charAt(watch.length())) >= 0;
     }
 
     /** The host of an address, for the line above the page: no scheme, no user, no path. */
@@ -106,7 +122,7 @@ public final class SignIn extends Activity
         return (user >= 0 ? authority.substring(user + 1) : authority).toLowerCase(java.util.Locale.ROOT);
     }
 
-    /** The line above the page, in the language of the phone (French or English). */
+    /** The line above the page, in Sioul's language (French or English). */
     static String said(String host, boolean french)
     {
         return (french ? "Vous vous connectez sur\u202f: " : "You sign in on: ") + host;
@@ -143,7 +159,8 @@ public final class SignIn extends Activity
                 return Attachments.said("problem", "scheme").toString();
             // Into Sioul's own task (the manifest gives the screen no affinity of its own).
             Intent intent = new Intent(context, SignIn.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(OPEN, open).putExtra(WATCH, asked.optString("watch", "")).putExtra(HOST, asked.optString("host", ""));
+                .putExtra(OPEN, open).putExtra(WATCH, asked.optString("watch", "")).putExtra(HOST, asked.optString("host", ""))
+                .putExtra(FRENCH, asked.optBoolean("french", false));
             SignIn.asked = open;
             try {
                 context.startActivity(intent);
@@ -171,17 +188,17 @@ public final class SignIn extends Activity
         super.onCreate(saved);
         watch = getIntent().getStringExtra(WATCH);
         String open = getIntent().getStringExtra(OPEN);
-        boolean french = getResources().getConfiguration().getLocales().get(0).getLanguage().equals("fr");
+        boolean french = getIntent().getBooleanExtra(FRENCH, false);
         if (!waitedFor(saved != null, asked, open)) {
             // Nobody waits for this one: its sign-in ended with the process. Said, then gone.
             answered = true;
             Toast.makeText(this, interrupted(french), Toast.LENGTH_LONG).show();
-            forget();
+            clean();
             finish();
             return;
         }
         shown = this;
-        forget();
+        clean();
 
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -224,7 +241,9 @@ public final class SignIn extends Activity
                     return false;
                 switch (decide(url, watch)) {
                 case WATCHED:
-                    returned(url);
+                    // From the main frame only: a frame of another site cannot end the sign-in.
+                    if (request.isForMainFrame())
+                        returned(url);
                     return true;
                 case ALLOWED:
                     return false;
@@ -310,12 +329,52 @@ public final class SignIn extends Activity
         }
     }
 
-    /** The web's cookies and storage forgotten: before the page, and after. */
+    /**
+     * The web's cookies and storage forgotten: before the page, and after.
+     * The HTTP cache goes with the view ({@code clearCache}); service workers
+     * and the Cache API's stores, which no call of the web view empties, go
+     * with its folders at the first screen of each process ({@link #wipe}).
+     */
     private void forget()
     {
         CookieManager.getInstance().removeAllCookies(null);
         CookieManager.getInstance().flush();
         WebStorage.getInstance().deleteAllData();
+    }
+
+    /**
+     * The web's data cleared before a page: at the first screen of the
+     * process, its folders emptied while no web view holds them (what an
+     * earlier screen left when its process ended before it could clear them,
+     * service workers and caches included); then cookies and storage.
+     */
+    private void clean()
+    {
+        if (!loaded)
+            wipe(new java.io.File[] { getDir("webview", MODE_PRIVATE), new java.io.File(getCacheDir(), "WebView") });
+        loaded = true;
+        forget();
+    }
+
+    /**
+     * The web view's folders emptied, every file and folder under each, the
+     * folders themselves kept: only before a web view is made in this process
+     * (Sioul has no other), so that nothing holds them open.
+     */
+    static void wipe(java.io.File[] folders)
+    {
+        for (java.io.File folder : folders) {
+            java.io.File[] inside = folder.listFiles();
+            if (inside == null)
+                continue;
+            for (java.io.File file : inside) {
+                // A link is taken out, never followed.
+                if (file.isDirectory() && !java.nio.file.Files.isSymbolicLink(file.toPath()))
+                    wipe(new java.io.File[] { file });
+                if (!file.delete())
+                    Log.i(TAG, "SignIn: a web view file stayed.");
+            }
+        }
     }
 
     @Override

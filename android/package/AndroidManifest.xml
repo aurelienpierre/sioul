@@ -371,10 +371,13 @@
              system's web view on a screen of Sioul's own, the site's name
              above it. Started by Sioul alone; it answers no address and
              registers no scheme. Part of Sioul's own task and seen in Recents,
-             so that leaving it to read a code and coming back finds it. -->
+             so that leaving it to read a code and coming back finds it;
+             resized by the keyboard, so that the site's name stays in sight
+             while a password is typed. -->
         <activity
             android:name="com.aurelienpierre.sioul.SignIn"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:windowSoftInputMode="adjustResize"
             android:exported="false" />
         <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/
              client.md, "Antivirus"): Android's own question where to save it,

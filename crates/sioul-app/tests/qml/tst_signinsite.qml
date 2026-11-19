@@ -52,6 +52,33 @@ TestCase {
         verify(!site.covered)
     }
 
+    // D2: a name in other letters is said in its ASCII form, never as a look-alike.
+    function test_the_name_is_said_in_ascii() {
+        const site = createTemporaryObject(siteKind, test)
+        compare(site.punycode("bücher"), "bcher-kva")
+        compare(site.punycode("münchen"), "mnchen-3ya")
+        compare(site.hostOf("https://аpple.com/login"), "xn--pple-43d.com", "a Cyrillic а is not a Latin a")
+        compare(site.hostOf("https://user@sso.bücher.example:8443/x"), "sso.xn--bcher-kva.example:8443")
+        compare(site.hostOf("https://sso.example.org/a?b"), "sso.example.org")
+        site.loading("succeeded", "https://аpple.com/login")
+        compare(site.shown, "xn--pple-43d.com")
+    }
+
+    // D3: the address watched for is given back only when what follows it
+    // ends its scheme and host.
+    function test_the_watched_address_is_matched_exactly() {
+        const site = createTemporaryObject(siteKind, test)
+        const watch = "skoapp-prod://sign-in-callback"
+        verify(site.watched(watch, watch))
+        verify(site.watched(watch + "?code=x&state=y", watch))
+        verify(site.watched(watch + "/x", watch))
+        verify(site.watched(watch + "#a", watch))
+        verify(!site.watched(watch + ".other.example/?code=x", watch), "another host that begins alike")
+        verify(!site.watched(watch + "-x?code=x", watch))
+        verify(!site.watched("https://sso.example.org/", watch))
+        verify(!site.watched(watch, ""), "nothing watched, nothing given back")
+    }
+
     function test_a_failed_page_stays_covered() {
         const site = createTemporaryObject(siteKind, test)
         site.loading("succeeded", "https://sso.example.org/login")

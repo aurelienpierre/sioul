@@ -79,11 +79,18 @@ Window {
                 spacing: 10
 
                 Label {
+                    text: window.sioul.textWith("sign-in-site", "host", "").trim()
+                    textFormat: Text.PlainText
+                    font.pixelSize: 16
+                    color: window.theme.text
+                }
+                // The site's name in ASCII, cut on the left: its end, the registrable part, stays in sight.
+                Label {
                     objectName: "signInSite"
                     Layout.fillWidth: true
-                    text: window.sioul.textWith("sign-in-site", "host", window.site.shown)
+                    text: window.site.shown
                     textFormat: Text.PlainText
-                    elide: Text.ElideMiddle
+                    elide: Text.ElideLeft
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
                     color: window.theme.text
@@ -146,8 +153,8 @@ Window {
             enabled: !window.site.covered
             onNavigationRequested: request => {
                 const address = request.url.toString()
-                // The address watched for: never loaded, given back whole.
-                if (request.isMainFrame && window.page.watch && address.startsWith(window.page.watch)) {
+                // The address watched for, from the main frame only: never loaded, given back whole.
+                if (request.isMainFrame && window.site.watched(address, window.page.watch)) {
                     request.reject()
                     window.answer(address)
                     window.close()
@@ -166,8 +173,9 @@ Window {
             }
             onLoadingChanged: info => {
                 const address = info.url.toString()
-                // A redirect to the watched address that ends as a failed load rather than a navigation.
-                if (window.page.watch && address.startsWith(window.page.watch)) {
+                // A redirect to the watched address that ends as a failed load rather than a
+                // navigation (loadingChanged speaks of the main frame alone).
+                if (window.site.watched(address, window.page.watch)) {
                     view.stop()
                     window.answer(address)
                     window.close()

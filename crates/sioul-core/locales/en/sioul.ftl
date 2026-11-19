@@ -3809,6 +3809,7 @@ extension-removed-keyring = { $name } is removed; its sign-in could not be taken
 extension-updated = { $name } is now at version { $version }.
 extension-signed-in = Signed in. { $name } brings its agenda now.
 extension-sign-in-closed = The sign-in page for { $name } was closed.
+extension-sign-in-busy = Another sign-in page is open: finish it or close it first.
 extension-problem-sign-in = { $name } needs you to sign in again.
 extension-problem-unreachable = { $name } could not reach its service; it tries again later.
 extension-problem-refused = { $name }'s service refused: an account blocked, or a school that does not offer it.

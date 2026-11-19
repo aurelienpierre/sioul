@@ -727,6 +727,11 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
     let (qt, id) = (qt.clone(), id.to_string());
     std::thread::spawn(move || {
         let Some(installed) = state::load(&state::path()).get(&id).cloned().filter(|i| i.enabled) else { return };
+        // One sign-in page at a time: another extension's is open.
+        if page_shown() {
+            crate::backend::set_status(&qt, say("extension-sign-in-busy", &[]));
+            return;
+        }
         if !start(&id) {
             return;
         }
@@ -848,24 +853,51 @@ fn ran_meanwhile(seen: i64, now_recorded: i64) -> bool {
 
 // ---------------------------------------------------------------- the sign-in page
 
-/// The sign-in page waited for: where its answer goes, and what it watches for.
-static PAGE: Mutex<Option<(std::sync::mpsc::Sender<Option<String>>, String)>> = Mutex::new(None);
+/// A sign-in page waited for: its own slot (never cleared by another's end),
+/// where its answer goes, and what it watches for.
+struct Page {
+    slot: u64,
+    said: std::sync::mpsc::Sender<Option<String>>,
+    watch: String,
+}
+
+/// The sign-in page shown now: one at a time (the window has room for one).
+static PAGE: Mutex<Option<Page>> = Mutex::new(None);
+static SLOTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Whether a sign-in page is shown now.
+fn page_shown() -> bool {
+    PAGE.lock().map(|p| p.is_some()).unwrap_or(false)
+}
 
 /// A sign-in page shown by the window (a computer's SignInWindow.qml, a
-/// phone's SignIn.java), its answer waited for here, `page.wait` at most.
+/// phone's SignIn.java), its answer waited for here,
+/// `page.wait` at most. Refused while another extension's page is shown:
+/// each page has its own slot, and its end clears its own alone.
 fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'static str> {
     let (said, answer) = std::sync::mpsc::channel();
-    if let Ok(mut waiting) = PAGE.lock() {
-        *waiting = Some((said, page.watch.clone()));
+    let slot = SLOTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    {
+        let Ok(mut waiting) = PAGE.lock() else { return Err("not-now") };
+        if waiting.is_some() {
+            return Err("not-now");
+        }
+        *waiting = Some(Page { slot, said, watch: page.watch.clone() });
     }
-    let asked = json!({ "open": page.open, "watch": page.watch, "host": page.host }).to_string();
+    let clear = || {
+        if let Ok(mut waiting) = PAGE.lock()
+            && waiting.as_ref().is_some_and(|p| p.slot == slot)
+        {
+            *waiting = None;
+        }
+    };
+    // The screen's words in Sioul's language, not the phone's.
+    let asked = json!({ "open": page.open, "watch": page.watch, "host": page.host, "french": french() }).to_string();
     #[cfg(target_os = "android")]
     {
         let _ = qt;
         if crate::steps::java("sign-in-open", &asked)["asked"] != true {
-            if let Ok(mut waiting) = PAGE.lock() {
-                *waiting = None;
-            }
+            clear();
             return Err("not-now");
         }
     }
@@ -874,9 +906,7 @@ fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'stati
         let _ = qt.queue(move |mut sioul| sioul.as_mut().set_sign_in_page(QString::from(&asked)));
     }
     let returned = answer.recv_timeout(page.wait).unwrap_or(None);
-    if let Ok(mut waiting) = PAGE.lock() {
-        *waiting = None;
-    }
+    clear();
     #[cfg(target_os = "android")]
     crate::steps::java("sign-in-close", "{}");
     #[cfg(not(target_os = "android"))]
@@ -886,12 +916,19 @@ fn show_page(qt: &QtThread, page: &SignInPage) -> Result<Option<String>, &'stati
     Ok(returned)
 }
 
+/// Whether `address` is the address watched for: it begins with `watch`, and
+/// what follows ends its scheme and host (nothing, a path, a query, a
+/// fragment), as SignInSite.qml and SignIn.java check it.
+fn returns_to(address: &str, watch: &str) -> bool {
+    !watch.is_empty() && address.strip_prefix(watch).is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
+}
+
 /// The page's word: the address it returned to, or "" when the person
-/// closed it. Only an address that begins with what was watched for is given back.
+/// closed it. Only the address watched for is given back.
 pub(crate) fn returned(address: &str) {
     let waiting = PAGE.lock().ok().and_then(|mut w| w.take());
-    if let Some((said, watch)) = waiting {
-        let _ = said.send((!address.is_empty() && address.starts_with(&watch)).then(|| address.to_string()));
+    if let Some(page) = waiting {
+        let _ = page.said.send(returns_to(address, &page.watch).then(|| address.to_string()));
     }
 }
 
@@ -1056,15 +1093,25 @@ mod tests {
 
     #[test]
     fn a_sign_in_page_gives_back_only_what_it_watched_for() {
+        let page = |said| Some(Page { slot: 0, said, watch: "app://cb".into() });
         let (said, answer) = std::sync::mpsc::channel();
-        *PAGE.lock().unwrap() = Some((said, "app://cb".into()));
+        *PAGE.lock().unwrap() = page(said);
         returned("https://elsewhere.example.org/?code=x");
         assert_eq!(answer.recv().unwrap(), None);
+        // D3: what begins alike but names another host is not the address watched for.
         let (said, answer) = std::sync::mpsc::channel();
-        *PAGE.lock().unwrap() = Some((said, "app://cb".into()));
+        *PAGE.lock().unwrap() = page(said);
+        returned("app://cb.other.example/?code=x");
+        assert_eq!(answer.recv().unwrap(), None);
+        let (said, answer) = std::sync::mpsc::channel();
+        *PAGE.lock().unwrap() = page(said);
         returned("app://cb?code=x");
         assert_eq!(answer.recv().unwrap().as_deref(), Some("app://cb?code=x"));
         returned("app://cb?code=again");
         assert!(PAGE.lock().unwrap().is_none(), "once");
+        for (address, watched) in [("app://cb", true), ("app://cb/x", true), ("app://cb#y", true), ("app://cbx", false), ("app://cb-x?code=1", false), ("app://c", false)] {
+            assert_eq!(returns_to(address, "app://cb"), watched, "{address}");
+        }
+        assert!(!returns_to("app://cb", ""), "nothing watched, nothing given back");
     }
 }

@@ -11,6 +11,13 @@
 // the page is covered and its name is "…". A load that failed stays covered
 // (the page drawn may be the old one or an error page); one stopped leaves
 // the old page, and its name, as they were.
+//
+// The name is said in its ASCII form (`xn--…` for a label written in other
+// letters: Qt prints an internationalized name in Unicode, where a look-alike
+// of a platform's name would read as the real one), and the window cuts it on
+// the left, so that its end, the registrable part, stays in sight. The
+// address watched for counts only from the main frame, and only when what
+// follows it ends its scheme and host (`watched`).
 
 pragma ComponentBehavior: Bound
 
@@ -30,10 +37,72 @@ QtObject {
     // What is said above the page.
     readonly property string shown: site.covered ? "…" : site.host
 
-    // The host of an address, with its port when it names one: no scheme, no user, lower case.
+    // The host of an address, with its port when it names one: no scheme, no
+    // user, lower case, each label in ASCII.
     function hostOf(address) {
         const rest = String(address).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-        return rest.split(/[\/?#]/)[0].replace(/^.*@/, "").toLowerCase()
+        const authority = rest.split(/[\/?#]/)[0].replace(/^.*@/, "").toLowerCase()
+        const colon = authority.lastIndexOf(":")
+        const port = colon >= 0 && /^:[0-9]*$/.test(authority.slice(colon)) ? authority.slice(colon) : ""
+        const name = authority.slice(0, authority.length - port.length)
+        return name.split(".").map(label => /^[\x00-\x7f]*$/.test(label) ? label : "xn--" + site.punycode(label)).join(".") + port
+    }
+
+    // A label in Punycode (RFC 3492, section 6.3), as a name's ASCII form writes it after "xn--".
+    function punycode(label) {
+        const base = 36, tMin = 1, tMax = 26
+        const codes = Array.from(label).map(c => c.codePointAt(0))
+        const digit = d => String.fromCharCode(d < 26 ? d + 97 : d + 22)
+        const adapt = (delta, points, first) => {
+            delta = first ? Math.floor(delta / 700) : Math.floor(delta / 2)
+            delta += Math.floor(delta / points)
+            let k = 0
+            while (delta > ((base - tMin) * tMax) / 2) {
+                delta = Math.floor(delta / (base - tMin))
+                k += base
+            }
+            return k + Math.floor(((base - tMin + 1) * delta) / (delta + 38))
+        }
+        let out = codes.filter(c => c < 0x80).map(c => String.fromCharCode(c)).join("")
+        const basic = out.length
+        if (basic > 0)
+            out += "-"
+        let handled = basic, n = 128, delta = 0, bias = 72
+        while (handled < codes.length) {
+            const m = Math.min(...codes.filter(c => c >= n))
+            delta += (m - n) * (handled + 1)
+            n = m
+            for (const c of codes) {
+                if (c < n)
+                    delta++
+                if (c !== n)
+                    continue
+                let q = delta
+                for (let k = base; ; k += base) {
+                    const t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias)
+                    if (q < t)
+                        break
+                    out += digit(t + ((q - t) % (base - t)))
+                    q = Math.floor((q - t) / (base - t))
+                }
+                out += digit(q)
+                bias = adapt(delta, handled + 1, handled === basic)
+                delta = 0
+                handled++
+            }
+            delta++
+            n++
+        }
+        return out
+    }
+
+    // Whether `address` is the one watched for: it begins with `watch`, and
+    // what follows ends its scheme and host (nothing, a path, a query, a fragment).
+    function watched(address, watch) {
+        const text = String(address)
+        if (!watch || !text.startsWith(watch))
+            return false
+        return text.length === watch.length || "/?#".includes(text.charAt(watch.length))
     }
 
     // A load of the main frame: "started", "succeeded", "failed" or "stopped", at `address`.

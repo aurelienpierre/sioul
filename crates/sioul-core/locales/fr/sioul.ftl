@@ -3845,6 +3845,7 @@ extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas pu
 extension-updated = { $name } est maintenant en version { $version }.
 extension-signed-in = Connexion faite. { $name } apporte son agenda.
 extension-sign-in-closed = La page de connexion de { $name } a été fermée.
+extension-sign-in-busy = Une autre page de connexion est ouverte : terminez-la ou fermez-la d’abord.
 extension-problem-sign-in = { $name } vous demande de vous reconnecter.
 extension-problem-unreachable = { $name } n’a pas pu joindre son service ; elle réessaiera plus tard.
 extension-problem-refused = Le service de { $name } a refusé : un compte bloqué, ou un établissement qui ne le propose pas.
