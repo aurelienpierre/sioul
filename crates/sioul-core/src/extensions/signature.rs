@@ -69,14 +69,12 @@ pub const TEST_SEED: [u8; 32] = [
 #[cfg(any(test, feature = "test-hooks"))]
 const TEST_CREATED: u64 = 1_767_225_600;
 
-/// The key Sioul checks the manifest with: the publisher's in a release
-/// build, the tests' own in a test build (`test-hooks`, which the crates'
-/// tests turn on), whose mark is then in the program.
+/// The key Sioul checks the manifest with: the publisher's, always. No
+/// feature of a build changes it: a test passes its own key to the function
+/// it tests (`sioul_sync::extensions::read_manifest_with`), so that a program
+/// built after a test run (`test-hooks` unified into it) still trusts the
+/// publisher's key alone.
 pub fn signer() -> &'static Signer {
-    #[cfg(any(test, feature = "test-hooks"))]
-    if !std::hint::black_box(TEST_SIGNER.said).is_empty() {
-        return &TEST_SIGNER;
-    }
     &PUBLISHER
 }
 
@@ -178,10 +176,11 @@ mod tests {
     const NOW: u64 = 1_794_996_000;
 
     #[test]
-    fn both_keys_read_and_the_test_build_uses_the_tests_own() {
+    fn both_keys_read_and_every_build_trusts_the_publisher_s() {
         assert_eq!(key_of(&PUBLISHER).map(|k| k.fingerprint().to_hex()), Ok(PUBLISHER.fingerprint.to_string()));
         assert_eq!(key_of(&TEST_SIGNER).map(|k| k.fingerprint().to_hex()), Ok(TEST_SIGNER.fingerprint.to_string()));
-        assert_eq!(signer().fingerprint, TEST_SIGNER.fingerprint);
+        // S3: a test build too, whatever its features.
+        assert_eq!(signer().fingerprint, PUBLISHER.fingerprint);
         assert!(TEST_SIGNER.said.starts_with("SIOUL_TEST_"), "the mark tools/check-test-marks.sh finds");
         // The seed is the one its comment says.
         use sha2::Digest;

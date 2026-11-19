@@ -264,15 +264,18 @@ fn a_file_runs_only_with_the_hash_the_manifest_signed() {
     std::fs::write(&manifest_path, &manifest_text).unwrap();
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_794_996_000);
     let address = manifest_path.display().to_string();
+    let tests_key = &signature::TEST_SIGNER;
     // Unsigned, or signed by another key: refused.
-    assert!(read_manifest(&address, now).is_err());
+    assert!(read_manifest_with(&address, now, tests_key).is_err());
     let other = signature::test_signature_by(&[9; 32], manifest_text.as_bytes(), sequoia_openpgp::types::SignatureType::Binary, now - Duration::from_secs(60));
     std::fs::write(folder.join("manifest.toml.sig"), &other).unwrap();
-    assert!(read_manifest(&address, now).unwrap_err().contains("signed by another key"));
+    assert!(read_manifest_with(&address, now, tests_key).unwrap_err().contains("signed by another key"));
     // Signed with the tests' key: read, from a folder or a file:// address alike.
     let signed = signature::test_signature(manifest_text.as_bytes(), sequoia_openpgp::types::SignatureType::Binary, now - Duration::from_secs(60));
     std::fs::write(folder.join("manifest.toml.sig"), &signed).unwrap();
-    let manifest = read_manifest(&format!("file://{address}"), now).unwrap();
+    // S3: the product's own path trusts the publisher's key alone, in a test build too.
+    assert!(read_manifest(&address, now).unwrap_err().contains("signed by another key"));
+    let manifest = read_manifest_with(&format!("file://{address}"), now, tests_key).unwrap();
     assert_eq!(manifest.serial, 3);
     let offer = manifest.offers[0].clone();
     // Installed and run (the data folder is the tests' own: cargo-apart.sh's XDG folders).

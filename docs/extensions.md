@@ -189,7 +189,7 @@ sha256 = "<64 hexadecimal digits>"
 
 ## The signature: exactly what is checked
 
-Sioul holds one public key, compiled in: the primary key packet of the publisher's OpenPGP key (Ed25519, version 4) and its fingerprint, **nothing else of the certificate** (no user id, no subkey, no self-signature). A test build holds a key made for the tests instead; a release build holds the publisher's.
+Sioul holds one public key, compiled in: the primary key packet of the publisher's OpenPGP key (Ed25519, version 4) and its fingerprint, **nothing else of the certificate** (no user id, no subkey, no self-signature). Every build trusts that key alone: no feature of a build changes it, so a program built after a test run trusts the same key. The tests pass a key made for them to the function they test (`read_manifest_with`); that key exists in test builds only, marked so that `tools/check-test-marks.sh` refuses a program holding it.
 
 The manifest is accepted only when:
 

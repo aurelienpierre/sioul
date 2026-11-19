@@ -203,12 +203,19 @@ fn fetch(address: &str, most: usize) -> Result<Vec<u8>, String> {
 }
 
 /// The manifest at `address` and its signature beside it (`.sig`), read
-/// only when the signature holds with the key compiled in. The serial is the
-/// caller's to check against what this device accepted (`state::State::accept_serial`).
+/// only when the signature holds with the publisher's key compiled in. The
+/// serial is the caller's to check against what this device accepted
+/// (`state::State::accept`).
 pub fn read_manifest(address: &str, now: SystemTime) -> Result<Manifest, String> {
+    read_manifest_with(address, now, signature::signer())
+}
+
+/// The same with `signer`'s key: the tests pass their own; the product's
+/// paths call `read_manifest`, which trusts the publisher's alone.
+pub fn read_manifest_with(address: &str, now: SystemTime, signer: &signature::Signer) -> Result<Manifest, String> {
     let text = fetch(address, MANIFEST_BYTES)?;
     let sig = fetch(&format!("{address}.sig"), SIGNATURE_BYTES)?;
-    signature::verify(&text, &sig, signature::signer(), now).map_err(|refusal| format!("the manifest's signature: {refusal}"))?;
+    signature::verify(&text, &sig, signer, now).map_err(|refusal| format!("the manifest's signature: {refusal}"))?;
     let text = std::str::from_utf8(&text).map_err(|_| "the manifest is not UTF-8".to_string())?;
     manifest::parse(text)
 }
