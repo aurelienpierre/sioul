@@ -191,6 +191,16 @@ SafeDialog {
                     }
                 }
             }
+            // What stays under papers/ and letters/: no list of Sioul's names it (a note, a scan not read yet).
+            Label {
+                objectName: "storageMoveLeft"
+                visible: move.view.moved !== true && (move.view.left || []).length > 0
+                Layout.fillWidth: true
+                text: move.sioul.textWith("storage-move-left", "files", (move.view.left || []).join(", "))
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                color: move.theme.muted
+            }
             Label {
                 objectName: "storageMoveNotes"
                 visible: move.view.moved !== true

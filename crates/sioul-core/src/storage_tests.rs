@@ -144,7 +144,7 @@ fn a_move_copies_checks_keeps_names_and_switches() {
     let stand = stand("whole");
     let before = tree(&stand.folders.notes);
     let moved = move_now(&stand.folders, NOW, || Ok(())).unwrap();
-    assert_eq!((moved.lists, moved.papers, moved.letters), (10, 3, 2), "{moved:?}");
+    assert_eq!((moved.lists, moved.papers, moved.letters), (10, 3, 1), "{moved:?}");
     assert_eq!(moved.named, 4, "passport, card, the contract's and the letter's paths");
     assert!(Storage::read(&stand.folders.state).is_moved());
     assert_eq!(Storage::read(&stand.folders.state).from_path().unwrap(), stand.folders.notes);
@@ -155,8 +155,10 @@ fn a_move_copies_checks_keeps_names_and_switches() {
     let kept = stand.folders.kept.join(day_of(NOW));
     assert_eq!(std::fs::read(kept.join("papers/ids/Card.png")).unwrap(), std::fs::read(stand.folders.notes.join("papers/ids/Card.png")).unwrap());
     assert_eq!(std::fs::read(kept.join("letters/letters.toml")).unwrap(), std::fs::read(stand.folders.notes.join("letters/letters.toml")).unwrap());
-    // The letters' inbox moved with its scan waiting; no lock, no hidden file copied.
-    assert!(stand.folders.letters.join("inbox/scan-0001.pdf").is_file());
+    // A scan waiting in the inbox, which no letter names yet: left where it is, said; no lock,
+    // no hidden file copied.
+    assert!(!stand.folders.letters.join("inbox/scan-0001.pdf").exists());
+    assert!(stand.folders.notes.join("letters/inbox/scan-0001.pdf").is_file());
     assert!(!tree(&stand.folders.records).keys().any(|k| k.split('/').any(|p| p.starts_with('.'))), "{:?}", tree(&stand.folders.records).keys().collect::<Vec<_>>());
     // Moved already: nothing done again.
     assert_eq!(move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_err().code, "moved-already");
@@ -198,10 +200,10 @@ fn each_point_stopped_then_run_again_finishes_once() {
         let papers: Vec<String> = tree(&stand.folders.papers).into_keys().collect();
         assert_eq!(papers, ["Passport.pdf", "Power.pdf", "ids/Card.png"], "{k}: once each, nothing beside");
         let letters: Vec<String> = tree(&stand.folders.letters).into_keys().collect();
-        assert_eq!(letters, ["2026/2026-10-12 caf other.pdf", "inbox/scan-0001.pdf"], "{k}");
+        assert_eq!(letters, ["2026/2026-10-12 caf other.pdf"], "{k}");
         let records: Vec<String> = tree(&stand.folders.records).into_keys().collect();
         assert_eq!(records.len(), 10, "{k}: {records:?}");
-        assert_eq!(Journal::read(&stand.folders.state).unwrap().files.len(), 15, "{k}");
+        assert_eq!(Journal::read(&stand.folders.state).unwrap().files.len(), 14, "{k}");
         assert_eq!(tree(&stand.folders.notes), before, "{k}");
         k += 1;
     }
@@ -271,6 +273,11 @@ fn a_link_is_refused_calmly() {
     {
         let stand = stand("link");
         std::os::unix::fs::symlink(stand.base.join("elsewhere").join("Tax-notice.pdf"), stand.folders.notes.join("papers").join("Linked.pdf")).unwrap();
+        // No record names it: it stays where it is, said (review S4).
+        assert!(survey(&stand.folders).unwrap().left.contains(&"papers/Linked.pdf".to_string()));
+        // A paper names it: refused, nothing moved.
+        let list = stand.folders.notes.join(crate::papers::MANIFEST);
+        std::fs::write(&list, format!("{}\n[[paper]]\nid = \"linked\"\nkind = \"other\"\ntitle = \"Linked\"\nfile = \"papers/Linked.pdf\"\n", text(&list))).unwrap();
         let fault = move_now(&stand.folders, NOW, || Ok(())).unwrap_err();
         assert_eq!(fault.code, "link");
         assert!(!Storage::read(&stand.folders.state).is_moved());
@@ -351,13 +358,13 @@ fn clean_takes_out_only_what_still_holds_the_bytes_copied() {
     assert!(late.is_file(), "a change made there after the move stays");
     assert_eq!(Storage::read(&stand.folders.state).cleaned, 0, "not said done while one stays");
     let left: Vec<String> = tree(&stand.folders.notes).into_keys().collect();
-    assert_eq!(left, [".sioul-budgets.toml.lock", "admin/lease.md", "admin/taxes-2025.md", crate::budget::LEDGER], "the notes alone, and the file changed since with its lock");
-    assert!(!stand.folders.notes.join("papers").exists() && !stand.folders.notes.join("letters").exists());
+    assert_eq!(left, [".sioul-budgets.toml.lock", "admin/lease.md", "admin/taxes-2025.md", "letters/inbox/scan-0001.pdf", crate::budget::LEDGER], "the notes alone, the scan no letter names, and the file changed since with its lock");
+    assert!(!stand.folders.notes.join("papers").exists());
     // Taken out by hand, then cleaned again: said done.
     std::fs::remove_file(&late).unwrap();
     assert!(clean(&stand.folders.state, NOW + 2 * 86_400).unwrap().changed.is_empty());
     assert_eq!(Storage::read(&stand.folders.state).cleaned, NOW + 2 * 86_400);
-    assert_eq!(tree(&stand.folders.notes).into_keys().collect::<Vec<_>>(), ["admin/lease.md", "admin/taxes-2025.md"], "its lock too, once the file is gone");
+    assert_eq!(tree(&stand.folders.notes).into_keys().collect::<Vec<_>>(), ["admin/lease.md", "admin/taxes-2025.md", "letters/inbox/scan-0001.pdf"], "its lock too, once the file is gone");
     // A moved device still finds everything.
     let places = places_of(&stand);
     let wallet = crate::papers::Wallet::load_at(&places).unwrap();
@@ -589,7 +596,7 @@ fn a_failure_takes_back_only_what_its_own_run_made() {
     assert_eq!(tree(&stand.folders.papers), papers);
     // The same files (the papers' list's copy has its paths named since: the same file still).
     assert_eq!(tree(&stand.folders.records).into_keys().collect::<Vec<_>>(), records.into_keys().collect::<Vec<_>>());
-    assert!(Journal::read(&stand.folders.state).is_some_and(|j| j.files.len() == 15), "still named, for the next try");
+    assert!(Journal::read(&stand.folders.state).is_some_and(|j| j.files.len() == 14), "still named, for the next try");
     // Then it goes, nothing copied twice.
     move_now(&stand.folders, NOW + 120, || Ok(())).unwrap();
     reads_moved(&stand);
@@ -798,4 +805,37 @@ fn a_file_that_came_during_the_copy_is_not_left_behind() {
     assert_eq!(wallet.get("late").unwrap().file, "Late.pdf");
     assert!(journal.files.iter().any(|e| e.from == "papers/Late.pdf" && e.made));
     assert!(check(&stand.folders, &journal).is_ok());
+}
+
+/// A note kept under `letters/` or `papers/`, a text at the top of
+/// `letters/` that no letter has for its id, a file no list names: none is
+/// moved, each left where it is and said; the take-out never touches them
+/// (review S4). A paper named by a bare name, as a device that moved writes
+/// it, is moved from `papers/`; a paper whose file is gone keeps its path.
+#[test]
+fn a_note_kept_under_letters_is_not_moved_out_of_the_notes_folder() {
+    let stand = stand("note-under-letters");
+    let notes = &stand.folders.notes;
+    std::fs::write(notes.join("letters").join("2026").join("reply-draft.md"), "# Reply\n").unwrap();
+    std::fs::write(notes.join("letters").join("todo.txt"), "call them\n").unwrap();
+    std::fs::write(notes.join("papers").join("Unlisted.pdf"), "%PDF of the person's").unwrap();
+    std::fs::write(notes.join("papers").join("Bare.pdf"), "%PDF bare").unwrap();
+    let list = notes.join(crate::papers::MANIFEST);
+    std::fs::write(&list, format!("{}\n[[paper]]\nid = \"bare\"\nkind = \"other\"\ntitle = \"Bare\"\nfile = \"Bare.pdf\"\n\n[[paper]]\nid = \"gone\"\nkind = \"other\"\ntitle = \"Gone\"\nfile = \"papers/Gone.pdf\"\n", text(&list))).unwrap();
+    let survey = survey(&stand.folders).unwrap();
+    let planned: Vec<&str> = survey.entries.iter().map(|e| e.from.as_str()).collect();
+    for kept in ["letters/2026/reply-draft.md", "letters/todo.txt", "papers/Unlisted.pdf", "letters/inbox/scan-0001.pdf"] {
+        assert!(!planned.contains(&kept), "{kept}: {planned:?}");
+        assert!(survey.left.contains(&kept.to_string()), "{kept}: {:?}", survey.left);
+    }
+    assert!(planned.contains(&"papers/Bare.pdf") && planned.contains(&"letters/2026-10-12-caf.txt"), "{planned:?}");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    let wallet = crate::papers::Wallet::load_at(&places_of(&stand)).unwrap();
+    assert_eq!(wallet.get("bare").unwrap().file, "Bare.pdf");
+    assert_eq!(wallet.get("gone").unwrap().file, "papers/Gone.pdf", "not moved: its path as it was");
+    assert!(clean(&stand.folders.state, NOW + 86_400).unwrap().whole());
+    for kept in ["letters/2026/reply-draft.md", "letters/todo.txt", "papers/Unlisted.pdf"] {
+        assert!(notes.join(kept).is_file(), "{kept} stays in the notes folder");
+    }
+    assert!(!stand.folders.records.join("letters").join("todo.txt").exists());
 }

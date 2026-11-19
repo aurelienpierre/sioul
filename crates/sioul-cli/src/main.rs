@@ -695,8 +695,12 @@ fn move_lists_command(s: &Session, folders: sioul_core::storage::Folders, plan: 
     let said = |fault: storage::Fault| format!("{}: {}", s.tr.text(&format!("storage-{}", fault.code), None), fault.what);
     if plan {
         storage::check_folders(&folders).map_err(said)?;
-        for entry in storage::plan(&folders).map_err(said)? {
+        let survey = storage::survey(&folders).map_err(said)?;
+        for entry in &survey.entries {
             println!("{}  →  {}", one_line(&entry.from), one_line(&entry.to));
+        }
+        for file in &survey.left {
+            println!("left in the notes folder, no list naming it: {}", one_line(file));
         }
         return Ok(());
     }

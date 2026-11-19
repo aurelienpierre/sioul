@@ -107,6 +107,9 @@ Item {
             compare(named("storageMoveNotes").text, "storage-move-notes /stand-in/Notes")
             verify(!named("storageMoveWaiting").visible && !named("storageMoveNoSharing").visible && !named("storageMoveCarry").visible)
             verify(named("storageMoveNow").visible && named("storageMoveNow").enabled)
+            verify(!named("storageMoveLeft").visible, "nothing left aside")
+            mock.storageMove = root.view({ left: ["letters/2026/reply.md", "papers/Mine.pdf"] })
+            compare(named("storageMoveLeft").text, "storage-move-left letters/2026/reply.md, papers/Mine.pdf")
         }
 
         function test_move_now_asks_the_move_with_the_folders_chosen() {

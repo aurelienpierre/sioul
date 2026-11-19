@@ -204,6 +204,8 @@ struct View {
     notes_state: String,
     papers: String,
     letters: String,
+    /// What stays in the notes folder under `papers/` and `letters/`, no list of Sioul's naming it.
+    left: Vec<String>,
     /// What would move: lists (with the letters' list and texts), papers' files, letters' scans, bytes.
     lists: usize,
     papers_files: usize,
@@ -266,9 +268,10 @@ pub(crate) fn view_json() -> String {
     if !view.moved
         && notes_state == "ready"
         && let Some(notes) = &notes
-        && let Ok(plan) = storage::plan(&Folders::here(notes, &papers, &letters))
+        && let Ok(survey) = storage::survey(&Folders::here(notes, &papers, &letters))
     {
-        for entry in &plan {
+        view.left.clone_from(&survey.left);
+        for entry in &survey.entries {
             match entry.kind {
                 Some(storage::Kind::Paper) => view.papers_files += 1,
                 Some(storage::Kind::Letter) => view.letters_files += 1,

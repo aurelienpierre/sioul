@@ -477,15 +477,36 @@ fn list_names() -> Vec<&'static str> {
     ]
 }
 
-/// What the notes folder holds of Sioul's, and where each goes. A link
-/// among them is refused: its target could be anywhere, and a copy of it
-/// would not be the file a record names.
+/// What the notes folder holds of Sioul's to move, and where each goes
+/// (`survey`'s entries).
 pub fn plan(folders: &Folders) -> Result<Vec<Entry>, Fault> {
+    Ok(survey(folders)?.entries)
+}
+
+/// What a move would do with the notes folder: what it moves, and what it
+/// leaves where it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Survey {
+    pub entries: Vec<Entry>,
+    /// Files under `papers/` and `letters/` that no list of Sioul's names (a
+    /// note kept there, a scan not read yet, a file dropped there by hand):
+    /// left in the notes folder, said in the window, never taken out.
+    pub left: Vec<String>,
+}
+
+/// What the notes folder holds of Sioul's, and where each goes: only what
+/// Sioul's lists name (review S4). The lists at its root; the papers' list's
+/// files under `papers/`; the letters' list, each letter's text `<id>.txt`
+/// and each letter's scan under `letters/`. Anything else under `papers/`
+/// and `letters/` stays (`Survey::left`); no note is ever moved. A link on
+/// the way to a file to move is refused: its target could be anywhere, and
+/// a copy of it would not be the file a record names.
+pub fn survey(folders: &Folders) -> Result<Survey, Fault> {
     let notes = &folders.notes;
     let mut planned = Vec::new();
     // No notes folder set on this device: nothing to move, the lists begin in the records.
     if notes.as_os_str().is_empty() {
-        return Ok(planned);
+        return Ok(Survey::default());
     }
     if !notes.is_absolute() {
         return Err(Fault::new("folder-not-absolute", notes.display()));
@@ -497,13 +518,7 @@ pub fn plan(folders: &Folders) -> Result<Vec<Entry>, Fault> {
     if listing.next().is_none() {
         return Err(Fault::new("notes-empty", notes.display()));
     }
-    let regular = |path: &Path| -> Result<bool, Fault> {
-        match std::fs::symlink_metadata(path) {
-            Ok(meta) if meta.file_type().is_symlink() => Err(Fault::new("link", path.display())),
-            Ok(meta) => Ok(meta.is_file()),
-            Err(_) => Ok(false),
-        }
-    };
+    let regular = |relative: &str| plain_below(notes, relative);
     let mut names: Vec<String> = list_names().into_iter().map(str::to_string).collect();
     // The copies `projects::rename_file` kept: `sioul-cases.toml.before-rename`, `-2`…
     if let Ok(dir) = std::fs::read_dir(notes) {
@@ -512,27 +527,111 @@ pub fn plan(folders: &Folders) -> Result<Vec<Entry>, Fault> {
         names.extend(kept);
     }
     for name in names {
-        if regular(&notes.join(&name))? {
+        if regular(&name)? {
             planned.push(Entry { from: name.clone(), to: folders.records.join(&name).display().to_string(), kind: Some(Kind::List), ..Entry::default() });
         }
     }
-    // The letters: the list and the texts at the top go to the records; the rest, its years and its inbox, to the letters' folder.
-    let letters = notes.join(OLD_LETTERS);
-    let mut found = Vec::new();
-    walk(&letters, &letters, &mut found)?;
-    for relative in found {
-        let top = !relative.contains('/');
-        let record = top && (relative == crate::letters::MANIFEST || relative.ends_with(".txt"));
-        let (to, kind) = if record { (folders.records.join(OLD_LETTERS).join(&relative), Kind::LetterRecord) } else { (join(&folders.letters, &relative), Kind::Letter) };
-        planned.push(Entry { from: format!("{OLD_LETTERS}/{relative}"), to: to.display().to_string(), kind: Some(kind), ..Entry::default() });
+    let add = |planned: &mut Vec<Entry>, from: String, to: PathBuf, kind: Kind| {
+        if !planned.iter().any(|e: &Entry| e.from == from) {
+            planned.push(Entry { from, to: to.display().to_string(), kind: Some(kind), ..Entry::default() });
+        }
+    };
+    // The papers the papers' list names under `papers/`, each to the papers' folder by its path there.
+    if regular(crate::papers::MANIFEST)? {
+        for item in items_of(&notes.join(crate::papers::MANIFEST), "paper")? {
+            let Some(from) = item.get("file").and_then(toml::Value::as_str).and_then(|file| old_place(file, notes, OLD_PAPERS)) else { continue };
+            if regular(&from)? {
+                let rest = from[OLD_PAPERS.len() + 1..].to_string();
+                add(&mut planned, from, join(&folders.papers, &rest), Kind::Paper);
+            }
+        }
     }
-    let papers = notes.join(OLD_PAPERS);
-    let mut found = Vec::new();
-    walk(&papers, &papers, &mut found)?;
-    for relative in found {
-        planned.push(Entry { from: format!("{OLD_PAPERS}/{relative}"), to: join(&folders.papers, &relative).display().to_string(), kind: Some(Kind::Paper), ..Entry::default() });
+    // The letters' list and each letter's text to Sioul's records; each letter's scan under
+    // `letters/` (its years, its inbox) to the letters' folder; a scan linked where it is stays.
+    let list = format!("{OLD_LETTERS}/{}", crate::letters::MANIFEST);
+    if regular(&list)? {
+        add(&mut planned, list.clone(), folders.records.join(OLD_LETTERS).join(crate::letters::MANIFEST), Kind::LetterRecord);
+        for item in items_of(&notes.join(&list), "letter")? {
+            if let Some(id) = item.get("id").and_then(toml::Value::as_str).filter(|id| !id.is_empty() && !id.starts_with('.') && !id.contains(['/', '\\'])) {
+                let text = format!("{OLD_LETTERS}/{id}.txt");
+                if regular(&text)? {
+                    add(&mut planned, text, folders.records.join(OLD_LETTERS).join(format!("{id}.txt")), Kind::LetterRecord);
+                }
+            }
+            if item.get("linked").and_then(toml::Value::as_bool).unwrap_or(false) {
+                continue;
+            }
+            let Some(from) = item.get("file").and_then(toml::Value::as_str).and_then(|file| old_place(file, notes, OLD_LETTERS)) else { continue };
+            if regular(&from)? {
+                let rest = from[OLD_LETTERS.len() + 1..].to_string();
+                add(&mut planned, from, join(&folders.letters, &rest), Kind::Letter);
+            }
+        }
     }
-    Ok(planned)
+    // Whatever else is under `papers/` and `letters/`: left where it is, said.
+    let mut left = Vec::new();
+    for old in [OLD_PAPERS, OLD_LETTERS] {
+        let root = notes.join(old);
+        if !std::fs::symlink_metadata(&root).is_ok_and(|meta| meta.is_dir()) {
+            continue;
+        }
+        let mut found = Vec::new();
+        below(&root, &root, &mut found)?;
+        left.extend(found.into_iter().map(|relative| format!("{old}/{relative}")).filter(|from| !planned.iter().any(|e| e.from == *from)));
+    }
+    Ok(Survey { entries: planned, left })
+}
+
+/// The elements of a list's array of tables (`[[paper]]`, `[[letter]]`), read
+/// as plain TOML; a list that does not read refuses the move: what it names
+/// cannot be told.
+fn items_of(path: &Path, table: &str) -> Result<Vec<toml::Table>, Fault> {
+    let text = std::fs::read_to_string(path).map_err(|e| Fault::new("unreadable", format!("{}: {e}", path.display())))?;
+    let parsed: toml::Table = toml::from_str(&text).map_err(|e| Fault::new("list-unreadable", format!("{}: {e}", path.display())))?;
+    Ok(parsed.get(table).and_then(toml::Value::as_array).map(|items| items.iter().filter_map(toml::Value::as_table).cloned().collect()).unwrap_or_default())
+}
+
+/// Where a record's `file` is in the notes folder's `<old>/` (`papers/…`,
+/// `letters/…`), with `/`: relative under that name, absolute inside it
+/// (as the notes folder is spelled, or resolved), or a bare name, as a
+/// device that moved writes it, found there and not at the notes folder's
+/// root (`Docs::path_of`'s order). None: elsewhere, it does not move.
+fn old_place(file: &str, notes: &Path, old: &str) -> Option<String> {
+    let path = Path::new(file);
+    let rest = if path.is_absolute() {
+        let inside = |root: &Path| path.strip_prefix(root.join(old)).ok().map(|rest| rest.to_string_lossy().replace('\\', "/"));
+        inside(notes).or_else(|| inside(&resolved(notes)))?
+    } else if let Some(rest) = file.strip_prefix(&format!("{old}/")) {
+        rest.to_string()
+    } else if !join(notes, file).exists() && join(&notes.join(old), file).exists() {
+        file.to_string()
+    } else {
+        return None;
+    };
+    let parts: Vec<&str> = rest.split('/').filter(|part| !part.is_empty() && *part != ".").collect();
+    (!parts.is_empty() && !parts.contains(&"..")).then(|| format!("{old}/{}", parts.join("/")))
+}
+
+/// Every file below `dir` that is no hidden one, a link among them (never
+/// followed), by its path from `root` with `/`: what stays. A folder that
+/// does not list is never taken for an empty one.
+fn below(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
+    let read = std::fs::read_dir(dir).map_err(|e| Fault::new("unreadable", format!("{}: {e}", dir.display())))?;
+    let mut entries: Vec<_> = read.flatten().collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            below(root, &path, out)?;
+        } else {
+            out.push(path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
 }
 
 /// Every file below `dir`, by its path from `root` with `/`; hidden ones
@@ -997,6 +1096,8 @@ fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
 /// nothing but those paths, then renamed into place. Returns how many paths
 /// were named anew.
 fn name_paths(folders: &Folders, journal: &mut Journal) -> Result<usize, Fault> {
+    // Only the files the move copied (or kept, their sources gone since): a record whose file
+    // was not moved keeps its path as it is (review S5).
     let renamed: BTreeMap<String, String> = journal.files.iter().filter(|e| matches!(e.kind, Some(Kind::Paper | Kind::Letter))).map(|e| (e.from.clone(), e.to.clone())).collect();
     let mut named = 0;
     for (list, table, old, base) in [(crate::papers::MANIFEST.to_string(), "paper", OLD_PAPERS, &folders.papers), (format!("{OLD_LETTERS}/{}", crate::letters::MANIFEST), "letter", OLD_LETTERS, &folders.letters)] {
@@ -1036,22 +1137,14 @@ fn name_paths(folders: &Folders, journal: &mut Journal) -> Result<usize, Fault> 
     Ok(named)
 }
 
-/// A record's `file` named from its folder's new place, when it moves:
-/// relative under the old folder's name, or absolute under the notes
-/// folder's old folder; with the name the move gave the file when another
-/// was at its place. None: it stays as it is.
+/// A record's `file` named from its folder's new place, when the move
+/// copied that file there: read as the plan reads it (`old_place`), named
+/// by its copy's path in that folder. None: it was not moved, and stays as
+/// it is (review S5).
 fn named_from(file: &str, notes: &Path, old: &str, base: &Path, renamed: &BTreeMap<String, String>) -> Option<String> {
-    let path = Path::new(file);
-    let relative = if path.is_absolute() {
-        path.strip_prefix(notes.join(old)).ok().map(|rest| rest.to_string_lossy().replace('\\', "/"))?
-    } else {
-        file.strip_prefix(&format!("{old}/"))?.to_string()
-    };
-    let moved_to = renamed.get(&format!("{old}/{relative}")).map(PathBuf::from);
-    Some(match moved_to.as_ref().and_then(|to| to.strip_prefix(base).ok()) {
-        Some(rest) => rest.to_string_lossy().replace('\\', "/"),
-        None => relative,
-    })
+    let from = old_place(file, notes, old)?;
+    let to = PathBuf::from(renamed.get(&from)?);
+    to.strip_prefix(base).ok().map(|rest| rest.to_string_lossy().replace('\\', "/"))
 }
 
 /// Whether two texts of a list hold the same tables, the same values, but
