@@ -430,7 +430,7 @@ fn apply_once() {
 }
 
 /// What this device remembers of the notice saying why do-not-disturb holds
-/// while you are busy (`mirrors::said`, the notices said once).
+/// while you are busy (`mirrors::said_once`, the notices said once).
 const BUSY_TOLD: &str = "busy-turns-dnd-on";
 
 /// The first time a busy event or task turns do-not-disturb on on this
@@ -439,13 +439,13 @@ const BUSY_TOLD: &str = "busy-turns-dnd-on";
 /// (one that waits, held by the very do-not-disturb it explains, comes when
 /// it ends). A phone's notices are Java's: none there.
 fn first_busy_notice() {
-    if cfg!(target_os = "android") || crate::mirrors::said(BUSY_TOLD) {
+    if cfg!(target_os = "android") || crate::mirrors::said_once(BUSY_TOLD) {
         return;
     }
     use sioul_core::notice::{Kind, Notice, address};
     let notice = Notice::new(address::settings("attention.dnd"), Kind::Minor, tr().text("busy-dnd-first-title", None), tr().text("busy-dnd-first-body", None));
     let claim: crate::tell::Claim = Box::new(|| {
-        crate::mirrors::mark_said(BUSY_TOLD);
+        crate::mirrors::mark_said_once(BUSY_TOLD);
         true
     });
     crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
