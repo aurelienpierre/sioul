@@ -3714,6 +3714,13 @@ mod line_tests {
         phones::region_named("FR")
     }
 
+    /// The numbers the screening knows by kind, stood in: one automated
+    /// callers' root in a fiction range (01 99 00 7…), never a root ARCEP
+    /// gave to real machines (review of `phones`, L21).
+    fn numbers() -> screening::Numbers {
+        screening::Numbers { group: vec![screening::Group { kind: "automated".into(), prefixes: vec!["0199007".into()], source: "stand-in".into(), checked: "2026-01-01".into(), ..screening::Group::default() }] }
+    }
+
     fn at(text: &str) -> Zoned {
         format!("{text}[Europe/Paris]").parse().unwrap()
     }
@@ -3740,7 +3747,7 @@ mod line_tests {
     /// Fiction numbers: 01 99 00 00 01 safe, …02 a contact, …03 a contact in
     /// the group School, …04 restricted, …05 blocked, …06 Always through (a
     /// contact), …07 restricted and Always through; 01 99 00 55 55 nobody;
-    /// 01 62 00 00 01 an automated caller's root.
+    /// 01 99 00 70 01 an automated caller's (a stand-in root, `numbers`).
     fn senders() -> Senders {
         let cards = [card("sam", "01 99 00 00 01", &[]), card("fred", "01 99 00 00 02", &[]), card("teacher", "01 99 00 00 03", &["School"]), card("boss", "01 99 00 00 04", &[]), card("claire", "01 99 00 00 06", &["school"]), card("ann", "01 99 00 00 07", &[])];
         Senders {
@@ -3797,7 +3804,7 @@ mod line_tests {
                 asked.set(true);
                 self.busy.clone()
             };
-            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: screening::shipped(), from: &from, until: &until, busy: &busy, press: self.press.as_ref(), busy_is_dnd: self.busy_is_dnd, sleep_is_dnd: self.sleep_is_dnd, pauses_is_dnd: false };
+            let inputs = Inputs { made: 7, senders: &self.senders, attention: &self.attention, clock: &self.clock, layers: &self.layers, people: &self.people, expecting: self.expecting, screening: self.screening, numbers: &numbers(), from: &from, until: &until, busy: &busy, press: self.press.as_ref(), busy_is_dnd: self.busy_is_dnd, sleep_is_dnd: self.sleep_is_dnd, pauses_is_dnd: false };
             (build(&inputs, line), asked.get())
         }
 
@@ -3815,7 +3822,7 @@ mod line_tests {
                 always,
                 own: own_numbers,
                 expecting: self.expecting,
-                screening: Some(screening::TablePart::of(&self.screening, screening::shipped(), from.date())),
+                screening: Some(screening::TablePart::of(&self.screening, &numbers(), from.date())),
                 frames: frames_with(&self.attention, &self.clock, &self.layers, &from, &until, &own_rows),
             })
         }
@@ -3891,7 +3898,7 @@ mod line_tests {
         let (pro, asked) = world.build(Some(&line(Profile::Professional)));
         assert!(pro.line && asked && pro.v == VERSION);
         assert!(rings(&pro, unknown, "10:00") && rings(&pro, "", "10:00"));
-        let automated = decide(Some(&pro), &call("01 62 00 00 01", "10:00"));
+        let automated = decide(Some(&pro), &call("01 99 00 70 01", "10:00"));
         assert_eq!((automated.refuse, automated.why), (true, "automated"), "commercial callers never");
         for time in ["18:00", "23:00", "07:30"] {
             assert!(!rings(&pro, unknown, time) && !rings(&pro, friend, time) && !rings(&pro, safe, time) && !rings(&pro, "", time), "outside: {time}");
@@ -3939,7 +3946,7 @@ mod line_tests {
         let dnd = World { layers: Layers { dnd: Some((s("2026-11-16T00:00"), None)), ..Layers::default() }, ..World::new() };
         let (android, asked) = dnd.build(Some(&line(Profile::AsAndroid)));
         assert!(!asked, "nothing is screened: no busy stretch asked");
-        for number in [unknown, friend, "", "01 62 00 00 01"] {
+        for number in [unknown, friend, "", "01 99 00 70 01"] {
             assert!(rings(&android, number, "23:00") && rings(&android, number, "10:00"), "{number}");
         }
         assert!(!rings(&android, "01 99 00 00 05", "10:00"), "the blocked never ring");
@@ -3986,7 +3993,7 @@ mod line_tests {
         let expecting = World { expecting: Some(Through { pressed: 1, on: true, until: 0 }), ..World::new() };
         let (table, _) = expecting.build(Some(&line(Profile::Professional)));
         assert_eq!(decide(Some(&table), &call(unknown, "23:00")).why, "expecting");
-        assert!(decide(Some(&table), &call("01 62 00 00 01", "23:00")).refuse, "never an automated caller");
+        assert!(decide(Some(&table), &call("01 99 00 70 01", "23:00")).refuse, "never an automated caller");
         // Busy over the night: the busy column.
         let mut night_busy = line(Profile::Personal);
         night_busy.grid.fixed[1][3] = Cell::Rings;
@@ -3998,7 +4005,7 @@ mod line_tests {
         let mut open_line = line(Profile::Professional);
         open_line.grid.switches.commercial = false;
         let (table, _) = World::new().build(Some(&open_line));
-        assert!(rings(&table, "01 62 00 00 01", "10:00") && !rings(&table, "01 62 00 00 01", "18:00"));
+        assert!(rings(&table, "01 99 00 70 01", "10:00") && !rings(&table, "01 99 00 70 01", "18:00"));
         // Numbers called lately: as your contacts, or as nobody known once the switch is off.
         let lately = Incoming { called: ms("2026-11-15T12:00"), ..call(unknown, "18:00") };
         let (table, _) = World::new().build(Some(&line(Profile::Personal)));
