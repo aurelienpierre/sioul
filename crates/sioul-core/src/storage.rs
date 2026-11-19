@@ -1104,7 +1104,15 @@ fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
         made_dirs(&parent).map_err(fail)?;
         let _ = std::fs::remove_file(&to);
         std::fs::copy(&from, &to).map_err(fail)?;
-        std::fs::File::open(&to).and_then(|file| file.sync_all()).map_err(fail)?;
+        // Flushed through a handle that may write: Windows refuses to flush a file opened
+        // for reading alone ("Access is denied"), and the dated copy then failed there
+        // at every move. A copy that only reads (its source did) is opened as it can be;
+        // where that cannot flush, its bytes are still compared with the source just below.
+        let flushed = std::fs::OpenOptions::new().write(true).open(&to).or_else(|_| std::fs::File::open(&to)).and_then(|file| file.sync_all());
+        #[cfg(unix)]
+        flushed.map_err(fail)?;
+        #[cfg(not(unix))]
+        let _ = flushed;
         sync_dir(&parent);
         entry.kept_this_run = true;
         if same_file(&from, &to) || !same_bytes(&from, &to).map_err(fail)? {
