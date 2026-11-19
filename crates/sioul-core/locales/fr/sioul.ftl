@@ -3851,6 +3851,7 @@ extension-problem-refused = Le service de { $name } a refusé : un compte bloq
 extension-problem-changed = Le service de { $name } ne répond plus comme prévu : une mise à jour de l’extension est nécessaire.
 extension-problem-door = { $name } a apporté ses agendas, mais ce Sioul ne les garde pas encore.
 extension-problem-keyring = { $name } n’a pas pu joindre le trousseau.
+extension-problem-record = { $name } a tourné, mais Sioul n’a pas pu le noter sur cet appareil (un disque plein, ou un dossier où il ne peut pas écrire) ; elle attend trois heures avant de tourner à nouveau.
 extension-problem-other = { $name } a rencontré un problème ; son journal sur cet appareil en dit plus.
 extension-stopped-time = { $name } s’est arrêtée : elle a pris trop de temps.
 extension-stopped-memory = { $name } s’est arrêtée : elle demandait trop de mémoire.

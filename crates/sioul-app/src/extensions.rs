@@ -53,6 +53,10 @@ static LISTED: Mutex<Option<Listed>> = Mutex::new(None);
 static RUNNING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// The extensions refreshed since this process started ("when Sioul starts").
 static STARTED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+/// When each extension last ran in this process, whether or not its record
+/// could be written: a record that cannot be written (a full disk) never
+/// makes it run again before three hours.
+static ATTEMPTED: Mutex<BTreeMap<String, i64>> = Mutex::new(BTreeMap::new());
 /// The manifest being read.
 static READING: Mutex<bool> = Mutex::new(false);
 /// When the window's minute last tried to read the manifest.
@@ -156,6 +160,7 @@ fn problem_line(word: &str, name: &str) -> String {
         "stopped-unread" => "extension-stopped-unread",
         "door" => "extension-problem-door",
         "keyring" => "extension-problem-keyring",
+        "record" => "extension-problem-record",
         _ => "extension-problem-other",
     };
     say(id, &[("name", name.to_string())])
@@ -502,6 +507,7 @@ pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
         started.insert(id.to_string());
     }
     let fetched = now();
+    note_attempt(id, fetched);
     let (outcome, _) = store::run(&installed.offer, Call::Refresh, french(), Real::new(id, None));
     keep_log(id, "refresh", &outcome);
     let mut brought: Option<Vec<Brought>> = None;
@@ -531,7 +537,7 @@ pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
         },
     };
     let signed_out = problem.as_deref() == Some(ProblemKind::SignIn.word());
-    let _ = state::change(&state::path(), |s| {
+    let noted = state::change(&state::path(), |s| {
         if let Some(i) = s.get_mut(id) {
             i.last_run = fetched;
             if let Some(brought) = &brought
@@ -546,6 +552,16 @@ pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
             i.problem = problem.clone();
         }
     });
+    // Not noted (a full disk, a folder read only): the run waits three hours
+    // all the same (`ATTEMPTED`), and the problem is said.
+    let problem = match noted {
+        Ok(()) => problem,
+        Err(why) => {
+            eprintln!("sioul: extensions: {id}: its record: {why}");
+            let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: this run could not be noted on this device; the next one waits three hours", jiff::Timestamp::now())]);
+            Some("record".to_string())
+        }
+    };
     end(id);
     if let Some(qt) = qt {
         if let Some(problem) = &problem {
@@ -553,6 +569,17 @@ pub(crate) fn refresh(qt: Option<&QtThread>, id: &str) {
         }
         show(qt);
     }
+}
+
+/// A run of `id` begun at `at`, kept in this process whatever its record says.
+fn note_attempt(id: &str, at: i64) {
+    if let Ok(mut attempted) = ATTEMPTED.lock() {
+        attempted.insert(id.to_string(), at);
+    }
+}
+
+fn attempted() -> BTreeMap<String, i64> {
+    ATTEMPTED.lock().map(|a| a.clone()).unwrap_or_default()
 }
 
 /// Sign in…: the extension's sign-in call, its page shown by the window; a
@@ -629,21 +656,25 @@ pub(crate) fn tick(qt: &QtThread) {
         read_list(Some(qt.clone()));
     }
     let started = STARTED.lock().map(|s| s.clone()).unwrap_or_default();
-    for installed in due(&state, now, &started) {
+    for installed in due(&state, now, &started, &attempted()) {
         let (qt, id) = (qt.clone(), installed);
         std::thread::spawn(move || refresh(Some(&qt), &id));
     }
 }
 
 /// The extensions due now: enabled here, signed in when they sign in, not
-/// running, and not refreshed since Sioul started or for three hours.
-fn due(state: &State, now: i64, started: &BTreeSet<String>) -> Vec<String> {
+/// running, and not refreshed since Sioul started or for three hours. The
+/// last run is the later of the record's and of this process's `attempted`.
+fn due(state: &State, now: i64, started: &BTreeSet<String>, attempted: &BTreeMap<String, i64>) -> Vec<String> {
     let running = RUNNING.lock().map(|r| r.clone()).unwrap_or_default();
     state
         .extensions
         .iter()
         .filter(|i| i.enabled && (i.signed_in || i.offer.sign_in.is_none()) && !running.contains(&i.offer.id))
-        .filter(|i| !started.contains(&i.offer.id) || now - i.last_run >= EVERY)
+        .filter(|i| {
+            let last = i.last_run.max(attempted.get(&i.offer.id).copied().unwrap_or(0));
+            !started.contains(&i.offer.id) || now - last >= EVERY
+        })
         .map(|i| i.offer.id.clone())
         .collect()
 }
@@ -654,7 +685,11 @@ pub(crate) fn background_step() {
     let state = state::load(&state::path());
     let now = now();
     // In the service's process "started" means nothing: three hours, or never run.
-    let ids: Vec<String> = due(&state, now, &BTreeSet::new()).into_iter().filter(|id| state.get(id).is_some_and(|i| now - i.last_run >= EVERY)).collect();
+    let attempted = attempted();
+    let ids: Vec<String> = due(&state, now, &BTreeSet::new(), &attempted)
+        .into_iter()
+        .filter(|id| state.get(id).is_some_and(|i| now - i.last_run.max(attempted.get(id).copied().unwrap_or(0)) >= EVERY))
+        .collect();
     for id in ids {
         refresh(None, &id);
     }
@@ -794,15 +829,21 @@ mod tests {
         let mut installed = Installed::new(offer);
         installed.last_run = 1000;
         let mut state = State { extensions: vec![installed], ..State::default() };
-        let none = BTreeSet::new();
-        assert!(due(&state, 2000, &none).is_empty(), "not signed in: nothing to refresh");
+        let (none, never) = (BTreeSet::new(), BTreeMap::new());
+        assert!(due(&state, 2000, &none, &never).is_empty(), "not signed in: nothing to refresh");
         state.extensions[0].signed_in = true;
-        assert_eq!(due(&state, 2000, &none), vec!["t".to_string()], "Sioul started");
+        assert_eq!(due(&state, 2000, &none, &never), vec!["t".to_string()], "Sioul started");
         let started: BTreeSet<String> = ["t".to_string()].into();
-        assert!(due(&state, 2000, &started).is_empty());
-        assert_eq!(due(&state, 1000 + EVERY, &started), vec!["t".to_string()]);
+        assert!(due(&state, 2000, &started, &never).is_empty());
+        assert_eq!(due(&state, 1000 + EVERY, &started, &never), vec!["t".to_string()]);
+        // R1: it ran at 1000 + EVERY, and its record could not be written (a full disk):
+        // the record still says 1000, yet a minute later it is not due, nor for three hours.
+        let attempted: BTreeMap<String, i64> = [("t".to_string(), 1000 + EVERY)].into();
+        assert!(due(&state, 1000 + EVERY + 60, &started, &attempted).is_empty(), "never a run every minute");
+        assert!(due(&state, 1000 + 2 * EVERY - 1, &started, &attempted).is_empty());
+        assert_eq!(due(&state, 1000 + 2 * EVERY, &started, &attempted), vec!["t".to_string()]);
         state.extensions[0].enabled = false;
-        assert!(due(&state, 1000 + EVERY, &started).is_empty());
+        assert!(due(&state, 1000 + EVERY, &started, &never).is_empty());
     }
 
     #[test]

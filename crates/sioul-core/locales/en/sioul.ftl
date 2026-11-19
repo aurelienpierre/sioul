@@ -3815,6 +3815,7 @@ extension-problem-refused = { $name }'s service refused: an account blocked, or 
 extension-problem-changed = { $name }'s service no longer answers as expected: an update of the extension is needed.
 extension-problem-door = { $name } brought its agendas, but this Sioul does not keep them yet.
 extension-problem-keyring = { $name } could not reach the keyring.
+extension-problem-record = { $name } ran, but Sioul could not note it on this device (a full disk, or a folder it may not write); it waits three hours before running again.
 extension-problem-other = { $name } met a problem; its log on this device says more.
 extension-stopped-time = { $name } stopped: it took too long.
 extension-stopped-memory = { $name } stopped: it asked for too much memory.
