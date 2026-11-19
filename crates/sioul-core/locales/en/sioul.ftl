@@ -4745,7 +4745,7 @@ subscribe-line-no-calendar = { $kept ->
        *[no] This address gives no calendar. { $why } Nothing was read from it yet.
     } Change the address, or refresh now.
 subscribe-line-unreached = Not reached since { $since }. { $why } { $kept ->
-        [yes] The last copy stays;
+        [yes] The copy read { $when } stays;
        *[no] {""}
     } Sioul tries again later.
 subscribe-line-not-taken = Since { $since }, what the address gives is not taken. { $why } { $kept ->

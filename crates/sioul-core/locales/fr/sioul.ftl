@@ -4778,7 +4778,7 @@ subscribe-line-no-calendar = { $kept ->
        *[no] Cette adresse ne donne pas d’agenda. { $why } Rien n’en a encore été lu.
     } Changez l’adresse, ou actualisez.
 subscribe-line-unreached = Pas joint depuis { $since }. { $why } { $kept ->
-        [yes] La dernière copie reste ;
+        [yes] La copie lue { $when } reste ;
        *[no] {""}
     } Sioul réessaie plus tard.
 subscribe-line-not-taken = Depuis { $since }, ce que donne l’adresse n’est pas pris. { $why } { $kept ->
