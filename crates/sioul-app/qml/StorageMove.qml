@@ -89,6 +89,8 @@ SafeDialog {
 
     objectName: "storageMove"
     parent: Overlay.overlay
+    // Shown by itself once, however it is closed: Escape and a phone's back key as "Later" (review S39).
+    onClosed: move.sioul.setViewFlag("storage-move-said", true)
     anchors.centerIn: parent
     modal: true
     width: Math.min(560, move.roomWidth - 2 * move.safeGap)

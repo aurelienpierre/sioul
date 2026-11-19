@@ -92,10 +92,10 @@ Item {
         }
 
         function init() {
-            mock.asked = []
-            mock.flags = {}
             move.close()
             tryVerify(() => !move.visible)
+            mock.asked = []
+            mock.flags = {}
         }
 
         function test_what_moves_where_and_what_stays() {
@@ -226,6 +226,16 @@ Item {
             verify(named("storageMoveNoSharing").visible && !named("storageMoveCarry").visible)
             named("storageMoveNow").clicked()
             compare(mock.asked, [["", "", false]], "no part to switch without sharing")
+        }
+
+        function test_closed_any_way_it_never_shows_by_itself_again() {
+            mock.storageMove = root.view({})
+            move.show()
+            tryVerify(() => move.opened)
+            move.close()
+            tryVerify(() => !move.opened)
+            verify(mock.flags["storage-move-said"] === true, "closed by Escape or Back: as Later")
+            compare(mock.asked, [])
         }
 
         function test_later_closes_and_never_offers_again() {
