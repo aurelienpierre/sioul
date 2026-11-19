@@ -1012,7 +1012,8 @@ ColumnLayout {
                 Label {
                     visible: one.modelData.server_read_only === true
                     Layout.fillWidth: true
-                    text: setup.sioul.text("agenda-server-read-only")
+                    // A calendar read by its address has no server to say so: its own words.
+                    text: setup.sioul.text(one.modelData.subscription ? "agenda-subscribed-read-only" : "agenda-server-read-only")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: setup.theme.muted

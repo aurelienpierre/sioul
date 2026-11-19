@@ -1065,14 +1065,17 @@ ColumnLayout {
                         required property var modelData
                         required property int index
 
+                        Layout.fillWidth: true
                         spacing: 6
 
+                        // On a phone its word goes to the next line rather than out of sight.
                         Label {
                             objectName: "vacationLine"
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 0
                             text: off.modelData.from + " → " + off.modelData.until + "  ·  " + field.sioul.text("vacations-kind-" + (vacations.kinds.indexOf(off.modelData.kind || "") > 0 ? off.modelData.kind : "vacation")) + (off.modelData.label ? "  ·  " + off.modelData.label : "")
                             textFormat: Text.PlainText
-                            elide: Text.ElideRight
+                            wrapMode: Text.Wrap
                             color: field.theme.text
                         }
                         ToolButton {

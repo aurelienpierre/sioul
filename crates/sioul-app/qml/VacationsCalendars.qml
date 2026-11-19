@@ -81,7 +81,8 @@ ColumnLayout {
             WrapCheckBox {
                 objectName: "holidaysCounts"
                 Layout.fillWidth: true
-                text: calendar.modelData.name + " · " + block.sioul.text("subscribe-holidays-" + calendar.modelData.holidays) + " — " + block.sioul.text("vacations-counts")
+                // One sentence, in each language's own order (`vacations-counts-line`).
+                text: calendar.modelData.counts_line
                 checked: calendar.modelData.days_off === true
                 onToggled: {
                     block.problem = block.sioul.setSubscriptionField(calendar.modelData.id, "days_off", checked ? "true" : "false")

@@ -31,8 +31,8 @@ Item {
 
         property var calls: []
         property var calendars: [
-            { id: "fr-public-metropole", name: "Jours fériés Métropole", holidays: "public", days_off: true, after_class: false, known: true, line: "Read Wed 19 Nov 08:00." },
-            { id: "fr-school-zone-a", name: "Zone A", holidays: "school", days_off: false, after_class: true, known: false, line: "This device has not read this calendar yet: until it does, it does not know these days." }
+            { id: "fr-public-metropole", name: "Jours fériés Métropole", holidays: "public", days_off: true, after_class: false, known: true, line: "Read Wed 19 Nov 08:00.", counts_line: "Jours fériés Métropole · public holidays: its days count as my days off" },
+            { id: "fr-school-zone-a", name: "Zone A", holidays: "school", days_off: false, after_class: true, known: false, line: "This device has not read this calendar yet: until it does, it does not know these days.", counts_line: "Zone A · school holidays: its days count as my days off" }
         ]
 
         function text(key) { return key }
@@ -113,6 +113,7 @@ Item {
             // The calendars of holidays: a switch each, and what this device knows.
             const switches = root.named(row, "holidaysCounts")
             compare(switches.length, 2)
+            compare(switches[0].text, "Jours fériés Métropole · public holidays: its days count as my days off", "one sentence, as Sioul says it")
             verify(switches[0].checked && !switches[1].checked, "public holidays count, school holidays not")
             const said = root.named(row, "holidaysLine")
             compare(said[1].color, testTheme.warm, "not read here yet: said")

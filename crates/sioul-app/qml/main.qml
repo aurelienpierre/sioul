@@ -3664,6 +3664,8 @@ SioulWindow {
             // holidays; the choir's card with its next pause; its form at its repeat's end and its
             // pauses. Nothing is saved, nothing fetched (SIOUL_DEMO).
             readonly property var calendarSteps: [
+                // The minute's rounds at once (the series' pauses kept), not half a minute or more after the start.
+                () => sioul.refreshMode(),
                 () => window.page = 4,
                 () => {},
                 () => {},

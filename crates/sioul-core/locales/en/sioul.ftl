@@ -2387,7 +2387,10 @@ vacations-kind-sick = Sick leave
 vacations-kind-other = Other
 vacations-calendars = Calendars of holidays
 vacations-calendars-none = No calendar of holidays yet. Public holidays count as your days off unless you say not; school holidays do not unless you say so.
-vacations-counts = its days count as my days off
+vacations-counts-line = { $name } · { $holidays ->
+        [public] public holidays
+       *[other] school holidays
+    }: its days count as my days off
 vacations-not-read-here = This device has not read this calendar yet: until it does, it does not know these days.
 vacations-subscribe = Subscribe to a calendar of holidays…
 set-quiet-personal = What is yours
@@ -5018,6 +5021,7 @@ agenda-access = You may
 agenda-access-write = Read and write
 agenda-access-read = Read only
 agenda-access-availability = See only when it is busy
+agenda-subscribed-read-only = Read from its address: you read it only, and it changes only there.
 agenda-server-read-only = Its server lets you read it only.
 # On an event's card: you in two places. $whose: the other event's agenda (a person's name), "none" for yours; $why: "accepted" (an invitation you accepted in another's agenda), "tentative", else "none".
 conflict-same-time = At the same time as { $whose ->

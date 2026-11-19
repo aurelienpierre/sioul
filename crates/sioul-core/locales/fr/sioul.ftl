@@ -2420,7 +2420,10 @@ vacations-kind-sick = Arrêt maladie
 vacations-kind-other = Autre
 vacations-calendars = Agendas de vacances et de jours fériés
 vacations-calendars-none = Pas encore d’agenda de vacances. Les jours fériés comptent comme vos jours sans travail, sauf si vous dites non ; les vacances scolaires non, sauf si vous dites oui.
-vacations-counts = ses jours comptent comme mes jours sans travail
+vacations-counts-line = { $name } · { $holidays ->
+        [public] des jours fériés
+       *[other] des vacances scolaires
+    } : ses jours comptent comme mes jours sans travail
 vacations-not-read-here = Cet appareil n’a pas encore lu cet agenda : d’ici là, il ne connaît pas ces jours.
 vacations-subscribe = S’abonner à un agenda de vacances…
 set-quiet-personal = Ce qui est à vous
@@ -5054,6 +5057,7 @@ agenda-access = Vous pouvez
 agenda-access-write = Lire et écrire
 agenda-access-read = Lire seulement
 agenda-access-availability = Voir seulement quand il est pris
+agenda-subscribed-read-only = Lu à son adresse : vous le lisez seulement, et il ne change que là-bas.
 agenda-server-read-only = Son serveur vous le laisse lire seulement.
 # Sur la fiche d’un événement : vous à deux endroits. $whose : l’agenda de l’autre événement (le nom d’une personne), « none » pour le vôtre ; $why : « accepted » (une invitation acceptée dans l’agenda d’un autre), « tentative », sinon « none ».
 conflict-same-time = En même temps que « { $title } »{ $whose ->

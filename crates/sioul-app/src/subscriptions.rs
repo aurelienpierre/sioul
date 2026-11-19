@@ -329,9 +329,15 @@ pub(crate) fn holidays() -> String {
         .filter_map(|(id, s)| s.holidays().map(|kind| (id, s, kind)))
         .map(|(id, s, kind)| {
             let known = subscribed::Fetched::load(id).as_of().is_some();
+            let name = subscribed::display_name(s, &subscribed::Fetched::load(id).name);
+            let mut said = sioul_core::i18n::args();
+            said.set("name", name.clone());
+            said.set("holidays", kind.id());
             serde_json::json!({
                 "id": id,
-                "name": subscribed::display_name(s, &subscribed::Fetched::load(id).name),
+                "name": name,
+                // Its switch's words, one sentence (never assembled in the window, so that each language orders it).
+                "counts_line": tr().text("vacations-counts-line", Some(&said)),
                 "holidays": kind.id(),
                 "days_off": s.days_off(),
                 "after_class": s.after_class(),
