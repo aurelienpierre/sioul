@@ -1953,6 +1953,11 @@ pub mod qobject {
         /// off the window's thread; said in the status line and in `storageMove`.
         #[qinvokable]
         fn move_lists(self: Pin<&mut Sioul>, papers: &QString, letters: &QString, carry: bool);
+        /// Sioul's old files out of this device's notes folder, on your press
+        /// in Settings ▸ Sharing once every device moved (`storage::take_out`).
+        /// Off the window's thread; said in the status line and in `storageMove`.
+        #[qinvokable]
+        fn take_out_old_files(self: Pin<&mut Sioul>);
 
         /// On a phone: whether a sync app carries the notes folder, as you
         /// say (Sioul cannot read its settings there). Returns what went wrong, else "".
@@ -8680,6 +8685,16 @@ impl qobject::Sioul {
 impl qobject::Sioul {
     fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
         QString::from(&crate::share::set_notes_carried(carried))
+    }
+
+    fn take_out_old_files(self: Pin<&mut Self>) {
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let line = crate::storage::take_out();
+            let qt_again = qt.clone();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));
+            storage_move_now(&qt_again);
+        });
     }
 
     fn move_lists(self: Pin<&mut Self>, papers: &QString, letters: &QString, carry: bool) {

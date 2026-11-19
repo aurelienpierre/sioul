@@ -1305,11 +1305,18 @@ pub fn plain_below(root: &Path, relative: &str) -> Result<bool, Fault> {
     Ok(false)
 }
 
-/// The old files taken out of the notes folder, once every device has
-/// moved: each only while it still holds the bytes copied (one written
-/// there since stays, said), the lists' lock files beside them, and the
-/// `papers/` and `letters/` folders left empty. Said done in `STATE_FILE`.
+/// The old files taken out of the notes folder, on the person's press once
+/// every device has moved (Settings ▸ Sharing, "Take them out"; never by
+/// itself, never on a guess about who else reads that folder): each only
+/// against its copy (rule 1), one written there since stays, said; the
+/// lists' lock files beside them, and the `papers/` and `letters/` folders
+/// left empty. Said done in `STATE_FILE` and the journal once nothing is
+/// left; the move's own lock held, as for the move.
 pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
+    crate::filelock::with_lock(&Journal::path(state), || clean_held(state, now))
+}
+
+fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
     let mut storage = Storage::read(state);
     let Some(notes) = storage.from_path() else { return Ok(Cleaned::default()) };
     let journal = Journal::read(state).ok_or("no journal")?;
@@ -1374,6 +1381,15 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
         journal.write(state)?;
     }
     Ok(cleaned)
+}
+
+/// How many old files of Sioul's this device's notes folder still holds, by
+/// the journal of its move: what the line of Settings ▸ Sharing offers to
+/// take out (`clean`, on the person's press, never by itself).
+pub fn old_files(state: &Path) -> usize {
+    let storage = Storage::read(state);
+    let (Some(notes), Ok(Some(journal))) = (storage.from_path(), Journal::load(state)) else { return 0 };
+    journal.files.iter().filter(|e| !e.alone).filter(|e| std::fs::symlink_metadata(join(&notes, &e.from)).is_ok()).count()
 }
 
 /// A folder and those below it, each taken out once empty; never a file,

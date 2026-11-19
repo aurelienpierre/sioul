@@ -96,6 +96,10 @@ Item {
         signal shareEstimated(string estimate)
         signal shareStarted(string problem)
 
+        property int takenOut: 0
+        function takeOutOldFiles() {
+            mock.takenOut += 1
+        }
         function reminderOpened(kind, uri, key) {
             mock.opened = mock.opened.concat([kind])
         }
@@ -247,6 +251,31 @@ Item {
             verify(line.text.indexOf("/stand-in/Papers") >= 0 && line.text.indexOf("/stand-in/Letters") >= 0, line.text)
             walk(panel, i => i.objectName === "shareStorageOpen", [])[0].clicked()
             compare(mock.opened, ["storage-move"])
+            mock.storageMove = ""
+        }
+
+        // The old files: never taken out by themselves; the line, its count, greyed and naming
+        // who is still to move until every device moved; then the press asks it, once.
+        function test_the_old_files_leave_on_the_press_alone() {
+            mock.takenOut = 0
+            const line = walk(panel, i => i.objectName === "shareOldFiles", [])[0]
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 0 })
+            verify(!line.visible, "nothing left: no line")
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 12, take_out_open: false, take_out_waiting: "storage-old-files-waiting Laptop" })
+            verify(line.visible)
+            compare(walk(panel, i => i.objectName === "shareOldFilesLine", [])[0].text, mock.text("storage-old-files") + " " + JSON.stringify({ count: 12 }))
+            const waiting = walk(panel, i => i.objectName === "shareOldFilesWaiting", [])[0]
+            verify(waiting.visible && waiting.text.indexOf("Laptop") >= 0, waiting.text)
+            const button = walk(panel, i => i.objectName === "shareOldFilesTakeOut", [])[0]
+            verify(!button.enabled, "greyed until every device moved")
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 12, take_out_open: true, take_out_waiting: "" })
+            verify(button.enabled && !waiting.visible)
+            compare(mock.takenOut, 0, "nothing by itself")
+            button.clicked()
+            compare(mock.takenOut, 1)
+            mock.storageMove = JSON.stringify({ moved: true, old_files: 0, taken: "storage-taken-out" })
+            verify(!line.visible)
+            verify(walk(panel, i => i.objectName === "shareOldFilesTaken", [])[0].visible)
             mock.storageMove = ""
         }
 

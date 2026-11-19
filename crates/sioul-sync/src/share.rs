@@ -420,12 +420,10 @@ pub struct StorageStand {
     pub waiting: Vec<Named>,
     /// Those that know the new places and have not moved yet.
     pub unmoved: Vec<Named>,
-    /// Every other device that counts moved: the old files may leave the notes folder.
+    /// Every other device that counts moved: the old files may leave the
+    /// notes folder, on the person's press on each device (no device is
+    /// chosen to do it, nothing guesses who else reads that folder).
     pub all_moved: bool,
-    /// The device every device agrees takes the old files out of a notes
-    /// folder a sync app carries: the smallest id among this one and those
-    /// that count. A notes sync carries that removal to the others.
-    pub cleaner: bool,
 }
 
 /// Where the move stands for this device (`StorageStand`).
@@ -435,7 +433,7 @@ pub fn storage_stand(folder: &Path, key: &[u8; 32], memory: &Path, computer: &st
 }
 
 /// `storage_stand` from the devices that count.
-fn stand_of(present: &[(String, Option<crate::devices::Entry>, bool)], computer: &str) -> StorageStand {
+fn stand_of(present: &[(String, Option<crate::devices::Entry>, bool)], _computer: &str) -> StorageStand {
     let named = |id: &str, entry: Option<&crate::devices::Entry>| Named { id: id.to_string(), name: entry.map(|e| e.name.clone()).unwrap_or_default(), kind: entry.map(|e| e.form_or_kind().to_string()).unwrap_or_default() };
     let said = |entry: &Option<crate::devices::Entry>| entry.as_ref().map_or(0, |e| e.storage);
     let waiting: Vec<Named> = present.iter().filter(|(_, entry, _)| said(entry) < crate::devices::STORAGE_KNOWS).map(|(id, entry, _)| named(id, entry.as_ref())).collect();
@@ -444,7 +442,6 @@ fn stand_of(present: &[(String, Option<crate::devices::Entry>, bool)], computer:
         alone: present.is_empty(),
         open: waiting.is_empty(),
         all_moved: waiting.is_empty() && unmoved.is_empty(),
-        cleaner: present.iter().all(|(id, _, _)| computer < id.as_str()),
         waiting,
         unmoved,
     }
@@ -2042,6 +2039,26 @@ fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory)
         .collect()
 }
 
+/// Of another device's changes to one of Sioul's own lists (`LISTS`, a
+/// list of entries), on a device whose lists moved: the removals of its
+/// elements, come from devices that have not said they know the new places
+/// (`unknowing`: an older Sioul, or one forgotten or silent that comes
+/// back), that would take every element here out but one at most, two or
+/// more being here. An older Sioul takes a list it can no longer follow
+/// for one emptied, or written again with the one change that came, and
+/// sends every other element out as removed (review S17): never obeyed
+/// here. Held before (`before`): held still while it comes with no value.
+fn list_removals_held<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)], unknowing: &dyn Fn(&str) -> bool, before: &BTreeSet<String>) -> BTreeSet<&'a str> {
+    let element = |entry: &str| entry.contains(&format!("{SEP}{MARK}"));
+    let mut held: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && before.contains(*entry)).map(|(entry, _)| *entry).collect();
+    let here: BTreeSet<String> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default().into_iter().map(|(entry, _)| entry).filter(|entry| element(entry)).collect();
+    let removals: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && element(entry) && unknowing(entry) && here.contains(*entry)).map(|(entry, _)| *entry).collect();
+    if here.len() >= 2 && !removals.is_empty() && here.iter().filter(|entry| !removals.contains(entry.as_str())).count() <= 1 {
+        held.extend(removals);
+    }
+    held
+}
+
 /// Whether a health file's bytes read as its reader reads them
 /// (`sioul_core::health::Health::read`): never of no bytes, never a value it refuses.
 fn reads_as_medicines(bytes: &[u8]) -> bool {
@@ -3370,6 +3387,12 @@ struct Memory {
     medicines_held: BTreeMap<String, BTreeSet<String>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     medicines_held_there: BTreeMap<String, BTreeSet<String>>,
+    /// Of each of Sioul's own lists, on a device whose lists moved, the
+    /// elements whose removal came from a device that had not said it knows
+    /// the new places and would have emptied the list (`list_removals_held`):
+    /// held for good while their removal comes with no value, never obeyed.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    lists_held_there: BTreeMap<String, BTreeSet<String>>,
     /// What this device takes out of the folder, and why it waits, as the
     /// last exchange found it (`Leaving`), for Settings.
     #[serde(default, skip_serializing_if = "Leaving::is_empty")]
@@ -7169,6 +7192,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let history = crate::history::root(sharing.memory);
     let mut kept = false;
     let mut names: Option<Names> = None;
+    // Where each other device says its lists stand (`devices::Entry::storage`), read once when needed.
+    let mut storage_said: Option<BTreeMap<String, u32>> = None;
     let receiving = Receiving { sharing, history: &history, now_ms, clock, copied: std::cell::Cell::new(0) };
     // Sealed files the others' changes name: not here yet (their content's hash and size), or here.
     let mut wanted: BTreeMap<String, (String, u64)> = BTreeMap::new();
@@ -7324,6 +7349,34 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             continue;
         }
         let mut entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (entry_of(key), value.as_deref())).collect();
+        // A device whose lists moved (the store knows where they were): removals that would
+        // empty one of Sioul's own lists, come from a device that has not said it knows the new
+        // places, never obeyed; held among what came (`list_removals_held`, review S17).
+        let held_lists: BTreeSet<&str> = if is_list(file) && store.was.is_some() && matches!(store.shape, Shape::Toml(_)) {
+            let said = storage_said.get_or_insert_with(|| crate::devices::all(sharing.folder, sharing.key).0.into_iter().map(|e| (e.id.clone(), e.storage)).collect());
+            let writer: BTreeMap<&str, &str> = changes.iter().map(|(key, _)| (entry_of(key), winners.get(key).map_or("", |(_, _, w)| w.as_str()))).collect();
+            let unknowing = |entry: &str| writer.get(entry).is_some_and(|w| *w != sharing.computer && said.get(*w).copied().unwrap_or(0) < crate::devices::STORAGE_KNOWS);
+            let before = memory.lists_held_there.get(file.as_str()).cloned().unwrap_or_default();
+            let held = list_removals_held(store, &path, &entries, &unknowing, &before);
+            // What came with a value for one held (it is back) ends its hold.
+            let back: BTreeSet<&str> = entries.iter().filter(|(_, value)| value.is_some()).map(|(entry, _)| *entry).collect();
+            let kept: BTreeSet<String> = before.into_iter().filter(|entry| !back.contains(entry.as_str())).chain(held.iter().map(|e| (*e).to_string())).collect();
+            if kept.is_empty() {
+                memory.lists_held_there.remove(file.as_str());
+            } else {
+                memory.lists_held_there.insert(file.clone(), kept);
+            }
+            held
+        } else {
+            BTreeSet::new()
+        };
+        if !held_lists.is_empty() {
+            entries.retain(|(entry, _)| !held_lists.contains(*entry));
+            outcome.problems.push(format!("share-list-held:{file}"));
+            if entries.is_empty() {
+                continue;
+            }
+        }
         // The health file: another device's removals that would take every
         // medicine out here (two or more, none left) though its Sioul took
         // none out (no mark came with them, `removed`): held, said, until you
@@ -7368,7 +7421,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         match write_entries(store, &path, &entries, memory.medicines_released.contains(file), keep) {
             Ok(hashes) => {
                 outcome.written.insert(store.name.clone());
-                for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key))) {
+                for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key)) && !held_lists.contains(entry_of(key))) {
                     outcome.received += 1;
                     written_keys.insert(key.clone());
                     written_hashes.insert(key.clone(), hashes.get(entry_of(key)).cloned().unwrap_or_default());

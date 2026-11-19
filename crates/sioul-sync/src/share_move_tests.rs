@@ -268,11 +268,37 @@ fn a_removal_carried_to_a_device_not_moved_loses_nothing() {
     assert!(phone.read("sioul-budgets.toml").contains("Rent") && phone.read("sioul-projects.toml").contains("taxes") && phone.read("sioul-papers.toml").contains("passport"));
     assert!(phone.read("letters/letters.toml").contains("caf"));
     assert!(desk.read("sioul-budgets.toml").contains("Rent") && desk.read("sioul-projects.toml").contains("taxes"), "nothing left the desk");
-    // Every device moved: then the old files may go, from the device all agree on.
+    // Every device moved: then the old files may go, on the person's press on each.
     phone.moves(&folder, &key, NOW + 10 * MINUTE);
     let (on_desk, on_phone) = (desk.stand(&folder, &key, NOW + 11 * MINUTE), phone.stand(&folder, &key, NOW + 11 * MINUTE));
     assert!(on_desk.all_moved && on_phone.all_moved);
-    assert!(on_desk.cleaner != on_phone.cleaner, "one of them takes the old files out");
+}
+
+/// The desk moved; the phone, back on an older Sioul that does not know the
+/// new places (its entry says nothing of them), takes its budgets' list for
+/// one written again with the one budget that came, and sends every other
+/// element out as removed: the desk never obeys, now nor once the phone says
+/// it knows; the budget that came is written (review S17).
+#[test]
+fn a_whole_list_taken_out_by_a_device_that_does_not_know_the_new_places_is_held() {
+    let base = scratch("move-older-removal");
+    let (folder, key, desk, phone) = desk_and_phone(&base);
+    desk.moves(&folder, &key, NOW + 3 * MINUTE);
+    desk.exchange(&folder, &key, NOW + 4 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 5 * MINUTE);
+    phone.says(&folder, &key, 0);
+    put(&phone.notes.join("sioul-budgets.toml"), "[[budget]]\nid = \"car\"\ntitle = \"Car\"\nperiod = \"month\"\ntarget = 0\n");
+    phone.exchange(&folder, &key, NOW + 6 * MINUTE);
+    let outcome = desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+    assert!(outcome.problems.iter().any(|p| p.starts_with("share-list-held:")), "{outcome:?}");
+    let budgets = desk.read("sioul-budgets.toml");
+    assert!(budgets.contains("Rent") && budgets.contains("Home"), "never obeyed: {budgets}");
+    assert!(budgets.contains("Car"), "what came with a value is written: {budgets}");
+    // The phone updated: it says it knows the new places; what was held stays held.
+    phone.says(&folder, &key, crate::devices::STORAGE_KNOWS);
+    desk.exchange(&folder, &key, NOW + 8 * MINUTE);
+    let budgets = desk.read("sioul-budgets.toml");
+    assert!(budgets.contains("Rent") && budgets.contains("Home"), "{budgets}");
 }
 
 /// Two devices moved: their lists, papers and letters travel between their

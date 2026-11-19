@@ -106,33 +106,64 @@ fn names(devices: &[sioul_sync::share::Named]) -> String {
     devices.iter().map(|d| if d.name.trim().is_empty() { d.kind.clone() } else { d.name.clone() }).collect::<Vec<_>>().join(", ")
 }
 
-/// After each exchange: the dated copies past their days taken out; once
-/// every device that counts moved, the old files of Sioul's lists out of
-/// this device's notes folder, by the device every device agrees on
-/// (`StorageStand::cleaner`) where a sync app carries that folder (it
-/// carries the removal to the others), else by each device for its own.
-/// Without sharing, only a notes folder no sync app carries: another device
-/// of yours reading it would not be known here.
+/// After each exchange: the dated copies past their days taken out. The old
+/// files of Sioul's lists are never taken out of the notes folder by
+/// themselves: on the person's press alone (`take_out`).
 pub(crate) fn tidy() {
     let now = jiff::Timestamp::now().as_second();
     storage::sweep_kept(&sioul_core::config::data_dir().join(storage::KEPT), now);
-    let here = Storage::here();
-    if !here.is_moved() || here.cleaned > 0 || here.from.is_empty() {
-        return;
-    }
-    let carried = crate::share::notes_carried_now();
-    let due = match crate::share::storage_stand() {
-        Some(stand) if !stand.alone => stand.all_moved && (stand.cleaner || !carried),
-        _ => !carried,
-    };
-    if due {
-        match storage::clean(&sioul_core::config::state_dir(), now) {
-            Ok(cleaned) if !cleaned.changed.is_empty() => eprintln!("sioul: storage: kept in the notes folder, changed since the move: {}", cleaned.changed.join(", ")),
-            Ok(_) => {}
-            Err(e) => eprintln!("sioul: storage: {e}"),
-        }
+}
+
+/// Whether the old files may be taken out now: every other device that
+/// counts moved (or none is known), the sharing read. Else the sentence
+/// that says who is still to move, or what cannot be read.
+fn take_out_gate(stand: Option<&sioul_sync::share::StorageStand>) -> Result<(), String> {
+    match stand {
+        None => Ok(()),
+        Some(stand) if stand.alone || stand.all_moved => Ok(()),
+        Some(stand) => Err(say("storage-old-files-waiting", &[("devices", names(&stand.waiting.iter().chain(&stand.unmoved).cloned().collect::<Vec<_>>()))])),
     }
 }
+
+/// "Take them out" (Settings ▸ Sharing): the old files of Sioul's lists out
+/// of this device's notes folder, each against its copy (`storage::clean`),
+/// once every device that counts moved; what stays, said by why. Off the
+/// window's thread.
+pub(crate) fn take_out() -> String {
+    let here = Storage::here();
+    if !here.is_moved() {
+        return String::new();
+    }
+    if let Err(line) = take_out_gate(crate::share::storage_stand().as_ref()) {
+        return line;
+    }
+    let now = jiff::Timestamp::now().as_second();
+    let line = match storage::clean(&sioul_core::config::state_dir(), now) {
+        Ok(cleaned) => cleaned_line(&cleaned),
+        Err(e) => e,
+    };
+    if let Ok(mut taken) = TAKEN.lock() {
+        taken.clone_from(&line);
+    }
+    line
+}
+
+/// What a take-out did, in sentences: how many went, and what stays, by why.
+fn cleaned_line(cleaned: &storage::Cleaned) -> String {
+    let mut line = vec![say("storage-taken-out", &[("count", cleaned.removed.to_string())])];
+    let mut by: std::collections::BTreeMap<&str, Vec<String>> = std::collections::BTreeMap::new();
+    by.entry("changed").or_default().extend(cleaned.changed.iter().cloned());
+    for (file, why) in &cleaned.kept {
+        by.entry(*why).or_default().push(file.clone());
+    }
+    for (why, files) in by.into_iter().filter(|(_, files)| !files.is_empty()) {
+        line.push(say(&format!("storage-kept-{why}"), &[("files", files.join(", "))]));
+    }
+    line.join(" ")
+}
+
+/// What the last take-out said.
+static TAKEN: Mutex<String> = Mutex::new(String::new());
 
 /// Where Sioul's lists are and the move stands, for the window (`storageMove`).
 #[derive(Debug, Default, Serialize)]
@@ -170,6 +201,12 @@ struct View {
     bytes: u64,
     /// Where this device's lists are is not known now (`Storage::lost`): its sentence.
     lost: String,
+    /// Old files of Sioul's still in the notes folder after the move (`storage::old_files`);
+    /// whether "Take them out" may be pressed now, else who is still to move; what the last press said.
+    old_files: usize,
+    take_out_open: bool,
+    take_out_waiting: String,
+    taken: String,
     /// The window of the move may show itself (not moved, every device knows).
     offer: bool,
 }
@@ -222,6 +259,14 @@ pub(crate) fn view_json() -> String {
             }
             view.bytes += std::fs::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
         }
+    }
+    if view.moved {
+        view.old_files = storage::old_files(&sioul_core::config::state_dir());
+        match take_out_gate(stand.as_ref()) {
+            Ok(()) => view.take_out_open = true,
+            Err(line) => view.take_out_waiting = line,
+        }
+        view.taken = TAKEN.lock().map(|t| t.clone()).unwrap_or_default();
     }
     view.offer = !view.moved && view.open && view.lost.is_empty() && notes_state != "unreadable";
     serde_json::to_string(&view).unwrap_or_default()
