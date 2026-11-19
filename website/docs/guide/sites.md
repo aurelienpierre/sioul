@@ -31,7 +31,7 @@ These secure mailboxes exist because ordinary mail was not private enough for a 
 
 You log in once, on the site itself. Sioul keeps you logged in; it never stores the site's password itself.
 
-On Android, the Sites page lists your sites and opens each in your browser: Sioul keeps no login there and gathers no notification. The sites you pinned on a computer come with the settings when you [share between your devices](sharing.md).
+On Android, a site opens in Sioul too, in a screen of its own, or in your browser where the device cannot carry it: see [On a phone or a tablet](#on-a-phone-or-a-tablet). The sites you pinned on a computer come with the settings when you [share between your devices](sharing.md).
 
 ## The list
 
@@ -62,6 +62,23 @@ The ⋮ of the site open, or a right click on any site of the list:
   [![A site's menu open, from top to bottom: the six types with "Chats" ticked; Keep it open, to hear from it; For; Microphone, Camera and Sharing the screen, for calls, all three ticked; Devices for calls…; Move up; Move down; Link to…; Name and address…; Remove this site.](../assets/screens/sites-menu.png){ loading=lazy }](../assets/screens/sites-menu.png "Open the picture at full size")
   <figcaption>Everything about a site, in its menu.</figcaption>
 </figure>
+
+## On a phone or a tablet {#on-a-phone-or-a-tablet}
+
+On Android the Sites page is the computer's: **Pin a site**, **Usual sites ▾**, the sites for these hours first, the funnel and the order, each site's icon and its news, and a site's menu at a long press (its type, what it is for, its place in your order, **Link to…**, **Name and address…**, **Remove this site**). Under each site's name, a line says where it opens.
+
+- **In Sioul**: a tap opens the site in a screen of Sioul's own, over the window, one site at a time. A slim bar stays in sight: back, the site's name and the host of the page shown (the page actually loaded, never one only asked for), reload, and a menu with **Open in the browser**, **Share the page's address**, **Find in the page** and **Close**. Back goes back in the site, then closes it. Turning the tablet, or sharing its screen with another app, keeps the page.
+- **Logged in once**: every site shares one store on this device, as on a computer. A site you leave and open again is still logged in, after Android closed Sioul too. The logins never leave the device: neither a backup nor a move to a new phone takes them.
+- **Files**: a site's upload goes through Android's file chooser; a download goes to Downloads, and Android's notice says when it is there and opens it. A file the page makes itself cannot be saved there yet: **Open in the browser** for it.
+- **Windows and links**: a sign-in window a site opens when you tap shows over its page, and goes when the sign-in is done. A link you tap to another site opens in your browser.
+- **In your browser, and why**: where the device's web view (Android's own engine for pages inside apps) is missing or older than version 120, a site opens in your browser, as before, and its line says why. Settings ▸ Devices, this device's card, says the web view's version and what it cannot carry.
+
+What Android does not give, whatever Sioul does:
+
+- **A site's news** comes from its own app, or from Sioul on a computer. A site inside Sioul tells nothing while its screen is closed or behind another app, and this version gathers none of its notifications yet.
+- **The camera, the microphone and your location** are refused in this version; the menu above the site says that the site asked. A next version asks you, site by site.
+- **No security key, no passkey** inside Sioul, and **no screen sharing** in a call: those go through **Open in the browser**.
+- **Fill the login** from Bitwarden, **Silence its sounds** and calmer colours are a computer's for now; Bitwarden, calls and darker pages come in a next version.
 
 ## Notifications at your pace
 
@@ -151,7 +168,7 @@ More in [what the research says](../dev/research.md), finding 37.
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Notifications for your hours, and the offices ready to pin.** Apps that keep web services in one window, and a browser with containers, compared. No other app's documentation describes holding notifications until your hours and giving them together at set times: Ferdium and Rambox mute them on a schedule, Wavebox for a set time. Sioul has the secure spaces of banks, insurers and public offices ready to pin for France, Canada and the United States; it fills Bitwarden logins with nothing to install; its own dialog asks a security key's PIN on Linux, where Electron, which Ferdium and Rambox are built on, turns such a request down; and it keeps your sites in step between your computers without an account at a company. Others do more elsewhere: they open two accounts of one service side by side, take browser extensions and ad blockers, and Sioul's phone only opens your sites in its browser.
+**Notifications for your hours, and the offices ready to pin.** Apps that keep web services in one window, and a browser with containers, compared. No other app's documentation describes holding notifications until your hours and giving them together at set times: Ferdium and Rambox mute them on a schedule, Wavebox for a set time. Sioul has the secure spaces of banks, insurers and public offices ready to pin for France, Canada and the United States; it fills Bitwarden logins with nothing to install; its own dialog asks a security key's PIN on Linux, where Electron, which Ferdium and Rambox are built on, turns such a request down; and it keeps your sites in step between your computers without an account at a company. Others do more elsewhere: they open two accounts of one service side by side, take browser extensions and ad blockers, and on Android Sioul shows your sites without their notifications.
 
 As of October 2026, from each app's own documentation.
 
@@ -181,7 +198,7 @@ As of October 2026, from each app's own documentation.
     10. One browser profile holds every site: each keeps its own login, but not two accounts of the same service.
     11. With the Pro plan.
     12. Any Chrome extension; no ad blocker of its own.
-    13. Your sites are listed, and each opens in your phone's browser.
+    13. Your sites, added and changed there, open inside Sioul where the device's web view can carry them, else in its browser; without their notifications, a security key, the camera or the microphone yet.
     14. Firefox runs on Android and iOS; its containers do not.
 
 === "Technical"
