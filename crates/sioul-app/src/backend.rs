@@ -8688,8 +8688,7 @@ impl qobject::Sioul {
         crate::storage::begin();
         storage_move_now(&qt);
         std::thread::spawn(move || {
-            let problem = crate::storage::move_now(&papers, &letters, carry);
-            let line = if problem.is_empty() { tr().text("storage-moved", None) } else { problem };
+            let line = crate::storage::move_now(&papers, &letters, carry).unwrap_or_else(|problem| problem);
             let qt_again = qt.clone();
             let _ = qt.queue(move |mut sioul| sioul.as_mut().set_status(QString::from(&line)));
             storage_move_now(&qt_again);

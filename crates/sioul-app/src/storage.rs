@@ -36,25 +36,25 @@ pub(crate) fn begin() {
 /// chosen folders are written first (this device's own settings, read only
 /// once moved); then the copies, checks, the dated copy and the paths
 /// named, nothing held; then the switch with every exchange held. Returns
-/// what went wrong in one sentence, else "".
-pub(crate) fn move_now(papers: &str, letters: &str, carry: bool) -> String {
-    let problem = moved_now(papers, letters, carry);
+/// the sentence for the status line, or what went wrong in one sentence.
+pub(crate) fn move_now(papers: &str, letters: &str, carry: bool) -> Result<String, String> {
+    let done = moved_now(papers, letters, carry);
     if let Ok(mut said) = SAID.lock() {
-        said.clone_from(&problem);
+        said.clone_from(done.as_ref().err().unwrap_or(&String::new()));
     }
     MOVING.store(false, Ordering::SeqCst);
-    problem
+    done
 }
 
-fn moved_now(papers: &str, letters: &str, carry: bool) -> String {
+fn moved_now(papers: &str, letters: &str, carry: bool) -> Result<String, String> {
     let config = load_config();
     if config.storage.is_moved() {
-        return String::new();
+        return Ok(tr().text("storage-moved-already", None));
     }
     if let Some(stand) = crate::share::storage_stand()
         && !stand.open
     {
-        return say("storage-waiting", &[("devices", names(&stand.waiting))]);
+        return Err(say("storage-waiting", &[("devices", names(&stand.waiting))]));
     }
     let pick = |chosen: &str, default: PathBuf| if chosen.trim().is_empty() { default } else { crate::backend::local_path(chosen.trim()) };
     let (papers, letters) = (pick(papers, config.papers_folder()), pick(letters, config.letters_folder()));
@@ -62,29 +62,34 @@ fn moved_now(papers: &str, letters: &str, carry: bool) -> String {
     let mut folders = Folders::here(&notes, &papers, &letters);
     folders.notes = notes;
     if let Err(fault) = storage::check_folders(&folders) {
-        return tr().text(&format!("storage-{}", fault.code), None);
+        return Err(tr().text(&format!("storage-{}", fault.code), None));
     }
     let path = crate::backend::config_path();
     for (key, folder) in [("papers.folder", &papers), ("letters.folder", &letters)] {
-        if let Err(e) = sioul_core::config::set_value(&path, key, &sioul_core::config::SettingValue::Text(folder.display().to_string())) {
-            return e;
-        }
+        sioul_core::config::set_value(&path, key, &sioul_core::config::SettingValue::Text(folder.display().to_string()))?;
     }
     let now = jiff::Timestamp::now().as_second();
-    if let Err(fault) = storage::move_now(&folders, now, crate::share::hold_exchanges) {
-        return tr().text(&format!("storage-{}", fault.code), None);
-    }
+    let moved = storage::move_now(&folders, now, crate::share::hold_exchanges).map_err(|fault| tr().text(&format!("storage-{}", fault.code), None))?;
     if carry && !crate::share::carries_lists() {
         let problem = crate::share::carry_lists();
         if !problem.is_empty() {
-            return problem;
+            return Err(problem);
         }
     }
     crate::devices::storage_now();
     for kind in [sioul_core::changes::Kind::Papers, sioul_core::changes::Kind::Letters] {
         sioul_core::changes::said(kind);
     }
-    String::new()
+    // What stays besides: copies whose source was gone at this try, copies of an earlier try elsewhere.
+    let mut line = vec![tr().text("storage-moved", None)];
+    if !moved.alone.is_empty() {
+        line.push(say("storage-move-alone", &[("count", moved.alone.len().to_string())]));
+    }
+    if !moved.earlier.is_empty() {
+        let folders: std::collections::BTreeSet<String> = moved.earlier.iter().filter_map(|to| std::path::Path::new(to).parent().map(|p| p.display().to_string())).collect();
+        line.push(say("storage-move-earlier", &[("folders", folders.into_iter().collect::<Vec<_>>().join(", "))]));
+    }
+    Ok(line.join(" "))
 }
 
 /// The devices named, as a list in words.
@@ -151,6 +156,8 @@ struct View {
     papers_files: usize,
     letters_files: usize,
     bytes: u64,
+    /// Where this device's lists are is not known now (`Storage::lost`): its sentence.
+    lost: String,
     /// The window of the move may show itself (not moved, every device knows).
     offer: bool,
 }
@@ -158,6 +165,10 @@ struct View {
 /// `View`, as JSON. Reads the sharing folder's entries and lists the notes
 /// folder: never on the window's thread (`backend::storage_move_now`).
 pub(crate) fn view_json() -> String {
+    // The state file written again from a closed journal whose copies are all there (`Storage::recover`).
+    if Storage::recover(&sioul_core::config::state_dir()).unwrap_or(false) {
+        crate::devices::storage_now();
+    }
     let config = load_config();
     let here = Storage::here();
     let stand = crate::share::storage_stand();
@@ -178,6 +189,7 @@ pub(crate) fn view_json() -> String {
         notes: notes.as_ref().map(|n| n.display().to_string()).unwrap_or_default(),
         papers: papers.display().to_string(),
         letters: letters.display().to_string(),
+        lost: here.lost.map(|lost| say(&format!("storage-{lost}"), &[("what", sioul_core::config::state_dir().join(storage::STATE_FILE).display().to_string())])).unwrap_or_default(),
         ..View::default()
     };
     if !view.moved
@@ -193,7 +205,7 @@ pub(crate) fn view_json() -> String {
             view.bytes += std::fs::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
         }
     }
-    view.offer = !view.moved && view.open;
+    view.offer = !view.moved && view.open && view.lost.is_empty();
     serde_json::to_string(&view).unwrap_or_default()
 }
 

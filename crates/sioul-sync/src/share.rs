@@ -1084,7 +1084,11 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
     // in the letters' folder, in the part "papers": the scans under a name
     // of their own (`LETTERS_FILES`), every device reading it by then. The
     // notes alone in the notes folder.
-    if config.storage.is_moved() {
+    // Where this device's lists are is not known now (the state of its move
+    // lost, `Storage::lost`): neither layout's lists, papers, letters nor
+    // notes are read or written until it is.
+    if config.storage.lost.is_some() {
+    } else if config.storage.is_moved() {
         let records = d.join(sioul_core::storage::RECORDS);
         let from = config.storage.from_path();
         let since = config.storage.moved * 1000;
@@ -1173,7 +1177,7 @@ fn known_part(file: &str) -> Option<&'static str> {
         // by their part there. A name the notes folder's layout already
         // covers (the letters' list and texts, in `files/notes/`) keeps its
         // part, which its format follows (`part_format`), on every device.
-        let moved = Config { storage: sioul_core::storage::Storage { moved: 1, from: "notes".into(), cleaned: 0 }, papers: sioul_core::config::PaperSettings { folder: Some("/papers".into()) }, letters: sioul_core::config::LetterSettings { folder: Some("/letters".into()), inbox: None }, ..config };
+        let moved = Config { storage: sioul_core::storage::Storage { moved: 1, from: "notes".into(), ..Default::default() }, papers: sioul_core::config::PaperSettings { folder: Some("/papers".into()) }, letters: sioul_core::config::LetterSettings { folder: Some("/letters".into()), inbox: None }, ..config };
         let covered = |known: &[(String, bool, &'static str)], name: &str| known.iter().any(|(k, folder, _)| k == name || (*folder && name.starts_with(k.as_str())));
         for store in stores_of(&moved, &roots, &|_| true) {
             if !covered(&known, &store.name) {

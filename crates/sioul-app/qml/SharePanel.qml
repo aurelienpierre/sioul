@@ -212,7 +212,8 @@ ColumnLayout {
 
         Layout.fillWidth: true
         Layout.topMargin: 6
-        text: view.moved === true ? panel.sioul.textArgs("storage-line-moved", JSON.stringify({ papers: view.papers || "", letters: view.letters || "" })) : panel.sioul.text("storage-line-not")
+        // Where the lists are not known now (the state of the move lost): that, before anything.
+        text: (view.lost || "") !== "" ? view.lost : (view.moved === true ? panel.sioul.textArgs("storage-line-moved", JSON.stringify({ papers: view.papers || "", letters: view.letters || "" })) : panel.sioul.text("storage-line-not"))
         textFormat: Text.PlainText
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: panel.theme.text

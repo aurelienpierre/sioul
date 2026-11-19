@@ -1559,8 +1559,13 @@ impl Config {
     /// "What lives where"): all under the notes folder until this device's
     /// lists moved (`storage::Places::under`; none without a notes folder),
     /// then the lists in the data folder's `records/`, the papers and the
-    /// letters in their own folders (`storage::Places::apart`).
+    /// letters in their own folders (`storage::Places::apart`); none while
+    /// the state of the move is lost (`storage::Storage::lost`).
     pub fn places(&self) -> Option<crate::storage::Places> {
+        // Where the lists are is not known now (`Storage::lost`): none read nor written anywhere.
+        if self.storage.lost.is_some() {
+            return None;
+        }
         if self.storage.is_moved() {
             let notes = self.notes_root_path();
             return Some(crate::storage::Places::apart(&data_dir().join(crate::storage::RECORDS), notes.as_deref(), &self.papers_folder(), &self.letters_folder()));

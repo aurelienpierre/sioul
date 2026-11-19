@@ -117,6 +117,16 @@ SafeDialog {
                 wrapMode: Text.Wrap
                 color: move.theme.text
             }
+            // Where the lists are is not known now (the state of the move lost): that alone, and no move.
+            Label {
+                objectName: "storageMoveLost"
+                visible: (move.view.lost || "") !== ""
+                Layout.fillWidth: true
+                text: move.view.lost || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: move.theme.warm
+            }
             // Waiting for a device on an older Sioul: which, and what to do.
             Label {
                 objectName: "storageMoveWaiting"
@@ -265,7 +275,7 @@ SafeDialog {
         Button {
             objectName: "storageMoveNow"
             visible: move.view.moved !== true
-            enabled: move.view.open === true && move.view.moving !== true && !(move.pressed && (move.view.said || "") === "")
+            enabled: move.view.open === true && (move.view.lost || "") === "" && move.view.moving !== true && !(move.pressed && (move.view.said || "") === "")
             highlighted: true
             text: move.sioul.text("storage-move-now")
             // An action, never the dialog's accept: the window stays to say how the move went.

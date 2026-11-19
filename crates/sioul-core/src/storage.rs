@@ -63,6 +63,18 @@ pub struct Storage {
     /// When the old files were taken out of that folder (`clean`); 0: not yet.
     #[serde(default)]
     pub cleaned: i64,
+    /// What is missing to know where the lists are (`Storage::read`): the
+    /// state file there and unreadable, or gone while the journal says the
+    /// move was made and its copies are not all there; none when known.
+    /// While it is said, no list is read nor written anywhere, no move
+    /// starts and nothing is deleted (absence proves nothing).
+    #[serde(skip)]
+    pub lost: Option<&'static str>,
+    /// Read from the closed journal, the state file being gone
+    /// (`Journal::switched`): the move was made, its copies checked there;
+    /// written again by `recover`.
+    #[serde(skip)]
+    pub adopted: bool,
 }
 
 impl Storage {
@@ -76,11 +88,42 @@ impl Storage {
         (self.is_moved() && !self.from.is_empty()).then(|| PathBuf::from(&self.from))
     }
 
-    /// As `state` says (`STATE_FILE`); unset or unreadable: not moved. A file
-    /// that does not read is never taken for one that says the lists left:
-    /// the old places are still whole until `clean`.
+    /// As `state` says (`STATE_FILE`). Gone: as the journal says, when it
+    /// is closed (the switch was written) and every copy it names is there
+    /// (`adopted`); else not moved, when no journal says a switch. A state
+    /// file that does not read, or gone while a closed journal's copies are
+    /// not all there, or a journal that does not read: `lost`, never "not
+    /// moved" (the old files may have been taken out long ago), never
+    /// "moved" either.
     pub fn read(state: &Path) -> Storage {
-        std::fs::read_to_string(state.join(STATE_FILE)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        let lost = |what: &'static str| Storage { lost: Some(what), ..Storage::default() };
+        match std::fs::read_to_string(state.join(STATE_FILE)) {
+            Ok(text) => toml::from_str(&text).unwrap_or_else(|_| lost("state-unreadable")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => match Journal::load(state) {
+                Ok(Some(journal)) if journal.switched > 0 => {
+                    if journal.copies_there() {
+                        Storage { moved: journal.switched, from: journal.notes.clone(), cleaned: journal.cleaned, lost: None, adopted: true }
+                    } else {
+                        lost("state-missing")
+                    }
+                }
+                Ok(_) => Storage::default(),
+                Err(_) => lost("journal-unreadable"),
+            },
+            Err(_) => lost("state-unreadable"),
+        }
+    }
+
+    /// The state file written again from a closed journal whose copies are
+    /// all there (`Storage::read`, `adopted`): the move made is taken as
+    /// made, nothing copied again, nothing deleted. Whether it was.
+    pub fn recover(state: &Path) -> Result<bool, String> {
+        let storage = Storage::read(state);
+        if !storage.adopted {
+            return Ok(false);
+        }
+        Storage { adopted: false, ..storage }.write(state)?;
+        Ok(true)
     }
 
     /// This device's, in its own state folder.
@@ -270,7 +313,7 @@ pub struct Entry {
     #[serde(default)]
     pub sha: String,
     /// This move made `to` (written before it took its name); false: it was
-    /// there already with the same bytes, and is never taken out by a rollback.
+    /// there already with the same bytes, and is never taken back.
     #[serde(default)]
     pub made: bool,
     /// The bytes of `to` once its paths were named from their own folders
@@ -280,6 +323,19 @@ pub struct Entry {
     /// The dated copy of the source.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub kept: String,
+    /// No longer among what the notes folder holds to move, at a later try
+    /// (its source removed, by hand or by a sync, or no longer named by its
+    /// list): its copy stays where it is, the only one perhaps, never taken
+    /// back, and its old file, if any, is never taken out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alone: bool,
+    /// Made by the run that holds this journal in memory, never read from
+    /// the disk: the only copies a failure may take back (`undo_run`).
+    #[serde(skip)]
+    pub this_run: bool,
+    /// Its dated copy made by this run, the same.
+    #[serde(skip)]
+    pub kept_this_run: bool,
 }
 
 /// The journal of a move (`JOURNAL`): its folders and its files.
@@ -301,6 +357,19 @@ pub struct Journal {
     /// Where its dated copies are: `<kept>/<day>`.
     #[serde(default)]
     pub kept: String,
+    /// When the switch was written (Unix seconds), noted before the state
+    /// file: from then on the journal is closed, the record of a move made,
+    /// never work to finish or to undo (`open`), and the state file can be
+    /// written again from it (`Storage::read`, `recover`).
+    #[serde(default)]
+    pub switched: i64,
+    /// When the old files were taken out of the notes folder (`clean`).
+    #[serde(default)]
+    pub cleaned: i64,
+    /// Copies an earlier try made in folders chosen otherwise since: left
+    /// where they are (only the run that made a copy may take it back), said.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub earlier: Vec<String>,
     #[serde(default, rename = "file")]
     pub files: Vec<Entry>,
 }
@@ -312,7 +381,23 @@ impl Journal {
 
     /// As written; none, or one that does not read: none.
     pub fn read(state: &Path) -> Option<Journal> {
-        std::fs::read_to_string(Journal::path(state)).ok().and_then(|text| toml::from_str(&text).ok())
+        Journal::load(state).ok().flatten()
+    }
+
+    /// As written; none when there is none; one there that does not read: a
+    /// fault, never "none" (it may say the move was made).
+    pub fn load(state: &Path) -> Result<Option<Journal>, Fault> {
+        match std::fs::read_to_string(Journal::path(state)) {
+            Ok(text) => toml::from_str(&text).map(Some).map_err(|e| Fault::new("journal", format!("{}: {e}", Journal::path(state).display()))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(Fault::new("journal", format!("{}: {e}", Journal::path(state).display()))),
+        }
+    }
+
+    /// Every copy it names at its place, a plain file: what a closed journal
+    /// must show before its move is taken as made without the state file.
+    fn copies_there(&self) -> bool {
+        self.files.iter().all(|entry| std::fs::symlink_metadata(&entry.to).is_ok_and(|meta| meta.is_file()))
     }
 
     fn write(&self, state: &Path) -> Result<(), String> {
@@ -365,6 +450,11 @@ pub struct Moved {
     pub renamed: Vec<(String, String)>,
     /// The lists' paths named from their own folders: how many.
     pub named: usize,
+    /// Copies kept whose source is no longer to move (removed since an
+    /// earlier try): never taken back, said.
+    pub alone: Vec<String>,
+    /// Copies an earlier try left in folders chosen otherwise since: said.
+    pub earlier: Vec<String>,
 }
 
 /// The lists' names at the root of a notes folder, the projects' file's
@@ -636,26 +726,48 @@ fn free_name(to: &Path, taken: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
 /// Steps 1 to 4 of a move, nothing switched: the lists copied to the
 /// records, the papers and letters to their folders, each checked byte for
 /// byte, a dated copy kept, the lists' paths named from their folders.
-/// Safe to stop anywhere and to run again (the journal).
+/// Safe to stop anywhere and to run again (the journal). Stopped here, as a
+/// kill would: nothing taken back.
 pub fn prepare(folders: &Folders, now: i64) -> Result<(Journal, Moved), Fault> {
+    let mut journal = open(folders, now)?;
+    let moved = fill(folders, &mut journal)?;
+    Ok((journal, moved))
+}
+
+/// The journal of this move, as an earlier try left it or new. A closed
+/// one (`Journal::switched`) is a move made, never work to do again. Folders
+/// chosen otherwise since an earlier try: its copies outside the folders of
+/// now stay where they are, named in `earlier` (only the run that made a
+/// copy may take it back, and that run is over).
+fn open(folders: &Folders, now: i64) -> Result<Journal, Fault> {
+    match Journal::load(&folders.state)? {
+        Some(journal) if journal.switched > 0 => Err(Fault::new("moved-already", folders.state.display())),
+        Some(mut journal) => {
+            if !journal.for_folders(folders) {
+                let places = [&folders.records, &folders.papers, &folders.letters];
+                let (stay, left): (Vec<Entry>, Vec<Entry>) = journal.files.drain(..).partition(|e| places.iter().any(|place| Path::new(&e.to).starts_with(place)));
+                journal.earlier.extend(left.into_iter().filter(|e| e.made && Path::new(&e.to).exists()).map(|e| e.to));
+                journal.files = stay;
+                (journal.notes, journal.records, journal.papers, journal.letters) = Journal::of(folders);
+                journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
+            }
+            Ok(journal)
+        }
+        None => {
+            let (notes, records, papers, letters) = Journal::of(folders);
+            let day = day_of(now);
+            let kept = folders.kept.join(&day).display().to_string();
+            let journal = Journal { started: now, day, notes, records, papers, letters, kept, ..Journal::default() };
+            journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
+            Ok(journal)
+        }
+    }
+}
+
+/// Steps 1 to 4 on an open journal (`prepare`).
+fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
     check_folders(folders)?;
     let planned = plan(folders)?;
-    let mut journal = match Journal::read(&folders.state) {
-        Some(journal) if journal.for_folders(folders) => journal,
-        // Folders chosen otherwise since: what the earlier one made goes first.
-        Some(other) => {
-            rollback(&other, &folders.state)?;
-            Journal::default()
-        }
-        None => Journal::default(),
-    };
-    if journal.started == 0 {
-        let (notes, records, papers, letters) = Journal::of(folders);
-        let day = day_of(now);
-        let kept = folders.kept.join(&day).display().to_string();
-        journal = Journal { started: now, day, notes, records, papers, letters, kept, files: Vec::new() };
-        journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
-    }
     let mut moved = Moved::default();
     for mut entry in planned {
         let from = join(&folders.notes, &entry.from);
@@ -666,6 +778,8 @@ pub fn prepare(folders: &Folders, now: i64) -> Result<(Journal, Moved), Fault> {
             entry.sha.clone_from(&journal.files[i].sha);
             entry.rewritten.clone_from(&journal.files[i].rewritten);
             entry.kept.clone_from(&journal.files[i].kept);
+            entry.this_run = journal.files[i].this_run;
+            entry.kept_this_run = journal.files[i].kept_this_run;
         }
         let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
         let source = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
@@ -698,13 +812,16 @@ pub fn prepare(folders: &Folders, now: i64) -> Result<(Journal, Moved), Fault> {
         let needs_copy = !to.exists() || there.as_deref().is_some_and(|sha| sha != source && ours(sha));
         entry.to = to.display().to_string();
         entry.kind = entry.kind.or(Some(Kind::Letter));
+        entry.alone = false;
         (entry.size, entry.time, entry.sha) = (size, time, source);
         if needs_copy {
             entry.made = true;
+            entry.this_run = true;
             entry.rewritten.clear();
             entry.kept.clear();
+            entry.kept_this_run = false;
             let noted = entry.clone();
-            let journal_now = &mut journal;
+            let journal_now = &mut *journal;
             let state = folders.state.clone();
             let mut note = || -> Result<(), Fault> {
                 upsert(journal_now, noted.clone());
@@ -717,26 +834,31 @@ pub fn prepare(folders: &Folders, now: i64) -> Result<(Journal, Moved), Fault> {
             Some(Kind::Paper) => moved.papers += 1,
             _ => moved.letters += 1,
         }
-        upsert(&mut journal, entry);
+        upsert(journal, entry);
     }
-    // Taken out of the plan since an earlier run (a file the person removed): what this move made of it goes.
+    // No longer among what is to move since an earlier try (its source removed
+    // by hand or by a sync, a folder that did not list): its copy stays, perhaps
+    // the only one, and its dated copy with it; said, never taken back.
     let planned_now: Vec<String> = plan(folders)?.into_iter().map(|e| e.from).collect();
-    let (gone, kept): (Vec<Entry>, Vec<Entry>) = journal.files.drain(..).partition(|e| !planned_now.contains(&e.from));
-    journal.files = kept;
-    for entry in gone {
-        take_back(&entry);
+    for entry in journal.files.iter_mut().filter(|e| !planned_now.contains(&e.from)) {
+        if !entry.alone {
+            entry.alone = true;
+            moved.alone.push(entry.to.clone());
+        }
     }
+    journal.files.retain(|e| !e.alone || Path::new(&e.to).exists());
+    moved.earlier.clone_from(&journal.earlier);
     journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
     point("copied")?;
-    check(folders, &journal)?;
+    check(folders, journal)?;
     point("checked")?;
-    keep(folders, &mut journal)?;
+    keep(folders, journal)?;
     journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
     point("kept")?;
-    moved.named = name_paths(folders, &mut journal)?;
+    moved.named = name_paths(folders, journal)?;
     journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
     point("named")?;
-    Ok((journal, moved))
+    Ok(moved)
 }
 
 /// The journal's entry for `entry.from` replaced, or added.
@@ -750,7 +872,7 @@ fn upsert(journal: &mut Journal, entry: Entry) {
 /// Step 2: every copy against its source, byte for byte (a list against its
 /// source before its paths are named: the bytes then are those noted).
 fn check(folders: &Folders, journal: &Journal) -> Result<(), Fault> {
-    for entry in &journal.files {
+    for entry in journal.files.iter().filter(|e| !e.alone) {
         let (from, to) = (join(&folders.notes, &entry.from), PathBuf::from(&entry.to));
         // As copied; or, a list whose paths were named, its source as copied and its copy as named.
         let same = same_bytes(&from, &to).map_err(|e| Fault::new("unreadable", format!("{}: {e}", to.display())))?
@@ -767,7 +889,7 @@ fn check(folders: &Folders, journal: &Journal) -> Result<(), Fault> {
 /// allows it (nothing writes the old files any more), else a copy.
 fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
     let day = PathBuf::from(&journal.kept);
-    for entry in &mut journal.files {
+    for entry in journal.files.iter_mut().filter(|e| !e.alone) {
         let from = join(&folders.notes, &entry.from);
         let to = join(&day, &entry.from);
         if to.exists() && same_bytes(&from, &to).unwrap_or(false) {
@@ -780,6 +902,7 @@ fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
         if std::fs::hard_link(&from, &to).is_err() {
             crate::filelock::copy_whole(&from, &to).map_err(fail)?;
         }
+        entry.kept_this_run = true;
         if !same_bytes(&from, &to).map_err(fail)? {
             return Err(Fault::new("changed", from.display()));
         }
@@ -885,6 +1008,9 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
         let mut changed = false;
         for i in 0..journal.files.len() {
             let entry = journal.files[i].clone();
+            if entry.alone {
+                continue;
+            }
             let from = join(&folders.notes, &entry.from);
             // A list read whole (small, and what an exchange writes); a paper or a scan by its size and time, read whole before.
             let list = matches!(entry.kind, Some(Kind::List | Kind::LetterRecord));
@@ -895,7 +1021,7 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
             let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
             let sha = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
             let to = PathBuf::from(&entry.to);
-            let mut fresh = Entry { size, time, sha, made: true, rewritten: String::new(), ..entry };
+            let mut fresh = Entry { size, time, sha, made: true, this_run: true, rewritten: String::new(), ..entry };
             let state = folders.state.clone();
             let noted = fresh.clone();
             let mut note = || -> Result<(), Fault> {
@@ -914,7 +1040,12 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
             journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
         }
         point("switching")?;
-        let storage = Storage { moved: now, from: folders.notes.display().to_string(), cleaned: 0 };
+        // The journal closed first: from now on it is the record of a move made,
+        // never work to undo, and the state file can be written again from it.
+        journal.switched = now;
+        journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
+        point("closed")?;
+        let storage = Storage { moved: now, from: folders.notes.display().to_string(), ..Storage::default() };
         storage.write(&folders.state).map_err(|e| Fault::new("switch", e))
     })
 }
@@ -929,67 +1060,76 @@ fn with_locks<T>(paths: &[PathBuf], f: &mut dyn FnMut() -> T) -> T {
 
 /// The whole move, without the window: `prepare`, then `switch` with
 /// `hold` held (the app holds the sharing's exchanges' lock; the command
-/// line holds nothing). Before the switch, a failure takes back what this
-/// move made (`rollback`) and the old places stay as they were; already
-/// moved, nothing is done.
+/// line holds nothing), the whole under the move's own lock (two Sioul on
+/// one device never move at once). Before the switch, a failure takes back
+/// what this run made, and only that (`undo_run`): the old places stay as
+/// they were. Already moved, or a closed journal whose state file is gone
+/// (written again from it, `recover`): nothing is done, nothing deleted.
 pub fn move_now<G>(folders: &Folders, now: i64, hold: impl FnOnce() -> Result<G, String>) -> Result<Moved, Fault> {
-    if Storage::read(&folders.state).is_moved() {
-        return Err(Fault::new("moved-already", folders.state.display()));
-    }
-    let outcome = (|| {
-        let (mut journal, moved) = prepare(folders, now)?;
-        let held = hold().map_err(|e| Fault::new("busy", e))?;
-        let switched = switch(folders, &mut journal, now);
-        drop(held);
-        switched.map(|()| moved)
-    })();
-    if outcome.is_err() && !Storage::read(&folders.state).is_moved() {
-        if let Some(journal) = Journal::read(&folders.state) {
-            let _ = rollback(&journal, &folders.state);
+    crate::filelock::with_lock(&Journal::path(&folders.state), || {
+        let _ = Storage::recover(&folders.state);
+        let here = Storage::read(&folders.state);
+        if here.is_moved() {
+            return Err(Fault::new("moved-already", folders.state.display()));
         }
-    }
-    outcome
+        if let Some(lost) = here.lost {
+            return Err(Fault::new(lost, folders.state.display()));
+        }
+        let mut journal = open(folders, now)?;
+        let outcome = (|| {
+            let moved = fill(folders, &mut journal)?;
+            let held = hold().map_err(|e| Fault::new("busy", e))?;
+            let switched = switch(folders, &mut journal, now);
+            drop(held);
+            switched.map(|()| moved)
+        })();
+        if outcome.is_err() && journal.switched == 0 && !Storage::read(&folders.state).is_moved() {
+            undo_run(folders, &mut journal);
+        }
+        outcome
+    })
 }
 
-/// What a move made, taken back: each file it made that still holds its
-/// bytes (never one changed since: someone's), the dated copies, the journal.
-/// Never once moved.
-pub fn rollback(journal: &Journal, state: &Path) -> Result<(), Fault> {
-    if Storage::read(state).is_moved() {
-        return Ok(());
-    }
-    for entry in &journal.files {
-        take_back(entry);
-    }
-    // The folders it made below its places, once empty: never a place itself, never above it.
-    let roots: Vec<PathBuf> = [&journal.records, &journal.papers, &journal.letters].into_iter().filter(|r| !r.is_empty()).map(|r| PathBuf::from(r.as_str())).collect();
-    for entry in &journal.files {
+/// What this run made, taken back after its failure, before any switch:
+/// each copy it made that still holds the bytes it wrote while its source is
+/// still there with those bytes (a copy whose source is gone is the only one
+/// left: it stays), the dated copies it made, the folders it left empty.
+/// Never a copy an earlier run made, never a file the move did not write;
+/// the journal keeps what stays, and goes when nothing does.
+fn undo_run(folders: &Folders, journal: &mut Journal) {
+    let roots: Vec<PathBuf> = [&folders.records, &folders.papers, &folders.letters].into_iter().map(PathBuf::clone).collect();
+    let mut stays = Vec::new();
+    for entry in journal.files.drain(..) {
         let to = PathBuf::from(&entry.to);
-        let Some(root) = roots.iter().find(|root| to.starts_with(root)) else { continue };
-        for dir in to.ancestors().skip(1).take_while(|dir| *dir != root.as_path() && dir.starts_with(root)) {
-            if std::fs::remove_dir(dir).is_err() {
-                break;
+        let _ = std::fs::remove_file(passing(&to));
+        if entry.kept_this_run && !entry.kept.is_empty() {
+            let kept = PathBuf::from(&entry.kept);
+            if kept.starts_with(&journal.kept) {
+                let _ = std::fs::remove_file(&kept);
             }
         }
+        let source_there = sha_of(&join(&folders.notes, &entry.from)).is_ok_and(|sha| sha == entry.sha);
+        let as_written = sha_of(&to).is_ok_and(|sha| sha == entry.sha || (!entry.rewritten.is_empty() && sha == entry.rewritten));
+        if entry.this_run && entry.made && source_there && as_written && std::fs::remove_file(&to).is_ok() {
+            if let Some(root) = roots.iter().find(|root| to.starts_with(root)) {
+                for dir in to.ancestors().skip(1).take_while(|dir| *dir != root.as_path() && dir.starts_with(root)) {
+                    if std::fs::remove_dir(dir).is_err() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        if to.exists() {
+            stays.push(Entry { kept: if entry.kept_this_run { String::new() } else { entry.kept.clone() }, ..entry });
+        }
     }
-    // Its dated copies, a folder of its own in Sioul's data (`<kept>/<day>`).
-    let kept = PathBuf::from(&journal.kept);
-    if kept.is_absolute() && !journal.day.is_empty() && kept.file_name().is_some_and(|n| n == journal.day.as_str()) && kept.parent().and_then(Path::file_name).is_some_and(|n| n == KEPT) {
-        let _ = std::fs::remove_dir_all(&kept);
-    }
-    let _ = std::fs::remove_file(Journal::path(state));
-    Ok(())
-}
-
-/// One file a move made taken back, while it holds the bytes it wrote; its dated copy too.
-fn take_back(entry: &Entry) {
-    let to = PathBuf::from(&entry.to);
-    let _ = std::fs::remove_file(passing(&to));
-    if entry.made && sha_of(&to).is_ok_and(|sha| sha == entry.sha || (!entry.rewritten.is_empty() && sha == entry.rewritten)) {
-        let _ = std::fs::remove_file(&to);
-    }
-    if !entry.kept.is_empty() {
-        let _ = std::fs::remove_file(&entry.kept);
+    journal.files = stays;
+    remove_empty(Path::new(&journal.kept));
+    if journal.files.is_empty() && journal.earlier.is_empty() {
+        let _ = std::fs::remove_file(Journal::path(&folders.state));
+    } else {
+        let _ = journal.write(&folders.state);
     }
 }
 
@@ -1081,7 +1221,7 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
     let Some(notes) = storage.from_path() else { return Ok(Cleaned::default()) };
     let journal = Journal::read(state).ok_or("no journal")?;
     let mut cleaned = Cleaned::default();
-    for entry in &journal.files {
+    for entry in journal.files.iter().filter(|e| !e.alone) {
         let from = join(&notes, &entry.from);
         let removed = match sha_of(&from) {
             Ok(sha) if sha == entry.sha => {
@@ -1106,7 +1246,11 @@ pub fn clean(state: &Path, now: i64) -> Result<Cleaned, String> {
     }
     if cleaned.changed.is_empty() {
         storage.cleaned = now;
+        storage.adopted = false;
         storage.write(state)?;
+        let mut journal = journal;
+        journal.cleaned = now;
+        journal.write(state)?;
     }
     Ok(cleaned)
 }

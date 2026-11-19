@@ -179,9 +179,20 @@ fn each_point_stopped_then_run_again_finishes_once() {
             assert!(left > 0 && k > 20, "every point stopped at once: {k}");
             break;
         }
-        assert_eq!(stopped.as_ref().unwrap_err().code, "stopped", "{k}: {stopped:?}");
-        assert!(!Storage::read(&stand.folders.state).is_moved(), "{k}: not switched");
+        let stopped = stopped.unwrap_err();
+        assert_eq!(stopped.code, "stopped", "{k}: {stopped:?}");
         assert_eq!(tree(&stand.folders.notes), before, "{k}: the old places as they were");
+        if stopped.what == "closed" {
+            // The journal closed, the state file not written yet: the move made, adopted
+            // from the journal once its copies are all there; nothing done again.
+            assert!(Storage::read(&stand.folders.state).adopted, "{k}");
+            assert_eq!(move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_err().code, "moved-already", "{k}");
+            assert!(!Storage::read(&stand.folders.state).adopted, "{k}: the state file written again");
+            reads_moved(&stand);
+            k += 1;
+            continue;
+        }
+        assert!(!Storage::read(&stand.folders.state).is_moved(), "{k}: not switched");
         let moved = move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_or_else(|e| panic!("{k}: {e}"));
         assert_eq!(moved.renamed, Vec::<(String, String)>::new(), "{k}: no file given a second name");
         reads_moved(&stand);
@@ -383,16 +394,25 @@ fn dated_copies_go_after_thirty_days() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// The state file: unset or unreadable, never moved.
+/// The state file: unset, never moved; there and unreadable, never moved
+/// and never "not moved" either: lost, no list read anywhere.
 #[test]
 fn a_state_that_does_not_read_is_never_moved() {
     let base = std::env::temp_dir().join(format!("sioul-storage-state-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
-    assert!(!Storage::read(&base).is_moved());
+    assert!(!Storage::read(&base).is_moved() && Storage::read(&base).lost.is_none());
     std::fs::create_dir_all(&base).unwrap();
     std::fs::write(base.join(STATE_FILE), "moved = \"soon\"").unwrap();
     assert!(!Storage::read(&base).is_moved());
-    Storage { moved: NOW, from: "/notes".into(), cleaned: 0 }.write(&base).unwrap();
+    assert_eq!(Storage::read(&base).lost, Some("state-unreadable"));
+    let config = crate::config::Config { notes_root: Some(base.display().to_string()), storage: Storage::read(&base), ..crate::config::Config::default() };
+    assert!(config.places().is_none(), "no list read nor written while it is lost");
+    // A journal that does not read, the state file gone: lost too, never "not moved".
+    std::fs::remove_file(base.join(STATE_FILE)).unwrap();
+    std::fs::write(base.join(JOURNAL), "switched = \"yes\"").unwrap();
+    assert_eq!(Storage::read(&base).lost, Some("journal-unreadable"));
+    std::fs::remove_file(base.join(JOURNAL)).unwrap();
+    Storage { moved: NOW, from: "/notes".into(), ..Storage::default() }.write(&base).unwrap();
     assert!(Storage::read(&base).is_moved());
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -440,4 +460,117 @@ fn a_folder_chosen_again_moves_its_files_with_the_same_care() {
     assert!(wallet.papers.iter().all(|p| wallet.file_path(p).is_some_and(|f| f.starts_with(&to) && f.is_file())));
     assert!(text(&list).starts_with("# kept"));
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A move stopped after its copies, the old paper then removed from the
+/// notes folder (by hand, by a sync), and the move run again: the copy in
+/// the papers' folder and the dated copy stay (review S24, first sequence).
+#[test]
+fn a_source_gone_between_two_runs_never_takes_its_copies_with_it() {
+    // Find the point "kept": every copy made, checked, and its dated copy made.
+    let mut k = 1;
+    let stand = loop {
+        let stand = stand(&format!("gone-after-copy-{k}"));
+        STOP_AT.with(|stop| stop.set(k));
+        let stopped = prepare(&stand.folders, NOW);
+        STOP_AT.with(|stop| stop.set(0));
+        match stopped {
+            Err(fault) if fault.code == "stopped" && fault.what == "kept" => break stand,
+            Err(fault) if fault.code == "stopped" => k += 1,
+            other => panic!("no point named kept: {other:?}"),
+        }
+    };
+    let copy = stand.folders.papers.join("Passport.pdf");
+    let bytes = std::fs::read(&copy).expect("the copy was made before the stop");
+    let journal = Journal::read(&stand.folders.state).unwrap();
+    let dated = PathBuf::from(&journal.files.iter().find(|e| e.from == "papers/Passport.pdf").unwrap().kept);
+    assert!(dated.is_file(), "the dated copy was made before the stop");
+    // The old file leaves the notes folder between the two runs.
+    std::fs::remove_file(stand.folders.notes.join("papers").join("Passport.pdf")).unwrap();
+    let moved = move_now(&stand.folders, NOW + 60, || Ok(()));
+    assert_eq!(std::fs::read(&copy).ok(), Some(bytes.clone()), "the copy is the only one left: it stays");
+    assert_eq!(std::fs::read(&dated).ok(), Some(bytes), "and so does the dated copy");
+    assert_eq!(moved.unwrap().alone, [copy.display().to_string()], "said");
+    // The device reads it at its new place.
+    let wallet = crate::papers::Wallet::load_at(&places_of(&stand)).unwrap();
+    assert!(wallet.file_path(wallet.get("passport").unwrap()).is_some_and(|f| f == copy));
+    // Its old file, gone, is never looked for at the take-out.
+    assert!(clean(&stand.folders.state, NOW + 86_400).unwrap().changed.is_empty());
+    assert!(copy.is_file());
+}
+
+/// Moved and cleaned, then the state file lost (the journal still there): a
+/// second "Move now" deletes nothing; the move is adopted as made from the
+/// closed journal (review S24, second sequence).
+#[test]
+fn a_lost_state_file_after_the_clean_up_never_undoes_the_move() {
+    let stand = stand("state-lost");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    assert!(clean(&stand.folders.state, NOW + 86_400).unwrap().changed.is_empty());
+    let (papers, letters, records, kept) = (tree(&stand.folders.papers), tree(&stand.folders.letters), tree(&stand.folders.records), tree(&stand.folders.kept));
+    assert!(records.contains_key(crate::bank::MANIFEST));
+    std::fs::remove_file(stand.folders.state.join(STATE_FILE)).unwrap();
+    // Read from the closed journal, before anything writes it again.
+    let adopted = Storage::read(&stand.folders.state);
+    assert!(adopted.is_moved() && adopted.adopted && adopted.cleaned == NOW + 86_400, "{adopted:?}");
+    assert_eq!(move_now(&stand.folders, NOW + 2 * 86_400, || Ok(())).unwrap_err().code, "moved-already");
+    assert_eq!(tree(&stand.folders.papers), papers, "the papers stay");
+    assert_eq!(tree(&stand.folders.letters), letters, "the scans stay");
+    assert_eq!(tree(&stand.folders.records), records, "the lists stay, the bank's lines first");
+    assert_eq!(tree(&stand.folders.kept), kept, "the dated copies stay");
+    assert!(stand.folders.state.join(STATE_FILE).is_file(), "the state file written again");
+    // A closed journal is never work to do again, whatever calls it.
+    assert_eq!(prepare(&stand.folders, NOW + 3 * 86_400).unwrap_err().code, "moved-already");
+    assert_eq!(tree(&stand.folders.papers), papers);
+}
+
+/// The state file lost and the copies not all there (a papers' folder on a
+/// drive not plugged in): never "not moved", never moved; no move starts,
+/// nothing is deleted, no list is read anywhere (rule 3).
+#[test]
+fn a_lost_state_file_with_copies_missing_stops_every_list() {
+    let stand = stand("state-lost-copies");
+    move_now(&stand.folders, NOW, || Ok(())).unwrap();
+    std::fs::remove_file(stand.folders.state.join(STATE_FILE)).unwrap();
+    let aside = stand.base.join("unplugged");
+    std::fs::rename(&stand.folders.papers, &aside).unwrap();
+    let before = (tree(&stand.folders.notes), tree(&stand.folders.records), tree(&stand.folders.letters));
+    let storage = Storage::read(&stand.folders.state);
+    assert!(!storage.is_moved() && storage.lost == Some("state-missing"), "{storage:?}");
+    assert_eq!(move_now(&stand.folders, NOW + 60, || Ok(())).unwrap_err().code, "state-missing");
+    assert_eq!((tree(&stand.folders.notes), tree(&stand.folders.records), tree(&stand.folders.letters)), before);
+    // The drive back: the move adopted as made.
+    std::fs::rename(&aside, &stand.folders.papers).unwrap();
+    assert!(Storage::recover(&stand.folders.state).unwrap());
+    assert!(Storage::read(&stand.folders.state).is_moved());
+    reads_moved(&stand);
+}
+
+/// A failure takes back what its own run made, and only that: the copies of
+/// an earlier run, killed, stay for the next try (review S24).
+#[test]
+fn a_failure_takes_back_only_what_its_own_run_made() {
+    let mut k = 1;
+    let stand = loop {
+        let stand = stand(&format!("own-run-{k}"));
+        STOP_AT.with(|stop| stop.set(k));
+        let stopped = prepare(&stand.folders, NOW);
+        STOP_AT.with(|stop| stop.set(0));
+        match stopped {
+            Err(fault) if fault.code == "stopped" && fault.what == "copied" => break stand,
+            Err(fault) if fault.code == "stopped" => k += 1,
+            other => panic!("no point named copied: {other:?}"),
+        }
+    };
+    let (papers, records) = (tree(&stand.folders.papers), tree(&stand.folders.records));
+    assert!(!papers.is_empty() && !records.is_empty());
+    // A second run that fails at the switch (an exchange running): what the first made stays.
+    assert_eq!(move_now(&stand.folders, NOW + 60, || Err::<(), _>("busy".to_string())).unwrap_err().code, "busy");
+    assert_eq!(tree(&stand.folders.papers), papers);
+    // The same files (the papers' list's copy has its paths named since: the same file still).
+    assert_eq!(tree(&stand.folders.records).into_keys().collect::<Vec<_>>(), records.into_keys().collect::<Vec<_>>());
+    assert!(Journal::read(&stand.folders.state).is_some_and(|j| j.files.len() == 15), "still named, for the next try");
+    // Then it goes, nothing copied twice.
+    move_now(&stand.folders, NOW + 120, || Ok(())).unwrap();
+    reads_moved(&stand);
 }
