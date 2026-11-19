@@ -887,3 +887,32 @@ fn a_link_to_an_old_place_finds_the_moved_file() {
     assert_eq!(moved_to(&stand.folders.state, &stand.folders.notes.join("admin").join("lease.md")), None, "a note: none of the move's");
     assert_eq!(moved_to(&stand.folders.state, &stand.base.join("elsewhere").join("Tax-notice.pdf")), None);
 }
+
+/// The copy's lows (review S6, S7, S10): a copy that cannot be made leaves
+/// no hidden half copy; the switch never copies over a file that is not the
+/// move's own as it wrote it; a paper's copy keeps its source's mode.
+#[test]
+fn the_copy_leaves_no_half_and_writes_over_nothing_of_the_persons() {
+    let stand = stand("copy-lows");
+    // A copy that fails half way (a full disk; here a source that does not read): no hidden copy left.
+    let target = stand.base.join("half").join("x.pdf");
+    assert!(copy_into(&stand.folders.notes.join("admin"), &target, &mut || Ok(())).is_err());
+    assert!(!passing(&target).exists(), "no half copy left");
+    // Copied, then the copy of a list replaced by another file before the switch: refused.
+    let (mut journal, _) = prepare(&stand.folders, NOW).unwrap();
+    let budgets = stand.folders.notes.join(crate::budget::LEDGER);
+    std::fs::write(&budgets, format!("{}\n[[budget]]\nid = \"late\"\n", text(&budgets))).unwrap();
+    std::fs::write(stand.folders.records.join(crate::budget::LEDGER), "the person's own").unwrap();
+    assert_eq!(switch(&stand.folders, &mut journal, NOW).unwrap_err().code, "records-taken");
+    assert_eq!(text(&stand.folders.records.join(crate::budget::LEDGER)), "the person's own");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let moded = self::stand("copy-mode");
+        let passport = moded.folders.notes.join("papers").join("Passport.pdf");
+        std::fs::set_permissions(&passport, std::fs::Permissions::from_mode(0o644)).unwrap();
+        move_now(&moded.folders, NOW, || Ok(())).unwrap();
+        let mode = std::fs::metadata(moded.folders.papers.join("Passport.pdf")).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o644);
+    }
+}

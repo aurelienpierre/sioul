@@ -869,11 +869,20 @@ fn sync_dir(dir: &Path) {
 fn copy_into(from: &Path, to: &Path, note: &mut dyn FnMut() -> Result<(), Fault>) -> Result<u64, Fault> {
     let fail = |e: std::io::Error| Fault::new("copy", format!("{}: {e}", to.display()));
     let parent = to.parent().ok_or_else(|| Fault::new("copy", to.display()))?;
-    std::fs::create_dir_all(parent).map_err(fail)?;
+    made_dirs(parent).map_err(fail)?;
     let temporary = passing(to);
-    let copied = crate::filelock::copy_whole(from, &temporary).map_err(fail)?;
+    // A full disk leaves no half copy behind (review S6).
+    let copied = crate::filelock::copy_whole(from, &temporary).map_err(|e| {
+        let _ = std::fs::remove_file(&temporary);
+        fail(e)
+    })?;
     let written = (|| -> std::io::Result<bool> {
         let file = std::fs::File::options().write(true).open(&temporary)?;
+        // The source's own mode, not the private one a copy starts with: a papers' folder
+        // may be read by other programs, a family's shared folder by other people (review S10).
+        if let Ok(meta) = std::fs::metadata(from) {
+            let _ = file.set_permissions(meta.permissions());
+        }
         file.sync_all()?;
         if let Ok(time) = std::fs::metadata(from).and_then(|m| m.modified()) {
             let _ = file.set_modified(time);
@@ -1143,7 +1152,8 @@ fn name_paths(folders: &Folders, journal: &mut Journal) -> Result<usize, Fault> 
         journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
         if count > 0 {
             point("naming")?;
-            crate::filelock::replace(&to, written.as_bytes()).map_err(|e| Fault::new("copy", format!("{}: {e}", to.display())))?;
+            // Flushed before it counts (review S8): nothing but the move writes there yet.
+            crate::health::write_synced(&to, written.as_bytes()).map_err(|e| Fault::new("copy", e))?;
             point("renamed-paths")?;
         }
         if !sha_of(&to).is_ok_and(|sha| sha == journal.files[i].rewritten) {
@@ -1233,6 +1243,11 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
             let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
             let sha = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
             let to = PathBuf::from(&entry.to);
+            // Only over this move's own copy, as it wrote or named it (review S7).
+            let ours = entry.made && sha_of(&to).is_ok_and(|now| now == entry.sha || (!entry.rewritten.is_empty() && now == entry.rewritten));
+            if to.exists() && !ours {
+                return Err(Fault::new("records-taken", to.display()));
+            }
             let mut fresh = Entry { size, time, sha, made: true, this_run: true, rewritten: String::new(), ..entry };
             let state = folders.state.clone();
             let noted = fresh.clone();
@@ -1412,7 +1427,7 @@ pub fn move_documents(from: &Path, to: &Path, list: &Path, table: &str, switch: 
         if count > 0 {
             let written = doc.to_string();
             same_but_files(&text, &written, table).map_err(|e| Fault::new("list-unreadable", format!("{}: {e}", list.display())))?;
-            crate::filelock::replace(list, written.as_bytes()).map_err(|e| Fault::new("copy", format!("{}: {e}", list.display())))?;
+            crate::health::write_synced(list, written.as_bytes()).map_err(|e| Fault::new("copy", e))?;
         }
         moved.named = count;
         Ok(())
