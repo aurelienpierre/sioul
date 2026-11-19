@@ -902,11 +902,16 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         // here, and not gone there yet, is not pulled.
         let mut pending: Vec<&Listed> = listed.iter().filter(|l| !State::load(&vdir::state_path(&account.id, l.kind, &l.id)).removed).collect();
         let mut first = true;
+        // The books whose sync went through: only their favourites are looked at (H4).
+        let mut whole: Vec<String> = Vec::new();
         while !pending.is_empty() {
             let mut again = Vec::new();
             for collection in pending {
                 match sync_part(client, &account.id, collection, &mut report, first, Some(Instant::now() + SLICE)) {
-                    Ok(true) => report.collections += 1,
+                    Ok(true) => {
+                        report.collections += 1;
+                        whole.push(collection.id.clone());
+                    }
                     Ok(false) => again.push(collection),
                     Err(e) => report.problems.push(e),
                 }
@@ -923,7 +928,8 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         }
         // Starred people both ways, on the address books of yours whose server keeps a favourite per card.
         if kind == Kind::Contacts && drafts_config().dnd.stars {
-            for collection in &listed {
+            // Never after a sync that failed: a card gone there may still be here, read as unmarked (H4).
+            for collection in listed.iter().filter(|l| whole.contains(&l.id)) {
                 if let Err(e) = keep_stars(client, &account.id, collection, jiff::Timestamp::now().as_second()) {
                     eprintln!("sioul: stars: {}: {e}", collection.name);
                 }
@@ -976,7 +982,9 @@ fn favourites(client: &Client, url: &str) -> Result<(BTreeMap<String, bool>, boo
         return Err(SyncError::Server(format!("PROPFIND {url}: {status}")));
     }
     let (mut cards, mut answered) = (BTreeMap::new(), false);
-    for response in responses.iter().filter(|r| !r.href.ends_with('/')) {
+    // A card the answer names, present (its etag read): favourite or not. One the answer does not
+    // name, or names as gone, is left out: unknown, never "not a favourite" (review of `phones`, H4).
+    for response in responses.iter().filter(|r| !r.href.ends_with('/') && r.prop(DAV, "getetag").is_some()) {
         let favourite = response.prop(NEXTCLOUD, "favorite");
         answered |= favourite.is_some();
         cards.insert(response.href.clone(), favourite.is_some_and(|p| matches!(p.text.trim(), "1" | "true")));
@@ -1042,11 +1050,13 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     }
     let state = State::load(&state_path);
     let Some(book) = vdir::collections(Kind::Contacts).into_iter().find(|c| c.account == account && c.id == listed.id) else { return Ok(false) };
-    let marked_at = |href: &str| marked.get(href).or_else(|| marked.get(&percent_decoded(href))).copied().unwrap_or(false);
+    // A card the answer does not name is unknown: left out of the look, never read as unmarked (H4).
+    let marked_at = |href: &str| marked.get(href).or_else(|| marked.get(&percent_decoded(href))).copied();
     let seen: Vec<sioul_core::stars::Seen> = state
         .items
         .iter()
         .filter_map(|item| {
+            let starred = marked_at(&item.href)?;
             let card = sioul_core::contacts::read(&book.dir.join(&item.file), &book)?;
             Some(sioul_core::stars::Seen {
                 id: item.href.clone(),
@@ -1054,10 +1064,16 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
                 phones: card.phones.iter().map(|p| p.value.trim().to_string()).collect(),
                 emails: card.emails.iter().map(|e| e.value.trim().to_string()).collect(),
                 uid: card.uid.trim().to_string(),
-                starred: marked_at(&item.href),
+                starred,
             })
         })
         .collect();
+    // An answer that names none of the cards held here (a proxy that drops the depth, a book that
+    // moved, its addresses changed): nothing read, nothing changed, the memory kept (H4).
+    if seen.is_empty() {
+        memory.save(&memory_path).map_err(disk)?;
+        return Ok(false);
+    }
     let config = drafts_config();
     let senders = sioul_core::porch::Senders::load(&config);
     let blocked = |c: &sioul_core::stars::Seen| c.phones.iter().any(|n| senders.judge_number(n).who == sioul_core::reach::Who::Blocked) || c.emails.iter().any(|e| senders.who(e) == sioul_core::reach::Who::Blocked);
@@ -5392,6 +5408,8 @@ mod stars_tests {
         keeps: bool,
         favourites: Mutex<BTreeMap<String, bool>>,
         patches: Mutex<usize>,
+        /// Its PROPFIND names its cards; false: the collection alone (a proxy that drops the depth).
+        names: std::sync::atomic::AtomicBool,
     }
 
     const BOOK: &str = "/remote.php/dav/addressbooks/users/alex/contacts/";
@@ -5404,7 +5422,8 @@ mod stars_tests {
         fn answer(&self, request: &Request) -> Reply {
             match request.method.as_str() {
                 "PROPFIND" => {
-                    let cards: String = ["claire.vcf", "fred.vcf"]
+                    let named: &[&str] = if self.names.load(std::sync::atomic::Ordering::Relaxed) { &["claire.vcf", "fred.vcf"] } else { &[] };
+                    let cards: String = named
                         .iter()
                         .map(|card| {
                             let href = format!("{BOOK}{card}");
@@ -5463,12 +5482,12 @@ mod stars_tests {
         .unwrap();
         let client = Client::new("alex", "secret");
         // A Nextcloud with no favourite yet: it cannot be told from a server that keeps none; nothing written.
-        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0) });
+        let quiet = Arc::new(Book { keeps: true, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
         let listed = synced("stars-unmarked", &serve(quiet.clone()));
         assert!(!keep_stars(&client, "stars-unmarked", &listed, 1_800_000_000).unwrap());
         assert_eq!(*quiet.patches.lock().unwrap(), 0, "never written to learn");
         assert_eq!(sioul_core::stars::Memory::load(&sioul_core::stars::folder().join("stars-unmarked").join("contacts.json")).kept, None);
-        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0) });
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
         let base = serve(server.clone());
         let listed = synced("stars-nextcloud", &base);
         let client = Client::new("alex", "secret");
@@ -5512,7 +5531,7 @@ mod stars_tests {
             people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
         })
         .unwrap();
-        let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0) });
+        let plain = Arc::new(Book { keeps: false, favourites: Mutex::new(BTreeMap::new()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
         let listed = synced("stars-plain", &serve(plain.clone()));
         keep_stars(&client, "stars-plain", &listed, now).unwrap();
         keep_stars(&client, "stars-plain", &listed, now + 2 * STARS_EVERY).unwrap();
@@ -5523,6 +5542,36 @@ mod stars_tests {
         // A book shared with you is left.
         let shared = Listed { owned: Some(false), ..synced("stars-shared", &base) };
         assert!(!keep_stars(&client, "stars-shared", &shared, now).unwrap());
+    }
+
+    /// An answer that names no card removes nobody and writes nothing
+    /// (review of `phones`, H4; the reviewer's sketch): Claire marked, Fred
+    /// marked by Sioul; then the server answers the collection alone.
+    #[test]
+    fn an_answer_that_names_no_card_changes_nothing() {
+        let _ = home();
+        let list = People::default_path();
+        sioul_core::everywhere::change_people(&list, |people| {
+            people.people.clear();
+            people.add(Person { name: "Fred".into(), phones: vec!["01 99 00 00 02".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        let server = Arc::new(Book { keeps: true, favourites: Mutex::new([(format!("{BOOK}claire.vcf"), true)].into_iter().collect()), patches: Mutex::new(0), names: std::sync::atomic::AtomicBool::new(true) });
+        let listed = synced("stars-unnamed", &serve(server.clone()));
+        let client = Client::new("alex", "secret");
+        let now = 1_800_000_000;
+        keep_stars(&client, "stars-unnamed", &listed, now).unwrap();
+        let names = || People::load(&list).people.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(), ["Fred", "Claire"]);
+        let patches = *server.patches.lock().unwrap();
+        let memory_path = sioul_core::stars::folder().join("stars-unnamed").join("contacts.json");
+        let written = sioul_core::stars::Memory::load(&memory_path).written;
+        assert!(written.contains_key(&format!("{BOOK}fred.vcf")), "Fred marked by Sioul");
+        server.names.store(false, std::sync::atomic::Ordering::Relaxed);
+        assert!(!keep_stars(&client, "stars-unnamed", &listed, now + STARS_EVERY).unwrap());
+        assert_eq!(names(), ["Fred", "Claire"], "nobody leaves the list");
+        assert_eq!(*server.patches.lock().unwrap(), patches, "nothing written");
+        assert_eq!(sioul_core::stars::Memory::load(&memory_path).written, written, "the memory kept");
     }
 }
 
