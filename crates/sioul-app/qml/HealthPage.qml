@@ -438,8 +438,20 @@ Item {
                         contentWidth: availableWidth
                         clip: true
 
+                        // A medicine or a prescription added, changed or taken out: the column keeps
+                        // its place (ListPlace.qml).
+                        ListPlace {
+                            id: sidePlace
+
+                            view: side
+                            rows: [[], []]
+                            source: [page.medicines, page.prescriptions]
+                        }
+
                         Medicines {
                             width: side.availableWidth
+                            medicines: sidePlace.rows[0]
+                            prescriptions: sidePlace.rows[1]
                         }
                     }
                 }
@@ -487,7 +499,9 @@ Item {
         ScrollView {
             id: scroll
 
-            readonly property var day: page.day
+            // The day as its rows were last given: a meal, a nap or a dose added, moved or taken,
+            // the list keeps its place (ListPlace.qml); another day starts at its top.
+            readonly property var day: dayPlace.rows
             readonly property bool editable: scroll.day !== null && !scroll.day.past
 
             // A row brought into view, chosen in the timeline.
@@ -498,6 +512,7 @@ Item {
                 if (!row || !flick)
                     return
                 const top = row.y + listColumn.y
+                dayPlace.leave()
                 if (top < flick.contentY || top + row.height > flick.contentY + flick.height)
                     flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
             }
@@ -511,6 +526,7 @@ Item {
 
                 function onMedicinesWanted() {
                     const flick = scroll.contentItem as Flickable
+                    dayPlace.leave()
                     if (flick && medicinesHere.visible)
                         flick.contentY = Math.max(0, Math.min(medicinesHere.y + listColumn.y - 8, flick.contentHeight - flick.height))
                 }
@@ -518,6 +534,15 @@ Item {
 
             contentWidth: availableWidth
             clip: true
+
+            ListPlace {
+                id: dayPlace
+
+                view: scroll
+                rows: null
+                source: page.day
+                scope: page.day ? page.day.date : ""
+            }
 
             ColumnLayout {
                 id: listColumn
@@ -571,6 +596,7 @@ Item {
                         required property var modelData
                         // By its own day: today's list after midnight holds two nights, both "sleep".
                         readonly property string ident: (row.modelData.date || scroll.day.date) + "|" + row.modelData.key
+                        readonly property string placeKey: row.ident
                         readonly property bool lit: page.hovered === row.ident || page.chosen === row.ident
                         readonly property bool isDose: row.modelData.kind === "dose"
                         // A meal, a nap or the night not over yet, on a day not past; the night not

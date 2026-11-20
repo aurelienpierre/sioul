@@ -31,9 +31,18 @@ Item {
     property alias section: section
 
     function reload() {
-        page.shown = JSON.parse(page.sioul.letters())
+        lettersPlace.keep(() => {
+            page.shown = JSON.parse(page.sioul.letters())
+        })
         if (page.wanted !== "")
             Qt.callLater(page.reveal)
+    }
+
+    // A letter come, answered, filed or taken out: the page keeps its place (ListPlace.qml).
+    ListPlace {
+        id: lettersPlace
+
+        view: scroll
     }
 
     // A scan chosen here, copied into the folder (the New menu's "A paper letter (scan)…").
@@ -79,6 +88,7 @@ Item {
         if (found === null)
             return
         page.wanted = ""
+        lettersPlace.leave()
         scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
     }
 
@@ -249,6 +259,7 @@ Item {
                     id: year
 
                     required property var modelData
+                    readonly property string placeKey: "year:" + year.modelData.year
 
                     Layout.fillWidth: true
                     spacing: 4
@@ -268,6 +279,7 @@ Item {
 
                             required property var modelData
                             readonly property string letterId: filed.modelData.id
+                            readonly property string placeKey: filed.letterId
 
                             Layout.fillWidth: true
                             spacing: 2

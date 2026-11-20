@@ -82,6 +82,8 @@ Item {
     readonly property var messages: page.talk !== null ? page.talk.messages : []
     // The search through the texts' words, and what was said of the last action.
     property string query: ""
+    // The conversation chosen in the list when it was read again, by its id.
+    property string chosenId: ""
     property string said: ""
     property var counted: ({ parts: 0, said: "" })
     // What you attach (texts.rs `attach`, off the window's thread): the files
@@ -114,25 +116,18 @@ Item {
 
     // Read while shown, as Mail, and again whenever the sharing brings texts
     // (`onSharedIn`). What did not change keeps its place: the list keeps the
-    // row chosen and the row at its top; a thread read to its end stays at
-    // its end as a new text comes, one read back keeps the message at its top.
+    // row chosen, and the row at its top (`listPlace`); a thread read to its
+    // end stays at its end as a new text comes, one read back keeps the message
+    // at its top.
     function reload() {
         if (!page.sioul)
             return
         const listed = page.sioul.texts("view", JSON.stringify({ query: page.query, archived: page.archivedView }))
         if (listed !== page.listedText) {
-            // At its top, the list stays at its top: the conversation that just got a text shows there.
-            const atTop = list.contentY <= list.originY + 1
-            const top = atTop ? -1 : list.indexAt(1, list.contentY + 1)
-            const topId = top >= 0 && top < page.rows.length ? page.rows[top].id : ""
-            const chosen = list.currentIndex >= 0 && list.currentIndex < page.rows.length ? page.rows[list.currentIndex].id : page.openId
+            // The row chosen, chosen again once the list has its new rows (its `onModelChanged`).
+            const shown = listPlace.rows
+            page.chosenId = list.currentIndex >= 0 && list.currentIndex < shown.length ? shown[list.currentIndex].id : page.openId
             page.listedText = listed
-            list.currentIndex = page.rows.findIndex(r => r.id === chosen)
-            const back = page.rows.findIndex(r => r.id === topId)
-            if (atTop)
-                Qt.callLater(() => list.positionViewAtBeginning())
-            else if (back >= 0)
-                Qt.callLater(() => list.positionViewAtIndex(back, ListView.Beginning))
         }
         if (page.openId === "") {
             page.talkText = ""
@@ -205,7 +200,7 @@ Item {
         }
         page.openId = id
         page.reload()
-        list.currentIndex = page.rows.findIndex(r => r.id === id)
+        list.currentIndex = listPlace.rows.findIndex(r => r.id === id)
     }
 
     // Back to the list alone.
@@ -519,6 +514,17 @@ Item {
                 color: page.theme.muted
             }
 
+            // A conversation that gets a text, archived or deleted: the list keeps its place
+            // (ListPlace.qml); at its top, it stays at its top, the conversation that just got a
+            // text showing there. Another search, or the archive: from its top.
+            ListPlace {
+                id: listPlace
+
+                view: list
+                source: page.rows
+                key: "id"
+                scope: [page.query, page.archivedView]
+            }
             ListView {
                 id: list
 
@@ -531,7 +537,8 @@ Item {
                 activeFocusOnTab: true
                 keyNavigationEnabled: true
                 currentIndex: -1
-                model: page.rows
+                model: listPlace.rows
+                onModelChanged: list.currentIndex = listPlace.rows.findIndex(r => r.id === page.chosenId)
                 ScrollBar.vertical: ScrollBar {}
                 Accessible.name: page.sioul.text("texts-page-title")
                 Keys.onReturnPressed: list.openCurrent()
@@ -542,8 +549,8 @@ Item {
                 }
 
                 function openCurrent() {
-                    if (list.currentIndex >= 0 && list.currentIndex < page.rows.length)
-                        page.select(page.rows[list.currentIndex].id)
+                    if (list.currentIndex >= 0 && list.currentIndex < listPlace.rows.length)
+                        page.select(listPlace.rows[list.currentIndex].id)
                 }
 
                 delegate: ItemDelegate {

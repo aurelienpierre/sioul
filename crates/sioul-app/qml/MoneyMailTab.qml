@@ -51,17 +51,20 @@ Item {
         tab.problem = answer.problem || ""
         const rows = answer.rows || []
         const page = answer.page || 0
-        if (page === 0 && rows.length === 0)
-            model.clear()
-        for (let i = 0; i < rows.length; ++i) {
-            const at = page * 60 + i
-            if (at < model.count)
-                model.set(at, rows[i])
-            else
-                model.append(rows[i])
-        }
-        if (page === 0 && model.count > rows.length)
-            model.remove(rows.length, model.count - rows.length)
+        // Its rows changed in place: the list keeps its place (ListPlace.qml); other filters, from its top.
+        listPlace.keep(() => {
+            if (page === 0 && rows.length === 0)
+                model.clear()
+            for (let i = 0; i < rows.length; ++i) {
+                const at = page * 60 + i
+                if (at < model.count)
+                    model.set(at, rows[i])
+                else
+                    model.append(rows[i])
+            }
+            if (page === 0 && model.count > rows.length)
+                model.remove(rows.length, model.count - rows.length)
+        })
         delete answer.rows
         tab.shown = Object.assign({ page: 0, more: false, waiting: "", chips: [], filter: null, accounts: [], budgets: [], addresses: [] }, answer)
     }
@@ -136,6 +139,13 @@ Item {
 
     ListModel {
         id: model
+    }
+    ListPlace {
+        id: listPlace
+
+        view: list
+        rows: model
+        scope: tab.asked
     }
 
     Timer {

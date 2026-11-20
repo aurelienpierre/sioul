@@ -22,6 +22,13 @@ Item {
     property var shown: ({ store: false, problem: "", kinds: [], families: [], choices: [], chips: [] })
     // The person whose papers are shown (a chip), "" everyone's.
     property string forId: ""
+
+    // A paper added, renewed or taken out: the page keeps its place (ListPlace.qml).
+    ListPlace {
+        id: papersPlace
+
+        view: scroll
+    }
     property string problem: ""
     // A narrow screen (a phone): a paper's buttons under it.
     readonly property bool narrow: page.width < 560
@@ -30,9 +37,11 @@ Item {
     property alias dialog: paperDialog
 
     function reload() {
-        page.shown = JSON.parse(page.sioul.papers())
-        if (page.forId !== "" && !(page.shown.chips || []).some(c => c.id === page.forId))
-            page.forId = ""
+        papersPlace.keep(() => {
+            page.shown = JSON.parse(page.sioul.papers())
+            if (page.forId !== "" && !(page.shown.chips || []).some(c => c.id === page.forId))
+                page.forId = ""
+        })
         if (page.wanted !== "") {
             const id = page.wanted
             page.wanted = ""
@@ -189,6 +198,7 @@ Item {
                     id: family
 
                     required property var modelData
+                    readonly property string placeKey: "family:" + family.modelData.label
                     // Its papers for the person chosen, or everyone's.
                     readonly property var papers: family.modelData.papers.filter(p => page.forId === "" || (p.persons || []).indexOf(page.forId) >= 0)
 
@@ -211,6 +221,7 @@ Item {
                             id: row
 
                             required property var modelData
+                            readonly property string placeKey: row.modelData.id
                             readonly property bool attention: ["renew", "ended", "old"].includes(row.modelData.standing)
 
                             Layout.fillWidth: true

@@ -212,23 +212,36 @@ ColumnLayout {
     }
     // Many sites scroll; sorted by type, each type says its name once.
     ScrollView {
+        id: sitesScroll
+
         Layout.fillWidth: true
         Layout.fillHeight: true
         contentWidth: availableWidth
         clip: true
+
+        // A site added, changed or taken out: the list keeps its place (ListPlace.qml); other
+        // filters, from its top.
+        ListPlace {
+            id: sitesPlace
+
+            view: sitesScroll
+            source: list.rows
+            scope: [list.areaFilter, list.kindFilter, list.categoryFilter, list.byCategory]
+        }
 
         ColumnLayout {
             width: parent.width
             spacing: 6
 
             Repeater {
-                model: list.rows
+                model: sitesPlace.rows
 
                 delegate: ColumnLayout {
                     id: entry
 
                     required property var modelData
                     required property int index
+                    readonly property string placeKey: entry.modelData.fold ? "later" : (entry.modelData.site || {}).id || ""
 
                     Layout.fillWidth: true
                     spacing: 2

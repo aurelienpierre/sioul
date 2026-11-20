@@ -110,9 +110,12 @@ Item {
     Connections {
         target: page.sioul
 
-        // The view asked, made.
+        // The view asked, made: a stretch of time noted, changed or deleted, the page keeps its
+        // place (ListPlace.qml).
         function onTimeViewChanged() {
-            page.shown = JSON.parse(page.sioul.timeView || "null")
+            timePlace.keep(() => {
+                page.shown = JSON.parse(page.sioul.timeView || "null")
+            })
         }
         function onLinksChanged() {
             page.reload()
@@ -164,6 +167,13 @@ Item {
         onChosen: id => page.period = id
     }
 
+    // Another period, day or project: from its top.
+    ListPlace {
+        id: timePlace
+
+        view: scroll
+        scope: [page.period, page.anchor.getTime(), page.project]
+    }
     ScrollView {
         id: scroll
 
@@ -488,6 +498,7 @@ Item {
                     id: entry
 
                     required property var modelData
+                    readonly property string placeKey: entry.modelData.key
 
                     Layout.fillWidth: true
                     padding: 4

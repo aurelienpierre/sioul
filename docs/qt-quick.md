@@ -168,6 +168,44 @@ Panel {
 
 Qt's documentation: [Repeater](https://doc.qt.io/qt-6/qml-qtquick-repeater.html), [ListView](https://doc.qt.io/qt-6/qml-qtquick-listview.html).
 
+## A list keeps its place
+**The rule.** When an item of a list is added, changed or deleted, here or on another device, the list does not move under the eye: the row at the top of its view stays where it was, to the pixel; when that row is the one deleted, the next one takes its place there, and the rows above it do not move. A list goes to its top only when the person changes what it lists (another filter, search, folder, day) or asks for it. A row the person has just made from the list comes into view by the smallest move, and only when it would be out of sight. At its very top, a list stays at its top, so that what comes first shows (as a browser keeps a page). While the person drags or flicks a list, nothing moves under the finger: new rows wait until the movement ends.
+
+**Why Qt does not do it alone.** A list from JSON is a new array each time Rust says something changed, and Qt treats a new array as a new model: a `ListView` given one goes back to its top at once (Contacts, scrolled to its 22nd card, went to 0 when one card above was deleted), unless the array is equal to the last one, entry for entry. A `Repeater` keeps its `ScrollView`'s position, but makes its rows anew, and every row under a change moves by the change's height (the Health page's day moved by one row of 52 points for a meal deleted above; the Porch, by one row of 46). A model changed in place row by row (Mail's mailbox, Movements) keeps its rows, but each row then shows the next one's words.
+
+**One mechanism**, `ListPlace.qml`, beside each list that scrolls. It notes the place before the rows change (the row at the top of the view by its key, with how far the view's top is into it, and the rows around it), lets the view take the new rows, and puts the place back: that row where it was; gone, the first row under it still there, in its place; none, the nearest row above it, where it was. This is what Qt itself does for a `ListModel` changed row by row by key (the Week's list, `WeekPlanning.qml`'s `diff`), and what the mechanism does for every other list. It puts it back once the window has laid the new rows out (`Window.afterAnimating`, which Qt sends after its polish and before the frame is drawn): a row whose words wrap learns its height only in that layout, and a place put back before it is off by every such row above. A `ListView`, which Qt has sent to its top at once, is also put back at once: the rows it makes there are laid out on the spot (`ensurePolished` on each, then on the view), so that nothing under them moves a frame later. `tst_listplace.qml` checks every case on each kind of list, and shows the place put back only once, before the layout, off by several points.
+
+**How a list joins it.** Three shapes, one component:
+
+- A `ListView` given an array: the `ListPlace` holds the array, the view reads its `rows`; `key` names the field that tells a row (`"key"` by default, or a function of the row); `scope` is what the list lists. Contacts:
+
+    ```qml
+    ListPlace {
+        id: listPlace
+
+        view: list
+        source: page.shown.contacts
+        scope: [page.shown.filter, page.shown.category]
+    }
+    ListView {
+        id: list
+
+        model: listPlace.rows
+        …
+    }
+    ```
+
+- Rows that are a `Repeater`'s in a `ScrollView` or a `Flickable`, and the rows inside a `ListView`'s own rows (a group's tasks, a day's events): each such row's delegate says its key, `readonly property string placeKey: modelData.uid`, and the `ListPlace`'s `view` is the `ScrollView` (or the `ListView`). Several `Repeater`s may share one view: each row is found by its `placeKey`, wherever it is, and a key is read within the keys of the rows that hold it (a lane's, then a message's).
+- A `ListModel` the page changes in place: `rows: theModel`, and the change runs inside `place.keep(() => …)`, which holds it while the person drags.
+- A page whose whole answer feeds a scrolling view with many parts (Tasks ▸ Now): the `ListPlace`'s `view` is that view, its rows say their `placeKey`, and the page takes its answer inside `place.keep(() => …)`.
+- A `Repeater` given an array equal to the last, entry for entry, does not make its rows anew. The Tasks board gives its columns without their cards (`{ id, title }`), so that a card moved leaves the columns, and each column's own scroll and `ListPlace`, as they are.
+
+A row made here: `place.reveal(key)` before or after asking Rust to make it; the row comes into view when a later reading holds it. The view's own resets stay as they were: a page that goes to its top on purpose (a new search in Mail) still does, and `place.toTop()` does it for the person's own ask. A page that brings a row into view itself right after its rows change (Health's row chosen in the agenda, Notes' folder unfolded, the letter just read) calls `place.leave()` first, so that the place is not put back over it. A view at its top stays there; `fresh()` says that another scope's rows are shown, for a page that opens such a list elsewhere than its top (the Agenda's What comes on today).
+
+**What changes for code and tests.** The view takes its rows once the change's bindings have settled (`Qt.callLater`): a scope that comes from the same answer as the rows is read settled. Code that reads the view's rows right after changing the data reads the view's model (`place.rows`), or waits a turn; a test does the same (`tryVerify`, `tryCompare`). Rows held while the person drags come when the movement ends.
+
+**What does not need it**: a list that never scrolls on its own (a card's lines, a menu, chips), a form's rows the person is typing in (they change only as typed), a list read once when its dialog opens.
+
 ## Made when first needed
 Making QML objects costs time. On a 2019 phone, the Accounts page took five seconds to open while it made every form it holds; with its parts made when first needed, each page now opens in 0.1 to 0.55 seconds the first time ([android.md](android.md#pages-and-scrolling)). So the window makes little at first, and the rest when it is first shown.
 - **Pages**: `main.qml` holds one empty `Loader` per page. `made` lists the pages made; the Porch is the only one at the start. Showing a page for the first time marks it, and `makePages` gives its `Loader` the page's file with `setSource(file, { sioul: …, theme: …, window: … })`. A page made is then kept.

@@ -320,12 +320,21 @@ Item {
 
             // Your accounts: one card per address.
             // One card per address, made as it comes into view (a phone builds one at a time).
+            // An address added or taken out, a service switched: the cards keep their place
+            // (ListPlace.qml); opened, the list is at its top, as before.
+            ListPlace {
+                id: yoursPlace
+
+                view: yoursScroll
+                source: page.identities
+                key: "identity"
+            }
             ListView {
                 id: yoursScroll
 
                 clip: true
                 spacing: page.theme.gap
-                model: page.identities
+                model: yoursPlace.rows
                 // No card chosen: the list opens on its top, the header in view.
                 currentIndex: -1
                 // Cards made once are kept (made again at each pass, they cost a stutter).

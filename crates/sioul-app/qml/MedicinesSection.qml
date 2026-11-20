@@ -48,6 +48,8 @@ ColumnLayout {
             id: medicine
 
             required property var modelData
+            // Known by it where a list keeps its place (ListPlace.qml).
+            readonly property string placeKey: "medicine:" + (medicine.modelData.id || medicine.modelData.name)
 
             Layout.fillWidth: true
             Layout.leftMargin: 6
@@ -114,6 +116,8 @@ ColumnLayout {
             id: prescription
 
             required property var modelData
+            // Known by it where a list keeps its place (ListPlace.qml).
+            readonly property string placeKey: "prescription:" + prescription.modelData.id
 
             Layout.fillWidth: true
             Layout.leftMargin: 6
