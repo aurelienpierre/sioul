@@ -3900,6 +3900,23 @@ mod line_tests {
             assert!(lined.line && lined.numbers.get("+33199000008").map(String::as_str) == Some("people"));
             assert!(!rings(&lined, "01 99 00 00 08", "03:00") && rings(&lined, "01 99 00 00 08", "21:00") && rings(&lined, "01 99 00 00 08", "18:30"), "{profile:?}: the matrix's row");
         }
+        // Review M1: Sam's card, put on Safe by hand, once Sam is one of your people: the circle's row,
+        // ringing at night where Safe's goes to voicemail; their own times on their sheet still win, cell by
+        // cell; a card of one of your people put on Restricted keeps the restricted row.
+        let mut persons = Persons::default();
+        persons.put(Someone { name: "Sam".into(), relation: "kin".into(), cards: vec!["sam".into(), "ann".into()], ..Someone::default() });
+        let senders = Senders { circle: std::sync::Arc::new(Circle::of(&persons, at("2026-11-16T00:00").date())), ..senders() };
+        let world = World { senders, ..World::new() };
+        let (table, _) = world.build(None);
+        assert_eq!(table.numbers.get("+33199000001").map(String::as_str), Some("people"), "Safe by hand gives way to the circle");
+        assert!(rings(&table, "01 99 00 00 01", "03:00"), "Sam at night, as one of your people");
+        assert_eq!(table.numbers.get("+33199000007").map(String::as_str), Some("always-restricted"), "Ann's card on Restricted by hand: the restriction wins over the circle");
+        let mut own = Attention::usual();
+        own.set_source(&attention::person_row("contact:sam"), attention::Column::Sleep, Level::Later).unwrap();
+        let world = World { attention: own, ..world };
+        let (table, _) = world.build(None);
+        assert!(!rings(&table, "01 99 00 00 01", "03:00") && rings(&table, "01 99 00 00 01", "10:00"), "their own times win where set, the circle's row elsewhere");
+        assert_eq!(table, world.as_before(), "made as every table is made");
     }
 
     /// Nothing changes on any phone until its line is set: over matrices,

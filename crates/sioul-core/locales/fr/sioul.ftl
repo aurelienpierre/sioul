@@ -7313,8 +7313,17 @@ reach-circles = Qui est dans quel cercle
 reach-circles-help = Toute personne de vos carnets d’adresses est parmi vos contacts, sans rien régler.
 reach-people-none = Vos proches ont une ligne à eux dès que vous les ajoutez dans Contacts ▸ Proches.
 reach-people-open = Ouvrir Contacts ▸ Proches
-reach-circles-people-help = Lu dans Contacts ▸ Proches, où vous ajoutez une personne ou changez qui elle est pour vous : vous, l’autre parent d’un enfant et une relation qui a pris fin mis à part. Ce que vous réglez pour l’une d’elles, comment elle vous joint, passe d’abord.
+reach-circles-people-help = Lu dans Contacts ▸ Proches, où vous ajoutez une personne ou changez qui elle est pour vous : vous, l’autre parent d’un enfant et une relation qui a pris fin mis à part. Sûr réglé à la main cède devant cette ligne ; ce qui restreint l’une d’elles, sur sa fiche, une adresse ou un numéro, passe d’abord, et se dit sous son nom.
 reach-circles-untied = Aucun contact n’est lié à { $name } : Sioul ne peut reconnaître ses courriels, ses appels ni ses messages tant qu’aucun ne l’est.
+reach-circles-own = { $list }, par votre propre choix.
+reach-circles-held-entry = { $name }, à { $entry } : { $why }
+reach-circles-held = { $name } : { $why }
+reach-circles-book = { $name } : son contact est dans un carnet d’adresses que quelqu’un d’autre peut modifier ; il ne compte donc pour Vos proches qu’une fois que les groupes de ce carnet décident qui vous joint (Contacts ⚙ ▸ Carnets d’adresses).
+reach-circles-missing = Les contacts liés à { $name } ne sont pas sur cet appareil (supprimés, fusionnés, ou dans un carnet d’adresses qu’il n’a pas) : Sioul ne peut reconnaître ici ses courriels, ses appels ni ses messages tant qu’aucun n’est lié.
+reach-circles-missing-some = { $n ->
+    [one] Un contact lié à { $name } n’est pas sur cet appareil.
+   *[other] { $Count } contacts liés à { $name } ne sont pas sur cet appareil.
+}
 reach-circles-tie = Lier un contact…
 reach-own-notices = Les avis de Sioul
 reach-group-asked = Ce que vous avez réglé ou demandé
@@ -7441,7 +7450,7 @@ attention-group-apps = Autres applications, sur Android
 attention-person-always = Passent toujours
 attention-person-always-help = Les personnes de votre liste Passent toujours, la même sur tous vos appareils, et les conversations réglées ainsi. Jamais les bloqués, même sur la liste.
 attention-person-people = Vos proches
-attention-person-people-help = Toutes les personnes ajoutées dans Contacts ▸ Proches, par les contacts qui sont les leurs : vous mis à part, l’autre parent d’un enfant mis à part, et personne dont la relation a pris fin. Ce que vous réglez pour l’une d’elles, comment elle vous joint, passe d’abord.
+attention-person-people-help = Toutes les personnes ajoutées dans Contacts ▸ Proches, par les contacts qui leur sont liés : vous mis à part, l’autre parent d’un enfant mis à part, et personne dont la relation a pris fin. Sûr réglé à la main cède devant cette ligne ; ce qui restreint l’une d’elles, sur sa fiche, une adresse ou un numéro, passe d’abord, et ses propres heures aussi.
 attention-person-safe = Sûrs
 attention-person-safe-help = Vous seul mettez quelqu’un sur cette liste.
 attention-person-neutral = Vos contacts

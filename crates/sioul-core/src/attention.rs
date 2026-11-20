@@ -4176,7 +4176,9 @@ mod tests {
     }
 
     /// Mail from one of your people (the Porch's reading, `Attention::mail`):
-    /// by their row; forged in their name, a stranger's, never theirs.
+    /// by their row; forged in their name, a stranger's, never theirs. Safe
+    /// set by hand on their address or number gives way to their row, for
+    /// mail and for messages; Restricted wins (review M1).
     #[test]
     fn your_people_s_mail_and_forged_mail() {
         use crate::persons::{Circle, Person as Someone, Persons};
@@ -4206,6 +4208,18 @@ mod tests {
         // The mailbox's reading, from a judgment: the same.
         let judged = senders.judge("lea@example.org");
         assert_eq!(people_open.mail_from(judged.who, judged.circle, false, false, None, &work).shown, people_open.mail(&lea, &senders, &nobody, None, &work).shown);
+        // Review M1: her address and her number put on Safe by hand long ago give way to the circle, by mail and
+        // by message; on Restricted, the restriction wins.
+        let card = crate::contacts::Contact { uid: "lea-1".into(), name: "Léa".into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: "lea@example.org".into() }], phones: vec![crate::contacts::Labeled { label: String::new(), value: "+33 1 99 00 00 08".into() }], ..crate::contacts::Contact::default() };
+        let by_hand = Senders { safe: crate::porch::SenderList::parse("lea@example.org\ntel:+33199000008"), contacts: std::sync::Arc::new(Book::of(&[card], crate::phones::region_named("FR"))), ..senders.clone() };
+        let lea = message("Léa <lea@example.org>", "Authentication-Results: mx.example.net; dmarc=pass header.from=example.org\r\n", "Coucou", &by_hand);
+        assert!(!quiet.mail(&lea, &by_hand, &nobody, None, &night).shown, "Safe by hand: Your people's row, held at night as set");
+        let text = |a: &Attention, judged: crate::porch::Judged, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: judged.who, circle: judged.circle, group: false, always: false }), now).level;
+        let mut texts = Attention::usual();
+        texts.set(row("messages.people"), Column::Sleep, Level::Now).unwrap();
+        assert_eq!(text(&texts, by_hand.judge_number("01 99 00 00 08"), &night), Level::Now, "a text from her number on Safe by hand: Your people's row");
+        let restricted = Senders { restricted: crate::porch::SenderList::parse("tel:+33199000008"), safe: crate::porch::SenderList::default(), ..by_hand.clone() };
+        assert_eq!(text(&texts, restricted.judge_number("01 99 00 00 08"), &night), Level::Later, "on Restricted by hand: the restriction wins");
     }
 
     /// What 0.0.12 reads of `[attention]`, word for word but its enums

@@ -377,17 +377,24 @@ Item {
             const full = JSON.parse(JSON.stringify(before))
             full.people.rows.splice(1, 0, { id: "people", label: "Your people", help: "Everyone in Contacts ▸ Your people, by their cards.", cells: [cell("mail", "awake"), cell("messages", "awake")] })
             full.people.none = ""
-            full.people.circle = { title: "Your people", help: "Read from Contacts ▸ Your people.", people: [{ id: "lea", name: "Léa", untied: "" }, { id: "alix", name: "Alix", untied: "No card is linked to Alix: Sioul cannot recognise their mail, calls or messages until one is." }] }
+            // Each by the row they are judged on (reaches::close_of): Léa's card here, nothing to say; Alix,
+            // no card linked, the door to her page; Maud held out by her card's restriction, the door to its sheet.
+            full.people.circle = { title: "Your people", help: "Read from Contacts ▸ Your people.", people: [
+                { id: "lea", name: "Léa", notes: [] },
+                { id: "alix", name: "Alix", notes: [{ text: "No card is linked to Alix: Sioul cannot recognise their mail, calls or messages until one is.", door: "page", key: "alix", label: "Link a card…" }] },
+                { id: "maud", name: "Maud", notes: [{ text: "Maud: Restricted, as you chose for Maud Dupont, a name long enough to wrap at a phone's width.", door: "sheet", key: "/stand-in/maud.vcf", label: "How this contact reaches you" }] }
+            ] }
             mock.view = full
             for (const page of [wide, narrow]) {
                 page.reload()
                 compare(find(page, "peopleNone"), null, "no sentence once someone is there")
-                verify(find(page, "circlePeople") !== null && find(page, "close-lea") !== null && find(page, "close-alix") !== null)
-                compare(find(page, "closeUntied-lea"), null, "a card linked: nothing to say")
-                verify(find(page, "closeUntied-alix").text.indexOf("Alix") >= 0)
-                compare(find(page, "closeTie-lea"), null)
+                verify(find(page, "circlePeople") !== null && find(page, "close-lea") !== null && find(page, "close-alix") !== null && find(page, "close-maud") !== null)
+                compare(find(page, "closeNote-lea-0"), null, "a card here, judged on Your people: nothing to say")
+                verify(find(page, "closeNote-alix-0").text.indexOf("Alix") >= 0)
+                verify(find(page, "closeNote-maud-0").text.indexOf("Restricted") > 0)
+                verify(find(page, "closeNote-maud-0").width <= page.width, "within the page")
                 mock.opened = []
-                find(page, "closeTie-alix").clicked()
+                find(page, "closeDoor-alix-0").clicked()
                 compare(mock.opened, ["person:alix"], "their page, where a card is linked")
             }
             // A computer: the line's cells, between Always through and Safe; a choice writes their rows.

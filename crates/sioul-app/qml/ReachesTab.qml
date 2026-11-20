@@ -715,8 +715,9 @@ ColumnLayout {
                 }
             }
         }
-        // Your people, read from Contacts ▸ Your people (never edited here): each by name; someone
-        // with no card linked said so, with the door that links one (their page).
+        // Your people, read from Contacts ▸ Your people (never edited here): each by name, by the row
+        // they are judged on: no card linked, none on this device, a card or an address held out by a
+        // restriction, each said with its door (their page, where a card is linked; a card's sheet).
         Strong {
             objectName: "circlePeople"
             visible: tab.circle.people.length > 0
@@ -746,18 +747,36 @@ ColumnLayout {
                     elide: Text.ElideRight
                     color: tab.theme.text
                 }
-                Note {
-                    objectName: "closeUntied-" + close.modelData.id
-                    visible: close.modelData.untied !== ""
-                    text: close.modelData.untied
-                }
-                // Their page, where a card is linked (Link a card…).
-                Button {
-                    objectName: "closeTie-" + close.modelData.id
-                    visible: close.modelData.untied !== ""
-                    flat: true
-                    text: tab.sioul.text("reach-circles-tie")
-                    onClicked: tab.sioul.reminderOpened("person", "", close.modelData.id)
+                Repeater {
+                    model: close.modelData.notes || []
+
+                    delegate: ColumnLayout {
+                        id: held
+
+                        required property var modelData
+                        required property int index
+
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Note {
+                            objectName: "closeNote-" + close.modelData.id + "-" + held.index
+                            text: held.modelData.text
+                        }
+                        // Their page, where a card is linked (Link a card…); a card's sheet, where its list is chosen.
+                        Button {
+                            objectName: "closeDoor-" + close.modelData.id + "-" + held.index
+                            visible: held.modelData.door !== ""
+                            flat: true
+                            text: tab.theme.plain(held.modelData.label)
+                            onClicked: {
+                                if (held.modelData.door === "page")
+                                    tab.sioul.reminderOpened("person", "", held.modelData.key)
+                                else if (tab.host && tab.host.openPersonSheet)
+                                    tab.host.openPersonSheet(held.modelData.key, "")
+                            }
+                        }
+                    }
                 }
             }
         }

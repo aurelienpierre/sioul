@@ -651,6 +651,10 @@ pub struct BookCard {
     pub categories: Vec<String>,
     /// Its addresses, lower case.
     pub addresses: Vec<String>,
+    /// It is in a book whose groups are held back (`Book::trusting`'s
+    /// `held`: someone else can write it): its link to one of your people
+    /// puts nobody in the circle by itself (review L8).
+    pub held: bool,
 }
 
 /// Your address books, as who may reach you needs them (docs/porch.md, "Who
@@ -715,7 +719,7 @@ impl Book {
             for address in &addresses {
                 push_once(book.by_address.entry(address.clone()).or_default(), index);
             }
-            book.cards.push(BookCard { uid: contact.uid.trim().to_string(), key: contact.key.clone(), name: contact.name.trim().to_string(), categories: keys, addresses });
+            book.cards.push(BookCard { uid: contact.uid.trim().to_string(), key: contact.key.clone(), name: contact.name.trim().to_string(), categories: keys, addresses, held: held.contains(&contact.place) });
             for phone in &contact.phones {
                 let key = crate::phones::key(&phone.value, region);
                 if !key.is_empty() {
@@ -869,7 +873,9 @@ impl Book {
 /// precise entry decides: the person's own address or number; then their
 /// card (`contact:<UID>`); then its categories; then patterns (a domain, a
 /// prefix), the more precise first; then, neutral: let in through the
-/// screener, or in your address books; else a stranger. At one level, blocked
+/// screener, or in your address books; else a stranger. A card of one of
+/// your people (`circle`) is safe, its row Your people, over all of these
+/// but what restricts or blocks (`circled`; docs/attention.md, §1.2). At one level, blocked
 /// before restricted before neutral before safe. An address marked safe stays
 /// safe in a domain you blocked; a friend you put on neutral stays neutral in
 /// a category you marked safe. Lists judge the sender's address only, after
@@ -986,6 +992,8 @@ impl Senders {
         }
         let addresses: Vec<String> = contact.emails.iter().map(|e| e.value.trim().strip_prefix("mailto:").unwrap_or(e.value.trim()).trim().to_ascii_lowercase()).filter(|a| !a.is_empty()).collect();
         let numbers: Vec<String> = contact.phones.iter().filter_map(|p| number_key(&p.value, region)).filter(|k| !k.contains('*')).collect();
+        // One of your people's card: the circle decides before its groups, but a group that blocks (review L2).
+        let circled = self.circle.holds(&contact.uid);
         // The card's own choice decides every address and number its own entries leave.
         let every_address_on_one = !addresses.is_empty() && self.lists().iter().any(|(_, l)| addresses.iter().all(|a| l.holds(a)));
         if self.card_standing(&contact.uid).is_some() || every_address_on_one {
@@ -996,7 +1004,7 @@ impl Senders {
         if !left_to_groups && !(addresses.is_empty() && numbers.is_empty()) {
             return None;
         }
-        self.lists().into_iter().find_map(|(standing, list)| list.names_category(&keys).map(|name| (standing, name.to_string())))
+        self.lists().into_iter().find_map(|(standing, list)| list.names_category(&keys).map(|name| (standing, name.to_string()))).filter(|(standing, _)| !circled || *standing == Standing::Blocked)
     }
 
     /// A category of these cards on a list.
@@ -1017,34 +1025,54 @@ impl Senders {
         })
     }
 
-    /// One of these cards is one of your people's (`persons::Circle`), and
-    /// nothing more precise decided `judged` (docs/attention.md, §1.2): the
-    /// blocked, at any step, and an address's, a number's or a card's own
-    /// entry stay as they are; otherwise the circle Your people, safe,
-    /// before the card's groups, the patterns, the senders let in and the
-    /// address books.
-    fn circled(&self, judged: Judged, cards: &[usize]) -> Judged {
-        if judged.who == crate::reach::Who::Blocked || matches!(judged.by, By::Address | By::Number | By::Card) {
+    /// Whether something blocks at a step the circle would pass over: a
+    /// blocked group of one of these cards, a blocked pattern that fits the
+    /// address, a blocked prefix that fits the number (`key`). The circle
+    /// never lifts what blocks at any step (docs/attention.md, §1.2; review
+    /// L6: a card in a restricted group at a blocked domain stays as the
+    /// lists judge it).
+    fn blocks(&self, cards: &[usize], address: Option<&str>, key: Option<&str>) -> bool {
+        let groups = self.contacts.categories_of(cards);
+        (!groups.is_empty() && self.blocked.names_category(&groups).is_some())
+            || address.is_some_and(|a| self.blocked.patterns.iter().any(|p| p.contains('*') && fits(p, a)))
+            || key.is_some_and(|k| self.blocked.prefixes(self.region()).iter().any(|p| fits(p, k)))
+    }
+
+    /// One of these cards is one of your people's (`persons::Circle`)
+    /// (docs/attention.md, §1.2; review M1): the blocked, at any step
+    /// (`blocks` for the steps after the one that decided), stay as the lists
+    /// judge them; an address's, a number's or a card's own entry that
+    /// restricts (Restricted, Blocked) wins over the circle, the card's even
+    /// where a more precise entry decided; Safe and Your contacts set so by
+    /// hand give way to it, as do the card's groups, the patterns, the
+    /// senders let in and the address books. A card of a book someone else
+    /// can write puts nobody in it by its link alone (`BookCard::held`,
+    /// review L8).
+    fn circled(&self, judged: Judged, cards: &[usize], blocks: bool) -> Judged {
+        use crate::reach::Who;
+        if judged.who == Who::Blocked || blocks || (judged.who == Who::Restricted && matches!(judged.by, By::Address | By::Number | By::Card)) {
             return judged;
         }
-        match cards.iter().filter_map(|i| self.contacts.card(*i)).find_map(|c| self.circle.person(&c.uid)) {
-            Some(person) => Judged { who: crate::reach::Who::Safe, by: By::Circle, name: person.to_string(), card: self.card_name(cards), circle: true },
+        let restricts = |card: &BookCard| matches!(self.card_choice(card), Some(Standing::Restricted | Standing::Blocked));
+        match cards.iter().filter_map(|i| self.contacts.card(*i)).filter(|c| !c.held && !restricts(c)).find_map(|c| self.circle.person(&c.uid)) {
+            Some(person) => Judged { who: Who::Safe, by: By::Circle, name: person.to_string(), card: self.card_name(cards), circle: true },
             None => judged,
         }
     }
 
-    /// Who an address is, and why: its own entry; else its card's; else
-    /// your people's circle; else the card's categories; else the most
-    /// precise pattern; else neutral when you let it in or a card holds it;
-    /// else a stranger. At one level, blocked before restricted before
-    /// neutral before safe; blocked at any step stays blocked.
+    /// Who an address is, and why: its own entry that restricts; else its
+    /// card's that restricts; else your people's circle (`circled`); else
+    /// its own entry, its card's, the card's categories, the most precise
+    /// pattern; else neutral when you let it in or a card holds it; else a
+    /// stranger. At one level, blocked before restricted before neutral
+    /// before safe; blocked at any step stays blocked.
     pub fn judge(&self, address: &str) -> Judged {
         let address = address.trim().to_ascii_lowercase();
         if address.is_empty() {
             return Judged::stranger();
         }
         let cards = self.contacts.cards_of_address(&address);
-        self.circled(self.judge_listed(&address, cards), cards)
+        self.circled(self.judge_listed(&address, cards), cards, self.blocks(cards, Some(&address), None))
     }
 
     /// `judge` without the circle: the lists and the address books alone.
@@ -1084,9 +1112,9 @@ impl Senders {
         card.from_address.as_deref().map_or(crate::reach::Who::Stranger, |a| self.who(a))
     }
 
-    /// Who a phone number is, and why: its own entry; else its card's; else
-    /// your people's circle; else the card's categories; else the longest
-    /// prefix on a list; else neutral when a card holds it; else a stranger.
+    /// Who a phone number is, and why: as an address is (`judge`), the
+    /// longest prefix on a list in place of a pattern; else neutral when a
+    /// card holds it; else a stranger.
     /// A number Sioul cannot read, or none (a hidden number), is a stranger
     /// here: calls give hidden numbers their own row (`attention::Person::Hidden`).
     pub fn judge_number(&self, number: &str) -> Judged {
@@ -1095,7 +1123,8 @@ impl Senders {
             return Judged::stranger();
         };
         let cards = self.contacts.cards_of_number(&key);
-        self.circled(self.judge_number_listed(key, cards), cards)
+        let blocks = self.blocks(cards, None, Some(&key));
+        self.circled(self.judge_number_listed(key, cards), cards, blocks)
     }
 
     /// `judge_number` without the circle.
@@ -1131,14 +1160,14 @@ impl Senders {
         if cards.is_empty() {
             return None;
         }
-        self.by_card(cards).or_else(|| self.by_category(cards)).or_else(|| self.by_book(cards)).map(|judged| self.circled(judged, cards))
+        self.by_card(cards).or_else(|| self.by_category(cards)).or_else(|| self.by_book(cards)).map(|judged| self.circled(judged, cards, self.blocks(cards, None, None)))
     }
 
     /// Who a card is, by its UID or its file: its own entry, else its
     /// categories, else neutral. None for a card no address book holds.
     pub fn judge_card(&self, id: &str) -> Option<Judged> {
         let index = [self.contacts.find(id)?];
-        self.by_card(&index).or_else(|| self.by_category(&index)).or_else(|| self.by_book(&index)).map(|judged| self.circled(judged, &index))
+        self.by_card(&index).or_else(|| self.by_category(&index)).or_else(|| self.by_book(&index)).map(|judged| self.circled(judged, &index, self.blocks(&index, None, None)))
     }
 
     /// A person's own rows a sender may have (`attention::person_row`), the
@@ -2611,15 +2640,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(Kind::Contacts.root().join(account));
     }
 
-    /// Your people (decision of 20 November 2026), most precise first: the
-    /// blocked, at any step, stay blocked; an address's or a number's own
-    /// entry, then the card's own entry, win; then the card of one of your
-    /// people answers the circle, safe to everything else of Sioul, before
-    /// the card's groups, the patterns and the address books. A child's other
-    /// parent, someone whose relation ended and a person with no card tied
-    /// are not recognised by it.
+    /// Your people (decision of 20 November 2026; review M1): the blocked, at
+    /// any step, stay as the lists judge them, a blocked domain, prefix or
+    /// group after the step that decided included (L6); an address's, a
+    /// number's or a card's own entry that restricts wins; Safe and Your
+    /// contacts set so by hand give way to the circle, as do the card's
+    /// groups, the patterns and the address books; one of your people is
+    /// safe to everything else of Sioul. A child's other parent, someone
+    /// whose relation ended, a person with no card tied and a card of a book
+    /// someone else can write (L8) are not recognised by it; acts on cards
+    /// say what the circle decides, never a group it passes over (L2).
     #[test]
-    fn your_people_come_after_their_own_entries_and_before_their_groups() {
+    fn your_people_come_after_what_restricts_them_and_before_their_groups() {
         use crate::persons::{Circle, Person as Someone, Persons};
         use crate::reach::Who;
         let france = crate::phones::region_named("FR");
@@ -2634,6 +2666,10 @@ mod tests {
         add("Sam", "other-parent", None, &["sam-1"]);
         add("Old", "partner", Some(jiff::civil::date(2026, 11, 19)), &["old-1"]);
         add("Alix", "helped", None, &[]);
+        add("Ines", "kin", None, &["ines-1"]);
+        add("Ugo", "kin", None, &["ugo-1"]);
+        add("Vic", "kin", None, &["vic-1"]);
+        let shared = crate::contacts::Contact { place: "nextcloud/shared".into(), ..person("vic-1", "Vic", &["vic@example.org"], &["01 99 00 00 31"], &[]) };
         let contacts = vec![
             person("lea-1", "Léa Martin", &["lea@example.org", "lea.school@example.org"], &["01 99 00 00 01", "01 99 00 00 02"], &["Famille"]),
             person("maud-1", "Maud", &["maud@company.example"], &["01 99 00 00 03"], &["Clients"]),
@@ -2641,52 +2677,80 @@ mod tests {
             person("sam-1", "Sam", &["sam@example.org"], &["01 99 00 00 05"], &[]),
             person("old-1", "Old", &["old@example.org"], &[], &[]),
             person("alix-1", "Alix", &["alix@example.org"], &[], &[]),
+            person("ines-1", "Ines", &["ines@spam.example"], &["08 99 00 00 11"], &["Clients"]),
+            person("ugo-1", "Ugo", &["ugo@example.org"], &["01 99 00 00 21"], &[]),
+            shared,
         ];
+        let held: std::collections::BTreeSet<String> = ["nextcloud/shared".to_string()].into();
         let senders = Senders {
             restricted: SenderList::parse("lea.school@example.org\ncategory:Clients\n*@company.example"),
-            safe: SenderList::parse("tel:+33199000002"),
-            blocked: SenderList::parse("category:Bloqués"),
-            contacts: std::sync::Arc::new(Book::of(&contacts, france)),
+            safe: SenderList::parse("tel:+33199000002\nugo@example.org"),
+            neutral: SenderList::parse("tel:+33199000021"),
+            blocked: SenderList::parse("category:Bloqués\n*@spam.example\ntel:+33899*"),
+            contacts: std::sync::Arc::new(Book::trusting(&contacts, france, &held)),
             circle: std::sync::Arc::new(Circle::of(&persons, today)),
             ..Senders::default()
         };
         let row = |j: &Judged| (j.who, j.by, j.circle, j.row());
         use crate::attention::Person::{Neutral, People, Restricted, Safe as SafeRow};
-        // The card of one of your people, nothing more precise: the circle, by mail and by number.
+        let circle = (Who::Safe, By::Circle, true, People);
+        // The card of one of your people, nothing that restricts: the circle, by mail and by number.
         let lea = senders.judge("Lea@Example.org");
-        assert_eq!(row(&lea), (Who::Safe, By::Circle, true, People));
+        assert_eq!(row(&lea), circle);
         assert_eq!((lea.name.as_str(), lea.card.as_str()), ("Léa", "Léa Martin"), "the person, for the reason said");
-        assert_eq!(row(&senders.judge_number("+33 1 99 00 00 01")), (Who::Safe, By::Circle, true, People));
-        // An address's or a number's own entry wins: what you set for one of their addresses or numbers.
+        assert_eq!(row(&senders.judge_number("+33 1 99 00 00 01")), circle);
+        // M1: Safe set by hand on a number, an address, or the card gives way to the circle; Your contacts too.
+        assert_eq!(row(&senders.judge_number("01 99 00 00 02")), circle, "a number on Safe by hand");
+        assert_eq!(row(&senders.judge("ugo@example.org")), circle, "an address on Safe by hand");
+        assert_eq!(row(&senders.judge_number("01 99 00 00 21")), circle, "a number on Your contacts by hand");
+        let chosen = Senders { safe: SenderList::parse("contact:maud-1"), ..senders.clone() };
+        assert_eq!(row(&chosen.judge("maud@company.example")), circle, "the card on Safe by hand");
+        let every = Senders { safe: SenderList::parse("lea@example.org\nlea.school@example.org"), restricted: SenderList::default(), ..senders.clone() };
+        assert_eq!(row(&every.judge_number("01 99 00 00 01")), circle, "every address of the card on Safe: the card's choice, Safe, gives way");
+        // M1: an entry that restricts wins: an address's, then the card's.
         assert_eq!(row(&senders.judge("lea.school@example.org")), (Who::Restricted, By::Address, false, Restricted));
-        assert_eq!(row(&senders.judge_number("01 99 00 00 02")), (Who::Safe, By::Number, false, SafeRow));
+        let chosen = Senders { restricted: SenderList::parse("contact:lea-1"), ..senders.clone() };
+        assert_eq!(row(&chosen.judge("lea@example.org")), (Who::Restricted, By::Card, false, Restricted));
+        assert_eq!(row(&chosen.judge_number("01 99 00 00 02")), (Who::Safe, By::Number, false, SafeRow), "a number of the restricted card on Safe by hand: its own entry, as before");
+        let restricted_number = Senders { restricted: SenderList::parse("tel:+33199000001"), ..senders.clone() };
+        assert_eq!(row(&restricted_number.judge_number("01 99 00 00 01")), (Who::Restricted, By::Number, false, Restricted));
         // The circle before the card's groups and the patterns: Maud's group and domain are restricted.
-        assert_eq!(row(&senders.judge("maud@company.example")), (Who::Safe, By::Circle, true, People));
-        assert_eq!(row(&senders.judge_number("01 99 00 00 03")), (Who::Safe, By::Circle, true, People));
-        // The blocked stay blocked, at any step: a blocked group holds Noé.
+        assert_eq!(row(&senders.judge("maud@company.example")), circle);
+        assert_eq!(row(&senders.judge_number("01 99 00 00 03")), circle);
+        // The blocked stay blocked, at any step: a blocked group holds Noé; blocked by hand, the card or a number.
         assert_eq!(row(&senders.judge("noe@example.org")), (Who::Blocked, By::Category, false, crate::attention::Person::Blocked));
+        let blocked = Senders { blocked: SenderList::parse("contact:lea-1"), ..senders.clone() };
+        assert_eq!(blocked.judge_number("01 99 00 00 01").who, Who::Blocked);
+        // L6: what blocks a later step keeps the lists' judgment: Ines's group (restricted) decided before her
+        // blocked domain and prefix; never the circle, never louder than before.
+        assert_eq!(row(&senders.judge("ines@spam.example")), (Who::Restricted, By::Category, false, Restricted));
+        assert_eq!(row(&senders.judge_number("08 99 00 00 11")), (Who::Restricted, By::Category, false, Restricted));
+        let blocked_group = Senders { blocked: SenderList::parse("category:Famille"), safe: SenderList::parse("contact:lea-1"), ..senders.clone() };
+        assert_eq!(row(&blocked_group.judge("lea@example.org")), (Who::Safe, By::Card, false, SafeRow), "a blocked group after a Safe card: as before, never the circle");
         // A child's other parent, a relation ended, a card tied to nobody: as before.
         for address in ["sam@example.org", "old@example.org", "alix@example.org"] {
             assert_eq!(row(&senders.judge(address)), (Who::Neutral, By::Book, false, Neutral), "{address}");
         }
-        // The card's own entry wins: Maud's card put on Safe by hand, then on Restricted.
-        let chosen = Senders { safe: SenderList::parse("contact:maud-1"), ..senders.clone() };
-        assert_eq!(row(&chosen.judge("maud@company.example")), (Who::Safe, By::Card, false, SafeRow));
-        let chosen = Senders { restricted: SenderList::parse("contact:lea-1"), ..senders.clone() };
-        assert_eq!(row(&chosen.judge("lea@example.org")), (Who::Restricted, By::Card, false, Restricted));
-        let blocked = Senders { blocked: SenderList::parse("contact:lea-1"), ..senders.clone() };
-        assert_eq!(blocked.judge_number("01 99 00 00 01").who, Who::Blocked);
+        // L8: a card of a book someone else can write puts nobody in the circle by its link alone.
+        assert_eq!(row(&senders.judge("vic@example.org")), (Who::Neutral, By::Book, false, Neutral));
+        assert_eq!(row(&senders.judge_number("01 99 00 00 31")), (Who::Neutral, By::Book, false, Neutral));
         // By card and by name, as chats and a person's sheet judge them.
-        assert_eq!(senders.judge_card("lea-1").map(|j| row(&j)), Some((Who::Safe, By::Circle, true, People)));
-        assert_eq!(senders.judge_name("Maud").map(|j| row(&j)), Some((Who::Safe, By::Circle, true, People)));
+        assert_eq!(senders.judge_card("lea-1").map(|j| row(&j)), Some(circle));
+        assert_eq!(senders.judge_name("Maud").map(|j| row(&j)), Some(circle));
+        assert_eq!(chosen.judge_card("lea-1").map(|j| row(&j)), Some((Who::Restricted, By::Card, false, Restricted)));
         // Everywhere else they are safe; the numbers carry their row for the calls' table.
         assert_eq!(senders.who("lea@example.org"), Who::Safe);
         let numbers: Vec<(String, crate::attention::Person)> = senders.numbers().into_iter().map(|(k, j)| (k, j.row())).collect();
-        assert!(numbers.contains(&("+33199000001".to_string(), People)) && numbers.contains(&("+33199000002".to_string(), SafeRow)) && numbers.contains(&("+33199000005".to_string(), Neutral)), "{numbers:?}");
+        assert!(numbers.contains(&("+33199000001".to_string(), People)) && numbers.contains(&("+33199000002".to_string(), People)) && numbers.contains(&("+33199000005".to_string(), Neutral)), "{numbers:?}");
+        // L2: acts on cards say what the circle decides: a group it passes over decides nothing, a blocked one still does.
+        assert_eq!(senders.standing_by_groups(&contacts[1], &contacts[1].categories), None, "Maud's restricted group: the circle decides");
+        assert_eq!(senders.standing_by_groups(&contacts[0], &["Bloqués".to_string()]).map(|(s, _)| s), Some(Standing::Blocked));
+        assert_eq!(senders.standing_by_groups(&contacts[3], &["Clients".to_string()]).map(|(s, _)| s), Some(Standing::Restricted), "Sam, no one of your people: as before");
         // Nobody tied: as before the circle.
         let before = Senders { circle: std::sync::Arc::new(Circle::default()), ..senders.clone() };
         assert_eq!(row(&before.judge("lea@example.org")), (Who::Neutral, By::Book, false, Neutral));
         assert_eq!(row(&before.judge("maud@company.example")), (Who::Restricted, By::Category, false, Restricted));
+        assert_eq!(row(&before.judge_number("01 99 00 00 02")), (Who::Safe, By::Number, false, SafeRow));
     }
 
     /// Decision 16 of 18 October 2026: a sender's own rows by ids alone, the

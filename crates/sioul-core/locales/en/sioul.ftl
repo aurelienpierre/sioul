@@ -7255,8 +7255,17 @@ reach-circles = Who is in which circle
 reach-circles-help = Everyone in your address books is among your contacts, with nothing to set.
 reach-people-none = Your people get a line of their own once you add them in Contacts ▸ Your people.
 reach-people-open = Open Contacts ▸ Your people
-reach-circles-people-help = Read from Contacts ▸ Your people, where you add someone or change who they are to you: you, a child’s other parent and a relation that has ended aside. What you set for one of them, how they reach you, comes first.
+reach-circles-people-help = Read from Contacts ▸ Your people, where you add someone or change who they are to you: you, a child's other parent and a relation that has ended aside. Safe set by hand gives way to this line; what restricts one of them, on their card, an address or a number, comes first, and is said under their name.
 reach-circles-untied = No card is linked to { $name }: Sioul cannot recognise their mail, calls or messages until one is.
+reach-circles-own = { $list }, by your own choice.
+reach-circles-held-entry = { $name }, at { $entry }: { $why }
+reach-circles-held = { $name }: { $why }
+reach-circles-book = { $name }: their card is in an address book someone else can write, so it counts for Your people only once that book's groups decide who may reach you (Contacts ⚙ ▸ Address books).
+reach-circles-missing = The cards linked to { $name } are not on this device (deleted, merged, or in an address book it does not have): Sioul cannot recognise their mail, calls or messages here until one is linked.
+reach-circles-missing-some = { $n ->
+    [one] One card linked to { $name } is not on this device.
+   *[other] { $Count } cards linked to { $name } are not on this device.
+}
 reach-circles-tie = Link a card…
 reach-own-notices = Sioul's own notices
 reach-group-asked = What you set or asked for
@@ -7383,7 +7392,7 @@ attention-group-apps = Other apps, on Android
 attention-person-always = Always through
 attention-person-always-help = The people on your Always through list, the same on every device, and the conversations you set so. The blocked never, even on the list.
 attention-person-people = Your people
-attention-person-people-help = Everyone you added to Contacts ▸ Your people, by the cards tied to them: you aside, a child’s other parent aside, and no one whose relation has ended. What you set for one of them, how they reach you, comes first.
+attention-person-people-help = Everyone you added to Contacts ▸ Your people, by the cards linked to them: you aside, a child's other parent aside, and no one whose relation has ended. Safe set by hand gives way to this row; what restricts one of them, on their card, an address or a number, comes first, and so do their own times.
 attention-person-safe = Safe
 attention-person-safe-help = Only you put someone on this list.
 attention-person-neutral = Your contacts

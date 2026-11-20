@@ -199,9 +199,13 @@ impl Person {
     /// A relation ended today is ended (review H1): "Ends…" with its own
     /// date, today, takes them out at once, the night after it included,
     /// where the household's row keeps them until the day is over.
+    /// A relation word a later version writes, which this Sioul cannot know
+    /// the meaning of, reads as outside the circle (review L6): it may name
+    /// someone the household keeps apart, as a child's other parent.
     /// Their cards say who they are by mail, call or message (`Circle`).
     pub fn in_circle(&self, today: Date) -> bool {
-        self.id != ME && self.until.is_none_or(|until| until > today) && !matches!(self.relation(), Relation::Me | Relation::OtherParent)
+        let unknown = !self.relation.trim().is_empty() && self.relation() == Relation::Unsaid;
+        self.id != ME && !unknown && self.until.is_none_or(|until| until > today) && !matches!(self.relation(), Relation::Me | Relation::OtherParent)
     }
 
     /// Whether `text` is their name or their full name, case and accents aside.
@@ -1381,6 +1385,7 @@ mod tests {
         let ends_today = add("Robin", "partner", None, Some("2026-11-20"), &["c-robin"]);
         let other = add("Sam", "other-parent", None, None, &["c-sam"]);
         let no_card = add("Alix", "kin", None, None, &[]);
+        let later = add("Ines", "godchild", None, None, &["c-ines"]);
         persons.put(Person { id: ME.into(), name: "You".into(), cards: vec!["c-me".into()], ..Person::default() });
         let inside = |id: &str| persons.get(id).unwrap().in_circle(today);
         for id in [&child, &grown, &helped, &parent, &unsaid, &no_card] {
@@ -1391,6 +1396,8 @@ mod tests {
         assert!(persons.get(&ends_today).unwrap().in_circle(day("2026-11-19")), "the day before its end: inside");
         assert!(!persons.get(&ends_today).unwrap().ended(today), "the household's row keeps them until the day is over");
         assert!(!inside(&other), "a child's other parent keeps their own list");
+        assert!(!inside(&later), "a relation word of a later version: outside, its meaning unknown here (review L6)");
+        assert_eq!(persons.get(&later).unwrap().relation(), Relation::Unsaid, "read as unsaid everywhere else, as before");
         assert!(!inside(ME), "never yourself");
         // By card: one function answers.
         assert!(persons.in_circle("c-lea", today) && persons.in_circle(" c-tom ", today) && persons.in_circle("c-odile", today));
