@@ -17,12 +17,16 @@
 // from its days, keeps a day it cannot count in its field, and Save reads
 // the day typed last even when its press does not take the focus; the
 // public holidays' tick follows 24/7. Everything within the edge at 412
-// points, and in a 372-point column in French with a long name. The rules
-// themselves are the core's (opening.rs, hourslookup.rs). Fiction only. Run
-// by tools/qml-test.sh.
+// points, and in a 372-point column in French with a long name; beside a
+// card's numbers in that column, read at once or answered after, in English
+// and in French, its buttons on one row or two, the frame holds them and the
+// section its frame (the card itself on a phone: tst_contactcard.qml). The
+// rules themselves are the core's (opening.rs, hourslookup.rs). Fiction
+// only. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import QtTest
 import "../../qml"
 
@@ -70,6 +74,7 @@ Item {
         // What the next call of `contactHours` answers: "" while the card is not read yet.
         property string section: ""
         property bool frenchWords: false
+        property bool englishWords: false
         property var asked: []
         property var picked: []
         property var added: []
@@ -77,7 +82,7 @@ Item {
         property int calls: 0
         property int marks: 0
 
-        function text(key) { return mock.frenchWords && root.french[key] !== undefined ? root.french[key] : key }
+        function text(key) { return mock.frenchWords && root.french[key] !== undefined ? root.french[key] : mock.englishWords && root.english[key] !== undefined ? root.english[key] : key }
         function textWith(key, name, value) { return mock.text(key) + ":" + name + "=" + value }
         function textArgs(key, args) { return key + ":" + args }
         function contactHours(key) { return mock.section }
@@ -211,6 +216,50 @@ Item {
         }
     }
 
+    // The words of the section's buttons, as the program's are (en/sioul.ftl), for the frame's measure.
+    readonly property var english: ({
+        "hours-title": "Opening hours",
+        "hours-change": "Change",
+        "hours-look-up": "Look them up…",
+        "hours-call-back": "Call back…",
+        "hours-phone-title": "By phone",
+        "hours-holidays": "Closed on public holidays."
+    })
+
+    // As a card places it beside its numbers (ContactsPage.qml): in a Loader that fills a
+    // phone's column, the card's next row under it.
+    Component {
+        id: placedComponent
+
+        ColumnLayout {
+            readonly property alias loader: placed
+            readonly property alias next: next
+
+            width: 372
+            spacing: 10
+
+            Loader {
+                id: placed
+
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    OpeningHours {
+                        sioul: mock
+                        theme: testTheme
+                        window: root
+                        key: "/books/hall.vcf"
+                    }
+                }
+            }
+            Button {
+                id: next
+
+                text: "next"
+            }
+        }
+    }
+
     // Every item under `item` that passes `test`, a popup's content and a scroll view's included.
     function all(item, test, out) {
         out = out || []
@@ -253,6 +302,7 @@ Item {
         function init() {
             mock.section = ""
             mock.frenchWords = false
+            mock.englishWords = false
             mock.asked = []
             mock.picked = []
             mock.added = []
@@ -350,6 +400,65 @@ Item {
             section.reload()
             waitForRendering(column)
             compare(root.inside(column, 372), "")
+        }
+
+        // Beside a card's numbers on a phone (the card's Loader in its column), read when the section
+        // is made or answered after, as the backend may: in English and in French, its buttons on one
+        // row or wrapped to two (a phone's larger words), its last row of buttons lies within its
+        // frame, the section holds its frame, and the card's next row starts under it.
+        function test_the_frame_holds_its_buttons_on_a_phone() {
+            // The health cover's card of the pictures: open now, by phone, a free line.
+            const office = Object.assign({}, root.hall, {
+                phone: Object.assign({}, root.hall.open, { value: "Mo-Th 09:00-12:00; PH off", lines: ["Monday to Thursday: 9:00–12:00"], now: "Closed: opens Monday at 9:00" }),
+                note: "Closed between Christmas and New Year."
+            })
+            const runs = []
+            for (const words of ["en", "fr"]) {
+                for (const late of [false, true]) {
+                    for (const size of [0, 22])
+                        runs.push({ words: words, late: late, size: size })
+                }
+            }
+            for (const run of runs) {
+                const words = run.words
+                const late = run.late
+                const size = run.size
+                init()
+                mock.englishWords = words === "en"
+                mock.frenchWords = words === "fr"
+                mock.section = late ? "" : JSON.stringify(office)
+                const column = createTemporaryObject(placedComponent, root, {})
+                const section = column.loader.item
+                const buttons = ["openingHoursLookUp", "openingHoursChange", "openingHoursCallBack"].map(n => root.named(section, n))
+                if (size > 0) {
+                    for (const button of buttons)
+                        button.font.pixelSize = size
+                }
+                waitForRendering(column)
+                if (late) {
+                    compare(section.shown, null, "not answered yet")
+                    mock.section = JSON.stringify(office)
+                    mock.contactsChanged()
+                }
+                waitForRendering(column)
+                const said = words + (late ? ", answered after" : ", answered at once") + (size > 0 ? ", words of " + size : "")
+                let frame = section.body.parent
+                while (frame && frame.availableWidth === undefined)
+                    frame = frame.parent
+                verify(frame, "the section's frame")
+                verify(buttons.every(b => b.visible), said)
+                if (size > 0)
+                    verify(buttons[2].y > buttons[0].y, said + ": the row wraps, as on a phone")
+                for (const button of buttons) {
+                    const bottom = button.mapToItem(frame, 0, button.height).y
+                    verify(bottom <= frame.height - frame.bottomPadding + 0.5, said + ": " + button.text + " ends at " + bottom + " in a frame of " + frame.height)
+                    verify(button.mapToItem(section.body, 0, button.height).y <= section.body.height + 0.5, said + ": " + button.text + " within the frame's column")
+                }
+                const frameEnd = frame.mapToItem(section, 0, frame.height).y
+                verify(frameEnd <= section.height + 0.5, said + ": the section of " + section.height + " holds its frame, ending at " + frameEnd)
+                verify(column.next.y >= column.loader.y + frameEnd - 0.5, said + ": the card's next row at " + column.next.y + ", under the frame's end at " + (column.loader.y + frameEnd))
+                compare(root.inside(column, 372), "", said + ": nothing past the column's edge")
+            }
         }
 
         // The words shown are what is sent, once per press; an answer for another card or an earlier

@@ -273,7 +273,7 @@ Item {
     }
 
     // The card's details unfolded and scrolled to (`revealed`), for the window's images:
-    // on a phone the card's scroll is short, under what it keeps in sight.
+    // on a phone the card's end is below the screen.
     property int revealed: 0
     function revealDetails() {
         page.moreShown = true
@@ -749,6 +749,10 @@ Item {
                         anchors.fill: parent
                         spacing: 10
 
+                        // The whole card scrolls, its client's part and its ties included; only Edit and
+                        // Close stay under it. Kept under it, the ties (twelve rows at most) took the card's
+                        // own room: on a phone its scroll view was left a quarter of the screen, its view
+                        // cut through the opening hours' buttons.
                         ScrollView {
                             id: cardScroll
 
@@ -1147,59 +1151,59 @@ Item {
                                         }
                                     }
                                 }
-                            }
-                        }
-                        // As a client: its profile, what its invoices print; a draft invoice for it.
-                        Label {
-                            objectName: "contactClientProfile"
-                            visible: page.clientProfile !== null && page.clientProfile.exists
-                            Layout.fillWidth: true
-                            text: page.clientProfile && page.clientProfile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.clientProfile.summary) : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 13
-                            color: page.theme.muted
-                        }
-                        Flow {
-                            visible: page.clientRef !== ""
-                            Layout.fillWidth: true
-                            spacing: 6
+                                // As a client: its profile, what its invoices print; a draft invoice for it.
+                                Label {
+                                    objectName: "contactClientProfile"
+                                    visible: page.clientProfile !== null && page.clientProfile.exists
+                                    Layout.fillWidth: true
+                                    text: page.clientProfile && page.clientProfile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.clientProfile.summary) : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
+                                }
+                                Flow {
+                                    visible: page.clientRef !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 6
 
-                            Button {
-                                objectName: "contactBill"
-                                text: page.sioul.text("clients-bill")
-                                icon.name: "document-new"
-                                icon.color: page.theme.text
-                                onClicked: {
-                                    const made = JSON.parse(page.sioul.newInvoiceDraft(JSON.stringify({ client: page.clientRef })) || "{}")
-                                    if (made.error)
-                                        page.problem = made.error
-                                    else
-                                        page.window.openInvoiceDraft(made.draft)
+                                    Button {
+                                        objectName: "contactBill"
+                                        text: page.sioul.text("clients-bill")
+                                        icon.name: "document-new"
+                                        icon.color: page.theme.text
+                                        onClicked: {
+                                            const made = JSON.parse(page.sioul.newInvoiceDraft(JSON.stringify({ client: page.clientRef })) || "{}")
+                                            if (made.error)
+                                                page.problem = made.error
+                                            else
+                                                page.window.openInvoiceDraft(made.draft)
+                                        }
+                                    }
+                                    Button {
+                                        objectName: "contactProfile"
+                                        flat: true
+                                        text: page.sioul.text(page.clientProfile && page.clientProfile.exists ? "clients-profile-change" : "clients-profile-make")
+                                        onClicked: profileForm.now().edit(page.clientRef)
+                                    }
+                                }
+                                // What they are part of: tasks, notes, events.
+                                ThingActions {
+                                    visible: page.source !== null
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    window: page.window
+                                    source: page.source
+                                }
+                                RelatedList {
+                                    Layout.fillWidth: true
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    title: page.sioul.text("related-title")
+                                    uri: page.source ? page.source.uri : ""
+                                    onOpenThing: item => page.window.openThing(item)
                                 }
                             }
-                            Button {
-                                objectName: "contactProfile"
-                                flat: true
-                                text: page.sioul.text(page.clientProfile && page.clientProfile.exists ? "clients-profile-change" : "clients-profile-make")
-                                onClicked: profileForm.now().edit(page.clientRef)
-                            }
-                        }
-                        // What they are part of: tasks, notes, events.
-                        ThingActions {
-                            visible: page.source !== null
-                            sioul: page.sioul
-                            theme: page.theme
-                            window: page.window
-                            source: page.source
-                        }
-                        RelatedList {
-                            Layout.fillWidth: true
-                            sioul: page.sioul
-                            theme: page.theme
-                            title: page.sioul.text("related-title")
-                            uri: page.source ? page.source.uri : ""
-                            onOpenThing: item => page.window.openThing(item)
                         }
                         RowLayout {
                             Layout.fillWidth: true
