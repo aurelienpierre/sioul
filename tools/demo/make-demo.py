@@ -60,6 +60,14 @@ says once (docs/porch.md, "Agenda").
 --shortfall (or SIOUL_DEMO_SHORTFALL=1) has the bank account keep more than
 it holds, so that its next payment falls short: the Porch's Money says it
 first (`ahead::shortfall_notices`).
+--first-day (or SIOUL_DEMO_FIRST_DAY=1) leaves the Porch's two cards of the
+first days unanswered: "Join your other devices" and the topics Sioul started
+from the senders it knows. Without it, the person has answered both with
+"Leave as is", as on a Porch lived with.
+
+This computer is named "Study laptop" ("Portable du bureau" in French), as
+Settings ▸ Devices ▸ Rename… names it, under a fixed id in the sharing
+(share/here.toml, tied to the machine it is made on, as Sioul ties it).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -1238,10 +1246,9 @@ def write_stars(p: Profile):
 def write_phone_messages(p: Profile):
     """The messages a phone's notifications brought, as its log reaches a
     computer through the sharing (crates/sioul-core/src/phonemsgs.rs, `Line`;
-    the phone's name in the sharing invented), and the part switched on here
-    (share/here.toml): a text from the doctor while you slept, a pharmacy's,
+    the phone's name in the sharing invented): a text from the doctor while you slept, a pharmacy's,
     a service's, a code said without it, a chat's whose words stayed on the
-    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71. The part itself: `write_here`."""
     c = p.clock
 
     def line(moment: datetime, name: str, who: str, text: str = "", key: str = "", talk: str = "", kind: str = "text", **more) -> str:
@@ -1261,7 +1268,6 @@ def write_phone_messages(p: Profile):
         line(c.at(c.today, "13:02"), "Sam", "neutral", "", "", "sam", kind="chat", withheld=True),
     ]
     p.write(p.state / "phone-messages" / "log" / "demo-phone.jsonl", "".join(lines))
-    p.write(p.state / "share" / "here.toml", '[parts]\n"phone-messages" = true\n')
 
 
 def parcel_png() -> bytes:
@@ -1705,6 +1711,38 @@ def fnv64_hex(text: str) -> str:
     for byte in text.encode():
         h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
     return f"{h:016x}"
+
+
+# This computer's id in the sharing (sioul-sync's `share::Here::id`), fixed so that the
+# configuration can name it (`[device."<id>"]`), and the name given it in Settings ▸ Devices.
+DEVICE_ID = "5d3e9a41-7c2b-4f18-9e06-b1a4c8d27f53"
+DEVICE_NAME = ("Study laptop", "Portable du bureau")
+
+
+def write_here(p: "Profile", phone_messages: bool):
+    """This computer in the sharing, not sharing (share/here.toml): its fixed id, and its
+    machine as Sioul reads it (sioul-sync's `share::machine`, a hash of /etc/machine-id),
+    so that Sioul keeps that id rather than taking a new one; with --phone-messages, the
+    part "Messages from your phone" switched on here."""
+    machine = ""
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            said = Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        machine = fnv64_hex(said) if said else ""
+        break
+    text = f'id = "{DEVICE_ID}"\nmachine = "{machine}"\n'
+    if phone_messages:
+        text += '\n[parts]\n"phone-messages" = true\n'
+    p.write(p.state / "share" / "here.toml", text)
+
+
+def write_view_flags(p: "Profile"):
+    """How the window was left (tasks-view.toml, `work::WorkState::flags`): the Porch's two
+    cards of the first days answered "Leave as is", "Join your other devices"
+    (`porch-join-left`) and the topics Sioul started (`topics-day-one-left`)."""
+    p.write(p.state / "tasks-view.toml", '[flags]\n"porch-join-left" = true\n"topics-day-one-left" = true\n')
 
 
 def write_subscribed(p: "Profile"):
@@ -3082,6 +3120,10 @@ holder = "Noa Ferrand"
 iban = "FR76 3000 6000 0112 3456 7890 189"
 bic = "EXMPFRPP"
 
+# This computer, named in Settings ▸ Devices ("Rename…"): its id is share/here.toml's.
+[device."{DEVICE_ID}"]
+name = {toml_string(t(*DEVICE_NAME))}
+
 # Other apps by time, set on the phone and shared with the settings (docs/attention.md,
 # §1.3): the chat app let through during work, held otherwise.
 [attention]
@@ -3311,6 +3353,8 @@ def main():
                         help="a meeting its organizer moved onto an event of yours this afternoon: a conflict the Porch says (SIOUL_DEMO_CONFLICT=1 too)")
     parser.add_argument("--shortfall", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SHORTFALL")),
                         help="the bank account keeping more than it holds: its next payment falls short (SIOUL_DEMO_SHORTFALL=1 too)")
+    parser.add_argument("--first-day", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_FIRST_DAY")),
+                        help="the Porch's cards of the first days not answered yet: Join your other devices, the topics Sioul started (SIOUL_DEMO_FIRST_DAY=1 too)")
     args = parser.parse_args()
     ONGOING = args.ongoing
     DAYS_OFF = args.days_off
@@ -3328,6 +3372,9 @@ def main():
     letters = leave_spam_mail(clock) if args.leave_spam else []
     mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else []) + letters
     write_config(profile)
+    write_here(profile, args.phone_messages)
+    if not args.first_day:
+        write_view_flags(profile)
     write_mail(profile, mails)
     write_topics(profile, mails)
     moving_note(profile)

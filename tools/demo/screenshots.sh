@@ -111,9 +111,11 @@ run() {
     else
         runtime=$(mktemp -d /tmp/sioul-run.XXXXXX)
     fi
+    # COMPUTERNAME: the system's name for this computer, which Sioul reads before /etc/hostname
+    # (sioul-sync's `lease::host_name`): an invented one, not the machine's.
     local env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS="$steps" SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
                FONTCONFIG_FILE="$fonts" QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
-               LANG="$locale" LC_ALL="$locale" TZ="$zone")
+               LANG="$locale" LC_ALL="$locale" TZ="$zone" COMPUTERNAME=noa-laptop)
     if [[ -n "$phone" ]]; then
         env+=(SIOUL_GRAB_PHONE=1)
     fi
@@ -138,6 +140,9 @@ run() {
 runs=(
     # A weekday afternoon, with hours.
     "demo - demo - porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time papers health sites sites-menu accounts settings-tabs settings-devices settings-hours reachable"
+    # The Porch of the first days, its two cards not answered yet: joining your other devices,
+    # the topics Sioul started.
+    "first-day --first-day demo - porch:porch-first-day"
     # Without hours: the Porch asking for them, and the budgets of every area
     # at once (with hours, only those of the hours now).
     "no-hours --no-hours demo - porch-hours budgets bank-accounts"
