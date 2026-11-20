@@ -10,8 +10,8 @@
 // name; nothing sent before the person reads what goes), "Change"
 // (OpeningHoursForm.qml) and "Call back…", a task that follows these hours.
 // On any other card, one flat link, "This is an office, a shop or a
-// practice", marks it as an organisation's (`markOffice`); the lookup is
-// offered from then on. Read from the backend when the card opens, when the
+// practice", marks it as an organisation's (`markOffice`), said with Undo
+// as the contacts' other changes are; the lookup is offered from then on. Read from the backend when the card opens, when the
 // contacts change, and each minute while it shows, since what is true now
 // moves on. Words from the card or a source are drawn as plain text.
 

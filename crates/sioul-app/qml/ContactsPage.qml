@@ -279,6 +279,8 @@ Item {
         page.moreShown = true
         page.revealed += 1
     }
+    // The card back at its top (`raised`), for the window's images: after a change made far down it.
+    property int raised: 0
 
     // For the window's images: the open card's hours changed by hand, looked up, asked, closed.
     function changeHours() {
@@ -769,6 +771,11 @@ Item {
                                         if (flick)
                                             flick.contentY = Math.max(0, flick.contentHeight - flick.height)
                                     })
+                                }
+                                function onRaisedChanged() {
+                                    const flick = cardScroll.contentItem as Flickable
+                                    if (flick)
+                                        flick.contentY = 0
                                 }
                             }
 

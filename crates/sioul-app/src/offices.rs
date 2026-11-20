@@ -328,36 +328,47 @@ fn saved(shared: &Shared, key: &str, typed: &str) -> Result<Written, String> {
     card_saved(shared, &path, &contact, &hours)
 }
 
+/// What the mark is called among the changes to cards kept to be undone
+/// (`sioul_core::duplicates::Done::kind`).
+pub(crate) const MARKED: &str = "office";
+
 /// "This is an office, a shop or a practice": the card marked as an
 /// organisation's through the contacts' writer (`contacts::as_office`), so
-/// that a lookup is offered on it. Returns {"ok"} or {"error"}.
+/// that a lookup is offered on it; said with Undo, as the contacts' other
+/// changes are, the card as it was kept thirty days with them
+/// (`duplicates::put_back`; Contacts ▸ Duplicates, "Done lately"), so that a
+/// press by mistake on a person's card is taken back. Returns {"ok"} or {"error"}.
 pub(crate) fn mark_office(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
     match marked(shared, key) {
-        Ok(changed) => {
-            if changed {
-                pim::show_pim(qt, shared);
-            }
+        Ok(Some((id, name))) => {
+            pim::show_pim(qt, shared);
+            crate::mail::offer_back(qt, shared, say("hours-marked", &[("name", name)]), move |qt, shared| crate::duplicates::put_back(qt, shared, &id).unwrap_or_else(|e| e));
             serde_json::json!({ "ok": true }).to_string()
         }
+        Ok(None) => serde_json::json!({ "ok": true }).to_string(),
         Err(e) => serde_json::json!({ "error": e }).to_string(),
     }
 }
 
-fn marked(shared: &Shared, key: &str) -> Result<bool, String> {
+/// The card marked, kept as it was among the changes to cards
+/// (`sioul_core::duplicates::apply`): what was done's id and the card's
+/// name; None when it said so already.
+fn marked(shared: &Shared, key: &str) -> Result<Option<(String, String)>, String> {
     let (path, contact) = card(key).ok_or_else(|| tr().text("contact-gone", None))?;
     if contact.read_only {
         return Err(tr().text("hours-read-only", None));
     }
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let Some(written) = contacts::as_office(&text) else { return Ok(false) };
-    vdir::write_item(&path, &written)?;
+    let Some(written) = contacts::as_office(&text) else { return Ok(None) };
+    let change = sioul_core::duplicates::Change { path: path.clone(), before: Some(text), after: Some(written) };
+    let done = sioul_core::duplicates::apply(&sioul_core::duplicates::undo_dir(), MARKED, vec![contact.name.clone()], vec![change], jiff::Timestamp::now().as_second())?;
     if let Some(account) = pim::account_of(&path) {
         pim::nudge(shared, &account);
     }
     if let Ok(mut cache) = shared.loaded.lock() {
         *cache = None;
     }
-    Ok(true)
+    Ok(Some((done.id, contact.name)))
 }
 
 /// The task "Call back…" makes for a card: "Call ‹name›", a call, that card
@@ -750,16 +761,48 @@ mod tests {
         assert!(shown["asked"].is_null() && shown["mark"] == true, "{shown}");
         let press = serde_json::json!({ "name": "Jeanne Exemple", "place": "99999 Exempleville", "france": true, "press": 1 }).to_string();
         assert!(asked_for(&card(&key).unwrap().1, &press).is_err(), "nothing can be asked for it");
-        assert!(marked(&shared, &key).unwrap());
+        assert!(marked(&shared, &key).unwrap().is_some());
         let shown: serde_json::Value = serde_json::from_str(&contact_hours(&key)).unwrap();
         assert!(!shown["asked"].is_null() && shown["mark"] == false, "{shown}");
         assert_eq!(shown["card"], "org");
         let (asked, number) = asked_for(&card(&key).unwrap().1, &press).unwrap();
         assert_eq!((asked.name.as_str(), number), ("Jeanne Exemple", 1));
-        assert!(!marked(&shared, &key).unwrap(), "marked once");
+        assert!(marked(&shared, &key).unwrap().is_none(), "marked once");
         // Words typed in the dialog that say another country: the directory is not asked.
         let abroad = serde_json::json!({ "name": "Jeanne Exemple", "place": "1 Example Street\nExampletown\nUnited Kingdom", "france": true, "press": 2 }).to_string();
         assert!(!asked_for(&card(&key).unwrap().1, &abroad).unwrap().0.france);
+    }
+
+    /// The mark pressed by mistake on a person's card: kept with the
+    /// contacts' other changes, its Undo (`duplicates::put_back`, the core's
+    /// `duplicates::undo`) puts the card back byte for byte, a person's
+    /// again, no lookup offered; a card changed since is set aside first,
+    /// never lost.
+    #[test]
+    fn the_mark_is_taken_back() {
+        let place = Place::new("Offices unmark");
+        let shared = Shared::default();
+        let key = place.card("unmark-jeanne", "FN:Jeanne Exemple\r\nN:Exemple;Jeanne;;;\r\nORG:\r\nX-OTHER-APP:kept\r\n");
+        let before = std::fs::read_to_string(&key).unwrap();
+        let (id, name) = marked(&shared, &key).unwrap().unwrap();
+        assert_eq!(name, "Jeanne Exemple");
+        assert_ne!(std::fs::read_to_string(&key).unwrap(), before);
+        let dir = sioul_core::duplicates::undo_dir();
+        let kept = sioul_core::duplicates::done(&dir, jiff::Timestamp::now().as_second());
+        assert!(kept.iter().any(|d| d.id == id && d.kind == MARKED && d.names == ["Jeanne Exemple"]), "kept with the contacts' changes: {kept:?}");
+        let (touched, aside) = sioul_core::duplicates::undo(&dir, &id, &vdir::Kind::Contacts.root()).unwrap();
+        assert_eq!((touched, aside), (vec![PathBuf::from(&key)], 0));
+        assert_eq!(std::fs::read_to_string(&key).unwrap(), before, "byte for byte");
+        let shown: serde_json::Value = serde_json::from_str(&contact_hours(&key)).unwrap();
+        assert!(shown["asked"].is_null() && shown["mark"] == true && shown["card"] != "org", "a person's card again: {shown}");
+        assert!(sioul_core::duplicates::undo(&dir, &id, &vdir::Kind::Contacts.root()).is_err(), "undone once");
+        // Marked again, then changed elsewhere (a sync): Undo puts it back, the newer version set aside.
+        let (id, _) = marked(&shared, &key).unwrap().unwrap();
+        let elsewhere = std::fs::read_to_string(&key).unwrap().replace("X-OTHER-APP:kept", "X-OTHER-APP:changed");
+        vdir::write_item(Path::new(&key), &elsewhere).unwrap();
+        let (_, aside) = sioul_core::duplicates::undo(&dir, &id, &vdir::Kind::Contacts.root()).unwrap();
+        assert_eq!(aside, 1);
+        assert_eq!(std::fs::read_to_string(&key).unwrap(), before);
     }
 
     /// "Call back…": on an office's card, a call ticked "Needs an open

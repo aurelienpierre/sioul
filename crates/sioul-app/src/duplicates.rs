@@ -186,6 +186,8 @@ fn view(everyone: &[Contact], cleanings: &[Cleaning], pairs: &[Pair], done: &[Do
                 let names = d.names.join(", ");
                 let said = if d.kind == "merge" {
                     text("dup-done-merge", &[("names", names)])
+                } else if d.kind == crate::offices::MARKED {
+                    text("dup-done-office", &[("names", names)])
                 } else {
                     let mut args = tr.counted(d.changes.len());
                     args.set("names", names);
@@ -284,16 +286,24 @@ pub(crate) fn not_same(qt: &QtThread, shared: &Arc<Shared>, first: &str, second:
 
 /// Puts the cards back as they were before what was done (`id`); returns what went wrong, else "".
 pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    let dir = duplicates::undo_dir();
-    match duplicates::undo(&dir, id, &Kind::Contacts.root()) {
-        Ok((touched, aside)) => {
-            changed(qt, shared, &touched);
-            let line = if aside > 0 { say("dup-undone-aside", &[("folder", dir.display().to_string())]) } else { tr().text("undo-done", None) };
-            tell(qt, shared, line);
+    match put_back(qt, shared, id) {
+        Ok(line) => {
+            tell(qt, shared, if line.is_empty() { tr().text("undo-done", None) } else { line });
             String::new()
         }
         Err(e) => e,
     }
+}
+
+/// The cards put back as they were before `id`, their accounts and the
+/// pages told; the status line's Undo of a change kept here runs it too
+/// (`offices::mark_office`). Returns what to say beyond "Undone.": "" when
+/// every card came back, else where a card changed since was set aside.
+pub(crate) fn put_back(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Result<String, String> {
+    let dir = duplicates::undo_dir();
+    let (touched, aside) = duplicates::undo(&dir, id, &Kind::Contacts.root())?;
+    changed(qt, shared, &touched);
+    Ok(if aside > 0 { say("dup-undone-aside", &[("folder", dir.display().to_string())]) } else { String::new() })
 }
 
 #[cfg(test)]
@@ -318,7 +328,10 @@ mod tests {
         let france = phones::region_named("FR");
         let pairs = duplicates::pairs(&everyone, france, &NotTheSame::default());
         let cleanings = vec![Cleaning { key: "/a.vcf".into(), name: "J. Dupont".into(), removed: vec![duplicates::Removed { kind: "phone".into(), value: "04 65 71 12 34".into(), kept: "+33 4 65 71 12 34".into() }] }];
-        let done = vec![Done { id: "1-merge".into(), at: 1_791_000_000, kind: "merge".into(), names: vec!["Jean Dupont".into(), "J. Dupont".into()], changes: Vec::new() }];
+        let done = vec![
+            Done { id: "1-merge".into(), at: 1_791_000_000, kind: "merge".into(), names: vec!["Jean Dupont".into(), "J. Dupont".into()], changes: Vec::new() },
+            Done { id: "1-office".into(), at: 1_791_000_000, kind: crate::offices::MARKED.into(), names: vec!["Jeanne Exemple".into()], changes: Vec::new() },
+        ];
         let shown = view(&everyone, &cleanings, &pairs, &done, france, &tr);
         assert_eq!(shown.region, "Country of numbers written without one: France. The settings (⚙) change it.");
         assert_eq!(shown.within, "One card holds a number or an address twice. Ticked, it keeps one of each:");
@@ -328,6 +341,8 @@ mod tests {
         // The fuller name is offered first.
         assert_eq!((shown.pairs[0].first.name.as_str(), shown.pairs[0].lead), ("J. Dupont", "second"));
         assert_eq!((shown.pairs[0].first.book.as_str(), shown.done[0].said.as_str()), ("In Contacts", "Merged: Jean Dupont, J. Dupont"));
+        // A card said to be an office's, kept to be undone with the rest.
+        assert_eq!(shown.done[1].said, "Marked as an office, a shop or a practice: Jeanne Exemple");
         // In French, in words, and without a country.
         let fr = Translator::new("fr");
         let many: Vec<Cleaning> = (0..3).map(|n| Cleaning { key: format!("/{n}.vcf"), name: String::new(), removed: Vec::new() }).collect();

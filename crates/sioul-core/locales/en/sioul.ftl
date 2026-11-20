@@ -1496,6 +1496,7 @@ dup-done-clean = { $n ->
    *[other] Duplicates taken off { $count } cards
 }
 dup-done-merge = Merged: { $names }
+dup-done-office = Marked as an office, a shop or a practice: { $names }
 dup-undone-aside = Put back as it was. A card changed since is kept aside in { $folder }.
 dup-changed = These cards changed meanwhile: look at them again.
 country-fr = France
@@ -10096,6 +10097,7 @@ hours-saved-same = The card says these hours already: nothing changed.
 hours-call-back-made-plain = Task made: { $title }.
 hours-mark-office = This is an office, a shop or a practice
 hours-mark-why = Sioul looks hours up only for an office, a shop or a practice: a person's name is never sent anywhere.
+hours-marked = Marked as an office, a shop or a practice: { $name }.
 hours-lookup-sends-directory = Only these words are sent, once, to { $sources }, with Sioul's name and version. Nothing is sent by itself.
 hours-lookup-map-off = The map's search service is set to None (Contacts settings): it is not asked.
 hours-lookup-map-waiting = The map's search service asked Sioul to wait: it is asked again tomorrow.

@@ -1638,6 +1638,8 @@ SioulWindow {
                 () => sioul.markOffice(contactsPage.openKey),
                 () => {},
                 () => {},
+                // The card back at its top: its section beside its numbers now, the mark said with Undo.
+                () => contactsPage.raised += 1,
                 () => {},
                 () => grabber.save("hours-card-office"),
                 () => contactsPage.lookUpHours(),

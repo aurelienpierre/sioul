@@ -1523,6 +1523,7 @@ dup-done-clean = { $n ->
    *[other] Doublons retirés de { $countf } fiches
 }
 dup-done-merge = Fusionnées : { $names }
+dup-done-office = Marquée comme celle d’un bureau, d’une boutique ou d’un cabinet : { $names }
 dup-undone-aside = Remis comme avant. Une fiche modifiée depuis est gardée à part dans { $folder }.
 dup-changed = Ces fiches ont changé entre-temps : regardez-les à nouveau.
 country-fr = France
@@ -10487,6 +10488,7 @@ hours-saved-same = La fiche dit déjà ces horaires : rien n’a changé.
 hours-call-back-made-plain = Tâche créée : { $title }.
 hours-mark-office = C’est un bureau, une boutique ou un cabinet
 hours-mark-why = Sioul ne cherche des horaires que pour un bureau, une boutique ou un cabinet : le nom d’une personne n’est jamais envoyé nulle part.
+hours-marked = Fiche marquée comme celle d’un bureau, d’une boutique ou d’un cabinet : { $name }.
 hours-lookup-sends-directory = Seuls ces mots sont envoyés, une fois, à { $sources }, avec le nom et la version de Sioul. Rien ne part tout seul.
 hours-lookup-map-off = Le service de recherche de la carte est réglé sur Aucun (réglages des Contacts) : il n’est pas interrogé.
 hours-lookup-map-waiting = Le service de recherche de la carte a demandé à Sioul d’attendre : il sera interrogé de nouveau demain.
