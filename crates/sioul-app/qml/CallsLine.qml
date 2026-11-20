@@ -232,14 +232,18 @@ ColumnLayout {
                         Layout.preferredWidth: 10
                         implicitHeight: Math.max(fixedWord.implicitHeight, cellButton.implicitHeight)
 
-                        // Always through rings at every moment: words, no button.
+                        // A fixed row (Always through, Your people): words, no button, within its column
+                        // ("As usual", « Comme d’habitude »: review L10).
                         Label {
                             id: fixedWord
 
                             visible: gridRow.modelData.fixed === true
                             anchors.centerIn: parent
+                            width: Math.min(implicitWidth, place.width)
                             text: place.modelData.word || ""
                             textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
                             color: line.theme.muted
                         }
                         Cell {
@@ -305,7 +309,8 @@ ColumnLayout {
             Note {
                 visible: listRow.modelData.fixed === true
                 Layout.leftMargin: 8
-                // Your people's row says where it is set; Always through's that it always rings.
+                // Under a fixed row: Your people's, its cells in words (where it is set is said under
+                // the table, `callsPeople`); Always through's, that it always rings.
                 text: listRow.modelData.id === "people" ? (listRow.modelData.words || "") : line.sioul.text("phone-calls-always-rings")
             }
             // Its four choices, each moment on a line of its own.

@@ -4651,7 +4651,6 @@ SioulWindow {
                 () => grabber.save("b11-accounts"),
                 () => window.close()
             ]
-            // Contracts on the Budgets page, one open, the letter drafted.
             // Your people in What reaches you (SIOUL_GRAB_STEPS=household; SIOUL_GRAB_PHONE for a
             // phone's; the demo's Léa, no card linked, and Maud, linked): People with their line,
             // Who is in which circle, Maud's sheet with its reason, Maud's page, and a phone's calls
@@ -4703,6 +4702,7 @@ SioulWindow {
                 () => grabber.save("household-calls-down"),
                 () => window.close()
             ]
+            // Contracts on the Budgets page, one open, the letter drafted.
             readonly property var contracts: [
                 () => window.page = 9,
                 () => {},

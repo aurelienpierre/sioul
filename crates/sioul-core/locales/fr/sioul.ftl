@@ -6114,6 +6114,7 @@ sender-from-domain = { $list }, comme le dit { $name }.
 sender-from-default = { $list } : dans aucun de vos carnets d’adresses, sur aucune liste.
 sender-now-restricted = { $entry } est restreint : ses courriels ne viennent que comme le dit la ligne Restreints, dans Ce qui vous joint.
 sender-now-categories = { $entry } : comme le disent ses groupes.
+sender-now-circle = { $entry } : comme vos proches.
 set-restricted = Restreints
 set-sender-named-contacts = { $n ->
     [one] Une adresse, un numéro ou un domaine que vous avez nommé comme contact
@@ -6140,6 +6141,7 @@ person-now-neutral = { $name } est parmi vos contacts : toutes ses adresses et
 person-now-restricted = { $name } est restreint : toutes ses adresses et tous ses numéros.
 person-now-blocked = { $name } est bloqué : toutes ses adresses et tous ses numéros, sur tous les canaux.
 person-now-categories = { $name } : comme le disent ses catégories.
+person-now-circle = { $name } : comme vos proches, toutes ses adresses et tous ses numéros.
 set-sender-people-group = Les personnes sur une liste
 set-sender-people-note = Chacune mise sur une liste depuis sa fiche dans Contacts, avec toutes ses adresses et tous ses numéros. Une adresse ou un numéro qui a sa propre liste passe d’abord.
 set-sender-person = Une personne

@@ -110,9 +110,10 @@ fn live(config: &Config, now: &Zoned) -> Live {
 
 /// Who wrote, as your address books and lists say (`porch::Senders`): none
 /// when nobody knows a name; whether their card is one of your people's
-/// (`porch::Judged::circle`: by a number or an address, or by a name the
-/// phone's address book gives); and whether the Always through list holds
-/// them (by a number or an address, never a name, which anyone can take).
+/// (`porch::Judged::circle`: by a number or an address, never by a name,
+/// which anyone can take, an SMS's sender id included: review L1); and
+/// whether the Always through list holds them (by a number or an address,
+/// never a name).
 fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool, bool) {
     match sender {
         Sender::Known { numbers, emails, contact } => {
@@ -127,11 +128,8 @@ fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) 
                 None => (Some(unknown), false, admitted),
             }
         }
-        Sender::Named { name, book } => match senders.judge_name(name) {
-            // A name anyone can take may only hold more: one of your people only as the phone's address book names them.
-            Some(judged) => (Some(appnotes::named(Some(judged.who), *book)), judged.circle && *book, false),
-            None => (None, false, false),
-        },
+        // A name anyone can take may only hold more, and proves no one of your people (L1).
+        Sender::Named { name, book } => (senders.judge_name(name).map(|judged| appnotes::named(Some(judged.who), *book)), false, false),
         Sender::Unknown => (None, false, false),
     }
 }

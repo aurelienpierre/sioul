@@ -367,56 +367,63 @@ Panel {
                 Repeater {
                     model: page.shown ? page.shown.cards : []
 
-                    delegate: RowLayout {
+                    delegate: ColumnLayout {
                         id: cardRow
 
                         required property var modelData
 
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 0
 
-                        ItemDelegate {
+                        RowLayout {
                             Layout.fillWidth: true
-                            padding: 6
-                            onClicked: page.openContact(cardRow.modelData.key)
-                            contentItem: ColumnLayout {
-                                spacing: 2
+                            spacing: 8
 
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: cardRow.modelData.name
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    color: page.theme.text
+                            ItemDelegate {
+                                Layout.fillWidth: true
+                                padding: 6
+                                onClicked: page.openContact(cardRow.modelData.key)
+                                contentItem: ColumnLayout {
+                                    spacing: 2
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: cardRow.modelData.name
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: page.theme.text
+                                    }
+                                    Label {
+                                        visible: cardRow.modelData.detail !== ""
+                                        Layout.fillWidth: true
+                                        text: cardRow.modelData.detail
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        font.pixelSize: 13
+                                        color: page.theme.muted
+                                    }
                                 }
-                                Label {
-                                    visible: cardRow.modelData.detail !== ""
-                                    Layout.fillWidth: true
-                                    text: cardRow.modelData.detail
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    font.pixelSize: 13
-                                    color: page.theme.muted
+                            }
+                            Button {
+                                flat: true
+                                text: page.sioul.text("person-unlink-card")
+                                onClicked: {
+                                    page.problem = page.sioul.linkPersonCard(page.personId, cardRow.modelData.uid, false)
+                                    page.reload()
+                                    page.changed()
                                 }
                             }
                         }
-                        // How this card reaches you: its sheet, its own list and own times.
+                        // How this card reaches you: its sheet, its own list and own times; on a line of its
+                        // own under the card, so that the card's name keeps its width at 412 points (review L10).
                         Button {
                             objectName: "personCardSheet"
                             visible: page.shown !== null && page.shown.reaches !== null && page.shown.reaches !== undefined
+                            Layout.leftMargin: 2
                             flat: true
                             text: page.sioul.text("person-card-sheet")
                             Accessible.name: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", cardRow.modelData.name))
                             onClicked: page.window.openPersonSheet(cardRow.modelData.key, "")
-                        }
-                        Button {
-                            flat: true
-                            text: page.sioul.text("person-unlink-card")
-                            onClicked: {
-                                page.problem = page.sioul.linkPersonCard(page.personId, cardRow.modelData.uid, false)
-                                page.reload()
-                                page.changed()
-                            }
                         }
                     }
                 }

@@ -956,10 +956,13 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
     // no one of your people's, as forged mail is a stranger's: the circle's row read as a stranger's
     // (on Always through, against a stranger's row). Absence of a verdict changes nothing. Java's
     // `decideFor` alike.
-    let who = match who.as_str() {
-        "people" if call.verified == "failed" => "stranger".to_string(),
-        "always-people" if call.verified == "failed" => "always-stranger".to_string(),
-        _ => who,
+    let failed = call.verified == "failed";
+    let who = if failed && who == "people" {
+        "stranger".to_string()
+    } else if failed && who == "always-people" {
+        "always-stranger".to_string()
+    } else {
+        who
     };
     let decided = |refuse: bool, why: &'static str, column: &str| Decision { refuse, why, who: who.clone(), column: column.to_string(), called };
     // 2. Blocked ("blocked entirely": every call let through but theirs).

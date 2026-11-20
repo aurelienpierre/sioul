@@ -1154,13 +1154,15 @@ impl Senders {
     /// app's notification): a card with this very name (`name_key`), its own
     /// entry, else its categories, else neutral; between two cards of one
     /// name, the one whose list comes first in the order ties are decided.
-    /// None when no card has that name: the caller decides.
+    /// None when no card has that name: the caller decides. Never the circle
+    /// Your people: a name anyone can take (an SMS's sender id, a chat's
+    /// title) proves no one; a number or an address does (review L1).
     pub fn judge_name(&self, name: &str) -> Option<Judged> {
         let cards = self.contacts.cards_named(name);
         if cards.is_empty() {
             return None;
         }
-        self.by_card(cards).or_else(|| self.by_category(cards)).or_else(|| self.by_book(cards)).map(|judged| self.circled(judged, cards, self.blocks(cards, None, None)))
+        self.by_card(cards).or_else(|| self.by_category(cards)).or_else(|| self.by_book(cards))
     }
 
     /// Who a card is, by its UID or its file: its own entry, else its
@@ -2736,7 +2738,7 @@ mod tests {
         assert_eq!(row(&senders.judge_number("01 99 00 00 31")), (Who::Neutral, By::Book, false, Neutral));
         // By card and by name, as chats and a person's sheet judge them.
         assert_eq!(senders.judge_card("lea-1").map(|j| row(&j)), Some(circle));
-        assert_eq!(senders.judge_name("Maud").map(|j| row(&j)), Some(circle));
+        assert_eq!(senders.judge_name("Maud").map(|j| row(&j)), Some((Who::Restricted, By::Category, false, Restricted)), "a name alone proves no one of your people (L1): as the lists judge it");
         assert_eq!(chosen.judge_card("lea-1").map(|j| row(&j)), Some((Who::Restricted, By::Card, false, Restricted)));
         // Everywhere else they are safe; the numbers carry their row for the calls' table.
         assert_eq!(senders.who("lea@example.org"), Who::Safe);
