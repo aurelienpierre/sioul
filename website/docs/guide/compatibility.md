@@ -181,7 +181,7 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
 | Attachments checked, on Linux and macOS | ClamAV, from your system's packages or Homebrew | Linux without ClamAV: Sioul asks first, and gives the command that installs it | ClamAV, its daemon or its scanner | the Flatpak does not reach your system's ClamAV: there, Sioul asks first. No antivirus on Android |
-| Attachments checked, on Windows | Microsoft Defender, or another antivirus that answers Windows' scan interface (AMSI) | — | Windows' antivirus | built, never run on Windows yet |
+| Attachments checked, on Windows | Microsoft Defender, or another antivirus that answers Windows' scan interface (AMSI) or its attachment service | Windows without an antivirus on, or one that gives no answer: Sioul asks first, saying the file was not checked | Windows' antivirus | built, never run on Windows yet |
 | Scanned letters read | Tesseract and Poppler | Tesseract, by hand, on a French letter drawn as a picture | Linux, Windows and macOS with both installed | the Flatpak carries neither: whether it reads scans is not checked. Not on Android |
 
 ## AI agents

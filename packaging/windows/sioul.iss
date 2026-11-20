@@ -5,8 +5,9 @@
 ;   windeployqt --release --qmldir crates\sioul-app\qml target\release\sioul-app.exe
 ; Then: iscc packaging\windows\sioul.iss
 ;
-; Attachments are checked by Windows' own antivirus (AMSI, Microsoft Defender
-; by default): nothing more to install. Passwords go to the Credential Manager.
+; Attachments are checked by Windows' own antivirus (Microsoft Defender, or the
+; one installed) through AMSI, else Windows' attachment service: nothing more to
+; install. Passwords go to the Credential Manager.
 
 ; The version: the packages' workflow gives it (/DVersion=..., from the tag or
 ; Cargo.toml); this one only when the installer is built by hand.
