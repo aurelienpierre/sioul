@@ -619,6 +619,14 @@ Item {
                 }
             }
 
+            // A card added, changed or deleted: the list keeps its place (ListPlace.qml).
+            ListPlace {
+                id: listPlace
+
+                view: list
+                source: page.shown.contacts
+                scope: [page.shown.filter, page.shown.category]
+            }
             ListView {
                 id: list
 
@@ -627,7 +635,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 2
-                model: page.shown.contacts
+                model: listPlace.rows
                 ScrollBar.vertical: ScrollBar {}
                 // Rows given again to the contacts scrolled in, rather than made anew: a
                 // phone made and shaped each one at every pass.
@@ -1311,11 +1319,15 @@ Item {
                                 text: page.sioul.text("ui-save")
                                 highlighted: true
                                 onClicked: {
+                                    const made = page.openKey === ""
                                     const answer = JSON.parse(page.sioul.saveContact(page.openKey, JSON.stringify(form.edit())))
                                     if (answer.error) {
                                         page.problem = answer.error
                                         return
                                     }
+                                    // A card made here: its row brought into view once the list holds it.
+                                    if (made)
+                                        listPlace.reveal(answer.key)
                                     page.open(answer.key)
                                 }
                             }
