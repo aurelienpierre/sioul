@@ -924,11 +924,20 @@ check-policy = politique { $policy }
 protocol-iprev = DNS inverse
 
 ## L’antivirus.
-ui-attachments-scan = Chaque pièce jointe est vérifiée par l’antivirus (ClamAV) avant de s’ouvrir ou d’être enregistrée.
+ui-attachments-scan = Chaque pièce jointe est vérifiée par ClamAV avant de s’ouvrir ou d’être enregistrée.
+ui-attachments-scan-none = Aucun antivirus n’a été trouvé sur cet appareil : avant qu’une pièce jointe s’ouvre ou soit enregistrée, Sioul dit qu’elle n’a pas été vérifiée et demande.
+ui-attachments-scan-windows = Chaque pièce jointe est vérifiée par { $antivirus }, par l’intermédiaire de Windows, avant de s’ouvrir ou d’être enregistrée.
+ui-attachments-scan-windows-unnamed = Chaque pièce jointe est confiée à l’antivirus de Windows avant de s’ouvrir ou d’être enregistrée, et Sioul demande quand il ne répond pas.
+ui-attachments-scan-windows-unknown = Windows ne dit pas quel antivirus il a : chaque pièce jointe lui est confiée avant de s’ouvrir ou d’être enregistrée, et Sioul demande quand aucun ne répond.
+ui-attachments-scan-windows-none = Windows dit qu’aucun antivirus n’est activé : chaque pièce jointe lui est tout de même confiée, et Sioul demande avant d’en ouvrir une qui n’a pas été vérifiée.
+antivirus-windows = l’antivirus de Windows
 scan-running-any = Vérification de la pièce jointe par l’antivirus…
 scan-running = Vérification de { $name } par l’antivirus…
 scan-clean = { $name } : aucune menace trouvée ; ouverture.
 scan-infected = { $name } : l’antivirus a trouvé { $threat }. Rien n’a été ouvert, et la copie est effacée.
+scan-refused = { $name } a été refusé par { $antivirus } ({ $detail }). Rien n’a été ouvert, et la copie est effacée.
+scan-opens-unchecked = { $name } s’ouvre, sans vérification.
+scan-not-checked = Il n’a pas été vérifié.
 scan-error = La pièce jointe { $name } n’a pas pu être vérifiée ({ $detail }).
 
 ## La lecture.
@@ -4193,11 +4202,12 @@ task-billable-yes = Son temps se facture
 task-billable-no = Non facturé
 health-errands-list = Les démarches vont dans
 health-list-here = sur cet appareil seulement
-scan-ask = Aucun antivirus n’est installé sur cet appareil : { $name } ne sera pas vérifié. Ne l’ouvrez que si vous lui faites confiance. Pour que les fichiers soient vérifiés : { $hint }
-scan-ask-phone = Android n’a aucun antivirus que Sioul puisse appeler : { $name } ne sera pas vérifié. Ne l’ouvrez que si vous lui faites confiance. Pour qu’il soit vérifié : { $hint }
+scan-ask = Aucun antivirus n’a été trouvé sur cet appareil : { $name } n’a pas été vérifié. Il peut être dangereux : ne l’ouvrez que si vous lui faites confiance. Pour que les fichiers soient vérifiés : { $hint }
+scan-ask-unanswered = { $name } n’a pas été vérifié : { $antivirus } n’a pas répondu. Il peut être dangereux : ne l’ouvrez que si vous lui faites confiance.
+scan-ask-windows-none = Windows dit qu’aucun antivirus n’est activé : { $name } n’a pas été vérifié. Il peut être dangereux : ne l’ouvrez que si vous lui faites confiance. Pour que les fichiers soient vérifiés : { $hint }
 scan-open-anyway = L’ouvrir sans vérification
 scan-save-anyway = L’enregistrer sans vérification
-scan-unavailable-short = Aucun antivirus n’a répondu ({ $detail }).
+scan-unavailable-short = { $name } n’a pas été vérifié ({ $detail }).
 scan-too-big = { $name } n’a pas été examiné : il est plus gros que ce que l’antivirus examine.
 scan-ask-too-big = { $name } n’a pas été examiné : il est plus gros que ce que l’antivirus examine, ou une archive en contient plus qu’il n’en lit. Ne l’ouvrez que si vous lui faites confiance.
 sounds-nature = La nature, faite ici

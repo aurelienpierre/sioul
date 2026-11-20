@@ -6447,14 +6447,14 @@ SioulWindow {
         function onOpenUrl(url) {
             Qt.openUrlExternally(url)
         }
-        function onScanUnavailable(key, index, what, name, hint, big) {
+        function onScanUnavailable(key, index, what, name, question, action) {
             unchecked.key = key
             unchecked.index = index
             unchecked.what = what
             unchecked.active = true
-            // The hint's command to copy; the file's name, from a message, never one.
-            // Too big for the antivirus: why it was not scanned, no command.
-            unchecked.item.ask(name, sioul.textArgs(big ? "scan-ask-too-big" : Qt.platform.os === "android" ? "scan-ask-phone" : "scan-ask", JSON.stringify({ name: name.replace(/`/g, "\u02cb"), hint: hint })), what === 0 ? sioul.text("scan-open-anyway") : sioul.text("scan-save-anyway"), true)
+            // Not checked: the question as Rust says it (attachments::decide),
+            // the hint's command to copy; the file's name, from a message, never one.
+            unchecked.item.ask(name, question, action, true)
         }
         function onComposeRequested(id) {
             window.openDraft(id)

@@ -86,6 +86,10 @@ Item {
         function attachmentsUnscanned() {
             return false
         }
+        // The words above the attachments, as Rust says them (attachments::label).
+        function attachmentsScanWords() {
+            return "Each attachment is checked by ClamAV before it opens or is saved."
+        }
         function uriOf(kind, id) {
             return ""
         }

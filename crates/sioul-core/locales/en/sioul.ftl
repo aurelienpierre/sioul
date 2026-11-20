@@ -900,11 +900,20 @@ check-policy = policy { $policy }
 protocol-iprev = Reverse DNS
 
 ## The antivirus.
-ui-attachments-scan = Each attachment is checked by the antivirus (ClamAV) before it opens or is saved.
+ui-attachments-scan = Each attachment is checked by ClamAV before it opens or is saved.
+ui-attachments-scan-none = No antivirus was found on this device: before an attachment opens or is saved, Sioul says that it was not checked and asks.
+ui-attachments-scan-windows = Each attachment is checked by { $antivirus }, through Windows, before it opens or is saved.
+ui-attachments-scan-windows-unnamed = Each attachment is handed to Windows' antivirus before it opens or is saved, and Sioul asks when it gives no answer.
+ui-attachments-scan-windows-unknown = Windows does not say which antivirus it has: each attachment is handed to it before it opens or is saved, and Sioul asks when none answers.
+ui-attachments-scan-windows-none = Windows says no antivirus is turned on: each attachment is still handed to it, and Sioul asks before opening one that was not checked.
+antivirus-windows = Windows' antivirus
 scan-running-any = Checking the attachment with the antivirus…
 scan-running = Checking { $name } with the antivirus…
 scan-clean = { $name }: no threat found; it opens.
 scan-infected = { $name }: the antivirus found { $threat }. Nothing was opened, and the copy is deleted.
+scan-refused = { $name } was refused by { $antivirus } ({ $detail }). Nothing was opened, and the copy is deleted.
+scan-opens-unchecked = { $name } opens, not checked.
+scan-not-checked = It was not checked.
 scan-error = The attachment { $name } could not be checked ({ $detail }).
 
 ## Reading.
@@ -4160,11 +4169,12 @@ task-billable-yes = Its time is billed
 task-billable-no = Not billed
 health-errands-list = Errands go to
 health-list-here = on this device only
-scan-ask = No antivirus is installed on this device, so { $name } will not be checked. Open it only if you trust it. To have files checked: { $hint }
-scan-ask-phone = Android has no antivirus that Sioul can call, so { $name } will not be checked. Open it only if you trust it. To have it checked: { $hint }
+scan-ask = No antivirus was found on this device, so { $name } was not checked. It may be dangerous: open it only if you trust it. To have files checked: { $hint }
+scan-ask-unanswered = { $name } was not checked: { $antivirus } gave no answer. It may be dangerous: open it only if you trust it.
+scan-ask-windows-none = Windows says no antivirus is turned on, so { $name } was not checked. It may be dangerous: open it only if you trust it. To have files checked: { $hint }
 scan-open-anyway = Open it unchecked
 scan-save-anyway = Save it unchecked
-scan-unavailable-short = No antivirus answered ({ $detail }).
+scan-unavailable-short = { $name } was not checked ({ $detail }).
 scan-too-big = { $name } was not scanned: it is larger than the antivirus scans.
 scan-ask-too-big = { $name } was not scanned: it is larger than the antivirus scans, or an archive holds more than it reads. Open it only if you trust it.
 sounds-nature = Nature, made here

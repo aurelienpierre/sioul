@@ -181,7 +181,7 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
 | Les pièces jointes vérifiées, sur Linux et macOS | ClamAV, des paquets de votre système ou de Homebrew | Linux sans ClamAV : Sioul demande d’abord, et donne la commande qui l’installe | ClamAV, son démon ou son scanner | le Flatpak n’atteint pas le ClamAV de votre système : là, Sioul demande d’abord. Aucun antivirus sur Android |
-| Les pièces jointes vérifiées, sur Windows | Microsoft Defender, ou un autre antivirus qui répond à l’interface d’analyse de Windows (AMSI) | — | l’antivirus de Windows | construit, jamais lancé sur Windows pour l’instant |
+| Les pièces jointes vérifiées, sur Windows | Microsoft Defender, ou un autre antivirus qui répond à l’interface d’analyse de Windows (AMSI) ou à son service des pièces jointes | Windows sans antivirus activé, ou un qui ne répond pas : Sioul demande d’abord, en disant que le fichier n’a pas été vérifié | l’antivirus de Windows | construit, jamais lancé sur Windows pour l’instant |
 | Le courrier scanné, lu | Tesseract et Poppler | Tesseract, à la main, sur une lettre française dessinée en image | Linux, Windows et macOS avec les deux installés | le Flatpak ne contient ni l’un ni l’autre : s’il lit les scans n’est pas vérifié. Pas sur Android |
 
 ## Agents d’IA {#ai-agents}

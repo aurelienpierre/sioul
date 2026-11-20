@@ -198,6 +198,11 @@ pub mod qobject {
         #[qinvokable]
         fn attachments_unscanned(self: &Sioul) -> bool;
 
+        /// The words above a message's attachments: how they are checked
+        /// here, naming the system's antivirus (`attachments::label`).
+        #[qinvokable]
+        fn attachments_scan_words(self: &Sioul) -> QString;
+
         /// The papers wallet, as JSON (`papers::view`).
         #[qinvokable]
         fn papers(self: &Sioul) -> QString;
@@ -3369,10 +3374,11 @@ pub mod qobject {
         #[qsignal]
         fn microsoft_question(self: Pin<&mut Sioul>, question: QString);
 
-        /// No antivirus answered, or the file is larger than it scans (`big`):
-        /// the window asks before opening or saving, with how to install one.
+        /// The attachment was not checked (no antivirus found, none answered,
+        /// larger than it scans): the window asks once, in the words given
+        /// (`attachments::decide`), before opening or saving it unchecked.
         #[qsignal]
-        fn scan_unavailable(self: Pin<&mut Sioul>, key: QString, index: i32, what: i32, name: QString, hint: QString, big: bool);
+        fn scan_unavailable(self: Pin<&mut Sioul>, key: QString, index: i32, what: i32, name: QString, question: QString, action: QString);
 
         /// An attachment was kept in the papers wallet: the form, to say what it is.
         #[qsignal]
@@ -5031,11 +5037,14 @@ impl Afterwards {
     }
 }
 
-/// Writes an attachment to the cache, has the antivirus check it, then opens or
-/// saves it; a threat, or no antivirus, and the copy is deleted. On a phone,
-/// which has no antivirus Sioul can call, nothing is scanned and nothing
-/// claims it: the attachment opens in the app you choose, or Android asks
-/// where to save it (`attachments`).
+/// Writes an attachment to the cache, has the antivirus check it, then does
+/// what `attachments::decide` says: opens or saves it, asks once when it was
+/// not checked (no antivirus found, none answered, too big), or refuses it;
+/// the copy goes unless it opens. `unchecked`: you said yes to that question,
+/// and it goes without a check, said so. On a phone, which has no antivirus
+/// Sioul can call, nothing is scanned and nothing claims it: the attachment
+/// opens in the app you choose, or Android asks where to save it
+/// (`attachments`).
 fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i32, afterwards: Afterwards, unchecked: bool) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
@@ -5052,7 +5061,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
         let phone = crate::attachments::phone();
         // A program is never started from a mail, checked or not: an antivirus
         // may not know a new one yet. Saved, it is yours to run. On a phone,
-        // Android's installers too.
+        // Android's installers too. Decided before any scan or question.
         if afterwards != Afterwards::Save && crate::attachments::kept_closed(&name, phone) {
             set_status(&qt, say("attachment-program", &[("name", name)]));
             return;
@@ -5064,81 +5073,89 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
             return;
         }
         mark_from_outside(&file);
-        if !phone {
+        if !phone && !unchecked {
             set_status(&qt, say("scan-running", &[("name", name.clone())]));
         }
         // Keyed anew each session: a file cannot be made to pass for one found clean.
         static KEYS: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
         let content = std::hash::BuildHasher::hash_one(KEYS.get_or_init(Default::default), &bytes);
         let known_clean = shared.clean.lock().is_ok_and(|c| c.contains(&content));
-        // Opened without a check: you said so, knowing no antivirus is here; or a phone, which has none.
-        let verdict = match crate::attachments::check(phone, known_clean, unchecked) {
-            crate::attachments::Check::Scan => antivirus::scan(&file),
-            crate::attachments::Check::Skip | crate::attachments::Check::Unchecked => Verdict::Clean,
+        use crate::attachments::{Act, Check, Does, Found, System};
+        let found = match crate::attachments::check(phone, known_clean, unchecked) {
+            Check::Scan => Found::Scanned(antivirus::scan(&file)),
+            // Your yes, knowing it was not checked.
+            Check::Skip if unchecked => Found::Chosen,
+            // The same bytes, found clean earlier in this session.
+            Check::Skip => Found::Scanned(Verdict::Clean),
+            Check::Unchecked => Found::Phone,
         };
-        let line = match verdict {
-            Verdict::Clean => {
-                if !unchecked
-                    && !phone
-                    && let Ok(mut clean) = shared.clean.lock()
-                {
-                    clean.insert(content);
+        if found == Found::Scanned(Verdict::Clean)
+            && !known_clean
+            && let Ok(mut clean) = shared.clean.lock()
+        {
+            clean.insert(content);
+        }
+        let system = System::here();
+        let presence = if phone { antivirus::Presence::Absent } else { antivirus::presence() };
+        let act = match afterwards {
+            Afterwards::Open => Act::Open,
+            Afterwards::Save => Act::Save,
+            Afterwards::Paper => Act::Paper,
+        };
+        let decision = crate::attachments::decide(&found, system, &presence, act, &name, &antivirus::install_hint());
+        // Said after a line of a file saved or kept unchecked.
+        let noted = |line: String| if decision.note.is_empty() { line } else { format!("{line} {}", decision.said(decision.note)) };
+        let line = match decision.does {
+            Does::Go => match afterwards {
+                // Android's own app for it, which you choose; the words say it was not checked.
+                Afterwards::Open if phone => crate::attachments::open(&file, &name),
+                Afterwards::Open => {
+                    let url = file_url(&file);
+                    let _ = qt.queue(move |sioul| sioul.open_url(QString::from(&url)));
+                    decision.said(decision.line)
                 }
-                match afterwards {
-                    // Android's own app for it, which you choose; the words say it was not checked.
-                    Afterwards::Open if phone => crate::attachments::open(&file, &name),
-                    Afterwards::Open => {
-                        let url = file_url(&file);
-                        let _ = qt.queue(move |sioul| sioul.open_url(QString::from(&url)));
-                        say("scan-clean", &[("name", name)])
-                    }
-                    Afterwards::Paper => {
-                        let kept = crate::papers::keep_checked(&file, &name, &subject);
-                        let _ = sioul_core::filelock::remove_wiping(&file);
-                        match kept {
-                            Ok((path, title, kind)) => {
-                                let _ = qt.queue(move |mut sioul| sioul.as_mut().paper_kept(QString::from(&path), QString::from(&title), QString::from(kind)));
-                                say("papers-kept", &[("name", name)])
-                            }
-                            Err(e) => say("scan-error", &[("name", name), ("detail", e)]),
+                Afterwards::Paper => {
+                    let kept = crate::papers::keep_checked(&file, &name, &subject);
+                    let _ = sioul_core::filelock::remove_wiping(&file);
+                    match kept {
+                        Ok((path, title, kind)) => {
+                            let _ = qt.queue(move |mut sioul| sioul.as_mut().paper_kept(QString::from(&path), QString::from(&title), QString::from(kind)));
+                            noted(say("papers-kept", &[("name", name)]))
                         }
-                    }
-                    // Android's question where: a phone's downloads are not Sioul's to write.
-                    Afterwards::Save if phone => crate::attachments::save(&qt, &file, &name),
-                    Afterwards::Save => {
-                        let target = free_path(&downloads(), &name);
-                        let saved = std::fs::create_dir_all(downloads()).and_then(|()| std::fs::copy(&file, &target));
-                        let _ = sioul_core::filelock::remove_wiping(&file);
-                        match saved {
-                            Ok(_) => {
-                                mark_from_outside(&target);
-                                say("ui-saved", &[("path", target.display().to_string())])
-                            }
-                            Err(e) => say("scan-error", &[("name", name), ("detail", e.to_string())]),
-                        }
+                        Err(e) => say("scan-error", &[("name", name), ("detail", e)]),
                     }
                 }
-            }
-            Verdict::Infected(threat) => {
+                // Android's question where: a phone's downloads are not Sioul's to write.
+                Afterwards::Save if phone => crate::attachments::save(&qt, &file, &name),
+                Afterwards::Save => {
+                    let target = free_path(&downloads(), &name);
+                    let saved = std::fs::create_dir_all(downloads()).and_then(|()| std::fs::copy(&file, &target));
+                    let _ = sioul_core::filelock::remove_wiping(&file);
+                    match saved {
+                        Ok(_) => {
+                            mark_from_outside(&target);
+                            noted(say("ui-saved", &[("path", target.display().to_string())]))
+                        }
+                        Err(e) => say("scan-error", &[("name", name), ("detail", e.to_string())]),
+                    }
+                }
+            },
+            Does::Refuse => {
                 let _ = sioul_core::filelock::remove_wiping(&file);
-                say("scan-infected", &[("name", name), ("threat", threat)])
+                decision.said(decision.line)
             }
-            // No antivirus here, or a file larger than it scans: asked before
-            // anything opens, with how to install one, or why it was not scanned.
-            Verdict::Unavailable(_) | Verdict::TooBig => {
+            // Not checked: one question, which says so and that it may be
+            // dangerous; on yes, `attachment_unchecked` comes back here.
+            Does::Ask => {
                 let _ = sioul_core::filelock::remove_wiping(&file);
                 let what = match afterwards {
                     Afterwards::Open => 0,
                     Afterwards::Save => 1,
                     Afterwards::Paper => 2,
                 };
-                let big = verdict == Verdict::TooBig;
-                let (key, hint, shown) = (key.clone(), antivirus::install_hint(), name.clone());
-                let _ = qt.queue(move |mut sioul| sioul.as_mut().scan_unavailable(QString::from(&key), index, what, QString::from(&shown), QString::from(&hint), big));
-                match verdict {
-                    Verdict::Unavailable(problem) => say("scan-unavailable-short", &[("detail", problem)]),
-                    _ => say("scan-too-big", &[("name", name)]),
-                }
+                let (key, shown, question, action) = (key.clone(), name.clone(), decision.said(decision.question), decision.said(decision.action));
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().scan_unavailable(QString::from(&key), index, what, QString::from(&shown), QString::from(&question), QString::from(&action)));
+                decision.said(decision.line)
             }
         };
         set_status(&qt, line);
@@ -5277,6 +5294,11 @@ impl qobject::Sioul {
             pim::start_dav_watchers(&qt, &shared);
             crate::github::start(&qt, &shared);
         }
+        // Which antivirus the system says it has (Windows' Security Center), asked
+        // once off the window's thread, for the words above the attachments.
+        if !crate::attachments::phone() {
+            std::thread::spawn(antivirus::presence);
+        }
         // Sioul's own antivirus signatures, when the system has none: kept current once a day.
         if !offline() {
             std::thread::spawn(|| {
@@ -5393,6 +5415,13 @@ impl qobject::Sioul {
 
     fn attachments_unscanned(&self) -> bool {
         crate::attachments::phone()
+    }
+
+    fn attachments_scan_words(&self) -> QString {
+        let system = crate::attachments::System::here();
+        // Said at once: Windows' Security Center is asked off this thread (`presence_now`).
+        let presence = if system == crate::attachments::System::Phone { antivirus::Presence::Absent } else { antivirus::presence_now() };
+        QString::from(&crate::attachments::label(system, &presence))
     }
 
     fn attachment_unchecked(self: Pin<&mut Self>, key: &QString, index: i32, what: i32) {

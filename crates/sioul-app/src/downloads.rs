@@ -40,12 +40,13 @@
 //! The rules (the name's cleaning, programs, hosts, the memory per site) are
 //! the core's (`sioul_core::downloads`).
 
+use crate::attachments::{Decision, Does, Found, System};
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::{Deserialize, Serialize};
 use sioul_core::config::{self, Config, NotesFolder};
 use sioul_core::downloads::{self as rules, Memory, Place};
 use sioul_core::notice::{Act, Kind, Notice};
-use sioul_sync::antivirus::{self, Verdict};
+use sioul_sync::antivirus::{self, Presence, Verdict};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -434,14 +435,21 @@ fn notice_where(about: &str, place: Place, placed: &Placed, program: bool) -> (N
     (Notice::new(about, Kind::Minor, title, folder.display().to_string()).action(open, Act::Open { address: file_url.clone(), hint: String::new() }).action(tr().text("file-show-folder", None), show), file_url)
 }
 
+/// What the window does with a file a site offered once the antivirus
+/// answered, from the table every way in reads (`attachments::decide`): placed
+/// where you said, saying that it was not checked when it was not (you chose
+/// the place on the card, and Sioul never opens it), or refused.
+fn decided(verdict: &Verdict, shown: &str) -> Decision {
+    let system = System::here();
+    let presence = if system == System::Phone { Presence::Absent } else { antivirus::presence() };
+    crate::attachments::decide(&Found::Scanned(verdict.clone()), system, &presence, crate::attachments::Act::Place, shown, "")
+}
+
 /// What the antivirus could not say of a file placed, in one sentence: none
 /// when it found the file clean.
 fn unchecked(verdict: &Verdict) -> Option<String> {
-    match verdict {
-        Verdict::Clean | Verdict::Infected(_) => None,
-        Verdict::TooBig => Some(tr().text("download-unchecked-too-big", None)),
-        Verdict::Unavailable(_) => Some(tr().text("download-unchecked-none", None)),
-    }
+    let decision = decided(verdict, "");
+    (decision.does == Does::Go && !decision.note.is_empty()).then(|| decision.said(decision.note))
 }
 
 /// The notice of a file placed (`notice_where`), what a click on it opens,
@@ -495,9 +503,10 @@ pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
             crate::backend::tell(&qt, &shared, say("scan-running", &[("name", shown.clone())]));
         }
         let verdict = antivirus::scan(&file);
-        if let Verdict::Infected(threat) = &verdict {
+        let decision = decided(&verdict, &shown);
+        if decision.does == Does::Refuse {
             let _ = std::fs::remove_dir_all(&hold);
-            let line = say("scan-infected", &[("name", shown.clone()), ("threat", threat.clone())]);
+            let line = decision.said(decision.line);
             crate::backend::tell(&qt, &shared, line.clone());
             tell_notice(Notice::new(&about, Kind::Minor, say("download-not-kept", &[("file", shown)]), line), String::new());
             over(hold.display().to_string(), "", String::new());
