@@ -211,7 +211,7 @@ pub(crate) fn call_back(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> Strin
         contacts: vec![sioul_core::tasks::ContactRef { name: contact.name.clone(), uri: sioul_core::links::contact_uri(contact.uid.trim()) }],
         ..sioul_core::tasks::TaskEdit::default()
     };
-    match crate::work::create_task(qt, shared, &edit) {
+    match crate::work::create_task(qt, shared, &edit, "") {
         Ok(uid) => {
             tell(qt, shared, say("hours-call-back-made", &[("title", title)]));
             serde_json::json!({ "uid": uid }).to_string()

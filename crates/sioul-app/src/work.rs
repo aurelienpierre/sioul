@@ -1295,12 +1295,6 @@ pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list:
     .to_string()
 }
 
-/// Makes a task in the usual list, from elsewhere than its form (an office's
-/// "Call back…"); returns its UID.
-pub(crate) fn create_task(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit) -> Result<String, String> {
-    create(qt, shared, edit, "")
-}
-
 /// Makes a task in a list; returns its UID.
 fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> Result<String, String> {
     if edit.title.trim().is_empty() {
