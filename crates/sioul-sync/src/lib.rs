@@ -588,7 +588,7 @@ mod tests {
         assert_eq!((yahoo_page, google_page), ("login.yahoo.com/account/security", "myaccount.google.com/apppasswords"));
         let names = |sentence: &str, word: &str| sentence.to_lowercase().contains(word);
         for (tr, account, section, steps) in [
-            (&en, "jane", "under \"External connections\"", ["\"Create app password\"", "\"Generate password\""]),
+            (&en, "jane", "under \u{201c}External connections\u{201d}", ["\u{201c}Create app password\u{201d}", "\u{201c}Generate password\u{201d}"]),
             (&fr, "jeanne", "sous «\u{202f}Connexions externes\u{202f}»", ["«\u{202f}Créer un mot de passe d’application\u{202f}»", "«\u{202f}Générer le mot de passe\u{202f}»"]),
         ] {
             let said = yahoo.sentence(tr, account);
