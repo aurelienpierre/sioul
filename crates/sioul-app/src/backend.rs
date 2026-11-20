@@ -1465,7 +1465,8 @@ pub mod qobject {
         #[qinvokable]
         fn phone_accounts(self: &Sioul) -> bool;
 
-        /// Android's own chooser of the phone's accounts; the one chosen comes back by `phone_account_chosen`.
+        /// Android's own chooser of the phone's accounts; the one chosen comes back by `phone_account_chosen`
+        /// (none at once on a system without one).
         #[qinvokable]
         fn choose_phone_account(self: Pin<&mut Sioul>);
 
@@ -1664,7 +1665,7 @@ pub mod qobject {
         fn devices(self: &Sioul) -> QString;
 
         /// What you say of a device, written into the shared settings
-        /// (`share::say_of_device`): `field` "name" (the name you give it;
+        /// (`share::say_of_device_said`): `field` "name" (the name you give it;
         /// "" its system's again), "area" (what it is for: work, admin,
         /// leisure joined by +; "" everything), or "at.<time>" (a cell: what
         /// comes forward on it at work, admin, leisure, meals or sleep:
@@ -7043,8 +7044,9 @@ impl qobject::Sioul {
             // `sioul_android_account_chosen`, on whatever thread Android gives.
             unsafe { sioul_android_choose_account() };
         }
+        // No chooser on this system: answered at once, none chosen.
         #[cfg(not(target_os = "android"))]
-        let _ = self;
+        self.phone_account_chosen(QString::default(), QString::default());
     }
 
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {
@@ -7731,7 +7733,7 @@ impl qobject::Sioul {
         }
         // What a device is for, or a cell of its line: what now brings on this device is said and
         // shown again at once, as when the hours change (docs/areas.md, "What each device is for").
-        // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device`).
+        // What a phone lets ring changes nothing shown: its calls' table is made again (`share::say_of_device_said`).
         if problem.is_empty() && field != "name" && !field.starts_with("calls.") {
             self.as_mut().set_mode(QString::from(&mode_json()));
             let (qt, shared) = (self.qt_thread(), self.shared());

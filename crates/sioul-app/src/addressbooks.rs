@@ -327,7 +327,6 @@ fn writers_now(qt: &QtThread, shared: &Arc<Shared>, place: &str, now: &Sharing) 
     if now.sharer == Sharer::None {
         return;
     }
-    let config = load_config();
     let path = book.state_path();
     let mut state = State::load(&path);
     // Named as the listing names them (`dav::Prop::writers`): the last segment of their principal.
