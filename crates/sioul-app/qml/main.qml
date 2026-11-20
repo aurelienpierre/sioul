@@ -2329,6 +2329,16 @@ SioulWindow {
             ]
             readonly property var demo: [
                 () => window.page = 0,
+                // The Porch as it is lived with: the cards of the first days answered "Leave as is",
+                // as the profile says (make-demo.py writes their flags, unless --first-day). The
+                // Porch reads those flags as it is made, before `start` loads them: pressed here.
+                () => {
+                    for (const [flag, card] of [["porch-join-left", "joinCard"], ["topics-day-one-left", "topicsDayOne"]]) {
+                        const panel = grabber.named(window.porchPage, card)
+                        if (sioul.viewFlag(flag) && panel !== null && panel.visible)
+                            grabber.leaveAsIs(panel)
+                    }
+                },
                 () => {},
                 () => {},
                 () => grabber.save(window.moment.hours ? "porch" : "porch-hours"),
@@ -5145,6 +5155,22 @@ SioulWindow {
                         return found
                 }
                 return null
+            }
+            // A Porch card's "Leave as is" under `root`, pressed.
+            function leaveAsIs(root) {
+                const words = sioul.text("porch-hours-leave")
+                const walk = item => {
+                    if (item.text === words && typeof item.clicked === "function") {
+                        item.clicked()
+                        return true
+                    }
+                    for (let i = 0; i < item.children.length; ++i) {
+                        if (walk(item.children[i]))
+                            return true
+                    }
+                    return false
+                }
+                return walk(root)
             }
             function mailFilters() {
                 return grabber.named(frame.Overlay.overlay, "mailFilters")
