@@ -279,9 +279,9 @@ Item {
             const answer = JSON.parse(mock.agenda)
             answer.from = from
             mock.agenda = JSON.stringify(answer)
-            wait(50)
+            tryVerify(() => rows().length > 0 && rows()[0].title === "Morning 0", 2000, "today at the top")
             frame()
-            compare(rows()[0].title, "Morning 0", "today at the top")
+            compare(rows()[0].title, "Morning 0", "today at the top, still")
         }
     }
 }
