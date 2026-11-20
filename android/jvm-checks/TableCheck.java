@@ -284,6 +284,13 @@ public final class TableCheck
         expect("a safe caller under do-not-disturb", Calls.decideFor(near, "01 99 00 00 01", false, ms(day, "18:30"), 0, null, 0, none), true, "matrix", "safe", "dnd");
         expect("your people on Always through", Calls.decideFor(near, "01 99 00 00 06", false, ms(day, "03:00"), 0, null, 0, none), false, "matrix", "always-people", "sleep");
         expect("your people blocked", Calls.decideFor(near, "01 99 00 00 04", false, ms(day, "03:00"), 0, null, 0, none), true, "blocked", "blocked", "");
+        // Proof first (review M4; calls.rs's your_people_s_calls_ring_by_their_row): a number the network says
+        // it could not verify is no one of your people's: a stranger's, which the screening sends to voicemail;
+        // a verdict passed or unsaid changes nothing; on Always through, the list rings, read as a stranger's.
+        expect("your people, failed verification", Calls.decideFor(near, "01 99 00 00 08", false, ms(day, "03:00"), 0, null, 0, none, "failed", 0), true, "unverified", "stranger", "sleep");
+        expect("your people, verified", Calls.decideFor(near, "01 99 00 00 08", false, ms(day, "03:00"), 0, null, 0, none, "passed", 0), false, "matrix", "people", "sleep");
+        expect("your people on Always through, failed verification", Calls.decideFor(near, "01 99 00 00 06", false, ms(day, "03:00"), 0, null, 0, none, "failed", 0), false, "matrix", "always-stranger", "sleep");
+        expect("a safe caller, failed verification", Calls.decideFor(near, "01 99 00 00 01", false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), false, "matrix", "safe", "work");
         System.out.println(failed == 0 ? "all " + checked + " table decisions agree with calls.rs" : failed + " of " + checked + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

@@ -952,6 +952,15 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
         None if lately => (table.phone_contacts.clone(), true),
         None => ("stranger".to_string(), false),
     };
+    // Proof first for your people too (review M4): a number the network says it could not verify is
+    // no one of your people's, as forged mail is a stranger's: the circle's row read as a stranger's
+    // (on Always through, against a stranger's row). Absence of a verdict changes nothing. Java's
+    // `decideFor` alike.
+    let who = match who.as_str() {
+        "people" if call.verified == "failed" => "stranger".to_string(),
+        "always-people" if call.verified == "failed" => "always-stranger".to_string(),
+        _ => who,
+    };
     let decided = |refuse: bool, why: &'static str, column: &str| Decision { refuse, why, who: who.clone(), column: column.to_string(), called };
     // 2. Blocked ("blocked entirely": every call let through but theirs).
     if who == "blocked" {
@@ -3887,6 +3896,19 @@ mod line_tests {
         }
         assert!(!rings(&table, "01 99 00 00 01", "03:00") && !rings(&table, "01 99 00 00 01", "18:30"), "a safe caller: voicemail at night and under do-not-disturb");
         assert!(!rings(&table, "01 99 00 00 05", "10:00"), "the blocked never");
+        // Review M4: a call whose number the network says it could not verify is no one of your people's: as a
+        // stranger's, the screening sends it to voicemail; one it says nothing of rings as theirs; on Always
+        // through, the list still rings, read against a stranger's row.
+        let verified = |number: &str, time: &str, verdict: &str| decide(Some(&table), &Incoming { verified: verdict.into(), ..call(number, time) });
+        let forged = verified("01 99 00 00 08", "03:00", "failed");
+        assert_eq!((forged.refuse, forged.why, forged.who.as_str()), (true, "unverified", "stranger"), "{forged:?}");
+        assert!(verified("01 99 00 00 08", "10:00", "failed").refuse, "in work hours too");
+        for verdict in ["", "passed"] {
+            assert!(!verified("01 99 00 00 08", "03:00", verdict).refuse, "{verdict:?}: as theirs");
+        }
+        let listed = verified("01 99 00 00 06", "03:00", "failed");
+        assert_eq!((listed.refuse, listed.who.as_str()), (false, "always-stranger"), "Always through rings, read against a stranger's row");
+        assert!(!verified("01 99 00 00 01", "10:00", "failed").refuse, "a safe caller: as before, by their row");
         // Their row changed holds them alone: no call at night.
         let mut quiet = Attention::usual();
         quiet.set(attention::Row::People(Channel::Calls, Person::People), attention::Column::Sleep, Level::Later).unwrap();
