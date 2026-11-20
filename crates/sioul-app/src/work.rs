@@ -69,7 +69,7 @@ pub(crate) struct WorkState {
 }
 
 impl WorkState {
-    fn path() -> PathBuf {
+    pub(crate) fn path() -> PathBuf {
         sioul_core::config::state_dir().join("tasks-view.toml")
     }
 
