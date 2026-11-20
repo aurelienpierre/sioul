@@ -119,6 +119,9 @@ Item {
             mock.healthView = JSON.stringify({ any: true, unreadable: "", week: { monday: "2096-10-01", today: "2096-10-02", days: [today] }, missed: [], shared_note: "", reminded_there: "", later: 15, medicines: [], prescriptions: [] })
             page.takeView()
             tryVerify(() => root.found(page, c => c.objectName === "needRowLater" && c.visible).length === 3, 3000, "the list made")
+            // The list's place is put back once the window has laid its rows out (ListPlace.qml): a
+            // press aimed at a row comes after that, as a person's does.
+            wait(50)
             return page
         }
 
