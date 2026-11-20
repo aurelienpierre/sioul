@@ -144,6 +144,7 @@ mod calls;
 mod capacity;
 mod changes;
 mod children;
+mod chosen;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
 mod colour;
@@ -421,6 +422,9 @@ pub fn run() -> i32 {
     // (docs/sites.md, "Downloads"): no download can be under way yet.
     #[cfg(not(target_os = "android"))]
     downloads::at_start();
+    // What a Sioul stopped while it copied a file chosen in a dialog left in
+    // the cache (docs/android.md, "Files chosen in a dialog"): no dialog is open yet.
+    chosen::at_start();
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking

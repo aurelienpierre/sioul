@@ -2981,9 +2981,18 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             }
             (json!({ "url": url }), false)
         }
+        // Where the dialog said: a path, or a tablet's document Android made there, through its writer (`chosen::save`).
         "save-media" => {
-            let target = crate::backend::local_path(&text("path"));
-            let saved = !target.as_os_str().is_empty() && open_media(&text("hash"), &text("ct")).is_some_and(|p| std::fs::copy(p, &target).is_ok());
+            let bytes = open_media(&text("hash"), &text("ct")).and_then(|p| std::fs::read(p).ok());
+            let saved = bytes.is_some_and(|bytes| {
+                crate::chosen::save(&text("path"), "media", &bytes, |target| {
+                    if target.as_os_str().is_empty() {
+                        return Err(String::new());
+                    }
+                    std::fs::write(target, &bytes).map_err(|e| e.to_string())
+                })
+                .is_ok()
+            });
             (json!({ "saved": saved }), false)
         }
         "close" => {

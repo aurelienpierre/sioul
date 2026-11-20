@@ -2383,16 +2383,29 @@ pub(crate) fn save_draft(text: &str) -> Result<String, String> {
 }
 
 /// Adds a file, from the file dialog or dropped on the window (`file://` URLs).
+/// A phone's dialog names a document Android reads: copied for it
+/// (`chosen`), that copy kept beside the files shared to Sioul for drafts
+/// (`handed/files/`), which go with their draft as a share's do.
 pub(crate) fn attach(id: &str, url: &str) -> Result<(), String> {
     let mut draft = Draft::by_id(id).ok_or_else(|| tr().text("mail-draft-gone", None))?;
-    let path = crate::backend::local_path(url);
-    if !path.is_file() {
-        return Err(say("compose-not-a-file", &[("path", path.display().to_string())]));
+    let chosen = crate::chosen::take(url)?;
+    if !chosen.path().is_file() {
+        return Err(say("compose-not-a-file", &[("path", chosen.path().display().to_string())]));
     }
+    let path = chosen.keep_in(&sioul_core::handed::Incoming::here().files_of(&dialog_copies()))?;
     if !draft.attachments.contains(&path) {
         draft.attachments.push(path);
     }
     draft.save().map(|_| ())
+}
+
+/// A folder's name of its own among those the files shared to Sioul are
+/// copied in (`sioul_core::handed`), for a file a phone's dialog chose:
+/// apart from the requests' names, and one `handed::valid_id` takes, so that
+/// the start's tidying removes it a day after no draft holds it.
+fn dialog_copies() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("chosen-{:x}-{:x}-{:x}", jiff::Timestamp::now().as_millisecond(), std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
 /// Takes an attachment off: one you added, by position, or one a forward carries, by index.

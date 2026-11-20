@@ -5578,6 +5578,16 @@ letters-linked = { $n ->
        *[other] { $Count } scans liés : ils restent où ils sont, et Sioul les lit d’ici une minute ou deux.
     }
 letters-link-missing = { $name } n’est plus là : rien n’a été lié.
+letters-link-phone = { $name } ne peut pas être lié là où il est : { device-this } ne laisse pas Sioul l’y relire plus tard.
+letters-link-add-title = Ajouter une copie à la place ?
+letters-link-add-ask = { $n ->
+        [one] Sioul peut garder une copie de ce scan dans le dossier d’où les scans sont lus ; le fichier choisi reste où il est.
+       *[other] Sioul peut garder une copie de ces { $Count } scans dans le dossier d’où les scans sont lus ; les fichiers choisis restent où ils sont.
+    }
+letters-link-add = { $n ->
+        [one] Ajouter une copie
+       *[other] Ajouter les copies
+    }
 letters-linked-here = Lié : le scan reste dans { $file }.
 letters-gone = Ce scan n’est plus dans { $file } : il a été déplacé ou supprimé. La lettre reste ici.
 letters-waiting-read = Pas encore lu : Sioul le lit d’ici une minute ou deux.
@@ -6049,6 +6059,12 @@ attachment-phone-where = Choisissez où enregistrer { $name }.
 attachment-phone-saved = { $name } est enregistré. Il n’a pas été vérifié : Android n’a pas d’antivirus que Sioul puisse appeler.
 attachment-phone-not-saved = { $name } n’a pas été enregistré.
 attachment-phone-save-failed = { $name } n’a pas pu être enregistré ({ $detail }).
+# Un fichier choisi dans une boîte de dialogue sur un téléphone : Android en donne une copie à Sioul (chosen.rs, docs/android.md).
+chosen-too-large = { $name } dépasse { $mb } Mo, et Sioul copie les fichiers choisis sur { device-this } jusqu’à cette taille. Choisissez un fichier plus petit.
+chosen-no-room = Il reste trop peu de place sur { device-this } pour copier { $name }. Libérez de la place, puis choisissez-le à nouveau.
+chosen-unreadable = Android n’a pas pu transmettre { $name } à Sioul ({ $detail }). Choisissez-le à nouveau ; s’il est gardé par l’application d’un cloud, ouvrez-le d’abord une fois là-bas.
+chosen-no-answer = Android n’a pas transmis { $name } à Sioul. Choisissez-le à nouveau.
+chosen-not-saved = { $name } n’a pas pu être écrit à l’endroit choisi ({ $detail }). Choisissez à nouveau un endroit.
 ocr-hint-windows = Tesseract (github.com/UB-Mannheim/tesseract) et Poppler
 ocr-hint-packages = Tesseract et Poppler, depuis les paquets de votre système
 google-page-granted = Sioul a l’accès. Vous pouvez fermer cet onglet.
@@ -10087,7 +10103,6 @@ import-reading = Lecture du fichier…
 import-too-big = Ce fichier dépasse { $mb } Mo : il n’est pas lu.
 import-unreadable = Ce fichier ne peut pas être lu : { $error }
 import-kind-not = Seul un fichier vCard (.vcf) ou CSV (.csv) est lu.
-import-on-a-phone = Sur un téléphone, ouvrez le fichier avec Sioul depuis l’endroit où il est (Fichiers, un message) : Android le transmet.
 import-gone = Ce fichier n’est plus ouvert ici.
 import-found-vcf = { $n ->
     [one] Une fiche dans ce fichier.
@@ -10317,7 +10332,6 @@ import-birthdays = { $n ->
 books-export = Exporter…
 books-export-kind = Fichiers vCard
 books-export-where = Choisissez un fichier hors des carnets d’adresses de Sioul.
-books-export-on-a-phone = Sur un téléphone, choisissez un dossier de la mémoire du téléphone (Téléchargements, Documents).
 books-exported = { $n ->
     [one] Un contact enregistré en fichier vCard : { $path }
    *[other] { $n } contacts enregistrés en un fichier vCard : { $path }

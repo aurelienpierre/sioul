@@ -201,6 +201,20 @@ ColumnLayout {
         }
     }
 
+    // Scans chosen to be linked where they are (their addresses): linked, and
+    // what happened said; those a phone cannot link there (`chosen::linkable`)
+    // are offered as copies instead.
+    function linkChosen(urls) {
+        const done = JSON.parse(section.sioul.lettersLink(JSON.stringify(urls)))
+        section.sioul.status = done.said
+        section.changed()
+        if ((done.add || []).length > 0) {
+            const asking = addInstead.now()
+            asking.files = done.add
+            asking.ask(section.sioul.text("letters-link-add-title"), section.sioul.textCounted("letters-link-add-ask", done.add.length), section.sioul.textCounted("letters-link-add", done.add.length))
+        }
+    }
+
     // A letter's persons: each ticked or not, saved at once.
     SioulMenu {
         id: forMenu
@@ -238,15 +252,35 @@ ColumnLayout {
         onAccepted: section.sioul.status = section.sioul.lettersAdd(JSON.stringify(Array.from(scanPicker.selectedFiles, f => f.toString())))
     }
     // The same kinds, linked where they are: recorded there, read there, never copied.
+    // A phone's document Sioul could not read there later is said, and a copy offered instead.
     FileDialog {
         id: linkPicker
 
         title: section.sioul.text("letters-link-title")
         fileMode: FileDialog.OpenFiles
         nameFilters: [section.sioul.text("letters-add-scan-filter") + " (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.webp)"]
-        onAccepted: {
-            section.sioul.status = section.sioul.lettersLink(JSON.stringify(Array.from(linkPicker.selectedFiles, f => f.toString())))
-            section.changed()
+        onAccepted: section.linkChosen(Array.from(linkPicker.selectedFiles, f => f.toString()))
+    }
+
+    // Asked when a phone cannot link a scan where it is: a copy added instead, or nothing.
+    Later {
+        id: addInstead
+
+        objectName: "lettersAddInstead"
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                id: asking
+
+                property var files: []
+
+                sioul: section.sioul
+                theme: section.theme
+                onConfirmed: {
+                    section.sioul.status = section.sioul.lettersAdd(JSON.stringify(asking.files))
+                    section.changed()
+                }
+            }
         }
     }
 }

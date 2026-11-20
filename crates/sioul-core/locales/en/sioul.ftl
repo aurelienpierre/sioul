@@ -5542,6 +5542,16 @@ letters-linked = { $n ->
        *[other] { $Count } scans linked: they stay where they are, and Sioul reads them within a minute or two.
     }
 letters-link-missing = { $name } is no longer there: nothing was linked.
+letters-link-phone = { $name } cannot be linked where it is: { device-this } does not let Sioul read it there later.
+letters-link-add-title = Add a copy instead?
+letters-link-add-ask = { $n ->
+        [one] Sioul can keep a copy of this scan in the folder scans are read from; the file you chose stays where it is.
+       *[other] Sioul can keep a copy of these { $Count } scans in the folder scans are read from; the files you chose stay where they are.
+    }
+letters-link-add = { $n ->
+        [one] Add a copy
+       *[other] Add copies
+    }
 letters-linked-here = Linked: the scan stays in { $file }.
 letters-gone = This scan is no longer at { $file }: it was moved or deleted. The letter stays here.
 letters-waiting-read = Not read yet: Sioul reads it within a minute or two.
@@ -6013,6 +6023,12 @@ attachment-phone-where = Choose where to save { $name }.
 attachment-phone-saved = { $name } is saved. It was not checked: Android has no antivirus Sioul can call.
 attachment-phone-not-saved = { $name } was not saved.
 attachment-phone-save-failed = { $name } could not be saved ({ $detail }).
+# A file chosen in a dialog on a phone: Android hands Sioul a copy (chosen.rs, docs/android.md).
+chosen-too-large = { $name } is larger than { $mb } MB, and Sioul copies files chosen on { device-this } up to that size. Choose a smaller file.
+chosen-no-room = There is too little room left on { device-this } to copy { $name }. Free some room, then choose it again.
+chosen-unreadable = Android could not hand { $name } to Sioul ({ $detail }). Choose it again; if it is kept by a cloud's app, open it there once first.
+chosen-no-answer = Android did not hand { $name } to Sioul. Choose it again.
+chosen-not-saved = { $name } could not be written where you chose ({ $detail }). Choose a place again.
 ocr-hint-windows = Tesseract (github.com/UB-Mannheim/tesseract) and Poppler
 ocr-hint-packages = Tesseract and Poppler, from your system's packages
 google-page-granted = Sioul has the access. You can close this tab.
@@ -9696,7 +9712,6 @@ import-reading = Reading the file…
 import-too-big = This file is larger than { $mb } MB: it is not read.
 import-unreadable = This file cannot be read: { $error }
 import-kind-not = Only a vCard file (.vcf) or a CSV file (.csv) is read.
-import-on-a-phone = On a phone, open the file with Sioul from where it is (Files, a message): Android hands it over.
 import-gone = This file is no longer open here.
 import-found-vcf = { $n ->
     [one] One card in this file.
@@ -9926,7 +9941,6 @@ import-birthdays = { $n ->
 books-export = Export…
 books-export-kind = vCard files
 books-export-where = Choose a file outside Sioul's address books.
-books-export-on-a-phone = On a phone, choose a folder of the phone's storage (Download, Documents).
 books-exported = { $n ->
     [one] One contact saved as a vCard file: { $path }
    *[other] { $n } contacts saved as one vCard file: { $path }

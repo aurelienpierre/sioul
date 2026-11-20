@@ -356,11 +356,13 @@ pub(crate) fn generate(address: &str) -> Result<String, String> {
     Ok(say("pgp-made", &[("address", address.to_string())]))
 }
 
-/// Imports the keys of a file (a `file://` address); a secret key's passphrase
-/// is checked, then kept in the keyring.
+/// Imports the keys of a file (a `file://` address; a phone's document,
+/// copied for it first, `chosen`); a secret key's passphrase is checked, then
+/// kept in the keyring.
 pub(crate) fn import(url: &str, passphrase: &str) -> Result<String, String> {
-    let path = crate::backend::local_path(url);
-    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let chosen = crate::chosen::take(url)?;
+    let bytes = std::fs::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()))?;
+    drop(chosen);
     // Your keys before: one imported again with a mistyped passphrase stays yours.
     let had: Vec<String> = pgp::summaries().into_iter().filter(|k| k.own).map(|k| k.fingerprint).collect();
     let imported = pgp::import(&bytes)?;

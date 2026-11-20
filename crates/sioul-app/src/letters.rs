@@ -209,12 +209,27 @@ fn read_linked(places: &Places, looked: &sioul_core::words::Words, projects: &[s
 /// Scans chosen elsewhere on this computer (a JSON array of `file://`
 /// addresses, or of paths), linked where they are: each a letter of its own,
 /// read like the others at a coming minute (`read_linked`), never copied,
-/// never moved when filed (`Letter::linked`). What happened, in a sentence.
-pub(crate) fn link(files: &str) -> String {
-    let Some(places) = load_config().places() else { return tr().text("papers-no-store", None) };
+/// never moved when filed (`Letter::linked`). What happened, in a sentence;
+/// and the addresses that name no file Sioul could read later (a phone's
+/// documents, `chosen::linkable`), said, which the window offers to add as
+/// copies instead.
+pub(crate) fn link(files: &str) -> (String, Vec<String>) {
+    let Some(places) = load_config().places() else { return (tr().text("papers-no-store", None), Vec::new()) };
     let chosen: Vec<String> = serde_json::from_str(files).unwrap_or_default();
-    let paths: Vec<PathBuf> = chosen.iter().filter(|u| !u.trim().is_empty()).map(|u| crate::backend::local_path(u)).collect();
-    link_in(&places, &paths)
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut elsewhere: Vec<String> = Vec::new();
+    let mut said: Vec<String> = Vec::new();
+    for url in chosen.iter().filter(|u| !u.trim().is_empty()) {
+        match crate::chosen::linkable(url) {
+            Some(path) => paths.push(path),
+            None => {
+                said.push(say("letters-link-phone", &[("name", crate::chosen::shown_name(url))]));
+                elsewhere.push(url.clone());
+            }
+        }
+    }
+    said.insert(0, link_in(&places, &paths));
+    (said.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" "), elsewhere)
 }
 
 /// `link`, into the letters kept at `places`.
@@ -657,8 +672,8 @@ pub(crate) fn add_one(source: &Path) -> Result<PathBuf, String> {
 }
 
 /// Scans chosen on this computer (a JSON array of `file://` addresses, or of
-/// paths), copied into the folder they are read from: what happened, in a
-/// sentence. The copy is read at a coming minute, as a scanner's file is; the
+/// paths; a phone's `content://` documents), copied into the folder they are
+/// read from: what happened, in a sentence. The copy is read at a coming minute, as a scanner's file is; the
 /// chosen file stays where it was.
 pub(crate) fn add(files: &str) -> String {
     let Some(inbox) = inbox() else { return tr().text("letters-no-folder", None) };
@@ -669,7 +684,8 @@ pub(crate) fn add(files: &str) -> String {
     let mut copied = 0usize;
     let mut problems: Vec<String> = Vec::new();
     for url in chosen.iter().filter(|u| !u.trim().is_empty()) {
-        match place_scan(&crate::backend::local_path(url), &inbox) {
+        // A phone's document copied for it first (`chosen`), that copy gone once placed.
+        match crate::chosen::take(url).and_then(|chosen| place_scan(chosen.path(), &inbox)) {
             Ok(_) => copied += 1,
             Err(e) => problems.push(e),
         }

@@ -16,7 +16,7 @@
 //! the system's smart card service: it has a key of its own, made of
 //! software, whose PIN is 123456.
 
-use crate::backend::{QtThread, Shared, json, load_config, local_path, offline, say, tell, tr};
+use crate::backend::{QtThread, Shared, json, load_config, offline, say, tell, tr};
 use cxx_qt_lib::QString;
 use sioul_core::compose::{Draft, DraftKind};
 use sioul_core::i18n::Translator;
@@ -1048,13 +1048,19 @@ pub(crate) fn import_certificate(qt: &QtThread, ident: &str, url: &str) {
         Ok(info) => info,
         Err(error) => return tell_band(qt, SETUP_BAND, setup_problem(&error, tr())),
     };
-    let path = local_path(url);
-    match std::fs::read(&path) {
+    // A phone's dialog names a document Android reads: copied for it first (`chosen`), that copy gone once read.
+    let chosen = match crate::chosen::take(url) {
+        Ok(chosen) => chosen,
+        Err(e) => return problem_line(qt, SETUP_BAND, e, ""),
+    };
+    let read = std::fs::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()));
+    drop(chosen);
+    match read {
         Ok(bytes) => match securitykey::certificate_in(&bytes, &info) {
             Ok((cert, check)) => adopt(qt, &info, &cert, &check, "file"),
             Err(why) => problem_line(qt, SETUP_BAND, why.sentence(tr()), ""),
         },
-        Err(e) => problem_line(qt, SETUP_BAND, format!("{}: {e}", path.display()), ""),
+        Err(e) => problem_line(qt, SETUP_BAND, e, ""),
     }
 }
 
