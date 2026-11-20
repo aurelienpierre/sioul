@@ -3842,6 +3842,10 @@ SioulWindow {
                 () => {},
                 () => grabber.save("devices-details"),
                 () => grabber.devicesHere(false),
+                // The tab made anew for the steps after, its reload's clock with it: every 20 seconds
+                // it reads the devices again, which puts the stand-ins away.
+                () => parametersPage.open("look"),
+                () => window.showParameters("devices"),
                 () => {},
                 // On a computer, the phone's card while its line says nothing: what it does today, Varies.
                 () => {
@@ -3849,11 +3853,10 @@ SioulWindow {
                         grabber.phonesShow(false)
                 },
                 () => {},
+                // The phone's Calls as a door opens them: its Details, the section, scrolled to once laid out.
                 () => {
-                    if (window.phoneGrab)
-                        return
-                    grabber.phonesFold("foldCalls", true)
-                    parametersPage.bringIntoView(grabber.named(parametersPage, "phoneCard-phone-id"))
+                    if (!window.phoneGrab)
+                        parametersPage.devices.reveal("calls")
                 },
                 () => {},
                 () => {
@@ -3862,10 +3865,7 @@ SioulWindow {
                 },
                 () => grabber.phonesShow(true),
                 () => {},
-                () => {
-                    grabber.phonesFold("foldCalls", true)
-                    parametersPage.bringIntoView(grabber.named(parametersPage, window.phoneGrab ? "foldCalls" : "phoneCard-phone-id"))
-                },
+                () => parametersPage.devices.reveal("calls"),
                 () => {},
                 () => grabber.save("devices-calls"),
                 () => parametersPage.scrollBy(0.25),
