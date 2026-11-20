@@ -715,20 +715,25 @@ pub(crate) fn devices() -> String {
     grid.twice = sioul_sync::device_grid::settings_apart(vault.is_some(), here.shares("settings", &config), tr());
     // Every device of the table, and a device whose line says what it lets ring but that the table
     // does not hold (yet): the window shows only those it has a row for.
-    let mut listed: Vec<(String, String, bool)> = rows.iter().map(|r| (r.id.clone(), r.form.clone(), r.no_lines)).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new(), false))).collect();
+    // Each with whether its Sioul reads no line, and whether it knows the circle Your people; a device
+    // the table does not hold yet: nothing known of it, so not said to know the circle (M8).
+    let mut listed: Vec<(String, String, bool, bool)> = rows.iter().map(|r| (r.id.clone(), r.form.clone(), r.no_lines, !r.no_circle)).chain(config.devices.iter().filter(|(id, said)| said.calls.is_some() && !rows.iter().any(|r| &r.id == *id)).map(|(id, _)| (id.clone(), String::new(), false, false))).collect();
     // The demo profile's pictures (`SIOUL_DEMO`, tools/demo/run.sh): a phone stood in when none
     // shares, "phone-id", so that a phone's card is pictured, its table as today's (main.qml's steps `phones`).
-    if !cfg!(target_os = "android") && std::env::var_os("SIOUL_DEMO").is_some() && !listed.iter().any(|(id, form, _)| form == "phone" || id == "phone-id") {
-        listed.push(("phone-id".to_string(), "phone".to_string(), false));
+    if !cfg!(target_os = "android") && std::env::var_os("SIOUL_DEMO").is_some() && !listed.iter().any(|(id, form, _, _)| form == "phone" || id == "phone-id") {
+        listed.push(("phone-id".to_string(), "phone".to_string(), false, true));
     }
-    let calls = calls_views(&config, listed.iter().map(|(id, form, old)| (id.as_str(), form.as_str(), *old)));
+    let calls = calls_views(&config, listed.iter().map(|(id, form, old, circle)| (id.as_str(), form.as_str(), *old, *circle)));
     json(&Devices { on: vault.is_some(), why, stays, rows, grid, calls })
 }
 
 /// Each phone's section Calls (`sioul_core::calls_line::view`), by its id:
 /// for a device that is a phone, whose line says what it lets ring, or that
-/// says it screens calls.
-fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str, bool)>) -> std::collections::BTreeMap<String, serde_json::Value> {
+/// says it screens calls. Each device with its form, whether its Sioul reads
+/// no line (`old`), and whether it knows the circle Your people (`circle`):
+/// a phone that does not shows no row of theirs, and says that it follows
+/// it once updated (review M8).
+fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<Item = (&'a str, &'a str, bool, bool)>) -> std::collections::BTreeMap<String, serde_json::Value> {
     let switch = sioul_core::everywhere::Switch::load(&sioul_core::everywhere::Switch::default_path());
     // Every group in use, held back or not: named to be offered a row, never matched to a caller here
     // (the same index as the lists', `Senders::load`, kept once for both).
@@ -738,25 +743,36 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
     // Your people's row, the matrix's on every phone, after Always through's (`calls::people_row`).
     let people = crate::calls::people_row(config);
     devices
-        .filter_map(|(id, form, old)| {
+        .filter_map(|(id, form, old, circle)| {
             let said = config.devices.get(id);
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
                 let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: old };
                 let mut view = sioul_core::calls_line::view(line, &card, tr());
-                if let (Some(row), Some(rows)) = (&people, view["rows"].as_array_mut()) {
-                    rows.insert(1.min(rows.len()), row.clone());
-                }
-                // Your people are never starred (review H2 to H4): where Sioul does not screen calls on
-                // this phone (it says it does not, or says nothing yet, or its line says As Android
-                // does), its do-not-disturb holds their calls as any contact's, said with the two ways out.
                 let screens_here = screens == Some(true) && !line.is_some_and(|l| l.says() && l.grid().screens_nothing());
-                view["people_dnd"] = serde_json::json!(if people.is_some() && !screens_here { tr().text("phone-calls-people-dnd", None) } else { String::new() });
+                with_your_people(&mut view, people.as_ref(), circle, screens_here, tr());
                 (id.to_string(), view)
             })
         })
         .collect()
+}
+
+/// Your people on a phone's section Calls (`calls::people_row`: none while
+/// the circle holds nobody): their row after Always through's, where the
+/// phone's Sioul knows the circle (`circle`); else no row it does not
+/// follow, and one line saying that it follows it once updated (review M8).
+/// Never starred (review H2 to H4): where Sioul does not screen calls on the
+/// phone (`screens`: it says it does, its line not As Android does), one
+/// line says that its do-not-disturb holds their calls as any contact's,
+/// with the two ways out.
+fn with_your_people(view: &mut serde_json::Value, people: Option<&serde_json::Value>, circle: bool, screens: bool, tr: &sioul_core::i18n::Translator) {
+    if let (Some(row), Some(rows), true) = (people, view["rows"].as_array_mut(), circle) {
+        rows.insert(1.min(rows.len()), row.clone());
+    }
+    let said = |shown: bool, id: &str| serde_json::json!(if shown { tr.text(id, None) } else { String::new() });
+    view["people_older"] = said(people.is_some() && !circle, "phone-calls-people-older");
+    view["people_dnd"] = said(people.is_some() && circle && !screens, "phone-calls-people-dnd");
 }
 
 /// Who rings in a pause and under do-not-disturb, as on every phone, in a
@@ -3836,6 +3852,36 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Your people on a phone's section Calls (reviews M8, H2 to H4): their
+    /// row after Always through's where the phone's Sioul knows the circle,
+    /// none and one line where it is older; where Sioul does not screen calls
+    /// there, one line saying that do-not-disturb holds them, with the two
+    /// ways out; nothing while the circle holds nobody; in both languages.
+    #[test]
+    fn a_phone_s_card_says_what_it_does_with_your_people() {
+        let row = serde_json::json!({ "id": "people", "label": "Your people", "fixed": true });
+        let view = || serde_json::json!({ "rows": [{ "id": "always" }, { "id": "safe" }] });
+        let ids = |v: &serde_json::Value| v["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        for language in ["en", "fr"] {
+            let tr = sioul_core::i18n::Translator::new(language);
+            let mut screens = view();
+            with_your_people(&mut screens, Some(&row), true, true, &tr);
+            assert_eq!((ids(&screens), screens["people_older"].as_str(), screens["people_dnd"].as_str()), (vec!["always".to_string(), "people".into(), "safe".into()], Some(""), Some("")));
+            let mut not_screening = view();
+            with_your_people(&mut not_screening, Some(&row), true, false, &tr);
+            let held = not_screening["people_dnd"].as_str().unwrap();
+            assert!(ids(&not_screening).contains(&"people".to_string()) && held.contains(&tr.text("phone-calls-row-always", None)) && !held.contains('{'), "{language}: {held}");
+            let mut older = view();
+            with_your_people(&mut older, Some(&row), false, false, &tr);
+            assert_eq!((ids(&older), older["people_dnd"].as_str()), (vec!["always".to_string(), "safe".into()], Some("")), "{language}: no row an older phone does not follow");
+            let said = older["people_older"].as_str().unwrap();
+            assert!(said.ends_with('.') && !said.contains('{') && !said.is_empty(), "{language}: {said}");
+            let mut nobody = view();
+            with_your_people(&mut nobody, None, false, false, &tr);
+            assert_eq!((ids(&nobody).len(), nobody["people_older"].as_str(), nobody["people_dnd"].as_str()), (2, Some(""), Some("")));
+        }
+    }
 
     /// Settings ▸ Devices on a device that does not share: this device is
     /// listed, first, named as its system names it and for everything; the

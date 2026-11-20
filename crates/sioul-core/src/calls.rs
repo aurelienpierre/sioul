@@ -3995,7 +3995,7 @@ mod line_tests {
         let world = World::new();
         let (unknown, friend, safe, always) = ("01 99 00 55 55", "01 99 00 00 02", "01 99 00 00 01", "01 99 00 00 06");
         // A professional phone: numbers nobody knows ring in work hours, commercial callers never,
-        // everything but Always through to voicemail outside.
+        // everything but Always through (and your people, by the matrix's row) to voicemail outside.
         let (pro, asked) = world.build(Some(&line(Profile::Professional)));
         assert!(pro.line && asked && pro.v == VERSION);
         assert!(rings(&pro, unknown, "10:00") && rings(&pro, "", "10:00"));

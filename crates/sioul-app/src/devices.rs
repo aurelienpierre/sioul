@@ -167,6 +167,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.learns = crate::spam::learns_level();
         // It reads a phone's own calls' table: the card of a phone that does not says so (M12).
         entry.calls_lines = sioul_sync::devices::CALLS_LINES;
+        // It knows the circle Your people: the card of a phone that does not shows no row of theirs (M8).
+        entry.circle = sioul_sync::devices::CIRCLE;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

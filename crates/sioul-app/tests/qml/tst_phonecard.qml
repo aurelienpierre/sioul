@@ -77,7 +77,7 @@ Item {
             return {
                 set: true, profile: "personal", offered: "personal",
                 profiles: [
-                    { id: "professional", label: "Professional", said: "Numbers nobody knows ring in your work hours; commercial callers never. Outside work hours everything but Always through goes to voicemail: a second call within 15 minutes does not ring outside work hours.", chosen: false },
+                    { id: "professional", label: "Professional", said: "Numbers nobody knows ring in your work hours; commercial callers never. Outside work hours everything goes to voicemail but Always through and your people, who ring as What reaches you says: a second call within 15 minutes does not ring outside work hours.", chosen: false },
                     { id: "personal", label: "Personal", said: "Your contacts ring in the day; numbers nobody knows go to voicemail unless they call twice within 15 minutes.", chosen: true },
                     { id: "both", label: "Both", said: "Professional in your work hours, Personal outside them.", chosen: false },
                     { id: "as-android", label: "As Android does", said: "Sioul screens nothing on this phone: Android decides.", chosen: false }
@@ -324,6 +324,7 @@ Item {
             // This phone does not screen: do-not-disturb holds your people there, the two ways out said.
             const held = named("callsPeopleDnd")
             verify(showing(held) && held.text.indexOf("Always through") > 0, held ? held.text : "none")
+            verify(!showing(named("callsPeopleOlder")), "this phone's Sioul knows them")
             // A profile, a switch, a group taken off, a group given its row.
             professional.clicked()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.profile professional")
