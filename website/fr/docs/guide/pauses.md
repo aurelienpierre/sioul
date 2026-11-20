@@ -4,7 +4,7 @@ description: "Les deux pauses de Sioul, et ce qu’elles font au plan de votre j
 
 # Les pauses : temps libre et pause {#pauses-free-time-and-pause}
 
-Au bout de la ligne d’état, deux boutons mettent Sioul en attente, pour deux moments différents. **Temps libre**, avec une fleur, est pour un bon moment que vous voulez saisir : il fait beau maintenant, l’énergie est là maintenant. **Pause**, à part, tout au bout, est pour un moment de trop. Ils n’ont ni le même aspect ni le même effet, pour qu’on ne prenne jamais l’un pour l’autre.
+Au bout de la ligne d’état (la barre de titre de la fenêtre sur un ordinateur, la ligne du bas sur un téléphone), deux boutons mettent Sioul en attente, pour deux moments différents. **Temps libre**, avec une fleur, est pour un bon moment que vous voulez saisir : il fait beau maintenant, l’énergie est là maintenant. **Pause**, à part, tout au bout, est pour un moment de trop. Ils n’ont ni le même aspect ni le même effet, pour qu’on ne prenne jamais l’un pour l’autre. Sur un écran étroit, chacun ne montre que son icône : la fleur, et le signe de pause.
 
 Tous deux agissent sur le plan de votre journée : quand finit le travail du jour, ce que tient la journée, et ce qui va aux jours suivants.
 
@@ -14,8 +14,8 @@ Sioul n’est pas un service d’urgence. Il ne vous surveille pas, et n’agit 
 
 Appuyez sur **Temps libre** : le moment présent devient des loisirs, quelle que soit l’heure, jusqu’à ce que vous appuyiez de nouveau.
 
-- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leurs courriels affichés sans notification, et les personnes qui passent toujours ; **Rien du tout**, dans le menu de la ligne d’état ou sur la carte du temps libre dans Ce qui vous joint, tient même vos expéditeurs sûrs à l’écart cette fois-ci. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
-- **Ce qui est proposé** : la page Tâches affiche « Temps libre » et, sous « Si vous voulez : », vos propres loisirs, dans l’ordre où vous les avez créés. Rien à finir, pas d’étape suivante, pas de minuteur. Le mouvement et l’exercice en font partie, sauf si vous désactivez **Proposer le mouvement et l’exercice** dans [Paramètres ▸ Pauses](settings.md#pauses) ; avec **Des journées égales** (pour une maladie qui limite votre énergie), ils n’en font pas partie, sauf si vous les activez.
+- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leurs courriels affichés sans notification, et les personnes qui passent toujours. **Rien du tout** tient même vos expéditeurs sûrs à l’écart : cette fois-ci, depuis le menu de la ligne d’état (un clic droit ou un appui long sur **Temps libre**, tant qu’il est en cours) ; à chaque fois, sous **Pendant le temps libre** dans Paramètres ▸ Ce qui vous joint ▸ Vos règles ▸ **Moments**. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
+- **Ce qui est proposé** : la page Tâches affiche « Temps libre » et, sous « Si vous voulez : », vos propres loisirs, dans l’ordre où vous les avez créés, huit au plus. Rien à finir, pas d’étape suivante, pas de minuteur. Le mouvement et l’exercice en font partie, sauf si vous désactivez **Proposer le mouvement et l’exercice** dans [Paramètres ▸ Pauses](settings.md#pauses) ; avec **Des journées égales** (pour une maladie qui limite votre énergie), ils n’en font pas partie, sauf si vous les activez.
 - **Une séance de concentration** en cours s’arrête quand vous appuyez, et compte ; Sioul propose une ligne sur où vous en êtes.
 - **La nuit d’abord** : le temps libre finit tout seul quand votre nuit commence (ou à minuit, sans nuit réglée), et une sieste pendant ce temps reste une sieste.
 - **Tant qu’il dure**, le plan dispose déjà la journée comme si vous reveniez maintenant, la fin du travail décalée.
@@ -37,10 +37,10 @@ Quand le temps libre prend une part de vos heures de travail, la fin du travail 
 
 Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
-- **Ce qui vient pendant une pause** : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. C’est la carte de la pause dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time) ; là, **Plus tard** pour Prises ▸ En pause fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
+- **Ce qui vient pendant une pause** : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. Cela ouvre le tableau **Ce qui vient quand**, dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time), où la colonne **En pause** le dit ; là, **Plus tard** sur la ligne **Prises** fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
 - **Ce qui vous aide** : avec vos mots, une chose par ligne. Une ligne avec un lien ou le chemin d’un fichier l’ouvre depuis la pause : une playlist, un dossier de photos, la page d’une application.
 - **Une ligne pour la pause** : une ligne à vous, montrée à l’écran.
-- **Guide de respiration** : désactivé, sauf si vous l’activez ; c’est alors une forme lente pour respirer avec elle, montrée seulement quand vous la touchez, l’expiration plus longue que l’inspiration, au rythme que vous réglez.
+- **Guide de respiration** : désactivé, sauf si vous l’activez ; c’est alors une forme lente pour respirer avec elle, montrée seulement quand vous la touchez, l’expiration plus longue que l’inspiration, au rythme que vous réglez dans **Respirations par minute** (six, tant que vous ne le changez pas ; de trois à dix).
 - **Au retour** : le reste de la journée allégé (comme un jour de brume), plus de travail ce jour-là, ou comme prévu.
 - **Numéros pour** : le pays dont le numéro d’urgence et la ligne d’écoute s’affichent pendant une pause ; sauf choix de votre part, le pays de vos numéros de téléphone.
 - **Essayer l’écran de pause** le montre tel qu’il sera. Rien n’est mis en attente.
@@ -53,7 +53,7 @@ Sur Android, **Pause** est aussi parmi les réglages rapides, et dans un appui l
 
 ### L’écran {#the-screen}
 
-La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul garde tout en attente : courriels, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien. » En dessous : votre ligne, **Ce qui vous aide** (votre liste, repliée tant que vous ne l’ouvrez pas), le guide de respiration si vous l’avez activé, et une ligne discrète avec le numéro d’urgence et la ligne d’écoute de votre pays, un appui pour appeler chacun ; **Autres numéros** déplie le reste. Un seul bouton, **Revenir** : pas de code, pas de question.
+La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul garde tout en attente : courriels, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien. » Tant que les rappels de prises viennent, une ligne le dit : « Les rappels de prises viennent toujours. » En dessous : votre ligne, **Ce qui vous aide** (votre liste, repliée tant que vous ne l’ouvrez pas), le guide de respiration si vous l’avez activé, et une ligne discrète avec le numéro d’urgence et la ligne d’écoute de votre pays, un appui pour appeler chacun ; **Autres numéros** déplie le reste. Un seul bouton, **Revenir** : pas de code, pas de question.
 
 ### Le retour {#coming-back}
 
@@ -63,7 +63,7 @@ La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul ga
 - **Plus de travail aujourd’hui** : la journée de travail se clôt, comme avec **Fini pour aujourd’hui**. « Le travail attend jusqu’à demain à 09:00. »
 - **Comme prévu** : rien ne change.
 
-Quand demain est un jour travaillé, « Demain peut aussi être plus léger. », avec **Alléger demain**, qui rend demain plus léger, comme un jour de brume ; ne rien faire ne change rien. Ce qui attendait revient doucement : le Porche ouvre à vos prochaines heures de démarches (sinon vos prochaines heures de travail, sinon demain matin), ou quand vous l’ouvrez. Rien ne demande ce qui s’est passé, rien ne le note, et Clore la journée, le soir, n’en parle pas.
+Quand demain est un jour travaillé, « Demain peut aussi être plus léger. », avec **Alléger demain**, qui rend demain plus léger, comme un jour de brume ; ne rien faire ne change rien. **Continuer** montre Sioul de nouveau. Ce qui attendait revient doucement : le Porche ouvre à vos prochaines heures de démarches (sinon vos prochaines heures de travail, sinon demain matin), ou quand vous l’ouvrez. Rien ne demande ce qui s’est passé, rien ne le note, et Clore la journée, le soir, n’en parle pas.
 
 Pendant dix secondes, la ligne d’état propose **Annuler** : comme si la pause n’avait pas été lancée.
 
@@ -74,7 +74,7 @@ Sioul ne garde que le début et la fin de la dernière pause ; **Oublier la de
 | | Temps libre | Pause |
 |---|---|---|
 | Pour | un bon moment que vous choisissez | un moment de trop |
-| Qui vous joint | vos expéditeurs sûrs, ou personne | personne ; les rappels de prises ; sur Android, vos contacts favoris si vous l’avez choisi |
+| Qui vous joint | vos expéditeurs sûrs et les personnes qui passent toujours, ou ces dernières seulement | les appels et les messages des personnes qui passent toujours ; les rappels de prises, les alarmes de vos événements et les codes demandés |
 | La fenêtre | comme d’habitude, les loisirs en vue | couverte, quelques lignes |
 | Le travail | la fin de la journée se décale, dans des limites | va aux jours suivants, jamais sur la soirée |
 | Ensuite | du travail jusqu’à la fin décalée, des étapes légères seulement après la fin habituelle | le reste de la journée allégé, clos ou comme prévu ; demain allégé si vous le demandez |
@@ -84,7 +84,7 @@ Depuis le temps libre, **Garder ma fin habituelle** en fait une pause qui ne dé
 
 ## Les notifications et « Ne pas déranger » {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : les cartes de la pause et du temps libre dans [Ce qui vous joint](notifications.md#by-time) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : les colonnes **En pause** et **Temps libre** de Ce qui vient quand, dans [Ce qui vous joint](notifications.md#by-time) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
 
 ## Ce que Sioul ne fait pas {#what-sioul-does-not-do}
 

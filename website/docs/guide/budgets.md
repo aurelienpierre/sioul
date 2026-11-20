@@ -14,7 +14,7 @@ Money comes and goes by mail: invoices, receipts, payment notices, payouts, tax 
 
 Sioul reads your bank's export files and the mail about payments, holds them against the payments you expect, and opens with each account until its next income: whether it holds every payment, what is left for everyday spending, its lowest point. It says calmly when a payment did not leave, or when an account may not hold the next one, early enough to move money. It never connects to your bank, never shows red, and never shows offers.
 
-Each payment keeps what the payer paid, the fees kept on the way, and what reached your account. The page has five tabs: **Overview**, which it always opens on and which follows your hours; **Budgets**, every budget and account; **Movements**, every movement, newest first; **From mail**, every mail about money you kept; **Invoices**, every invoice and draft you made ([Time and invoices](time.md#invoices)). On a phone, slide the row of tabs sideways to reach the last ones.
+Each payment keeps what the payer paid, the fees kept on the way, and what reached your account. The page has five tabs: **Overview**, which it always opens on and which follows your hours; **Budgets**, every budget, then your reserves, your bank accounts and your contracts; **Movements**, every movement, newest first; **From mail**, every mail about money you kept; **Invoices**, every invoice and draft you made ([Time and invoices](time.md#invoices)). On a phone, slide the row of tabs sideways to reach the last ones.
 
 <figure markdown="span">
   [![The Budgets page, "Budgets, November 2026", with its area filter and New budget: the main account in sentences (until the next income, whether it holds every payment, what is left for everyday spending and a day, the lowest point), its balance ahead as a step line, then each budget in words: what is paid, what is still to come, what is left of the food, how its month should end.](../assets/screens/budgets.png){ loading=lazy }](../assets/screens/budgets.png "Open the picture at full size")
@@ -27,7 +27,7 @@ Each payment keeps what the payer paid, the fees kept on the way, and what reach
 - **Your budgets, your bank's movements and your contracts are plain files** on your device, in Sioul's own folder; until you move Sioul's lists there, they are in your notes folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). There is no server of Sioul's.
 - **Between your devices**, they travel sealed through Sioul's sharing, in its part **Projects and money**: the folder and its server can read nothing of them. Before the move, your notes folder's own sync may carry them instead ([Sharing](sharing.md)).
 - **Mail is read as a payment only once it passed Sioul's checks**: forged mail, spam, a sender borrowing a bank's or a shop's name, and blocked senders are never read as payments. A payment from someone new and not verified says to check it first: a fake "your payment" is a common trick.
-- **An AI agent**, only if you connect one, reads a summary of your budgets, never moves money, and sees account numbers masked.
+- **An AI agent**, only if you connect one, reads what you opened to it of your budgets, your movements and the mail about money, writes the record of a movement only when you ask, never moves money, and sees account numbers masked ([With an AI agent](#with-an-ai-agent)).
 - **No offers**, no comparisons, no "better deals", no advertising, no analytics.
 
 ## Budgets {#budgets}
@@ -47,11 +47,11 @@ What a budget did not spend carries over, as an envelope keeps what is left: mon
 
 The page opens with each account, in a few sentences, until its next income: "Until Salary comes in on Saturday 28 November, the account holds every payment. €460 is left for everyday spending, about €25 a day. The lowest point comes on Thursday 26 November, after Rent." A client's payment that may come later is said with its doubt ("If Client A comes in by Friday 20 November, …"), and so is what the account would do without it, when that changes the answer. With no income expected: "At your usual pace, the account and Livret A last about 24 weeks." One chart shows the balance ahead to the next income, zero dashed; the sentences never need it. Sioul does not sign in to your bank: it reads the exports you take in.
 
-This is **Overview**, the tab the page always opens on, and the only one that follows your hours. Each account says when its bank's file was last read: "Last bank update: 3 November."; once that is older than you usually take them in (a week, until Sioul knows your rhythm), it adds, once: "Movements since then may be missing." What is left for everyday spending is what remains after the payments Sioul knows of, until your next income, from the movements taken in so far: never a promise, nor an allowance. The chart always names its account, "My bank, until 28 November", and the account's name above it chooses another. A work budget that declares says its turnover beside what it sets aside: "Turnover received this quarter: €6,940, to declare by 31 January."
+This is **Overview**, the tab the page always opens on, and the only one that follows your hours. Each account says when its bank's file was last read: "Last bank update: 3 November."; once that is older than you usually take them in (a week, until Sioul knows your rhythm), it adds, once: "Movements since then may be missing." What is left for everyday spending is what remains after the payments Sioul knows of, until your next income, from the movements taken in so far: never a promise, nor an allowance. The chart always names its account, "My bank, until Saturday 28 November", and the account's name above it chooses another. A work budget that declares says its turnover beside what it sets aside: "Turnover received this quarter, excluding VAT: €6,940, to declare by 1 February 2027."
 
 Each budget then says what remains, in words: "Paid: Rent, Energy." "Still to come: Phone, €19.99, Thursday 12 November." "Food: €180 left until 27 November." Then one sentence about the end of its period, with the savings that cover a gap: "By 30 November, it should end as planned." No percentage, no colour, no bar.
 
-**By area**, as in Mail: the filter at the top shows what your hours say (work's budgets in your work hours, admin's in your admin hours, leisure's in your free time, at meals and at night), and you can tick others for a while; **As the hours say** brings them back. What it leaves out is said in a line: "Work budgets are kept for your work hours." An account that would not hold a payment always shows.
+**By area**, as in Mail: the filter at the top shows what your hours say (work's budgets in your work hours, admin's in your admin hours, leisure's in your free time, at meals and at night), and you can tick others for a while; **As the hours say** brings them back. On a device you said is for some areas only, the filter starts with those, and its **?** says so ([What each device is for](hours.md#what-each-device-is-for)). What it leaves out is said in a line: "Work budgets are kept for your work hours." An account that would not hold a payment always shows.
 
 ### What is coming {#what-is-coming}
 
@@ -61,38 +61,38 @@ A long press on a touch screen, a right click or **⋯** with a mouse: **Where i
 
 ### A budget, open {#a-budget-open}
 
-A budget opens on its words and the end of its period, then its movements, newest first, and its balance by **Days**, **Weeks**, **Months** or **Years**, the planned ones dotted.
+**Open**, on a budget's card in Overview, or its row in the Budgets tab, opens it on its words and the end of its period, then its balance by **Days**, **Weeks**, **Months** or **Years**, what is planned dotted, and its movements, newest first. The arrows at the top go to the period before and the period after; **Edit** opens its form.
 
 **Add a movement**: **Once**, or **Recurring** (every month or every year, on a day). An amount is negative for money out (`-650`) and positive for money in (`1200`). For what is spent little by little, such as food, see [Daily spending](#daily-spending).
 
-A right click on a line: **Change this line…**, **Delete this line** (asked once). If the line changed in the file meanwhile (on another device, or by hand), nothing is changed, and Sioul says so: look at it again.
+A right click on a line you wrote, or a long press on a touch screen: a task, an event or a note made from it, **Link to…** something that exists, **Change this line…**, **Delete this line** (asked once). If the line changed in the file meanwhile (on another device, or by hand), nothing is changed, and Sioul says so: look at it again.
 
 A budget can be **For** one of your people (a child's pocket money, an account you keep for a parent you help): chosen in its form, it shows on their page ([Your people](contacts.md#household)).
 
-**Take this budget out** keeps its lines in the file, as they were written; they no longer count.
+**Take this budget out**, in its form, keeps its lines in the file, as they were written; they no longer count.
 
 ## Reserves {#reserves}
 
-**New reserve**: its **Name**, its **Balance** on a day, the amount it should **never** go **below**, and the **days** money asked from it takes **to arrive** (0 for a savings account you can move from at once, longer for others).
+**New reserve**, on the Budgets tab under your budgets: its **Name**, its **Balance** on a day, the amount it should **never** go **below**, and the **days** money asked from it takes **to arrive** (0 for a savings account you can move from at once, longer for others).
 
-Each reserve shows its balance today, what moved this month, its balance at the end of the year, how long it lasts at this pace above its floor, and how many weeks of your own spending it covers.
+Each reserve shows its balance today, the days money asked from it takes to arrive when that is not at once, what moved this month, its balance at the end of the year, how long it lasts at this pace above its floor, and how many weeks of your own spending it covers. **Edit**, on its card, changes it.
 
 Which reserve covers which budget is written in the budget file: at the end of each period, a budget's shortfall is taken from its reserve.
 
 ## Movements {#movements}
 
-**Movements** lists every movement up to today, newest first, grouped by day (what is still to come is Overview's **What is coming**, or a later day under **Filters**): the search on top (who, your note, the budget, the amount), then each row with its day, who, what moved with its sign, its budget and where it stands in words. **Filters**, folded away, narrow it by account, budget, days, money in or out, amount, what it is for, and what told of it (the bank, a mail, a recurring payment, your own line); those in use show as words under the search, each with its ×. Like Mail, it starts with the areas your hours say, and a search finds anything, at any hour. There is no running total and no count; a sum shows only when the filters ask a question that has one: "Money in: €2,340 paid, €2,281 arrived."
+**Movements** lists every movement up to today, newest first, grouped by day (what is still to come is Overview's **What is coming**, or a later day under **Filters…**): the search on top (who, your note, the budget, the amount), then each row with its day, who, what moved with its sign, its budget and where it stands in words. **Filters…**, folded away, narrow it by account, budget, days, money in or out, amount, and what told of it (the bank, a mail, a recurring payment, your own line); those in use show as words under the search, each with its ×. Like Mail, it starts with the areas your hours say, which the filter by area under the search changes, and a search finds anything, at any hour. There is no running total and no count; a sum shows only when the filters ask a question that has one: "Money in: €2,340 paid, €2,281 arrived."
 
-A row opened shows everything: what was paid, each fee and where it was read, the day it was paid, what told of it (each opens), what it is tied to, and "Told on 5 November; changed on 7 November". Its menu (a long press, a right click, **⋯**): **Change…**, **Where it goes…**, **Split…**, **The same as…**, **Not the same**, **Tie to…**, and its removal. **New movement** sits at the top: who, what arrived or left, the budget, the day, and whether it is still to come; under **What was paid, the fees, a note…**, what the payer paid or the price, its fees, the account, the day it was paid when it reached the account later, and a note. **Tie to…**, on its row, then ties it to a contact, a task or a project.
+A row opened shows everything: what was paid, each fee and where it was read, the day it was paid, what told of it (each opens), what it is tied to, and "Told on 5 November; changed on 7 November". Its menu (a long press, a right click, **⋯**): **Change…**, **Where it goes…**, **Split…**, **The same as…**, **Not the same payment**, **Tie to…**, **Its ties**, and its removal. **New movement** sits at the top: who, what arrived or left, the budget, the day, and whether it is still to come; under **What was paid, the fees, a note…**, what the payer paid or the price, its fees, the account, the day it was paid when it reached the account later, and a note. **Tie to…**, on its row, then ties it to a contact, a task or a project.
 
 What can change depends on what the movement is made from, and the form says it:
 
-- **your own line**: everything; **Delete**, asked once;
+- **your own line**: everything; **Delete…**, asked once;
 - **a recurring payment**: this time's amount and day, its budget, a note; **Not this time** for one month;
 - **the bank's line**: its budget, what was paid and its fees, the day paid, a note, who; never its amount nor its day, which are the bank's; **Leave out** for a line of a wrong file;
 - **an invoice you sent**, or **a share set aside for taxes**: changed where they are made, the invoice or the budget.
 
-Each change says its effect in one line, "Home holds €12 more for November 2026.", with **Undo**.
+Each change says its effect in one line, "Home holds €12 more for November 2026.", with **Undo**. A movement you took out, opened again, says so, with **Put back**.
 
 ### What was paid, the fees and what arrived {#fees}
 
@@ -135,11 +135,11 @@ Rules in the budget file can send a sender's or a word's payments to a budget by
 
 A processor's card says how what it receives reaches your bank: "What you receive waits on PayPal until you move it to My bank."
 
-**New bank account**: its **Name**, its **Kind** (a bank, PayPal, Stripe, SumUp, Wise, Revolut, another processor or platform Sioul knows, something else), the budgets it **Fills**, the amount it is **Kept above**, and the reserves it is **Topped up by**, in your order.
+**New bank account**, on the Budgets tab under your reserves: its **Name**, its **Kind** (a bank, PayPal, Stripe, or something else), the budgets it **Fills**, the amount it is **Kept above**, and the reserves it is **Topped up by**, in your order. **Edit**, on its card, changes it; **Take it out**, in its form, keeps its movements in the file, and its budgets no longer count them.
 
-**Take in an export…**, on its card: the file your bank gives (OFX or QFX, CAMT.053, or its CSV), PayPal's activity download, Stripe's balance history, or Revolut's or Wise's statement; what each row says the payer paid and the fee kept is read too. Reading the same file twice adds nothing. Nothing is fetched from the bank itself: you download the file, Sioul reads it. A payment the file says is not final yet (a card hold) waits apart until the bank's line for it comes. Each movement then goes to a budget by your hand, your rules, or the payment it stands for, and says why ([Where each movement goes](#where-each-movement-goes)).
+**Take in an export…**, on its card: the file your bank gives (OFX or QFX, CAMT.053, or its CSV), PayPal's activity download, Stripe's balance history, or Revolut's or Wise's statement; what each row says the payer paid and the fee kept is read too. Reading the same file twice adds nothing. Nothing is fetched from the bank itself: you download the file, Sioul reads it. Before any account is made, **Take in an export…** sits at the top of the section, and the file only feeds the watch ([What the movements found](#the-bank-watch)). A payment the file says is not final yet (a card hold) waits apart until the bank's line for it comes. Each movement then goes to a budget by your hand, your rules, or the payment it stands for, and says why ([Where each movement goes](#where-each-movement-goes)).
 
-**Where it goes**, on a movement's row, offers every budget, whatever the hour. Moved, the movement says what it changes ("Home holds €12 more for October 2026.") and asks once whether that payee's next payments go there too; **Yes, from now on** writes a rule you find under **Rules…**. **⋯** beside it splits it between two budgets, says it is **Not the same payment** as the one Sioul joined it to, or **The same as…** another; each row says what else tells of it.
+An account's card keeps its last movements folded: its line "Its last 35 movements" opens them. **Where it goes**, on a movement's row, offers every budget, whatever the hour. Moved, the movement says what it changes ("Home holds €12 more for October 2026.") and asks once whether that payee's next payments go there too; **Yes, from now on** writes a rule you find under **Rules…**. **⋯** beside it splits it between two budgets, says it is **Not the same payment** as the one Sioul joined it to, or **The same as…** another; each row says what else tells of it.
 
 ### Topped up in time {#topped-up-in-time}
 
@@ -159,7 +159,7 @@ A debit that stops does not say so. Sioul holds your bank's movements against th
 
 What you are bound to: rent, energy, phone and internet, insurances, health cover, subscriptions, hosting, the bank. Forgotten subscriptions are part of what people with ADHD call the "ADHD tax"; knowing what an insurance covers matters before a legal step.
 
-**Add a contract**: with whom, your number with them, the recurring payment that pays it, since when, when it renews (each month, each year, or no renewal), the notice it needs, how to stop it (its cancel page, or where to write), and what it covers.
+**Add a contract**, at the end of the Budgets tab: what it is, its name, with whom, your number with them, the recurring payment that pays it, since when, when it renews (each month, each year, or no renewal), the notice it needs, how to stop it (its cancel page, or where to write), and what it covers.
 
 - **Where it stands**, in a sentence: "Renews on Tuesday 1 December; to stop it, the notice must leave by 2 October."
 - **The usual notice** for its kind is proposed, with the rule it comes from (in France). Yours is what your contract says.
@@ -203,11 +203,11 @@ Your bank's site can be kept in [Sites](sites.md): Sioul fills your login from B
 
 ### In the terminal {#in-the-terminal}
 
-`sioul budgets` prints what the page says, every area at once: each account until its next income, each budget in words, what is coming week by week, the reserves, and the payments mail proposes. `sioul movements` lists every movement with the same filters (`--from`, `--to`, `--account`, `--budget`, `--in`, `--out`, `--min`, `--max`, `--area`, `--search`, `--json`); `sioul movement show`, `add`, `change`, `remove` and `back` make, change and remove one, as the window does; `sioul money-mail` lists the mail about money and what became of it; `sioul receipts --csv` writes the receipts book of the declaration's period, and `sioul books` says your declarations, your VAT, your thresholds and your DES ([Time and invoices](time.md#from-the-command-line)).
+`sioul budgets` prints what the page says, every area at once: each account until its next income, each budget in words, what is coming week by week, the reserves, and the payments mail proposes. `sioul movements` lists every movement with the same filters (`--from`, `--to`, `--account`, `--budget`, `--in`, `--out`, `--min`, `--max`, `--area`, `--search`, `--told-by`, `--page`, `--json`); `sioul movement show`, `add`, `change`, `remove` and `back` make, change and remove one, as the window does; `sioul money-mail` lists the mail about money and what became of it; `sioul receipts --csv` writes the receipts book of the declaration's period, and `sioul books` says your declarations, your VAT, your thresholds and your DES ([Time and invoices](time.md#from-the-command-line)).
 
 ### With an AI agent {#with-an-ai-agent}
 
-If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read what this page says: each account's sentences, each budget in words, what is coming and the reserves, every movement and the mail about money, in the budgets you opened to it; and your books, the payments of the projects and budgets you opened to it only, the thresholds only when nothing is kept from it. When you ask, it can write, change or remove a movement as the window does, each said in the window with **Undo**; these are records, never payments: it cannot move money, and it sees account numbers masked.
+If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read what this page says: each account's sentences, each budget in words, what is coming and the reserves, every movement and the mail about money, in the budgets you opened to it; and your books, the payments of the projects and budgets you opened to it only, the thresholds only when nothing is kept from it. It reads your contracts too (with whom, when each renews, its notice, what it covers; never your number with them), while things in no project are open to it. When you ask, it can write, change or remove a movement as the window does, each said in the window with **Undo**; these are records, never payments: it cannot move money, and it sees account numbers masked.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -297,7 +297,7 @@ As of November 2026, from each app's own documentation.
 | Where your money's data lives | plain files on your device | YNAB's servers | your device and your server | your server | a file on your computer | Bankin's servers, in Europe |
 | Needs an account with the maker | no | yes | no | no | no | yes |
 | Encrypted end to end between your devices | ✓¹ | ✗² | partly³ | — | — | ✗ |
-| Export formats read | OFX, QFX, CAMT.053, CSV, PayPal, Stripe | CSV, OFX, QFX, QIF | CSV, QIF, OFX, QFX, CAMT | CSV, CAMT.053 | QIF, OFX, QFX, CSV, MT940, MT942, CAMT.052 and more | — |
+| Export formats read | OFX, QFX, CAMT.053, CSV, PayPal, Stripe, Revolut, Wise | CSV, OFX, QFX, QIF | CSV, QIF, OFX, QFX, CAMT | CSV, CAMT.053 | QIF, OFX, QFX, CSV, MT940, MT942, CAMT.052 and more | — |
 | A file read twice adds nothing | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | A bank line matched to what was expected | a reference first (the bank's id, a SEPA mandate, an invoice number), then amount, days apart and name: sure, probable or apart | the same amount within 10 days | a schedule within 2 days; an import by the same amount within 7 days, the same payee first | a rule, the amount between a subscription's minimum and maximum | a score of amount, date, cheque number and words | ? |
 | Bank connections through | none | Plaid, MX | Enable Banking, SimpleFIN, Pluggy.ai, Akahu; GoCardless⁴ | GoCardless, Enable Banking, SimpleFIN, FinTS and others | AqBanking (HBCI/FinTS), OFX | its own (Bridge, licensed by the ACPR) |
@@ -341,7 +341,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 
 ## For technical readers {#for-technical-readers}
 
-**Files.** `sioul-budgets.toml` (budgets, recurring payments, lines, reserves, covers, mail rules, bank accounts, their rules and your single choices), `sioul-bank.toml` (each account's movements by the bank's own id, its newest balance), `sioul-contracts.toml`: TOML in `records/` of Sioul's data folder (at the root of your notes folder until Sioul's lists move), written with their comments kept. Messages you said are not payments are listed in `~/.local/state/sioul/money.toml` on Linux. Amounts are kept in whole cents, so sums never drift, and amounts written in every national style are read ("1 234,56 €", "€1,234.56", "(62.00)").
+**Files.** `sioul-budgets.toml` (budgets, recurring payments, lines, reserves, covers, mail rules, bank accounts, their rules and your single choices), `sioul-bank.toml` (each account's movements by the bank's own id, its newest balance), `sioul-movements.toml` (which payments are the same, the holds not final yet, your answers), `sioul-contracts.toml`: TOML in `records/` of Sioul's data folder (at the root of your notes folder until Sioul's lists move), written with their comments kept. Messages you said are not payments are listed in `~/.local/state/sioul/money.toml` on Linux. Amounts are kept in whole cents, so sums never drift, and amounts written in every national style are read ("1 234,56 €", "€1,234.56", "(62.00)").
 
 **Exports.** OFX 1.x (SGML) and 2.x (XML), by each movement's `FITID`; ISO 20022 camt.053, versions 001.02 to 001.08 (booked entries, the closing booked balance, names under `Pty`); a bank's CSV, its header found by its words, with `;` or `,`, decimal commas, debit and credit apart or not, and a balance written above the table; PayPal's activity (each row's net, with its gross and its fee when they add up, kept beside it in `sioul-movements.toml`; pending, refused and memo rows left out, and rows in another currency than most of the file's); Stripe's balance history (its Amount and Fee too); Revolut's statement (its fee on top of its amount) and Wise's (its total fees inside it), as each file's running balance shows; CAMT.053's charges when the bank says they are inside the entry. A movement without an id gets one made from its day, amount and label: a file read twice adds nothing.
 
@@ -351,7 +351,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 
 **Mail.** Only mail that passed the authentication checks is read for payments ([Every message checked](privacy-security.md#every-message-checked)): never mail set aside (forged, spam, a borrowed name, a blocked sender), nor the review queue. Payments are read by rules, in French and English, from the subject and the start of the text; a share capital in a legal footer is never taken for an amount. Each message is read for money once, ever, into a money index on the device (`~/.cache/sioul/money-index/`, never shared), opened only when its sender's domain is a processor's, a mail rule names it, its subject holds a payment's word or an amount, or an attachment is named like an invoice; on 20,000 stand-in messages, its first reading took 1.4 s on a computer.
 
-**Sealed between devices.** With **Projects and money** on, each change to the three files is sealed with XChaCha20-Poly1305 (a random 192-bit nonce each), bound to the device that wrote it, its place and its time, under a key made from your passphrase by Argon2id (64 MiB, three passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+**Sealed between devices.** With **Projects and money** on, each change to the four files is sealed with XChaCha20-Poly1305 (a random 192-bit nonce each), bound to the device that wrote it, its place and its time, under a key made from your passphrase by Argon2id (64 MiB, three passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 
 **The AI agent.** Its `budgets`, `movements`, `get_movement` and `money_mail` tools read through the same views as the window, in the budgets opened to agents, and mask IBANs ("[IBAN …0189]"); `add_movement`, `update_movement`, `delete_movement` and `same_movement` write as the window's acts do, each said in the window with Undo, never a payment. Its `books` tool reads the books, leaving out and counting what is kept from it.
 

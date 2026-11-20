@@ -18,7 +18,7 @@ Your notes are a folder of Markdown files that stays yours. It can be your Obsid
 
 ## The same folder as Obsidian and Nextcloud Notes
 
-Choose your Obsidian vault, or the **Notes** folder that Nextcloud Notes keeps in your Nextcloud, as Sioul's notes folder. Both programs go on working beside Sioul, on the same files: nothing is imported, nothing is converted. Once Sioul's lists have moved to its own folder, none of them stays among your notes ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
+Choose your Obsidian vault, or the **Notes** folder that Nextcloud Notes keeps in your Nextcloud, as Sioul's notes folder. Both programs go on working beside Sioul, on the same files: nothing is imported, nothing is converted. Once Sioul's lists have moved to its own folder and you have taken its old files out, none of them stays among your notes ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
 
 - **What Obsidian writes** reads as Obsidian reads it: `[[links]]` between notes, pictures shown with `![[picture.png]]`, `#tags`, the properties at the top of a note (its title, tags and other names), boxes to tick, and the notes that link back. A note renamed in Sioul takes the other notes' links along. A note moved to the trash goes into the vault's `.trash` folder, as Obsidian's own trash does.
 - **What Nextcloud Notes writes** reads as the Markdown it is: its categories are folders, and its notes, `.txt` or `.md`, keep their own name and extension. New notes made in Sioul are `.md`, which Nextcloud Notes shows too, on the web and in its phone apps.
@@ -34,25 +34,24 @@ Some of what Obsidian draws, Sioul shows as the text it is: callouts, highlights
 
 ## Your notes folder
 
-Your notes are plain Markdown files in a folder of yours, on this device, which other programs, a notes editor among them, may open and sync: Sioul links to them and never owns them. While this device has none, the Notes page asks for it in its place, in one sentence, with **Choose a folder…**, which opens your system's folder chooser (on Android, Sioul's own, which first asks Android for **All files access**); the page fills once a folder is chosen. A folder set but that cannot be read (on a drive that is not plugged in, moved or renamed) is said the same way, with its path and **Choose again…**; plugged in again, the page fills by itself within a minute. Never an empty list in its place. Later, the folder is changed in the page's settings (⚙), **The notes folder**, its first row; it is this device's own, each of your devices saying where its copy is. The folder holds your notes alone: Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) in its own folder, still plain text files you may edit by hand, and your papers' and letters' files in folders of their own. Until you move them there, once, on each device, they are in the notes folder beside your notes ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Where no sync carries the notes folder, Sioul's sharing can carry your notes, if you switch **Notes** on there ([Sharing](sharing.md)).
+Your notes are plain Markdown files in a folder of yours, on this device, which other programs, a notes editor among them, may open and sync: Sioul links to them and never owns them. While this device has none, the Notes page asks for it in its place, in one sentence, with **Choose a folder…**, which opens your system's folder chooser (on Android, Sioul's own, which first asks for Android's access to all your files, with **Allow access to files**); the page fills once a folder is chosen. A folder set but that cannot be read (on a drive that is not plugged in, moved or renamed) is said the same way, with its path and **Choose again…**; plugged in again, the page fills by itself within a minute. Never an empty list in its place. Later, the folder is changed in the page's settings (⚙), **The notes folder**, its first row; it is this device's own, each of your devices saying where its copy is. **Settings ▸ Sharing** says which folder it is, with a button that leads to that row: **The notes folder, in Notes**. The folder holds your notes alone: Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) in its own folder, still plain text files you may edit by hand, and your papers' and letters' files in folders of their own. Until you move them there, once, on each device, they are in the notes folder beside your notes; after the move, the old files stay there until you take them out, once every device has moved (**Settings ▸ Sharing ▸ Take them out**). As long as they are there, the PDFs and pictures among your papers and your letters show in the list of your notes, in their `papers` and `letters` folders ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Where no sync carries the notes folder, Sioul's sharing can carry your notes, if you switch **Notes** on there ([Sharing](sharing.md)).
 
 ## Finding a note
 
-Search comes first: **Search the notes** finds a note by its title, its folder or its tags; it does not search the words inside the notes. Below it come the notes **changed lately**, then **every note**, as one **List** or as **Folders**, folded until opened. Sioul remembers which one you chose. No filing is asked of you.
+Search comes first: **Search the notes** finds a note by its title, its folder or its tags; it does not search the words inside the notes. Below it come the notes **changed lately** (the last ten, folded under their heading until you open it), then **every note**, as one **List** or as **Folders**, folded until opened. Sioul remembers which one you chose. No filing is asked of you.
 
 ## Reading and writing
 
 A note opens to be read. Its links are followed with a click, wherever they lead: another note, a task, a message, an event, a contact, a web page.
 
-- **Edit** switches to writing, in Markdown; **Save** (or Ctrl+S) keeps it.
+- **Edit** switches to writing, in Markdown; **Save** (or Ctrl+S) keeps it. **Read** goes back to reading, the note saved.
 - `[[Another note]]` links to a note by its name, wherever it is in the folder. Markdown links, `#tags` and the properties at the top of a note work too.
-- Each note shows what links to it, and what it is tied to: tasks, messages, events, people, projects.
+- Each note shows what links to it, and what it is tied to: tasks, messages, events, people, projects. **Link to…** ties it to something that is already there; **Add ▾** makes a task, an event or a message tied to it.
 - **Aa** sets the font, its size and the space between lines, for reading on this device.
-- **Open with…** opens the note in another program.
 
 A note changed on another device, come through the sharing, shows at once, as the Health, Papers and Time pages do; while you are typing in it, what you typed stays as it is, and a line under its title says that a newer version came. If the note changed elsewhere while you were writing (on another device, by a sync app, in another program), your version is never saved over it: it is kept beside it, as "Plan (conflict 2026-10-05 21.50)", and stays open; the status line says so. The other version keeps the name. On a small screen, the open note takes the whole page, and **Back** keeps the note, saved, and closes it.
 
-A line such as `- [ ] Ask for the certificate`, not ticked, is one click from becoming a task: **Make it a task**. The task stays tied to its note.
+A line such as `- [ ] Ask for the certificate`, not ticked, is listed beside the note (under it on a narrow screen), under **Lines not ticked**, one click from becoming a task: **Make it a task**. The task stays tied to its note.
 
 ## New notes
 
@@ -62,21 +61,21 @@ A line such as `- [ ] Ask for the certificate`, not ticked, is one click from be
 - from an event: dated, its guests listed, tied both ways, then **Send to the guests**;
 - from a task, tied to it.
 
-To make a note somewhere else, right-click its folder: **New note here…**. The same menu has **New folder inside…**, **Rename the folder…** and **Take out this empty folder**.
+To make a note somewhere else, right-click its folder (on a touch screen, press it long): **New note here…**. The same menu has **New folder inside…**, **Rename the folder…** and **Take out this empty folder**. **New folder**, the button beside **New note**, makes a folder at the top of your notes.
 
 ## Pictures, PDFs and sounds
 
-They are notes too, listed beside the Markdown files, and opened in place: a picture fitted to the page, a PDF's pages, a sound with play, pause and where it is. They can be tied to tasks and projects like any note.
+They are notes too, listed beside the Markdown files, and opened in place: a picture fitted to the page, a PDF's pages, a sound with play, pause and where it is. They can be tied to tasks and projects like any note. **Open with…** opens the file in your system's own program for it. On Android, a PDF's pages are not shown in Sioul: **Open with…** hands it to the PDF reader the phone or the tablet has.
 
 A PDF's pages fill the width; Ctrl and the wheel, or two fingers, make them larger. Its text can be selected and copied. A link to another page goes there; a link to the web or to an address first says where it goes, under the pages ("Opens example.org: https://…"), and opens only with **Open**, an address in Sioul's writing window, as a link in mail does. Any other kind of link (to a file on your computer, a script) is not followed, and the line says so.
 
 `![[scan.png]]` shows the picture inside a note.
 
-**Record an audio memo** records into a `memos` folder, inside the folder where new notes go, and opens the memo as a note. The microphone is open only while it records.
+**Record an audio memo** starts recording; the same button, which then reads **Stop** with the time recorded, ends it. The memo goes into a `memos` folder, inside the folder where new notes go, and opens as a note. The microphone is open only while it records.
 
 ## Renaming and deleting
 
-A right click on a note:
+A right click on a note, or a long press on a touch screen:
 
 - **Rename…**: the notes that link to it, and the tasks tied to it, follow the new name. A folder renamed takes its notes along, and their links follow too.
 - **Move to the trash**: the note goes into the folder's `.trash`, with **Undo**.
@@ -87,12 +86,12 @@ Your notes travel with their folder's own sync: Nextcloud, Dropbox, Syncthing. W
 
 On Android, Sioul keeps a notes folder of its own: switch **Notes** on in the sharing, on the phone or the tablet and on a computer, and give Sioul Android's access to all your files ([Notes and papers](sharing.md#notes-and-papers)).
 
-A linked note that has not arrived yet shows faded, with "Not on this device yet: it may still be syncing".
+A linked note that has not arrived yet shows faded, with "Not on this device yet: it may still be syncing (Nextcloud, Dropbox)."
 
 ## Going further {#going-further}
 
 - **Ties written in the note**: when you tie a note to something, Sioul writes its address at the top of the note, between two `---` lines, under `links:` (or `task:`, `event:`, `mail:`, `contact:`). You can write them there yourself, or remove them; the addresses are under [For technical readers](#for-technical-readers).
-- **Links with a heading or other words**: `[[Plan#Budget]]` goes to a heading of the note, and `[[Plan|the plan]]` shows other words for the link, as in Obsidian.
+- **Links with a heading or other words**: `[[Plan#Budget]]`, which names a heading of the note as Obsidian writes it, opens the note at its top (Sioul does not go down to the heading), and `[[Plan|the plan]]` shows other words for the link, as in Obsidian.
 - **Tags with a slash**: `#admin/letters` is read as one tag, as Obsidian writes its nested tags; searching "admin" finds it.
 - **Earlier versions**: before another device's change replaces or removes a note here, the note as it was is kept on this device. Most often it is kept as a pointer to its copy in the sharing folder, which keeps a replaced note two weeks: the pointer goes after 12 days, however few versions there are. A note whose copy has left the folder is copied here instead, as other files are: its last 20 copies, and every copy of the last 30 days. A note deleted on another device is kept as a copy too, moved here, which costs no room: its copy in the sharing folder then leaves it as soon as each of your devices has read that it was deleted. Edits you make on this device do not make versions; your sync app or your server may keep its own (Nextcloud does).
 - **Sounds to work by**: sounds you put in a `sounds` folder of your notes are offered by the sounds button while you work ([Tasks](tasks.md#sounds)).
@@ -254,6 +253,6 @@ As of October 2026, from each app's own documentation.
 - **Addresses**: a note is `sioul:note/<path>` (an IRI, RFC 3987), a message `mid:<Message-ID>` (RFC 2392), a task, an event or a contact `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`. Each tie is written in the thing that can hold it: a note's properties (its front matter: `title`, `tags`, `aliases`, and links to tasks, events, mail, contacts and drafts); a task's or an event's link and relation lines (`X-SIOUL-LINK`, `RELATED-TO`; RFC 9253's `LINK` read too), which CalDAV carries to your other devices and other programs keep; else a small local file, `links.toml`.
 - **Links opened**: `http`, `https`, `mailto`, `tel`, and `file:///` on this computer; a `file:///` link to a program opens its folder. Other schemes (`smb:`, `file://server/`, a desktop's own handlers) are refused, and the status line says so.
 - **Files**: hidden folders, `.obsidian`, `.trash`, `.git`, `node_modules` and `target` are never read. A note is written beside its place, then renamed into it, so that a crash never leaves half a note; a path that would leave the notes folder is refused. Names that a system refuses, Windows' device names among them (`CON`, `NUL`, `AUX`…), are changed, so that notes travel between systems. A note's text is fingerprinted when it opens; if the file changed by the time you save, your version goes beside it.
-- **Sealed sharing**: each note is compressed, then sealed with XChaCha20-Poly1305 in pieces of 1 MiB, each piece bound to its file, its place and whether it is the last, so that pieces cannot be swapped, cut or added. Its name in the folder is an HMAC-SHA-256 of its content's hash, under a key derived by HKDF-SHA-256: the names tell nothing, not even that two folders hold the same file. The key comes from your passphrase (12 characters at least) through Argon2id (version 1.3, 64 MiB, 3 passes, 1 lane) and stays in the system keyring, or Android's KeyStore on a phone or a tablet. Files over 64 MB stay on their device. A deletion reaches the other devices after ten minutes; many files gone at once are held until you confirm. The folder's server still sees which device wrote (a random identifier), when, and how big each sealed file is. See [What it protects, and what it cannot hide](sharing.md#what-it-protects-and-what-it-cannot-hide).
+- **Sealed sharing**: each note is compressed, then sealed with XChaCha20-Poly1305 in pieces of 1 MiB, each piece bound to its file, its place and whether it is the last, so that pieces cannot be swapped, cut or added. Its name in the folder is an HMAC-SHA-256 of its content's hash, under a key derived by HKDF-SHA-256: the names tell nothing, not even that two folders hold the same file. The key comes from your passphrase (12 characters at least) through Argon2id (version 1.3, 64 MiB, 3 passes, 1 lane) and stays in the system keyring, or Android's KeyStore on a phone or a tablet. Files over 64 MB stay on their device. A deletion reaches the other devices after ten minutes; many files gone at once from a folder still there are kept two weeks on your other devices, then leave them by themselves, unless you put them back. The folder's server still sees which device wrote (a random identifier), when, and how big each sealed file is. See [What it protects, and what it cannot hide](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **Earlier versions**: a note or a paper kept as a pointer to its copy in the sharing folder, 12 days, whatever their number; copies (other files, notes whose copy has left the folder, and notes or papers another device deleted, moved there) the last 20 of each file and all those of the last 30 days, at most 1 GiB or a twentieth of the disk, whichever is smaller; kept on this device only and never shared.
 - **Synced folders recognised**: Sioul does not carry a notes folder inside a Nextcloud, ownCloud, Dropbox, Syncthing, OneDrive, pCloud or Seafile folder, since that app already carries it; once Sioul's lists have moved, the same holds for the papers' and the letters' folders. Sioul's own lists are no longer in the notes folder then: they travel by Sioul's sharing alone, never refused.

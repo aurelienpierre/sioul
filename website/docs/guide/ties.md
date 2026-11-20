@@ -20,15 +20,15 @@ Everything in Sioul is tied to other things: a task made from a message, a payme
 
 - **Ties** at the foot of any card (a task, an event, a note, a contact, a project), beside **Add** and **Link to…**;
 - **See them all** under what a thing is tied to;
-- **Its ties** in the menu of a thing (a right click, or a long press on a touch screen), in the chain itself too;
-- **Ties** on a paper's, a contract's, a letter's, an invoice's, a budget line's or a movement's card (Budgets ▸ **Movements**), and on a person's page;
+- **Its ties** in the menu (a right click, or a long press on a touch screen) of a thing listed under what a card is tied to, of a movement, of a site, and of any thing in the chain itself;
+- **Ties** on a paper's, a contract's, an invoice's or a budget line's card, on the card a letter's date opens in the Agenda (the Letters page's own card has none), on a movement's card (Budgets ▸ **Movements**), and on a person's page;
 - **Ctrl+G** on the thing open.
 
 Each opening starts afresh from that thing. **Escape**, or Back on Android, returns where you were.
 
 ## What it shows {#what-it-shows}
 
-Each thing comes by its strongest chain of ties from where you started, said in words: "Told by: Message, Rent for November · Made into: Task, Pay the rent". A tie you made by hand, a task made from a message, a reply, a step, an appointment tie strongly; being in the same project, a sender, a mention less; a project's words alone, or a client by name, least. Each step after the first counts a little less.
+Each thing comes by its strongest chain of ties from where you started, and each line says in words how it is tied to the one before: "Told by" on a message, then "Made into" on the task made from it. A tie you made by hand, a task made from a message, a reply, a step, an appointment tie strongly; being in the same project, a sender, a mention less; a project's words alone, or a client by name, least. Each step after the first counts a little less.
 
 - **At most five things under each thing**, 24 in all on a computer and 12 on Android.
 - **A collection stops the chain**: a project, a contact, a person, a budget or a site is shown with how many things it holds. Opened, it shows one of each kind first (a letter, a task, a note, a message, a payment), then the rest by date, and no more than two messages from one sender before the others, so that a weekly newsletter never hides an office's letters.
@@ -37,14 +37,14 @@ Each thing comes by its strongest chain of ties from where you started, said in 
 
 ## More, and less {#more-and-less}
 
-**+N** on a thing says how many of its ties are not shown, and what they are ("12 more: 9 messages, 3 tasks"). **+** shows eight more, then eight more; nothing already shown moves or goes. **−** folds them back, and the picture is as before.
+**+N** on a thing says how many of its ties are not shown; pointing at it in the drawing, or opening the thing's menu, says what they are ("12 more: 9 messages, 3 tasks"). A press on it shows eight more, then eight more; nothing already shown moves or goes. Once nothing is left to show under a thing, its button becomes **−**, which folds them back; before that, **Fold them back** in the thing's menu, or **←**, does the same. The picture is then as before.
 
 ## The drawing and the outline {#the-drawing-and-the-outline}
 
-- **The drawing** reads from the left: where you started, then one column per step, the tie's words on each line. A tie between two things already shown is a thin curve. Zoom with Ctrl and the wheel, or a pinch; **Fit** shows it whole. On Android, two columns fit across the width, and a swipe moves one column.
+- **The drawing** reads from the left: where you started, then one column per step, the tie's words on each line. A tie between two things already shown is a thin curve. Zoom with Ctrl and the wheel, or a pinch; **Fit** shows it whole. On Android, two columns fit across the width, a swipe moves one column, and the tie's words are on each thing's second line.
 - **The outline** lists the same things in the same order, each indented by its step, how it is tied on its second line.
 
-A computer opens on the drawing, Android on the outline; **Chain** and **Outline** switch, staying on the same thing.
+A computer opens on the drawing, Android on the outline; **Chain** and **Outline** switch, staying on the same thing. A click on a thing opens its card, beside the chain when the window is wide enough, over it otherwise; the picture stays as it was behind it.
 
 Each thing shows its family by its shape and its colour, and its kind by its icon and in words:
 
@@ -59,7 +59,7 @@ Each thing shows its family by its shape and its colour, and its kind by its ico
 
 ## Keys {#keys}
 
-In both views, as in a tree: **↓ ↑** move; **→** shows more, or steps into what is under; **←** folds, or steps out; **Enter** opens; **Home** goes back to where you started; the **menu key** (or Shift+F10) opens the thing's menu (Open, Its ties, show more or fold, undo the tie); typing finds a title. A screen reader reads each row as its kind, its title, how it is tied and what more there is, and says whether it is folded.
+In both views, as in a tree: **↓ ↑** move; **→** shows more, or steps into what is under; **←** folds, or steps out; **Enter** opens; **Home** goes back to where you started, **End** to the last thing; the **menu key** (or Shift+F10) opens the thing's menu (Open, Its ties, show more or fold, undo the tie); typing finds a title. A screen reader reads each row as its kind, its title, how it is tied and what more there is, and says whether it is folded.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -107,6 +107,6 @@ Sioul has no graph of everything, on purpose: it answers no question of admin.
 
 **In the window.** Rust computes the chain on a worker thread (`askChain`, answered by `chainReady`); QML draws it: `ChainPage.qml`, one `Shape` for every edge, each thing a `ChainNode.qml` with its `ChainBadge.qml`, the outline a `ListView` of tree items (`ChainOutline.qml`). The Related panel under each card reads the same index once it is made.
 
-**On the command line.** `sioul links <address> --chain [--depth N] [--open <address>…] [--json]` prints the same chain as an outline, or as the window's JSON.
+**On the command line.** `sioul links <address> --chain [--depth N] [--open <address>…] [--json]` prints the same chain as an outline, or as the window's JSON, where each thing also carries its whole chain in words ("Told by: Message, Rent for November · Made into: Task, Pay the rent").
 
 **What is not built.** Texts and calls in the chain (they have no address of their own).

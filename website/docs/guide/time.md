@@ -25,21 +25,23 @@ Sioul notes the time you spend, while you work or afterwards by hand, and keeps 
 
 ## The Time page {#the-time-page}
 
-**Week**, **Month** or **Year**, for **All projects** or one; **Today** and the arrows ◂ ▸ move through time:
+**Week**, **Month** or **Year**, the tabs at the top of the page, for **All projects** or one; **Today** and the arrows ◂ ▸ move through time:
 
-- a bar per day (per month, over a year), stacked by project;
+- a bar per day (per month, over a year), stacked by project; point at a bar to read its day and its time;
+- **Done in this period, by area**: for the tasks done in the period, the time spent on them beside what you first estimated, one line for work, your admin and leisure each, so that you see where your guesses are off (each task counts once: a leisure task in a personal project counts as leisure). The table shows once a task done in the period has an estimate and time noted; an area with no such task has no line;
 - each project's hours, and what is left to bill, in hours and in money at its rate, the money counted line by line as its invoice will count it, so that the two agree to the cent;
-- **Done in this period, by area**: for the tasks done in the period, the time spent on them beside what you first estimated, one line for work, your admin and leisure each, so that you see where your guesses are off (each task counts once: a leisure task in a personal project counts as leisure);
 - then each stretch of time, newest first.
+
+On a narrow screen, such as a phone's, the period's name and the choice of project go under the arrows, **Note time** shows as its icon alone, and each stretch takes two lines.
 
 ## Where time comes from {#where-time-comes-from}
 
 - **The focus timer**: the minutes of a [focus session](tasks.md#starting-and-stopping) count for its task, and for the task's project. Any task, whatever it is for and whatever the hour: your admin and leisure count as work does, with or without a project.
-- **Note time**, on this page, on a project's page, or with **New ▾ ▸ Time spent**: a meeting, a call, work done away from the timer. **For** (a project, or a task), **How long** (`1h30`, `45m`, `90`), **When**, **What it was**, and **Not to bill** when it should not be.
+- **Note time**, on this page, on a project's page, or with **New ▾ ▸ Time spent**: a meeting, a call, work done away from the timer. **Task** (or *No task*), **For** (a project; *The task's own project* unless you choose one), **When**, **From** and **To** (the form opens on the half hour just gone, and says how long that makes), **What it was**, and **Not to bill**, which shows once **For** names a client's project. Time is noted for a project or a task, one of the two at least. An end before the beginning is read as past midnight.
 
 While a focus session runs, on Linux and on Android, a notification shows it: its task, since when, and **Pause** (**Go on** once paused) and **Stop**, which do what the focus window's buttons do. On a Linux desktop it stays among the desktop's notifications while Sioul is open (in KDE Plasma, under the bell once its popup goes), and goes when Sioul quits. On Android, a chronometer counts in it, and its buttons work with Sioul in the background or closed. Paused or stopped elsewhere, in the focus window or on another device, it follows. On Windows and macOS, the focus window alone shows the time running, for now.
 
-Click any stretch of time, timed or noted by hand, to change it: its task, its project, its day, from when to when, and what it was; the time the timer kept after a pause you missed comes back that way. A right click also offers **Take this time out**. Time already on an invoice stays as it was billed.
+Click any stretch of time, timed or noted by hand, to change it: its task, its project, its day, from when to when, and what it was; the time the timer kept after a pause you missed comes back that way. A right click, or a long press on a touch screen, offers **Change this time** and **Take this time out**. Time already on an invoice stays as it was billed.
 
 A timer you forgot is cut when you stop it: past twice the time you chose (or that time and half an hour more, whichever is longer), only the time you chose counts; a session without an end counts three hours at most.
 
@@ -56,7 +58,7 @@ Work for a client is billed. A task can say otherwise, under **Billed** in its p
 
 ## How long things take {#how-long-things-take}
 
-A task's **Takes about** is a guess. The time noted for it is what it took. Sioul sets the two side by side, and corrects your guesses in the plan only: each task takes its corrected length in the plan and in the day, while **Takes about** stays as you wrote it, and the focus timer starts from it. Only finished tasks teach it, recent ones most; minutes noted by hand count less than timed ones, because remembered durations are less sure. How it learns, in detail: [below](#how-the-plan-learns-from-your-time).
+A task's **Takes about** is a guess. The time noted for it is what it took. Sioul sets the two side by side, and corrects your guesses in the plan only: each task takes its corrected length in the plan and in the day, while **Takes about** stays as you wrote it. The focus timer runs for the length you choose when you press **Start**, whatever the task's **Takes about**. Only finished tasks teach it, recent ones most; minutes noted by hand count less than timed ones, because remembered durations are less sure. How it learns, in detail: [below](#how-the-plan-learns-from-your-time).
 
 It never scores you, never shows anything as late, never fills in **Takes about** for you, and never compares you with anyone.
 
@@ -250,7 +252,7 @@ A payment counts once, whatever your devices did: **Paid** ticked on two devices
 
 ## By your hours {#in-quiet-time}
 
-The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and shares its ticks: time on a project whose use is not ticked folds out of the bars, the projects and the list; time with no project counts by its task's use; time noted on nothing always shows. Choosing one project shows its time whatever the ticks. What folds is said: the total gives the whole beside what shows ("12 h shown, 31 h in all"; everything folded, "Nothing noted for what is ticked; 31 h in all."), and the line of time with no project says when part of it folds ("45 min of 2 h"). What is left to bill never folds, nor does the export. Nothing covers the page. See [Hours](hours.md).
+The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and shares its ticks: time on a project whose use is not ticked folds out of the bars, the projects and the list; time with no project counts by its task's use; time noted on nothing always shows. Choosing one project shows its time whatever the ticks, and the filter's button leaves the page meanwhile. The table **Done in this period, by area** follows too: it counts the tasks of the areas ticked, or of the project chosen. What folds is said: the total gives the whole beside what shows ("12 h shown, 31 h in all"; everything folded, "Nothing noted for what is ticked; 31 h in all."), and the line of time with no project says when part of it folds ("45 min of 2 h"). What is left to bill never folds, nor does the export. Nothing covers the page. See [Hours](hours.md).
 
 ## Not there yet {#not-there-yet}
 
@@ -274,7 +276,7 @@ The Time page has the [Projects](projects.md#in-quiet-time) page's filter, and s
 - **Recent tasks count most**: a task's weight halves every four or five days.
 - **Few tasks, little correction.** Until about nine tasks stand behind it, the correction leans toward "a little longer than guessed".
 - **By what tasks are for**: work, your admin and leisure each have their own correction, pulled toward yours until they have enough tasks of their own.
-- **The plan uses it; you see your own.** Each task takes its corrected length in the plan and in the day, while **Takes about** stays as you wrote it, and the focus timer starts from it.
+- **The plan uses it; you see your own.** Each task takes its corrected length in the plan and in the day, while **Takes about** stays as you wrote it; the focus timer runs for the length you choose at **Start**.
 - **The margin is the day's, not each task's.** Each day keeps some time free after its last step for steps running long: about enough to cover a day going worse than usual, never more than a third of the day. Once today's first tasks are done, a day going slower keeps more. The next step always keeps part of today.
 - **On request**, in a task's panel, a line such as "Tasks like this usually take about 1.3× the first guess; the plan already allows for it", only once enough tasks stand behind it.
 

@@ -20,15 +20,15 @@ Tout dans Sioul est lié à d’autres choses : une tâche faite à partir d�
 
 - **Liens** au pied de chaque carte (une tâche, un événement, une note, un contact, un projet), à côté de **Ajouter** et **Lier à…** ;
 - **Les voir tous** sous ce à quoi une chose est liée ;
-- **Ses liens** dans le menu d’une chose (un clic droit, ou un appui long sur un écran tactile), dans la chaîne elle-même aussi ;
-- **Liens** sur la carte d’un papier, d’un contrat, d’une lettre, d’une facture, d’une ligne de budget ou d’un mouvement (Budgets ▸ **Mouvements**), et sur la page d’une personne ;
+- **Ses liens** dans le menu (un clic droit, ou un appui long sur un écran tactile) d’une chose listée sous ce à quoi une carte est liée, d’un mouvement, d’un site, et de toute chose de la chaîne elle-même ;
+- **Liens** sur la carte d’un papier, d’un contrat, d’une facture ou d’une ligne de budget, sur la carte qu’ouvre la date d’une lettre dans l’Agenda (la carte de la page Courrier n’en a pas), sur la carte d’un mouvement (Budgets ▸ **Mouvements**), et sur la page d’une personne ;
 - **Ctrl+G** sur la chose ouverte.
 
 Chaque ouverture repart de cette chose. **Échap**, ou Retour sur Android, ramène là où vous étiez.
 
 ## Ce qu’elle montre {#what-it-shows}
 
-Chaque chose vient par sa chaîne de liens la plus forte depuis votre point de départ, dite en mots : « Annoncé par : Message, Loyer de novembre · A donné : Tâche, Payer le loyer ». Un lien fait à la main, une tâche faite à partir d’un courriel, une réponse, une étape, un rendez-vous lient fortement ; être dans le même projet, un expéditeur, une mention un peu moins ; les seuls mots d’un projet, ou un client par son nom, le moins. Chaque étape après la première compte un peu moins.
+Chaque chose vient par sa chaîne de liens la plus forte depuis votre point de départ, et chaque ligne dit en mots comment elle est liée à la précédente : « Annoncé par » sur un message, puis « A donné » sur la tâche qui en a été faite. Un lien fait à la main, une tâche faite à partir d’un courriel, une réponse, une étape, un rendez-vous lient fortement ; être dans le même projet, un expéditeur, une mention un peu moins ; les seuls mots d’un projet, ou un client par son nom, le moins. Chaque étape après la première compte un peu moins.
 
 - **Au plus cinq choses sous chaque chose**, 24 en tout sur un ordinateur et 12 sur Android.
 - **Une collection arrête la chaîne** : un projet, un contact, une personne, un budget ou un site montre combien de choses il tient. Ouvert, il montre d’abord une chose de chaque type (une lettre, une tâche, une note, un message, un paiement), puis le reste par date, et pas plus de deux messages d’un même expéditeur avant les autres, pour qu’une lettre d’information hebdomadaire ne cache jamais les lettres d’une administration.
@@ -37,14 +37,14 @@ Chaque chose vient par sa chaîne de liens la plus forte depuis votre point de d
 
 ## Plus, et moins {#more-and-less}
 
-**+N** sur une chose dit combien de ses liens ne sont pas montrés, et ce qu’ils sont (« 12 de plus : 9 messages, 3 tâches »). **+** en montre huit de plus, puis huit encore ; rien de ce qui est déjà montré ne bouge ni ne part. **−** les replie, et l’image redevient celle d’avant.
+**+N** sur une chose dit combien de ses liens ne sont pas montrés ; le pointer dans le dessin, ou ouvrir le menu de la chose, dit ce qu’ils sont (« 12 de plus : 9 messages, 3 tâches »). Un appui dessus en montre huit de plus, puis huit encore ; rien de ce qui est déjà montré ne bouge ni ne part. Quand il ne reste rien à montrer sous une chose, son bouton devient **−**, qui les replie ; avant cela, **Les replier** dans le menu de la chose, ou **←**, fait de même. L’image redevient alors celle d’avant.
 
 ## Le dessin et la liste {#the-drawing-and-the-outline}
 
-- **Le dessin** se lit depuis la gauche : votre point de départ, puis une colonne par étape, les mots du lien sur chaque trait. Un lien entre deux choses déjà montrées est une fine courbe. On zoome avec Ctrl et la molette, ou en pinçant ; **Ajuster** le montre en entier. Sur Android, deux colonnes tiennent dans la largeur, et un glissement passe à la colonne suivante.
+- **Le dessin** se lit depuis la gauche : votre point de départ, puis une colonne par étape, les mots du lien sur chaque trait. Un lien entre deux choses déjà montrées est une fine courbe. On zoome avec Ctrl et la molette, ou en pinçant ; **Ajuster** le montre en entier. Sur Android, deux colonnes tiennent dans la largeur, un glissement passe à la colonne suivante, et les mots du lien sont sur la deuxième ligne de chaque chose.
 - **La liste** donne les mêmes choses dans le même ordre, chacune décalée selon son étape, la façon dont elle est liée sur sa deuxième ligne.
 
-Un ordinateur ouvre sur le dessin, Android sur la liste ; **Chaîne** et **Liste** passent de l’un à l’autre, sur la même chose.
+Un ordinateur ouvre sur le dessin, Android sur la liste ; **Chaîne** et **Liste** passent de l’un à l’autre, sur la même chose. Un clic sur une chose ouvre sa carte, à côté de la chaîne quand la fenêtre est assez large, par-dessus sinon ; l’image reste telle qu’elle était derrière elle.
 
 Chaque chose montre sa famille par sa forme et sa couleur, et son type par son icône et en mots :
 
@@ -59,7 +59,7 @@ Chaque chose montre sa famille par sa forme et sa couleur, et son type par son i
 
 ## Les touches {#keys}
 
-Dans les deux vues, comme dans un arbre : **↓ ↑** se déplacent ; **→** en montre plus, ou entre dans ce qui est dessous ; **←** replie, ou remonte ; **Entrée** ouvre ; **Début** revient au point de départ ; la **touche menu** (ou Maj+F10) ouvre le menu de la chose (Ouvrir, Ses liens, en montrer plus ou replier, défaire le lien) ; taper un titre le trouve. Un lecteur d’écran lit chaque ligne par son type, son titre, la façon dont elle est liée et ce qu’il y a de plus, et dit si elle est repliée.
+Dans les deux vues, comme dans un arbre : **↓ ↑** se déplacent ; **→** en montre plus, ou entre dans ce qui est dessous ; **←** replie, ou remonte ; **Entrée** ouvre ; **Début** revient au point de départ, **Fin** va à la dernière chose ; la **touche menu** (ou Maj+F10) ouvre le menu de la chose (Ouvrir, Ses liens, en montrer plus ou replier, défaire le lien) ; taper un titre le trouve. Un lecteur d’écran lit chaque ligne par son type, son titre, la façon dont elle est liée et ce qu’il y a de plus, et dit si elle est repliée.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 
@@ -107,6 +107,6 @@ Sioul n’a pas de graphe de tout, exprès : il ne répond à aucune question 
 
 **Dans la fenêtre.** Rust calcule la chaîne sur un fil de travail (`askChain`, avec la réponse `chainReady`) ; QML la dessine : `ChainPage.qml`, une seule `Shape` pour tous les traits, chaque chose un `ChainNode.qml` avec son `ChainBadge.qml`, la liste une `ListView` d’éléments d’arbre (`ChainOutline.qml`). Le panneau des liens sous chaque carte lit le même index dès qu’il est fait.
 
-**En ligne de commande.** `sioul links <adresse> --chain [--depth N] [--open <adresse>…] [--json]` affiche la même chaîne en liste, ou dans le JSON de la fenêtre.
+**En ligne de commande.** `sioul links <adresse> --chain [--depth N] [--open <adresse>…] [--json]` affiche la même chaîne en liste, ou dans le JSON de la fenêtre, où chaque chose porte aussi sa chaîne entière en mots (« Annoncé par : Message, Loyer de novembre · A donné : Tâche, Payer le loyer »).
 
 **Ce qui n’est pas fait.** Les SMS et les appels dans la chaîne (ils n’ont pas d’adresse à eux).

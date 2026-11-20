@@ -25,21 +25,23 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 
 ## La page Temps {#the-time-page}
 
-**Semaine**, **Mois** ou **Année**, pour **Tous les projets** ou un seul ; **Aujourd’hui** et les flèches ◂ ▸ font avancer ou reculer dans le temps :
+**Semaine**, **Mois** ou **Année**, les onglets en haut de la page, pour **Tous les projets** ou un seul ; **Aujourd’hui** et les flèches ◂ ▸ font avancer ou reculer dans le temps :
 
-- une barre par jour (par mois, sur une année), empilée par projet ;
+- une barre par jour (par mois, sur une année), empilée par projet ; pointez une barre pour lire son jour et son temps ;
+- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent (chaque tâche compte une fois : une tâche de loisirs dans un projet personnel compte en loisirs). Le tableau s’affiche dès qu’une tâche faite pendant la période a une estimation et du temps noté ; un domaine sans tâche de ce type n’a pas de ligne ;
 - les heures de chaque projet, et ce qui reste à facturer, en heures et en argent à son taux, l’argent compté ligne par ligne comme sa facture le comptera, pour que les deux s’accordent au centime près ;
-- **Fait pendant cette période, par domaine** : pour les tâches faites pendant la période, le temps passé dessus à côté de ce que vous aviez d’abord estimé, une ligne pour le travail, vos démarches et les loisirs, pour voir où vos estimations s’écartent (chaque tâche compte une fois : une tâche de loisirs dans un projet personnel compte en loisirs) ;
 - puis chaque plage de temps, de la plus récente à la plus ancienne.
+
+Sur un écran étroit, comme celui d’un téléphone, le nom de la période et le choix du projet passent sous les flèches, **Noter du temps** ne montre que son icône, et chaque plage de temps tient sur deux lignes.
 
 ## D’où vient le temps {#where-time-comes-from}
 
 - **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche. N’importe quelle tâche, quel que soit son usage et quelle que soit l’heure : vos démarches et vos loisirs comptent comme le travail, avec ou sans projet.
-- **Noter du temps**, sur cette page, sur la page d’un projet, ou avec **Nouveau ▾ ▸ Du temps passé** : une réunion, un appel, un travail fait loin du minuteur. **Pour** (un projet, ou une tâche), **Combien de temps** (`1h30`, `45m`, `90`), **Quand**, **Ce que c’était**, et **Ne pas facturer** quand il ne doit pas l’être.
+- **Noter du temps**, sur cette page, sur la page d’un projet, ou avec **Nouveau ▾ ▸ Du temps passé** : une réunion, un appel, un travail fait loin du minuteur. **Tâche** (ou *Pas de tâche*), **Pour** (un projet ; *Le projet de la tâche* tant que vous n’en choisissez pas un), **Quand**, **De** et **À** (le formulaire s’ouvre sur la demi-heure qui vient de passer, et dit la durée que cela fait), **Ce que c’était**, et **Ne pas facturer**, qui s’affiche une fois que **Pour** nomme le projet d’un client. Le temps se note pour un projet ou pour une tâche, l’un des deux au moins. Une fin placée avant le début se lit comme après minuit.
 
 Pendant une séance de concentration, sous Linux et sur Android, une notification la montre : sa tâche, depuis quand, et **Pause** (**Reprendre** une fois en pause) et **Arrêter**, qui font ce que font les boutons de la fenêtre de concentration. Sur un bureau Linux, elle reste parmi les notifications du bureau tant que Sioul est ouvert (dans KDE Plasma, sous la cloche une fois sa bulle partie), et s’en va quand Sioul se ferme. Sur Android, un chronomètre y tourne, et ses boutons marchent avec Sioul en arrière-plan ou fermé. Mise en pause ou arrêtée ailleurs, dans la fenêtre de concentration ou sur un autre appareil, elle suit. Sous Windows et macOS, seule la fenêtre de concentration montre le temps qui court, pour l’instant.
 
-Cliquez sur n’importe quel moment, chronométré ou noté à la main, pour le changer : sa tâche, son projet, son jour, de quand à quand, et ce que c’était ; le temps que le minuteur a gardé après une pause manquée se corrige ainsi. Un clic droit propose aussi **Enlever ce temps**. Le temps déjà sur une facture reste tel qu’il a été facturé.
+Cliquez sur n’importe quel moment, chronométré ou noté à la main, pour le changer : sa tâche, son projet, son jour, de quand à quand, et ce que c’était ; le temps que le minuteur a gardé après une pause manquée se corrige ainsi. Un clic droit, ou un appui long sur un écran tactile, propose **Modifier ce temps** et **Enlever ce temps**. Le temps déjà sur une facture reste tel qu’il a été facturé.
 
 Un minuteur oublié est coupé quand vous l’arrêtez : au-delà du double du temps choisi (ou de ce temps et une demi-heure de plus, si c’est plus long), seul le temps choisi compte ; une séance sans fin fixée compte trois heures au plus.
 
@@ -56,7 +58,7 @@ Le travail pour un client se facture. Une tâche peut dire autre chose, sous **F
 
 ## Combien de temps prennent les choses {#how-long-things-take}
 
-Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle est ce qu’elle a pris. Sioul met les deux côte à côte, et corrige vos estimations dans le plan seulement : chaque tâche prend sa durée corrigée dans le plan et dans la journée, tandis que **Prend environ** reste tel que vous l’avez écrit, et le minuteur part de lui. Seules les tâches finies lui apprennent, les récentes le plus ; les minutes notées à la main comptent moins que celles qui sont chronométrées, parce que les durées dont on se souvient sont moins sûres. Comment il apprend, en détail : [plus bas](#how-the-plan-learns-from-your-time).
+Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle est ce qu’elle a pris. Sioul met les deux côte à côte, et corrige vos estimations dans le plan seulement : chaque tâche prend sa durée corrigée dans le plan et dans la journée, tandis que **Prend environ** reste tel que vous l’avez écrit. Le minuteur de concentration dure le temps que vous choisissez en appuyant sur **Commencer**, quel que soit le **Prend environ** de la tâche. Seules les tâches finies lui apprennent, les récentes le plus ; les minutes notées à la main comptent moins que celles qui sont chronométrées, parce que les durées dont on se souvient sont moins sûres. Comment il apprend, en détail : [plus bas](#how-the-plan-learns-from-your-time).
 
 Il ne vous note jamais, ne montre jamais rien en retard, ne remplit jamais **Prend environ** à votre place, et ne vous compare jamais à personne.
 
@@ -250,7 +252,7 @@ Un paiement compte une fois, quoi qu’aient fait vos appareils : la case **Pa
 
 ## Selon vos heures {#in-quiet-time}
 
-La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et partage ses cases : le temps d’un projet dont l’usage n’est pas coché se replie hors des barres, des projets et de la liste ; le temps sans projet compte selon l’usage de sa tâche ; le temps noté sur rien s’affiche toujours. Choisir un projet montre son temps quelles que soient les cases. Ce qui se replie est dit : le total donne le tout à côté de ce qui s’affiche (« 12 h pour ce qui est coché, 31 h en tout » ; tout replié, « Rien de noté pour ce qui est coché ; 31 h en tout. »), et la ligne du temps sans projet dit quand une part s’en replie (« 45 min sur 2 h »). Ce qui reste à facturer ne se replie jamais, ni l’export. Rien ne couvre la page. Voir [Les heures](hours.md).
+La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et partage ses cases : le temps d’un projet dont l’usage n’est pas coché se replie hors des barres, des projets et de la liste ; le temps sans projet compte selon l’usage de sa tâche ; le temps noté sur rien s’affiche toujours. Choisir un projet montre son temps quelles que soient les cases, et le bouton du filtre quitte la page pendant ce temps. Le tableau **Fait pendant cette période, par domaine** suit aussi : il compte les tâches des domaines cochés, ou celles du projet choisi. Ce qui se replie est dit : le total donne le tout à côté de ce qui s’affiche (« 12 h pour ce qui est coché, 31 h en tout » ; tout replié, « Rien de noté pour ce qui est coché ; 31 h en tout. »), et la ligne du temps sans projet dit quand une part s’en replie (« 45 min sur 2 h »). Ce qui reste à facturer ne se replie jamais, ni l’export. Rien ne couvre la page. Voir [Les heures](hours.md).
 
 ## Pas encore là {#not-there-yet}
 
@@ -274,7 +276,7 @@ La page Temps a le filtre de la page [Projets](projects.md#in-quiet-time), et pa
 - **Les tâches récentes comptent le plus** : le poids d’une tâche diminue de moitié tous les quatre ou cinq jours.
 - **Peu de tâches, peu de correction.** Tant qu’environ neuf tâches ne sont pas derrière elle, la correction penche vers « un peu plus long que prévu ».
 - **Selon ce à quoi servent les tâches** : le travail, vos démarches et les loisirs ont chacun leur correction, rapprochée de la vôtre tant qu’ils n’ont pas assez de tâches à eux.
-- **Le plan s’en sert ; vous voyez la vôtre.** Chaque tâche prend sa durée corrigée dans le plan et dans la journée, tandis que **Prend environ** reste tel que vous l’avez écrit, et le minuteur part de lui.
+- **Le plan s’en sert ; vous voyez la vôtre.** Chaque tâche prend sa durée corrigée dans le plan et dans la journée, tandis que **Prend environ** reste tel que vous l’avez écrit ; le minuteur de concentration dure le temps que vous choisissez avec **Commencer**.
 - **La marge est celle de la journée, pas de chaque tâche.** Chaque jour garde un peu de temps libre après sa dernière étape pour les étapes qui débordent : à peu près de quoi couvrir une journée qui va moins bien que d’habitude, jamais plus du tiers de la journée. Une fois les premières tâches d’aujourd’hui finies, une journée qui avance plus lentement en garde davantage. L’étape suivante garde toujours une part d’aujourd’hui.
 - **Sur demande**, dans le panneau d’une tâche, une ligne comme « Les tâches de ce type prennent d’habitude environ 1,3× la première estimation ; le plan en tient déjà compte », seulement une fois que assez de tâches sont derrière elle.
 
