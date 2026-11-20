@@ -2728,8 +2728,8 @@ agents = false
 
 def write_household(p: Profile):
     """Two of your people more (--household), for What reaches you's pictures
-    (docs/attention.md, "Who is in which circle"): Hugo, your brother, his card
-    put on Restricted by hand, which holds him out of the circle; Noé, linked
+    (docs/attention.md, "Who is in which circle"): Hugo, your brother, whose card
+    is on Restricted by hand, which holds Hugo out of the circle; Noé, linked
     to a card that no address book of this device holds."""
     persons = p.data / "persons.toml"
     p.write(persons, persons.read_text(encoding="utf-8") + """

@@ -4266,7 +4266,7 @@ mod tests {
         // The mailbox's reading, from a judgment: the same.
         let judged = senders.judge("lea@example.org");
         assert_eq!(people_open.mail_from(judged.who, judged.circle, false, false, None, &work).shown, people_open.mail(&lea, &senders, &nobody, None, &work).shown);
-        // Review M1: her address and her number put on Safe by hand long ago give way to the circle, by mail and
+        // Review M1: Léa's address and number put on Safe by hand long ago give way to the circle, by mail and
         // by message; on Restricted, the restriction wins.
         let card = crate::contacts::Contact { uid: "lea-1".into(), name: "Léa".into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: "lea@example.org".into() }], phones: vec![crate::contacts::Labeled { label: String::new(), value: "+33 1 99 00 00 08".into() }], ..crate::contacts::Contact::default() };
         let by_hand = Senders { safe: crate::porch::SenderList::parse("lea@example.org\ntel:+33199000008"), contacts: std::sync::Arc::new(Book::of(&[card], crate::phones::region_named("FR"))), ..senders.clone() };
@@ -4275,7 +4275,7 @@ mod tests {
         let text = |a: &Attention, judged: crate::porch::Judged, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: judged.who, circle: judged.circle, group: false, always: false }), now).level;
         let mut texts = Attention::usual();
         texts.set(row("messages.people"), Column::Sleep, Level::Now).unwrap();
-        assert_eq!(text(&texts, by_hand.judge_number("01 99 00 00 08"), &night), Level::Now, "a text from her number on Safe by hand: Your people's row");
+        assert_eq!(text(&texts, by_hand.judge_number("01 99 00 00 08"), &night), Level::Now, "a text from Léa's number on Safe by hand: Your people's row");
         let restricted = Senders { restricted: crate::porch::SenderList::parse("tel:+33199000008"), safe: crate::porch::SenderList::default(), ..by_hand.clone() };
         assert_eq!(text(&texts, restricted.judge_number("01 99 00 00 08"), &night), Level::Later, "on Restricted by hand: the restriction wins");
     }

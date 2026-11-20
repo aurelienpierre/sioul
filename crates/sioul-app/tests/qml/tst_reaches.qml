@@ -378,7 +378,7 @@ Item {
             full.people.rows.splice(1, 0, { id: "people", label: "Your people", help: "Everyone in Contacts ▸ Your people, by their cards.", cells: [cell("mail", "awake"), cell("messages", "awake")] })
             full.people.none = ""
             // Each by the row they are judged on (reaches::close_of): Léa's card here, nothing to say; Alix,
-            // no card linked, the door to her page; Maud held out by her card's restriction, the door to its sheet.
+            // no card linked, the door to Alix's page; Maud held out by a card's restriction, the door to its sheet.
             full.people.circle = { title: "Your people", help: "Read from Contacts ▸ Your people.", people: [
                 { id: "lea", name: "Léa", notes: [] },
                 { id: "alix", name: "Alix", notes: [{ text: "No card is linked to Alix: Sioul cannot recognise their mail, calls or messages until one is.", door: "page", key: "alix", label: "Link a card…" }] },

@@ -2723,7 +2723,7 @@ mod tests {
         assert_eq!(row(&senders.judge("noe@example.org")), (Who::Blocked, By::Category, false, crate::attention::Person::Blocked));
         let blocked = Senders { blocked: SenderList::parse("contact:lea-1"), ..senders.clone() };
         assert_eq!(blocked.judge_number("01 99 00 00 01").who, Who::Blocked);
-        // L6: what blocks a later step keeps the lists' judgment: Ines's group (restricted) decided before her
+        // L6: what blocks a later step keeps the lists' judgment: Ines's group (restricted) decided before the
         // blocked domain and prefix; never the circle, never louder than before.
         assert_eq!(row(&senders.judge("ines@spam.example")), (Who::Restricted, By::Category, false, Restricted));
         assert_eq!(row(&senders.judge_number("08 99 00 00 11")), (Who::Restricted, By::Category, false, Restricted));

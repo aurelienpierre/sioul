@@ -1536,7 +1536,7 @@ mod tests {
             assert!(page["circle"]["people"].as_array().unwrap().is_empty());
             assert!(!table_rows(false).iter().any(|r| matches!(r, Row::People(_, Person::People))), "no row of controls for nobody");
             assert!(!matrix_persons(Channel::Calls).contains(&Person::People));
-            // Léa, her card here; Alix, none linked; Noé, a card linked that is not on this device; Maud, her
+            // Léa, a card here; Alix, none linked; Noé, a card linked that is not on this device; Maud, a
             // card on Restricted by hand; Ugo, one address restricted; Vic, a card of a book others can write.
             store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Someone::default() });
             store.put(Someone { name: "Alix".into(), relation: "helped".into(), ..Someone::default() });
@@ -1572,7 +1572,7 @@ mod tests {
                 .collect();
             let notes = |name: &str| listed.iter().find(|(n, _)| n == name).map(|(_, notes)| notes.clone()).unwrap();
             assert_eq!(listed.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().len(), 6, "everyone but the other parent: {listed:?}");
-            assert!(notes("Léa").is_empty(), "her card here, judged on Your people: nothing to say");
+            assert!(notes("Léa").is_empty(), "Léa's card here, judged on Your people: nothing to say");
             for name in ["Alix", "Noé"] {
                 let said = notes(name);
                 assert_eq!(said.len(), 1, "{name}: {said:?}");
