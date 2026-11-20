@@ -34,7 +34,7 @@ SioulWindow {
     // The documentation's pictures (SIOUL_GRAB_STEPS=demo) are a landscape screen;
     // with SIOUL_GRAB_PHONE (or SIOUL_GRAB_STEPS=phone), a phone's: 412 by 891, its layout.
     readonly property bool phoneGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "phone" || sioul.grabPhone())
-    readonly property bool demoGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "demo" || sioul.grabSteps() === "invoices") && !window.phoneGrab
+    readonly property bool demoGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "demo" || sioul.grabSteps() === "invoices" || sioul.grabSteps() === "notes-find") && !window.phoneGrab
     // A tablet's pictures (SIOUL_GRAB_STEPS=tablet): each page at 1280 by 800, the device a
     // tablet, without the window's own title bar and with touch, as on Android; a
     // computer's layout, since the room decides it, never the system.

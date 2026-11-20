@@ -104,6 +104,9 @@ fn notes_unreadable_or_too_large_and_the_line_cut() {
     assert!(shown.chars().count() <= LINE_SHOWN + 2, "{shown}");
     assert!(!shown.contains("  "), "cut at spaces: {shown}");
     assert_eq!(line_holding("\t  A\tquillon  ", &["quillon"]).as_deref(), Some("A quillon"));
+    // Lowered ASCII at once, or folded one by one: the same.
+    assert_eq!(folded("Quillon, ÉTÉ 2026"), crate::text::fold("Quillon, ÉTÉ 2026").into_iter().collect::<String>());
+    assert_eq!(folded("Quillon 2026\t!"), "quillon 2026\t!");
     // An accented word found by its folded form, the line shown as written.
     let accented = format!("{}Élodie", "é".repeat(100));
     assert!(line_holding(&accented, &["elodie"]).unwrap().ends_with("Élodie"));
@@ -297,6 +300,10 @@ fn notes_search_measure() {
             }
             text.push('\n');
         }
+        // Half the notes hold accented words, as French notes do: they take the slower folding.
+        if i % 2 == 0 {
+            text.push_str("Le café de la forêt, été comme hiver.\n");
+        }
         if i == count - 1 {
             text.push_str("the one zanzibar line\n");
         }
@@ -324,7 +331,8 @@ fn notes_search_measure() {
     let keep = |n: &Note| kept.get(&n.path).cloned();
     time("texts kept, a word in one note", &mut || vault.find("zanzibar", Kinds::All, Some(&keep)).len());
     time("texts kept, a word in every note", &mut || vault.find("lantern", Kinds::All, Some(&keep)).len());
-    time("outline of the longest note", &mut || vault.notes.iter().map(|n| search_text(&dir.join(&n.path)).unwrap_or_default()).max_by_key(String::len).map(|t| outline(&t).len()).unwrap_or(0));
+    let longest = vault.notes.iter().filter_map(|n| search_text(&dir.join(&n.path))).max_by_key(String::len).unwrap_or_default();
+    time(&format!("outline of the longest note ({} KB)", longest.len() / 1000), &mut || outline(&longest).len());
     time("dated by when made", &mut || dated(&vault.notes, Dated::Created, &crate::zone::now()).len());
     std::fs::remove_dir_all(&dir).unwrap();
 }

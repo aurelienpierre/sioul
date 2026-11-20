@@ -611,7 +611,7 @@ Item {
             RowLayout {
                 id: choices
 
-                readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 6 * choices.spacing
+                readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.spacing + 4
 
                 objectName: "noteChoices"
                 visible: !page.shown.missing
@@ -632,9 +632,28 @@ Item {
                     objectName: "noteShow"
                     Layout.fillWidth: true
                     Layout.maximumWidth: showBox.implicitWidth
-                    implicitContentWidthPolicy: ComboBox.WidestText
+                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                    // column, its words end in "…" rather than being cut.
+                    implicitWidth: Math.ceil(Math.max(...showBox.model.map(c => showBoxMetrics.advanceWidth(c.text)))) + 13 + showBox.leftPadding + showBox.rightPadding
+                    spacing: 4
                     textRole: "text"
                     valueRole: "value"
+                    contentItem: Label {
+                        leftPadding: 12
+                        rightPadding: 1
+                        text: showBox.displayText
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        font: showBox.font
+                        color: showBox.palette.text
+                    }
+
+                    FontMetrics {
+                        id: showBoxMetrics
+
+                        font: showBox.font
+                    }
                     model: [{ value: "folder", text: page.sioul.text("note-show-folder") }, { value: "changed", text: page.sioul.text("note-show-changed") }, { value: "created", text: page.sioul.text("note-show-created") }]
                     currentIndex: Math.max(0, showBox.indexOfValue(page.showing))
                     Accessible.name: page.sioul.text("note-show")
@@ -651,7 +670,7 @@ Item {
                     }
                 }
                 Item {
-                    implicitWidth: choices.spacing
+                    implicitWidth: 4
                 }
                 Label {
                     id: typeName
@@ -667,9 +686,28 @@ Item {
                     objectName: "noteType"
                     Layout.fillWidth: true
                     Layout.maximumWidth: typeBox.implicitWidth
-                    implicitContentWidthPolicy: ComboBox.WidestText
+                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                    // column, its words end in "…" rather than being cut.
+                    implicitWidth: Math.ceil(Math.max(...typeBox.model.map(c => typeBoxMetrics.advanceWidth(c.text)))) + 13 + typeBox.leftPadding + typeBox.rightPadding
+                    spacing: 4
                     textRole: "text"
                     valueRole: "value"
+                    contentItem: Label {
+                        leftPadding: 12
+                        rightPadding: 1
+                        text: typeBox.displayText
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        font: typeBox.font
+                        color: typeBox.palette.text
+                    }
+
+                    FontMetrics {
+                        id: typeBoxMetrics
+
+                        font: typeBox.font
+                    }
                     model: [{ value: "all", text: page.sioul.text("note-type-all") }, { value: "text", text: page.sioul.text("note-type-text") }, { value: "sound", text: page.sioul.text("note-type-sound") }, { value: "pdf", text: page.sioul.text("note-type-pdf") }, { value: "other", text: page.sioul.text("note-type-other") }]
                     currentIndex: Math.max(0, typeBox.indexOfValue(page.typed))
                     Accessible.name: page.sioul.text("note-type")
@@ -832,6 +870,8 @@ Item {
                                 objectName: "noteFoundLine"
                                 visible: text !== ""
                                 Layout.fillWidth: true
+                                // It wraps in the row's width: its own, unwrapped, asks for none.
+                                Layout.preferredWidth: 0
                                 text: row.heading || row.folder ? "" : row.modelData.note.line || ""
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap

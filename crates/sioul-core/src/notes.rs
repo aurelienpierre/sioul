@@ -1053,9 +1053,19 @@ pub struct Found<'a> {
     pub line: String,
 }
 
-/// A text, its case and accents aside (`text::fold`, one character for one).
+/// A text, its case and accents aside (`text::fold_char`, one character for
+/// one). Most of a note's characters are ASCII: those are lowered as they
+/// are, all at once when the whole text is, the others folded one by one
+/// (folding is most of the search's time: docs/tasks.md, "Notes").
 fn folded(text: &str) -> String {
-    text.chars().map(crate::text::fold_char).collect()
+    if text.is_ascii() {
+        return text.to_ascii_lowercase();
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        out.push(if c.is_ascii() { c.to_ascii_lowercase() } else { crate::text::fold_char(c) });
+    }
+    out
 }
 
 /// The words of a query, folded.

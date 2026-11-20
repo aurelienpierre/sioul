@@ -401,6 +401,16 @@ Item {
             tryVerify(() => named(page, "noteNoneFound").visible, 1000, "nothing found: said")
         }
 
+        // A box keeps one width whatever is chosen in it: the line does not move.
+        function test_a_box_keeps_its_width() {
+            const box = named(page, "noteShow")
+            const before = box.implicitWidth
+            choose("noteShow", 2)
+            tryVerify(() => page.showing === "created")
+            compare(box.implicitWidth, before)
+            compare(box.contentItem.text, "Created")
+        }
+
         // Show and Type stay as they were left when the page is made again (a restart).
         function test_the_choices_are_kept_when_the_page_is_made_again() {
             choose("noteShow", 2)
@@ -439,7 +449,8 @@ Item {
             makeAgain()
             const line = named(page, "noteChoices")
             const column = line.parent
-            for (const width of [412, 1280]) {
+            // 884: beside the places' names in a window 1100 wide, a note open, the column at its narrowest.
+            for (const width of [412, 1280, 884]) {
                 root.width = width
                 fakeWindow.compact = width < 700
                 if (width > 700)
@@ -448,6 +459,8 @@ Item {
                 for (const box of [named(page, "noteShow"), named(page, "noteType")]) {
                     verify(box.visible, box.objectName + " shown")
                     verify(rightOf(box) <= rightOf(column) + 0.5, box.objectName + " ends at " + rightOf(box) + ", past its column at " + rightOf(column) + " (" + width + ")")
+                    const words = box.contentItem
+                    verify(words.width - words.leftPadding - words.rightPadding >= words.contentWidth - 0.5 || words.truncated, box.objectName + "'s words whole, or ended with an ellipsis (" + width + ")")
                 }
                 if (width === 412) {
                     verify(line.named, "Voir and Type said on the phone")
