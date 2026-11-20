@@ -430,8 +430,8 @@ public final class ShareActivity extends Activity
         }
     }
 
-    /** A file's name as its app gives it, else the end of its address. */
-    private static String name(ContentResolver resolver, Uri uri)
+    /** A file's name as its app gives it, else the end of its address (a file chosen in a dialog too: Chosen). */
+    static String name(ContentResolver resolver, Uri uri)
     {
         try (Cursor row = resolver.query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
             if (row != null && row.moveToFirst()) {
@@ -489,7 +489,7 @@ public final class ShareActivity extends Activity
     }
 
     /** Why it failed, in the system's words, without Java's class names. */
-    private static String why(Throwable e)
+    static String why(Throwable e)
     {
         String message = e.getMessage();
         return message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message.trim();
@@ -519,7 +519,7 @@ public final class ShareActivity extends Activity
     }
 
     /** The type the system says of an address, or null. */
-    private static String typeOf(Context app, Uri uri)
+    static String typeOf(Context app, Uri uri)
     {
         try {
             return app.getContentResolver().getType(uri);
@@ -645,9 +645,10 @@ public final class ShareActivity extends Activity
     /**
      * What the address holds, {@code most} bytes at most, written to {@code file}
      * as it is read, a piece at a time (beside, then put in place: Rust never
-     * reads half a file).
+     * reads half a file). A file chosen in one of Sioul's dialogs is copied
+     * the same way (Chosen).
      */
-    private static void copy(Context app, Uri uri, int most, File file) throws IOException
+    static void copy(Context app, Uri uri, int most, File file) throws IOException
     {
         File folder = file.getParentFile();
         if (folder != null && !folder.isDirectory() && !folder.mkdirs())
