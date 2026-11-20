@@ -36,6 +36,8 @@ SafeDialog {
     property var offer: ({ name: "", host: "", from: "", waits: "", program: false, caution: "", places: [], first: "downloads", folder: "" })
     // Whether the link to refuse every file from this site shows.
     property bool canRefuseSite: false
+    // Each place's button by its id, as the rows made them (for the arrows).
+    property var radios: ({})
     // The place chosen here: "downloads", "folder", "notes", "papers", "letters".
     property string place: "downloads"
     // Why the file could not start, from its page; "" none.
@@ -96,10 +98,10 @@ SafeDialog {
             at = (at + step + places.length) % places.length
             if (places[at].enabled) {
                 card.place = places[at].id
-                const row = placeRows.itemAt(at)
-                if (row) {
-                    row.radio.checked = true
-                    row.radio.forceActiveFocus()
+                const radio = card.radios[places[at].id]
+                if (radio) {
+                    radio.checked = true
+                    radio.forceActiveFocus()
                 }
                 return
             }
@@ -239,15 +241,12 @@ SafeDialog {
                     id: places
                 }
                 Repeater {
-                    id: placeRows
-
                     model: card.offer.places || []
 
                     delegate: ColumnLayout {
                         id: choice
 
                         required property var modelData
-                        property alias radio: radio
 
                         Layout.fillWidth: true
                         spacing: 0
@@ -256,6 +255,7 @@ SafeDialog {
                             id: radio
 
                             objectName: "downloadPlace:" + choice.modelData.id
+                            Component.onCompleted: card.radios[choice.modelData.id] = radio
                             Layout.fillWidth: true
                             ButtonGroup.group: places
                             enabled: choice.modelData.enabled === true
