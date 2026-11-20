@@ -851,6 +851,30 @@ pub struct Attention {
     cells: [[Level; 9]; ROWS],
     sources: BTreeMap<String, [Level; 9]>,
     names: BTreeMap<String, String>,
+    /// Your people's mail and messages rows that read Safe's as it stands,
+    /// each while it is not written (`follows`; review M9).
+    follows: [bool; 2],
+}
+
+/// Your people's rows that read Safe's as it stands while they are not
+/// written (review M9 of 20 November 2026): mail's and messages', by their
+/// place in `Attention::follows`. "As Safe" means as Safe is now, tuned by
+/// hand or by a preset, so that someone who was Safe yesterday loses nothing
+/// today; their calls ring at every time, as shipped, a row of their own.
+fn follower(row: Row) -> Option<usize> {
+    match row {
+        Row::People(Channel::Mail, Person::People) => Some(0),
+        Row::People(Channel::Messages, Person::People) => Some(1),
+        _ => None,
+    }
+}
+
+/// The row of Your people that follows this Safe row, mail's or messages'.
+fn following(row: Row) -> Option<Row> {
+    match row {
+        Row::People(channel @ (Channel::Mail | Channel::Messages), Person::Safe) => Some(Row::People(channel, Person::People)),
+        _ => None,
+    }
 }
 
 impl Default for Attention {
@@ -868,18 +892,24 @@ impl Attention {
                 cells[row.index()][column.index()] = usual(row, column);
             }
         }
-        Attention { cells, sources: BTreeMap::new(), names: BTreeMap::new() }
+        Attention { cells, sources: BTreeMap::new(), names: BTreeMap::new(), follows: [true; 2] }
     }
 
     /// As the configuration says: the usual cells; while no `[attention]` is
     /// written, what the older keys changed (`seeded`); then each row's words.
     /// A fixed cell, a value not offered there and a word not understood are
     /// left aside; of two words for one column, the later counts.
+    /// Your people's mail and messages read Safe's as it stands while they
+    /// are not written (`follows`, review M9).
     pub fn of(config: &Config) -> Attention {
         let Some(settings) = config.attention.as_ref() else { return seeded(config) };
         let mut attention = Attention::usual();
         for row in Row::ALL {
-            for (column, level) in settings.words(&row.id()).unwrap_or_default().iter().filter_map(|w| word(w)) {
+            let words = settings.words(&row.id());
+            if words.is_some() {
+                attention.unfollow(row);
+            }
+            for (column, level) in words.unwrap_or_default().iter().filter_map(|w| word(w)) {
                 let _ = attention.set(row, column, level);
             }
         }
@@ -905,6 +935,20 @@ impl Attention {
         self.cells[row.index()][column.index()]
     }
 
+    /// Whether this row reads Safe's as it stands, not written (review M9):
+    /// Your people's mail or messages while nobody changed them.
+    pub fn follows(&self, row: Row) -> bool {
+        follower(row).is_some_and(|i| self.follows[i])
+    }
+
+    /// Your people's row made theirs, written whole from now on even where
+    /// it says what Sioul ships: the person changed it (review M9).
+    pub fn unfollow(&mut self, row: Row) {
+        if let Some(i) = follower(row) {
+            self.follows[i] = false;
+        }
+    }
+
     /// A cell changed; refused when it is fixed, or when the value is not one
     /// it may take (`choices`).
     pub fn set(&mut self, row: Row, column: Column, level: Level) -> Result<(), String> {
@@ -919,6 +963,11 @@ impl Attention {
             return Err(format!("attention.{}: {}: {}", row.id(), column.id(), offered.join(", ")));
         }
         self.cells[row.index()][column.index()] = level;
+        // Your people's row changed: theirs from now on; Safe's: theirs follows while not written (M9).
+        self.unfollow(row);
+        if let Some(people) = following(row).filter(|people| self.follows(*people)) {
+            self.cells[people.index()][column.index()] = level;
+        }
         Ok(())
     }
 
@@ -942,9 +991,11 @@ impl Attention {
     }
 
     /// `changes_from` over `rows` alone (the rows a page shows: review R3,
-    /// the calls' rows among them since What comes when shows them again).
+    /// the calls' rows among them since What comes when shows them again);
+    /// Your people's row that follows Safe's in both counts no change of its
+    /// own, Safe's counted already (review M9).
     pub fn changes_in(&self, other: &Attention, rows: &[Row]) -> usize {
-        rows.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        rows.iter().filter(|r| !screened(**r) && !(self.follows(**r) && other.follows(**r))).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -1880,18 +1931,15 @@ impl Preset {
         let mut matrix = Attention::usual();
         let changes: &[(Row, &[Column], Level)] = match self {
             Preset::Usual => &[],
-            // Your people's mail and messages go as your safe senders' (their usual cells are
-            // Safe's: decision 5 of 20 November 2026), never louder than them.
+            // Your people's mail and messages go as your safe senders' (their rows follow Safe's
+            // while not written: review M9), never louder than them; a preset writes none of theirs.
             Preset::Quieter => &[
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
-                (Row::People(Channel::Mail, Person::People), &[Leisure, Meals], Quiet),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Groups), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
-                (Row::People(Channel::Messages, Person::People), &[Free], Later),
                 // Under do-not-disturb, every text held, as before the shade (decision 13).
                 (Row::People(Channel::Messages, Person::Safe), &[Dnd], Later),
-                (Row::People(Channel::Messages, Person::People), &[Dnd], Later),
                 (Row::People(Channel::Messages, Person::Neutral), &[Dnd], Later),
                 (Row::People(Channel::Messages, Person::Groups), &[Dnd], Later),
                 (Row::Own(Kind::Dates), &[Leisure, Meals], Later),
@@ -2253,6 +2301,7 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
             return Err(screened_refusal(key));
         }
         let ticked: Vec<Column> = words.iter().filter_map(|w| Column::read(w)).collect();
+        attention.unfollow(row);
         for column in [Column::Work, Column::Admin, Column::Leisure, Column::Meals, Column::Sleep, Column::Pause] {
             let comes = matches!(attention.cell(row, column), Level::Now | Level::Quiet);
             let level = match (ticked.contains(&column), comes) {
@@ -2282,6 +2331,8 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     if screened(row) {
         return Err(screened_refusal(key));
     }
+    // Your people's row named: theirs from now on, even where it says what Safe says (review M9).
+    attention.unfollow(row);
     for text in words {
         let (column, level) = word(text).ok_or_else(|| format!("{key}: {text}: not understood"))?;
         attention.set(row, column, level)?;
@@ -2303,6 +2354,7 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9]
             if screened(*row) {
                 return Err(screened_refusal(&format!("attention.{}", row.id())));
             }
+            attention.unfollow(*row);
             for (column, level) in Column::ALL.iter().zip(cells) {
                 if let Some(level) = level {
                     attention.set(*row, *column, *level)?;
@@ -2340,6 +2392,9 @@ pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), 
 
 /// `rows` written as `attention` has them, each whole or taken out when
 /// usual; the first time, every row that is not usual too, and the older keys out.
+/// Your people's mail and messages are taken out while they follow Safe's,
+/// and once theirs written whole, even where they say what Sioul ships
+/// (review M9).
 fn write(path: &Path, config: &Config, attention: &Attention, rows: &[Row]) -> Result<(), String> {
     write_with(path, config, attention, rows, &[])
 }
@@ -2359,7 +2414,10 @@ fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row],
         .filter(|r| !matches!(r, Row::People(_, Person::Blocked)))
         .map(|row| {
             let attention = if screened(*row) { &now } else { attention };
-            let same = Column::ALL.iter().all(|c| attention.cell(*row, *c) == usual.cell(*row, *c));
+            if attention.follows(*row) {
+                return (row.id(), None);
+            }
+            let same = follower(*row).is_none() && Column::ALL.iter().all(|c| attention.cell(*row, *c) == usual.cell(*row, *c));
             (row.id(), (!same).then(|| attention.words(*row)))
         })
         .collect();
@@ -4220,6 +4278,66 @@ mod tests {
         assert_eq!(text(&texts, by_hand.judge_number("01 99 00 00 08"), &night), Level::Now, "a text from her number on Safe by hand: Your people's row");
         let restricted = Senders { restricted: crate::porch::SenderList::parse("tel:+33199000008"), safe: crate::porch::SenderList::default(), ..by_hand.clone() };
         assert_eq!(text(&texts, restricted.judge_number("01 99 00 00 08"), &night), Level::Later, "on Restricted by hand: the restriction wins");
+    }
+
+    /// Review M9: while Your people's mail and messages rows are not written,
+    /// they read Safe's as it stands, tuned by hand or by a preset, in every
+    /// reader: the pipeline, the behaviours' reading, the changes counted
+    /// (once), a preset; tuning Safe writes none of theirs; once the person
+    /// changes theirs, it is written whole, even as Sioul ships it, and stays
+    /// theirs; a preset takes it out again, "as Safe" being what a preset
+    /// says of them. Their calls keep their own row, as shipped.
+    #[test]
+    fn your_people_read_safe_s_rows_until_their_own_are_written() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-follow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|s| s.to_string()).collect());
+        let read = || Attention::of(&Config::load(&path).unwrap());
+        let same_as_safe = |a: &Attention| [Channel::Mail, Channel::Messages].iter().all(|c| Column::ALL.iter().all(|col| a.cell(Row::People(*c, Person::People), *col) == a.cell(Row::People(*c, Person::Safe), *col)));
+        // Safe tuned by hand: mail at once in sleep (shown), messages at once at night.
+        apply(&path, &Config::load(&path).unwrap(), "attention.mail.safe", &words(&["leisure:quiet"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.safe", &words(&["sleep"])).unwrap();
+        let tuned = read();
+        assert!(tuned.follows(row("mail.people")) && tuned.follows(row("messages.people")) && !tuned.follows(row("calls.people")));
+        assert!(same_as_safe(&tuned), "as Safe is now");
+        assert_eq!((tuned.cell(row("messages.people"), Column::Sleep), tuned.cell(row("mail.people"), Column::Leisure)), (Level::Now, Level::Quiet));
+        assert_eq!(tuned.cell(row("calls.people"), Column::Sleep), Level::Now, "their calls: their own row");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("people"), "tuning Safe writes none of theirs: {text}");
+        // The pipeline: someone who was Safe yesterday loses nothing today.
+        let night = Now::time(Column::Sleep);
+        let message = |a: &Attention, circle: bool| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Safe, circle, group: false, always: false }), &night).level;
+        assert_eq!((message(&tuned, true), message(&tuned, false)), (Level::Now, Level::Now));
+        // The behaviours' reading; the changes counted once (Safe's two cells).
+        for channel in crate::behaviours::CHANNELS {
+            assert_eq!(crate::behaviours::reading(&tuned, channel, crate::behaviours::Circle::People), crate::behaviours::reading(&tuned, channel, crate::behaviours::Circle::Safe), "{channel:?}");
+        }
+        assert_eq!(tuned.changes_from(&Attention::usual()), 2, "Safe's, once");
+        // A preset: theirs as its Safe, none written.
+        apply_preset(&path, &Config::load(&path).unwrap(), Preset::Quieter).unwrap();
+        let quieter = read();
+        assert!(same_as_safe(&quieter) && quieter == Preset::Quieter.matrix(), "Quieter, current");
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("people"));
+        // Theirs changed: written whole, then Safe's changes move them no more.
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.people", &words(&["free"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.safe", &words(&["work:later"])).unwrap();
+        let theirs = read();
+        assert!(!theirs.follows(row("messages.people")) && theirs.follows(row("mail.people")));
+        assert_eq!((theirs.cell(row("messages.people"), Column::Work), theirs.cell(row("messages.safe"), Column::Work)), (Level::Now, Level::Later));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("\"messages.people\""));
+        // Chosen as Sioul ships it on their line: still theirs, written as such.
+        apply_rows(&path, &Config::load(&path).unwrap(), &[(row("mail.people"), Column::ALL.map(|c| Some(usual(row("mail.people"), c))))]).unwrap();
+        let chosen = read();
+        assert!(!chosen.follows(row("mail.people")) && std::fs::read_to_string(&path).unwrap().contains("\"mail.people\""), "theirs, even as shipped");
+        // As Sioul does now: theirs taken out, following Safe again.
+        apply_preset(&path, &Config::load(&path).unwrap(), Preset::Usual).unwrap();
+        let back = read();
+        assert!(back.follows(row("mail.people")) && back.follows(row("messages.people")) && back == Attention::usual());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("people"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// What 0.0.12 reads of `[attention]`, word for word but its enums

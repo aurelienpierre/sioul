@@ -1552,6 +1552,15 @@ mod tests {
             worded(line["label"].as_str().unwrap(), language);
             said_well(line["help"].as_str().unwrap(), language);
             assert_eq!(line["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect::<Vec<_>>(), ["awake", "awake"], "as Safe until changed");
+            // Review M9: as Safe is now, tuned by a preset or by hand, in the page's line and its table.
+            let quieter = Preset::Quieter.matrix();
+            let tuned = people(&quieter, Reach::default());
+            let values = |id: &str| tuned["rows"].as_array().unwrap().iter().find(|r| r["id"] == id).unwrap()["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+            assert_eq!(values("people"), values("safe"), "{language}");
+            assert_ne!(values("safe"), ["awake", "awake"], "{language}: Safe tuned");
+            let grid = attention::grid(&quieter, tr(), &table_rows(false), Preset::Quieter);
+            let cells = |id: &str| grid.rows.iter().find(|r| r.id == id).map(|r| r.cells.iter().map(|c| c.value.clone()).collect::<Vec<_>>()).unwrap();
+            assert_eq!(cells("mail.people"), cells("mail.safe"), "What comes when: theirs as Safe's");
             let circle = &page["circle"];
             worded(circle["title"].as_str().unwrap(), language);
             said_well(circle["help"].as_str().unwrap(), language);
