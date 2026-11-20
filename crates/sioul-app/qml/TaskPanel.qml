@@ -1548,6 +1548,15 @@ Panel {
                 Layout.fillWidth: true
                 spacing: 4
 
+                // The hours it answers the phone, for a call, when its card has them.
+                Label {
+                    visible: officeFollows.office !== null && officeFollows.office.phone === true
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("hours-phone-title")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
                 Label {
                     objectName: "taskOfficeNow"
                     Layout.fillWidth: true

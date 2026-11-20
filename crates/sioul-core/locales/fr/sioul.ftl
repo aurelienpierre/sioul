@@ -10291,3 +10291,4 @@ hours-task-call = Appeler { $name }
 loss-hours = ses horaires d’ouverture (des lignes propres à Sioul, que Google pourrait ne pas garder)
 hours-sources-both = { $directory } et { $map }
 hours-map-credit = © les contributeurs d’OpenStreetMap
+hours-source-label-directory = L’annuaire de l’administration (service-public.gouv.fr)

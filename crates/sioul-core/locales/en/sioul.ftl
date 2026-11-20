@@ -9900,3 +9900,4 @@ hours-task-call = Call { $name }
 loss-hours = its opening hours (lines of Sioul's own, which Google may not keep)
 hours-sources-both = { $directory } and { $map }
 hours-map-credit = © OpenStreetMap contributors
+hours-source-label-directory = The administration's directory (service-public.gouv.fr)

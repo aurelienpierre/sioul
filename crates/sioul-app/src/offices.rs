@@ -269,7 +269,7 @@ pub(crate) fn look_up(qt: &QtThread, key: &str, asked: &str) {
             .into_iter()
             .map(|f| {
                 let lines = opening::day_lines(&opening::parse(&f.hours).windows, tr());
-                let source_name = tr().text(if f.source == opening::DIRECTORY { "hours-source-name-directory" } else { "hours-source-name-map" }, None);
+                let source_name = tr().text(if f.source == opening::DIRECTORY { "hours-source-label-directory" } else { "hours-source-name-map" }, None);
                 FoundView { found: f, lines, source_name }
             })
             .collect();
