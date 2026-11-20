@@ -2345,6 +2345,13 @@ SioulWindow {
                     if (!window.moment.hours)
                         budgetsPage.showBank()
                 },
+                // The second account's last movements unfolded, each saying where it went and why.
+                () => {
+                    if (!window.moment.hours) {
+                        budgetsPage.bankNow().unfold("paypal")
+                        budgetsPage.showBank()
+                    }
+                },
                 () => {},
                 () => {
                     if (!window.moment.hours)
@@ -2385,6 +2392,8 @@ SioulWindow {
                     window.page = 5
                 },
                 () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.startsWith("Iris")) || contactsPage.shown.contacts[0]).key),
+                () => {},
+                // Held a moment more: on a busy computer, the card was taken half filled.
                 () => {},
                 () => grabber.save("contacts"),
                 // Notes as folders, the project's open.
@@ -2451,6 +2460,13 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("accounts"),
+                // Settings, its tabs across the window, on the first.
+                () => {
+                    window.page = 12
+                    parametersPage.open("look")
+                },
+                () => {},
+                () => grabber.save("settings-tabs"),
                 () => window.showParameters("attention"),
                 () => {},
                 () => {},
@@ -5161,6 +5177,15 @@ SioulWindow {
                 () => mailPage.scrollSettings("spam.actions"),
                 () => {},
                 () => grabber.saveWindow("spam-settings"),
+                // The panel alone, its background included (the guide's picture): the pop-up's
+                // own item, the overlay's child that holds the setting.
+                () => {
+                    let item = grabber.named(frame.Overlay.overlay, "setting:spam.actions")
+                    while (item !== null && item.parent !== null && item.parent !== frame.Overlay.overlay)
+                        item = item.parent
+                    if (item !== null)
+                        item.grabToImage(result => result.saveToFile(grabber.folder + "/spam-settings-panel.png"))
+                },
                 () => mailPage.scrollSettings("spam.filter"),
                 () => {},
                 () => grabber.saveWindow("spam-training"),
@@ -5176,6 +5201,8 @@ SioulWindow {
                 () => porchPage.openSpam(""),
                 () => {},
                 () => porchPage.showReasons(),
+                // The Porch's column, narrower beside the message, scrolled to the queue again.
+                () => porchPage.scrollToLane("review"),
                 () => {},
                 () => grabber.save("spam-reader"),
                 () => window.close()
