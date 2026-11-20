@@ -3765,9 +3765,14 @@ SioulWindow {
             // Personal with a group's row, then the Always through list saying
             // where each is starred; on a phone, this device stood in as the phone, its card's
             // sections unfolded one by one: Calls, what Android must allow, the restricted settings'
-            // three steps (`phonecard::demo`).
+            // three steps (`phonecard::demo`). First, the tab as it opens, each card closed, this
+            // device beside a stand-in of the other kind, then this device's card with its Details
+            // opened (design of 20 November 2026: a short card, its details folded).
             property string phonesId: ""
             function phonesFold(name, open) {
+                // A phone's sections are in its card's Details: opened first.
+                if (grabber.phonesId !== "")
+                    parametersPage.devices.detailsOf(grabber.phonesId)
                 const fold = grabber.named(parametersPage, name)
                 if (fold)
                     fold.open = open
@@ -3795,6 +3800,30 @@ SioulWindow {
                     devices.view = Object.assign({}, devices.view, { on: true, rows: mine.concat([phone]) })
                 }
             }
+            // The tab with this device and one of the other kind: on a computer, the stand-in phone
+            // ("phone-id"); on a phone's layout, this device as the phone and a computer stood in.
+            function devicesShow() {
+                const devices = parametersPage.devices
+                devices.reloadAll()
+                const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                const mine = (devices.view.rows || []).filter(row => row.here === true)
+                if (!window.phoneGrab) {
+                    grabber.phonesShow(false)
+                    return
+                }
+                const phone = mine.map(row => Object.assign({}, row, { form: "phone", form_words: sioul.text("set-device-kind-phone") }))
+                const desk = { id: "desk-id", here: false, name: grabber.demoFrench ? "Bureau" : "Study desk", given: grabber.demoFrench ? "Bureau" : "Study desk", system: "noa-desk", form: "computer", form_words: sioul.text("set-device-kind-computer"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "work", area_words: "", parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: false }
+                devices.view = Object.assign({}, devices.view, { on: true, rows: phone.concat([desk]) })
+            }
+            // This device's card, its Details opened or closed again.
+            function devicesHere(open) {
+                const devices = parametersPage.devices
+                const here = (devices.rows || []).find(row => row.here === true)
+                const card = here ? devices.detailsOf(here.id) : null
+                const fold = card ? grabber.named(card, "deviceDetails") : null
+                if (fold)
+                    fold.open = open
+            }
             readonly property var phonesSteps: [
                 () => {
                     if (!window.phoneGrab) {
@@ -3803,6 +3832,16 @@ SioulWindow {
                     }
                     window.showParameters("devices")
                 },
+                () => {},
+                // The tab as it opens: every card closed, short.
+                () => grabber.devicesShow(),
+                () => {},
+                () => grabber.save("devices-closed"),
+                // One card's Details: this device's (on a phone, with its sections, each folded).
+                () => grabber.devicesHere(true),
+                () => {},
+                () => grabber.save("devices-details"),
+                () => grabber.devicesHere(false),
                 () => {},
                 // On a computer, the phone's card while its line says nothing: what it does today, Varies.
                 () => {
@@ -5146,6 +5185,13 @@ SioulWindow {
                     const phone = { id: "phone-id", here: false, name: sioul.text("device-the-phone") + " (Moss)", given: "", system: sioul.text("device-the-phone") + " (Moss)", form: "phone", form_words: sioul.text("set-device-kind-phone"), code: "closed", state: sioul.textWith("devices-now-closed", "when", when), notes: [], opened: when, shared: when, version: "", older: false, build: "", area: "", area_words: sioul.text("devices-for-all"), parts: [], parts_words: sioul.text("devices-parts-unsaid"), off: false, forget: false, forget_now: true }
                     devices.view = { on: true, rows: own.concat([phone]) }
                 },
+                // Forget it now is in the phone's Details, last: opened.
+                () => {
+                    const devices = parametersPage.devices
+                    if (devices && !window.phoneGrab)
+                        devices.detailsOf("phone-id")
+                },
+                () => {},
                 () => grabber.save(window.phoneGrab ? "devices-phone" : "devices-forget-now"),
                 () => window.close()
             ]
