@@ -46,6 +46,13 @@ Item {
     // their width would follow what their filters ask, half of it each, without end.
     readonly property int half: Math.floor((search.width - 6) / 2)
 
+    // A filter's width: as wide as its longest choice, `most` at most, so that the line holds them
+    // all at a computer's width; on a narrow width half a line, or the whole of it when its words
+    // need more ("Avec ou sans date demandée" was cut in half a phone's line).
+    function fit(wanted, most) {
+        return search.narrow ? (wanted <= search.half ? search.half : search.width) : Math.min(wanted, most)
+    }
+
     // The query as the core reads it (`thingsearch::Query`).
     property string words: ""
     property string project: ""
@@ -317,7 +324,8 @@ Item {
 
                 readonly property var choices: [{ id: "", label: search.sioul.text("things-any-project") }, { id: ":none", label: search.sioul.text("things-no-project") }].concat(search.shown.projects || [])
 
-                width: search.narrow ? search.half : 180
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 240)
                 model: choices.map(c => search.theme.plain(c.label))
                 currentIndex: Math.max(0, choices.findIndex(c => c.id === search.project))
                 onActivated: index => {
@@ -330,7 +338,8 @@ Item {
 
                 readonly property var choices: [{ id: "", label: search.sioul.text("things-any-kind") }, { id: ":none", label: search.sioul.text("things-no-kind") }].concat(search.shown.kinds || [])
 
-                width: search.narrow ? search.half : 170
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 200)
                 model: choices.map(c => search.theme.plain(c.label))
                 currentIndex: Math.max(0, choices.findIndex(c => c.id === search.kind))
                 onActivated: index => {
@@ -343,7 +352,8 @@ Item {
 
                 readonly property var choices: [{ id: "", label: search.sioul.text("things-any-category") }, { id: ":none", label: search.sioul.text("things-no-category") }].concat((search.shown.categories || []).map(c => ({ id: c, label: c })))
 
-                width: search.narrow ? search.half : 180
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 220)
                 model: choices.map(c => search.theme.plain(c.label))
                 currentIndex: Math.max(0, choices.findIndex(c => c.id === search.category))
                 onActivated: index => {
@@ -354,7 +364,8 @@ Item {
             PlainComboBox {
                 objectName: "thingsDates"
 
-                width: search.narrow ? search.half : 150
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 200)
                 model: [search.sioul.text("things-anytime"), search.sioul.text("things-range")]
                 currentIndex: search.ranged ? 1 : 0
                 onActivated: index => {
@@ -395,7 +406,8 @@ Item {
                 readonly property var ways: ["", "yes", "no"]
 
                 visible: search.asksEvents
-                width: search.narrow ? search.half : 200
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 240)
                 model: [search.sioul.text("things-guests-any"), search.sioul.text("things-guests-yes"), search.sioul.text("things-guests-no")]
                 currentIndex: Math.max(0, ways.indexOf(search.guests))
                 onActivated: index => {
@@ -422,7 +434,8 @@ Item {
                 readonly property var ways: ["", "no", "yes"]
 
                 visible: search.asksTasks
-                width: search.narrow ? search.half : 170
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 200)
                 model: [search.sioul.text("things-done-any"), search.sioul.text("things-done-no"), search.sioul.text("things-done-yes")]
                 currentIndex: Math.max(0, ways.indexOf(search.done))
                 onActivated: index => {
@@ -436,7 +449,8 @@ Item {
                 readonly property var ways: ["", "yes", "no"]
 
                 visible: search.asksTasks
-                width: search.narrow ? search.half : 230
+                implicitContentWidthPolicy: ComboBox.WidestText
+                width: search.fit(implicitWidth, 280)
                 model: [search.sioul.text("things-due-any"), search.sioul.text("things-due-yes"), search.sioul.text("things-due-no")]
                 currentIndex: Math.max(0, ways.indexOf(search.deadline))
                 onActivated: index => {

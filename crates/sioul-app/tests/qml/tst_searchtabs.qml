@@ -172,6 +172,16 @@ Item {
         function openTask(uid) {}
     }
 
+    // The window's font (SioulWindow.qml: 15 pixels), which the controls inside take: the
+    // widths are measured in it, never in the test runner's smaller default.
+    Control {
+        id: windowFont
+
+        width: 412
+        height: 860
+        font.pixelSize: 15
+    }
+
     Component {
         id: tasksComponent
 
@@ -296,14 +306,14 @@ Item {
             shell.railShown = true
         }
 
-        function tasksPage(width) {
-            const page = test.createTemporaryObject(tasksComponent, root, { width: width || 1000, height: 860 })
+        function tasksPage(width, parent) {
+            const page = test.createTemporaryObject(tasksComponent, parent || root, { width: width || 1000, height: 860 })
             test.waitForRendering(page)
             return page
         }
 
-        function agendaPage(width) {
-            const page = test.createTemporaryObject(agendaComponent, root, { width: width || 1000, height: 860 })
+        function agendaPage(width, parent) {
+            const page = test.createTemporaryObject(agendaComponent, parent || root, { width: width || 1000, height: 860 })
             test.waitForRendering(page)
             return page
         }
@@ -469,7 +479,7 @@ Item {
             mock.words = root.french
             shell.compact = true
             shell.railShown = false
-            for (const make of [() => tasksPage(412), () => agendaPage(412)]) {
+            for (const make of [() => tasksPage(412, windowFont), () => agendaPage(412, windowFont)]) {
                 const page = make()
                 page.mode = "search"
                 const search = searchOf(page)
@@ -485,6 +495,18 @@ Item {
                 for (const item of shown) {
                     const at = item.mapToItem(page, 0, 0)
                     verify(at.x >= -0.5 && at.x + item.width <= page.width + 0.5, (item.objectName || item.text) + ": " + at.x + " + " + item.width + " within " + page.width)
+                }
+                // A filter's words whole: never cut by its box ("Avec ou sans date demandée" was).
+                const boxes = root.all(search, c => c.visible && c.displayText !== undefined && c.contentItem)
+                verify(boxes.length >= 5, "the filters' boxes: " + boxes.length)
+                for (const box of boxes) {
+                    for (const text of [box.displayText].concat(box.model || [])) {
+                        box.displayText = text
+                        const field = box.contentItem
+                        const room = field.width - (field.leftPadding || 0) - (field.rightPadding || 0)
+                        verify(field.contentWidth <= room + 0.5, box.objectName + ": “" + text + "” " + field.contentWidth + " in " + room)
+                    }
+                    box.displayText = undefined
                 }
             }
         }

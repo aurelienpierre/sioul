@@ -2173,7 +2173,13 @@ SioulWindow {
             // found unticked in Agendas, the line under the results. Pictures alone, on a demo
             // profile (its agenda filter changed).
             readonly property var searchTabSteps: [
-                () => window.page = 1,
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1280
+                        window.height = 860
+                    }
+                    window.page = 1
+                },
                 () => {
                     const found = JSON.parse(sioul.findThings(JSON.stringify({ which: "tasks", done: false })) || "{}").found || []
                     const held = found.find(f => f.project_ids.length > 0)
