@@ -375,6 +375,8 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // A series: how it repeats ("Every week until Friday 26 June"), its next pause and when it resumes.
         "repeats": if o.recurring { crate::series::card_lines(&text).0 } else { String::new() },
         "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
+        // An event an extension brought (its UID's form alone says so): where it comes from.
+        "brought_by": sioul_core::extensions::uid_mark(&o.uid).map(|m| crate::backend::say("extension-event-from", &[("name", sioul_core::extensions::category(&m.extension))])).unwrap_or_default(),
         "own_answer": own_answer,
         "people": people,
         "geo": geo,

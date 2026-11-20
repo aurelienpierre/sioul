@@ -3883,6 +3883,7 @@ settings-tab-hours = Hours
 settings-tab-reminders = Reminders
 settings-tab-files = Sharing
 settings-tab-invoices = Invoices
+settings-tab-extensions = Extensions
 settings-tab-ai = AI agents
 # Settings on a phone: the list of sections, each with one line saying what it holds.
 settings-about-look = Language, colours, the places' names, passwords as you type.
@@ -3894,7 +3895,110 @@ settings-about-pauses = Free time and the pause: when work ends, what helps you,
 settings-about-files = Your devices in step, through a folder or a server, sealed; what each part carries.
 settings-about-devices = Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.
 settings-about-invoices = Who issues your invoices, their numbers, VAT, bank and legal lines.
+settings-about-extensions = Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.
 settings-about-ai = What AI agents may use, project by project.
+# Settings ▸ Extensions (docs/extensions.md): programs apart from Sioul, run in a sandbox, that bring an agenda.
+extensions-intro = An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable from a school's platform. Each runs apart, given only what its list says, and writes into a calendar of yours that you choose, its events marked as its own. Its list is signed: Sioul refuses one that is not.
+extensions-reading = Reading the list of extensions…
+extensions-none = No extension is offered yet.
+extensions-where = The list is read from { $address }, when this page opens and once a day while an extension is enabled.
+extensions-list-signature = The list of extensions was not read: its signature does not hold.
+extensions-list-older = The list of extensions was not read: it is older than the one this device took before.
+extensions-list-unread = The list of extensions could not be read.
+extension-brings-agenda = It brings an agenda: its events go into a calendar of yours that you choose, where you can share them.
+extension-sites = { $count ->
+        [one] It talks to one site: { $sites }.
+       *[other] It talks to { $count } sites: { $sites }.
+    }
+extension-keeps-sign-in = It keeps a sign-in on this device, in its keyring; you sign in on the site's own page.
+extension-keeps-no-sign-in = It keeps no sign-in.
+extension-needs-newer-sioul = It needs a newer Sioul.
+extension-never-ran = Enabled; it has not run yet.
+extension-ran = Last ran { $when }.
+extension-brought = Last ran { $when }: { $agendas ->
+        [one] one agenda
+       *[other] { $agendas } agendas
+    }, { $events ->
+        [one] one event
+       *[other] { $events } events
+    }.
+extension-running = Running now…
+extension-update-asks = Version { $version } asks for more than the one in use{ $signin ->
+        [yes] : a sign-in
+       *[no] {""}
+    }{ $sites ->
+        [none] {""}
+       *[other] { $signin ->
+            [yes] {" and "}
+           *[no] {": "}
+        }these sites: { $sites }
+    }. It waits for your yes; the version in use goes on meanwhile.
+extension-enable = Enable
+extension-sign-in = Sign in…
+extension-sign-in-again = Sign in again…
+extension-accept = Take the update
+extension-disable = Disable
+extension-remove = Remove…
+extension-remove-title = Remove { $name }?
+extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its lessons can stay in your calendars, or be taken out of them; the calendars themselves always stay.
+extension-remove-now = Remove
+extension-choose-title = Where do you sign in?
+extension-choose-filter = Search
+extension-enabled = { $name } is enabled.
+extension-not-enabled = { $name } could not be enabled: its file could not be downloaded, or is not the one its list names.
+extension-not-listed = It is no longer in the list.
+extension-disabled = { $name } no longer runs on this device; its sign-in and its lessons stay.
+extension-removed = { $name } is removed; its lessons are taken out of your calendars.
+extension-removed-kept = { $name } is removed; its lessons stay in your calendars.
+extension-removed-agendas-stay = { $name } is removed; some of its lessons could not be taken out of your calendars and stay.
+extension-removed-keyring = { $name } is removed; its sign-in could not be taken out of the keyring yet: Sioul tries again later.
+extension-updated = { $name } is now at version { $version }.
+extension-signed-in = Signed in. { $name } brings its agenda now.
+extension-sign-in-closed = The sign-in page for { $name } was closed.
+extension-sign-in-busy = Another sign-in page is open: finish it or close it first.
+extension-problem-sign-in = { $name } needs you to sign in again.
+extension-problem-unreachable = { $name } could not reach its service; it tries again later.
+extension-problem-refused = { $name }'s service refused: an account blocked, or a school that does not offer it.
+extension-problem-changed = { $name }'s service no longer answers as expected: an update of the extension is needed.
+extension-problem-keyring = { $name } could not reach the keyring.
+extension-problem-record = { $name } ran, but Sioul could not note it on this device (a full disk, or a folder it may not write); it waits three hours before running again.
+extension-problem-withdrawn = { $name } is no longer in the extensions' list: it no longer runs here. Remove it to forget its sign-in.
+extension-problem-other = { $name } met a problem; its log on this device says more.
+extension-stopped-time = { $name } stopped: it took too long.
+extension-stopped-memory = { $name } stopped: it asked for too much memory.
+extension-stopped-error = { $name } stopped: it ended in an error of its own.
+extension-stopped-nonsense = { $name } stopped: it answered something Sioul cannot read.
+extension-stopped-asks-more = { $name } stopped: it asks for more than its list says.
+extension-stopped-interface = { $name } stopped: it speaks another version of Sioul's interface.
+extension-stopped-unread = { $name } stopped: its file could not be read, or changed since it was checked.
+extension-stopped-removed = { $name } stopped: it was removed meanwhile.
+extension-leave-lessons = Leave its lessons in your calendars
+extension-problem-settings = { $name } wrote nothing: Sioul cannot read your settings file.
+extension-event-cancelled = Cancelled: { $title }
+extension-event-from-line = From { $name }, through Sioul: a change made here is replaced when { $name } changes this event.
+extension-event-from = From { $name }
+extension-agenda-choose = Choose the calendar its lessons go into: one of yours, which you can share with whom you like. Until then nothing is written.
+extension-agenda-gone = The calendar chosen for it is gone, or can no longer be written: nothing was written. Choose another.
+extension-agenda-too-large = Its lessons were not written: one of them, or all of them together, weigh more than Sioul takes.
+extension-agenda-unreadable = Its lessons were not written: they do not read as a calendar.
+extension-agenda-refused = Some of its lessons could not be written into { $calendar }; the extension's log on this device says how many.
+extension-agenda-read = In { $calendar }: { $lessons ->
+        [one] one lesson
+       *[other] { $lessons } lessons
+    }, read { $when }.
+extension-agenda-next = Its lessons go into { $calendar } at the next refresh.
+extension-agendas-wait = { $name } brought its agendas: choose, on its line in Settings ▸ Extensions, the calendar each one's lessons go into.
+extension-calendar-choose = Choose a calendar…
+extension-calendar-new = A new calendar on { $account }
+extension-calendar-new-here = A new calendar on this device only
+extension-calendar-for = The calendar for { $name }
+extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
+extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
+# An extension's sign-in page, on a computer: the site's name always in sight above the page.
+sign-in-window-title = Sign in on { $host }
+sign-in-site = You sign in on: { $host }
+sign-in-loading = The next page is on its way. It shows here once it has come, with its site above it.
+sign-in-not-shown = This page could not be shown. Close this window and press Sign in… again.
 ui-refresh-all = Refresh everything: mail, agenda, tasks, contacts (F5)
 ui-refreshing = Refreshing…
 # The column of the places, on the left of the window.

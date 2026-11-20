@@ -121,6 +121,10 @@ pub mod qobject {
         #[qproperty(QString, topic_groups)]
         // The Time page as last asked (`show_time_page`), made off the window's thread.
         #[qproperty(QString, time_view)]
+        // Settings ▸ Extensions as last made (`extensions::page`): what the signed list offers, this device's record of each.
+        #[qproperty(QString, extensions)]
+        // A sign-in page an extension asked for, on a computer (SignInWindow.qml): {open, watch, host}; "" for none.
+        #[qproperty(QString, sign_in_page)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -2795,6 +2799,39 @@ pub mod qobject {
         #[qinvokable]
         fn show_time_page(self: Pin<&mut Sioul>, period: &QString, anchor: &QString, project: &QString);
 
+        /// Settings ▸ Extensions shown: its view now (`extensions`), then the
+        /// signed list read off the window's thread (docs/extensions.md).
+        #[qinvokable]
+        fn extensions_page(self: Pin<&mut Sioul>);
+
+        /// Enable: the extension's file downloaded, checked against the signed list, kept.
+        #[qinvokable]
+        fn extension_enable(self: Pin<&mut Sioul>, id: &QString);
+
+        /// Sign in…, with what the person chose when the extension asked ("" at first): `extension_choices` may follow.
+        #[qinvokable]
+        fn extension_sign_in(self: Pin<&mut Sioul>, id: &QString, choice: &QString);
+
+        /// Disable: it no longer runs on this device; its sign-in and agendas stay.
+        #[qinvokable]
+        fn extension_disable(self: Pin<&mut Sioul>, id: &QString);
+
+        /// Remove: its sign-in forgotten, its file taken out; its agendas kept when `keep_agendas`.
+        #[qinvokable]
+        fn extension_remove(self: Pin<&mut Sioul>, id: &QString, keep_agendas: bool);
+
+        /// Yes to an update that asks for more than the version in use.
+        #[qinvokable]
+        fn extension_accept(self: Pin<&mut Sioul>, id: &QString);
+
+        /// The calendar an extension's agenda goes into: `choice` "new:<account>" or "place:<account/id>".
+        #[qinvokable]
+        fn extension_calendar(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, choice: &QString);
+
+        /// The sign-in page's word (SignInWindow.qml): the address it returned to, "" when closed.
+        #[qinvokable]
+        fn sign_in_returned(self: Pin<&mut Sioul>, address: &QString);
+
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
         fn note_time(self: Pin<&mut Sioul>, edit: &QString) -> QString;
@@ -3071,6 +3108,10 @@ pub mod qobject {
         /// The notification's "copy" button was pressed.
         #[qsignal]
         fn copy_requested(self: Pin<&mut Sioul>, text: QString);
+
+        /// An extension asks the person to choose before its sign-in (a platform): `choices` as JSON [{id, name}].
+        #[qsignal]
+        fn extension_choices(self: Pin<&mut Sioul>, id: QString, choices: QString);
 
         /// One page of the mailbox, as JSON (`mail::page_texts`): its rows from
         /// `start`, whether more follow; sent only when it changed (§6).
@@ -3397,6 +3438,8 @@ pub struct SioulRust {
     places_found: QString,
     topic_groups: QString,
     time_view: QString,
+    extensions: QString,
+    sign_in_page: QString,
     shared: Arc<Shared>,
 }
 
@@ -8095,6 +8138,8 @@ impl qobject::Sioul {
             }
             return;
         }
+        // The extensions enabled here: refreshed at start and every three hours, their list read once a day (docs/extensions.md).
+        crate::extensions::tick(&self.qt_thread());
         // Mail's topic presets start once, when the mail kept here is enough to judge (docs/topics.md).
         crate::topics::day_one_by_itself(&self.qt_thread(), &self.shared());
         // The mail kept here judged by the topics' table, a table that arrived the rest at the next looks.
@@ -8538,6 +8583,39 @@ impl qobject::Sioul {
 
     fn save_project(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
         QString::from(&crate::projects::save(&self.qt_thread(), &self.shared(), &id.to_string(), &edit.to_string()))
+    }
+
+    fn extensions_page(self: Pin<&mut Self>) {
+        crate::extensions::page(&self.qt_thread());
+    }
+
+    fn extension_enable(self: Pin<&mut Self>, id: &QString) {
+        crate::extensions::enable(&self.qt_thread(), &id.to_string());
+    }
+
+    fn extension_sign_in(self: Pin<&mut Self>, id: &QString, choice: &QString) {
+        let choice = choice.to_string();
+        crate::extensions::sign_in(&self.qt_thread(), &id.to_string(), (!choice.is_empty()).then_some(choice));
+    }
+
+    fn extension_disable(self: Pin<&mut Self>, id: &QString) {
+        crate::extensions::disable(&self.qt_thread(), &id.to_string());
+    }
+
+    fn extension_remove(self: Pin<&mut Self>, id: &QString, keep_agendas: bool) {
+        crate::extensions::remove(&self.qt_thread(), &id.to_string(), keep_agendas);
+    }
+
+    fn extension_accept(self: Pin<&mut Self>, id: &QString) {
+        crate::extensions::accept(&self.qt_thread(), &id.to_string());
+    }
+
+    fn extension_calendar(self: Pin<&mut Self>, id: &QString, agenda: &QString, choice: &QString) {
+        crate::extensions::choose_calendar(&self.qt_thread(), &self.shared(), &id.to_string(), &agenda.to_string(), &choice.to_string());
+    }
+
+    fn sign_in_returned(self: Pin<&mut Self>, address: &QString) {
+        crate::extensions::returned(&address.to_string());
     }
 
     fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {

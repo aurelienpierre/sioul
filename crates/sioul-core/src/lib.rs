@@ -174,6 +174,7 @@
 //! - [`duplicates`]: duplicates in the address books, found and cleaned when you ask.
 //! - [`overlaps`]: two events at once.
 //! - [`capabilities`]: what each kind of server keeps of a task or a contact.
+//! - [`extensions`]: programs apart from Sioul that bring an agenda from a service it does not speak: their signed list, their replies, this device's record of them.
 //!
 //! ## On a phone
 //!
@@ -253,6 +254,7 @@ pub mod titles;
 pub mod duplicates;
 pub mod einvoice;
 pub mod everywhere;
+pub mod extensions;
 pub mod folders;
 pub mod github;
 pub mod handed;

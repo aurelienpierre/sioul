@@ -111,6 +111,10 @@ fn main() {
         "qml/CallsLine.qml",
         "qml/AllowList.qml",
         "qml/RestrictedCard.qml",
+        // Settings ▸ Extensions (docs/extensions.md); an extension's sign-in page on a computer.
+        "qml/ExtensionsTab.qml",
+        "qml/SignInWindow.qml",
+        "qml/SignInSite.qml",
         "qml/MoveDialog.qml",
         "qml/MailSearch.qml",
         "qml/AreaFilter.qml",
@@ -262,7 +266,7 @@ fn main() {
         "qml/style/StyleRadioButton.qml",
         "qml/style/StyleSpinBox.qml",
     ];
-    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml", "qml/SignInWindow.qml", "qml/SignInSite.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
     // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
     // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.

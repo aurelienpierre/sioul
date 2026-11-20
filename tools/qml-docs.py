@@ -68,6 +68,7 @@ NAMED = {
     "ContactBatches": "settings",
     "PhoneCard": "settings", "CallsLine": "settings", "AllowList": "settings", "RestrictedCard": "settings", "CardFold": "settings",
     "SubscribeForm": "settings", "VacationsCalendars": "settings",
+    "ExtensionsTab": "settings", "SignInWindow": "windows", "SignInSite": "windows",
     "ActionButton": "controls", "AddressField": "controls", "AudioPlayer": "controls",
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",

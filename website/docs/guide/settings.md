@@ -171,6 +171,18 @@ from = "2026-01-01"
 
 Everything Settings ▸ Invoices shows is kept in that same table, `[invoice]`, which you can still read and change by hand: [the developers' notes](../dev/projects.md#invoices) list every key. The rates and thresholds are France's for 2026, as URSSAF and the tax administration publish them, each with its day: an update of Sioul brings the next ones, and yours stay over them.
 
+## Extensions {#extensions}
+
+An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable on a school platform. Settings ▸ Extensions lists what the extensions' signed list offers, and says for each, before you enable anything, what it brings, the sites it talks to and whether it keeps a sign-in.
+
+- **Enable** downloads its file and checks it against the signed list; **Sign in…** opens the site's own page in a window of Sioul's (on a phone, a screen of Sioul's), its name always shown above it: you type your password there, never in Sioul. That page shares nothing with your Sites, so signing in there never signs a site out. The sign-in stays in this device's keyring.
+- It then refreshes by itself every three hours. Each agenda it brings (a pupil's timetable each) goes into **a calendar of yours** that you choose on its line: a new one on one of your accounts, named after the pupil; one you already have; or a new one on this device only. Until you choose, nothing is written. Share that calendar with the other parent from Agenda ⚙ or from its server: they need no Sioul.
+- Sioul writes there only events it marks as the extension's: each carries the extension's name as its category ("Skolengo"), its description ends with where it comes from, and its card in Sioul says "From Skolengo". Nothing else in that calendar is ever read as the school's, changed or removed. A lesson changed at the school is written again; one that did not change is left as it is, notes added on it included; a cancelled one stays, its title "Cancelled: …", so that the free hour shows; one the school no longer gives is taken out; a day the platform could not answer changes nothing. Lessons are free time: they never mark you busy.
+- Its line says when it last ran, and for each agenda which calendar its lessons go into, how many and when they were read, or why nothing was written (a calendar gone or no longer writable: choose another on the same line). **Disable** stops it on this device and leaves everything; **Remove** forgets its sign-in and asks whether to leave its lessons in your calendars or to take them out. The calendars themselves always stay.
+- An extension runs apart from Sioul and is given only what its list says: the sites it names, its own entry in the keyring. An update that asks for more waits for your yes; one that asks for less applies at once. An extension taken out of the list stops, and its line says so.
+
+The extensions are unofficial: a service can change and stop one. [The developers' notes](../dev/extensions.md) describe the interface and every check.
+
 ## Each page's own settings
 
 One setting, one place. What belongs to a page is behind the ⚙ at the end of that page's first row:

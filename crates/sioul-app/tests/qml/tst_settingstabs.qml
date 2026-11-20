@@ -58,6 +58,7 @@ Item {
                 "settings-tab-files": "Sharing",
                 "settings-tab-devices": "Devices",
                 "settings-tab-invoices": "Invoices",
+                "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "AI agents",
                 "settings-about-look": "Language, colours, the places' names, passwords as you type.",
                 "settings-about-hours": "Working hours, hours for your admin, meals and the night, time off.",
@@ -68,6 +69,7 @@ Item {
                 "settings-about-files": "Your devices in step, through a folder or a server, sealed; what each part carries.",
                 "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.",
                 "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
+                "settings-about-extensions": "Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.",
                 "settings-about-ai": "What AI agents may use, project by project."
             },
             "fr": {
@@ -81,6 +83,7 @@ Item {
                 "settings-tab-files": "Partage",
                 "settings-tab-devices": "Appareils",
                 "settings-tab-invoices": "Factures",
+                "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "Agents d’IA",
                 "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie.",
                 "settings-about-hours": "Heures de travail, heures pour vos démarches, repas et nuit, congés.",
@@ -91,6 +94,7 @@ Item {
                 "settings-about-files": "Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.",
                 "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.",
                 "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
+                "settings-about-extensions": "Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.",
                 "settings-about-ai": "Ce que les agents d’IA peuvent utiliser, projet par projet."
             }
         })

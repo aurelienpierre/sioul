@@ -3916,6 +3916,7 @@ settings-tab-hours = Heures
 settings-tab-reminders = Rappels
 settings-tab-files = Partage
 settings-tab-invoices = Factures
+settings-tab-extensions = Extensions
 settings-tab-ai = Agents d’IA
 # Les paramètres sur un téléphone : la liste des sections, chacune avec une ligne qui dit ce qu’elle contient.
 settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la saisie.
@@ -3927,7 +3928,110 @@ settings-about-pauses = Temps libre et pause : quand le travail finit, ce qui 
 settings-about-files = Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.
 settings-about-devices = Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.
 settings-about-invoices = Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.
+settings-about-extensions = Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.
 settings-about-ai = Ce que les agents d’IA peuvent utiliser, projet par projet.
+# Paramètres ▸ Extensions (docs/extensions.md) : des programmes à part de Sioul, isolés, qui apportent un agenda.
+extensions-intro = Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’un élève sur la plateforme d’un établissement. Chacune tourne à part, avec seulement ce que sa liste lui donne, et écrit dans un de vos calendriers, que vous choisissez, ses évènements marqués comme les siens. Sa liste est signée : Sioul refuse une liste qui ne l’est pas.
+extensions-reading = Lecture de la liste des extensions…
+extensions-none = Aucune extension n’est proposée pour l’instant.
+extensions-where = La liste est lue depuis { $address }, à l’ouverture de cette page et une fois par jour tant qu’une extension est activée.
+extensions-list-signature = La liste des extensions n’a pas été lue : sa signature ne tient pas.
+extensions-list-older = La liste des extensions n’a pas été lue : elle est plus ancienne que celle que cet appareil a prise avant.
+extensions-list-unread = La liste des extensions n’a pas pu être lue.
+extension-brings-agenda = Elle apporte un agenda : ses évènements vont dans un de vos calendriers, que vous choisissez et pouvez partager.
+extension-sites = { $count ->
+        [one] Elle parle à un site : { $sites }.
+       *[other] Elle parle à { $count } sites : { $sites }.
+    }
+extension-keeps-sign-in = Elle garde une connexion sur cet appareil, dans son trousseau ; vous vous connectez sur la page du site lui-même.
+extension-keeps-no-sign-in = Elle ne garde aucune connexion.
+extension-needs-newer-sioul = Elle demande un Sioul plus récent.
+extension-never-ran = Activée ; elle n’a pas encore tourné.
+extension-ran = Dernier passage { $when }.
+extension-brought = Dernier passage { $when } : { $agendas ->
+        [one] un agenda
+       *[other] { $agendas } agendas
+    }, { $events ->
+        [one] un événement
+       *[other] { $events } événements
+    }.
+extension-running = En cours…
+extension-update-asks = La version { $version } demande plus que celle en service{ $signin ->
+        [yes] {" : une connexion"}
+       *[no] {""}
+    }{ $sites ->
+        [none] {""}
+       *[other] { $signin ->
+            [yes] {" et "}
+           *[no] {" : "}
+        }ces sites : { $sites }
+    }. Elle attend votre accord ; la version en service continue d’ici là.
+extension-enable = Activer
+extension-sign-in = Se connecter…
+extension-sign-in-again = Se reconnecter…
+extension-accept = Prendre la mise à jour
+extension-disable = Désactiver
+extension-remove = Retirer…
+extension-remove-title = Retirer { $name } ?
+extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses cours peuvent rester dans vos calendriers, ou en être retirés ; les calendriers eux-mêmes restent toujours.
+extension-remove-now = Retirer
+extension-choose-title = Où vous connectez-vous ?
+extension-choose-filter = Chercher
+extension-enabled = { $name } est activée.
+extension-not-enabled = { $name } n’a pas pu être activée : son fichier n’a pas pu être téléchargé, ou n’est pas celui que sa liste nomme.
+extension-not-listed = Elle n’est plus dans la liste.
+extension-disabled = { $name } ne tourne plus sur cet appareil ; sa connexion et ses cours restent.
+extension-removed = { $name } est retirée ; ses cours sont retirés de vos calendriers.
+extension-removed-kept = { $name } est retirée ; ses cours restent dans vos calendriers.
+extension-removed-agendas-stay = { $name } est retirée ; certains de ses cours n’ont pas pu être retirés de vos calendriers et restent.
+extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas encore pu être retirée du trousseau : Sioul réessaiera plus tard.
+extension-updated = { $name } est maintenant en version { $version }.
+extension-signed-in = Connexion faite. { $name } apporte son agenda.
+extension-sign-in-closed = La page de connexion de { $name } a été fermée.
+extension-sign-in-busy = Une autre page de connexion est ouverte : terminez-la ou fermez-la d’abord.
+extension-problem-sign-in = { $name } vous demande de vous reconnecter.
+extension-problem-unreachable = { $name } n’a pas pu joindre son service ; elle réessaiera plus tard.
+extension-problem-refused = Le service de { $name } a refusé : un compte bloqué, ou un établissement qui ne le propose pas.
+extension-problem-changed = Le service de { $name } ne répond plus comme prévu : une mise à jour de l’extension est nécessaire.
+extension-problem-keyring = { $name } n’a pas pu joindre le trousseau.
+extension-problem-record = { $name } a tourné, mais Sioul n’a pas pu le noter sur cet appareil (un disque plein, ou un dossier où il ne peut pas écrire) ; elle attend trois heures avant de tourner à nouveau.
+extension-problem-withdrawn = { $name } n’est plus dans la liste des extensions : elle ne tourne plus ici. Retirez-la pour oublier sa connexion.
+extension-problem-other = { $name } a rencontré un problème ; son journal sur cet appareil en dit plus.
+extension-stopped-time = { $name } s’est arrêtée : elle a pris trop de temps.
+extension-stopped-memory = { $name } s’est arrêtée : elle demandait trop de mémoire.
+extension-stopped-error = { $name } s’est arrêtée sur une erreur qui lui est propre.
+extension-stopped-nonsense = { $name } s’est arrêtée : elle a répondu quelque chose que Sioul ne sait pas lire.
+extension-stopped-asks-more = { $name } s’est arrêtée : elle demande plus que ce que dit sa liste.
+extension-stopped-interface = { $name } s’est arrêtée : elle parle une autre version de l’interface de Sioul.
+extension-stopped-unread = { $name } s’est arrêtée : son fichier ne se lit pas, ou a changé depuis sa vérification.
+extension-stopped-removed = { $name } s’est arrêtée : elle a été retirée entre-temps.
+extension-leave-lessons = Laisser ses cours dans vos calendriers
+extension-problem-settings = { $name } n’a rien écrit : Sioul ne peut pas lire votre fichier de réglages.
+extension-event-cancelled = Annulé : { $title }
+extension-event-from-line = Vient de { $name }, par Sioul : une modification faite ici est remplacée quand { $name } change cet évènement.
+extension-event-from = Vient de { $name }
+extension-agenda-choose = Choisissez le calendrier où vont ses cours : un des vôtres, que vous pouvez partager avec qui vous voulez. D’ici là, rien n’est écrit.
+extension-agenda-gone = Le calendrier choisi pour lui n’existe plus, ou ne peut plus être écrit : rien n’a été écrit. Choisissez-en un autre.
+extension-agenda-too-large = Ses cours n’ont pas été écrits : l’un d’eux, ou tous ensemble, pèsent plus que ce que Sioul accepte.
+extension-agenda-unreadable = Ses cours n’ont pas été écrits : ils ne se lisent pas comme un calendrier.
+extension-agenda-refused = Certains de ses cours n’ont pas pu être écrits dans { $calendar } ; le journal de l’extension sur cet appareil dit combien.
+extension-agenda-read = Dans { $calendar } : { $lessons ->
+        [one] un cours
+       *[other] { $lessons } cours
+    }, lus { $when }.
+extension-agenda-next = Ses cours vont dans { $calendar } au prochain passage.
+extension-agendas-wait = { $name } a apporté ses agendas : choisissez, sur sa ligne dans Paramètres ▸ Extensions, le calendrier où vont les cours de chacun.
+extension-calendar-choose = Choisir un calendrier…
+extension-calendar-new = Un nouveau calendrier sur { $account }
+extension-calendar-new-here = Un nouveau calendrier sur cet appareil seulement
+extension-calendar-for = Le calendrier pour { $name }
+extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
+extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
+# La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
+sign-in-window-title = Connexion sur { $host }
+sign-in-site = Vous vous connectez sur : { $host }
+sign-in-loading = La page suivante arrive. Elle s’affiche ici une fois arrivée, avec son site au-dessus.
+sign-in-not-shown = Cette page n’a pas pu s’afficher. Fermez cette fenêtre et appuyez à nouveau sur Se connecter…
 ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.

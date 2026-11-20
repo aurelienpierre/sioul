@@ -52,6 +52,9 @@
 # - EventNotesCheck: every notice Notices posts is private, its public
 #   version saying only what Rust gives for it (a count, a code's title) or
 #   that Sioul has a reminder (composed tasks §7.3);
+# - SignInCheck: an extension's sign-in screen (SignIn.decide, host, said):
+#   which navigations load (https), which is given back (the address
+#   watched for), which are refused, and the site named above the page.
 # - RecentsCheck: Recents' picture of Sioul off while a health card is open,
 #   read from the sources (android.jar's Activity is a stub): the bridge's
 #   Activity.setRecentsScreenshotEnabled on Android 13 and later only, on
@@ -182,7 +185,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SiteScreenCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

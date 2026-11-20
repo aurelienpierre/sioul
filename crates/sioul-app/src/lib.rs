@@ -163,6 +163,7 @@ mod eventplace;
 mod duplicates;
 // Do-not-disturb on every device, and the phone in the background (docs/do-not-disturb.md).
 mod everywhere;
+mod extensions;
 mod filters;
 mod github;
 // Google's mail signed in on Google's page (docs/google.md, "Mail").
