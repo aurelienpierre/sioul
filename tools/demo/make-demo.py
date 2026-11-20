@@ -1985,6 +1985,7 @@ def write_notes(p: Profile, mails: list[Mail]):
         W.project_note: (stamp(0, "09:40"), t(f"""---
 tags: [client, website]
 aliases: [Fernhill]
+created: {c.day(-52).isoformat()}
 ---
 # Fernhill Library: the new website
 
@@ -2006,6 +2007,7 @@ The agreement: [the signed quote]({mid(by_key['agreement'])}). #client
 """, f"""---
 tags: [client, site-web]
 aliases: [Fougères]
+created: {c.day(-52).isoformat()}
 ---
 # Médiathèque des Fougères : le nouveau site
 
@@ -2147,12 +2149,18 @@ Programme : Ave verum (Mozart), deux vieux noëls, la bénédiction gaélique de
 
 [[Priya Nair]] dirige. #chorale
 """)),
-        t("Ideas/Poster series.md", "Idées/Série d'affiches.md"): (stamp(-9, "10:00"), t("""# Poster series: six bridges
+        t("Ideas/Poster series.md", "Idées/Série d'affiches.md"): (stamp(-9, "10:00"), t(f"""---
+created: {c.day(-420).isoformat()}
+---
+# Poster series: six bridges
 
 One colour each, the same horizon line. The blue one first, says Tom.
 
 Next: a page in the portfolio, then prints for the craft fair. #posters
-""", """# Série d'affiches : six ponts
+""", f"""---
+created: {c.day(-420).isoformat()}
+---
+# Série d'affiches : six ponts
 
 Une couleur chacune, la même ligne d'horizon. La bleue d'abord, dit Tom.
 
@@ -2172,6 +2180,58 @@ Un stand partagé avec [[{W.tom[0]}]] à nouveau ? L'an dernier : les affiches �
 - Tirages : 30 de chaque pont
 - Une petite table, deux chaises
 #affiches
+""")),
+        # Several headings for the outline, and a word found only in the text (invented).
+        t("Ideas/Garden plan.md", "Idées/Plan du jardin.md"): (stamp(-3, "17:20"), t(f"""---
+created: {c.day(-200).isoformat()}
+tags: [garden]
+---
+# Garden plan
+
+The shared plot behind the community hall, row 4.
+
+## Beds
+
+### Herbs
+Thyme, chives and a little sage by the path.
+
+### Vegetables
+Broad beans in November; courgettes once the frosts are over.
+
+## Watering
+The rain butt fills fast in spring. Mornings, never at noon.
+
+## The hedge
+Ask Priya for cuttings of the brambleworth hedge along the fence: it keeps the wind off the beans.
+
+## Tools to borrow
+- [ ] A long-handled hoe
+- [ ] The wheelbarrow, from Tom
+""", f"""---
+created: {c.day(-200).isoformat()}
+tags: [jardin]
+---
+# Plan du jardin
+
+La parcelle partagée derrière la salle des fêtes, rangée 4.
+
+## Les planches
+
+### Aromatiques
+Thym, ciboulette et un peu de sauge le long de l’allée.
+
+### Légumes
+Des fèves en novembre ; des courgettes une fois les gelées passées.
+
+## L’arrosage
+Le récupérateur se remplit vite au printemps. Le matin, jamais à midi.
+
+## La haie
+Demander à Priya des boutures de la haie de ronceverte le long de la clôture : elle garde les fèves du vent.
+
+## Outils à emprunter
+- [ ] Une binette à long manche
+- [ ] La brouette, chez Tom
 """)),
         t("Journal/This week.md", "Journal/Cette semaine.md"): (stamp(0, "08:50"), t("""# This week
 
@@ -2225,6 +2285,10 @@ Illustrateur, Atelier L'Encrier. Déjeuner presque tous les vendredis. Voir [[Sa
     }
     for path, (moment, content) in notes.items():
         p.write(n / path, content, moment)
+    # Two audio memos (a stand-in for an Ogg file: listed and tied, not played), for Notes' Type.
+    for name, moment in ((t("memos/Call with the library.ogg", "memos/Appel à la médiathèque.ogg"), stamp(-1, "11:05")),
+                         (t("memos/Choir warm-up.ogg", "memos/Échauffement de la chorale.ogg"), stamp(-16, "18:40"))):
+        p.write(n / name, b"OggS\x00\x02" + bytes(58), moment)
 
     # Projects.
     p.write(n / "sioul-projects.toml", f"""# Projects (docs/notes-folder.md, docs/projects.md).

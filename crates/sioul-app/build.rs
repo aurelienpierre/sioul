@@ -93,6 +93,7 @@ fn main() {
         "qml/RelatedList.qml",
         "qml/FocusWindow.qml",
         "qml/NotesPage.qml",
+        "qml/NoteOutline.qml",
         "qml/Theme.qml",
         "qml/SioulWindow.qml",
         "qml/SettingsPanel.qml",
