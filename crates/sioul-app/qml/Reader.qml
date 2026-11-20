@@ -898,8 +898,11 @@ Panel {
                         Label {
                             visible: reader.attachmentsShown && reader.reading !== null && reader.reading.can_open
                             Layout.fillWidth: true
-                            // A phone has no antivirus Sioul can call: said, never a scan claimed.
-                            text: reader.sioul.attachmentsUnscanned() ? reader.sioul.text("ui-attachments-phone") : reader.sioul.text("ui-attachments-scan")
+                            // The system's antivirus by its name, or that none is there; a
+                            // phone has none Sioul can call: said, never a scan claimed.
+                            text: reader.sioul.attachmentsScanWords()
+                            // The antivirus's name is Windows' words: drawn as they are.
+                            textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: reader.theme.muted
                             font.pixelSize: 13

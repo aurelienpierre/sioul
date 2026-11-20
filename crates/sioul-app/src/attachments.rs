@@ -1,24 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Mail attachments on a phone (docs/client.md, "Antivirus"). A phone has no
-//! antivirus Sioul can call, so none is asked and none is claimed: the words
-//! say the file was not checked. The attachment opens in the app you choose,
-//! which Android lets read that one file and nothing else of Sioul's, and
-//! "Save…" asks Android where (android/package/src/com/aurelienpierre/sioul/
-//! Attachments.java, AttachmentSave.java). Sioul's own refusals stand as on a
-//! computer: mail set aside keeps its attachments closed, and programs,
-//! scripts and installers, Android's among them, are never opened.
+//! What the window does with a file from outside once its antivirus has
+//! answered, on every system, and mail attachments on a phone
+//! (docs/client.md, "Antivirus").
 //!
-//! A computer is unchanged (`backend::checked_attachment`): its antivirus is
-//! asked, or you are, when it has none.
+//! One table (`decide`) says, for what was found (a verdict, your yes to go
+//! on unchecked, a phone), the system (`System`: Windows, ClamAV's Linux and
+//! macOS, a phone), what that system said before (`Presence`) and what you
+//! asked (open, save, keep as a paper, place a site's file), whether the
+//! window goes on, asks once, or refuses, and with which words. Mail
+//! attachments, papers kept from mail, a site's files and the letters they
+//! become all read it (`backend::checked_attachment`, `downloads::done`), so
+//! that they cannot differ. A file nobody read is never said clean; one
+//! refused never opens and its copy goes; none is refused for want of an
+//! antivirus: the question says it was not checked and may be dangerous, and
+//! opens or saves it on your yes. Programs never open from Sioul: that is
+//! decided before, whatever the answer (`kept_closed`). The words that say
+//! how attachments are checked name the system's antivirus (`label`).
+//!
+//! A phone has no antivirus Sioul can call, so none is asked and none is
+//! claimed: the words say the file was not checked. The attachment opens in
+//! the app you choose, which Android lets read that one file and nothing
+//! else of Sioul's, and "Save…" asks Android where (android/package/src/com/
+//! aurelienpierre/sioul/Attachments.java, AttachmentSave.java). Sioul's own
+//! refusals stand as on a computer: mail set aside keeps its attachments
+//! closed, and programs, scripts and installers, Android's among them, are
+//! never opened.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use sioul_core::config;
+use sioul_sync::antivirus::{Presence, Verdict};
 
-use crate::backend::{QtThread, say, set_status};
+use crate::backend::{QtThread, say, set_status, tr};
 
 /// Whether attachments go the phone's way: on Android; and in a demo's
 /// pictures of a phone's screen (`SIOUL_GRAB_PHONE` with `SIOUL_DEMO`), so
@@ -48,6 +64,166 @@ pub(crate) fn check(phone: bool, known_clean: bool, unchecked: bool) -> Check {
         Check::Skip
     } else {
         Check::Scan
+    }
+}
+
+/// The system whose antivirus is asked and named, read at run time from
+/// where Sioul runs (`here`), so that a test on any system reads each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum System {
+    /// Windows: its own antivirus, Microsoft Defender or the one installed.
+    Windows,
+    /// Linux and macOS: ClamAV, when the system has it.
+    ClamAv,
+    /// A phone: no antivirus Sioul can call.
+    Phone,
+}
+
+impl System {
+    /// Where Sioul runs.
+    pub(crate) fn here() -> System {
+        if phone() {
+            System::Phone
+        } else if cfg!(windows) {
+            System::Windows
+        } else {
+            System::ClamAv
+        }
+    }
+}
+
+/// What you asked of a file from outside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Act {
+    /// Open an attachment.
+    Open,
+    /// Save an attachment with your files.
+    Save,
+    /// Keep an attachment in the papers wallet.
+    Paper,
+    /// Place a file a site offers where you said (Downloads, a folder, Notes, Papers, Letters).
+    Place,
+}
+
+/// What was learnt of a file before it goes anywhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Found {
+    /// The antivirus's verdict; "clean" too for the same bytes found clean
+    /// earlier in this session.
+    Scanned(Verdict),
+    /// You chose to go on, told that it was not checked.
+    Chosen,
+    /// A phone: no antivirus asked.
+    Phone,
+}
+
+/// What the window does with the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Does {
+    /// It opens, is saved, kept or placed.
+    Go,
+    /// One question first: it was not checked and may be dangerous. Yes, it
+    /// goes unchecked (`Found::Chosen`); no, nothing opens.
+    Ask,
+    /// Never opened; its copy is deleted.
+    Refuse,
+}
+
+/// What the window does, and with which words (message ids; `args` fills them).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Decision {
+    pub(crate) does: Does,
+    /// The status line: an opening's (Go, "" when the act says its own: a
+    /// save, a paper, a phone's), the refusal (Refuse), or while it asks (Ask).
+    pub(crate) line: &'static str,
+    /// Ask: the question.
+    pub(crate) question: &'static str,
+    /// Ask: the button that goes on unchecked.
+    pub(crate) action: &'static str,
+    /// Said after the line of a file saved, kept or placed without a check
+    /// ("" when it was checked, or a phone's own words say it).
+    pub(crate) note: &'static str,
+    /// What the words name: the file, the antivirus, the threat or what went
+    /// wrong, how to have files checked.
+    pub(crate) args: Vec<(&'static str, String)>,
+}
+
+impl Decision {
+    /// One of its messages, said with its names.
+    pub(crate) fn said(&self, id: &str) -> String {
+        if id.is_empty() { String::new() } else { say(id, &self.args) }
+    }
+}
+
+/// The antivirus the words name: the one the system names, else Windows'
+/// own or ClamAV, in your language.
+pub(crate) fn antivirus_name(system: System, presence: &Presence) -> String {
+    match (system, presence) {
+        (_, Presence::Here(Some(name))) => name.clone(),
+        (System::Windows, _) => tr().text("antivirus-windows", None),
+        _ => "ClamAV".to_string(),
+    }
+}
+
+/// What the window does with a file from outside, and with which words: the
+/// one table every way in reads (the module's header). `hint` says how to
+/// have files checked here (`antivirus::install_hint`).
+pub(crate) fn decide(found: &Found, system: System, presence: &Presence, act: Act, name: &str, hint: &str) -> Decision {
+    // A name from a message never shows as a command to copy (the question shows backticks as commands).
+    let shown = name.replace('`', "\u{02cb}");
+    let mut args = vec![("name", shown), ("antivirus", antivirus_name(system, presence)), ("hint", hint.to_string())];
+    let action = if act == Act::Open { "scan-open-anyway" } else { "scan-save-anyway" };
+    let go = |line: &'static str, note: &'static str, args| Decision { does: Does::Go, line, question: "", action: "", note, args };
+    let ask = |question: &'static str, line: &'static str, args| Decision { does: Does::Ask, line, question, action, note: "", args };
+    let opened = |checked: &'static str, unchecked: &'static str| if act == Act::Open { (checked, "") } else { ("", unchecked) };
+    match found {
+        // A refusal stands everywhere: never opened, the copy deleted.
+        Found::Scanned(Verdict::Infected(what)) => {
+            args.push(("threat", what.clone()));
+            args.push(("detail", what.clone()));
+            let line = if system == System::Windows || what.is_empty() { "scan-refused" } else { "scan-infected" };
+            Decision { does: Does::Refuse, line, question: "", action: "", note: "", args }
+        }
+        Found::Scanned(Verdict::Clean) => {
+            let (line, _) = opened("scan-clean", "");
+            go(line, "", args)
+        }
+        // Your yes: it goes, said unchecked.
+        Found::Chosen => {
+            let (line, note) = opened("scan-opens-unchecked", "scan-not-checked");
+            go(line, note, args)
+        }
+        // A phone never asks: its own words say it was not checked; a site's file says it too.
+        Found::Phone => go("", if act == Act::Place { "download-unchecked-none" } else { "" }, args),
+        Found::Scanned(Verdict::TooBig) if act == Act::Place || system == System::Phone => go("", "download-unchecked-too-big", args),
+        Found::Scanned(Verdict::Unavailable(_)) if act == Act::Place || system == System::Phone => go("", "download-unchecked-none", args),
+        Found::Scanned(Verdict::TooBig) => ask("scan-ask-too-big", "scan-too-big", args),
+        Found::Scanned(Verdict::Unavailable(detail)) => {
+            args.push(("detail", detail.clone()));
+            let question = match (system, presence) {
+                (System::Windows, Presence::Absent) => "scan-ask-windows-none",
+                (_, Presence::Absent) => "scan-ask",
+                _ => "scan-ask-unanswered",
+            };
+            ask(question, "scan-unavailable-short", args)
+        }
+    }
+}
+
+/// The words above a message's attachments that say how they are checked
+/// here: the system's antivirus by its name when the system gives one; that
+/// none is there when the system says so; that Windows does not say, when
+/// it does not; a phone's own.
+pub(crate) fn label(system: System, presence: &Presence) -> String {
+    let named = |id: &str| say(id, &[("antivirus", antivirus_name(system, presence))]);
+    match (system, presence) {
+        (System::Phone, _) => tr().text("ui-attachments-phone", None),
+        (System::Windows, Presence::Here(Some(_))) => named("ui-attachments-scan-windows"),
+        (System::Windows, Presence::Here(None)) => tr().text("ui-attachments-scan-windows-unnamed", None),
+        (System::Windows, Presence::Unknown) => tr().text("ui-attachments-scan-windows-unknown", None),
+        (System::Windows, Presence::Absent) => tr().text("ui-attachments-scan-windows-none", None),
+        (System::ClamAv, Presence::Absent) => tr().text("ui-attachments-scan-none", None),
+        (System::ClamAv, _) => tr().text("ui-attachments-scan", None),
     }
 }
 
@@ -179,6 +355,148 @@ mod tests {
         assert_eq!(check(false, false, false), Check::Scan);
         assert_eq!(check(false, true, false), Check::Skip);
         assert_eq!(check(false, false, true), Check::Skip);
+    }
+
+    /// Every answer on every system, for every act: what the window does.
+    /// A refusal never goes; a file nobody read never goes on a computer
+    /// without the question, nor is said clean; none is refused for want of
+    /// an antivirus; a phone never asks; a site's file is placed and said
+    /// unchecked, as the card's Save asked.
+    #[test]
+    fn one_table_for_every_way_in() {
+        let verdicts = [Verdict::Clean, Verdict::Infected("Eicar-Test-Signature".into()), Verdict::Infected("AMSI 32768".into()), Verdict::TooBig, Verdict::Unavailable("no antivirus registered with AMSI".into())];
+        let presences = [Presence::Here(Some("Microsoft Defender".into())), Presence::Here(None), Presence::Absent, Presence::Unknown];
+        for system in [System::Windows, System::ClamAv, System::Phone] {
+            for presence in &presences {
+                for act in [Act::Open, Act::Save, Act::Paper, Act::Place] {
+                    for verdict in &verdicts {
+                        let decision = decide(&Found::Scanned(verdict.clone()), system, presence, act, "facture.pdf", "");
+                        let expected = match verdict {
+                            Verdict::Infected(_) => Does::Refuse,
+                            Verdict::Clean => Does::Go,
+                            Verdict::TooBig | Verdict::Unavailable(_) if act == Act::Place || system == System::Phone => Does::Go,
+                            Verdict::TooBig | Verdict::Unavailable(_) => Does::Ask,
+                        };
+                        assert_eq!(decision.does, expected, "{system:?} {presence:?} {act:?} {verdict:?}");
+                        // Not read: never said clean; said unchecked wherever it goes.
+                        if !matches!(verdict, Verdict::Clean) {
+                            assert_ne!(decision.line, "scan-clean", "{system:?} {act:?} {verdict:?}");
+                        }
+                        if decision.does == Does::Go && !matches!(verdict, Verdict::Clean) {
+                            assert!(!decision.note.is_empty(), "{system:?} {act:?} {verdict:?}: placed without saying it was not checked");
+                        }
+                        if decision.does == Does::Ask {
+                            assert!(!decision.question.is_empty() && !decision.action.is_empty());
+                        }
+                    }
+                    // Your yes: it goes, said unchecked, never clean.
+                    let chosen = decide(&Found::Chosen, system, presence, act, "facture.pdf", "");
+                    assert_eq!(chosen.does, Does::Go);
+                    assert_ne!(chosen.line, "scan-clean");
+                    assert!(chosen.line == "scan-opens-unchecked" || chosen.note == "scan-not-checked", "{act:?}: {chosen:?}");
+                    // A phone's attachment: goes, its own words say it was not checked.
+                    assert_eq!(decide(&Found::Phone, system, presence, act, "facture.pdf", "").does, Does::Go);
+                }
+            }
+        }
+    }
+
+    /// The question names what was missing: none found (with how to have
+    /// one), the antivirus that gave no answer, or Windows saying none is on;
+    /// Windows' words never name ClamAV, Linux's never Windows.
+    #[test]
+    fn the_question_names_the_systems_antivirus() {
+        let unavailable = Found::Scanned(Verdict::Unavailable("no AMSI on this Windows".into()));
+        let english = sioul_core::i18n::Translator::new("en");
+        let words = |system, presence: &Presence| {
+            let decision = decide(&unavailable, system, presence, Act::Open, "facture`rm`.pdf", "Windows Security ▸ Virus & threat protection");
+            let args = decision.args.iter().fold(sioul_core::i18n::args(), |mut args, (k, v)| {
+                args.set(k.to_string(), v.clone());
+                args
+            });
+            (decision.question, english.text(decision.question, Some(&args)))
+        };
+        let defender = Presence::Here(Some("Microsoft Defender".into()));
+        let (id, said) = words(System::Windows, &defender);
+        assert_eq!(id, "scan-ask-unanswered");
+        assert!(said.contains("Microsoft Defender") && said.contains("not checked") && said.contains("dangerous") && !said.contains("ClamAV"), "{said}");
+        // A name from a message never reads as a command.
+        assert!(!said.contains('`'), "{said}");
+        // Unnamed, Windows' own, in the session's language.
+        for presence in [Presence::Here(None), Presence::Unknown] {
+            let (id, said) = words(System::Windows, &presence);
+            assert_eq!(id, "scan-ask-unanswered");
+            assert!(said.contains(&tr().text("antivirus-windows", None)) && !said.contains("ClamAV"), "{said}");
+        }
+        let (id, said) = words(System::Windows, &Presence::Absent);
+        assert_eq!(id, "scan-ask-windows-none");
+        assert!(said.contains("Windows Security") && said.contains("not checked") && said.contains("dangerous"), "{said}");
+        let (id, said) = words(System::ClamAv, &Presence::Absent);
+        assert_eq!(id, "scan-ask");
+        assert!(said.contains("No antivirus was found") && said.contains("dangerous"), "{said}");
+        let (id, said) = words(System::ClamAv, &Presence::Here(Some("ClamAV".into())));
+        assert_eq!(id, "scan-ask-unanswered");
+        assert!(said.contains("ClamAV gave no answer") && !said.contains("Windows"), "{said}");
+        // A refusal on Windows names who refused and how; ClamAV's names the threat.
+        let refused = decide(&Found::Scanned(Verdict::Infected("AMSI 32768".into())), System::Windows, &defender, Act::Open, "facture.pdf", "");
+        assert_eq!(refused.line, "scan-refused");
+        let said = refused.said(refused.line);
+        assert!(said.contains("Microsoft Defender") && said.contains("AMSI 32768"), "{said}");
+        let infected = decide(&Found::Scanned(Verdict::Infected("Eicar-Test-Signature".into())), System::ClamAv, &Presence::Here(Some("ClamAV".into())), Act::Save, "facture.pdf", "");
+        assert_eq!(infected.line, "scan-infected");
+        assert!(infected.said(infected.line).contains("Eicar-Test-Signature"));
+    }
+
+    /// The words above the attachments name the system's antivirus, chosen
+    /// at run time from what the system is; a phone's are as they were.
+    #[test]
+    fn the_label_names_the_systems_antivirus() {
+        let defender = label(System::Windows, &Presence::Here(Some("Microsoft Defender".into())));
+        assert!(defender.contains("Microsoft Defender") && !defender.contains("ClamAV"), "{defender}");
+        for presence in [Presence::Here(None), Presence::Unknown, Presence::Absent] {
+            let said = label(System::Windows, &presence);
+            assert!(said.contains("Windows") && !said.contains("ClamAV"), "{said}");
+        }
+        assert_eq!(label(System::Windows, &Presence::Unknown), tr().text("ui-attachments-scan-windows-unknown", None));
+        assert_eq!(label(System::Windows, &Presence::Absent), tr().text("ui-attachments-scan-windows-none", None));
+        assert_eq!(label(System::Windows, &Presence::Here(None)), tr().text("ui-attachments-scan-windows-unnamed", None));
+        let clamav = label(System::ClamAv, &Presence::Here(Some("ClamAV".into())));
+        assert!(clamav.contains("ClamAV") && !clamav.contains("Windows"), "{clamav}");
+        assert_eq!(label(System::ClamAv, &Presence::Absent), tr().text("ui-attachments-scan-none", None));
+        for presence in [Presence::Here(None), Presence::Absent] {
+            assert_eq!(label(System::Phone, &presence), tr().text("ui-attachments-phone", None));
+        }
+    }
+
+    /// Every message the table and the words above the attachments can give
+    /// is there in each language, with the names it fills.
+    #[test]
+    fn every_word_of_the_table_is_written() {
+        let mut ids: Vec<&str> = vec![
+            "ui-attachments-scan", "ui-attachments-scan-none", "ui-attachments-scan-windows", "ui-attachments-scan-windows-unnamed",
+            "ui-attachments-scan-windows-unknown", "ui-attachments-scan-windows-none", "ui-attachments-phone", "antivirus-windows",
+        ];
+        let verdicts = [Verdict::Clean, Verdict::Infected("x".into()), Verdict::Infected(String::new()), Verdict::TooBig, Verdict::Unavailable("x".into())];
+        for system in [System::Windows, System::ClamAv, System::Phone] {
+            for presence in [Presence::Here(Some("A".into())), Presence::Here(None), Presence::Absent, Presence::Unknown] {
+                for act in [Act::Open, Act::Save, Act::Paper, Act::Place] {
+                    let founds = verdicts.iter().cloned().map(Found::Scanned).chain([Found::Chosen, Found::Phone]);
+                    for found in founds {
+                        let decision = decide(&found, system, &presence, act, "a.pdf", "");
+                        ids.extend([decision.line, decision.question, decision.action, decision.note].into_iter().filter(|id| !id.is_empty()));
+                    }
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        for language in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(language);
+            for id in &ids {
+                let said = words.text(id, None);
+                assert!(!said.is_empty() && said != *id, "{language}: {id}");
+            }
+        }
     }
 
     #[test]
