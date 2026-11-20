@@ -137,7 +137,7 @@ run() {
 # change it (an invoice issued, a safe sender added).
 runs=(
     # A weekday afternoon, with hours.
-    "demo - demo - porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time papers health sites sites-menu accounts settings-tabs settings-hours reachable"
+    "demo - demo - porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time papers health sites sites-menu accounts settings-tabs settings-devices settings-hours reachable"
     # Without hours: the Porch asking for them, and the budgets of every area
     # at once (with hours, only those of the hours now).
     "no-hours --no-hours demo - porch-hours budgets bank-accounts"
@@ -149,7 +149,9 @@ runs=(
     "mail-search - mail-search - mail-search mail-search-drag"
     "mail-filters - mail-filters - mail-filters mail-filter-editor mail-filters-run"
     # Sioul's own spam filter: its settings in Mail's ⚙, the Porch's review queue.
-    "spam --spam spam - spam-settings:settings-spam spam-reader:porch-spam"
+    "spam --spam spam - spam-settings-panel:settings-spam spam-reader:porch-spam"
+    # The window that says what moves when Sioul's lists leave the notes folder (a profile of the old layout).
+    "storage --old-layout storage - storage-move"
     # Settings on a phone: its list of sections.
     "settings-phone - shell phone settings-list:settings-phone"
     # Invoices, on a computer and on a phone.
