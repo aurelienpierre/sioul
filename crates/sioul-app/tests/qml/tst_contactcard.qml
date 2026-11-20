@@ -4,7 +4,9 @@
 // A contact's card on a phone (ContactsPage.qml), on a stand-in for Sioul:
 // an office's card with its opening hours, tied to one thing or to twelve,
 // opens with its hours in sight, whole; what it is tied to scrolls with the
-// card and never takes its room; Close stays in sight. Run by
+// card and never takes its room; Close stays in sight. Delete beside Edit,
+// pressed, does what the row menu's Delete does and closes the card, and a
+// card of a book you only read offers none. Run by
 // tools/qml-test.sh. Fiction only.
 
 import QtQuick
@@ -33,6 +35,23 @@ Item {
         addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "Contacts", place: "", read_only: false, photo: "", photo_web: "",
         hours: { open: { value: "Mo-Fr 09:00-12:00,14:00-16:30; PH off" }, phone: null, note: "" }
     })
+    // An invented person with a postal address (its details under More), and a card of a book read only.
+    readonly property var jeanne: ({
+        key: "/books/jeanne.vcf", uid: "jeanne-1", name: "Jeanne Exemple", org: "", title: "", card: "",
+        emails: [{ label: "home", value: "jeanne@example.org" }],
+        phones: [{ label: "cell", value: "+33 6 12 34 56 78" }],
+        addresses: [{ label: "home", value: "1 rue de l'Exemple\n99999 Exempleville" }], birthday: "", notes: "", urls: [], categories: [], book: "Contacts", place: "cloud/contacts", read_only: false, photo: "", photo_web: "",
+        hours: { open: null, phone: null, note: "" }
+    })
+    readonly property var shared: ({
+        key: "/books/shared.vcf", uid: "shared-1", name: "Sam Exemple", org: "", title: "", card: "",
+        emails: [{ label: "work", value: "sam@example.org" }], phones: [],
+        addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "Shared with you", place: "cloud/shared", read_only: true, photo: "", photo_web: "",
+        hours: { open: null, phone: null, note: "" }
+    })
+    readonly property var cards: [root.office, root.jeanne, root.shared]
+    // The address books, as the view lists them (`ContactsView::books`).
+    readonly property var contactsBook: ({ place: "cloud/contacts", name: "Contacts", read_only: false, groups: true })
     readonly property var hours: ({
         name: "Health cover office", card: "org", read_only: false, mark: false,
         open: { value: "Mo-Fr 09:00-12:00,14:00-16:30; PH off", short: "", lines: ["Monday to Friday: 9:00–12:00, 14:00–16:30"], holidays_off: true, unread: false, doubt: "", rest: [], source: "Typed by you on 14 September 2026", stale: false, now: "Open until 16:30" },
@@ -57,20 +76,31 @@ Item {
         property string status: ""
         // How many things the card is tied to.
         property int ties: 1
+        // The address books, read only ones too, as the view lists them.
+        property var books: [root.contactsBook]
+        // What was asked: the cards deleted.
+        property var deleted: []
         // The list, as the backend's property is (its change is `contactsChanged`).
-        property string contacts: JSON.stringify({ contacts: [{ key: root.office.key, name: root.office.name, detail: "", title: "", photo: "" }], sentence: "", can_add: true, categories: [], category: "", filter: {}, books: [], counted: "", shown: 1, total: 1 })
+        property string contacts: JSON.stringify({ contacts: root.cards.map(c => ({ key: c.key, name: c.name, detail: "", title: "", photo: "", place: c.place, read_only: c.read_only })), sentence: "", can_add: true, categories: [], category: "", filter: {}, books: mock.books, counted: "", shown: root.cards.length, total: root.cards.length })
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
         function textArgs(key, args) { return key + ":" + args }
         function textCounted(key, count) { return key + ":" + count }
-        function contact(key) { return key === root.office.key ? JSON.stringify(root.office) : "null" }
+        function contact(key) {
+            const card = root.cards.find(c => c.key === key)
+            if (!card)
+                return "null"
+            return JSON.stringify(card)
+        }
         function contactHours(key) { return key === root.office.key ? JSON.stringify(root.hours) : "" }
         function clientProfile(ref) { return JSON.stringify({ exists: false, summary: "" }) }
         function personOf(key) { return "null" }
         function personOfCard(uid) { return "null" }
         function household() { return JSON.stringify({ persons: [], others: [], relations: [] }) }
         function addressBooks() { return "[]" }
+        // Scheduled with Undo by the backend; the stand-in keeps what was asked.
+        function deleteContact(key) { mock.deleted = mock.deleted.concat([key]) }
         function placeOf(address) { return "" }
         function related(uri) {
             const out = []
@@ -130,6 +160,57 @@ Item {
     TestCase {
         name: "ContactCard"
         when: windowShown
+
+        // Each test from the same start: nothing asked yet.
+        function init() {
+            mock.ties = 1
+            mock.books = [root.contactsBook]
+            mock.deleted = []
+        }
+
+        // The page with a card open, laid out.
+        function opened(card) {
+            const page = createTemporaryObject(pageComponent, root)
+            page.open(card.key)
+            waitForRendering(page)
+            return page
+        }
+
+        // What shows by its objectName, or by its words: visible ones only.
+        function shown(page, name) {
+            return root.all(page, c => c.visible && c.objectName === name)[0]
+        }
+        function says(page, words) {
+            return root.all(page, c => c.visible && c.text === words)[0]
+        }
+
+        // Within the card's width on a phone: never past the screen's edge.
+        function within(item) {
+            const x = item.mapToItem(root, 0, 0).x
+            verify(x >= 0 && x + item.width <= root.width + 0.5, item.objectName + ": " + x + " + " + item.width + " within " + root.width)
+        }
+
+        // Delete beside Edit, pressed: the card closed, its deletion asked of the
+        // backend (which waits ten seconds with Undo in the status line, as the row
+        // menu's Delete does). A card of a book you only read offers neither.
+        function test_delete_on_the_card() {
+            const page = opened(root.jeanne)
+            const remove = shown(page, "contactCardDelete")
+            verify(remove, "Delete under the card")
+            verify(says(page, "ui-edit"), "beside Edit")
+            compare(remove.text, "ui-delete")
+            verify(!remove.highlighted, "a colour that does not shout")
+            within(remove)
+            mouseClick(remove)
+            compare(mock.deleted, [root.jeanne.key], "deleted as the row menu deletes")
+            compare(page.person, null, "the card closed")
+            compare(page.openKey, "")
+            const readOnly = opened(root.shared)
+            verify(readOnly.person !== null)
+            verify(!shown(readOnly, "contactCardDelete"), "no Delete on a card of a book read only")
+            verify(!says(readOnly, "ui-edit"), "nor Edit")
+            verify(says(readOnly, "ui-close"), "Close stays")
+        }
 
         // The card's scroll view, the one that holds the opening hours.
         function scrollOf(item) {

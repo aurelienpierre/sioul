@@ -5,7 +5,8 @@
 // category when chosen; a contact opens on the right with its categories, its
 // addresses and numbers, "Write" and "Call" next to each; the rest (postal
 // addresses, birthday, notes, web sites) folded under "More". Editing happens
-// in place; deleting waits ten seconds with "Undo". "Duplicates" opens in the
+// in place; deleting (Delete beside Edit under the card, or the row's menu)
+// waits ten seconds with "Undo". "Duplicates" opens in the
 // place of a card. Right click on a name for what is not in view. At the
 // head, the household (« Proches », docs/persons.md): a person's page opens
 // in the place of a card too. A contact you bill shows its client profile
@@ -1222,6 +1223,19 @@ Item {
                                 onClicked: {
                                     page.formNow().load(page.person)
                                     page.editing = true
+                                }
+                            }
+                            // As the row menu's Delete: ten seconds with Undo in the status line, the card
+                            // closed; none on a card of a book you only read.
+                            Button {
+                                objectName: "contactCardDelete"
+                                visible: page.person !== null && !page.person.read_only
+                                text: page.sioul.text("ui-delete")
+                                onClicked: {
+                                    // Its file read before the card closes (`open("")` empties it).
+                                    const key = page.openKey
+                                    page.open("")
+                                    page.sioul.deleteContact(key)
                                 }
                             }
                             Item {
