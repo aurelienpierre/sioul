@@ -284,6 +284,8 @@ Item {
     // Inside another page (Tasks ▸ The day): Agenda ⚙ is the Agenda's own, not shown here.
     property bool embedded: false
     readonly property bool searching: page.mode === "search"
+    // The Search tab's search, once made (main.qml's pictures).
+    readonly property var searchItem: searchLoader.item
     // The Search tab, made the first time it is shown.
     property bool searchMade: false
     // What the page keeps beside an open card: the Week's grid, else a list's room (main.qml).
@@ -297,9 +299,12 @@ Item {
     // place ("account/id", the agenda's `hidden`: what the hours admit, or your word until
     // work's hours change; AgendaFilter.qml).
     readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.shown.hidden || [] })
-    // The agenda filter by hand in the full views, the Day, the Week and the Month, which
-    // hide nothing by the hour; by the hours in What comes, the calm tab (the agenda's `filter`).
-    readonly property bool filterByHand: page.shown.comes !== true
+    // The agenda filter by hand in the full views, the Day, the Week, the Month and Search,
+    // which hide nothing by the hour; by the hours in What comes, the calm tab (the agenda's `filter`).
+    readonly property bool filterByHand: page.searching || page.shown.comes !== true
+    // The filter as its button lists it: in Search, as the search read it (the full views'),
+    // whatever tab the days were last read for.
+    readonly property var filterShown: page.searching ? (searchLoader.item ? searchLoader.item.agendas : ({ chosen: false, groups: [] })) : (page.shown.filter || ({ chosen: false, groups: [] }))
     // The Day and the Week: the steps drawn by their task's area (AreaFilter.qml), every area
     // unless you say; hidden while Show leaves the steps out.
     readonly property bool stepsFiltered: (page.mode === "day" || page.mode === "week") && !page.hide.steps && !!page.shown.steps_areas
@@ -742,7 +747,9 @@ Item {
                 current: page.mode
                 onChosen: id => page.mode = id
             }
+            // On a phone, Search has no day to move through: its one line is the title's below.
             RowLayout {
+                visible: !(page.narrow && page.searching)
                 Layout.fillWidth: true
                 spacing: 6
 
@@ -784,10 +791,10 @@ Item {
                 AgendaFilter {
                     id: filterButton
 
-                    visible: !page.narrow && (page.shown.filter || { groups: [] }).groups.length > 0
+                    visible: !page.narrow && page.filterShown.groups.length > 0
                     sioul: page.sioul
                     theme: page.theme
-                    shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    shown: page.filterShown
                     byHand: page.filterByHand
                     window: page.window
                     iconOnly: page.width < 1000
@@ -809,12 +816,13 @@ Item {
                     onAsHours: page.stepAreas(page.sioul.stepAreasAsHours())
                 }
                 // What every view shows here: the plan's steps, meals and the night, doses, rides.
-                // Words beside its icon on a wide window; on a phone, on the title's line.
+                // Words beside its icon on a wide window; on a phone, on the title's line. Search
+                // finds events alone: nothing of it to show there.
                 Button {
                     id: showButton
 
                     objectName: "agendaShow"
-                    visible: !page.narrow
+                    visible: !page.narrow && !page.searching
                     Layout.preferredWidth: page.width < 1000 ? 40 : -1
                     text: page.sioul.text("agenda-show")
                     icon.name: "view-filter"
@@ -862,19 +870,31 @@ Item {
                 AgendaFilter {
                     id: filterButtonNarrow
 
-                    visible: (page.shown.filter || { groups: [] }).groups.length > 0
+                    visible: page.filterShown.groups.length > 0
                     Layout.preferredWidth: 40
                     sioul: page.sioul
                     theme: page.theme
-                    shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    shown: page.filterShown
                     byHand: page.filterByHand
                     window: page.window
                     narrow: true
                 }
+                // Search's one line on a phone: a new event from here too, where New is out of sight.
+                Button {
+                    objectName: "agendaNewEventNarrow"
+                    visible: page.searching && page.shown.can_add !== false && page.window.railShown !== true
+                    Layout.preferredWidth: 40
+                    text: page.sioul.text("ui-new-event")
+                    icon.name: "appointment-new"
+                    icon.color: page.theme.text
+                    display: AbstractButton.IconOnly
+                    Accessible.name: page.sioul.text("ui-new-event")
+                    onClicked: page.newEvent("")
+                }
                 Button {
                     id: showButtonNarrow
 
-                    visible: true
+                    visible: !page.searching
                     Layout.preferredWidth: 40
                     text: page.sioul.text("agenda-show")
                     icon.name: "view-filter"
@@ -1521,8 +1541,11 @@ Item {
                 }
             }
 
-            // Search (8 November 2026): events and tasks by words and filters, made when first shown.
+            // Search (8 November 2026): events by words and filters, in the agendas the page's
+            // filter shows, made when first shown.
             Loader {
+                id: searchLoader
+
                 objectName: "agendaSearch"
                 visible: page.searching
                 // Made the first time the tab shows, then kept: by either word, so that no order

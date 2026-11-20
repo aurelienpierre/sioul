@@ -5,7 +5,7 @@
 // the one after it; nothing else unless asked. The day, the list, the board
 // and the timeline are one switch away; the day is the Agenda's Day itself
 // (AgendaPage.qml, given the Day alone), in its own tab. A line at the top takes a new task in one
-// sentence; "New task" beside it opens the full form, as New ▸ A task and
+// sentence, in every tab but Search; "New task" beside it opens the full form, as New ▸ A task and
 // Add ▾ ▸ A task do. Nothing is overdue: a date asked is time left; a day
 // that passed moves the task forward instead (docs/tasks.md).
 
@@ -68,6 +68,11 @@ Item {
     property alias routines: routinesDialog
     // "now", "day", "list", "board", "timeline", "search" (ThingSearch.qml).
     property string mode: "now"
+    // The Search tab: its own project, type and category, so the page's three, their fold on a
+    // phone and the line that adds a task are not shown and take no room (20 November 2026).
+    readonly property bool searching: page.mode === "search"
+    // The Search tab's search, once made (main.qml's pictures).
+    readonly property var searchItem: tasksSearchLoader.item
     // The views made so far: each the first time it is shown; "now" not
     // while the rest cover hides it.
     property var made: ({ now: true })
@@ -338,7 +343,7 @@ Item {
                     id: filtersButton
 
                     objectName: "taskFilters"
-                    visible: page.window.compact
+                    visible: page.window.compact && !page.searching
                     checkable: true
                     checked: page.filtersShown
                     flat: true
@@ -356,7 +361,7 @@ Item {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
 
                     objectName: "taskProjectFilter"
-                    visible: !page.filtersFolded
+                    visible: !page.filtersFolded && !page.searching
                     // On a phone, two choices a line.
                     width: page.narrow ? page.halfFlow : 200
                     model: choices.map(c => page.theme.plain(c.title))
@@ -373,7 +378,7 @@ Item {
                     readonly property var choices: [{ id: "", label: page.sioul.text("task-filter-all") }].concat(page.shown ? page.shown.kinds : [])
 
                     objectName: "taskKindFilter"
-                    visible: !page.filtersFolded
+                    visible: !page.filtersFolded && !page.searching
                     width: page.narrow ? page.halfFlow : 190
                     model: choices.map(c => page.theme.plain(c.label))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === page.kindFilter))
@@ -387,7 +392,7 @@ Item {
                     readonly property var choices: [""].concat(page.shown ? page.shown.categories : [])
 
                     objectName: "taskCategoryFilter"
-                    visible: choices.length > 1 && !page.filtersFolded
+                    visible: choices.length > 1 && !page.filtersFolded && !page.searching
                     // As wide as its longest choice ("Toutes les catégories" was cut),
                     // within its line: on a phone, the line but the settings' button.
                     implicitContentWidthPolicy: ComboBox.WidestText
@@ -396,7 +401,8 @@ Item {
                     currentIndex: Math.max(0, choices.findIndex(c => c.toLowerCase() === page.categoryFilter.toLowerCase()))
                     onActivated: index => page.sioul.filterTasks(page.kindFilter, choices[index])
                 }
-                // Which lists every view shows (several agendas): the agenda's one filter, its lists here.
+                // Which lists every view shows (several agendas): the agenda's one filter, its lists here;
+                // Search follows it too, as a full view.
                 AgendaFilter {
                     id: tasksAgendas
 
@@ -425,12 +431,13 @@ Item {
                 window: page.window
             }
 
-            // A task in one line, wherever you are on the page. In quiet time, a
-            // thought noted waits for work to come back, out of sight. Beside
-            // it, the full form.
+            // A task in one line, wherever you are on the page but Search. In quiet
+            // time, a thought noted waits for work to come back, out of sight.
+            // Beside it, the full form.
             RowLayout {
+                objectName: "taskCaptureLine"
                 Layout.fillWidth: true
-                visible: page.shown !== null && !page.shown.no_list
+                visible: page.shown !== null && !page.shown.no_list && !page.searching
                 spacing: 8
 
                 CaptureField {
@@ -1412,9 +1419,12 @@ Item {
                     }
                 }
 
-                // Search (8 November 2026): tasks and events by words and filters,
-                // whatever the hour. Made the first time it is shown.
+                // Search (8 November 2026): tasks by words and filters, whatever the hour,
+                // in the lists the page's filter shows. Made the first time it is shown; it
+                // starts on the project, type and category of the other tabs.
                 Loader {
+                    id: tasksSearchLoader
+
                     objectName: "tasksSearch"
                     active: page.made["search"] === true
 
@@ -1424,6 +1434,7 @@ Item {
                             theme: page.theme
                             window: page.window
                             which: "tasks"
+                            upstream: ({ project: page.projectFilter, kind: page.kindFilter, category: page.categoryFilter })
                         }
                     }
                 }

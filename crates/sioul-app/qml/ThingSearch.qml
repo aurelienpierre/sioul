@@ -8,6 +8,18 @@
 // the core decides (`sioul_core::thingsearch`); this lays it out. A full list
 // is a tool: everything found is shown, whatever the hour, grouped as what
 // comes, the past and what has no date.
+//
+// One view in both pages (20 November 2026): the page decides what is
+// searched (Tasks its tasks, the Agenda its events), and nothing else
+// differs. The words and Select on the first line; then one line of filters,
+// project, type, category, dates, then the kind's own; on a phone and a
+// narrow window they fold under one button that says how many are set,
+// open while one is. Tasks gives the project, type and category of its
+// other tabs (`upstream`): the search starts on them, and what is changed
+// here stays here. The page's agenda filter holds here as in its other full
+// views; what it leaves out and the search would have found is counted on
+// one quiet line under the results, with a link that shows it all for this
+// visit of the tab.
 
 pragma ComponentBehavior: Bound
 
@@ -21,11 +33,18 @@ Item {
     required property var sioul
     required property var theme
     property var window: null
-    // What is searched first: "tasks" in Tasks, "events" in the Agenda; "both" chosen there.
-    property string which: "both"
-    // On a phone: each filter half a line.
+    // What is searched, the page's: "tasks" in Tasks, "events" in the Agenda.
+    property string which: "tasks"
+    // The page's own project, type and category (Tasks' other tabs): each one
+    // chosen there since the search last took it is the search's when the tab
+    // shows; the others stay as the search has them.
+    property var upstream: ({ project: "", kind: "", category: "" })
+    property var taken: ({ project: "", kind: "", category: "" })
+    // On a phone and a narrow window: each filter half a line, all of them folded.
     readonly property bool narrow: search.width < 640
-    readonly property int half: Math.floor((filters.width - filters.spacing) / 2)
+    // From the tab's width, never the filters' own: folded, a layout sizes them no more, and
+    // their width would follow what their filters ask, half of it each, without end.
+    readonly property int half: Math.floor((search.width - 6) / 2)
 
     // The query as the core reads it (`thingsearch::Query`).
     property string words: ""
@@ -40,10 +59,18 @@ Item {
     property var statuses: []
     property string done: ""
     property string deadline: ""
+    // Every agenda, whatever the page's filter ("Show them all"): until the tab
+    // is left, the link takes it back, or the filter is changed.
+    property bool everyAgenda: false
+    // The filter's agendas left out, as last read: a change is the person's word.
+    property string filterSeen: ""
 
-    // What the core answered: the choices and what was found.
-    property var shown: ({ projects: [], kinds: [], categories: [], found: [] })
+    // What the core answered: the choices, what was found, what the agendas
+    // left out hold, and the page's agenda filter as its full views show it.
+    property var shown: ({ projects: [], kinds: [], categories: [], found: [], left_out: 0, agendas: { chosen: false, groups: [] } })
     readonly property var found: search.shown.found || []
+    readonly property int leftOut: search.shown.left_out || 0
+    readonly property var agendas: search.shown.agendas || ({ chosen: false, groups: [] })
     // What is selected for a batch edit, by file: its Select button, then a
     // click or a tap on each row; Ctrl or Shift with a click, a long press on
     // a touch screen, pick too.
@@ -56,6 +83,11 @@ Item {
     readonly property bool choosing: search.selecting || search.pickedList.length > 0
     readonly property bool asksEvents: search.which !== "tasks"
     readonly property bool asksTasks: search.which !== "events"
+    // The filters set, said on the fold's button.
+    readonly property int filtersSet: [search.project !== "", search.kind !== "", search.category !== "", search.ranged, search.asksEvents && search.guests !== "", search.asksEvents && search.statuses.length > 0, search.asksTasks && search.done !== "", search.asksTasks && search.deadline !== ""].filter(set => set).length
+    // The fold, by its button (true open, false closed); null, open while a filter is set.
+    property var unfolded: null
+    readonly property bool folded: search.narrow && (search.unfolded === null ? search.filtersSet === 0 : !search.unfolded)
 
     function query() {
         const yesNo = v => v === "yes" ? true : v === "no" ? false : null
@@ -73,16 +105,49 @@ Item {
             guests: events ? yesNo(search.guests) : null,
             status: events ? search.statuses : [],
             done: tasks ? yesNo(search.done) : null,
-            deadline: tasks ? yesNo(search.deadline) : null
+            deadline: tasks ? yesNo(search.deadline) : null,
+            every_agenda: search.everyAgenda
         }
     }
 
-    // Asked again at once; words typed wait for a pause.
+    // The tab shown: the page's choices made since the search last took them
+    // are the search's, shown as set; the others stay as they were here.
+    function takeUpstream() {
+        const page = search.upstream || {}
+        const taken = Object.assign({}, search.taken)
+        for (const key of ["project", "kind", "category"]) {
+            const value = page[key] || ""
+            if (value !== taken[key]) {
+                search[key] = value
+                taken[key] = value
+            }
+        }
+        search.taken = taken
+    }
+
+    // "Show them all" (true) or "Back to the agendas ticked" (false), for this visit of the tab.
+    function showEveryAgenda(on) {
+        search.everyAgenda = on
+        search.run()
+    }
+
+    // Asked again at once; words typed wait for a pause. Whole first: a Loader shows its item
+    // before its bindings give it Sioul.
     function run() {
-        if (!search.visible)
+        if (!search.visible || !search.whole)
             return
         const text = search.sioul.findThings(JSON.stringify(search.query()))
-        search.shown = text ? JSON.parse(text) : { projects: [], kinds: [], categories: [], found: [] }
+        const answer = text ? JSON.parse(text) : { projects: [], kinds: [], categories: [], found: [], left_out: 0, agendas: { chosen: false, groups: [] } }
+        search.shown = answer
+        // The page's filter changed while every agenda showed: the person's word, followed again.
+        // Read from the answer itself, before the bindings follow.
+        const off = JSON.stringify(((answer.agendas || {}).groups || []).map(g => g.agendas.filter(a => !a.on).map(a => a.id)))
+        const changed = search.filterSeen !== "" && off !== search.filterSeen
+        search.filterSeen = off
+        if (changed && search.everyAgenda) {
+            search.showEveryAgenda(false)
+            return
+        }
         // What is picked and still found stays picked, as it now is.
         const kept = {}
         for (const thing of search.found)
@@ -141,15 +206,36 @@ Item {
         return [thing.date, thing.projects.join(", "), thing.place, status].filter(t => t !== "").join("  ·  ")
     }
 
-    onVisibleChanged: search.run()
+    // Made, its bindings set: its handlers act from here on.
+    property bool whole: false
+    onVisibleChanged: {
+        if (!search.whole)
+            return
+        if (search.visible) {
+            search.takeUpstream()
+        } else {
+            search.everyAgenda = false
+        }
+        search.run()
+    }
     onWhichChanged: search.run()
-    Component.onCompleted: search.run()
+    Component.onCompleted: {
+        search.whole = true
+        search.takeUpstream()
+        search.run()
+    }
 
-    // What changed elsewhere shows here too.
+    // What changed elsewhere shows here too; the agenda filter turned shows in the
+    // agenda's days, and in the tasks' views only when a list of tasks turned.
     Connections {
         target: search.sioul
+        ignoreUnknownSignals: true
 
         function onTasksChanged() {
+            search.run()
+        }
+
+        function onAgendaChanged() {
             search.run()
         }
     }
@@ -180,6 +266,24 @@ Item {
                     typing.restart()
                 }
             }
+            // On a phone and a narrow window: the filters folded; how many are set, in its words.
+            Button {
+                id: foldButton
+
+                objectName: "thingsFilters"
+                visible: search.narrow
+                checkable: true
+                checked: !search.folded
+                flat: true
+                text: search.sioul.textCounted("task-filters", search.filtersSet)
+                icon.name: "view-filter"
+                icon.color: checked ? search.theme.accentText : search.theme.text
+                onClicked: {
+                    search.unfolded = search.folded
+                    // A click flips its own tick: it stays the fold's.
+                    foldButton.checked = Qt.binding(() => !search.folded)
+                }
+            }
             // Choosing what to change together: a box on each row, the bar at once.
             Button {
                 objectName: "thingsSelect"
@@ -199,23 +303,15 @@ Item {
             }
         }
 
-        // The filters, on as many lines as the width asks, never past its edge.
+        // The filters, in one order in both pages: project, type, category, dates, then the
+        // kind's own; on as many lines as the width asks, never past its edge. Folded, no room.
         Flow {
             id: filters
 
+            visible: !search.folded
             Layout.fillWidth: true
             spacing: 6
 
-            PlainComboBox {
-                objectName: "thingsWhich"
-
-                readonly property var ways: ["both", "tasks", "events"]
-
-                width: search.narrow ? search.half : 170
-                model: ways.map(w => search.sioul.text("things-which-" + w))
-                currentIndex: Math.max(0, ways.indexOf(search.which))
-                onActivated: index => search.which = ways[index]
-            }
             PlainComboBox {
                 objectName: "thingsProject"
 
@@ -366,9 +462,11 @@ Item {
         }
 
         Label {
+            objectName: "thingsNone"
             visible: search.found.length === 0
             Layout.fillWidth: true
-            text: search.sioul.text("things-none-found")
+            // Nothing in the agendas ticked, something elsewhere: said so, the line under it says how much.
+            text: search.leftOut > 0 && !search.everyAgenda ? search.sioul.text("things-none-found-filtered") : search.sioul.text("things-none-found")
             wrapMode: Text.Wrap
             color: search.theme.muted
         }
@@ -401,6 +499,48 @@ Item {
                 color: search.theme.text
             }
             ScrollBar.vertical: ScrollBar {}
+
+            // Under the results, one quiet line: what the page's agenda filter leaves out
+            // and the search would have found, with a link that shows it all; or that
+            // every agenda shows, with the link back. Absence proves nothing.
+            footer: Flow {
+                objectName: "thingsLeftOut"
+                visible: search.leftOut > 0 || search.everyAgenda
+                width: results.width - 12
+                height: visible ? implicitHeight : 0
+                topPadding: 8
+                spacing: 8
+
+                Label {
+                    objectName: "thingsLeftOutLine"
+                    width: Math.min(implicitWidth, parent.width)
+                    text: search.everyAgenda ? search.sioul.text("things-every-agenda") : search.sioul.textCounted("things-left-out", search.leftOut)
+                    wrapMode: Text.Wrap
+                    color: search.theme.muted
+                }
+                // A link: no frame, its words alone.
+                Button {
+                    id: showAll
+
+                    objectName: "thingsShowAll"
+                    text: search.everyAgenda ? search.sioul.text("things-agendas-shown") : search.sioul.text("things-show-all")
+                    Accessible.name: showAll.text
+                    background: null
+                    leftPadding: 0
+                    rightPadding: 0
+                    topPadding: 0
+                    bottomPadding: 0
+                    contentItem: Label {
+                        text: search.everyAgenda ? search.sioul.text("things-agendas-shown") : search.sioul.text("things-show-all")
+                        wrapMode: Text.Wrap
+                        color: search.theme.accent
+                        font.underline: true
+                        // Its focus seen by keyboard, as a flat link has no frame.
+                        font.bold: showAll.visualFocus
+                    }
+                    onClicked: search.showEveryAgenda(!search.everyAgenda)
+                }
+            }
 
             delegate: ItemDelegate {
                 id: row
