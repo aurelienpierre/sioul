@@ -46,14 +46,20 @@ SafeDialog {
         form.open()
     }
 
+    // A day's field (its row's second item), or null before its row is made.
+    function dayField(d) {
+        const row = dayRows.itemAt(d)
+        return row ? row.children[1] as TextField : null
+    }
+
     // The short form read again, and the days filled from it.
     function readShort() {
         form.reading = JSON.parse(form.sioul.readHours(shortForm.text) || "{}")
         const days = form.reading.days || []
         for (let d = 0; d < 7; d++) {
-            const row = dayRows.itemAt(d)
-            if (row)
-                row.field.text = days[d] || ""
+            const field = form.dayField(d)
+            if (field)
+                field.text = days[d] || ""
         }
     }
 
@@ -66,8 +72,8 @@ SafeDialog {
     function fromDays() {
         const parts = []
         for (let d = 0; d < 7; d++) {
-            const row = dayRows.itemAt(d)
-            const text = row ? row.field.text.trim() : ""
+            const field = form.dayField(d)
+            const text = field ? field.text.trim() : ""
             if (text !== "")
                 parts.push(form.dayKeys[d] + " " + text)
         }
@@ -142,7 +148,6 @@ SafeDialog {
                         id: dayRow
 
                         required property int index
-                        property alias field: dayField
 
                         Layout.fillWidth: true
                         spacing: 8
