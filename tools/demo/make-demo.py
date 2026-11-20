@@ -60,6 +60,10 @@ says once (docs/porch.md, "Agenda").
 --shortfall (or SIOUL_DEMO_SHORTFALL=1) has the bank account keep more than
 it holds, so that its next payment falls short: the Porch's Money says it
 first (`ahead::shortfall_notices`).
+--household (or SIOUL_DEMO_HOUSEHOLD=1) adds two of your people for What
+reaches you's pictures: Hugo, your brother, whose card you put on Restricted
+by hand, and Noé, whose card linked is on no address book of this device;
+Who is in which circle says what holds each of them out (docs/attention.md).
 --first-day (or SIOUL_DEMO_FIRST_DAY=1) leaves the Porch's two cards of the
 first days unanswered: "Join your other devices" and the topics Sioul started
 from the senders it knows. Without it, the person has answered both with
@@ -2722,6 +2726,30 @@ agents = false
 """)
 
 
+def write_household(p: Profile):
+    """Two of your people more (--household), for What reaches you's pictures
+    (docs/attention.md, "Who is in which circle"): Hugo, your brother, his card
+    put on Restricted by hand, which holds him out of the circle; Noé, linked
+    to a card that no address book of this device holds."""
+    persons = p.data / "persons.toml"
+    p.write(persons, persons.read_text(encoding="utf-8") + """
+[person.demo-person-hugo]
+name = "Hugo"
+full_name = "Hugo Ferrand"
+relation = "kin"
+cards = ["demo-contact-hugo"]
+agents = false
+
+[person.demo-person-noe]
+name = "Noé"
+relation = "kin"
+cards = ["demo-contact-noe"]
+agents = false
+""")
+    restricted = p.config / "restricted-senders.txt"
+    p.write(restricted, restricted.read_text(encoding="utf-8") + "# Hugo's card, by hand.\ncontact:demo-contact-hugo\n")
+
+
 # --- What Sioul keeps itself: time, invoices, health, weather, site news -------
 
 def write_time(p: Profile):
@@ -3367,6 +3395,8 @@ def main():
                         help="a leave of three days from tomorrow, drawn once in the agenda (SIOUL_DEMO_DAYS_OFF=1 too)")
     parser.add_argument("--conflict", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_CONFLICT")),
                         help="a meeting its organizer moved onto an event of yours this afternoon: a conflict the Porch says (SIOUL_DEMO_CONFLICT=1 too)")
+    parser.add_argument("--household", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_HOUSEHOLD")),
+                        help="two of your people more for What reaches you's pictures: one held out by a restriction, one whose card is not here (SIOUL_DEMO_HOUSEHOLD=1 too)")
     parser.add_argument("--shortfall", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SHORTFALL")),
                         help="the bank account keeping more than it holds: its next payment falls short (SIOUL_DEMO_SHORTFALL=1 too)")
     parser.add_argument("--first-day", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_FIRST_DAY")),
@@ -3418,6 +3448,8 @@ def main():
     write_invoices(profile, sessions)
     write_health(profile, args.doses_asked)
     write_weather(profile)
+    if args.household:
+        write_household(profile)
     write_site_news(profile)
     if not args.old_layout:
         move_lists(profile, args.documents_at or str(Path(profile.notes_at).parent / "Documents"))

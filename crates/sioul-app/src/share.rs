@@ -739,7 +739,9 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
     // (the same index as the lists', `Senders::load`, kept once for both).
     let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config), &sioul_core::addressbooks::groups_held_back(config)).names();
     let today = crate::calls::today(config);
-    let held = held_words(config);
+    // Who rings in a pause and under do-not-disturb: Your people among them only where Sioul screens
+    // calls on the phone (never starred: elsewhere do-not-disturb holds them, said apart).
+    let (held, held_screening) = (held_words(config, false), held_words(config, true));
     // Your people's row, the matrix's on every phone, after Always through's (`calls::people_row`).
     let people = crate::calls::people_row(config);
     devices
@@ -748,9 +750,10 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
             let line = said.and_then(|s| s.calls.as_ref());
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
-                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: old };
-                let mut view = sioul_core::calls_line::view(line, &card, tr());
                 let screens_here = screens == Some(true) && !line.is_some_and(|l| l.says() && l.grid().screens_nothing());
+                let held = if screens_here && circle { &held_screening } else { &held };
+                let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held, older: old };
+                let mut view = sioul_core::calls_line::view(line, &card, tr());
                 with_your_people(&mut view, people.as_ref(), circle, screens_here, tr());
                 (id.to_string(), view)
             })
@@ -777,12 +780,15 @@ fn with_your_people(view: &mut serde_json::Value, people: Option<&serde_json::Va
 
 /// Who rings in a pause and under do-not-disturb, as on every phone, in a
 /// sentence for each phone's section Calls (review of `phones`, M4): Always
-/// through, and each circle whose Calls row lets it through do-not-disturb.
-fn held_words(config: &sioul_core::config::Config) -> String {
+/// through, and each circle whose Calls row lets it through do-not-disturb;
+/// Your people only on a phone where Sioul screens calls (`screening`),
+/// while the circle holds someone: they are never starred, so elsewhere
+/// do-not-disturb holds them (`with_your_people` says so).
+fn held_words(config: &sioul_core::config::Config, screening: bool) -> String {
     use sioul_core::attention::{Column, Level, Person, Row};
     let attention = sioul_core::attention::Attention::of(config);
     // Your people while the circle holds someone (their row in no phone's line: the matrix's everywhere).
-    let people = !sioul_core::persons::Circle::now().is_empty();
+    let people = screening && !sioul_core::persons::Circle::now().is_empty();
     let rows: Vec<String> = [(Person::People, "people"), (Person::Safe, "safe"), (Person::Neutral, "contacts"), (Person::Restricted, "restricted")]
         .into_iter()
         .filter(|(person, _)| people || *person != Person::People)
