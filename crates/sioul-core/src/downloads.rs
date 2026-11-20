@@ -326,8 +326,8 @@ pub fn is_program(name: &str, mime: &str) -> bool {
 }
 
 /// The host a file comes from, by its address: "secure.bank.example" for
-/// "https://secure.bank.example/statements/1", and for a page's own
-/// "blob:https://secure.bank.example/…"; "" for an address that names no
+/// `https://secure.bank.example/statements/1`, and for a page's own
+/// `blob:https://secure.bank.example/…`; "" for an address that names no
 /// host (a "data:" address, a file of this computer). Its login and its port left out.
 pub fn host_of(url: &str) -> String {
     let url = url.trim();

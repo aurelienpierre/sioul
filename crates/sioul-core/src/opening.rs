@@ -337,7 +337,7 @@ fn weekdays_or_hours(word: &str) -> bool {
 
 /// One of the syntax's selectors Sioul does not count (lower case): a month
 /// ("aug", "jul-aug", "dec 25" starts so), a week, a year, Easter, school
-/// holidays, the sun's hours, the nth weekday of a month ("mo[1]").
+/// holidays, the sun's hours, the nth weekday of a month (`mo[1]`).
 fn selector(lower: &str) -> bool {
     const MONTHS: &[&str] = &["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     let year = |w: &str| w.len() == 4 && w.chars().all(|c| c.is_ascii_digit());
@@ -723,7 +723,7 @@ impl Cards {
         )
     }
 
-    /// The office a task's `CONTACT` points at ("sioul:contact/<UID>"), when its card has hours.
+    /// The office a task's `CONTACT` points at (`sioul:contact/<UID>`), when its card has hours.
     pub fn get(&self, uri: &str) -> Option<&Office> {
         (crate::links::kind_of(uri) == crate::links::Kind::Contact).then(|| self.0.get(crate::links::id_of(uri).trim())).flatten()
     }

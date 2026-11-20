@@ -332,7 +332,7 @@ fn page_json() -> String {
 /// a new one on this device, or one of the person's own that they may write
 /// (`door::writable`); and what the shared settings chose for each agenda.
 struct Calendars {
-    /// {choice, label}: "new:<account>" or "place:<account/id>".
+    /// {choice, label}: `new:<account>` or `place:<account/id>`.
     choices: Vec<Value>,
     /// The person's calendars that may receive lessons, by place: their label.
     labels: BTreeMap<String, String>,
@@ -753,7 +753,7 @@ fn forget_leaving(now: i64) {
 }
 
 /// The calendar an agenda's lessons go into, chosen on the page. `choice`
-/// is "new:<account>", a new calendar there named after the pupil (made as
+/// is `new:<account>`, a new calendar there named after the pupil (made as
 /// Agenda ⚙'s New agenda makes one, on its server by the next sync), or
 /// "place:<account/id>", one of the person's own that may be written
 /// (`door::writable`). Kept in the shared settings, so that every device

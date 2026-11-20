@@ -24,7 +24,7 @@ pub const NONE: &str = "none";
 /// The setting's key (`[map] search`).
 pub const KEY: &str = "map.search";
 /// Where a refusal is kept, in the state folder: its day and the address
-/// that refused, "2026-11-20 https://nominatim.openstreetmap.org/search".
+/// that refused, `2026-11-20 https://nominatim.openstreetmap.org/search`.
 pub const WAIT_FILE: &str = "map-search-wait";
 
 /// What the setting says.

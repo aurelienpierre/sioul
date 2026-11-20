@@ -99,7 +99,7 @@ fn plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']) && !(cfg!(windows) && name.contains(':'))
 }
 
-/// The hidden files `Pending` writes beside a place: ".sioul-<process>-<n>.part",
+/// The hidden files `Pending` writes beside a place: `.sioul-<process>-<n>.part`,
 /// short whatever the file's name (an encrypted home takes some 143 bytes a name).
 const PART_PREFIX: &str = ".sioul-";
 const PART_SUFFIX: &str = ".part";
