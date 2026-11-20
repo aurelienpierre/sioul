@@ -528,7 +528,7 @@ pub fn usual(row: Row, column: Column) -> Level {
         Row::People(Channel::Mail, Person::Always) => if matches!(column, Sleep | Pause) { Quiet } else { Now },
         Row::People(_, Person::Always) => Now,
         // Your people (decision of 20 November 2026): as Safe, and their calls ring at every
-        // time, sleep, a pause and do-not-disturb included (starred on a phone for it).
+        // time, sleep, a pause and do-not-disturb included, where Sioul screens calls (never starred).
         Row::People(Channel::Calls, Person::People) => Now,
         Row::People(Channel::Mail, Person::Safe | Person::People) => if hours { Now } else { Quiet },
         Row::People(Channel::Mail, Person::Neutral | Person::Stranger) => match column {
@@ -1769,7 +1769,13 @@ pub struct Phone {
     pub unknown: bool,
     /// Contacts ▸ Your people holds someone (`persons::Circle`): their row
     /// lets the mode through where it says at once (their calls at every
-    /// time, as Sioul ships it). Nobody there: their row opens no mode.
+    /// time, as Sioul ships it), on a phone that screens calls alone, where
+    /// the mode lets every contact through, Sioul having declined the
+    /// others. Nobody there: their row opens no mode. Your people are never
+    /// starred (review H2 to H4, 20 November 2026): on a phone that does not
+    /// screen, or for messages, which a mode lets through for the starred
+    /// alone, their row opens nothing, so that the starred of your list never
+    /// ring where their own row says voicemail (review L11).
     pub people: bool,
 }
 
@@ -1795,7 +1801,9 @@ impl Attention {
             // While this phone screens calls, numbers nobody knows are the screening's, apart from the matrix,
             // and never ring where your contacts' row declines (review of part 2, F3).
             let strangers = if channel == Channel::Calls && own { phone.unknown && passes(channel, Person::Neutral) } else { [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p)) };
-            let known = [Person::People, Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| (phone.people || *p != Person::People) && passes(channel, *p));
+            // Your people count where the mode lets every contact through (`own`, a phone that screens
+            // calls), never where it lets the starred alone: they are not starred (`Phone::people`).
+            let known = [Person::People, Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| (*p != Person::People || (own && phone.people)) && passes(channel, *p));
             match (own, strangers, known || always(channel)) {
                 (true, true, _) => Senders::Anyone,
                 (true, false, true) => Senders::Contacts,
@@ -4144,18 +4152,25 @@ mod tests {
         chats.set(row("messages.people"), Column::Work, Level::Later).unwrap();
         let site = |named: Option<Person>| chats.decide(&Event::of(Source::Site { call: false, live: true, named }), &Now::time(Column::Work)).level;
         assert_eq!((site(Some(Person::People)), site(Some(Person::Safe)), site(None)), (Level::Later, Level::Now, Level::Now));
-        // A mode under do-not-disturb lets their calls through: starred on a phone that does not
-        // screen (they are starred there, `stars`), every contact where it screens; while
-        // Contacts ▸ Your people holds nobody, their row opens no mode.
+        // A mode under do-not-disturb lets their calls through where the phone screens calls, every
+        // contact's (Sioul declined the others); never by a star, which they are not given (review H2
+        // to H4): on a phone that does not screen, and for messages, their row opens no mode, so that
+        // the starred of your list never ring where their own row says voicemail (review L11); while
+        // Contacts ▸ Your people holds nobody, their row opens no mode either.
         let people = Phone { people: true, ..Phone::default() };
-        assert_eq!(usual.silence(&[Column::Dnd], false, people).calls, Senders::Starred);
         assert_eq!(usual.silence(&[Column::Dnd], false, Phone { screens: true, ..people }).calls, Senders::Contacts);
         let mut none = Attention::usual();
-        for column in Column::ALL {
-            none.set(row("calls.always"), column, Level::As).unwrap();
+        for channel in [Channel::Calls, Channel::Messages] {
+            for column in Column::ALL {
+                none.set(Row::People(channel, Person::Always), column, Level::As).unwrap();
+            }
         }
         assert_eq!(none.silence(&[Column::Pause], false, Phone { screens: true, ..people }).calls, Senders::Contacts, "your people ring in a pause");
         assert_eq!(none.silence(&[Column::Pause], false, Phone { screens: true, people: false, unknown: false }).calls, Senders::None, "nobody in Your people: nobody through the pause");
+        assert_eq!(none.silence(&[Column::Pause], false, people).calls, Senders::None, "a phone that does not screen: no star opened for them");
+        let mut texts = none.clone();
+        texts.set(row("messages.people"), Column::Pause, Level::Now).unwrap();
+        assert_eq!(texts.silence(&[Column::Pause], false, Phone { screens: true, ..people }).messages, Senders::None, "their texts open no star either");
         // Listed after the fact by their row: a declined call of theirs at night is listed at once.
         assert!(usual.listed(Person::People, false, &night) && !usual.listed(Person::Safe, false, &night));
     }

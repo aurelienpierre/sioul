@@ -436,6 +436,13 @@ ColumnLayout {
         visible: !line.android && people !== null
         text: people ? people.note || "" : ""
     }
+    // Where Sioul does not screen calls here, do-not-disturb holds your people's calls as any
+    // contact's (they are never starred), with the two ways out; As Android does included.
+    Note {
+        objectName: "callsPeopleDnd"
+        visible: (line.view.people_dnd || "") !== ""
+        text: line.view.people_dnd || ""
+    }
     // What "as usual" means while busy (M1); what a pause and do-not-disturb do on this phone (M4).
     Note {
         objectName: "callsBusy"

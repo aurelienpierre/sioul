@@ -6444,14 +6444,9 @@ dnd-setup-no-email = No address: their mail is not notified during do-not-distur
 dnd-setup-unreadable = The list could not be read, so nothing was changed: { $why }
 dnd-stars-title = Starred on { device-this }
 dnd-stars-all = Everyone on your list with a number is starred on { device-this }: their calls and messages ring during do-not-disturb.
-dnd-stars-all-people = Everyone on your list and each of your people with a number is starred on { device-this }: their calls ring during do-not-disturb.
 dnd-stars-missing = { $n ->
     [one] One person on your list is not starred on { device-this }.
    *[other] { $Count } people on your list are not starred on { device-this }.
-}
-dnd-stars-missing-people = { $n ->
-    [one] One person on your list or of your people is not starred on { device-this }.
-   *[other] { $Count } people on your list or of your people are not starred on { device-this }.
 }
 dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul changes nothing of your contacts but their star.
 dnd-stars-starred = Starred
@@ -6791,7 +6786,8 @@ phone-calls-profile-both-said = Professional in your work hours, Personal outsid
 phone-calls-profile-as-android-said = Sioul screens nothing on this phone: Android decides.
 phone-calls-profile-none-said = Changed by hand: the table below is yours.
 phone-calls-always-rings = Rings at every moment, whatever the table says.
-phone-calls-people-note = Your people ring as What reaches you ▸ What comes when says, the same on every phone: a phone’s own table leaves them as they are.
+phone-calls-people-note = Your people ring as What reaches you ▸ What comes when says, the same on every phone: a phone's own table leaves them as they are.
+phone-calls-people-dnd = Sioul does not screen calls on this phone, so its do-not-disturb holds your people's calls as any contact's. To have them ring then, turn the call screening on there, or put that person on Always through.
 phone-card-apps = Other apps' notifications
 phone-card-lists = Each app, conversation and site, by time
 phone-card-messages = Messages on your computers

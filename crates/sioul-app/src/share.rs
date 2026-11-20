@@ -748,6 +748,11 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
                 if let (Some(row), Some(rows)) = (&people, view["rows"].as_array_mut()) {
                     rows.insert(1.min(rows.len()), row.clone());
                 }
+                // Your people are never starred (review H2 to H4): where Sioul does not screen calls on
+                // this phone (it says it does not, or says nothing yet, or its line says As Android
+                // does), its do-not-disturb holds their calls as any contact's, said with the two ways out.
+                let screens_here = screens == Some(true) && !line.is_some_and(|l| l.says() && l.grid().screens_nothing());
+                view["people_dnd"] = serde_json::json!(if people.is_some() && !screens_here { tr().text("phone-calls-people-dnd", None) } else { String::new() });
                 (id.to_string(), view)
             })
         })

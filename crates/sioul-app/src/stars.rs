@@ -9,9 +9,7 @@
 //! Java writes the stars it decided (DndContacts.write), and nothing else.
 //! Without the permission to write contacts, the stars seen still add their
 //! people; the stars to write wait until it is given. The phone keeps what it
-//! starred at its last look (`stars/phone.json`, its own). Your people whose
-//! calls ring under do-not-disturb are starred by the same path
-//! (`your_people`, `stars::plan_with`'s `also`), never added to the list.
+//! starred at its last look (`stars/phone.json`, its own).
 
 use crate::backend::load_config;
 use sioul_core::everywhere::People;
@@ -30,36 +28,6 @@ pub(crate) fn place() -> String {
 /// The memory of this phone's last look.
 fn memory_path() -> std::path::PathBuf {
     stars::folder().join("phone.json")
-}
-
-/// Your people to star on a phone, as the list writes people (ids
-/// `stars::CIRCLE` and their id in persons.toml): each one of Contacts ▸ Your
-/// people with a card linked, by their cards' numbers and addresses, while
-/// their calls ring under do-not-disturb (the matrix's Calls row Your
-/// people, its column do-not-disturb at once: decision 5 of 20 November
-/// 2026). Nobody otherwise: the stars Sioul wrote for them are then taken off.
-pub(crate) fn your_people(config: &sioul_core::config::Config) -> People {
-    use sioul_core::attention::{Column, Level, Person, Row};
-    let mut out = People::default();
-    let attention = sioul_core::attention::Attention::of(config);
-    if attention.cell(Row::People(sioul_core::reach::Channel::Calls, Person::People), Column::Dnd) != Level::Now {
-        return out;
-    }
-    let persons = sioul_core::persons::Persons::cached();
-    let contacts = sioul_core::contacts::all();
-    for person in persons.circle(sioul_core::zone::now().date()) {
-        let cards: Vec<&sioul_core::contacts::Contact> = person.cards.iter().filter_map(|uid| contacts.iter().find(|c| !c.uid.trim().is_empty() && c.uid.trim() == uid.trim())).collect();
-        let Some(first) = cards.first() else { continue };
-        out.people.push(sioul_core::everywhere::Person {
-            id: format!("{}{}", stars::CIRCLE, person.id),
-            name: person.name.clone(),
-            phones: cards.iter().flat_map(|c| c.phones.iter().map(|p| p.value.clone())).collect(),
-            emails: cards.iter().flat_map(|c| c.emails.iter().map(|e| e.value.clone())).collect(),
-            contact: first.uid.trim().to_string(),
-            ..sioul_core::everywhere::Person::default()
-        });
-    }
-    out
 }
 
 /// One look at this phone's stars, when on and due (`force`: now). Whether
@@ -84,8 +52,7 @@ pub(crate) fn here(force: bool) -> bool {
     }
     let list = People::default_path();
     let Ok(people) = People::read(&list) else { return false };
-    let also = your_people(&config);
-    let asked: Vec<serde_json::Value> = people.people.iter().chain(&also.people).map(|p| serde_json::json!({ "id": p.id, "phones": p.phones })).collect();
+    let asked: Vec<serde_json::Value> = people.people.iter().map(|p| serde_json::json!({ "id": p.id, "phones": p.phones })).collect();
     let answer = crate::steps::java("stars-look", &serde_json::json!({ "people": asked }).to_string());
     if answer["permission"] != true {
         return false;
@@ -104,7 +71,7 @@ pub(crate) fn here(force: bool) -> bool {
     let path = memory_path();
     let mut memory = Memory::load(&path);
     let writable = answer["write"] == true;
-    let result = stars::look_with(&list, &also, &mut memory, &place(), &seen, senders.region(), &blocked, if writable { Some(&mut write) } else { None });
+    let result = stars::look(&list, &mut memory, &place(), &seen, senders.region(), &blocked, if writable { Some(&mut write) } else { None });
     memory.looked = now;
     if let Err(e) = memory.save(&path) {
         eprintln!("sioul: stars: {e}");

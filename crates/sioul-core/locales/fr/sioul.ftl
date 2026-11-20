@@ -6500,14 +6500,9 @@ dnd-setup-no-email = Pas d’adresse : ses courriels ne sont pas notifiés pen
 dnd-setup-unreadable = La liste n’a pas pu être lue, rien n’a donc été changé : { $why }
 dnd-stars-title = En favori sur { device-this }
 dnd-stars-all = Chaque personne de votre liste qui a un numéro est en favori sur { device-this } : ses appels et messages sonnent pendant « Ne pas déranger ».
-dnd-stars-all-people = Chaque personne de votre liste et chacun de vos proches qui a un numéro est en favori sur { device-this } : ses appels sonnent pendant « Ne pas déranger ».
 dnd-stars-missing = { $n ->
     [one] Une personne de votre liste n’est pas en favori sur { device-this }.
    *[other] { $Countf } personnes de votre liste ne sont pas en favori sur { device-this }.
-}
-dnd-stars-missing-people = { $n ->
-    [one] Une personne de votre liste ou de vos proches n’est pas en favori sur { device-this }.
-   *[other] { $Countf } personnes de votre liste ou de vos proches ne sont pas en favori sur { device-this }.
 }
 dnd-stars-why = Android ne laisse passer que les contacts en favori dans votre application Contacts : mettez-les en favori là. Sioul ne change rien d’autre de vos contacts que leur favori.
 dnd-stars-starred = En favori
@@ -6850,6 +6845,7 @@ phone-calls-profile-as-android-said = Sioul ne filtre rien sur ce téléphone 
 phone-calls-profile-none-said = Changé à la main : le tableau ci-dessous est le vôtre.
 phone-calls-always-rings = Sonne à tout moment, quoi que dise le tableau.
 phone-calls-people-note = Vos proches sonnent comme le dit Ce qui vous joint ▸ Ce qui vient quand, de même sur tous les téléphones : la table propre à un téléphone les laisse tels quels.
+phone-calls-people-dnd = Sioul ne filtre pas les appels sur ce téléphone : son mode « Ne pas déranger » retient donc les appels de vos proches comme ceux de tout contact. Pour qu’ils sonnent alors, activez-y le filtrage des appels, ou mettez cette personne dans Passent toujours.
 phone-card-apps = Notifications des autres applications
 phone-card-lists = Chaque application, conversation et site, selon le moment
 phone-card-messages = Messages sur vos ordinateurs
