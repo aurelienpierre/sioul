@@ -1016,6 +1016,23 @@ Item {
             }
 
             // What comes: the days that hold something, and today (the unified agenda, §4.6).
+            // The days come again each five minutes, or loaded on: the list keeps its place
+            // (ListPlace.qml); another stretch asked opens it on today (its first day, from today).
+            ListPlace {
+                id: daysPlace
+
+                view: daysList
+                // Out of What comes, or while its own days load: the rows it showed, for its place
+                // when they come.
+                source: page.mode === "agenda" && page.shown.days.length > 0 ? page.shown.days.filter(d => d.today || page.comesRows(d).length > 0 || page.comesPlan(d) !== "") : undefined
+                key: "date"
+                scope: page.asked ? page.asked.from : ""
+                onFresh: {
+                    const today = daysPlace.rows.findIndex(d => d.today)
+                    if (today >= 0)
+                        daysList.positionViewAtIndex(today, ListView.Beginning)
+                }
+            }
             ListView {
                 id: daysList
 
@@ -1024,45 +1041,13 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 12
-                model: page.mode === "agenda" ? page.shown.days.filter(d => d.today || page.comesRows(d).length > 0 || page.comesPlan(d) !== "") : []
+                model: daysPlace.rows
                 ScrollBar.vertical: ScrollBar {}
 
-                // The day at the top and how far into it the list is scrolled: kept when the
-                // days come again (each five minutes, or loaded on), else opened on today.
-                property string topDate: ""
-                property real topInto: 0
-                property string keptFor: ""
-
-                function keepTop() {
-                    const at = daysList.indexAt(0, daysList.contentY + 1)
-                    const item = at >= 0 ? daysList.itemAtIndex(at) : null
-                    if (item) {
-                        daysList.topDate = daysList.model[at].date
-                        daysList.topInto = daysList.contentY - item.y
-                    }
-                }
-
-                onContentYChanged: if (daysList.moving)
-                    daysList.keepTop()
-                onMovementEnded: daysList.keepTop()
                 // Near its end, What comes loads on; while it does not fill the page, by itself.
                 onAtYEndChanged: if (daysList.atYEnd && daysList.contentHeight > daysList.height)
                     page.more(false)
                 onModelChanged: Qt.callLater(() => {
-                    const asked = page.asked ? page.asked.from : ""
-                    const top = daysList.keptFor === asked ? daysList.model.findIndex(d => d.date === daysList.topDate) : -1
-                    if (top >= 0) {
-                        daysList.positionViewAtIndex(top, ListView.Beginning)
-                        daysList.contentY += daysList.topInto
-                    } else {
-                        // Opened on today (its first day, from today).
-                        const today = daysList.model.findIndex(d => d.today)
-                        if (today >= 0)
-                            daysList.positionViewAtIndex(today, ListView.Beginning)
-                        daysList.keptFor = asked
-                        daysList.topDate = ""
-                        daysList.topInto = 0
-                    }
                     if (daysList.contentHeight <= daysList.height)
                         page.more(true)
                 })
@@ -1130,6 +1115,7 @@ Item {
                             id: listed
 
                             required property var modelData
+                            readonly property string placeKey: listed.modelData.id + "|" + (listed.modelData.mark || "")
 
                             Layout.fillWidth: true
                             Layout.leftMargin: page.lineRoom
@@ -1434,6 +1420,17 @@ Item {
                     font.weight: Font.DemiBold
                     color: page.theme.text
                 }
+                // An appointment added, moved or deleted: the list keeps its place (ListPlace.qml);
+                // another month starts at its top.
+                ListPlace {
+                    id: monthPlace
+
+                    view: monthList
+                    // While another stretch's days load: the rows it showed.
+                    source: page.shown.days.length > 0 ? month.listed : undefined
+                    key: "date"
+                    scope: page.anchor.getFullYear() * 12 + page.anchor.getMonth()
+                }
                 ListView {
                     id: monthList
 
@@ -1442,7 +1439,7 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 8
-                    model: month.listed
+                    model: monthPlace.rows
 
                     delegate: ColumnLayout {
                         id: listedDay
@@ -1498,6 +1495,7 @@ Item {
                                 id: monthItem
 
                                 required property var modelData
+                                readonly property string placeKey: monthItem.modelData.id + "|" + (monthItem.modelData.mark || "")
 
                                 Layout.fillWidth: true
                                 Layout.leftMargin: page.monthLineRoom

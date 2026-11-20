@@ -373,6 +373,15 @@ Item {
             color: search.theme.muted
         }
 
+        // Found again whenever tasks change: the list keeps its place (ListPlace.qml); other words
+        // or filters, a list from its top.
+        ListPlace {
+            id: resultsPlace
+
+            view: results
+            source: search.found
+            scope: search.query()
+        }
         ListView {
             id: results
 
@@ -381,7 +390,7 @@ Item {
             Layout.fillHeight: true
             clip: true
             spacing: 2
-            model: search.found
+            model: resultsPlace.rows
             section.property: "when"
             section.delegate: Label {
                 required property string section
