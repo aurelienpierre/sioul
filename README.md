@@ -20,7 +20,7 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 
 **Website and user guide: [sioul.aurelienpierre.com](https://sioul.aurelienpierre.com/)**
 
-![Sioul's window: the list of places on the left (Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health); on the right, the Porch, with a one-time code and its Copy button on top, a chat's news, then the new mail sorted into lanes.](website/docs/assets/screens/porch.png)
+![Sioul's window: the places on the left, one icon each, from the Porch to Health; on the right, the Porch, open until 17:00, with a confirmation link and a one-time code with its Copy button on top, then the new mail sorted into lanes (a project, from yourself, from people you know) and a chat's news.](website/docs/assets/screens/porch.png)
 
 ## You decide what gets through
 

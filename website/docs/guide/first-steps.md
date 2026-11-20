@@ -11,7 +11,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 ## The window
 
 <figure markdown="span">
-  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and three icons at the bottom (Accounts, Settings, Refresh everything); on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and at the bottom, Close the work day and Close the whole day, then Accounts, Settings and Refresh everything; on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
 </figure>
 
 **At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](notifications.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
@@ -74,6 +74,11 @@ What differs on Android:
 ## Join your other devices
 
 Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on Android, what it has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Sharing** offers the same at any time.
+
+<figure markdown="span">
+  [![The Porch of a device's first days: "Open until 17:00." and Show all mail now; the card "Join your other devices", with Sign in to Murena, Sign in to another Nextcloud, I use a sync app's folder and Leave as is; the card "Sioul sorted your mail into 2 topics, from the senders it knows: Bank, Taxes.", with Leave as is; then Right now, a project's mail and From yourself.](../assets/screens/porch-first-day.png){ loading=lazy }](../assets/screens/porch-first-day.png "Open the picture at full size")
+  <figcaption>The first days: joining your other devices, and the topics Sioul started.</figcaption>
+</figure>
 
 ## Add your mail
 

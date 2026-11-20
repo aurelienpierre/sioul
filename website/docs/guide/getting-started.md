@@ -22,7 +22,7 @@ Your data stays yours throughout. Your mail, calendars and contacts stay on your
 [What Sioul is for, and for whom](../index.md)
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; the card to join your other devices; then its sections, each a title with its "?" and its chevron: Right now, a code from a verified sender with Copy; a project's mail; the people you know; From your phone; Sites; Money, each payment with its amount on the right; each row with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; then its sections, each a title with its chevron and its "?": Right now, a confirmation link and a code from verified senders, the code with Copy; a project's mail; From yourself; From people you know; Sites, a chat's news with Open; each message with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
   <figcaption>Codes on top, then each section, a row per new thing.</figcaption>
 </figure>
 

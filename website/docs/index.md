@@ -32,7 +32,7 @@ Some things come at once: the code you just asked a website for, a dose, a call 
 Most software lets each app decide when it may interrupt you. Sioul turns that around: you set the rules once, and they hold for your mail, calls, messages, sites and reminders. [What reaches you, and when](guide/notifications.md)
 
 <figure markdown="span">
-  [![Sioul's window. On the left, the places, one icon each. On the right, the Porch, open until 17:00: a sentence on what came, the card to join your other devices, a line about money, the paper letters, a confirmation link and a one-time code with its Copy button, then a chat's news.](assets/screens/porch.png){ loading=lazy }](assets/screens/porch.png "Open the picture at full size")
+  [![Sioul's window. On the left, the places, one icon each. On the right, the Porch, open until 17:00: a confirmation link and a one-time code with its Copy button, then the mail of a project, from yourself and from people you know, then a chat's news.](assets/screens/porch.png){ loading=lazy }](assets/screens/porch.png "Open the picture at full size")
   <figcaption>The Porch: what came in waits for the hours you chose; the codes you just asked for come at once.</figcaption>
 </figure>
 

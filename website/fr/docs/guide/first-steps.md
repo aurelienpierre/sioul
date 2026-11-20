@@ -11,7 +11,7 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 ## La fenêtre {#the-window}
 
 <figure markdown="span">
-  [![La fenêtre de Sioul : en haut, sur toute la largeur, sa barre de titre, la ligne d’état avec les touches, le bouton des sons, la météo, Temps libre et Pause, puis les boutons de la fenêtre ; à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![La fenêtre de Sioul : en haut, sur toute la largeur, sa barre de titre, la ligne d’état avec les touches, le bouton des sons, la météo, Temps libre et Pause, puis les boutons de la fenêtre ; à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et en bas, Clore la journée de travail et Clore toute la journée, puis Comptes, Paramètres et Tout actualiser ; à droite, le Porche.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
 </figure>
 
 **En haut**, sur toute la largeur de la fenêtre, la ligne d’état est sa barre de titre. Elle dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. Plus loin se trouvent les touches, [Ne pas déranger](notifications.md#do-not-disturb-on-every-device), le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)), la météo d’un lieu que vous choisissez, et à son extrémité [**Temps libre** et **Pause**](pauses.md).
@@ -74,6 +74,11 @@ Ce qui change sur Android :
 ## Rejoindre vos autres appareils {#join-your-other-devices}
 
 Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Partage** propose la même chose à tout moment.
+
+<figure markdown="span">
+  [![Le Porche des premiers jours d’un appareil : « Ouvert jusqu’à 17:00. » et Montrer tous les courriels maintenant ; la carte « Rejoindre vos autres appareils », avec Se connecter à Murena, Se connecter à un autre Nextcloud, J’utilise une application de synchronisation et Laisser ainsi ; la carte « Sioul a rangé votre courrier dans 2 thèmes, d’après les expéditeurs qu’il connaît : Banque, Impôts. », avec Laisser ainsi ; puis Tout de suite, les courriels d’un projet et De vous-même.](../assets/screens/fr/porch-first-day.png){ loading=lazy }](../assets/screens/fr/porch-first-day.png "Ouvrir l’image en grand")
+  <figcaption>Les premiers jours : rejoindre vos autres appareils, et les thèmes que Sioul a commencés.</figcaption>
+</figure>
 
 ## Ajouter vos courriels {#add-your-mail}
 

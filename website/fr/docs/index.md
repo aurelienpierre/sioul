@@ -32,7 +32,7 @@ Certaines choses arrivent tout de suite : le code que vous venez de demander �
 La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour vos courriels, vos appels, vos messages, vos sites et vos rappels. [Ce qui vous joint, et quand](guide/notifications.md)
 
 <figure markdown="span">
-  [![La fenêtre de Sioul. À gauche, les lieux, une icône chacun. À droite, le Porche, ouvert jusqu’à 17:00 : une phrase sur ce qui est arrivé, la carte pour rejoindre vos autres appareils, une ligne sur l’argent, le courrier papier, un lien de confirmation et un code à usage unique avec son bouton Copier.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![La fenêtre de Sioul. À gauche, les lieux, une icône chacun. À droite, le Porche, ouvert jusqu’à 17:00 : un lien de confirmation et un code à usage unique avec son bouton Copier, puis les courriels d’un projet, de vous-même et de personnes que vous connaissez, puis les nouvelles d’une discussion.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
   <figcaption>Le Porche : ce qui est arrivé attend les heures que vous avez choisies ; les codes que vous venez de demander arrivent tout de suite.</figcaption>
 </figure>
 

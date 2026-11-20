@@ -146,6 +146,11 @@ Sur la carte d’un autre appareil que celui-ci : **Le compter de nouveau** po
 
 Tant que cet appareil ne partage pas, l’onglet le liste seul. Son nom et ce à quoi il sert peuvent tout de même être dits.
 
+<figure markdown="span">
+  [![Paramètres ▸ Appareils : « Vos appareils » et sa phrase ; « Cet appareil ne partage pas avec vos autres appareils : il est donc le seul de la liste. Le partage se met en place dans Paramètres ▸ Partage. », avec un bouton vers Partage ; puis la carte de cet appareil : son nom, Portable du bureau, avec Cet appareil et le nom que lui donne son système ; Un ordinateur ; « Utilisé en ce moment. » ; quand il a été ouvert pour la dernière fois ; « Cet appareil ne partage pas. » ; la version de son Sioul ; Travail, Vos démarches et Loisirs, aucun coché, « Tout arrive ici » ; Renommer… et Ce qu’est cet appareil. En dessous, « Ce qui arrive, et quand » : pour cet appareil, un choix pour le travail, les démarches, les loisirs, les repas et le sommeil, puis « En ce moment, le travail jusqu’à 17:00 : le travail arrive ici. »](../assets/screens/fr/settings-devices.png){ loading=lazy }](../assets/screens/fr/settings-devices.png "Ouvrir l’image en grand")
+  <figcaption>Chaque appareil : son nom, ce qu’il est, son Sioul, ce à quoi il sert.</figcaption>
+</figure>
+
 Sur un ordinateur, `sioul devices` écrit le même tableau dans un terminal, avec ce qui arrive sur chaque appareil à chaque moment, et `sioul devices --json` le donne en données ; `sioul devices for` et `sioul devices at` disent à quoi sert un appareil ([À quoi sert chaque appareil](hours.md#what-each-device-is-for)). Tant que la fenêtre de Sioul est fermée, il dit les autres appareils tels que la fenêtre les a vus pour la dernière fois, et quand c’était.
 
 ## Des appareils sur des versions différentes de Sioul {#devices-on-different-versions}

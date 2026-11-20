@@ -22,7 +22,7 @@ Vos données restent les vôtres d’un bout à l’autre. Vos courriels, vos ag
 [À quoi sert Sioul, et pour qui](../index.md)
 
 <figure markdown="span">
-  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et ses réglages, Montrer tous les courriels maintenant en dessous ; la carte pour rejoindre vos autres appareils ; puis ses sections, chacune un titre avec son « ? » et son chevron : Tout de suite, un code d’un expéditeur vérifié avec Copier ; les courriels d’un projet ; les personnes que vous connaissez ; De votre téléphone ; Sites ; Argent, chaque paiement avec son montant à droite ; chaque ligne avec Marquer comme lu et Écarter à côté.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et ses réglages, Montrer tous les courriels maintenant en dessous ; puis ses sections, chacune un titre avec son chevron et son « ? » : Tout de suite, un lien de confirmation et un code d’expéditeurs vérifiés, le code avec Copier ; les courriels d’un projet ; De vous-même ; De personnes que vous connaissez ; Sites, les nouvelles d’une discussion avec Ouvrir ; chaque courriel avec Marquer comme lu et Écarter à côté.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
   <figcaption>Les codes en haut, puis chaque section, une ligne par nouveauté.</figcaption>
 </figure>
 

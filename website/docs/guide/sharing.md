@@ -146,6 +146,11 @@ On the card of a device other than this one: **Count it again** for one you said
 
 While this device does not share, the tab lists it alone. Its name and what it is for can still be said.
 
+<figure markdown="span">
+  [![Settings ▸ Devices: "Your devices" and its sentence; "This device does not share with your other devices, so it is the only one listed. Settings ▸ Sharing sets it up.", with a button to Sharing; then this device's card: its name, Study laptop, with This device and the name its system gives it; A computer; "In use now."; when it was last opened; "This device does not share."; the version of its Sioul; Work, Your admin and Leisure, none ticked, "Everything comes here"; Rename… and What this device is. Under it, "What comes forward, and when": for this device, a choice for work, admin, leisure, meals and sleep, then "Now, work until 17:00: work comes here."](../assets/screens/settings-devices.png){ loading=lazy }](../assets/screens/settings-devices.png "Open the picture at full size")
+  <figcaption>Each device: its name, what it is, its Sioul, what it is for.</figcaption>
+</figure>
+
 On a computer, `sioul devices` prints the same table in a terminal, with what comes forward on each device at each time, and `sioul devices --json` gives it as data; `sioul devices for` and `sioul devices at` say what a device is for ([What each device is for](hours.md#what-each-device-is-for)). While Sioul's window is closed, it says the other devices as the window last saw them, and when that was.
 
 ## Devices on different versions of Sioul {#devices-on-different-versions}
