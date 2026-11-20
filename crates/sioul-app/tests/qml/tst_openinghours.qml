@@ -199,8 +199,10 @@ Item {
         Column {
             width: 372
 
+            // Under More, as on a card that is not an office's: 12 points in.
             OpeningHours {
-                width: parent.width
+                x: 12
+                width: parent.width - 12
                 sioul: mock
                 theme: testTheme
                 window: root
@@ -333,16 +335,21 @@ Item {
             mock.frenchWords = true
             const column = createTemporaryObject(columnComponent, root, {})
             const section = column.children[0]
+            // The section's words in a larger font than the stand-in's default, as a phone's may be.
+            for (const label of root.all(section, c => c.font !== undefined && c.font.pixelSize !== undefined && c.font.pixelSize > 0 && c.font.pixelSize < 17))
+                label.font.pixelSize = 17
             const long = "Mairie annexe d’Exempleville-sur-Exemple, accueil des démarches"
             mock.section = JSON.stringify(Object.assign({}, root.hall, { name: long, card: "", open: null, note: "", asked: null, mark: true, holidays_known: false }))
             section.reload()
             waitForRendering(column)
-            verify(section.width <= 372)
-            compare(root.inside(section, 372), "", "nothing past the column's edge")
+            verify(section.x + section.width <= 372)
+            compare(root.inside(column, 372), "", "nothing past the column's edge")
+            const mark = root.named(section, "openingHoursMark")
+            verify(mark.visible && mark.mapToItem(column, 0, 0).x + mark.width <= 372, "the link within the column: " + mark.width)
             mock.section = JSON.stringify(Object.assign({}, root.hall, { name: long, holidays_known: false }))
             section.reload()
             waitForRendering(column)
-            compare(root.inside(section, 372), "")
+            compare(root.inside(column, 372), "")
         }
 
         // The words shown are what is sent, once per press; an answer for another card or an earlier

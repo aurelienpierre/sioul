@@ -247,14 +247,33 @@ Section {
             Accessible.description: ToolTip.text
             onClicked: hours.callBack()
         }
-        Button {
-            objectName: "openingHoursMark"
-            visible: hours.writable && hours.shown.mark === true
-            flat: true
-            text: hours.sioul.text("hours-mark-office")
-            icon.name: "go-next"
-            icon.color: hours.theme.text
-            onClicked: hours.marked(JSON.parse(hours.sioul.markOffice(hours.key) || "{}"))
+    }
+    // Its words are long in French: on their own line, wrapped within the section, never past its edge.
+    Button {
+        id: markLink
+
+        objectName: "openingHoursMark"
+        visible: hours.writable && hours.shown.mark === true
+        Layout.maximumWidth: hours.body.width
+        flat: true
+        text: hours.sioul.text("hours-mark-office")
+        Accessible.name: text
+        onClicked: hours.marked(JSON.parse(hours.sioul.markOffice(hours.key) || "{}"))
+
+        contentItem: RowLayout {
+            spacing: 6
+
+            Icon {
+                iconName: "go-next"
+                size: 16
+            }
+            Label {
+                Layout.fillWidth: true
+                text: markLink.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: hours.theme.text
+            }
         }
     }
 }
