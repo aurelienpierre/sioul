@@ -107,40 +107,122 @@ pub const NAMELESS: &str = "download";
 /// or hide in it (right-to-left marks, zero-width joiners) go; runs of dots
 /// become one; dots and spaces at either end go (no hidden file, no name a
 /// Windows folder drops a part of); a device's name (CON, NUL, COM1…) gets
-/// "_" in front; and it is cut to `NAME_CHARS` characters and `NAME_BYTES`
-/// bytes, its extension kept. Nothing left: "download".
+/// "_" in front, once it is cut to `NAME_CHARS` characters and
+/// `NAME_BYTES` bytes, its extension kept (so that a long name cut down to a
+/// device's is caught too). Runs of spaces become one, so that a long gap cannot push a
+/// program's extension out of a line ("statement.pdf      .exe"). A name
+/// that is only an extension (".pdf") is "download.pdf"; nothing left: "download".
 pub fn clean_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for c in name.chars() {
         if c.is_control() || hidden_mark(c) {
             continue;
         }
-        let c = if matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*') { '_' } else { c };
-        // Runs of dots: one, so that ".." is never in a name.
-        if c == '.' && out.ends_with('.') {
+        let c = if matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*') { '_' } else if c.is_whitespace() { ' ' } else { c };
+        // Runs of dots: one, so that ".." is never in a name; runs of spaces: one.
+        if (c == '.' && out.ends_with('.')) || (c == ' ' && out.ends_with(' ')) {
             continue;
         }
         out.push(c);
     }
     let trimmed = out.trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
-    let named = if trimmed.is_empty() { NAMELESS.to_string() } else { trimmed };
-    let named = not_a_device(named);
-    shortened_name(&named)
+    // Only a known type's extension (".pdf"): a name for it, its type kept.
+    let only_extension = out.trim_start().starts_with('.') && !trimmed.contains(['.', ' ']) && (TYPE_EXTENSIONS.iter().any(|(_, e)| e.eq_ignore_ascii_case(&trimmed)) || crate::notes::kind_of_file(&format!("{NAMELESS}.{trimmed}")).is_some());
+    let named = if trimmed.is_empty() {
+        NAMELESS.to_string()
+    } else if only_extension {
+        format!("{NAMELESS}.{trimmed}")
+    } else {
+        trimmed
+    };
+    // A device's name with its "_" may be one character longer: cut again (the "_" stays first).
+    shortened_name(&not_a_device(shortened_name(&named)))
 }
 
 /// Characters that change how a name reads without showing: the marks that
-/// turn text right to left (a program "evil", U+202E, "fdp.exe" reads as "evilexe.pdf"),
-/// those that join or separate without width, and the byte order mark.
+/// turn text right to left (a program "evil", U+202E, "fdp.exe" reads as
+/// "evilexe.pdf"), those that join or separate without width, the byte order
+/// mark, the line and paragraph separators (a one-line label breaks on
+/// them), the soft hyphen, and the fillers and blanks drawn as nothing
+/// (Mongolian's vowel separator, Hangul's fillers, Braille's blank, the tags).
 fn hidden_mark(c: char) -> bool {
-    matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+    matches!(c, '\u{00AD}' | '\u{061C}' | '\u{115F}' | '\u{1160}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{2800}' | '\u{3164}' | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF9}'..='\u{FFFB}' | '\u{E0000}'..='\u{E007F}')
 }
 
-/// A name Windows reads as a device (CON, PRN, AUX, NUL, COM1–9, LPT1–9),
-/// with or without an extension, given "_" in front.
+/// A name Windows reads as a device (CON, PRN, AUX, NUL, COM0–9 and
+/// LPT0–9, their superscript ¹ ² ³ too), with or without an extension, given
+/// "_" in front.
 fn not_a_device(name: String) -> String {
-    let stem = name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
-    let numbered = stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit();
+    let stem = name.split('.').next().unwrap_or("").trim_end().to_uppercase();
+    let numbered = stem.chars().count() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.chars().nth(3).is_some_and(|c| c.is_ascii_digit() || matches!(c, '¹' | '²' | '³'));
     if numbered || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") { format!("_{name}") } else { name }
+}
+
+/// The extension Sioul gives a name that has none, from the type the site
+/// says, for the types Sioul shows (Notes, Papers, Letters): without one, a
+/// file is not listed in Notes, Letters refuse it, and a desktop opens it by
+/// what it finds inside.
+const TYPE_EXTENSIONS: &[(&str, &str)] = &[
+    ("application/pdf", "pdf"),
+    ("image/png", "png"),
+    ("image/jpeg", "jpg"),
+    ("image/gif", "gif"),
+    ("image/webp", "webp"),
+    ("image/svg+xml", "svg"),
+    ("image/bmp", "bmp"),
+    ("image/tiff", "tif"),
+    ("audio/mpeg", "mp3"),
+    ("audio/ogg", "ogg"),
+    ("audio/opus", "opus"),
+    ("audio/wav", "wav"),
+    ("audio/x-wav", "wav"),
+    ("audio/flac", "flac"),
+    ("audio/mp4", "m4a"),
+    ("audio/aac", "aac"),
+    ("text/plain", "txt"),
+    ("text/markdown", "md"),
+    ("application/vnd.oasis.opendocument.text", "odt"),
+    ("application/vnd.oasis.opendocument.spreadsheet", "ods"),
+    ("application/vnd.oasis.opendocument.presentation", "odp"),
+    ("application/vnd.oasis.opendocument.graphics", "odg"),
+    ("application/msword", "doc"),
+    ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+    ("application/vnd.ms-excel", "xls"),
+    ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+    ("application/vnd.ms-powerpoint", "ppt"),
+    ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+    ("application/rtf", "rtf"),
+    ("text/rtf", "rtf"),
+    ("application/epub+zip", "epub"),
+];
+
+/// A site's name made one plain file name (`clean_name`), with an extension
+/// from the type it says when the name has none (`TYPE_EXTENSIONS`):
+/// "statement" sent as a PDF is "statement.pdf".
+pub fn file_name(name: &str, mime: &str) -> String {
+    let name = clean_name(name);
+    if has_extension(&name) {
+        return name;
+    }
+    let mime = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    match TYPE_EXTENSIONS.iter().find(|(kind, _)| *kind == mime) {
+        Some((_, extension)) => clean_name(&format!("{name}.{extension}")),
+        None => name,
+    }
+}
+
+/// Whether a name ends with an extension ("statement.pdf"); a desktop opens a
+/// file without one by what it finds inside, so its notice offers no Open.
+pub fn has_extension(name: &str) -> bool {
+    !split_extension(name).1.is_empty()
+}
+
+/// Whether a name is one Sioul reads as its own: a list (`sioul-papers.toml`
+/// and any other `.toml`), a list's copy kept by a rename, a move's mark.
+/// Filed in Notes or Papers, Sioul could take a site's file for its own list.
+pub fn is_sioul_own(name: &str) -> bool {
+    let lower = name.trim().to_lowercase();
+    lower.ends_with(".toml") || lower.ends_with(".before-rename") || lower.ends_with(".sioul-move")
 }
 
 /// A name and its extension ("statement", ".pdf"); "" for a name without
@@ -363,9 +445,31 @@ mod tests {
             // A program dressed as a PDF by a right-to-left mark reads as what it is.
             ("invoice\u{202E}fdp.exe", "invoicefdp.exe"),
             ("zero\u{200B}width.pdf", "zerowidth.pdf"),
+            // Invisible fillers and separators, a soft hyphen, the tags: gone.
+            ("line\u{2028}break\u{2029}.pdf", "linebreak.pdf"),
+            ("soft\u{00AD}hyphen\u{180E}\u{3164}\u{115F}\u{1160}\u{FFA0}\u{2800}.pdf", "softhyphen.pdf"),
+            ("tag\u{E0041}\u{E007F}.pdf", "tag.pdf"),
+            // A long gap cannot push a program's extension out of a line.
+            ("statement.pdf                                                                                                    .exe", "statement.pdf .exe"),
+            ("non\u{00A0}\u{00A0}breaking.pdf", "non breaking.pdf"),
+            // Only an extension: a name, its type kept; a dotfile stays a plain name.
+            (".pdf", "download.pdf"),
+            (".bashrc", "bashrc"),
+            // Windows' devices with superscript digits.
+            ("COM\u{00B9}.txt", "_COM\u{00B9}.txt"),
+            ("lpt\u{00B3}", "_lpt\u{00B3}"),
+            ("com0.txt", "_com0.txt"),
         ] {
             assert_eq!(clean_name(given), kept, "{given:?}");
+            assert_eq!(clean_name(kept), kept, "cleaning again changes nothing: {kept:?}");
         }
+        // A long name cut down to a device's is caught too, and cleaning it again changes nothing.
+        let device = format!("COM1{}x.txt", "\u{2003}".repeat(300));
+        assert_eq!(clean_name(&device), "COM1 x.txt");
+        let device = format!("COM1.{}", "c".repeat(300));
+        let cut = clean_name(&device);
+        assert!(cut.starts_with("_COM1") && cut.chars().count() <= NAME_CHARS, "{cut}");
+        assert_eq!(clean_name(&cut), cut);
         let long = format!("{}.pdf", "a".repeat(400));
         let cut = clean_name(&long);
         assert_eq!(cut.chars().count(), NAME_CHARS);
@@ -386,6 +490,22 @@ mod tests {
     }
 
     /// A name already there gets a number, in the place's own way.
+    /// A name without an extension gets one from the type the site says, for
+    /// the types Sioul shows; Sioul's own lists are known by their names.
+    #[test]
+    fn a_name_gets_its_type_s_extension() {
+        assert_eq!(file_name("statement", "application/pdf"), "statement.pdf");
+        assert_eq!(file_name("", "application/PDF; charset=binary"), "download.pdf");
+        assert_eq!(file_name("budget", "application/vnd.oasis.opendocument.spreadsheet"), "budget.ods");
+        assert_eq!(file_name("scan.png", "application/pdf"), "scan.png", "an extension given is kept");
+        assert_eq!(file_name("blob", "application/octet-stream"), "blob", "no type Sioul shows: none");
+        assert!(has_extension("a.pdf") && !has_extension("statement") && !has_extension("x.not an extension"));
+        for own in ["sioul-papers.toml", "SIOUL-BANK.TOML", "projects.toml", "sioul-cases.toml.before-rename", "notes.sioul-move"] {
+            assert!(is_sioul_own(own), "{own}");
+        }
+        assert!(!is_sioul_own("statement.pdf") && !is_sioul_own("toml.pdf"));
+    }
+
     #[test]
     fn a_name_taken_gets_its_number() {
         assert_eq!(numbered("statement.pdf", 1, Numbering::Paren), "statement.pdf");
