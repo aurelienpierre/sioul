@@ -343,7 +343,7 @@ Item {
                     id: filtersButton
 
                     objectName: "taskFilters"
-                    visible: page.window.compact && !page.searching
+                    visible: page.window.compact === true && !page.searching
                     checkable: true
                     checked: page.filtersShown
                     flat: true

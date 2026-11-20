@@ -161,7 +161,7 @@ Three choices under the tabs, **Every project**, **All kinds** and **Any categor
 
 ## Search, and changing several at once {#search}
 
-**Search**, the last tab at the top of the Tasks page and of the Agenda, finds tasks on the Tasks page and events in the Agenda, whatever the hour. It looks the same in both: the words and **Select** on the first line, then the choices in one line, in this order:
+**Search**, the last tab at the top of the Tasks page and of the Agenda, finds tasks on the Tasks page and events in the Agenda, whatever the hour. It looks the same in both pages, in this order:
 
 - **words** found in the title, the notes or the place, each word somewhere, accents and case aside;
 - **Any project**, **No project** or one; the same for the **type** and the **category**. An event has no type: **No type** keeps every event, a type none;

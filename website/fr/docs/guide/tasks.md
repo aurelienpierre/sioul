@@ -161,7 +161,7 @@ Trois choix sous les onglets, **Tous les projets**, **Tous les types** et **Tout
 
 ## Chercher, et changer plusieurs à la fois {#search}
 
-**Chercher**, le dernier onglet en haut de la page Tâches et de l’Agenda, trouve les tâches dans la page Tâches et les événements dans l’Agenda, quelle que soit l’heure. Il se présente de la même façon dans les deux : les mots et **Sélectionner** sur la première ligne, puis les choix sur une ligne, dans cet ordre :
+**Chercher**, le dernier onglet en haut de la page Tâches et de l’Agenda, trouve les tâches dans la page Tâches et les événements dans l’Agenda, quelle que soit l’heure. Il se présente de la même façon dans les deux pages, dans cet ordre :
 
 - des **mots** du titre, des notes ou du lieu, chaque mot quelque part, sans tenir compte des accents ni des majuscules ;
 - **Tous les projets**, **Sans projet** ou l’un d’eux ; de même pour le **type** et la **catégorie**. Un événement n’a pas de type : **Sans type** garde chaque événement, un type aucun ;
