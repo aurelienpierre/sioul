@@ -370,6 +370,25 @@ pub struct ChatLimit {
     pub locked_minutes: u32,
 }
 
+/// The chats' limit a day, in minutes, while none was chosen: what the window shows then.
+pub const CHAT_MINUTES: u32 = 60;
+/// How long the chats stay covered, in minutes, while no length was chosen: what the window shows then.
+pub const CHAT_LOCKED_MINUTES: u32 = 30;
+
+impl ChatLimit {
+    /// The minutes of chats a day before they are covered: the number
+    /// chosen, or the one the window shows when the limit was turned on
+    /// with its numbers left as they were (kept as 0).
+    pub fn after(&self) -> u32 {
+        if self.minutes == 0 { CHAT_MINUTES } else { self.minutes }
+    }
+
+    /// The minutes the chats stay covered: the number chosen, or the one the window shows.
+    pub fn cover(&self) -> u32 {
+        if self.locked_minutes == 0 { CHAT_LOCKED_MINUTES } else { self.locked_minutes }
+    }
+}
+
 impl Health {
     pub fn default_path() -> PathBuf {
         crate::config::data_dir().join("health.toml")
@@ -1550,8 +1569,8 @@ impl HealthState {
             return true;
         }
         self.chat_minutes += 1;
-        if limit.enabled && limit.minutes > 0 && self.chat_minutes >= limit.minutes {
-            self.chats_locked_until = Some(now.timestamp().as_second() + i64::from(limit.locked_minutes.max(1)) * 60);
+        if limit.enabled && self.chat_minutes >= limit.after() {
+            self.chats_locked_until = Some(now.timestamp().as_second() + i64::from(limit.cover()) * 60);
             self.chat_minutes = 0;
             return true;
         }
@@ -2249,6 +2268,27 @@ mod tests {
         assert!(state.chat_minute(&limit, &now), "the second minute reaches the limit");
         assert!(state.chats_covered(&at("2026-10-03T20:29[Europe/Paris]")));
         assert!(!state.chats_covered(&at("2026-10-03T20:31[Europe/Paris]")), "back after the time chosen");
+    }
+
+    /// Turned on with its numbers left as the window shows them (kept as
+    /// 0), the limit is the one shown: 60 minutes a day, covered for 30.
+    #[test]
+    fn a_limit_turned_on_without_its_numbers_is_the_one_shown() {
+        let limit = ChatLimit { enabled: true, minutes: 0, locked_minutes: 0 };
+        assert_eq!((limit.after(), limit.cover()), (CHAT_MINUTES, CHAT_LOCKED_MINUTES));
+        let mut state = HealthState::default();
+        let now = at("2026-10-03T20:00[Europe/Paris]");
+        for minute in 1..CHAT_MINUTES {
+            assert!(!state.chat_minute(&limit, &now), "minute {minute} is under the limit");
+        }
+        assert!(state.chat_minute(&limit, &now), "the sixtieth minute reaches the limit shown");
+        assert!(state.chats_covered(&at("2026-10-03T20:29[Europe/Paris]")));
+        assert!(!state.chats_covered(&at("2026-10-03T20:31[Europe/Paris]")), "back after the thirty minutes shown");
+        let off = ChatLimit { enabled: false, minutes: 0, locked_minutes: 0 };
+        let mut state = HealthState::default();
+        for _ in 0..200 {
+            assert!(!state.chat_minute(&off, &now), "a limit turned off covers nothing");
+        }
     }
 
     /// A medicine as Sioul 0.0.3 reads and writes it, before takes had

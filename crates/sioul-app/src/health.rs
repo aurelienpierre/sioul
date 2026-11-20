@@ -3985,7 +3985,14 @@ pub(crate) fn set_setting(key: &str, value: &str) -> String {
         match key {
             "movement.enabled" => health.movement.enabled = value == "true",
             "movement.minutes" => health.movement.minutes = number().clamp(10, 240),
-            "chats.enabled" => health.chats.enabled = value == "true",
+            "chats.enabled" => {
+                health.chats.enabled = value == "true";
+                // Turned on with its numbers left as shown: the file says what the window shows.
+                if health.chats.enabled {
+                    health.chats.minutes = health.chats.after();
+                    health.chats.locked_minutes = health.chats.cover();
+                }
+            }
             "chats.minutes" => health.chats.minutes = number(),
             "chats.locked_minutes" => health.chats.locked_minutes = number(),
             _ => health.errands_list = value.trim().to_string(),
