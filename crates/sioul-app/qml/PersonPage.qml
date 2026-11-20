@@ -400,6 +400,15 @@ Panel {
                                 }
                             }
                         }
+                        // How this card reaches you: its sheet, its own list and own times.
+                        Button {
+                            objectName: "personCardSheet"
+                            visible: page.shown !== null && page.shown.reaches !== null && page.shown.reaches !== undefined
+                            flat: true
+                            text: page.sioul.text("person-card-sheet")
+                            Accessible.name: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", cardRow.modelData.name))
+                            onClicked: page.window.openPersonSheet(cardRow.modelData.key, "")
+                        }
                         Button {
                             flat: true
                             text: page.sioul.text("person-unlink-card")
@@ -419,6 +428,36 @@ Panel {
                     icon.color: page.theme.text
                     text: page.sioul.text("person-link-card")
                     onClicked: picker.ask()
+                }
+                // One of your people: what reaches you from them, one door away; with no card
+                // linked, that Sioul cannot recognise them yet (absence proves nothing: said).
+                Label {
+                    objectName: "personReaches"
+                    visible: page.shown !== null && !!page.shown.reaches
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    text: page.shown && page.shown.reaches ? page.shown.reaches.line : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+                Label {
+                    visible: page.shown !== null && !!page.shown.reaches && page.shown.reaches.untied !== ""
+                    Layout.fillWidth: true
+                    text: page.shown && page.shown.reaches ? page.shown.reaches.untied : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+                Button {
+                    objectName: "personReachesOpen"
+                    visible: page.shown !== null && !!page.shown.reaches
+                    flat: true
+                    icon.name: "go-next"
+                    icon.color: page.theme.text
+                    text: page.sioul.text("person-reaches-open")
+                    onClicked: page.window.showParameters("attention.people")
                 }
 
                 Label {

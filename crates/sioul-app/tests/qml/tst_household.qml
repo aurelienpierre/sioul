@@ -25,6 +25,14 @@ Item {
     function openCard(ref) {
         root.cards.push(ref)
     }
+    // The window's doors a person's page uses for what reaches you (main.qml).
+    property var doors: []
+    function showParameters(key) {
+        root.doors.push("settings:" + key)
+    }
+    function openPersonSheet(key, addresses) {
+        root.doors.push("sheet:" + key)
+    }
 
     Theme {
         id: testTheme
@@ -72,6 +80,9 @@ Item {
                 papers: [{ id: "lea-id", title: "Identity card with a long name to wrap on a phone", kind_label: "Identity card", line: "valid until Monday 3 May 2027", standing: "valid", persons: ["p-lea"] },
                          { id: "lea-school", title: "School insurance", kind_label: "Insurance", line: "valid until Wednesday 30 June 2027: time to renew it", standing: "renew", persons: ["p-lea"] }],
                 cards: [{ uid: "c-lea", key: "/stand-in/lea.vcf", name: "Léa Martin", detail: "lea@example.org" }],
+                // One of your people (persons::page's `reaches`): a line and its door.
+                reaches: { line: "Léa is one of your people.", door: "What reaches you from your people", untied: "" },
+                sheet_label: "How they reach you",
                 agendas: [{ id: "home/lea-school", name: "Léa, school and activities", child: true, whose: "" }],
                 letters: [{ id: "l-1", sender: "Collège de l’Exemple", kind_label: "A request for documents", received: "Monday 2 November" }],
                 handover: mock.handover, handover_age: mock.handover === "" ? 0 : 16,
@@ -238,6 +249,27 @@ Item {
             agents.click()
             compare(mock.agents[mock.agents.length - 1], "p-lea=true")
             compare(past(person, []).join("; "), "", "nothing past 412 points")
+        }
+
+        // One of your people (20 November 2026): a line, the door to What reaches you, and each
+        // card's sheet; your own page has none of it.
+        function test_a_person_s_page_says_what_reaches_you_from_them() {
+            person.personId = ""
+            person.personId = "p-lea"
+            waitForRendering(person)
+            const line = find(person, "personReaches")
+            verify(line.visible && line.text === "Léa is one of your people.", line.text)
+            root.doors = []
+            find(person, "personReachesOpen").clicked()
+            compare(root.doors, ["settings:attention.people"])
+            const sheet = find(person, "personCardSheet")
+            verify(sheet.visible, "the card's sheet")
+            sheet.clicked()
+            compare(root.doors, ["settings:attention.people", "sheet:/stand-in/lea.vcf"])
+            compare(past(person, []).join("; "), "", "nothing past 412 points")
+            person.personId = "me"
+            waitForRendering(person)
+            verify(!find(person, "personReaches").visible && !find(person, "personReachesOpen").visible, "your own page: none")
         }
 
         function test_a_child_s_agendas_with_who_does_what() {

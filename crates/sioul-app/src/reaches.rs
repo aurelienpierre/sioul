@@ -124,6 +124,27 @@ fn shown_rows(phone: bool) -> Vec<Row> {
 thread_local! {
     /// The language a test speaks; the window's otherwise.
     static SPOKEN: std::cell::Cell<Option<&'static Translator>> = const { std::cell::Cell::new(None) };
+    /// The people a test stands in for Contacts ▸ Your people; the store's otherwise.
+    static STORE: std::cell::RefCell<Option<sioul_core::persons::Persons>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One of your people as the page lists them (Who is in which circle): their
+/// id, name, and whether a card is tied to them, without which Sioul
+/// cannot recognise them (absence proves nothing: said).
+struct Close {
+    id: String,
+    name: String,
+    tied: bool,
+}
+
+/// Your people today (`persons::Persons::circle`), in the household's order;
+/// none: the page shows no line of theirs.
+fn your_people() -> Vec<Close> {
+    let read = |store: &sioul_core::persons::Persons| {
+        let today = sioul_core::zone::now().date();
+        store.circle(today).into_iter().map(|p| Close { id: p.id.clone(), name: p.name.clone(), tied: p.cards.iter().any(|c| !c.trim().is_empty()) }).collect()
+    };
+    STORE.with(|kept| kept.borrow().as_ref().map(read)).unwrap_or_else(|| read(&sioul_core::persons::Persons::cached()))
 }
 
 /// This file's words: the window's language, or a test's.
@@ -203,7 +224,7 @@ fn who_words(persons: &[Person], everyone: bool, rest: bool) -> String {
         args.set("kinds", listed(&known, false));
         items.push(tr().text("attention-who-senders", Some(&args)));
     }
-    for person in persons.iter().filter(|p| matches!(p, Person::Neutral | Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
+    for person in persons.iter().filter(|p| matches!(p, Person::People | Person::Neutral | Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
         items.push(text(&format!("attention-who-{}", person.id())));
     }
     listed(&items, false)
@@ -265,9 +286,11 @@ fn people_words(subjects: &[(Channel, Person)], said: &mut Vec<(Channel, Person)
 }
 
 /// The people of a channel the matrix decides for (the states), the call
-/// screening's aside: numbers nobody knows and hidden numbers, on calls.
+/// screening's aside: numbers nobody knows and hidden numbers, on calls; Your
+/// people only while the circle holds someone.
 fn matrix_persons(channel: Channel) -> Vec<Person> {
-    attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p))).collect()
+    let people = !your_people().is_empty();
+    attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p)) && (people || *p != Person::People)).collect()
 }
 
 /// Sioul's own kinds in words, the four reminders together when all are
@@ -393,8 +416,11 @@ pub(crate) fn view(realtime: bool) -> String {
 /// own (Settings ▸ Devices), and still decide there in a pause and during
 /// do-not-disturb: the full ledger shows them, changeable as every row
 /// (review of `phones`, "For `reach`"); Your rules has no calls' column.
+/// Your people's rows only while the circle holds someone: no row of
+/// controls for a circle that holds nobody.
 fn table_rows(phone: bool) -> Vec<Row> {
-    shown_rows(phone)
+    let people = !your_people().is_empty();
+    shown_rows(phone).into_iter().filter(|r| people || !matches!(r, Row::People(_, Person::People))).collect()
 }
 
 /// A behaviour, or "Your own", in words.
@@ -411,8 +437,11 @@ fn behaviour_label(behaviour: Option<Behaviour>) -> String {
 /// what stays automatic.
 fn people(attention: &Attention, reach: Reach) -> Value {
     let channels: Vec<Value> = behaviours::CHANNELS.iter().map(|c| json!({ "id": c.id(), "label": text(&format!("attention-group-{}", c.id())), "note": channel_note(*c, reach) })).collect();
+    // Your people's line only while the circle holds someone besides you (decision 6 of 20 November 2026).
+    let close = your_people();
     let rows: Vec<Value> = Circle::ALL
         .iter()
+        .filter(|circle| **circle != Circle::People || !close.is_empty())
         .map(|circle| {
             let cells: Vec<Value> = behaviours::CHANNELS
                 .iter()
@@ -437,6 +466,15 @@ fn people(attention: &Attention, reach: Reach) -> Value {
         "blocked": { "label": text("reach-circle-blocked"), "help": text("reach-circle-blocked-help"), "word": text("attention-word-never") },
         "notes": [text("reach-people-automatic"), text("reach-people-mail-off"), text("reach-people-groups-note")],
         "own_help": text("reach-own-help"),
+        // No one in Your people yet: one sentence, the door to Contacts ▸ Your people.
+        "none": if close.is_empty() { text("reach-people-none") } else { String::new() },
+        // Who is in which circle: Your people by name, read from Contacts, not edited here; someone
+        // with no card tied said so, with the door that ties one (their page: Link a card…).
+        "circle": {
+            "title": text("reach-circle-people"),
+            "help": text("reach-circles-people-help"),
+            "people": close.iter().map(|p| json!({ "id": p.id, "name": p.name, "untied": if p.tied { String::new() } else { say("reach-circles-untied", &[("name", p.name.clone())]) } })).collect::<Vec<_>>(),
+        },
     })
 }
 
@@ -1346,6 +1384,77 @@ mod tests {
         let contacts = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "contacts").unwrap();
         assert_eq!(contacts["label"], "Vos contacts");
         assert_eq!(contacts["cells"][1]["label"], "Quand vous ne dormez pas");
+    }
+
+    /// Your people (decision of 20 November 2026): no line, no row of What
+    /// comes when and no word of theirs while Contacts ▸ Your people holds
+    /// nobody besides you, one sentence and its door instead; once someone is
+    /// there, their line between Always through and Safe, reading When awake
+    /// as Safe's, their rows in What comes when, and Who is in which circle
+    /// listing them by name, someone with no card linked said so; in both
+    /// languages, said well.
+    #[test]
+    fn your_people_get_a_line_once_someone_is_in_it() {
+        use sioul_core::persons::{Person as Someone, Persons};
+        let usual = Attention::usual();
+        let ids = |page: &Value| page["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        for language in ["en", "fr"] {
+            speak(language);
+            // Nobody but you, and a child's other parent: no line.
+            let mut store = Persons::default();
+            store.put(Someone { name: "Sam".into(), relation: "other-parent".into(), cards: vec!["c-sam".into()], ..Someone::default() });
+            STORE.with(|kept| *kept.borrow_mut() = Some(store.clone()));
+            let page = people(&usual, Reach::default());
+            assert_eq!(ids(&page), ["always", "safe", "contacts", "restricted", "others"], "{language}");
+            said_well(page["none"].as_str().unwrap(), language);
+            assert!(page["circle"]["people"].as_array().unwrap().is_empty());
+            assert!(!table_rows(false).iter().any(|r| matches!(r, Row::People(_, Person::People))), "no row of controls for nobody");
+            assert!(!matrix_persons(Channel::Calls).contains(&Person::People));
+            // Léa, with a card; Alix, with none.
+            store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Someone::default() });
+            store.put(Someone { name: "Alix".into(), relation: "helped".into(), ..Someone::default() });
+            STORE.with(|kept| *kept.borrow_mut() = Some(store.clone()));
+            let page = people(&usual, Reach::default());
+            assert_eq!(ids(&page), ["always", "people", "safe", "contacts", "restricted", "others"], "{language}");
+            assert_eq!(page["none"], "", "{language}");
+            let line = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "people").unwrap();
+            worded(line["label"].as_str().unwrap(), language);
+            said_well(line["help"].as_str().unwrap(), language);
+            assert_eq!(line["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect::<Vec<_>>(), ["awake", "awake"], "as Safe until changed");
+            let circle = &page["circle"];
+            worded(circle["title"].as_str().unwrap(), language);
+            said_well(circle["help"].as_str().unwrap(), language);
+            let listed: Vec<(&str, &str)> = circle["people"].as_array().unwrap().iter().map(|p| (p["name"].as_str().unwrap(), p["untied"].as_str().unwrap())).collect();
+            assert_eq!(listed.iter().map(|(n, _)| *n).collect::<Vec<_>>(), ["Léa", "Alix"], "in the household's order, the other parent aside");
+            assert_eq!(listed[0].1, "", "a card linked");
+            said_well(listed[1].1, language);
+            assert!(listed[1].1.contains("Alix"));
+            for id in ["reach-circles-tie", "reach-people-open", "sender-circle", "person-reaches-open", "person-card-sheet", "phone-calls-row-people"] {
+                worded(&text(id), language);
+            }
+            // A person's sheet and page say why, in the circle's words.
+            for id in ["sender-from-circle", "person-reaches", "person-reaches-untied"] {
+                said_well(&say(id, &[("name", "Léa".to_string())]), language);
+            }
+            said_well(&text("phone-calls-people-note"), language);
+            for channel in [Channel::Mail, Channel::Calls, Channel::Messages] {
+                assert!(table_rows(true).contains(&Row::People(channel, Person::People)), "{channel:?}");
+                said_well(&channel_line(&usual, channel, Person::People, false, "attention-sheet-line").unwrap(), language);
+            }
+            assert!(matrix_persons(Channel::Calls).contains(&Person::People));
+            // The moment now names them where they come.
+            assert!(!who_words(&[Person::People], false, false).is_empty());
+        }
+        STORE.with(|kept| *kept.borrow_mut() = None);
+        speak("en");
+        assert_eq!(who_words(&[Person::People, Person::Neutral], false, false), "your people and your contacts");
+        // Their calls ring at every time: the sheet's line says so.
+        assert_eq!(channel_line(&usual, Channel::Calls, Person::People, false, "attention-sheet-line").unwrap(), tr().text("attention-sheet-line-calls-now", Some(&{
+            let mut args = sioul_core::i18n::args();
+            args.set("during", text("attention-during-any"));
+            args.set("first", "yes");
+            args
+        })));
     }
 
     /// The page's choices name their rows and cells, and refuse what they do not offer.
