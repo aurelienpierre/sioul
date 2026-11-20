@@ -10,12 +10,16 @@
 # life in French (make-demo.py --language fr) and Sioul in French, into
 # website/docs/assets/screens/fr/, under the same names.
 #
-# Makes the profile in SCRATCH (a new temporary folder by default), runs Sioul
-# on it off the network (SIOUL_DEMO=1) taking its pictures (SIOUL_GRAB_STEPS=demo,
-# main.qml), in the light theme, at 1280×860; then once more on the same
-# profile without hours, for the Porch asking for them and the budgets of every
-# area at once; and copies the pictures into website/docs/assets/screens/.
-# Build first: CARGO_INCREMENTAL=0 cargo build -p sioul-app.
+# Every picture the guide shows, in one go (some fifteen minutes): one run of
+# Sioul for each of the step lists they come from (`runs`, below; main.qml's
+# `grabber.steps`), each on a demo profile of its own made anew in SCRATCH (a
+# new temporary folder by default), off the network (SIOUL_DEMO=1), in the
+# light theme, at the size its steps give the window (1280×860 for the
+# places, 1400 or 1100 by 1500 for long settings, a phone's 412×891); then the
+# pictures the guide uses are copied into website/docs/assets/screens/, under
+# the guide's names. SHOTS_RUNS="attention spam" takes those runs alone.
+# Build first (CARGO_INCREMENTAL=0 cargo build --release -p sioul-app); the
+# program is CARGO_TARGET_DIR/release/sioul-app (default target/).
 #
 # The pictures show a weekday afternoon, whatever the day they are taken: Sioul
 # runs in a time zone of its own (TZ=DEMO-hh, a fixed offset) where it is
@@ -92,9 +96,10 @@ if [[ -d /run/dbus ]]; then
     hide+=(--tmpfs /run/dbus)
 fi
 
-# Runs Sioul on profile $1, its pictures into $2.
+# Runs Sioul on profile $1 through step list $3 (SIOUL_GRAB_STEPS), its
+# pictures into $2; "phone" as $4 gives the window a phone's size and layout.
 run() {
-    local profile=$1 out=$2
+    local profile=$1 out=$2 steps=$3 phone=${4:-}
     rm -rf "$out"
     mkdir -p "$out" "$profile/documents"
     # A runtime folder of its own: Sioul keeps one window per profile through a
@@ -106,9 +111,12 @@ run() {
     else
         runtime=$(mktemp -d /tmp/sioul-run.XXXXXX)
     fi
-    local env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS=demo SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
+    local env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS="$steps" SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
                FONTCONFIG_FILE="$fonts" QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
                LANG="$locale" LC_ALL="$locale" TZ="$zone")
+    if [[ -n "$phone" ]]; then
+        env+=(SIOUL_GRAB_PHONE=1)
+    fi
     env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS \
         bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" --ro-bind "$app" "$app" \
         --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
@@ -119,36 +127,61 @@ run() {
             XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
             timeout 400 dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$out/log" 2>&1 || true
     rm -rf "$runtime"
-    grep -E "qml:|TypeError|ReferenceError" "$out/log" | sed "s|^|  $out/log: |" | head -20 || true
+    grep -E "qml:|TypeError|ReferenceError" "$out/log" | grep -vE "sioul-(perf|objects):" | sed "s|^|  $out/log: |" | head -20 || true
 }
 
-notes_at=(--notes-at "$home/Notes")
+# The runs, one line each: its name, make-demo.py's options (- for none), the
+# step list (main.qml's `grabber.steps`), "phone" or "-", then the pictures
+# it gives the guide, as PICTURE (its name in the guide too) or
+# TAKEN:PICTURE. Each run has a profile of its own, made anew: some steps
+# change it (an invoice issued, a safe sender added).
+runs=(
+    # A weekday afternoon, with hours.
+    "demo - demo - porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time papers health sites sites-menu accounts settings-tabs settings-hours reachable"
+    # Without hours: the Porch asking for them, and the budgets of every area
+    # at once (with hours, only those of the hours now).
+    "no-hours --no-hours demo - porch-hours budgets bank-accounts"
+    # Settings ▸ What reaches you, at 1400 by 1500, and a contact's sheet.
+    "attention - attention - attention-rules:settings-attention attention-own attention-moments:attention-dnd attention-circles attention-table attention-sheet"
+    # The status line's card of what reaches you, on a phone.
+    "reach - reach phone reach-card reach-card-lengths"
+    # Mail: a search by conditions, a selection held over a folder; the filters in Mail's ⚙.
+    "mail-search - mail-search - mail-search mail-search-drag"
+    "mail-filters - mail-filters - mail-filters mail-filter-editor mail-filters-run"
+    # Sioul's own spam filter: its settings in Mail's ⚙, the Porch's review queue.
+    "spam --spam spam - spam-settings:settings-spam spam-reader:porch-spam"
+    # Settings on a phone: its list of sections.
+    "settings-phone - shell phone settings-list:settings-phone"
+    # Invoices, on a computer and on a phone.
+    "invoices - invoices - project-client invoice-editor invoice-preview invoice-issued invoice-paid invoices settings-invoices"
+    "invoices-phone - invoices phone invoices:invoices-phone invoice-editor:invoice-editor-phone invoice-issued:invoice-issued-phone"
+)
 
-python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile$suffix" --now "$now" --language "$language" "${notes_at[@]}"
-run "$scratch/profile$suffix" "$scratch/shots$suffix"
-python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile-no-hours$suffix" --now "$now" --language "$language" --no-hours "${notes_at[@]}"
-run "$scratch/profile-no-hours$suffix" "$scratch/shots-no-hours$suffix"
-
-# With hours, a weekday afternoon; without them, what asks for them, and the
-# budgets of every area at once (with hours, only those of the hours now).
-names=(porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time
-       papers health health-week health-settings sites sites-menu accounts settings-attention settings-hours reachable)
-no_hours=(porch-hours budgets bank-accounts)
 mkdir -p "$screens"
 missing=0
-copy() {
-    if [[ -f "$1/$2.png" ]]; then
-        cp "$1/$2.png" "$screens/$2.png"
-    else
-        echo "Missing: $1/$2.png" >&2
-        missing=1
+for line in "${runs[@]}"; do
+    read -r name options steps phone pictures <<< "$line"
+    if [[ -n "${SHOTS_RUNS:-}" && " $SHOTS_RUNS " != *" $name "* ]]; then
+        continue
     fi
-}
-for name in "${names[@]}"; do
-    copy "$scratch/shots$suffix" "$name"
-done
-for name in "${no_hours[@]}"; do
-    copy "$scratch/shots-no-hours$suffix" "$name"
+    [[ "$options" == - ]] && options=""
+    [[ "$phone" == - ]] && phone=""
+    profile="$scratch/profile-$name$suffix"
+    shots="$scratch/shots-$name$suffix"
+    # shellcheck disable=SC2086
+    python3 "$repo/tools/demo/make-demo.py" --into "$profile" --now "$now" --language "$language" --notes-at "$home/Notes" $options > /dev/null
+    echo "$name: $steps${phone:+ (phone)}"
+    run "$profile" "$shots" "$steps" "$phone"
+    for picture in $pictures; do
+        taken=${picture%%:*}
+        to=${picture##*:}
+        if [[ -f "$shots/$taken.png" ]]; then
+            cp "$shots/$taken.png" "$screens/$to.png"
+        else
+            echo "Missing: $shots/$taken.png (for $to.png)" >&2
+            missing=1
+        fi
+    done
 done
 echo "Copied into $screens"
 exit $missing
