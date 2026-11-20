@@ -610,12 +610,17 @@ pub fn back_for(quiet: &QuietTasks, task: &crate::tasks::Task, frames: &[(Zoned,
 }
 
 impl Situation {
-    pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, projects: &[crate::projects::Project]) -> Situation {
+    /// The moment `now`: its mode, whether offices are open, the days off;
+    /// `cards`, the offices' cards with hours (`opening::Cards::of` the
+    /// contacts), which the tasks that involve them follow.
+    pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, projects: &[crate::projects::Project], cards: &crate::opening::Cards) -> Situation {
         let days_off = DaysOff::of(config);
         let mode = mode(&config.week_hours(), &days_off, overrides, blocks, now);
         let office = config.office_hours();
-        let open = window::current(&office, now).is_some();
-        let next = if open { String::new() } else { window::next_opening(&office, now).map(|z| tr.when(&z)).unwrap_or_default() };
+        // Offices are closed on the public holidays Sioul knows, from yesterday (a night's window) to the plan's year.
+        let holidays = crate::opening::public_holidays(config, now.time_zone(), now.date().yesterday().unwrap_or(now.date()), now.date().checked_add(Span::new().days(400)).unwrap_or(now.date()));
+        let open = crate::opening::open_until(&office, true, &holidays, now).is_some();
+        let next = if open { String::new() } else { crate::opening::next_opening(&office, true, &holidays, now).map(|z| tr.when(&z)).unwrap_or_default() };
         let mut office_days = [false; 7];
         for w in &office {
             if let Some(day) = w.weekday() {
@@ -631,7 +636,7 @@ impl Situation {
         }
         let no_movement = mode.free() && !config.free_time.movement(&config.planning);
         let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, projects), no_movement, here: mode.here };
-        Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()) }, closed, office_days, quiet_tasks }
+        Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()), cards: cards.clone(), usual: office, holidays }, closed, office_days, quiet_tasks }
     }
 
     /// The same moment on this device, by what the person said each device
@@ -927,7 +932,7 @@ mod tests {
         // The situation of the task pages on this device.
         let config = crate::config::Config { windows: self::week(), ..crate::config::Config::default() };
         let tr = crate::i18n::Translator::new("en");
-        let here = Situation::now(&config, &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"), &tr, &[]);
+        let here = Situation::now(&config, &Overrides::default(), &none(), &self::at("2026-10-02T19:00[Europe/Paris]"), &tr, &[], &crate::opening::Cards::default());
         assert!(here.quiet_tasks.keeps(&task(&["joy"])));
         assert!(!here.on(&lines).quiet_tasks.keeps(&task(&["joy"])));
     }

@@ -586,10 +586,10 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
                 _ => runs.push((from, to, Area::ALL)),
             }
         }
-        // A call to an office only while it is open: its own hours, else offices' usual ones.
+        // A call to an office only while it is open: its own hours, else its office's card's, else
+        // offices' usual ones; closed on a public holiday.
         if task.office_hours {
-            let own = crate::window::parse_ranges(&task.office_times);
-            let open: Vec<(i64, i64)> = crate::window::spans_on(if own.is_empty() { &settings.office_hours } else { &own }, date, &zone).iter().map(|(o, c)| (o.timestamp().as_second(), c.timestamp().as_second())).collect();
+            let open: Vec<(i64, i64)> = settings.office_for(task).spans_on(&settings.holidays, date, &zone).iter().map(|(o, c)| (o.timestamp().as_second(), c.timestamp().as_second())).collect();
             runs = runs.iter().flat_map(|&(from, to, area)| open.iter().filter(move |&&(o, c)| from.max(o) < to.min(c)).map(move |&(o, c)| (from.max(o), to.min(c), area))).collect();
         }
         // The end of work moved by free time: light steps only, and those there first (docs/pauses.md).

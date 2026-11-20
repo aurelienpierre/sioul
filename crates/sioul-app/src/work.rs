@@ -209,12 +209,14 @@ fn fresh_lines(tasks: &[Task], quiet: Option<&sioul_core::quiet::QuietTasks>) ->
         .collect()
 }
 
-/// The moment, for the task pages: quiet or not, offices open or not.
-pub(crate) fn situation(projects: &[sioul_core::projects::Project]) -> sioul_core::quiet::Situation {
+/// The moment, for the task pages: quiet or not, offices open or not (each
+/// task's office by its card's hours, when it has some).
+pub(crate) fn situation(loaded: &Loaded) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let now = sioul_core::zone::now();
+    let cards = sioul_core::opening::Cards::of(&loaded.contacts);
     // On this device: the task pages keep what comes forward on it (`Situation::on`).
-    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), projects).on(&crate::dispatch::lines())
+    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), &loaded.projects, &cards).on(&crate::dispatch::lines())
 }
 
 /// The plan, and what it needs, from what was read.
@@ -248,7 +250,7 @@ impl Desk {
         let sessions = timelog::sessions();
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|s| !s.note.is_empty()).map(|s| (s.task.clone(), s.note.clone())).collect();
-        let situation = situation(&loaded.projects);
+        let situation = situation(&loaded);
         // The plan's one read of the calendars (`read`), kept as read; the plan leaves out what waits for Undo.
         let midnight = date.to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
         let read = Arc::new(sioul_core::agenda::occurrences(midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400));
@@ -1103,7 +1105,7 @@ pub(crate) fn closing(shared: &Shared) -> Closed {
     let today = Today::load(&Today::default_path(), date);
     let sessions = timelog::sessions();
     let spent = timelog::spent(&sessions, 0, i64::MAX);
-    let mut situation = situation(&loaded.projects);
+    let mut situation = situation(&loaded);
     // The calendars read once for both plans, what waits for Undo left out (`Desk::new`).
     let midnight = date.to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let (removed, skipped) = mail::hidden_pim(shared);
@@ -1293,6 +1295,12 @@ pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list:
     .to_string()
 }
 
+/// Makes a task in the usual list, from elsewhere than its form (an office's
+/// "Call back…"); returns its UID.
+pub(crate) fn create_task(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit) -> Result<String, String> {
+    create(qt, shared, edit, "")
+}
+
 /// Makes a task in a list; returns its UID.
 fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> Result<String, String> {
     if edit.title.trim().is_empty() {
@@ -1304,6 +1312,10 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     // A step goes after its bigger task's others, as they are on disk now: the
     // page may not have read the one added a moment ago (`tasks::next_in_sequence`).
     let mut edit = edit.clone();
+    // A call or an outing made with an office whose card has hours needs it open (`opening::ticks`).
+    if sioul_core::opening::ticks(&edit.kind, edit.office_hours, &[], &edit.contacts, &sioul_core::opening::Cards::of(&loaded(shared).contacts)) {
+        edit.office_hours = true;
+    }
     if !edit.parent.is_empty() && edit.sort_order.is_none() {
         let all = tasks::all(&zone);
         edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&all, &edit.parent), &now));
@@ -1816,14 +1828,21 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         }
         // The task's Busy as written (review B15): the file's, unless the form changed it since it read the task.
         let mut written_busy = edit.busy;
+        // Its tick for an open office, the form's word when it changed it, else set by itself
+        // when an office whose card has hours came with this save (`opening::ticks`).
+        let tick_said = read.as_ref().is_some_and(|r| r.office_hours != edit.office_hours);
+        let cards = sioul_core::opening::Cards::of(&loaded(shared).contacts);
         change(qt, shared, uid, |text| {
             let zone = sioul_core::zone::current();
             // Over the file as it is now: the fields the form changed since it read the task, the rest as the file has them (§5.2).
             let was = tasks::task_of_text(text, &zone);
-            let edit = match (&read, &was) {
+            let mut edit = match (&read, &was) {
                 (Some(read), Some(now)) => TaskEdit::of(now).changed_over(read, &edit),
                 _ => edit.clone(),
             };
+            if !tick_said && let Some(was) = &was && sioul_core::opening::ticks(&edit.kind, edit.office_hours, &was.contacts, &edit.contacts, &cards) {
+                edit.office_hours = true;
+            }
             written_busy = edit.busy;
             // Its dates changed, a date asked its start would make refused: said, nothing written.
             if was.as_ref().is_none_or(|w| w.start != edit.start || w.due != edit.due)

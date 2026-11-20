@@ -231,6 +231,11 @@ pub struct Settings {
     /// Offices' usual hours (`Config::office_hours`): the day's layout puts a
     /// task that needs an office, without hours of its own, only while they are open.
     pub office_hours: Vec<AdminWindow>,
+    /// The offices' cards with hours (`opening::Cards`): a task that involves
+    /// one follows its hours (`office_for`).
+    pub cards: crate::opening::Cards,
+    /// The public holidays Sioul knows: offices are closed then (`opening::public_holidays`).
+    pub holidays: BTreeSet<Date>,
     /// Heavy tasks today takes (its weather), and any other day.
     pub heavy_today: u32,
     pub heavy_per_day: u32,
@@ -291,6 +296,8 @@ impl Settings {
             closed: BTreeSet::new(),
             office_days: [true, true, true, true, true, false, false],
             office_hours: crate::window::default_office_hours(),
+            cards: crate::opening::Cards::default(),
+            holidays: BTreeSet::new(),
             heavy_today: 2,
             heavy_per_day: 2,
             needs: crate::needs::Needs::default(),
@@ -462,6 +469,12 @@ impl Settings {
         Area { work: in_view(area, Time::Work, self.hours), admin: in_view(area, Time::Admin, self.hours), leisure: in_view(area, Time::Leisure, self.hours) }
     }
 
+    /// The hours a task that needs an open office follows: its own, else its
+    /// office's card's, else offices' usual ones (`opening::hours_for`).
+    pub fn office_for(&self, task: &Task) -> crate::opening::Followed {
+        crate::opening::hours_for(task, &self.cards, &self.office_hours)
+    }
+
     /// The weekdays without any hours, Monday first.
     pub fn rest_days(&self) -> [bool; 7] {
         std::array::from_fn(|d| self.week[d].total() == 0)
@@ -519,8 +532,10 @@ pub fn settings_from(inputs: Inputs) -> Settings {
     (settings.today_percent, settings.heavy_today) = crate::pause::today_level(&overrides, now.date(), weather);
     settings.closed = situation.closed.clone();
     settings.office_days = situation.office_days;
-    // A call to an office only while it is open, as the day lays it.
+    // A call to an office only while it is open, as the day lays it: its card's hours when it has some.
     settings.office_hours = config.office_hours();
+    settings.cards = situation.offices.cards.clone();
+    settings.holidays = situation.offices.holidays.clone();
     settings.appointments = appointments;
     settings
 }
@@ -1102,14 +1117,11 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     // The plan's order, then the days: first days with room, after what each waits for.
     let best_open = best_of(&(0..n).filter(|&i| open[i]).collect::<Vec<_>>());
     let order = kahn(n, &order_edges, &open, |i| keyed(&best_open, i));
-    // The days each task's office opens: its own hours, else offices' usual days.
-    let office_days: Vec<[bool; 7]> = tasks
-        .iter()
-        .map(|t| {
-            let own = crate::window::parse_ranges(&t.office_times);
-            if own.is_empty() { settings.office_days } else { crate::window::days_open(&own) }
-        })
-        .collect();
+    // The days each task's office opens: its own hours, else its office's card's, else offices' usual days;
+    // and the public holidays it keeps closed.
+    let followed: Vec<crate::opening::Followed> = tasks.iter().map(|t| settings.office_for(t)).collect();
+    let office_days: Vec<[bool; 7]> = followed.iter().map(|f| if f.whose == crate::opening::Whose::Usual { settings.office_days } else { crate::window::days_open(&f.windows) }).collect();
+    let office_closed = |i: usize, day: Date| followed[i].holidays_off && settings.holidays.contains(&day);
     // Pinned to a time (a block, `blocks`): on the block's day, its time held there already (`with_pins`).
     let pins: Vec<Option<&crate::blocks::Pin>> = tasks.iter().map(|t| settings.pins.get(&t.uid).filter(|_| t.status.is_open())).collect();
     // A step given a time today by a drag before blocks (`Task::at`, read still): today, whatever the room.
@@ -1244,7 +1256,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 let lighter = u32::from(capacity.lightened.contains(&day));
                 let heavy_limit = if day == today { settings.heavy_today } else { settings.heavy_per_day }.saturating_sub(lighter);
                 let heavy_full = heavy[i] && settings.heavy_per_day > 0 && heavy_used.get(&day).copied().unwrap_or(0) >= heavy_limit;
-                if !(heavy_full || settings.closed.contains(&day) || (tasks[i].office_hours && !office_days[i][weekday])) {
+                if !(heavy_full || settings.closed.contains(&day) || (tasks[i].office_hours && (!office_days[i][weekday] || office_closed(i, day)))) {
                     let room = settings.room_on(day);
                     let percent = if day == today { settings.today_percent } else { 100 };
                     let taken = used.entry(day).or_insert_with(|| vec![0; room.0.len()]);
@@ -1536,6 +1548,26 @@ mod tests {
         let plan = plan(&[call, usual], day("2026-10-03"), &settings, &BTreeMap::new(), &BTreeSet::new());
         assert_eq!(plan.items["call"].start, Some(day("2026-10-03")));
         assert_eq!(plan.items["usual"].start, Some(day("2026-10-05")), "the usual offices open Monday");
+    }
+
+    /// The office's card says its hours (`opening`): a call that involves it follows them, a
+    /// public holiday kept closed; untouched, a task's own hours still come first.
+    #[test]
+    fn a_task_follows_its_office_s_card() {
+        let hall = crate::contacts::Contact { uid: "hall".into(), name: "Example town hall".into(), hours: crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Sa 09:00-12:00; PH off".into(), ..Default::default() }), ..Default::default() }, ..Default::default() };
+        let office = vec![crate::tasks::ContactRef { name: "Example town hall".into(), uri: crate::links::contact_uri("hall") }];
+        let call = Task { uid: "call".into(), estimate: 15, kind: "call".into(), office_hours: true, contacts: office.clone(), ..Task::default() };
+        let own = Task { uid: "own".into(), estimate: 15, office_hours: true, office_times: "mo 09:00-12:00".into(), contacts: office, ..Task::default() };
+        let mut settings = Settings::flat([60; 7]);
+        settings.cards = crate::opening::Cards::of(&[hall]);
+        // Thursday 1 October 2026: Saturday the 3rd, its card's only day.
+        let planned = plan(&[call.clone(), own.clone()], day("2026-10-01"), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(planned.items["call"].start, Some(day("2026-10-03")));
+        assert_eq!(planned.items["own"].start, Some(day("2026-10-05")), "its own hours first");
+        // Saturday the 3rd a public holiday (invented): the next Saturday.
+        settings.holidays.insert(day("2026-10-03"));
+        let planned = plan(&[call], day("2026-10-01"), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(planned.items["call"].start, Some(day("2026-10-10")));
     }
 
     #[test]

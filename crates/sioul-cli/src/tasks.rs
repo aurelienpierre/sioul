@@ -262,7 +262,7 @@ impl Desk {
         // On this device: the lists keep what comes forward on it, as the window's task pages do
         // (docs/areas.md, "What each device is for"); the plan reads the hours alone. Agents have their own desk (mcp/read.rs).
         let lines = sioul_sync::dispatch::Known::read(&s.config, &sioul_core::config::state_dir(), now.timestamp().as_second()).lines();
-        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.projects).on(&lines);
+        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.projects, &sioul_core::opening::Cards::of(&loaded.contacts)).on(&lines);
         let mut settings = settings(s, today.weather, &situation, &loaded.projects, &loaded.tasks);
         // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);

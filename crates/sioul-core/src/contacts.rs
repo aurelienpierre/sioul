@@ -69,6 +69,13 @@ pub struct Contact {
     /// it is kept: what "Load the photo" asks for (`web_photo_file`); empty
     /// otherwise (decided 3 November 2026).
     pub photo_web: String,
+    /// Its opening hours, when it is an office's (`opening`): Sioul's own
+    /// lines, which other programs keep as they are.
+    pub hours: crate::opening::CardHours,
+    /// What the card says it is (`card_kind`): "org" for an organisation's,
+    /// "person" for a person's, "" when it says neither (a card made in the
+    /// form, its name line Sioul's guess).
+    pub card: &'static str,
 }
 
 /// What the contact form gives back.
@@ -340,6 +347,12 @@ fn contact_with(card: &[String], path: &Path, book: &Collection, photos: bool) -
         suffix,
         photo: photo.0,
         photo_web: photo.1,
+        hours: crate::opening::CardHours::of(card),
+        card: match card_kind(card) {
+            crate::titles::Card::Company => "org",
+            crate::titles::Card::Person => "person",
+            crate::titles::Card::Unknown => "",
+        },
     }
 }
 
@@ -761,6 +774,52 @@ pub fn move_title(text: &str) -> TitleMove {
     TitleMove::Moves { title, before, after: rest, kept, sure, text: rewritten(out, added) }
 }
 
+/// A card with these opening hours (`opening`, Sioul's own lines): each of
+/// its lines in the place of the first it replaces, the others before
+/// `END:VCARD`; every other line byte for byte, `REV` renewed. None when the
+/// card says these hours already. Hours taken off (none given) take their
+/// lines with them; nothing else is ever removed.
+pub fn with_hours(text: &str, hours: &crate::opening::CardHours) -> Option<String> {
+    let card = lines::unfold(text);
+    if crate::opening::CardHours::of(&card) == *hours {
+        return None;
+    }
+    let wanted = hours.lines();
+    let mut out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    let mut added = Vec::new();
+    for name in [crate::opening::OPEN, crate::opening::PHONE, crate::opening::NOTE] {
+        let present: Vec<usize> = card.iter().enumerate().filter(|(_, l)| lines::name(l) == name).map(|(i, _)| i).collect();
+        for &i in &present {
+            out[i] = None;
+        }
+        if let Some(line) = wanted.iter().find(|l| lines::name(l) == name) {
+            match present.first() {
+                Some(&i) => out[i] = Some(line.clone()),
+                None => added.push(line.clone()),
+            }
+        }
+    }
+    Some(rewritten(out, added))
+}
+
+/// A card with one more number (`TEL`) or postal address (`ADR`), unlabelled,
+/// as the form would write it; every other line byte for byte, `REV`
+/// renewed. None when the card shows that value already (an office's
+/// number a lookup found and the person chose to add).
+pub fn with_value(text: &str, property: &str, value: &str) -> Option<String> {
+    let card = lines::unfold(text);
+    let value = value.trim();
+    if value.is_empty() || !matches!(property, "TEL" | "ADR") {
+        return None;
+    }
+    let wanted = if property == "ADR" { tidy_address(value) } else { value.to_string() };
+    if card.iter().any(|l| lines::name(l) == property && shown(l) == wanted) {
+        return None;
+    }
+    let out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    Some(rewritten(out, vec![write_value("", property, "", value, false)]))
+}
+
 /// A card's lines as changed, `REV` renewed, what was added before `END:VCARD`.
 fn rewritten(out: Vec<Option<String>>, mut added: Vec<String>) -> String {
     let mut kept: Vec<String> = out.into_iter().flatten().filter(|l| lines::name(l) != "REV").collect();
@@ -1077,6 +1136,33 @@ pub fn new_path(book: &Collection) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An office's hours written through the contacts' writer: in the place of
+    /// their lines, every other line as it was; nothing when they say the same.
+    #[test]
+    fn opening_hours_on_a_card() {
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:hall\r\nFN:Example town hall\r\nTEL:01 23 45 67 89\r\nX-OTHER-APP:kept\r\nEND:VCARD\r\n";
+        let hours = crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Mo-Fr 09:00-12:00; PH off".into(), source: "typed".into(), checked: "2026-11-20".into() }), phone: None, note: "Closed in August".into() };
+        let written = with_hours(card, &hours).unwrap();
+        let lines = lines::unfold(&written);
+        assert!(lines.contains(&"X-OTHER-APP:kept".to_string()) && lines.contains(&"TEL:01 23 45 67 89".to_string()));
+        assert!(lines.contains(&"X-SIOUL-OPENING-HOURS;X-SIOUL-SOURCE=typed;X-SIOUL-CHECKED=2026-11-20:Mo-Fr 09:00-12:00\\; PH off".to_string()), "{lines:?}");
+        assert_eq!(crate::opening::CardHours::of(&lines), hours);
+        assert_eq!(with_hours(&written, &hours), None, "the same hours: nothing written");
+        // Changed: in the place of the first, the note taken off with nothing else.
+        let changed = crate::opening::CardHours { note: String::new(), ..hours.clone() };
+        let again = lines::unfold(&with_hours(&written, &crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Sa 09:00-12:00; PH off".into(), ..Default::default() }), ..changed }).unwrap());
+        let at = |l: &[String], name: &str| l.iter().position(|x| lines::name(x) == name);
+        assert_eq!(at(&again, crate::opening::OPEN), at(&lines, crate::opening::OPEN), "where it was");
+        assert!(at(&again, crate::opening::NOTE).is_none() && again.contains(&"X-OTHER-APP:kept".to_string()));
+        // An older Sioul's form saved over it keeps the lines (`apply` changes only its fields).
+        let older = apply(&written, &ContactEdit { name: "Example town hall".into(), phones: vec![Labeled { label: String::new(), value: "01 23 45 67 89".into() }], notes: "A note".into(), ..ContactEdit::default() });
+        assert_eq!(crate::opening::CardHours::of(&lines::unfold(&older)), hours);
+        // A number a lookup found, added when asked; never twice.
+        let added = with_value(card, "TEL", "+33 1 98 76 54 32").unwrap();
+        assert!(lines::unfold(&added).contains(&"TEL:+33 1 98 76 54 32".to_string()));
+        assert_eq!(with_value(card, "TEL", "01 23 45 67 89"), None);
+    }
 
     #[test]
     fn a_photo_to_show() {

@@ -1069,7 +1069,16 @@ impl Loaded {
             Kind::Task => {
                 let task = self.tasks.iter().find(|t| t.uid == id).filter(|t| !t.read_only)?;
                 let text = std::fs::read_to_string(&task.key).ok()?;
-                let text = crate::tasks::add_lines(&text, &[self.tie_line(other, true)], now).ok()?;
+                let mut lines = vec![self.tie_line(other, true)];
+                // A call or an outing given an office whose card has hours needs it open: ticked by
+                // itself, once, which an untick corrects (`opening::ticks`).
+                if kind_of(other) == Kind::Contact {
+                    let added = [crate::tasks::ContactRef { name: String::new(), uri: other.to_string() }];
+                    if crate::opening::ticks(&task.kind, task.office_hours, &task.contacts, &added, &crate::opening::Cards::of(&self.contacts)) {
+                        lines.push(crate::tasks::concept_line(crate::tasks::OFFICE_CONCEPT));
+                    }
+                }
+                let text = crate::tasks::add_lines(&text, &lines, now).ok()?;
                 Some(Rewrite { kind: Kind::Task, path: PathBuf::from(&task.key), text })
             }
             Kind::Event => {

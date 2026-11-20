@@ -884,7 +884,8 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     // Meals and sleep as Health keeps them: while you sleep, nothing is told.
     let blocks = crate::quiet::Blocks::read(now, &events);
-    let situation = crate::quiet::Situation::now(config, &overrides, &blocks, now, tr, &projects);
+    // What the hours keep in view, alone: no reminder reads an office's hours (`opening`).
+    let situation = crate::quiet::Situation::now(config, &overrides, &blocks, now, tr, &projects, &crate::opening::Cards::default());
     let papers = store.as_deref().and_then(|root| crate::papers::Wallet::load(root).ok()).map(|w| w.papers).unwrap_or_default();
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
     let money = books.as_ref().map(|b| Money { movements: &b.movements, aheads: &aheads });
