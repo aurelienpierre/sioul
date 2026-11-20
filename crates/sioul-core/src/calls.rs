@@ -3930,7 +3930,7 @@ mod line_tests {
         // cell; a card of one of your people put on Restricted keeps the restricted row.
         let mut persons = Persons::default();
         persons.put(Someone { name: "Sam".into(), relation: "kin".into(), cards: vec!["sam".into(), "ann".into()], ..Someone::default() });
-        let senders = Senders { circle: std::sync::Arc::new(Circle::of(&persons, at("2026-11-16T00:00").date())), ..senders() };
+        let senders = Senders { circle: std::sync::Arc::new(Circle::of(&persons, at("2026-11-16T00:00").date())), ..self::senders() };
         let world = World { senders, ..World::new() };
         let (table, _) = world.build(None);
         assert_eq!(table.numbers.get("+33199000001").map(String::as_str), Some("people"), "Safe by hand gives way to the circle");
