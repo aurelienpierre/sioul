@@ -189,15 +189,18 @@ Item {
     }
 
     // What reaches you's tab or part asked (ReachesTab.show): Your rules at a
-    // part ("person", a channel, "own", "exceptions", "dnd", "calls"), What
-    // comes when for a time or a layer ("pause", "sleep") and "table".
+    // part ("person", "people", a channel, "own", "exceptions", "circles",
+    // "dnd", "calls"), What comes when for a time or a layer ("pause",
+    // "sleep") and "table". "people" (Your people's line: a person's page, the
+    // notice said once) and "circles" (Who is in which circle) are parts, never
+    // times (review M3).
     function showAsked() {
         const asked = page.reachesAsked
         page.reachesAsked = ""
         const tab = reaches.item as ReachesTab
         if (!tab)
             return
-        const parts = ["rules", "person", "own", "exceptions", "dnd", "table"]
+        const parts = ["rules", "person", "people", "own", "exceptions", "circles", "dnd", "table"]
         if (parts.includes(asked))
             tab.show(asked, "")
         else if (["mail", "calls", "messages"].includes(asked))

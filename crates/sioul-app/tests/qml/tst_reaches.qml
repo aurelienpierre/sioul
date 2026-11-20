@@ -392,7 +392,7 @@ Item {
                 compare(find(page, "closeNote-lea-0"), null, "a card here, judged on Your people: nothing to say")
                 verify(find(page, "closeNote-alix-0").text.indexOf("Alix") >= 0)
                 verify(find(page, "closeNote-maud-0").text.indexOf("Restricted") > 0)
-                verify(find(page, "closeNote-maud-0").width <= page.width, "within the page")
+                tryVerify(() => find(page, "closeNote-maud-0").width <= page.width && find(page, "closeNote-maud-0").lineCount > 1 === (page === narrow), 3000, "within the page, wrapping at a phone's width")
                 mock.opened = []
                 find(page, "closeDoor-alix-0").clicked()
                 compare(mock.opened, ["person:alix"], "their page, where a card is linked")
