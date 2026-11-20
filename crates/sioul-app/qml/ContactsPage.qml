@@ -15,7 +15,10 @@
 // "Select" gives each row a box, and the selection bar acts on many at once
 // (ContactSelection.qml; one row on a phone); "Import…" reads a vCard or
 // a CSV file (ContactImport.qml, in the window). A card of an address book
-// you only read says so wherever it would be written (wave D).
+// you only read says so wherever it would be written (wave D). An office's
+// card shows its opening hours beside its numbers (OpeningHours.qml), a
+// person's under More: changed by hand (OpeningHoursForm.qml), looked up
+// when asked (OpeningHoursLookup.qml), "Call back…" a task that follows them.
 
 pragma ComponentBehavior: Bound
 
@@ -151,6 +154,12 @@ Item {
         }
     }
     property bool moreShown: false
+    // Its opening hours (OpeningHours.qml): beside its numbers on an
+    // organisation's card or one that has hours; under More on the others,
+    // when the card can be written.
+    readonly property bool hasHours: page.person !== null && page.person.hours !== undefined && (page.person.hours.open !== null || page.person.hours.phone !== null || (page.person.hours.note || "") !== "")
+    readonly property bool hoursMain: page.person !== null && (page.person.card === "org" || page.hasHours)
+    readonly property bool hoursUnderMore: page.person !== null && !page.hoursMain && !page.person.read_only
     property string problem: ""
     // Their list, who they are to you and why (`personOf`): {who, from, choice
     // ("" when their categories decide), said, own [an address or a number of
@@ -268,6 +277,21 @@ Item {
     function revealDetails() {
         page.moreShown = true
         page.revealed += 1
+    }
+
+    // For the window's images: the open card's hours changed by hand, looked up, asked, closed.
+    function changeHours() {
+        (hoursForm.now() as OpeningHoursForm).edit(page.openKey, JSON.parse(page.sioul.contactHours(page.openKey) || "null"))
+    }
+    function lookUpHours() {
+        (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, JSON.parse(page.sioul.contactHours(page.openKey) || "null"))
+    }
+    function lookUpAsk() {
+        (hoursLookup.now() as OpeningHoursLookup).ask()
+    }
+    function closeHours() {
+        hoursForm.close()
+        hoursLookup.close()
     }
 
     // The first contact, for the window's images.
@@ -898,6 +922,24 @@ Item {
                                         }
                                     }
                                 }
+                                // Its opening hours, beside its numbers (an organisation's card, or one that has hours).
+                                Loader {
+                                    active: page.hoursMain
+                                    visible: active
+                                    Layout.fillWidth: true
+
+                                    sourceComponent: Component {
+                                        OpeningHours {
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            window: page.window
+                                            key: page.openKey
+                                            onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
+                                            onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
+                                            onCalledBack: answer => page.problem = answer.error || ""
+                                        }
+                                    }
+                                }
 
                                 // How they reach you: their list and why, in a sentence; their
                                 // sheet (PersonSheet.qml) chooses their list, Always through, and
@@ -966,7 +1008,7 @@ Item {
 
                                 // The rest, folded.
                                 BareButton {
-                                    readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0)
+                                    readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0 || page.hoursUnderMore)
 
                                     visible: any
                                     flat: true
@@ -1075,6 +1117,25 @@ Item {
                                             function onPersonChanged() {
                                                 bookChoice.books = JSON.parse(page.sioul.addressBooks() || "[]")
                                             }
+                                        }
+                                    }
+                                }
+                                // Under More, on a card not known as an organisation's and without hours yet.
+                                Loader {
+                                    active: page.moreShown && page.hoursUnderMore
+                                    visible: active
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+
+                                    sourceComponent: Component {
+                                        OpeningHours {
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            window: page.window
+                                            key: page.openKey
+                                            onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
+                                            onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
+                                            onCalledBack: answer => page.problem = answer.error || ""
                                         }
                                     }
                                 }
@@ -1294,6 +1355,30 @@ Item {
                     }
                     onEndAsked: person => endForm.now().ask(person)
                 }
+            }
+        }
+    }
+
+    // An office's opening hours changed by hand (OpeningHoursForm.qml).
+    Later {
+        id: hoursForm
+
+        sourceComponent: Component {
+            OpeningHoursForm {
+                sioul: page.sioul
+                theme: page.theme
+            }
+        }
+    }
+
+    // An office's opening hours looked up, "Is it this one?" (OpeningHoursLookup.qml).
+    Later {
+        id: hoursLookup
+
+        sourceComponent: Component {
+            OpeningHoursLookup {
+                sioul: page.sioul
+                theme: page.theme
             }
         }
     }
