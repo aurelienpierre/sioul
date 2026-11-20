@@ -1371,9 +1371,19 @@ pub(crate) fn notes_command(s: &Session, query: &str, path: Option<&str>) -> Res
         }
         return Ok(());
     }
-    let found = if query.is_empty() { vault.notes.iter().collect() } else { vault.search(query) };
-    for note in found {
-        println!("{}  ({})", one_line(&note.title), one_line(&note.path));
+    if query.trim().is_empty() {
+        for note in &vault.notes {
+            println!("{}  ({})", one_line(&note.title), one_line(&note.path));
+        }
+        return Ok(());
+    }
+    // The window's search: by the names first, then by the texts, each with the line that holds the words.
+    let read = |note: &notes::Note| notes::search_text(&vault.root.join(&note.path));
+    for found in vault.find(query, notes::Kinds::All, Some(&read)) {
+        println!("{}  ({})", one_line(&found.note.title), one_line(&found.note.path));
+        if !found.line.is_empty() {
+            println!("    {}", one_line(&found.line));
+        }
     }
     Ok(())
 }

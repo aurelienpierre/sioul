@@ -1284,22 +1284,26 @@ pub fn search_notes(s: &Session, args: &Args) -> Result<Answer, String> {
     let limit = args.number("limit", 30, 1, 500)? as usize;
     let vault = notes::Vault::open(&root);
     let words = words(&query);
-    // In the text as the agent reads it: a number masked there is not found by its digits.
-    let in_file = |note: &Note| {
-        note.kind == NoteKind::Text && vault.file(&note.path).and_then(|f| std::fs::read_to_string(f).ok()).is_some_and(|text| holds(&text, &words) && holds(&mask::text(&head(&text).0), &words))
-    };
-    // Notes kept from agents (a closed project's files or ties; any outside a project while those are closed): left out, counted.
+    // Notes kept from agents (a closed project's files or ties; any outside a project while those are closed): left out, counted, never read.
     let consent = access::of(s, &Loaded::read(&s.config));
     let (open, closed): (Vec<&Note>, Vec<&Note>) = vault.notes.iter().partition(|n| consent.allows_note(&n.path));
     let closed = closed.len();
-    let mut found: Vec<&Note> = open.into_iter().filter(|n| holds(&format!("{} {} {}", n.title, n.path, n.tags.join(" ")), &words) || (in_text && in_file(n))).collect();
-    found.sort_by_key(|n| std::cmp::Reverse(n.modified));
+    let open = notes::Vault { root: vault.root.clone(), notes: open.into_iter().cloned().collect(), folders: Vec::new() };
+    // The window's search (`Vault::find`), in the text as the agent reads it (its first
+    // characters, masked): a number masked there is not found by its digits, and the
+    // masks' own words ("hidden") find nothing the note does not say.
+    let in_file = |note: &Note| {
+        let text = notes::search_text(&root.join(&note.path))?;
+        holds(&format!("{} {} {} {text}", note.title, note.path, note.tags.join(" ")), &words).then(|| mask::text(&head(&text).0))
+    };
+    let found = open.find(&query, notes::Kinds::All, in_text.then_some(&in_file as &dyn Fn(&Note) -> Option<String>));
     let mut lines = Vec::new();
     let mut rows = Vec::new();
-    for note in found.iter().take(limit) {
+    for found in found.iter().take(limit) {
+        let note = found.note;
         let tags = if note.tags.is_empty() { String::new() } else { format!(" · #{}", note.tags.join(" #")) };
         lines.push(format!("{}  ({}){tags}", note.title, note.path));
-        rows.push(json!({ "uri": note.uri(), "path": note.path, "title": note.title, "kind": note.kind, "tags": note.tags, "modified": instant(note.modified) }));
+        rows.push(json!({ "uri": note.uri(), "path": note.path, "title": note.title, "kind": note.kind, "tags": note.tags, "modified": instant(note.modified), "found_by": found.by }));
     }
     if lines.is_empty() {
         lines.push(s.say("mail-not-found", &[("query", query.clone())]));

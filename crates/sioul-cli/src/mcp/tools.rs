@@ -528,7 +528,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "search_notes",
         title: "Search notes",
-        description: "Notes of the notes folder (the person's own Markdown files) whose title, path or tags hold every word of the query, the latest changed first; all of them when the query is empty. `in_text` also looks in their text.",
+        description: "Notes of the notes folder (the person's own Markdown files) whose title, path or tags hold every word of the query, the latest changed first; all of them when the query is empty. `in_text` also looks in their text: those found by it come after, the latest changed first (`found_by`: \"name\" or \"text\").",
         writes: false,
         idempotent: true,
         open_world: false,
