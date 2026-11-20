@@ -18,6 +18,8 @@ import android.provider.Settings;
 import android.telecom.Call;
 import android.telecom.Connection;
 import android.telecom.TelecomManager;
+import android.telephony.SubscriptionInfo;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
@@ -1197,6 +1199,9 @@ final class Calls
             return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.STARS)) ? "true" : "false";
         case "calls-history":
             return history(context, asked.optLong("since", 0), asked.optInt("max", HISTORY_MAX)).toString();
+        case "calls-own-number":
+            // This phone's own numbers, one per SIM, with the permissions Sioul already holds: never a question.
+            return ownNumbers(context).toString();
         case "calls-open-roles":
             return openRoles(context) ? "true" : "false";
         case "calls-open-blocked":
@@ -1282,6 +1287,60 @@ final class Calls
         row.put("number", number == null ? "" : number);
         row.put("presentation", presentation);
         return row;
+    }
+
+    /**
+     * This phone's own numbers, one per active SIM, as the SIMs carry them,
+     * for its entry among your devices (Rust: calls.rs, {@code own_number}):
+     * only with what Sioul already holds for the texts, never a question of
+     * its own, nor a permission of its own in the manifest. The SIMs are
+     * listed with READ_PHONE_STATE (asked for their names), their numbers
+     * read with READ_SMS, which lets Android tell an app the phone's numbers
+     * (as READ_PHONE_NUMBERS would, which Sioul does not ask). Without both,
+     * nothing ("readable" false). A SIM that carries no number gives an
+     * empty one: many do not, and Sioul then says nothing.
+     */
+    static JSONObject ownNumbers(Context context) throws JSONException
+    {
+        boolean readable = context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                           && context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
+        List<String> numbers = new ArrayList<>();
+        if (readable) {
+            try {
+                SubscriptionManager subscriptions = context.getSystemService(SubscriptionManager.class);
+                List<SubscriptionInfo> active = subscriptions == null ? null : subscriptions.getActiveSubscriptionInfoList();
+                if (active != null)
+                    for (SubscriptionInfo info : active)
+                        numbers.add(numberOf(info));
+            } catch (SecurityException e) {
+                // Taken back meanwhile: nothing said.
+                readable = false;
+            }
+        }
+        return ownNumbersLine(readable, numbers);
+    }
+
+    /** A SIM's own number as it carries it (the only reading the texts' permissions allow); "" none. */
+    @SuppressWarnings("deprecation")
+    private static String numberOf(SubscriptionInfo info)
+    {
+        CharSequence number = info.getNumber();
+        return number == null ? "" : number.toString();
+    }
+
+    /**
+     * What Rust reads of this phone's numbers ({@code calls::own_number}):
+     * {readable, numbers}, one number per SIM in Android's order, each
+     * trimmed, "" for a SIM that carries none; none at all while unreadable.
+     * Pure: android/jvm-checks/LogCheck.java.
+     */
+    static JSONObject ownNumbersLine(boolean readable, List<String> numbers) throws JSONException
+    {
+        JSONArray out = new JSONArray();
+        if (readable && numbers != null)
+            for (String number : numbers)
+                out.put(number == null ? "" : number.trim());
+        return new JSONObject().put("readable", readable).put("numbers", out);
     }
 
     /** Android's page of default apps, where "Caller ID &amp; spam app" is chosen or set to none. */

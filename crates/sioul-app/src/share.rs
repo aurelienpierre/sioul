@@ -708,6 +708,12 @@ pub(crate) fn devices() -> String {
     let why = if vault.is_none() && here.folder_path().is_some() { tr().text("share-key-missing", None) } else { String::new() };
     let stays = if vault.is_some() && !here.shares("settings", &config) { tr().text("devices-settings-stay", None) } else { String::new() };
     let mut rows = crate::health::device_table(&holders);
+    // A phone's number as the region writes it ("01 99 00 12 34"), for its card; kept as Sioul keys it.
+    let region = sioul_core::reach::region(&config);
+    for row in &mut rows {
+        row.number_words = sioul_core::calls::shown_number(&row.number, region);
+        row.number_android_words = sioul_core::calls::shown_number(&row.number_android, region);
+    }
     // Each device's five cells, and now on this one: as the rule reads them (`dispatch::known`, `hours::mode_at`).
     let now = sioul_core::zone::now();
     let mut grid = sioul_sync::device_grid::grid(&mut rows, &config.devices, &crate::dispatch::known(), &crate::hours::mode_at(&now), &now, tr());
@@ -773,7 +779,9 @@ fn held_words(config: &sioul_core::config::Config) -> String {
 
 /// What you said of a device, written into the shared settings
 /// (`[device."<id>"]`, `sioul_core::device_said`): the name you give it
-/// (`field` "name"; "" its system's name again), what it is for ("area":
+/// (`field` "name"; "" its system's name again), a phone's own number
+/// ("number": as you write it, kept as Sioul keys numbers; "" the one Android
+/// gives again, else none), what it is for ("area":
 /// work, admin, leisure joined by +; "" everything again), or one cell of
 /// its line ("at.work", "at.meals"…: what comes forward on it at that time,
 /// areas joined by +, "none" for nothing; "" as its areas say again). Any
@@ -792,6 +800,11 @@ pub(crate) fn say_of_device_said(id: &str, field: &str, value: &str) -> (String,
     let mut undo: Option<String> = None;
     let written = match (field, field.strip_prefix("at.")) {
         ("name", _) => sioul_core::device_said::set_name(&path, id, value),
+        ("number", _) => sioul_core::device_said::set_number(&path, id, value, sioul_core::reach::region(&load_config())).map_err(|_| {
+            let mut args = sioul_core::i18n::args();
+            args.set("said", value.trim().to_string());
+            tr().text("devices-number-refused", Some(&args))
+        }),
         ("area", _) => sioul_core::device_said::set_area(&path, id, value),
         (_, Some(time)) => said_cell(time, value).and_then(|(time, areas)| sioul_core::device_said::set_cell(&path, id, time, areas)),
         _ if field.starts_with("calls.") => say_of_calls(&path, id, field, value).map(|said| undo = said),
@@ -805,7 +818,7 @@ pub(crate) fn say_of_device_said(id: &str, field: &str, value: &str) -> (String,
         return (String::new(), undo);
     }
     // This device's own line said here: its entry says its cells now, for the keeper of the notices.
-    if written.is_ok() && field != "name" && id == here().id {
+    if written.is_ok() && !matches!(field, "name" | "number") && id == here().id {
         std::thread::spawn(crate::devices::cells_now);
     }
     (written.err().unwrap_or_default(), None)
@@ -3825,10 +3838,11 @@ mod tests {
 
     /// Settings ▸ Devices on a device that does not share: this device is
     /// listed, first, named as its system names it and for everything; the
-    /// name you give it and what you say it is for go into the settings
-    /// (`[device."<id>"]`) and show at once; "" takes each back; an area
-    /// that names none, or a field that is not a device's, is refused and
-    /// said, nothing written.
+    /// name you give it, what you say it is for and a phone's number go
+    /// into the settings (`[device."<id>"]`) and show at once, the number as
+    /// the region writes it; "" takes each back; an area that names none, a
+    /// number that is no whole one, or a field that is not a device's, is
+    /// refused and said, nothing written.
     #[test]
     fn this_device_is_listed_with_what_you_say_of_it() {
         sioul_core::config::stand_ins_only();
@@ -3858,6 +3872,20 @@ mod tests {
         assert!(!say_of_device(&id, "area", "elsewhere").is_empty());
         assert!(!say_of_device(&id, "colour", "red").is_empty());
         assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        // A phone's number: kept as Sioul keys it, shown as the region writes it; words that
+        // are no whole number refused in words, nothing written; "" takes it back.
+        assert_eq!(row["number"], "", "none said, none given by Android on a computer");
+        std::fs::write(&config, std::fs::read_to_string(&config).unwrap().replace("theme = \"dark\"\n", "theme = \"dark\"\n\n[contacts]\nregion = \"FR\"\n")).unwrap();
+        assert_eq!(say_of_device(&id, "number", " 01 99 00 12 34 "), "");
+        let row = own_row();
+        assert_eq!((row["number"].as_str(), row["number_given"].as_str(), row["number_android"].as_str(), row["number_words"].as_str()), (Some("+33199001234"), Some("+33199001234"), Some(""), Some("01 99 00 12 34")));
+        let text = std::fs::read_to_string(&config).unwrap();
+        assert!(text.contains("number = \"+33199001234\"") && text.contains("name = \"Work desk\""), "{text}");
+        let refused = say_of_device(&id, "number", "1-555-SIOUL");
+        assert!(refused.contains("1-555-SIOUL") && refused != "devices-number-refused", "{refused}");
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        assert_eq!(say_of_device(&id, "number", ""), "");
+        assert_eq!(own_row()["number"], "");
         // Taken back: its system's name, everything.
         assert_eq!(say_of_device(&id, "name", ""), "");
         assert_eq!(say_of_device(&id, "area", ""), "");

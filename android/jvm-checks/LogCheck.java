@@ -21,7 +21,8 @@ import org.json.JSONObject;
  * Then the numbers you called (Calls.rememberCalled, Calls.calledAt): kept
  * only the days the table counts, 14 at most, and not at all while it counts
  * none (review of part 2, F5). Then a row of the phone's call history as
- * Rust reads it (Calls.historyRow). Fiction numbers only (ARCEP's 01 99 00
+ * Rust reads it (Calls.historyRow), and this phone's own numbers as Rust
+ * reads them (Calls.ownNumbersLine). Fiction numbers only (ARCEP's 01 99 00
  * and 04 65 71).
  */
 public final class LogCheck
@@ -131,6 +132,14 @@ public final class LogCheck
         JSONObject row = Calls.historyRow(at, 42, 2, "04 65 71 63 25", 1);
         expect("a history row's fields", row.getLong("at") == at && row.getLong("seconds") == 42 && row.getInt("type") == 2 && row.getString("number").equals("04 65 71 63 25") && row.getInt("presentation") == 1);
         expect("a history row without a number", Calls.historyRow(at, 0, 3, null, 2).getString("number").isEmpty());
+        // This phone's own numbers as Rust reads them (calls.rs, `own_number`): one per SIM in
+        // Android's order, trimmed, "" for a SIM that carries none; none while unreadable.
+        JSONObject own = Calls.ownNumbersLine(true, java.util.Arrays.asList(" +33199001234 ", null, ""));
+        expect("each SIM's number, trimmed, \"\" for none", own.getBoolean("readable") && own.getJSONArray("numbers").length() == 3 && own.getJSONArray("numbers").getString(0).equals("+33199001234")
+                                                              && own.getJSONArray("numbers").getString(1).isEmpty() && own.getJSONArray("numbers").getString(2).isEmpty());
+        JSONObject unread = Calls.ownNumbersLine(false, java.util.Arrays.asList("+33199001234"));
+        expect("unreadable: no number at all", !unread.getBoolean("readable") && unread.getJSONArray("numbers").length() == 0);
+        expect("no SIM: none", Calls.ownNumbersLine(true, new ArrayList<>()).getJSONArray("numbers").length() == 0 && Calls.ownNumbersLine(true, null).getJSONArray("numbers").length() == 0);
         String sample = System.getenv("SIOUL_CALLS_SAMPLE");
         if (sample != null && !sample.isEmpty())
             Files.write(new File(sample).toPath(), (String.join("\n", lines) + "\n").getBytes(StandardCharsets.UTF_8));

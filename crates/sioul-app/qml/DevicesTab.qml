@@ -4,7 +4,9 @@
 // Settings ▸ Devices (« Appareils »; docs/database.md, "Devices"): every
 // device Sioul shares with, this one first, as the core words them
 // (sioul-sync's device_table, the same rows `sioul devices` prints). For
-// each: its name, yours when you gave one ("Rename…"), what it is (this
+// each: its name, yours when you gave one ("Rename…"), a phone's own number
+// (yours when you gave one, else the one Android gives: "Change the
+// number…"), what it is (this
 // device's own can be changed here, as in Settings ▸ This device), how it is
 // now, when it last opened and last shared, its Sioul, what it is for (three
 // switches, nothing ticked being everything), the parts it shares (read
@@ -82,6 +84,9 @@ ColumnLayout {
     // it reads the devices again and makes every card anew (the review of
     // phase 1, R5), and the new card's field takes it back.
     property string nameDraft: ""
+    // The phone whose number is being typed (its id), and what is typed, kept as the name is.
+    property string numbering: ""
+    property string numberDraft: ""
     property bool kindOpen: false
     // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
     property string removing: ""
@@ -189,7 +194,7 @@ ColumnLayout {
     // being typed, a choice being made or a question being read.
     Timer {
         interval: 20000
-        running: tab.visible && tab.renaming === "" && !tab.kindOpen && tab.removing === ""
+        running: tab.visible && tab.renaming === "" && tab.numbering === "" && !tab.kindOpen && tab.removing === ""
         repeat: true
         onTriggered: tab.reload()
     }
@@ -331,6 +336,10 @@ ColumnLayout {
             readonly property var row: tab.rows.find(r => r.id === device.modelData) || ({})
             readonly property string deviceId: device.row.id || ""
             readonly property bool renamed: (device.row.given || "") !== "" && device.row.given !== device.row.system
+            // A phone, by what its entry says it is, or one whose number is known: its own number on its card.
+            readonly property bool isPhone: (device.row.form || "") === "phone" || (device.row.number || "") !== ""
+            // Its number as the region writes it: yours when given, else the one Android gives; "" none known.
+            readonly property string numberShown: device.row.number_words || ""
 
             objectName: "device-" + device.deviceId
             Layout.fillWidth: true
@@ -447,6 +456,47 @@ ColumnLayout {
                     }
                 }
 
+                // A phone's own number (`share::say_of_device`, "number"): the lists of calls say it
+                // when more than one phone shares its calls. Read from the row at each reading:
+                // a number changed on another device shows at the next one.
+                ColumnLayout {
+                    objectName: "deviceNumber"
+                    visible: device.isPhone
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: tab.sioul.text("devices-number")
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                        color: tab.theme.muted
+                    }
+                    Label {
+                        objectName: "deviceNumberValue"
+                        Layout.fillWidth: true
+                        text: device.numberShown !== "" ? device.numberShown : tab.sioul.text("devices-number-unknown")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 14
+                        color: device.numberShown !== "" ? tab.theme.text : tab.theme.muted
+                    }
+                    // Where it comes from: Android, or yours over another Android gives.
+                    Label {
+                        objectName: "deviceNumberFrom"
+                        readonly property string given: device.row.number_given || ""
+                        readonly property string android: device.row.number_android || ""
+
+                        visible: text !== ""
+                        Layout.fillWidth: true
+                        text: given === "" && android !== "" ? tab.sioul.text("devices-number-android") : given !== "" && android !== "" && given !== android ? tab.sioul.textWith("devices-number-given-android", "number", device.row.number_android_words || "") : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 12
+                        color: tab.theme.muted
+                    }
+                }
+
                 // On a phone: what comes forward on it at each time, in words, a line per time.
                 Loader {
                     active: !tab.wide && tab.grid.times.length > 0
@@ -535,6 +585,64 @@ ColumnLayout {
                     }
                 }
 
+                // A phone's number, typed as you write it, kept as Sioul keys numbers: empty, the one
+                // Android gives comes back, when it gives one.
+                ColumnLayout {
+                    visible: tab.numbering === device.deviceId
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: tab.sioul.text("devices-number-help")
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: tab.theme.muted
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        TextField {
+                            id: numberField
+
+                            objectName: "deviceNumberField"
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 360
+                            maximumLength: 40
+                            inputMethodHints: Qt.ImhDialableCharactersOnly
+                            placeholderText: tab.theme.plain(device.row.number_android_words || tab.sioul.text("devices-number-field"))
+                            Accessible.name: tab.sioul.text("devices-number-field")
+                            onTextEdited: tab.numberDraft = numberField.text
+                            onAccepted: saveNumber.clicked()
+                            // A card made anew while its number was being typed: what was typed, again.
+                            Component.onCompleted: {
+                                if (tab.numbering === device.deviceId)
+                                    numberField.text = tab.numberDraft
+                            }
+                        }
+                        Button {
+                            id: saveNumber
+
+                            text: tab.sioul.text("ui-save")
+                            onClicked: {
+                                const number = numberField.text
+                                tab.numbering = ""
+                                tab.numberDraft = ""
+                                tab.say(device.deviceId, "number", number)
+                            }
+                        }
+                        Button {
+                            flat: true
+                            text: tab.sioul.text("ui-cancel")
+                            onClicked: {
+                                tab.numbering = ""
+                                tab.numberDraft = ""
+                            }
+                        }
+                    }
+                }
+
                 // What this device is, changed here as in Settings ▸ This device.
                 Loader {
                     active: device.row.here === true && tab.kindOpen && tab.kindRow !== null
@@ -579,6 +687,19 @@ ColumnLayout {
                             nameField.text = tab.nameDraft
                             tab.renaming = device.deviceId
                             nameField.forceActiveFocus()
+                        }
+                    }
+                    // A phone's number: given, or changed (the one you gave, as the region writes it).
+                    Button {
+                        objectName: "deviceNumberChange"
+                        visible: device.isPhone && tab.numbering !== device.deviceId
+                        flat: true
+                        text: tab.sioul.text(device.numberShown !== "" ? "devices-number-change" : "devices-number-give")
+                        onClicked: {
+                            tab.numberDraft = (device.row.number_given || "") !== "" ? device.numberShown : ""
+                            numberField.text = tab.numberDraft
+                            tab.numbering = device.deviceId
+                            numberField.forceActiveFocus()
                         }
                     }
                     Button {

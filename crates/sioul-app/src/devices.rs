@@ -126,6 +126,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
     let cells = crate::dispatch::said_in_entry();
     // The parts it shares, for the others to show (Settings ▸ Devices); none while it does not share.
     let parts = if vault.is_some() { crate::share::parts_shared() } else { Vec::new() };
+    // A phone's own number as Android gives it, asked before the entry's lock (`calls::own_number`).
+    let own_number = crate::calls::own_number();
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.id = id;
         entry.name = name();
@@ -173,6 +175,11 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         }
         entry.acked = acked;
         entry.parts = Some(parts);
+        // A phone's own number, for the lists of calls on every device (`Entry::number`): an
+        // answer that gives nothing changes nothing; SIMs that do not give one number, none.
+        if let Some(number) = own_number {
+            entry.number = number;
+        }
         change(entry);
     });
     match written {

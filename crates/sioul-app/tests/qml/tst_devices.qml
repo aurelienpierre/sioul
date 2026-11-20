@@ -4,7 +4,8 @@
 // Settings ▸ Devices (DevicesTab.qml), on a stand-in for Sioul: this device
 // first, each device's fields as the core words them; what a device is for
 // as three switches, nothing ticked being everything; a name given, and
-// taken back; Count it again, Forget, Forget it now, and "Forget it and
+// taken back; a phone's number, Android's or yours, given, refused in
+// words, taken back; Count it again, Forget, Forget it now, and "Forget it and
 // remove its files…" with what goes said first; this device's own kind and
 // its parts' link; sharing off, this device alone. In a wide window the
 // fields line up as a table under their titles; at a phone's width (412
@@ -45,8 +46,21 @@ Item {
         property string stays: ""
         property string twice: ""
         property var asked: []
-        // What you said of each device, as the settings hold it: id → { name, area }.
+        // What you said of each device, as the settings hold it: id → { name, area, number }.
         property var said: ({ "desk": { name: "Work desk", area: "work" } })
+        // The number the phone's entry says Android gives (a fiction number); "" none.
+        property string android: "+33639981234"
+        // A number as Sioul keys it, as the core does for France (`phones::key`): none for words.
+        function key(number) {
+            const digits = number.replace(/[\s.]/g, "")
+            if (!/^\+?[0-9]{7,}$/.test(digits))
+                return ""
+            return digits.startsWith("0") && digits.length === 10 ? "+33" + digits.slice(1) : digits
+        }
+        // A key as the region writes it ("01 99 00 12 34"), as `calls::shown_number` does.
+        function shown(key) {
+            return key.startsWith("+33") && key.length === 12 ? ("0" + key.slice(3)).match(/../g).join(" ") : key
+        }
         // Made up: no real device.
         readonly property var known: [
             { id: "desk", here: true, system: "desk-host", form: "computer", form_words: "A computer", code: "in-use", state: "In use now.", notes: [], opened: "09:12", shared: "10:41", version: "0.0.3 (eff8661abcde)", older: false, build: "Sioul 0.0.3 (eff8661abcde).", parts: ["settings", "health"], parts_words: "Settings and accounts, Health", off: false, forget: false, forget_now: false },
@@ -82,16 +96,22 @@ Item {
                 const word = mock.said[row.id] || {}
                 const name = word.name || row.system
                 const follows = mock.usual[row.id] !== undefined
-                return Object.assign({}, row, { given: word.name || "", name: name, area: word.area || "", area_words: word.area || "Everything comes here", follows: follows, cells: follows ? mock.cells(row.id, name, word) : [], cells_older: follows ? "" : "Its Sioul is older: everything still comes there." })
+                const android = row.id === "phone" ? mock.android : ""
+                const given = word.number || ""
+                const number = given || android
+                return Object.assign({}, row, { given: word.name || "", name: name, number: number, number_given: given, number_android: android, number_words: mock.shown(number), number_android_words: mock.shown(android), area: word.area || "", area_words: word.area || "Everything comes here", follows: follows, cells: follows ? mock.cells(row.id, name, word) : [], cells_older: follows ? "" : "Its Sioul is older: everything still comes there." })
             })
             const grid = { times: mock.times, now: "Now, leisure until 22:00: nothing comes here.", unheld: mock.on ? "" : "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.", twice: mock.twice, never: "Whatever a device is for, these always come: doses and everything of Health." }
             return JSON.stringify({ on: mock.on, why: mock.why, stays: mock.stays, rows: rows, grid: grid })
         }
         function deviceSay(id, field, value) {
             mock.asked = mock.asked.concat([["say", id, field, value].join(" ").trim()])
+            // A number that is no whole one: refused in words, nothing written, as the core does.
+            if (field === "number" && value.trim() !== "" && mock.key(value) === "")
+                return "devices-number-refused:" + value.trim()
             const said = Object.assign({}, mock.said)
             said[id] = Object.assign({}, said[id] || {})
-            said[id][field] = value
+            said[id][field] = field === "number" ? mock.key(value) : value
             mock.said = said
             return ""
         }
@@ -198,9 +218,12 @@ Item {
             mock.twice = ""
             mock.asked = []
             mock.said = { "desk": { name: "Work desk", area: "work" } }
+            mock.android = "+33639981234"
             root.saved = []
             tab.renaming = ""
             tab.nameDraft = ""
+            tab.numbering = ""
+            tab.numberDraft = ""
             tab.removing = ""
             tab.kindOpen = false
             tab.problem = ""
@@ -299,6 +322,74 @@ Item {
             button(card("phone"), "ui-save").clicked()
             compare(mock.asked[1], "say phone name")
             tryVerify(() => named(card("phone"), "deviceName").text === "The phone (Moss)", 2000)
+        }
+
+        // A phone's number: the one Android gives, said so; yours given from any device, shown
+        // at once as the region writes it, Android's said under it; words that are no number
+        // refused in words, nothing written; emptied, Android's again; none at all, said so.
+        // A computer has none.
+        function test_a_phone_s_number_is_given_and_taken_back() {
+            verify(!showing(named(card("desk"), "deviceNumber")) && !showing(named(card("desk"), "deviceNumberChange")), "a computer: no number")
+            verify(!showing(named(card("laptop"), "deviceNumber")))
+            const phone = card("phone")
+            verify(showing(named(phone, "deviceNumber")) && shown(phone, "devices-number") !== null)
+            compare(named(phone, "deviceNumberValue").text, "06 39 98 12 34")
+            compare(named(phone, "deviceNumberFrom").text, "devices-number-android")
+            compare(named(phone, "deviceNumberChange").text, "devices-number-change")
+            verify(!showing(named(phone, "deviceNumberField")), "no field before the press")
+            named(phone, "deviceNumberChange").clicked()
+            const field = named(phone, "deviceNumberField")
+            verify(showing(field) && shown(phone, "devices-number-help") !== null)
+            compare(field.text, "", "none of yours yet: Android's is the placeholder")
+            compare(field.placeholderText, "06 39 98 12 34")
+            field.text = "01 99 00 12 34"
+            button(phone, "ui-save").clicked()
+            compare(mock.asked, ["say phone number 01 99 00 12 34"])
+            tryVerify(() => named(card("phone"), "deviceNumberValue").text === "01 99 00 12 34", 2000)
+            compare(named(card("phone"), "deviceNumberFrom").text, "devices-number-given-android:06 39 98 12 34")
+            verify(!showing(named(card("phone"), "deviceNumberField")), "the field gone once saved")
+            // Opened again: on the number you gave; Cancel writes nothing.
+            named(card("phone"), "deviceNumberChange").clicked()
+            compare(named(card("phone"), "deviceNumberField").text, "01 99 00 12 34")
+            button(card("phone"), "ui-cancel").clicked()
+            compare(mock.asked.length, 1)
+            // Words that are no number: said, nothing written.
+            named(card("phone"), "deviceNumberChange").clicked()
+            named(card("phone"), "deviceNumberField").text = "1-555-SIOUL"
+            button(card("phone"), "ui-save").clicked()
+            compare(tab.problem, "devices-number-refused:1-555-SIOUL")
+            compare(named(card("phone"), "deviceNumberValue").text, "01 99 00 12 34")
+            // Emptied: the one Android gives again.
+            named(card("phone"), "deviceNumberChange").clicked()
+            named(card("phone"), "deviceNumberField").text = ""
+            button(card("phone"), "ui-save").clicked()
+            compare(mock.asked[mock.asked.length - 1], "say phone number")
+            tryVerify(() => named(card("phone"), "deviceNumberValue").text === "06 39 98 12 34", 2000)
+            compare(named(card("phone"), "deviceNumberFrom").text, "devices-number-android")
+            // Android gives none, none of yours: not known, said so; the button offers to give one.
+            mock.android = ""
+            tab.reload()
+            tryVerify(() => named(card("phone"), "deviceNumberValue").text === "devices-number-unknown", 2000)
+            verify(!showing(named(card("phone"), "deviceNumberFrom")))
+            compare(named(card("phone"), "deviceNumberChange").text, "devices-number-give")
+        }
+
+        // A number being typed survives a reload, as a name does; its card's value reads the
+        // row anew: a number said on another device shows at the next reading.
+        function test_a_number_being_typed_survives_a_reload_and_the_value_follows_the_backend() {
+            named(card("phone"), "deviceNumberChange").clicked()
+            named(card("phone"), "deviceNumberField").text = "01 99 00"
+            named(card("phone"), "deviceNumberField").textEdited()
+            boxes(card("desk"))[1].toggle()
+            boxes(card("desk"))[1].toggled()
+            tab.reload()
+            wait(50)
+            compare(named(card("phone"), "deviceNumberField").text, "01 99 00", "what was typed, kept")
+            button(card("phone"), "ui-cancel").clicked()
+            // Said on another device: the backend's row changes, the card follows.
+            mock.said = Object.assign({}, mock.said, { "phone": { number: "+33199005678" } })
+            tab.reload()
+            tryVerify(() => named(card("phone"), "deviceNumberValue").text === "01 99 00 56 78", 2000)
         }
 
         // A name being typed survives anything else pressed in the tab, which

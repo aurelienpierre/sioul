@@ -6727,6 +6727,10 @@ calls-line-more = { $context }, { $who } called { $count } times, the last at { 
 calls-line-once-on = { $context }, { $who } called { $phone } at { $time }.
 calls-line-twice-on = { $context }, { $who } called { $phone } twice, at { $first } and { $second }.
 calls-line-more-on = { $context }, { $who } called { $phone } { $count } times, the last at { $time }.
+# The same when more than one phone shares its calls and this one's number is known: `$phone` is `calls-phone-number`.
+calls-line-once-number = { $context }, { $who } called you on { $phone } at { $time }.
+calls-line-twice-number = { $context }, { $who } called you on { $phone } twice, at { $first } and { $second }.
+calls-line-more-number = { $context }, { $who } called you on { $phone } { $count } times, the last at { $time }.
 # A declined call's row on the Porch (`calls::Line::what`): the time of day it was, on which phone, how many times.
 calls-row = { $context }
 calls-row-on = { $context }, on { $phone }
@@ -6738,6 +6742,8 @@ calls-phone-yours = your phone
 calls-phone-other = your other phone
 calls-phone-named = your phone ({ $name })
 calls-phone-this = { device-this }
+# A phone by its own number, as the region writes it ("on 01 99 00 12 34"), when more than one phone shares its calls.
+calls-phone-number = { $number }
 calls-again-rang = The same number called again at { $time }, and that call rang.
 calls-day-today = today
 calls-history-title = Their calls in the last month
@@ -9483,6 +9489,16 @@ devices-rename = Rename…
 devices-rename-help = A name of your own for this device, which travels with your settings. Left empty, the name its system gives it comes back.
 devices-rename-field = The name you give it
 devices-system-name = Its system calls it { $system }.
+# A phone's own number on its card (`device_said::set_number`, the device's entry's `number`): the lists of calls say it.
+devices-number = This phone's number
+devices-number-unknown = Not known: the lists of calls name this phone.
+devices-number-android = As Android gives it.
+devices-number-given-android = Android gives { $number }.
+devices-number-give = Give its number…
+devices-number-change = Change the number…
+devices-number-help = When more than one phone shares its calls, every list of calls says the phone each call came to by this number. It travels with your settings. Left empty, the one Android gives comes back, when it gives one.
+devices-number-field = This phone's number
+devices-number-refused = { $said }: not a whole phone number. Nothing was changed.
 devices-plain-here = { $name } (this device)
 devices-plain-system = { $name } (named { $system } by its system)
 devices-plain-here-system = { $name } (this device, named { $system } by its system)

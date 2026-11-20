@@ -611,26 +611,105 @@ fn listed(root: &Path, here: &str, everywhere: bool, now_ms: i64) -> Vec<Held> {
     calls
 }
 
-/// Your phones in the sharing, each with its name (a phone's model), for the
-/// list's words ("your phone (Moss)"); read again five minutes on at most.
-pub(crate) fn phone_names() -> Vec<(String, String)> {
-    type Kept = Option<(i64, Vec<(String, String)>)>;
+/// Your phones in the sharing as their sealed entries say them: each with
+/// its id, the name its system gives it (a phone's model) and the number
+/// its entry says Android gives (`Entry::number`, "" none); read again five
+/// minutes on at most (each entry is opened with the folder's key).
+fn phone_entries() -> Vec<rules::Phone> {
+    type Kept = Option<(i64, Vec<rules::Phone>)>;
     static KEPT: Mutex<Kept> = Mutex::new(None);
     let now = jiff::Timestamp::now().as_second();
     if let Ok(kept) = KEPT.lock()
-        && let Some((at, names)) = kept.as_ref()
+        && let Some((at, phones)) = kept.as_ref()
         && (0..300).contains(&(now - at))
     {
-        return names.clone();
+        return phones.clone();
     }
-    let names: Vec<(String, String)> = match crate::share::vault() {
-        Some((_, Some((folder, key)))) => sioul_sync::devices::all(&folder, &key).0.into_iter().filter(|d| d.kind == sioul_sync::devices::PHONE).map(|d| (d.id, d.name)).collect(),
+    let phones: Vec<rules::Phone> = match crate::share::vault() {
+        Some((_, Some((folder, key)))) => sioul_sync::devices::all(&folder, &key).0.into_iter().filter(|d| d.kind == sioul_sync::devices::PHONE).map(|d| rules::Phone { id: d.id, name: d.name, number: d.number }).collect(),
         _ => Vec::new(),
     };
     if let Ok(mut kept) = KEPT.lock() {
-        *kept = Some((now, names.clone()));
+        *kept = Some((now, phones.clone()));
     }
-    names
+    phones
+}
+
+/// Your phones as the lists of calls and the phone's messages name them
+/// (`calls::Phone`): each with the name you gave it, else its system's, and
+/// the number you said on its card, else the one Android gives (its entry).
+/// What you said is read from the settings at each call: a number changed
+/// on any device is said at the next look, never five minutes later.
+pub(crate) fn phones_known(config: &Config) -> Vec<rules::Phone> {
+    phone_entries()
+        .into_iter()
+        .map(|phone| {
+            let name = sioul_core::device_said::name_of(config, &phone.id).map_or(phone.name, str::to_string);
+            let number = sioul_core::device_said::number_of(config, &phone.id).map_or(phone.number, str::to_string);
+            rules::Phone { name, number, ..phone }
+        })
+        .collect()
+}
+
+/// What this device knows of your phones to say which one a call came to
+/// (`calls::phone_words`): your phones, and each phone whose calls are
+/// listed (`calling`) though no entry of it is read here (a phone gone from
+/// the sharing), known by what you said of it alone.
+fn phones(config: &Config, calling: std::collections::BTreeSet<String>, region: Option<&'static sioul_core::phones::Region>) -> rules::Phones {
+    let mut known = phones_known(config);
+    for id in &calling {
+        if !known.iter().any(|p| &p.id == id) {
+            let said = |s: Option<&str>| s.unwrap_or_default().to_string();
+            known.push(rules::Phone { id: id.clone(), name: said(sioul_core::device_said::name_of(config, id)), number: said(sioul_core::device_said::number_of(config, id)) });
+        }
+    }
+    rules::Phones { here: here_id(), this_is_a_phone: cfg!(target_os = "android"), known, calling, region }
+}
+
+/// The phones whose calls this device lists (`calls::calling`): each with a
+/// call of the month in its log or its history, every phone's (`everywhere`:
+/// `[porch] calls`, the default), or this device's own alone. The same for
+/// the Porch, the phone's home card and a person's sheet: their words for a
+/// phone never differ.
+fn calling(root: &Path, here: &str, everywhere: bool, now_ms: i64) -> std::collections::BTreeSet<String> {
+    let mut phones = rules::calling(&rules::read_logs(root, now_ms), &rules::read_histories(root, &|_| false, now_ms));
+    if !everywhere {
+        phones.retain(|device| device == here);
+    }
+    phones
+}
+
+/// When this phone last asked Android for its own number, in this process,
+/// and what came (`calls::own_number`).
+static OWN_NUMBER: Mutex<Option<(i64, Option<String>)>> = Mutex::new(None);
+/// Android is asked for this phone's own number at most this often (seconds).
+const OWN_NUMBER_EVERY: i64 = 3600;
+
+/// This phone's own number as Android gives it, for its entry
+/// (`devices::write`; `Entry::number`): asked of Java (`Calls.ownNumbers`)
+/// at most once an hour in a process, only with the permissions Sioul
+/// already holds for the texts (never a question of its own). None when
+/// Android gives nothing (the entry keeps what it said), "" for SIMs that
+/// do not give one number (`calls::own_number`); none on a computer or a
+/// tablet without telephony.
+pub(crate) fn own_number() -> Option<String> {
+    if !cfg!(target_os = "android") || !crate::devicekind::telephony() {
+        return None;
+    }
+    let now = jiff::Timestamp::now().as_second();
+    if let Ok(kept) = OWN_NUMBER.lock()
+        && let Some((at, number)) = kept.as_ref()
+        && (0..OWN_NUMBER_EVERY).contains(&(now - at))
+    {
+        return number.clone();
+    }
+    let answer = crate::steps::java("calls-own-number", "{}");
+    let sims: Vec<String> = serde_json::from_value(answer["numbers"].clone()).unwrap_or_default();
+    let number = rules::own_number(answer["readable"] == true, &sims, sioul_core::reach::region(&load_config()));
+    if let Ok(mut kept) = OWN_NUMBER.lock() {
+        *kept = Some((now, number.clone()));
+    }
+    number
 }
 
 /// Whether this device has apps for `tel:` and `sms:` links: a phone always;
@@ -706,8 +785,9 @@ pub(crate) fn view() -> String {
     let mut notice_of = notices_of(&held);
     notice_of.extend(history.iter().map(|l| (l.id(), sioul_core::notices::call_id(&l.device, &l.id()))));
     let seen = crate::notices::seen_of(Kind::Call, &notice_of);
-    let phones = phone_names();
-    let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+    // Which phone each call came to, as every list of calls says it (`calls::phone_words`).
+    let phones = phones(&config, calling(&root, &here, config.porch.calls, now_ms), senders.region());
+    let words = |device: &str| rules::phone_words(tr(), device, &phones);
     let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
     let (tel, sms) = link_apps();
     // Each call of a history an object: who it was with, its notice's state (a word said on any device).
@@ -755,7 +835,8 @@ pub(crate) fn for_card() -> Option<CardCalls> {
     }
     let config = load_config();
     let here = here_id();
-    let held = listed(&root, &here, config.porch.calls, sioul_core::zone::now().timestamp().as_millisecond());
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let held = listed(&root, &here, config.porch.calls, now_ms);
     if held.is_empty() {
         return None;
     }
@@ -763,7 +844,8 @@ pub(crate) fn for_card() -> Option<CardCalls> {
     let attention = Attention::of(&config);
     let always = People::load(&People::default_path());
     let seen = crate::notices::seen_of(Kind::Call, &notices_of(&held));
-    let phones = phone_names();
+    // Which phone each call came to, as the Porch says it (`calls::phone_words`).
+    let phones = phones(&config, calling(&root, &here, config.porch.calls, now_ms), senders.region());
     Some(Box::new(move |moment, at| {
         let shows = |h: &Held| match who_now(&senders, h) {
             None => attention.listed(Person::Hidden, false, moment),
@@ -773,7 +855,7 @@ pub(crate) fn for_card() -> Option<CardCalls> {
             let judged = senders.judge_number(key);
             (!judged.card.trim().is_empty()).then_some(judged.card)
         };
-        let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+        let words = |device: &str| rules::phone_words(tr(), device, &phones);
         let lister = rules::Lister { now: at, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
         rules::lines(&held, &seen, &BTreeMap::new(), &lister).into_iter().map(|line| line.text).collect()
     }))
@@ -796,9 +878,12 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
     }
     let here = here_id();
     let now = sioul_core::zone::now();
-    let calls = rules::read_logs(&root, now.timestamp().as_millisecond());
-    let phones = phone_names();
-    let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+    let now_ms = now.timestamp().as_millisecond();
+    let calls = rules::read_logs(&root, now_ms);
+    // Which phone each call came to, as the Porch says it (`calls::phone_words`): a sheet
+    // lists every phone's calls, whatever `[porch] calls` says of the Porch.
+    let phones = phones(&config, calling(&root, &here, true, now_ms), region);
+    let words = |device: &str| rules::phone_words(tr(), device, &phones);
     let (none, all) = (|_: &str| None, |_: &Held| true);
     let lister = rules::Lister { now: &now, tr: tr(), region, name_of: &none, shows: &all, phone: &words };
     rules::history(&calls, &keys, &lister)
@@ -1189,6 +1274,62 @@ mod tests {
         assert!(listed(&root, "desk", false, now).is_empty(), "the setting off: a computer lists none");
         assert_eq!(listed(&root, "phone-a", false, now).len(), 1, "a phone its own");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Which phone each call came to, as this device composes the lists of
+    /// calls (`view`, `for_card`, `history`): the phones whose calls it lists
+    /// (each with a call of the month in its log or its history: every
+    /// phone's, or this device's own alone as `[porch] calls` says), each by
+    /// what you said on its card (a phone whose entry is not read here, by
+    /// that alone); the lines then say a phone by its number, else by its
+    /// name, the Porch's rows of declined calls and of the histories alike;
+    /// one phone alone, nothing more than before.
+    #[test]
+    fn the_lists_say_each_phone_by_what_you_said_of_it() {
+        sioul_core::config::stand_ins_only();
+        let root = std::env::temp_dir().join(format!("sioul-app-calls-phones-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let fr = sioul_core::phones::region_named("FR");
+        let now = jiff::Timestamp::now().as_millisecond();
+        let call = |at: i64, key: &str| Held { at, key: key.into(), number: key.into(), who: "stranger".into(), column: "sleep".into(), why: "matrix".into(), ..Held::default() };
+        rules::carry_into(&rules::own_file(&root, rules::LOG, "phone-a"), &[call(now - 3_600_000, "+33465710042")], fr, now).unwrap();
+        let missed = rules::HistoryRow { at: now - 1_800_000, seconds: 0, kind: 3, number: "04 65 71 63 25".into(), presentation: 1 };
+        rules::carry_history(&rules::own_file(&root, rules::HISTORY_FOLDER, "phone-b"), &[missed], fr, &|_| false, now).unwrap();
+        assert_eq!(calling(&root, "desk", true, now), ["phone-a".to_string(), "phone-b".to_string()].into(), "a log's phone and a history's");
+        assert_eq!(calling(&root, "phone-a", false, now), ["phone-a".to_string()].into(), "this phone's own alone");
+        assert!(calling(&root, "desk", false, now).is_empty());
+        let config: Config = toml::from_str("[contacts]\nregion = \"FR\"\n\n[device.\"phone-a\"]\nnumber = \"+33199001234\"\n\n[device.\"phone-b\"]\nname = \"B7\"\n").unwrap();
+        let phones = phones(&config, calling(&root, "desk", true, now), fr);
+        let known = |id: &str| phones.known.iter().find(|p| p.id == id).map(|p| (p.name.clone(), p.number.clone()));
+        assert_eq!((known("phone-a"), known("phone-b")), (Some((String::new(), "+33199001234".into())), Some(("B7".into(), String::new()))));
+        // The lines, as `view` makes them.
+        let tr = sioul_core::i18n::Translator::new("en");
+        let words = |device: &str| rules::phone_words(&tr, device, &phones);
+        let (none, all) = (|_: &str| None, |_: &Held| true);
+        let zoned = sioul_core::zone::now();
+        let lister = rules::Lister { now: &zoned, tr: &tr, region: fr, name_of: &none, shows: &all, phone: &words };
+        let declined = rules::lines(&listed(&root, "desk", true, now), &rules::Seen::default(), &BTreeMap::new(), &lister);
+        assert!(declined[0].what.ends_with("on 01 99 00 12 34") && declined[0].text.contains("called you on 01 99 00 12 34 at "), "{:?}", declined[0]);
+        let history: Vec<rules::Call> = rules::read_histories(&root, &|_| false, now).iter().map(|l| rules::Call::of(l, None, sioul_core::notices::State::default())).collect();
+        let rows = rules::history_lines(&history, 90, &lister);
+        assert!(rows[0].what.ends_with(", on your phone (B7)"), "{:?}", rows[0]);
+        // A person's sheet, from the same words.
+        let keys: std::collections::BTreeSet<String> = ["+33465710042".to_string()].into();
+        assert!(rules::history(&rules::read_logs(&root, now), &keys, &lister)[0].contains("declined on 01 99 00 12 34"));
+        // One phone alone: its number said nowhere.
+        let alone = phones_of_one(&config, &root, now, fr);
+        let words = |device: &str| rules::phone_words(&tr, device, &alone);
+        let lister = rules::Lister { phone: &words, ..lister };
+        let declined = rules::lines(&listed(&root, "desk", true, now), &rules::Seen::default(), &BTreeMap::new(), &lister);
+        assert!(!declined[0].text.contains("01 99 00 12 34") && declined[0].text.contains("called your phone at "), "{:?}", declined[0]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The phones as `phones` makes them when one phone's calls alone are listed.
+    fn phones_of_one(config: &Config, root: &Path, now: i64, region: Option<&'static sioul_core::phones::Region>) -> rules::Phones {
+        let mut calling = calling(root, "desk", true, now);
+        calling.retain(|d| d == "phone-a");
+        phones(config, calling, region)
     }
 
     /// The table this phone writes: version 2, the call screening as the
