@@ -9,7 +9,7 @@ description: The Porch, where new mail waits in Sioul - checked, sorted into lan
 The Porch is where new mail from every address waits until you look. Before anything is shown, Sioul checks each message, genuine or forged, and sorts it into a lane by who wrote it and what it is for: people you know, someone new waiting in the screener, a project, newsletters, what is set aside. It opens in the hours you choose and stays quiet outside them, while the codes and links you just asked a site for come at once. Each new thing is a row you can mark read or dismiss, on every device at once. Nothing is counted at you, and nothing is deleted.
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; the card to join your other devices; then its sections, each a title with its "?" and its chevron: Right now, a code from a verified sender with Copy; a project's mail; the people you know; From your phone; Sites; Money, each payment with its amount on the right; each row with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; then its sections, each a title with its chevron and its "?": Right now, a confirmation link and a code from verified senders, the code with Copy; a project's mail; From yourself; From people you know; Sites, a chat's news with Open; each message with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
   <figcaption>Codes on top, then each section, a row per new thing.</figcaption>
 </figure>
 
@@ -25,11 +25,12 @@ Without any setting:
 
 ## When it opens {#when-it-opens}
 
-- **In your hours** (your working hours and your hours for your admin; leisure never opens it), the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
-- **Outside your hours**, the Porch says when it opens next, at the start of your next working or admin hours, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Show all mail now** stays possible, quietly ([below](#real-time)). Meanwhile, what comes is checked and sorted.
+- **In your hours** (your working hours and your hours for your admin; leisure never opens it), the Porch's first line says until when: "Open until 17:00." in your working hours, "Admin time until 12:00: offices, bills, letters." in your hours for your admin. Then it shows what came, sorted into lanes.
+- **Outside your hours**, the first line says what the time is for, and until when ("Leisure until 19:30: what you enjoy."), and the Porch shows only what may reach you then: the codes you asked for, what you send yourself, and the mail of the circles you let come at that time (your Always through people and your safe senders, unless you changed it). Of the rest of your mail, nothing: no counts, no names. Your doses of the day still show (below). **Show all mail now** stays possible, quietly ([below](#real-time)). Meanwhile, what comes is checked and sorted.
+- **After a pause**, the Porch rests until your next hours for your admin (else your next working hours, else the next morning): it says when it opens, and shows only the codes you asked for until then, unless you press **Show all mail now** ([Pauses](pauses.md#coming-back)).
 - **Without any hours set**, the Porch is always open.
 
-Which mail comes when follows who wrote, as each list's row says at each time (safe, neutral, restricted, strangers, your Always through people; the blocked never), and what each address is for: work, your admin, leisure. See [What reaches you, and when](notifications.md#by-person) and [Hours](hours.md).
+Which mail comes when follows who wrote, as the choice of each circle says (your Always through people, your safe senders, your contacts, the restricted, everyone else; the blocked never), and what each address is for: work, your admin, leisure. See [What reaches you, and when](notifications.md#by-person) and [Hours](hours.md).
 
 Mail keeps arriving in the background all the while. The Porch only decides when it is shown, and when it is told ([below](#new-mail-told-at-its-times)).
 
@@ -37,7 +38,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…), and tells them at once but while you sleep:
 
-- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here;
+- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here, unless you choose **At once** for codes during sleep, in Settings ▸ What reaches you ▸ What comes when;
 - on Android, one notification to act on, with **Copy the code** and **Open the message**; on the lock screen its title alone, never the code, whatever the phone's own setting, and **Copy the code** only once the phone is unlocked; it goes once the code is copied, expires or its message is read; none while you sleep;
 - its row on top of the Porch, in **Right now**, with **Copy**; on Android, on Sioul's card on your home screen too.
 
@@ -49,13 +50,13 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 
 ## New mail, told at its times {#new-mail-told-at-its-times}
 
-When mail your lists let through now arrives at an address for what now is for, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". On a computer, each message it names has its own button, which opens that message, and a click on the notification opens the first ("Open" when it names one message); on a phone, for now, a tap opens the message when there is one, else the mailbox. On a computer it leaves after a few minutes, and comes only while you are at the computer, never during a pause or do-not-disturb: the Porch keeps the mail ([What reaches you](notifications.md#to-know-or-to-do)).
+When mail your circles let through now arrives at an address for what now is for, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Nimbus Hosting, Your invoice · Alice, Dinner on Friday". Each message it names, three at most, has its own button, which opens that message ("Open" when it names one message); a click on the notification, or a tap on a phone, opens the first. On Windows it comes from Sioul's icon in the tray, without those buttons, and a click opens the first message; on macOS it has no button, and a click brings Sioul forward. On a computer it leaves after a few minutes, and comes only while you are at the computer, never during a pause or do-not-disturb: the Porch keeps the mail ([What reaches you](notifications.md#to-know-or-to-do)).
 
-- **What waited** (mail that came outside its list's times, while you slept or paused, or to an address for another time: a safe colleague's mail to your work address in the evening shows on the Porch, untold) is told once, when its time comes: "The Porch opens: three e-mails wait for you." Mail that came while your computer was off, fetched when it starts, is told the same way, never as new.
+- **What waited** (mail that came outside its circle's times, while you slept or paused, or to an address for another time: a safe colleague's mail to your work address in the evening shows on the Porch, untold) is told once, when its time comes: "The Porch opens: three e-mails wait for you." Mail that came while your device was off or fetched nothing, fetched later, is told the same way, never as new.
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
-- **No sound.** With a phone and a computer, only the one you used last tells (once you said [what each device is for](hours.md#what-each-device-is-for), what is not for it waits, and comes on a device it is for once you pick that one up), and the other does not tell again what it told, once your sharing has carried it: a message told on one just before the other fetches it may still come on both. On Android's lock screen, the notification says how many e-mails came, not who wrote.
+- **No sound**, but on a phone for a batch with someone Always through in it, while Sioul's do-not-disturb holds. With a phone and a computer, only the one you used last tells (once you said [what each device is for](hours.md#what-each-device-is-for), what is not for it waits, and comes on a device it is for once you pick that one up), and the other does not tell again what it told, once your sharing has carried it: a message told on one just before the other fetches it may still come on both. On Android's lock screen, the notification says how many e-mails came, not who wrote.
 
-Settings ▸ What reaches you ▸ People, under the table: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
+Settings ▸ What reaches you ▸ Your rules ▸ People, under the table: **Tell me of new mail**, on unless you turn it off, and **Include newsletters**, off unless you turn it on ([What reaches you, and when](notifications.md#by-person)).
 
 ## The lanes {#the-lanes}
 
@@ -71,7 +72,7 @@ Each message goes to the first lane that takes it, in this order. Three of them 
 | **Your public address** | Only for an address you protect: mail from someone you have not let in, read first and sorted by topic, work first. |
 | **Less important accounts** | Only once you rank an address below the others ([below](#some-addresses-first-others-last)): its mail, such as social networks or notifications you read now and then, folded at the bottom. |
 | **Filed: newsletters and notifications** | Mailing lists, newsletters and automatic senders (no-reply…). Folded. |
-| **Someone new, in the screener** | A stranger: in none of your address books and on no list, or on the neutral or restricted list by their domain alone. Also any message that nothing proves comes from the address it shows. You let them in, or not. |
+| **Someone new, in the screener** | A stranger: in none of your address books and on no list, or on a list by their domain alone (a domain you marked safe aside). Also any message that nothing proves comes from the address it shows. You let them in, or not. |
 | **From people you know** | People in your address books, those you let in, those on a list by their own address, and those of a domain you marked safe. |
 
 **Senders you blocked** never appear on the Porch: their mail is set aside for good, never shown, never counted and never told. Nothing is deleted.
@@ -84,7 +85,7 @@ Each lane is a section of the Porch, with nothing written under its title. Its *
 
 A message in the screener has **Let this address in**: their next messages go to "From people you know".
 
-Every message also has **How they reach you…**, in its menu (⋮): the sender's sheet. First, one line says what decides for this sender now: "Safe, as the category Friends says." Then their list: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown); **Always through**; and what reaches you from them at each time. A sender in none of your address books and on no list is a stranger, with a row of their own. The same lists, with patterns such as `*@example.org` and numbers, and what each does at each time, are in Settings ▸ [What reaches you](notifications.md#by-person).
+Every message also has **How they reach you…**, in its menu (⋮), once it is open: the sender's sheet. First, one line says what decides for this sender now: "Safe, as the group Friends says." Then **Their list**: **As their groups say** (their own entry taken out of the lists: the groups on their contact card decide, else their address's domain), or one of four: **Safe**, **Your contacts**, **Restricted**, **Blocked** (set aside for good, never shown); **Always through**; and what reaches you from them at each time. A sender in none of your address books and on no list is a stranger, one of the circle Everyone else. The same lists, with patterns such as `*@example.org` and numbers, are in Settings ▸ What reaches you ▸ Who is in which circle, and what each circle does at each time under People, above it ([What reaches you](notifications.md#by-person)).
 
 Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe, and it is weighed as a stranger's.
 
@@ -92,8 +93,8 @@ Forged mail is judged apart: a forged message is set aside whatever the lists sa
 
 Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul's own filter, it never touches mail from someone you know (in your address books, on a list, let in), the codes and links you asked for, a project's mail, what you send yourself, or a message you said is not spam, on any of your devices. Forged mail, borrowed names and blocked senders are set aside before, as always. A message whose two usual checks both failed, so that nothing proves it comes from the address it shows, counts as a stranger's, whatever address it shows.
 
-- **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside, unless Sioul proved its sender and you deal with its domain (you wrote to it, it is in your address books, your Sites or your contracts, you kept its mail or said **Not spam** to it): that mail takes its own lane, marked "Your provider marked it as spam.", and when your provider put it in its junk folder, Sioul brings it back as it arrives, with **Undo** ([what it does with proven mail](mail.md#your-own-spam-filter)). Your own word comes first, then blocked senders and forged mail, then that proof, then your filter, then your provider.
-- **Your own filter**, once it has learned from your mail ([Mail, Your own spam filter](mail.md#your-own-spam-filter)), finds a stranger's message **probably spam** (from 95% unless you change it), **maybe spam** (from 50%), or **probably not spam**. What it does with each is yours to choose, in its settings:
+- **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside, unless Sioul proved its sender and you deal with its domain (you wrote to it, it is in your address books, your Sites or your contracts, you kept its mail or said **Not spam** to it): that mail takes its own lane, marked "Your provider marked it as spam.", and when your provider put it in its junk folder, Sioul brings it back as it arrives, with **Undo** ([what it does with proven mail](mail.md#your-own-spam-filter)). On the Porch, blocked senders and forged mail are set aside first, whatever anyone says; then no filter touches your own word (**Not spam**) nor the people you know; that proof outweighs your provider's word; and your provider's word sets a stranger's mail aside before your own filter is asked.
+- **Your own filter**, once it has learned from your mail ([Mail, Your own spam filter](mail.md#your-own-spam-filter)), finds a stranger's message **probably spam** (from 95% unless you change it), **maybe spam** (from 50%), or **probably not spam**. What it does with each is yours to choose, in the Mail page's ⚙, under **Your own spam filter**:
     - **Move to spam**: as it arrives, the message goes into its address's Junk folder, on the server;
     - **Flag only**: it stays where it is, marked;
     - **Do nothing**: it goes to its lane, as any message.
@@ -103,7 +104,7 @@ Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul
 What it flags or moves waits in **Caught by your own spam filter**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on the home screen on Android. Nothing there asks for your time: Sioul learns from what the filter caught as it is (what it moved or found probably spam, as spam; a maybe spam, not until you say), and you step in only when one is not spam.
 
 <figure markdown="span">
-  [![The Porch. On the left, "Caught by your own spam filter" opened, without a count, with its sentence under the title: what your own filter caught waits there, never notified; Sioul learns from it as it is, and "Not spam" puts one back and teaches the filter. Then strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  [![The Porch, further down: on the left, From yourself, From people you know, Sites, Money, Paper letters and Someone new, in the screener, then "Caught by your own spam filter" opened, without a count and with nothing written under its title: Not spam for all and Spam for all, then two strangers' messages, each with Not spam and Spam under it; under them, Set aside, folded, and Done for now. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
   <figcaption>What your own filter flagged or moved.</figcaption>
 </figure>
 
@@ -137,7 +138,7 @@ From the message: reply, forward, archive, delete, and the rest, as on the [Mail
 
 **Done for now** closes the Porch on what it showed. Anything newer waits for the next time it opens, even mail that reached the server earlier and arrived here later.
 
-Closing the Porch tells nothing to the server: no message is marked read by it. Only opening a message marks it read, as in any mail program.
+Closing the Porch tells nothing to the server: no message is marked read by it. Only opening a message marks it read, as in any mail program. Once you said [what each device is for](hours.md#what-each-device-is-for), a message opened on a device that is not for its address is read there only, as a line above its text says: it stays new on the device that is for it.
 
 An address the Porch was never closed on shows its last two weeks only. Older mail stays in [Mail](mail.md), where it belongs.
 
@@ -145,12 +146,17 @@ An address the Porch was never closed on shows its last two weeks only. Older ma
 
 When there is something, a few lines come before the lanes:
 
+- **On a device that does not share yet**, a card offers to join your other devices and bring their settings, accounts and hours here, with a button for each way to join (your Nextcloud's sign-in, or the folder a sync app carries) and **Leave as is** (which stops asking). See [Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in).
 - **When your hours are not set**, a card asks for them, with **Set my hours** (which opens Settings at them) and **Leave as is** (which stops asking).
 - **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens Settings ▸ Hours where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
+- **When the move of Sioul's lists did not finish on this device**, a card says that your lists stay where they were, with **Where Sioul keeps its lists** to try again; and when files of your notes folder changed since your lists left it, it names them, until you press **Seen**. See [Sharing](sharing.md#where-sioul-keeps-its-lists).
+- **The people Sioul made** from what your agendas and papers already named, shown once, in your hours for your admin: who, and what named each. Nothing to answer: they are in Contacts ▸ Your people ([Contacts](contacts.md#household)).
 - **Notes deleted many at once**, on a device that shares its notes: how many went, from which folders, when, and when they leave your other devices by themselves, with **Put them back**, **Take them out now** and **Leave as is**. Nothing has to be pressed. Said once: once shown, the card does not come back after you leave the Porch; Settings says it as long as it lasts. See [Sharing](sharing.md#notes-and-papers).
 - **The topics Sioul started** from the senders it knows, the first time enough mail is here: which ones, and where to rename or remove them, with **Leave as is** ([Mail, Topics](mail.md#topics)).
+- **Your own spam filter's training on this device**: that it is learning from your mail for the first time, then how long it took; or that a training that ran past 30 minutes was stopped, with **Try again**. Each with **Leave as is** ([Mail, Your own spam filter](mail.md#your-own-spam-filter)).
+- **On Android, what the phone has not allowed Sioul yet** and that it needs here (your texts, other apps' notifications, your contacts): each in a line, with **Allow in Android…** and **Not now**, which puts the card away.
+- **On Android, the other apps' notifications Sioul holds**: one line, under the first, says which apps and until when ("Notifications held until 13:00: …"), then which came back ([What reaches you](notifications.md#other-apps-on-a-phone)).
 - **Where you stopped**: the line you left when something interrupted you, with its task, until you press **Done**. See [Tasks](tasks.md#starting-and-stopping).
-- **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. A dose whose reminder could not be shown while Sioul was open (notifications not working) is asked about the same way, under its own heading. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
 
@@ -168,11 +174,11 @@ After those cards, the Porch shows what came in sections, each drawn the same wa
 3. **From yourself**.
 4. **From people you know**.
 5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); once Sioul may read the phone's call history, the calls you missed and those of yours that did not reach them too ([Calls](calls.md#calls-missed)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
-6. **Agenda**: two events of yours at once, or too close for the time you keep between them, when someone else's change made it, each said once at a time its agenda may reach you: **Move mine** opens your own event, **Keep both** says it no more.
+6. **Agenda**: two events of yours at once, or too close for the time you keep between them, when someone else's change made it, each said once at a time its agenda may reach you: **Move mine** opens your own event, **Keep both** says it no more, and **Open "…"**, in its menu, opens each of the two ([Agenda](agenda.md#two-events-at-once)).
 7. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
 8. **Money**: what is due or expected in the next two weeks, money in as well as out, each with its day, whether it is planned, announced or not final yet, and its amount; what was expected and did not pass on its account is said once. **Open in Budgets** ([Budgets](budgets.md)). Work money only in your work hours, and nothing while you sleep. A payment an account would not hold comes first, work's money or not, with what can cover it. An invoice number two of your devices gave at once (two invoices under one number) is said in one calm row too, in your work hours, until you answer it with a credit note. Then your declarations, in your work hours too: each **Declaration of turnover** from the day after its period, when it can be made ("Fourth quarter 2026 · by Mon 1 Feb"), with the turnover to declare and, under it, the contributions estimated, or for a period with nothing received, "declare €0 by …" (none for the periods before your books begin); while a payment in another currency waits for its euros, "at least" and, under it, what to say; and each **DES**, for services to businesses in other EU countries, from the first day of the next month ("October 2026 · by Fri 13 Nov"), with the invoices it covers under it, "at least" while one of them is in another currency. On these two, the button is **Open the declaration**: your books for that period, where **Declared** says you made it. Said on any of your devices, it leaves the Porch on all of them. Each stays until you say it is declared or dismiss it, or until 60 days after its day; nothing calls it late ([The declaration](budgets.md#the-declaration)).
 9. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
-10. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
+10. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded; **Hostile, set aside**, folded, for an address you protect.
 
 Each row says who, what and when on one line (two on a small screen), with its main action: **Open**, **Reply**, **Text back**, **See the scan**, **Open in Budgets**. Beside it, two quiet buttons:
 
@@ -214,7 +220,7 @@ An address you publish brings work, and sometimes insults. On its card in [Accou
 - **its tone**: calm, rude, or hostile (insults aimed at you, harassment, threats), from word lists in French and English;
 - **its topic**: work, a question, the press, thanks, a donation, something else.
 
-Hostile mail goes to its own folded lane, which shows neither the sender's name nor the subject. Opening one asks first: it can wait, go to someone you trust (**Forward to someone you trust**), or go away (blocked, deleted). Reading it anyway is your choice, at a time that suits you. The rest of the address's mail has its own lane, work first, its topic shown, and a mark when it is rude.
+Hostile mail goes to its own folded lane, which shows neither the sender's name nor the subject. Opening one asks first: it can wait, go to someone you trust (**Forward to someone you trust**), or go away (blocked, deleted). Reading it anyway is your choice, at a time that suits you. The rest of the address's mail has its own lane, work first; where its row has room, each message says its topic, and "rude" when it is.
 
 **Let the AI read it first**, below it, is off unless you turn it on. Then the messages in that address's inbox are sent to Anthropic's Claude, whoever sent them, those already there when you turn it on included, so that it says their tone and topic more finely than word lists can. What leaves your device is each message's subject and the first 4,000 characters of its text, as they are: nothing is masked, so a code or an account number in such a message reaches Anthropic too. The key for Anthropic's service is typed once in Accounts and kept in your keyring. A work or school Microsoft address has no such switch: its mail is its organisation's too, and Microsoft's terms ask the organisation's consent before it goes to another company; its card says so, and its word lists still protect it.
 
@@ -226,13 +232,13 @@ The ⚙ at the top of the Porch holds what is the Porch's alone, and how a messa
 - **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
 - **Calls ▸ A task to call back**, **A task to call again**: on unless you turn them off, a missed call from someone in your address books makes a task "Call back …", a call of yours that did not reach them "Call … again"; **A call that reached their voicemail**: 90 seconds unless you choose 60 or 120 ([Calls](calls.md#calls-missed)).
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
-- **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
+- **How mail is sorted**: every lane, in the order mail is sorted, with its rules; **Senders you know**, the list of those you let in; and, for the words that make a sender automatic (no-reply…), a button to Settings ▸ Words, where they are kept with the other words Sioul looks for ([Settings](settings.md#words)).
 
 What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in Settings ▸ [What reaches you](notifications.md#by-person), your hours in [Settings](settings.md#hours).
 
 #### Some addresses first, others last {#some-addresses-first-others-last}
 
-On each address's card in Accounts, **Priority**: *More important*, *Normal* or *Less important*. Mail of the more important addresses comes first in every lane, with a small mark. Mail of the less important ones skips the screener and waits folded at the bottom. Their codes still come at once.
+On each address's card in Accounts, **Priority**: *More important*, *Normal* or *Less important*. Mail of the more important addresses comes first in every lane, with the words "More important" where its row has room, and a folded lane that holds some opens by itself. Mail of the less important ones skips the screener and waits folded at the bottom. Their codes still come at once.
 
 ## Compared with other apps {#compared-with-other-apps}
 
@@ -271,19 +277,19 @@ HEY holds the closest idea on who may enter, its Screener and Imbox; Gmail, Outl
 13. HEY: the Screener; your decision is private and can cover a whole domain.
 14. Outlook: Sender Screening, for personal Microsoft accounts, off until you turn it on; new senders' mail waits at the top of the inbox until you allow or block them.
 15. Apple Mail has none; the Messages app screens unknown senders.
-16. Sioul: outside your hours, the Porch says when it opens and shows nothing else; codes and what you send yourself still come.
+16. Sioul: outside your hours, the Porch shows only the codes you asked for, what you send yourself, and the mail of the circles you let through then (your safe senders and your Always through people, unless you change it).
 17. Outlook: on a phone, notifications can be muted on a schedule; the mail itself still shows.
 18. Apple: a Focus, which is a system setting, can show only some accounts at chosen times.
-19. Sioul: one quiet notification per batch, at the times each sender's list allows.
+19. Sioul: one quiet notification per batch, at the times each sender's circle allows.
 20. HEY: notifications off by default, on for the people or threads you choose; no schedule in its documentation.
 21. Gmail: all mail, high priority only, or none; per label on Android.
 22. Outlook: on a phone, all mail, Focused only, or none, and quiet times.
 23. Apple Mail: VIPs and chosen mailboxes; times through the system's Focus.
 24. Superhuman: high priority only, or chosen splits on a phone; no schedule in its documentation.
-25. Sioul: a notification with **Copy** on a computer; on Android, on the Porch and the home-screen card, without a notification yet.
+25. Sioul: a notification with the code, on a computer (with **Copy the code** on Linux) and on Android (with **Copy the code** and **Open the message**); its row on top of the Porch, and on Android the home-screen card.
 26. Gmail: not in Google's documentation; only the press reports a "Copy code" card in its apps.
 27. Apple: codes received in Mail fill in by themselves in Safari, since iOS 17 and macOS Sonoma.
-28. Sioul shows none; on Android, a launcher may still put a dot on Sioul's icon while a mail notification waits.
+28. Sioul shows none; on Android, its notifications are made without the launcher's dot on Sioul's icon.
 29. HEY: no counts, and no badges by design.
 30. Gmail: not confirmed in Google's documentation.
 31. Outlook: the app's badge counts unread mail, all or Focused only; iOS can turn it off.
@@ -305,7 +311,7 @@ HEY holds the closest idea on who may enter, its Screener and Imbox; Gmail, Outl
 
 **Gathering mail, and when it comes**
 
-On when mail comes, SaneBox and Shortwave come closer than any tool in the first table, and go further than Sioul on some points. SaneBox's Digest sums up what waited on the days and times you choose, where Sioul's one notification says how many e-mails wait and names the first senders. Shortwave's delivery schedules hold any label's, sender's or list's mail until the times you set for it. No page read describes the whole view of your mail following your hours and each sender's list together, which is what the Porch does.
+On when mail comes, SaneBox and Shortwave come closer than any tool in the first table, and go further than Sioul on some points. SaneBox's Digest sums up what waited on the days and times you choose, where Sioul's one notification says how many e-mails wait and names the first senders. Shortwave's delivery schedules hold any label's, sender's or list's mail until the times you set for it. No page read describes the whole view of your mail following your hours and each sender's circle together, which is what the Porch does.
 
 | | Sioul | HEY | Gmail | Superhuman | SaneBox | Spark | Shortwave |
 |---|---|---|---|---|---|---|---|
@@ -321,7 +327,7 @@ On when mail comes, SaneBox and Shortwave come closer than any tool in the first
 5. SaneBox: moves less important mail into a folder, @SaneLater, on your own mail server.
 6. Spark: sorts into personal mail, newsletters and notifications, with people at the top.
 7. Shortwave: bundles, one line in the inbox per label, sender or mailing list.
-8. Sioul: outside your hours, the Porch says when it opens and shows nothing else of your mail ([When it opens](#when-it-opens)); the Mail page still lists it, by what each address is for.
+8. Sioul: outside your hours, the Porch shows only the mail of the circles you let through then, and nothing of the rest until your hours ([When it opens](#when-it-opens)); the Mail page still lists it, by what each address is for.
 9. SaneBox: less important mail goes to a folder you can open at any time; only the Digest comes at set times.
 10. Shortwave: delivery schedules for any label, sender, mailing list or channel, at times you choose. Held mail stays on its Snoozed page and in search.
 11. Sioul: one notification when the time comes ("The Porch opens: three e-mails wait for you."), with the first senders and subjects, then the Porch itself ([New mail, told at its times](#new-mail-told-at-its-times)).
@@ -329,7 +335,7 @@ On when mail comes, SaneBox and Shortwave come closer than any tool in the first
 13. Superhuman: nothing of the kind in the pages read; its help centre refused the read that day.
 14. SaneBox: the Digest, a summary of its folders, on the days and times you choose.
 15. Shortwave: its pricing page names AI summaries of the inbox; whether they come on a schedule is not confirmed.
-16. Sioul: one quiet notification per batch, at the times each sender's list allows.
+16. Sioul: one quiet notification per batch, at the times each sender's circle allows.
 17. HEY: notifications off by default, on for the people or threads you choose; no schedule in its documentation.
 18. Gmail: all mail, high priority only, or none; per label on Android. With categories on, new-mail notifications cover Primary only.
 19. Superhuman: high priority only, or chosen splits on a phone; no schedule in its documentation.
@@ -418,7 +424,7 @@ Each row is a *notice*, named by its source alone, the same on every device (a m
 
 ### Notifications {#notifications}
 
-Each device keeps a ledger of what it told, hashed (no address, no Message-ID), for 30 days, so that nothing is told twice. With a phone and a computer, only the device you used last tells; once you said [what each device is for](hours.md#what-each-device-is-for), what is not for it waits for a device it is for. Only a batch with someone Always through in it passes do-not-disturb.
+Each device keeps a ledger of what it told, hashed (no address, no Message-ID), for 30 days, so that nothing is told twice. With a phone and a computer, only the device you used last tells; once you said [what each device is for](hours.md#what-each-device-is-for), what is not for it waits for a device it is for. On a phone, only a batch with someone Always through in it passes the do-not-disturb Sioul turned on, with a sound; on a computer no new-mail notification does: the Porch keeps the mail.
 
 ### The AI reading of a protected address {#the-ai-reading-of-a-protected-address}
 

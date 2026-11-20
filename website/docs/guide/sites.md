@@ -11,7 +11,7 @@ Some mail never leaves its website: a bank's secure mailbox, the hospital's, the
 These secure mailboxes exist because ordinary mail was not private enough for a bank's or an office's letters. Their answer was to make you come to them, each with its own login and its own code, while your mailbox gets, at most, a note that something is waiting. Sioul keeps them here, in one place, so that you no longer watch them one by one; and its encrypted mail is there so that such letters can come back to you as mail, sealed for you alone ([Why Sioul encrypts mail](privacy-security.md#why-sioul-encrypts-mail)).
 
 <figure markdown="span">
-  [![The Sites page: above the list, a funnel, a sort button and a button that folds the list; the sites for these hours (a chat, with a dot for its news, and video calls), then "Other hours: 3" opened on a bank, the tax office and a health insurer, shown muted; Pin a site, Usual sites and the page's settings at the bottom.](../assets/screens/sites.png){ loading=lazy }](../assets/screens/sites.png "Open the picture at full size")
+  [![The Sites page: above the list, a funnel, a sort button and a button that folds the list; the sites for these hours, a chat with a dot for its news and video calls, then "Other hours: 3" opened on a bank, the tax office and a health insurer, shown muted; Pin a site, Usual sites and the page's settings (⚙) under the list.](../assets/screens/sites.png){ loading=lazy }](../assets/screens/sites.png "Open the picture at full size")
   <figcaption>Secure mailboxes and chats, logged in once.</figcaption>
 </figure>
 
@@ -27,7 +27,7 @@ These secure mailboxes exist because ordinary mail was not private enough for a 
 ## Pinning a site
 
 - **Usual sites ▾** opens the sites people usually keep, about 400 of them: for France, Canada (with Québec) and the United States (state by state where it matters), by group: offices, banks, energy, phone and internet; and, whatever your country, chats, video calls, social networks, dating. Each group starts with **All of them**, which pins the whole group at once; a site already pinned is ticked and left as it is. Elsewhere, pin your offices and your bank by hand.
-- **Pin a site** finds one by a word ("bank", "ameli", "chat"), fills its name, address, type and what it is for in one click, or takes any site by hand: a name and an address that begins with `https://`.
+- **Pin a site** finds one by a word ("bank", "ameli", "chat"), in one country, one region or one type when you choose them, fills its name, address, type, categories and what it is for in one click, or takes any site by hand: a name and an address that begins with `https://`.
 
 You log in once, on the site itself. Sioul keeps you logged in; it never stores the site's password itself.
 
@@ -37,29 +37,31 @@ On Android, a site opens in Sioul too, in a screen of its own, or in your browse
 
 - **The sites for these hours** come first. The others fold under one line, "Other hours: 3", opened with a click. See [Hours](hours.md).
 - **Your order**: a site's menu ▸ **Move up**, **Move down**. The sort button groups them **by type** instead.
-- **The funnel** filters by what a site is for (work, your admin, leisure), by its type, or by one of your categories; **Show every site** undoes it.
+- **The funnel** ("Which sites") filters by what a site is for (work, your admin, leisure), by its type, or by one of your categories; **Show every site** undoes it.
 - **Each site's own icon** is asked of the site itself, never of an icon service that would learn which sites you keep.
 - **The list folds to its icons** when you want more room for the site.
 
 ## A site, open
 
-When a site is open, a row above it holds: back, reload, **Real time** (its notifications at once), the camera button while the site has a call ([Calls](#calls)), **Silence its sounds**, **Fill the login** (from Bitwarden, below), and the site's menu, ⋮.
+When a site is open, a row above it holds: back, reload, the site's name, **Real time** when the site is a chat (its notifications at once), the camera button while the site has a call ([Calls](#calls)), **Silence its sounds**, **Fill the login** (from Bitwarden, below), and the site's menu, ⋮.
 
 ## A site's menu
 
 The ⋮ of the site open, or a right click on any site of the list:
 
 - **its type**: personal spaces (secure mailboxes, client areas), chats, video calls, social networks, dating and friendship, other sites;
-- **Keep it open, to hear from it**: chats are kept open by default;
+- **Its ties**: what the site is tied to, as a chain ([Ties](ties.md));
+- **Keep it open, to hear from it**: chats are kept open by default; another site is loaded when you first open it, and can tell of its news only from then on;
 - **For** ▸ work, your admin, leisure, or several (unsaid, it follows the site's type);
 - **Microphone, for calls**, **Camera, for calls**, **Sharing the screen, for calls**: on for chats, video calls and dating sites, off for the others until you turn them on;
 - **Devices for calls…**: the camera, microphone and speaker that calls use, from your system's list;
 - **Move up**, **Move down**, **Link to…** a task, a note, a contact or a project;
-- **Name and address…**: its name, its address, your own categories ("Bank", "Health"), and **Opened for** one of your people, for an account you open for them ("Odile's ameli account"): it shows on their page ([Your people](contacts.md#household));
+- **Choose a login…**, in the menu of the site open: any login of your Bitwarden vault ([below](#logins-from-bitwarden));
+- **Name and address…**: its name, its address, its type, your own categories ("Bank", "Health"), and **Opened for** one of your people, for an account you open for them ("Odile's ameli account"): it shows on their page ([Your people](contacts.md#household));
 - **Remove this site**: it leaves Sioul; nothing changes on the site itself.
 
 <figure markdown="span">
-  [![A site's menu open, from top to bottom: the six types with "Chats" ticked; Keep it open, to hear from it; For; Microphone, Camera and Sharing the screen, for calls, all three ticked; Devices for calls…; Move up; Move down; Link to…; Name and address…; Remove this site.](../assets/screens/sites-menu.png){ loading=lazy }](../assets/screens/sites-menu.png "Open the picture at full size")
+  [![A site's menu open, from top to bottom: the six types with "Chats" ticked; Its ties; Keep it open, to hear from it; For; Microphone, Camera and Sharing the screen, for calls, all three ticked; Devices for calls…; Move up; Move down; Link to…; Name and address…; Remove this site.](../assets/screens/sites-menu.png){ loading=lazy }](../assets/screens/sites-menu.png "Open the picture at full size")
   <figcaption>Everything about a site, in its menu.</figcaption>
 </figure>
 
@@ -86,11 +88,13 @@ What Android does not give, whatever Sioul does:
 Every site's notifications are accepted, then kept by Sioul; the site itself never shows them.
 
 - From the site in front of you: nothing more.
-- From a site in **Real time** (its box, always in view): a desktop notification at once, with the site's icon. A click on it opens the site at that conversation; the same conversation's next message takes its place; it goes after a few minutes, a call when the site ends it; every message stays on the Porch until you open its site, told or not ([What reaches you](notifications.md#to-know-or-to-do)).
+- From a chat in **Real time** (its box, in the row above it): a desktop notification at once, with the site's icon. A click on it opens the site at that conversation; the same conversation's next message takes its place; it goes after a few minutes, a call when the site ends it; every message stays on the Porch until you open its site, told or not ([What reaches you](notifications.md#to-know-or-to-do)). Every site's notifications come at once in the same way while **Mail every minute** is on ([the Porch](porch.md#real-time)).
 - **A call** ("incoming call") comes at once, unless the site is silenced. A missed call waits like the rest.
-- Everything else waits, as "*the site* has news" on [the Porch](porch.md#above-the-lanes). Opening the site clears its news.
+- Everything else waits on [the Porch](porch.md#above-the-lanes), under **Sites**: one row per site, with its last lines and **Open**. Opening the site clears its news.
 
-At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders](settings.md#reminders)), one notification gathers which sites have news since the last one, with **Open the Porch**: each news is named once, and waits on the Porch until you open its site. Three a day helped most in a field trial (Fitz et al. 2019).
+At set times (09:00, 13:00 and 18:00, unless you set others), one notification, "Your sites have news", gathers which sites have news since the last one, with **Open the Porch**: each news is named once, and waits on the Porch until you open its site. It names the sites of these hours whose sounds are not silenced. Three a day helped most in a field trial (Fitz et al. 2019).
+
+The times are **Gathered at**, in Settings ▸ What reaches you ▸ Your rules ▸ Sioul's own notices ▸ Sites and apps ([The gathered times](notifications.md#the-gathered-times)). In the same place, **At once** instead of **At the gathered times** brings each site's news as it comes, in those same hours.
 
 A site whose hours have not come keeps its notifications, real time and calls included, until they do.
 
@@ -132,8 +136,8 @@ While a file comes, the status line says so. Once it is there, one notification 
 
 A screen wider than sRGB, as many photo laptops and some monitors have, makes websites' colours louder than their makers meant: a green comes out more saturated, a red brighter. On a computer, Sioul shows every site in your screen's own colours, read from its colour profile, and can soften loud colours further.
 
-- **Colours for this screen**, in this page's ⚙: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
-- **Calmer colours on sites**: Off, A little, More. Loud colours are softened, their lightness and hue kept; greys, soft tints and faces barely move. It works on every computer, with or without a profile.
+- **Colours for this screen**, in this page's ⚙ (under the list of sites, after **Usual sites**): on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
+- **Calmer colours on sites**, under it: Off, A little, More. Loud colours are softened, their lightness and hue kept; greys, soft tints and faces barely move. It works on every computer, with or without a profile.
 - Both change every open site at once, its pop-up windows too, without reloading anything. Sioul's own window around the sites keeps its colours.
 
 ## Security keys
@@ -144,19 +148,19 @@ When a site asks for your security key (a YubiKey or another FIDO2 key, to sign 
 
 Sioul fills logins from your Bitwarden vault, read by Sioul itself: nothing else to install.
 
-1. In Accounts ▸ Your accounts, under **Password manager** (this page's ⚙ has a button to it): your Bitwarden account's e-mail, and its server when it is not bitwarden.com (bitwarden.eu, or your own, Vaultwarden too).
+1. In Accounts ▸ Your accounts, at the top, under **Password manager** ([Accounts](accounts.md#your-password-manager)): **Add your Bitwarden account** the first time, then your Bitwarden account's e-mail, and its server when it is not bitwarden.com (bitwarden.eu, or your own, Vaultwarden too). It is set once, for the whole app; this page's ⚙ only has a button to that card, **Bitwarden, in Accounts**.
 2. On a site's login page, **Fill the login**.
 3. The first time in a session, open the vault: with **your security key** alone (when Bitwarden knows it as a passkey used for encryption), or with your master password, then the second step your account asks for (a security key, an authenticator app's code, a code by e-mail, a YubiKey's code, a recovery code). Duo cannot be used here. The vault then stays open until you lock it, until it has gone unused as long as you chose, or until Sioul closes.
 4. To lock it, in the same card: **Bitwarden on this device** says whether it is open, with **Lock**, or locked, with **Unlock**; **Lock Bitwarden** locks it after a time without use (opening it, a login looked for or filled), from five minutes to four hours, as Bitwarden's own apps do. Until you choose, it stays open until Sioul closes.
 
-Sioul fills at once the login made for the site in front of you, when it is the only one. When a site has several logins, or none, the list of your logins opens; **Choose a login…** opens it any time. A login made for another site is filled only when you choose it, and the list says which site it was made for, so that a look-alike site shows. Two fields find logins, each optional, both together when both are filled:
+Sioul fills at once the login made for the site in front of you, when it is the only one. When a site has several logins, or none, the list of your logins opens; **Choose a login…**, in the open site's menu (⋮), opens it any time. A login made for another site is filled only when you choose it, and the list says which site it was made for, so that a look-alike site shows. Two fields find logins, each optional, both together when both are filled:
 
 - **Site**: the site's domain to begin with, its own address first. Change it for a sign-in on another site (accounts.google.com, for a site that signs in with Google), or type words: "ameli" finds ameli.fr and assure.ameli.fr, not camelia.com; a login without a site is found by its name. Never by a user name: "gmail" finds Gmail's logins, not every login with a Gmail address.
 - **User name**: any part of it, alone or with a site.
 
 The login you chose last on a site comes first the next time, its domain in Site when it was made for another one. Tab goes from one field to the other, Enter takes the first login (or the one you moved to with the arrows), Escape closes.
 
-For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the Accounts page), User name holds the account's address and Site stays empty: a mail server's address (imap.gmail.com) is seldom the one where your provider's login is kept (accounts.google.com). The logins made for the address's own domain are listed too, whatever their user name: your provider's login kept under a customer number or another address is found all the same, after the logins whose user name is the address.
+For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the Accounts page), User name holds the name the account logs in with (its address, most often) and Site starts empty: a mail server's address (imap.gmail.com) is seldom the one where your provider's login is kept (accounts.google.com). The logins made for the address's own domain are listed too, whatever their user name: your provider's login kept under a customer number or another address is found all the same, after the logins whose user name is the address. A phone takes passwords this way too; its vault opens with your master password and a code, since Sioul cannot ask for a security key on Android ([Accounts](accounts.md#your-password-manager)).
 
 On a page asking for a one-time code, **Fill the login** writes the code your vault's secret gives now.
 
@@ -176,7 +180,7 @@ When Sioul closes, it closes each site as a browser closes its tabs: a site that
 - **Link to…** ties a site to a task, a note, a contact or a project; the link opens the site.
 - **Pop-ups**, such as a sign-in window or a call's window, open in a window of their own, with the rights of the site that opened them.
 - **One profile for every site**: each site keeps its own login, but two accounts of the same service (two WhatsApp numbers) cannot be open side by side.
-- **Your pinned sites travel as one list** with your settings: pin sites on one device at a time, since two devices that each pin a site before they exchange keep only the later list.
+- **Your pinned sites travel with your settings**, each site apart: two sites pinned on two devices at the same moment both stay. While one of your devices still runs an older Sioul, they travel as one list, and only the later list is kept ([Devices on different versions of Sioul](sharing.md#devices-on-different-versions)).
 - **Your own list of usual sites**: the list is a plain file (`sites.json`) that anyone can correct without building Sioul; a copy in `~/.local/share/sioul/presets/` is used when it is newer than Sioul's own. See [the developers' notes](../dev/sites.md#presets).
 - **Limits**: signing in with Google inside a site may be refused, since Google blocks sign-ins in browsers it takes for embedded ones; a call cannot go full screen. What was tried, and with which sites: [Works with](compatibility.md#sites).
 

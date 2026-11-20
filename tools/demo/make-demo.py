@@ -60,6 +60,14 @@ says once (docs/porch.md, "Agenda").
 --shortfall (or SIOUL_DEMO_SHORTFALL=1) has the bank account keep more than
 it holds, so that its next payment falls short: the Porch's Money says it
 first (`ahead::shortfall_notices`).
+--first-day (or SIOUL_DEMO_FIRST_DAY=1) leaves the Porch's two cards of the
+first days unanswered: "Join your other devices" and the topics Sioul started
+from the senders it knows. Without it, the person has answered both with
+"Leave as is", as on a Porch lived with.
+
+This computer is named "Study laptop" ("Portable du bureau" in French), as
+Settings ▸ Devices ▸ Rename… names it, under a fixed id in the sharing
+(share/here.toml, tied to the machine it is made on, as Sioul ties it).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -339,6 +347,8 @@ class World:
         self.marc = ("Marc Duval", f"marc@{self.accounts}")
         self.nimbus = pick("Nimbus Hosting", "Nimbus Hébergement")
         self.bank_name = pick("Riverside Bank", "Banque des Berges")
+        # An online wallet of invented name, of the kind Sioul reads as PayPal's (its exports, its fees).
+        self.wallet_name = "Kestrel Pay"
         self.energy_name = pick("Brightwatt", "Clairwatt")
         self.phone_name = pick("Wavecell", "Ondéa Mobile")
         self.health_name = pick("Health cover office", "Caisse santé")
@@ -723,7 +733,7 @@ Nimbus Hébergement"""), flags="S", key="nimbus-invoice"),
 Order #4471
 Lantern Serif, desktop and web licence (1 site)
 Total: €48.00
-Paid with PayPal.
+Paid with Kestrel Pay.
 
 Foundry North""",
             """Merci pour votre commande.
@@ -731,7 +741,7 @@ Foundry North""",
 Commande n° 4471
 Lanterne Serif, licence bureau et web (1 site)
 Total : 48,00 €
-Payé avec PayPal.
+Payé avec Kestrel Pay.
 
 Fonderie du Nord"""), flags="S", key="fonts"),
         Mail("work", c.at(c.weekday_before(-6), "11:05"), iris, t("Re: Opening hours page", "Re : Page des horaires"), t(
@@ -1252,10 +1262,9 @@ def write_stars(p: Profile):
 def write_phone_messages(p: Profile):
     """The messages a phone's notifications brought, as its log reaches a
     computer through the sharing (crates/sioul-core/src/phonemsgs.rs, `Line`;
-    the phone's name in the sharing invented), and the part switched on here
-    (share/here.toml): a text from the doctor while you slept, a pharmacy's,
+    the phone's name in the sharing invented): a text from the doctor while you slept, a pharmacy's,
     a service's, a code said without it, a chat's whose words stayed on the
-    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71. The part itself: `write_here`."""
     c = p.clock
 
     def line(moment: datetime, name: str, who: str, text: str = "", key: str = "", talk: str = "", kind: str = "text", **more) -> str:
@@ -1275,7 +1284,6 @@ def write_phone_messages(p: Profile):
         line(c.at(c.today, "13:02"), "Sam", "neutral", "", "", "sam", kind="chat", withheld=True),
     ]
     p.write(p.state / "phone-messages" / "log" / "demo-phone.jsonl", "".join(lines))
-    p.write(p.state / "share" / "here.toml", '[parts]\n"phone-messages" = true\n')
 
 
 def parcel_png() -> bytes:
@@ -1657,6 +1665,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            extra=["X-SIOUL-PAUSE-DURING:public", f"X-SIOUL-PAUSE-DURING:school/{SCHOOL_ID}", f"X-SIOUL-PAUSE-DURING:vacations/{VACATIONS_OWNER}"])
          # It ends with the season, at the end of June.
          .replace("RRULE:FREQ=WEEKLY", f"RRULE:FREQ=WEEKLY;UNTIL={utc(c.at(date(c.today.year + 1, 6, 30), '23:59'))}")),
+        # Over Friday's lunch, which Sioul then moves after it: ended by 13:10, so that the
+        # meal moved is over at 14:00, when the pictures' afternoon of work begins.
         ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:00", "13:00", location="Café du Quai")),
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
@@ -1717,6 +1727,38 @@ def fnv64_hex(text: str) -> str:
     for byte in text.encode():
         h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
     return f"{h:016x}"
+
+
+# This computer's id in the sharing (sioul-sync's `share::Here::id`), fixed so that the
+# configuration can name it (`[device."<id>"]`), and the name given it in Settings ▸ Devices.
+DEVICE_ID = "5d3e9a41-7c2b-4f18-9e06-b1a4c8d27f53"
+DEVICE_NAME = ("Study laptop", "Portable du bureau")
+
+
+def write_here(p: "Profile", phone_messages: bool):
+    """This computer in the sharing, not sharing (share/here.toml): its fixed id, and its
+    machine as Sioul reads it (sioul-sync's `share::machine`, a hash of /etc/machine-id),
+    so that Sioul keeps that id rather than taking a new one; with --phone-messages, the
+    part "Messages from your phone" switched on here."""
+    machine = ""
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            said = Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        machine = fnv64_hex(said) if said else ""
+        break
+    text = f'id = "{DEVICE_ID}"\nmachine = "{machine}"\n'
+    if phone_messages:
+        text += '\n[parts]\n"phone-messages" = true\n'
+    p.write(p.state / "share" / "here.toml", text)
+
+
+def write_view_flags(p: "Profile"):
+    """How the window was left (tasks-view.toml, `work::WorkState::flags`): the Porch's two
+    cards of the first days answered "Leave as is", "Join your other devices"
+    (`porch-join-left`) and the topics Sioul started (`topics-day-one-left`)."""
+    p.write(p.state / "tasks-view.toml", '[flags]\n"porch-join-left" = true\n"topics-day-one-left" = true\n')
 
 
 def write_subscribed(p: "Profile"):
@@ -2292,7 +2334,7 @@ every = "{every}"
         (t("fernhill|silkworks|print", "fougeres|soierie|tirage").split("|"), "credit", None, "work"),
         ([t("bloc & boulder", "bloc et prise")], None, "gym", None),
         ([t("two rivers voices", "deux rivieres")], None, "choir-fee", None),
-        (t("cinema|bookshop|rail|tidal notes", "cinema|librairie|billets|disquaire").split("|"), None, None, "leisure"),
+        (t("cinema|bookshop|rail|harbour notes", "cinema|librairie|billets|disquaire").split("|"), None, None, "leisure"),
         (t("market|greengrocer|bakery|supermarket|pharmacy", "supermarche|primeur|halles|boulangerie|pharmacie").split("|"), None, "food", None),
         ([t("health cover", "caisse sante")], "credit", None, "household"),
     ]
@@ -2418,7 +2460,7 @@ topped_up_by = ["instant", "longterm"]
 
 [[bank_account]]
 id = "paypal"
-title = "PayPal"
+title = {toml_string(W.wallet_name)}
 kind = "paypal"
 fills = ["work", "leisure"]
 
@@ -2466,11 +2508,12 @@ def write_bank(p: Profile):
                                   (-15, -90.00, t("VIR TWO RIVERS VOICES CHOIR FEE", "VIR CHOEUR DEUX RIVIERES COTISATION"))]:
         add("bank", c.weekday_before(offset), amount, label)
     rows.append((paid_day(c), "bank", 990.00, t("VIR FERNHILL LIBRARY FACT 2026-001", "VIR MEDIATHEQUE FOUGERES FACT 2026-001")))
-    for offset, amount, label in [(-40, -9.00, t("Tidal Notes music", "Disquaire Notes")), (-20, 25.00, t("Payment from Ewan Price (print)", "Paiement de Lucie Perrin (tirage)")),
+    for offset, amount, label in [(-40, -9.00, t("Harbour Notes records", "Disquaire Notes")), (-20, 25.00, t("Payment from Ewan Price (print)", "Paiement de Lucie Perrin (tirage)")),
                                   (-4, -48.00, t("Foundry North", "Fonderie du Nord")), (-11, -12.00, W.paper_name),
                                   (-33, 40.00, t("Payment from Lise Moreau (print)", "Paiement de Lise Moreau (tirage)"))]:
         add("paypal", c.weekday_before(offset), amount, label)
-    # What PayPal received moved to the bank: one payout, on both accounts.
+    # What the wallet received moved to the bank: one payout, on both accounts (the
+    # bank's label names PayPal, whose kind the wallet has: Sioul pairs the two by it).
     add("paypal", c.weekday_before(-17), -65.00, t("Withdrawal to bank", "Retrait vers la banque"))
     add("bank", c.weekday_before(-15), 65.00, "VIR PAYPAL EUROPE SARL")
     rows.sort()
@@ -2478,7 +2521,7 @@ def write_bank(p: Profile):
     paypal_balance = sum(r[2] for r in rows if r[1] == "paypal") + 61.50
     out = ["# Your bank's movements, read from its exports (docs/accounting.md). Kept here only.", "",
            "[[account]]", 'id = "bank"', f"title = {toml_string(W.bank_name)}", f"balance = {bank_balance:.2f}", f"as_of = {end}", "",
-           "[[account]]", 'id = "paypal"', 'title = "PayPal"', f"balance = {paypal_balance:.2f}", f"as_of = {end}", ""]
+           "[[account]]", 'id = "paypal"', f"title = {toml_string(W.wallet_name)}", f"balance = {paypal_balance:.2f}", f"as_of = {end}", ""]
     for n, (day, account, amount, label) in enumerate(rows):
         out += ["[[movement]]", f'account = "{account}"', f"date = {day}", f"amount = {amount:.2f}", f"label = {toml_string(label)}", f'id = "demo-{n:03d}"', ""]
     p.write(p.notes / "sioul-bank.toml", "\n".join(out))
@@ -3093,6 +3136,10 @@ holder = "Noa Ferrand"
 iban = "FR76 3000 6000 0112 3456 7890 189"
 bic = "EXMPFRPP"
 
+# This computer, named in Settings ▸ Devices ("Rename…"): its id is share/here.toml's.
+[device."{DEVICE_ID}"]
+name = {toml_string(t(*DEVICE_NAME))}
+
 # Other apps by time, set on the phone and shared with the settings (docs/attention.md,
 # §1.3): the chat app let through during work, held otherwise.
 [attention]
@@ -3322,6 +3369,8 @@ def main():
                         help="a meeting its organizer moved onto an event of yours this afternoon: a conflict the Porch says (SIOUL_DEMO_CONFLICT=1 too)")
     parser.add_argument("--shortfall", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SHORTFALL")),
                         help="the bank account keeping more than it holds: its next payment falls short (SIOUL_DEMO_SHORTFALL=1 too)")
+    parser.add_argument("--first-day", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_FIRST_DAY")),
+                        help="the Porch's cards of the first days not answered yet: Join your other devices, the topics Sioul started (SIOUL_DEMO_FIRST_DAY=1 too)")
     args = parser.parse_args()
     ONGOING = args.ongoing
     DAYS_OFF = args.days_off
@@ -3339,6 +3388,9 @@ def main():
     letters = leave_spam_mail(clock) if args.leave_spam else []
     mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else []) + letters
     write_config(profile)
+    write_here(profile, args.phone_messages)
+    if not args.first_day:
+        write_view_flags(profile)
     write_mail(profile, mails)
     write_topics(profile, mails)
     moving_note(profile)

@@ -24,7 +24,7 @@ La plupart des filtres à indésirables gardent une boîte de réception propre.
 
 **Il ne juge que les courriels des inconnus.** Il ne touche jamais au courriel d’une personne que vous connaissez, à un code ou à un lien que vous avez demandé, au courriel d’un projet, ni à ce que vous vous envoyez.
 
-**Entraînez-le une fois.** Dans le ⚙ de la page Courriels, sous **Votre filtre à indésirables**, **Entraîner maintenant** nomme les adresses dont il apprend, télécharge ce qu’il faut à l’apprentissage, puis apprend. La première fois est longue, et Sioul reste utilisable pendant ce temps. Ensuite il apprend de lui-même, une fois par semaine, pendant que l’appareil charge et que personne ne s’en sert (**Apprendre ici, une fois par semaine, pendant que cet appareil charge et reste inactif**).
+**Entraînez-le une fois.** Dans le ⚙ de la page Courriels, sous **Votre filtre à indésirables**, **Entraîner maintenant** nomme les adresses dont il apprend, télécharge ce qu’il faut à l’apprentissage, puis apprend. La première fois est longue, et Sioul reste utilisable pendant ce temps. Ensuite il apprend de lui-même, une fois par semaine, pendant que l’appareil charge et que personne ne s’en sert (**Apprendre ici, une fois par semaine, pendant que cet appareil charge et reste inactif**) : un ordinateur pendant que Sioul y tourne, un téléphone ou une tablette tant qu’il partage avec vos autres appareils et reste à jour en arrière-plan. Chaque appareil juge lui-même les courriels qu’il relève, et ne donne sa table qu’à un appareil à vous qui n’apprend pas.
 
 **Choisissez ce qu’il fait.** Il trouve le courriel d’un inconnu **probablement indésirable** (à partir de 95 %), **peut-être indésirable** (à partir de 50 %) ou **probablement pas indésirable**. Pour chaque avis, vous choisissez l’une de trois choses :
 
@@ -37,7 +37,7 @@ Tant que vous n’avez pas choisi, il signale ce qui est probablement ou peut-ê
 **Regardez quand vous avez le temps.** Ce qu’il a signalé ou déplacé attend sous le Porche, dans **Retenu par votre filtre à indésirables** : replié, sans compteur, jamais notifié. Rien n’y demande votre temps. Vous n’intervenez que lorsqu’il se trompe : **Pas indésirable** remet un courriel à sa place pour de bon et instruit le filtre, et **Indésirable** le confirme. Ce que vous dites sur un appareil, les autres le savent.
 
 <figure markdown="span">
-  [![Le Porche. À gauche, « Retenu par votre filtre à indésirables » ouverte, sans compte, avec sa phrase sous le titre : ce que votre filtre a retenu y attend, sans notification ; Sioul en apprend tel quel, et « Pas indésirable » en remet un à sa place et l’apprend au filtre. Puis des courriels d’inconnus, chacun avec son mot discret, « probablement indésirable » ou « peut-être indésirable », et Pas indésirable et Indésirable dessous ; au-dessus d’eux, Pas indésirable pour tous et Indésirable pour tous. Le premier, que le filtre a déplacé dans le dossier Indésirables, est ouvert à droite : « Pourquoi il est ici » dit « votre propre filtre : probablement indésirable » et qu’il a été mis dans votre dossier Indésirables, « Pas indésirable » le ramenant dans la boîte de réception ; sous le courriel, Indésirable, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
+  [![Le Porche, plus bas : à gauche, De vous-même, De personnes que vous connaissez, Sites, Argent, Courrier papier et les nouveaux expéditeurs en attente, puis « Retenu par votre filtre à indésirables » ouverte, sans compte et sans rien d’écrit sous son titre : Pas indésirable pour tous et Indésirable pour tous, puis deux courriels d’inconnus, chacun avec Pas indésirable et Indésirable dessous ; sous eux, Mis de côté, replié, et Terminé pour l’instant. Le premier, que le filtre a déplacé dans le dossier Indésirables, est ouvert à droite : « Pourquoi il est ici » dit « votre propre filtre : probablement indésirable » et qu’il a été mis dans votre dossier Indésirables, « Pas indésirable » le ramenant dans la boîte de réception ; sous le courriel, Indésirable, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
   <figcaption>Ce que votre propre filtre a signalé ou déplacé.</figcaption>
 </figure>
 
@@ -79,7 +79,7 @@ Un thème est un mot discret sur un courriel, comme Santé, Impôts ou Chorale. 
 - **Pour instruire un expéditeur** : **Toujours <thème> pour cet expéditeur**, ou **Jamais…**, dans le même menu.
 - **Pour regarder par thème** : le filtre par thème, à côté du filtre par domaine, ne montre que les courriels d’un thème.
 
-Derrière cela, un petit modèle apprend vos thèmes sur chaque appareil, une fois par semaine, avec le filtre à indésirables. Il apprend un thème une fois que ce thème a 20 courriels de 3 expéditeurs ; en dessous, vos mots et les règles de Sioul le rangent. Il est fait pour ne rien déplacer sous vos yeux : une nouvelle version ne remplace celle en usage que si elle ne fait pas moins bien sur vos courriels les plus récents et change moins de 2 % des thèmes déjà affichés, et un doute ne s’affiche que sous le filtre de son thème, en « Peut-être ». Sur un ordinateur, **Groupes remarqués par Sioul** rassemble les courriels qu’aucun thème ne nomme encore, et **Le nommer** donne un thème à tout le groupe.
+Derrière cela, un petit modèle apprend vos thèmes sur chaque appareil, une fois par semaine, avec le filtre à indésirables. Il apprend un thème une fois que ce thème a 20 courriels de 3 expéditeurs, ou 50 d’un seul, comme un organisme ; en dessous, vos mots et les règles de Sioul le rangent. Il est fait pour ne rien déplacer sous vos yeux : une nouvelle version ne remplace celle en usage que si elle ne fait pas moins bien sur vos courriels les plus récents et change moins de 2 % des thèmes déjà affichés, et un doute ne s’affiche que sous le filtre de son thème, en « Peut-être ». Sur un ordinateur, **Groupes remarqués par Sioul** rassemble les courriels qu’aucun thème ne nomme encore, et **Le nommer** donne un thème à tout le groupe.
 
 La suite : [Les thèmes](mail.md#topics)
 
@@ -93,7 +93,7 @@ Les étiquettes d’une tâche sont ses catégories : elles sont écrites dans
 
 ### Les catégories sur les contacts {#categories-on-contacts}
 
-Les catégories sont les groupes que votre carnet d’adresses a déjà : « Famille », « Amis », « Voisins ». Elles sont enregistrées dans la fiche elle-même : votre téléphone et vos autres logiciels les voient. Une liste peut nommer une catégorie (**Paramètres ▸ Ce qui vous joint**, « Les catégories de vos contacts ») : ses personnes vous joignent alors comme cette liste le dit. Rien ne va sur une liste de soi-même, la famille et les amis non plus.
+Les catégories sont les groupes que votre carnet d’adresses a déjà : « Famille », « Amis », « Voisins ». Elles sont enregistrées dans la fiche elle-même : votre téléphone et vos autres logiciels les voient. Une liste peut en nommer une (**Paramètres ▸ Ce qui vous joint**, sous **Qui est dans quel cercle**, **Groupes**) : ses personnes vous joignent alors comme cette liste le dit. Rien ne va sur une liste de soi-même, la famille et les amis non plus. Dans un carnet d’adresses où quelqu’un d’autre peut écrire, les groupes ne décident rien tant que vous ne les avez pas activés pour ce carnet, dans le ⚙ des Contacts sous **Carnets d’adresses**.
 
 ### Un projet, ou un thème ? {#a-project-or-a-topic}
 
@@ -132,7 +132,7 @@ Une tâche peut préparer un rendez-vous. Dans l’Agenda, la carte d’un évé
 
 **Avant** et **Après**, sur un événement ou sur une tâche, gardent le temps de se préparer, d’y aller et d’en revenir, de 5 minutes à 2 heures chacun. Le plan garde ce temps libre, et ne le compte jamais comme une pause.
 
-Quand le chemin a ses propres parties, un bus, puis la marche depuis l’arrêt, ajoutez-les comme des trajets : **Ajouter un trajet…**, dans la carte du rendez-vous, avec **D’après un horaire** quand son heure en vient.
+Quand le chemin a ses propres parties, un bus, puis la marche depuis l’arrêt, ajoutez-les comme des trajets : **Ajouter un trajet…**, dans la carte du rendez-vous, avec **D’après un horaire** quand son heure en vient. Son formulaire dit dans quel sens il va : **Pour y aller** le place avant le rendez-vous, **Pour en revenir** après.
 
 - **Un trajet est un événement à part**, dans l’agenda du rendez-vous : l’agenda de votre téléphone le montre aussi.
 - **Il bouge avec le rendez-vous.** Changez l’heure du rendez-vous, et ses trajets bougent d’autant, sous le même **Annuler**. Un bus déplacé ainsi est dit « horaire non vérifié » jusqu’à ce que vous régliez son heure vous-même.
@@ -158,7 +158,7 @@ Le plan place vos tâches lui-même, et n’y écrit aucune heure. Quand une ét
 | **Gantt** | chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés | à voir si une date tiendra |
 
 <figure markdown="span">
-  [![La Liste : un champ de recherche, « Par projet » et « Faites aussi » en haut ; les tâches groupées par projet, une tâche plus grande suivie de ses étapes, chacune avec le temps qu’elle prend, la date demandée en jours restants et ce qu’elle attend ; les tâches sans projet en dessous, et celles « Quand vous le direz » en dernier.](../assets/screens/fr/tasks-list.png){ loading=lazy }](../assets/screens/fr/tasks-list.png "Ouvrir l’image en grand")
+  [![La Liste : un champ de recherche, « Par projet », « Faites aussi » et Sélectionner en haut ; les tâches groupées par projet, une tâche plus grande repliée sur une ligne avec sa prochaine étape dessous, les autres chacune avec la date demandée en jours restants, à peu près le temps qu’elle prend et ce qu’elle attend ; puis les tâches sans projet.](../assets/screens/fr/tasks-list.png){ loading=lazy }](../assets/screens/fr/tasks-list.png "Ouvrir l’image en grand")
   <figcaption>La liste, par projet.</figcaption>
 </figure>
 
@@ -168,7 +168,7 @@ Les boutons **Tableau**, **Liste** et **Gantt** d’un projet ouvrent les mêmes
 
 ### Ce que voient vos autres applications {#what-your-other-apps-see}
 
-Les étapes, les attentes et les types sont écrits dans vos tâches dans les termes du standard, sur votre serveur d’agenda. Les applications de tâches qui connaissent les étapes montrent les vôtres dans votre ordre (Nextcloud Tasks, Tasks.org). Peu comprennent les attentes : la plupart montrent une attente comme une étape de l’autre tâche, et certaines la perdent quand vous y changez la tâche. [Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts) dit quelle application garde quoi. Une liste sur Google Tasks garde moins, et Sioul grise ce que Google ne garderait pas.
+Les étapes, les attentes et les types sont écrits dans vos tâches elles-mêmes, sur votre serveur d’agenda. Les étapes sont écrites comme le dit le standard : les applications de tâches qui connaissent les étapes montrent les vôtres dans votre ordre (Nextcloud Tasks, Tasks.org). Les attentes et les types sont écrits dans des lignes propres à Sioul, avec les mots du standard : les autres applications ne les montrent pas, et les gardent tant qu’elles enregistrent une tâche sans perdre ce qu’elles ne connaissent pas. [Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts) dit quelle application garde quoi. Une liste sur Google Tasks garde moins, et Sioul grise ce que Google ne garderait pas.
 
 La suite : [Les tâches](tasks.md) · [Le temps autour d’un événement](agenda.md#time-around-an-event)
 

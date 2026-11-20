@@ -22,7 +22,7 @@ Your data stays yours throughout. Your mail, calendars and contacts stay on your
 [What Sioul is for, and for whom](../index.md)
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; the card to join your other devices; then its sections, each a title with its "?" and its chevron: Right now, a code from a verified sender with Copy; a project's mail; the people you know; From your phone; Sites; Money, each payment with its amount on the right; each row with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; then its sections, each a title with its chevron and its "?": Right now, a confirmation link and a code from verified senders, the code with Copy; a project's mail; From yourself; From people you know; Sites, a chat's news with Open; each message with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
   <figcaption>Codes on top, then each section, a row per new thing.</figcaption>
 </figure>
 
@@ -65,6 +65,8 @@ They come from the server that already holds them.
 - **A CalDAV and CardDAV server** (Nextcloud, Fastmail, iCloud, your host): in **Accounts ▸ Add an account**, under "Add contacts and calendars", type your address and password, then **Connect and add**. Your address books and calendars come; tasks come with the calendars that hold them. When your mail is at the same provider, **What this server offers**, on the mail address's card, adds them in one click.
 - **Google**: under "Google calendars, contacts and tasks", type your Google address and choose **Sign in with Google**. You sign in on Google's own page, in your browser.
 - **No server**: Sioul can keep calendars, task lists and contacts on this device only. The first time you make a task, **Make the list** makes a list in one click.
+- **A calendar read by its web address**, such as a school's or a university's timetable: in the Agenda's ⚙, under **Your agendas**, **Subscribe to a calendar…**. Sioul reads it and never changes it; France's public and school holidays are ready-made there ([Agenda](agenda.md#calendars-by-their-address)).
+- **Contacts kept in a file**: on the Contacts page, **Import…**, an icon above the list, reads a vCard or a CSV file into an address book ([Contacts](contacts.md#importing)).
 
 Sioul does not reach Microsoft's calendars and contacts: Microsoft does not offer them through the open standards Sioul speaks.
 
@@ -76,7 +78,7 @@ This is the step that makes Sioul calm. Without hours, everything comes at any h
 
 ### Then leave it open {#then-leave-it-open}
 
-Sioul is made to stay open all day. Closing its window hides it in the system tray, where it goes on fetching mail and keeping your reminders. **Quit Sioul** is in the tray icon's menu, or ++ctrl+q++. [Keep Sioul open](first-steps.md#keep-sioul-open)
+Sioul is made to stay open all day. On a computer, closing its window hides it in the system tray, where it goes on fetching mail and keeping your reminders; **Quit Sioul** is in the tray icon's menu, or ++ctrl+q++. Where the desktop has no system tray (GNOME without its extension), closing the window quits Sioul. On a phone or a tablet, put Sioul away as any app: what it still does then is in [On a phone or a tablet](first-steps.md#on-a-phone). [Keep Sioul open](first-steps.md#keep-sioul-open)
 
 ## A first look {#a-first-look}
 
@@ -128,7 +130,7 @@ More: [Agenda](agenda.md)
 The **Tasks** page opens on **Now**: one step, why it comes now, and the one after it. It has five buttons: **Start**, **Done**, **Not now**, **Details** and **What makes it hard?**
 
 <figure markdown="span">
-  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board and Calendar, then Routines and three choices: every project, all kinds, any category. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
+  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board, Gantt and Search, then Routines and three choices: every project, all kinds, any category; under them, the field for a task in one line with New task, and "How is today?" with Clear, Haze and Fog. In the middle, a line saying how long the steps until Monday take and how much room there is, then one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, about how long it takes and what it waits for; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
   <figcaption>Now: one step, why it comes now, and the one after it.</figcaption>
 </figure>
 
@@ -155,7 +157,7 @@ Contacts do more here than hold addresses. Each person is on a list, and the lis
 | **Blocked** | never, on any channel |
 | **Strangers** | everyone else; their first message waits in the Porch's screener |
 
-**How they reach you**, on a contact's card, shows their list and changes it. What each list does at each time of your day is in **Settings ▸ What reaches you**, said in sentences.
+On a contact's card, **How Sam reaches you**, with the person's own name, shows their list and changes it. What each list does, for mail and for messages, is in **Settings ▸ What reaches you**, under **People**; calls are set for each phone, in **Settings ▸ Devices**. One more list, **Always through**, is for the few people who must reach you even during do-not-disturb: it is the same on every device, and a blocked person is never on it.
 
 More: [Contacts](contacts.md) · [What reaches you, and when](notifications.md)
 
@@ -196,8 +198,8 @@ On a computer that shares already, **Add a device**, in the same panel, says wha
 
 - **Your rules follow you.** Hours, lists and do-not-disturb set on one device hold on the others, usually within minutes.
 - **Each device chooses what travels from it**, part by part, under **What travels from this device**.
-- **Update your devices together when you can.** Devices on different versions go on sharing, but a part whose form is newer than a device can read waits on that device until it is updated.
-- **On Android**, a sync app often brings changes only every half hour. Where the folder is on your Nextcloud, Sioul reads your other devices' news there itself, each minute while it is open.
+- **Update your devices together when you can.** Devices on different versions go on sharing, but a part whose form is newer than a device can read waits on that device until it is updated. Sioul's own lists (projects, budgets…) leave your notes folder only once every device runs a Sioul that knows their new place: an older one keeps the move waiting until it is updated, or forgotten in **Settings ▸ Devices**.
+- **On Android**, a sync app often brings changes only every half hour. Where the folder is on your Nextcloud, Sioul reads your other devices' news there itself: each minute while it is on the screen or another of your devices is in use, and otherwise every few minutes in the background, while the phone keeps in step there.
 
 More: [Sharing between your devices](sharing.md)
 

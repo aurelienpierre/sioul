@@ -23,11 +23,11 @@ Who may reach you, and when, is in Settings ▸ [What reaches you](notifications
 ## Your accounts
 
 <figure markdown="span">
-  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: its mail service with its server, a switch and Remove, then what this address is for (Work ticked, Your admin, Leisure), how far back, how often it is fetched, the protection against harassment, its priority, "Name and signature…", and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
+  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: "What this server offers" at its top, its mail service with its server, a switch and Remove, "Settings for this address", folded, its priority, "Name and signature…", its colour, and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
   <figcaption>One card per address, each of its services with a switch.</figcaption>
 </figure>
 
-At the top, **Password manager**: your Bitwarden account, one for the whole app ([below](#your-password-manager)).
+**Your accounts** is the tab the page opens on. At the top, **Password manager**: your Bitwarden account, one for the whole app ([below](#your-password-manager)).
 
 Then **How far back mail and the agenda reach**: from one week to one year, or everything. Older mail is fetched at the next round; "Everything" can take a while, and room on disk.
 
@@ -37,7 +37,7 @@ Then one card per address, with each of its services: **Mail**; **Calendars, tas
 - its server, and what its last fetch said, in a sentence;
 - **Remove**.
 
-**What this server offers**, at the top of the card, asks the server what else it has: calendars and contacts beside the mail, and for a Nextcloud, its version and its apps. What Sioul can use is added in one click.
+**What this server offers**, at the top of the card, asks the server what else it has: calendars and contacts beside the mail, and for a Nextcloud, its version and its apps, each said to be in Sioul or not yet (they are listed once its calendars are here: their password asks for them). What Sioul can use is added from there: the mail in one click, with the password of its calendars, or with another password; calendars and contacts with **Add them**, which opens their form in [Add an account](#add-an-account), the address filled, for their password.
 
 ### Your password manager {#your-password-manager}
 
@@ -47,7 +47,7 @@ Sioul fills sites' logins and accounts' passwords from your Bitwarden vault, rea
 - **Bitwarden on this device**: "Bitwarden is open." with **Lock**, or "Bitwarden is locked." with **Unlock**. Unlock opens the vault for the session: with your security key alone, or with your master password and the second step your account asks for ([Sites](sites.md#logins-from-bitwarden) says each). On a phone, by the master password and a code: an authenticator app's, an e-mail's, a YubiKey's, a recovery code.
 - **Lock Bitwarden**: after a time without use, from five minutes to four hours, as Bitwarden's own apps do; until you choose, it stays open until Sioul closes.
 
-Without an account, the card has one line and **Add your Bitwarden account**, which opens its form in [Add an account](#add-an-account). The account travels with your settings to your other devices, when you [share them](sharing.md); the vault itself never leaves the device that opened it. The Sites page fills logins from the same vault, and its ⚙ has a button to this card.
+Without an account, the card has one line and **Add your Bitwarden account**, which opens its form in [Add an account](#add-an-account). The account travels with your settings to your other devices, when you [share them](sharing.md); the vault itself never leaves the device that opened it. On a computer, the Sites page fills logins from the same vault, and its ⚙ has a button to this card; on Android, where sites open in the browser, the vault serves the accounts' passwords alone.
 
 ### A mail address
 
@@ -55,8 +55,8 @@ On its card, **Settings for this address**, folded until you open it:
 
 - **What this address is for**: work, your admin, leisure, any of them together. Its mail is told in the hours for what it is for; your safe senders' shows on the Porch at their times and is told when those hours begin, and your Always through people's comes at once. Nothing ticked counts as work, so that the others' mail never reaches your evenings; your safe senders' is still told at their times. See [Hours](hours.md).
 - **How far back**: how many weeks of this address's mail its folders show, or like the other addresses.
-- **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses. A public address can be fetched twice a day (720 minutes).
-- **Protected against harassment**, and once it is on, **Let the AI read it first**. See [the Porch](porch.md#a-public-address-protected).
+- **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses, whose rhythm is **Fetch every** in the Mail page's ⚙. A public address can be fetched twice a day (720 minutes).
+- **Protected against harassment**, and once it is on, **Let the AI read it first** (not offered for a work or school Microsoft address: its card says why). See [the Porch](porch.md#a-public-address-protected).
 
 Always in view below it:
 
@@ -64,9 +64,9 @@ Always in view below it:
 - **Name and signature…**: your name, as recipients see it, and your signature, in Markdown.
 - **Its colour**, once you have more than one address: one of eight for the square that marks its mail in [All addresses](mail.md#all-addresses), or **As its rank gives it**. Your other devices draw the same.
 
-Then **Server and folders**, folded: the server, and where its mail is kept on this device.
+Then **Server and folders**, folded: the server, the name under which your provider records its checks of senders (**Sender checks**, learned from your mail), and where its mail is kept on this device.
 
-Below the cards, **The AI shield** holds the key for Anthropic's service, used only by addresses that let the AI read them first. It is kept in your system's keyring, never in a file; **Forget the key** removes it.
+Below the cards, once an address lets the AI read it first, **Key for Anthropic's API** takes the key for Anthropic's service, used only by such addresses: paste it and choose **Keep**. It is kept in your system's keyring, never in a file; **Forget the key** removes it.
 
 ### Removing one
 
@@ -76,22 +76,22 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 [Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…** (shown once your [password manager](#your-password-manager) is set). The logins whose user name is this address are listed, then those made for its domain under another user name (a customer number, another address), the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
 
-From this page, your Bitwarden vault opens as from the Sites page: with your security key, alone or as a second step, or with your master password and an app's code, an e-mail's, a YubiKey's code, a recovery code. It then stays open for every page until you lock it or Sioul closes. On Android, a security key cannot open the vault yet: use another second step of your Bitwarden account.
+From this page, your Bitwarden vault opens as from the Sites page: with your security key, alone or as a second step, or with your master password and an app's code, an e-mail's, a YubiKey's code, a recovery code. It then stays open for every page until you lock it, until the time without use chosen under **Lock Bitwarden** has passed, or until Sioul closes. On Android, a security key cannot open the vault yet: use another second step of your Bitwarden account.
 
 ### Google's mail
 
-Gmail or Google Workspace mail signed in with Google says when Google ends the access (your Google password changed, your own Google app deleted, a Google project left in testing). On its card, **Sign in again** opens Google's page again, in your browser; **App password…** gives it an app password instead. Sioul never asks for your Google account's password. See [First steps](first-steps.md#gmail-and-google-workspace).
+Gmail or Google Workspace mail signed in with Google says when Google ends the access (your Google password changed, your own Google app deleted, a Google project left in testing). On its card, **Sign in again** opens the mail form in [Add an account](#add-an-account), its address filled: **Sign in with Google** there opens Google's page again, in your browser; **App password…** gives it an app password instead. Google's calendars, contacts and tasks have **Sign in again** too when Google ended their access: it opens Google's page at once. Sioul never asks for your Google account's password. See [First steps](first-steps.md#gmail-and-google-workspace).
 
 ### Microsoft's mail {#microsofts-mail}
 
-Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft says when Microsoft ends the access (your password changed, ninety days unused, your organisation's rules), or when the mailbox stays closed to mail programs, with what to do. On its card, **Sign in again** opens Microsoft's page again, in your browser. An address added before with a password, at Microsoft's server, shows **Sign in with Microsoft** instead of **Password…**: Microsoft takes no password any more, app passwords included, and signing in forgets the one kept. Sioul never asks for your Microsoft password. Its card says **Signs in: with Microsoft**, and whether as a personal account or as a work or school one. See [First steps](first-steps.md#outlook-and-microsoft-365).
+Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft says when Microsoft ends the access (your password changed, ninety days unused, your organisation's rules), or when the mailbox stays closed to mail programs, with what to do. On its card, **Sign in again** opens the mail form in [Add an account](#add-an-account), its address filled: **Sign in with Microsoft** there opens Microsoft's page again, in your browser. An address added before with a password, at Microsoft's server, shows **Sign in with Microsoft** instead of **Password…**, which leads to the same form: Microsoft takes no password any more, app passwords included, and signing in forgets the one kept. Sioul never asks for your Microsoft password. Under **Server and folders**, its card says **Signs in**: with Microsoft, as a personal account or as a work or school one. See [First steps](first-steps.md#outlook-and-microsoft-365).
 
 ## Add an account
 
-Four forms, one after the other:
+The **Add an account** tab holds four forms, one after the other (once an account is added, the page returns to **Your accounts**):
 
-- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password (for Workspace, the sign-in is the dependable way: Google may not offer it an app password); for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
-- **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
+- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password (for Workspace, the sign-in is the dependable way: Google may not offer it an app password); for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. When nothing is found for a work or school address kept at Microsoft 365, **This address is at Microsoft**, under the form, brings Microsoft's sign-in. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
+- **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host: your address, its password, **Connect and add**; **Server address, when it cannot be found**, folded, takes the server's address and its login. Its address books and its calendars are then managed where they are used: Contacts ⚙ ▸ **Address books** ([Contacts](contacts.md#address-books)) and Agenda ⚙ ▸ **Your agendas** ([Agenda](agenda.md#agendas-on-their-servers)). A calendar read by its web address (a school's timetable, public holidays) is not an account: it is subscribed there, with **Subscribe to a calendar…** ([Calendars by their address](agenda.md#calendars-by-their-address)).
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 - **Bitwarden**: your password manager's e-mail, and its server when it is not bitwarden.com; **Add** shows it at the top of **Your accounts** and opens the vault there. One account for the whole app: once one is set, this form says which.
 
@@ -105,7 +105,7 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 addresses sign in on Microsoft
 
 ## Who may reach you {#senders}
 
-Who may reach you, and when, by mail and through other apps' messages, and who is in which circle (safe, restricted, blocked, with addresses, numbers, patterns such as `*@example.org`, the people placed on a list and your groups; your contacts are everyone in your address books): Settings ▸ **What reaches you** ▸ **People** ([What reaches you, and when](notifications.md#by-person)). For one person, their sheet, from their card or a message: **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). What each address is for stays on its card, above: mail to an address for another time waits for that time.
+Who may reach you, and when, by mail and through other apps' messages, and who is in which circle (safe, restricted, blocked, with addresses, numbers, patterns such as `*@example.org`, the people placed on a list and your groups; your contacts are everyone in your address books): Settings ▸ **What reaches you**, under **People** and **Who is in which circle** ([What reaches you, and when](notifications.md#by-person)). The groups of an address book that someone else can write count there only once you say so, in Contacts ⚙ ▸ **Address books** ([Contacts](contacts.md#address-books)). For one person, their sheet, from their card or a message: **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). What each address is for stays on its card, above: mail to an address for another time waits for that time.
 
 ## Encryption
 
@@ -117,7 +117,7 @@ Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and
 - **Import a key…**: a key exported from GnuPG, with its passphrase, asked once.
 - **Save the public key**: into your downloads, to give to others.
 - **Save the revocation certificate**, for a key made here: a copy into your downloads, to keep somewhere safe, apart from this device. It is what declares the key no longer to be used, should it ever be lost or stolen; anyone who has it can do so. Sioul keeps it beside the key, readable by you alone ([Mail, OpenPGP](mail.md)), and cannot revoke a key yet.
-- **Keys of others**: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window. Each serves only the address it came for, or every address of a file you import. A key Sioul kept before 19 October 2026 that names more than one address, in any of its user IDs, serves none until it comes again: its owner's next message, **Look for their keys**, or the file imported again. A key its owner revoked serves none either.
+- **Keys of others**, folded: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window. Each serves only the address it came for, or every address of a file you import. A key Sioul kept before 19 October 2026 that names more than one address, in any of its user IDs, serves none until it comes again: its owner's next message, **Look for their keys**, or the file imported again. A key its owner revoked serves none either. **Remove**, beside each, takes it away.
 
 Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there. A security key's public part is the exception: it travels (below).
 
@@ -147,7 +147,7 @@ Sioul only uses the key: it never asks for its Admin PIN, never changes or unblo
 
 ## Going further {#going-further}
 
-- **A Google key of your own**: Google gives Gmail's mail access only to apps it has reviewed. Until Sioul's is, **Use a Google key of my own** takes the client ID and secret of a Google app you make once in Google Cloud (about fifteen minutes, the steps shown). A copy of Sioul built without a Google key of its own asks for yours for calendars too; the copies released so far are built without one. This "key" is an app's name and secret, not a security key ([First steps](first-steps.md#gmail-and-google-workspace)).
+- **A Google key of your own**: Google gives Gmail's mail access only to apps it has reviewed. Until Sioul's is, **Sign in with Google** for mail takes the client ID and secret of a Google app you make once in Google Cloud (about fifteen minutes; **How to make your Google key** unfolds the steps). A copy of Sioul built without a Google key of its own asks for yours for calendars too; the copies released so far are built without one. A copy built with one shows **Use a Google key of my own**, to tick first. This "key" is an app's name and secret, not a security key ([First steps](first-steps.md#gmail-and-google-workspace)).
 - **An app password** for Gmail works too, without Google's sign-in. It needs 2-Step Verification; Google's help says the setting might not be available with security keys as the only second step, for a work, school or other organisation's account (a Google Workspace address), or with Advanced Protection. Changing your Google password revokes every app password.
 - **The AI shield's key**, for addresses that let the AI read them first, is kept in the keyring like a password; **Forget the key** removes it ([the Porch](porch.md#a-public-address-protected)).
 - **Sharing the security key with GnuPG**: add the line `pcsc-shared` to `~/.gnupg/scdaemon.conf`, and both use the key in turn.
@@ -175,7 +175,7 @@ As of October 2026, from each app's own documentation.
     | A password manager gives an account its password | ✓⁴ | ✗ | ✗ | ✗ | ? | ✗ |
     | One service of an account switched off, its settings kept | ✓ | partly⁵ | — | ? | ✓ | ✓ |
 
-    1. Google's page opens in your browser. Gmail's mail needs a Google app of your own (a free Google Cloud project, about fifteen minutes, once) or an app password; so do calendars, in a copy of Sioul built without its own key.
+    1. Google's page opens in your browser. Gmail's mail needs a Google app of your own (a free Google Cloud project, about fifteen minutes, once) or an app password; calendars need a Google app of your own too, in a copy of Sioul built without its own key.
     2. Microsoft's page opens in your browser. Not yet tried with a real Microsoft account. In a copy of Sioul built without its own Microsoft application, an application of your own, registered once (the steps are in the form). A work or school address may need its organisation's approval, once ([Works with](compatibility.md#mail)).
     3. In the Gmail app on a phone.
     4. Bitwarden, read by Sioul itself. Bitwarden itself describes filling only in browsers and on phones.

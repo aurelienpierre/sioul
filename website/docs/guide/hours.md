@@ -6,10 +6,10 @@ description: Hours in Sioul - working hours and hours for your own admin, set in
 
 Two questions decide what Sioul brings forward, and they are kept apart:
 
-- **Who may reach you, and when**: your lists (safe, neutral, restricted, strangers, the blocked, never), your Always through people, and for mail, calls and other apps' messages, what each list does at each time ([What reaches you, and when](notifications.md#by-person)).
+- **Who may reach you, and when**: six circles of people (Always through, Safe, Your contacts, Restricted, Everyone else, Blocked), and what each does at each time, for mail and for messages; calls are set for each phone, in Settings ▸ Devices ([What reaches you, and when](notifications.md#by-person)).
 - **What a thing is for, and whether now is for it**: this page.
 
-They meet in one place, mail: everyone's mail comes when their row lets it, and a notification tells it only while the address it came to is for what now is for. Your safe senders' mail to an address for another time shows on the Porch meanwhile, and is told when that address's hours begin; the others' (neutral, restricted, strangers) waits until then. Your Always through people's mail is told to any address, and everyone's while you are Reachable. An address with nothing ticked keeps your safe senders' times: only the others' mail waits for work's hours. Calls and other apps' messages follow their own rows alone. Mail you send yourself shows at once, and the codes and links you just asked a site for come at once.
+They meet in one place, mail: everyone's mail comes when their row lets it, and a notification tells it only while the address it came to is for what now is for. Your safe senders' mail to an address for another time shows on the Porch meanwhile, and is told when that address's hours begin; the others' (your contacts, restricted, everyone else) waits until then. Your Always through people's mail is told to any address, and everyone's while you are Reachable. An address with nothing ticked keeps your safe senders' times: only the others' mail waits for work's hours. Calls and other apps' messages follow their own rows alone. Mail you send yourself shows at once, and the codes and links you just asked a site for come at once.
 
 This is a matter of health before it is a filter. Work that reaches the evening keeps people from recovering, and the risk is highest for those who work from home or for themselves, for whom nothing else marks the end of the day. Admin spread over every evening weighs too, even when nobody is working.
 
@@ -20,7 +20,7 @@ A source or a task is for **work**, for **your admin** (bills, letters, offices,
 | Thing | Where you say what it is for | When you have not said |
 |---|---|---|
 | A mail address | on its card in [Accounts](accounts.md#a-mail-address): **What this address is for** | work: an address you did not classify never reaches your evenings |
-| A budget | its form: **For** | your admin |
+| A budget | its form: **For**, its boxes Work, Your admin, Leisure | your admin |
 | An agenda | Agenda ⚙ ▸ **Your agendas**: **For** | work, on an account you said is only for work; else your admin and leisure |
 | A site | its menu: **For** | by its type: secure mailboxes and client areas are admin; chats, social networks and dating are leisure; video calls and other sites are admin and leisure |
 | A task | its panel: **For** | by its tags and project: work's (a client's project, GitHub, the categories you call work), leisure's (joy, family, friends…), both admin and leisure for personal ones (health), else admin |
@@ -51,8 +51,8 @@ In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **H
 
 [Settings ▸ Hours](settings.md#hours) ▸ **Vacations and holidays**:
 
-- **Your vacations**: from a day to another, with a word on them and a kind: a vacation, sick leave, or something else. What you typed before stays as it was.
-- **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one switch, **its days count as my days off**. Public holidays count unless you turn it off; school holidays do not, unless you turn it on (a parent who stays home with the children, a teacher).
+- **Your vacations**: from a day to another, each typed as 2026-12-24, with a word on them and a kind: a vacation, sick leave, or something else. **Add** keeps the period; **×** on its line takes it away. What you typed before stays as it was.
+- **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one box to tick, **its days count as my days off**. Public holidays count unless you untick it; school holidays do not, unless you tick it (a parent who stays home with the children, a teacher).
 - **Subscribe to a calendar of holidays…** opens the Agenda's settings at the form, with the official French calendars ready: public holidays by territory, school holidays by zone.
 
 A day that counts as a day off is one everywhere: leisure all day, nothing planned in it, "two working days before" skips it, work's reminders wait until work comes back, and the agenda shades it. Each device knows the holidays from its own copy of the calendar: one that has not read it yet does not know them, and its line says so.
@@ -68,19 +68,19 @@ Leisure set as hours by an earlier Sioul (its "free time") is left in your setti
 | Sleep | nothing notifies but doses and your Always through people; leisure, if you open Sioul, the codes you asked for on the Porch | everything else |
 | No working or admin hours set at all | everything, as before any were set (meals and sleep keep their time) | nothing |
 
-The status line says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
+The status line (the window's title bar on a computer, the line at the bottom on a phone) says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
 
 ## What follows the time
 
 - **Mail**: when the sender's row lets it ([What reaches you, and when](notifications.md#by-person)), and only while the address it came to is for what now is for: a safe colleague's mail to your work address in the evening shows on the Porch, and its notification comes when work begins ("The Porch opens"). The others' mail to such an address waits off the Porch until then. Your Always through people's mail is told to any address, and so is everyone's while you are Reachable; to an address with nothing ticked, your safe senders' mail is told at their times. When a row and an address never meet in your week, the row's times alone decide, so that nothing waits for good.
 - **Sites**: the sites for now are listed first; the others fold under "Other hours". Their notifications wait for their hours, real time and calls included, and none comes while you sleep.
-- **Tasks**: the task pages keep what fits, and the plan places each task in the hours meant for it: work in working hours, your admin in admin hours. Leisure has no hours: what is only for leisure takes no room in the plan and waits for none. The next step is never a call to an office that is closed now.
+- **Tasks**: Tasks ▸ **Now** keeps what fits, its other tabs show every task, and the plan places each task in the hours meant for it: work in working hours, your admin in admin hours. Leisure has no hours: what is only for leisure takes no room in the plan and waits for none. The next step is never a call to an office that is closed now.
 - **Budgets**: by what each one is for.
-- **What a page shows**: Mail's [All addresses](mail.md#all-addresses), [Budgets](budgets.md#at-a-glance) and the [agenda's **Agendas**](agenda.md#several-agendas) show at first what now is for. Tick others and they show at once, until your hours change; **As the hours say** gives the hours' ticks back.
+- **What a page shows**: Mail's [All addresses](mail.md#all-addresses), [Budgets](budgets.md#at-a-glance), [Projects and Time](projects.md#in-quiet-time), and the [agenda's **Agendas**](agenda.md#several-agendas) in **What comes**, show at first what now is for. Tick others and they show at once, until your hours change; **As the hours say** gives the hours' ticks back. The Agenda's **Day**, **Week** and **Month** show every agenda at any hour, and **Day** and **Week** the plan's steps of every area, until you untick some.
 
 ## What each device is for {#what-each-device-is-for}
 
-A computer for work, a phone for your admin and your friends, a tablet on the sofa: in **Settings ▸ Devices**, three switches on each device's card say what it is **For**: **Work**, **Your admin**, **Leisure**, any of them together. You can say it of any device, from the one in your hand. Each device then brings forward only what it is for, at the hours for it. With nothing ticked, everything comes there, as before: nothing changes on any device until you say what one is for.
+A computer for work, a phone for your admin and your friends, a tablet on the sofa: in **Settings ▸ Devices**, three switches on each device's line (its card, on a narrow screen) say what it is **For**: **Work**, **Your admin**, **Leisure**, any of them together. You can say it of any device, from the one in your hand. Each device then brings forward only what it is for, at the hours for it. With nothing ticked, everything comes there, as before: nothing changes on any device until you say what one is for.
 
 Under the devices, a grid says **what comes forward, and when**: for each device, what comes at each time your week has (no admin column while admin has no hours of its own, no meals column while none is set).
 
@@ -103,7 +103,7 @@ Under the devices, a grid says **what comes forward, and when**: for each device
 - **The Porch**: mail to an address this device is not for waits; your safe senders' is shown, without a notification. **Show all mail now** shows everything.
 - **Budgets**: as Mail's filter.
 - **Another app's notifications**, on a phone, when you said what the app is **For**: its automatic notifications wait while the phone is not for it; people's messages come as your hours say, since no other device can tell them for the phone.
-- **Reminders of your tasks**: on the computers for the task's own area: an admin task's date comes on the laptop for admin, not on the work computer.
+- **Reminders of your tasks**: on the computers and tablets for the task's own area (a phone does not tell them): an admin task's date comes on the laptop for admin, not on the work computer.
 
 When the device is the reason, and not the hour, Sioul says so: in the status line ("This device is for work: leisure waits on your other devices."), and in the "?" of Mail's and Budgets' filters.
 
@@ -160,15 +160,15 @@ One sentence in the status line says until when: "Work comes back tomorrow at 09
 
 **Closing is offered, never pressed.** Once your last hours of the day are over, the status line offers **Close the work day** ([Tasks](tasks.md#the-end-of-the-day)); in the evening, **Close the whole day** ([Health](health.md#before-sleep)). On a small screen, the offer takes the place of the sentence while it stands. Nothing during sleep.
 
-**The way back is never suggested.** It is there if you need it: the sentence in the status line opens a menu, with **Work half an hour more**, an hour, two hours, four hours; **Back to the usual hours**; or, the day you closed it, **Back to today's plan**.
+**The way back is never suggested.** It is there if you need it: the sentence in the status line opens a menu, with **Work half an hour more**, an hour, two hours, four hours; **Back to the usual hours**; or, the day you closed it, **Back to today's plan**. During a meal or sleep, the sentence opens no menu: they come first.
 
 ## Sleep
 
 From winding down to waking, and during a nap, nothing disturbs:
 
 - **almost no notification**, unless you change it ([What reaches you, and when](notifications.md#by-time)): no site, no reminder before a date, no pause to move, no meal or nap notice, no message, no call but your Always through people's. What still makes sense when you wake comes then;
-- **codes you just asked for wait on the Porch**, without a notification: their card shows them there, and the night stays quiet. To have them told while you sleep, choose **At once** for Codes ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#sioul-s-own);
-- **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** for Doses ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
+- **codes you just asked for wait on the Porch**, without a notification: their card shows them there, and the night stays quiet. To have them told while you sleep, choose **At once** in the **Sleep** cell of the row **Codes and links you asked for**, in Settings ▸ What reaches you ▸ [What comes when](notifications.md#by-time);
+- **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Doses at waking** under **What you set or asked for**, in Settings ▸ What reaches you ▸ [Sioul's own notices](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;
 - Tasks ▸ Now waits behind one sentence and **Show anyway**; a thought can still be noted for later in the line under the tabs; the other tabs show everything. Projects and Time show leisure's, everything one tick away.
@@ -184,7 +184,7 @@ Without a night set in Settings ▸ Hours, nights are leisure and nothing keeps 
   <figcaption>Reachable for a while: the button says until when.</figcaption>
 </figure>
 
-- **To see and hear everything for a while**, choose **Reachable** in the card What reaches you now, behind the status line's button ([What reaches you](notifications.md#reachable)), or in that button's menu (a right click, or a long press): for half an hour, an hour or two hours, until the hours you are in end, until tonight, or until you turn it off; whichever you choose, at the latest at the night's start (pressed at night, until you wake), and the menu says so when a length meets it. While it lasts, on each of your devices that has this version of Sioul, everyone not blocked who writes and the people you know who call reach you at once (a conversation you set to never stays held); the Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a focus session, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). **As usual**, in the card or the menu, ends it, and so does a pause; it is not offered during one.
+- **To see and hear everything for a while**, choose **Reachable** in the card What reaches you now, behind the status line's button ([What reaches you](notifications.md#reachable)), or in that button's menu (a right click, or a long press): for half an hour, an hour or two hours, until the hours you are in end, until tonight, or until you turn it off; whichever you choose, at the latest at the night's start (pressed at night, until you wake), and the menu says so when a length meets it. While it lasts, on each of your devices that has this version of Sioul, everyone not blocked who writes and the people you know who call reach you at once (a conversation you set to never stays held); the Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a busy time, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). **As usual**, in the card or the menu, ends it, and so does a pause; it is not offered during one.
 - **To show work outside your hours**, the status line's menu keeps **Work half an hour more** to **Work four hours more**, and adds **Work until tonight**.
 
 Nothing ends when Sioul starts or closes any more: each has its own end. A "Work now" set by an older Sioul on another device is read as work until its end.

@@ -15,7 +15,7 @@ Papers keeps the documents you are asked for again and again (an identity card, 
 - An attachment becomes a paper only after your antivirus checked it (Android has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
 - Between your devices, the papers' and letters' files travel by their folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents. Their lists travel sealed in the part **Projects and money** ([Sharing](sharing.md)).
 - The tasks made from a letter or a renewal go to your task list: if that list is on your calendar server, their titles are there too. Choose a list kept on this device if you would rather not.
-- An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold. Papers for one of your people reach it only once you open that person, and nobody's health papers but yours ever do.
+- An AI agent, only if you connect one, is told what Sioul read of each letter (who wrote, what it is, the amount, the date asked) and what each paper is, with its dates; it never opens a scan or a paper's file. A letter's whole text and a paper's file name reach it only while they are still in your notes folder (before Sioul's lists move, or until you take the old files out), the text with codes and account numbers masked. Papers for one of your people reach it only once you open that person, and nobody's health papers but yours ever do.
 
 ## Papers {#papers}
 
@@ -48,6 +48,8 @@ In words, never in red:
 
 From a message, **Keep in papers** beside an attachment does the same: the antivirus checks the file, it is kept, and the form opens with a name and a kind guessed from the file's name and the subject. You only say what cannot be guessed.
 
+A click on a paper opens its card where you are: where it stands, **Open** for its file, **Plan the renewal**, and its **Ties** ([Ties](ties.md)). **Edit** there opens the form again, where **Take out** removes the paper from the wallet.
+
 When some papers are for others, chips above the list show **Everyone**'s, or one person's: you, Léa, Odile. A person's page in Contacts shows their papers too, and **What Sioul keeps about …** there saves them, with that person's agendas and letters, in one PDF and a folder, for you to hand over: nothing is sent ([Your people](contacts.md#household)).
 
 To send one, the writing window has **A paper**, beside **Attach**. One that has ended, or is older than usually asked, says so in the list.
@@ -66,25 +68,25 @@ To send one, the writing window has **A paper**, beside **Attach**. One that has
 
 Rent receipts, payslips and attestations have no end: they are said older than three months. A tax notice is usually asked as the last one.
 
-**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet): a phone does not tell it; a tablet does, as a computer.
+**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer or a tablet, never from a phone; on a computer, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet).
 
 **Plan the renewal** makes a task in your usual list, so your phone has it, from when renewing starts to the day the paper ends, tied to the paper, with the steps known for its kind.
 
 ### Where papers live {#where-papers-live}
 
-The list, `sioul-papers.toml`, is one of Sioul's own lists, a plain text file in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), which you may edit by hand. The files are in the papers' folder, `Documents/Papers` unless you choose another in the page's ⚙ (**The papers' folder**, this device's own); a paper names its file from that folder. Until you move Sioul's lists, the list is at the root of your notes folder and the files in its `papers` folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Choosing another papers' folder afterwards copies the files there, each checked, and leaves the old folder as it was. The list travels sealed through Sioul's sharing, in **Projects and money**; the files by the papers' folder's own sync, or through the sharing once you switch **Papers** on ([Sharing](sharing.md)). **Take out** removes a paper from the wallet; its file stays where it is.
+The list, `sioul-papers.toml`, is one of Sioul's own lists, a plain text file in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), which you may edit by hand. The files are in the papers' folder, `Documents/Papers` unless you choose another in the page's ⚙ (**The papers' folder**, this device's own); a paper names its file from that folder. Until you move Sioul's lists, the list is at the root of your notes folder and the files in its `papers` folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)): Papers then needs a notes folder on the device, and says so when there is none; a folder chosen in the ⚙ before the move is kept for after it. Choosing another papers' folder afterwards copies the files there, each checked, and leaves the old folder as it was. Sioul takes an empty folder or a new one, outside your notes folder and its own folders, and apart from the letters' folder. The list travels sealed through Sioul's sharing, in **Projects and money**; the files by the papers' folder's own sync, or through the sharing once you switch **Papers** on ([Sharing](sharing.md)). **Take out**, in a paper's form, removes it from the wallet; its file stays where it is. A paper whose file has not reached this device yet says so: it may still be syncing.
 
 ## Paper letters {#paper-letters}
 
 The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (Android does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
 
-The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does, and opens here.
+The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does: while the Porch is open, never while you sleep, and with no notification; it opens here.
 
 ### Setting it up {#setting-it-up}
 
-1. In the Letters page's ⚙, **Where scans arrive**: the folder your scans come to. Unset, it is `inbox` in the letters' folder (above it, **The letters' folder**: `Documents/Letters` unless you choose another; `letters/inbox` in your notes folder until you move Sioul's lists, [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). A phone's scanner app syncing into it works too. A folder you chose earlier in the Porch's settings stays the one used.
+1. In the Letters page's ⚙, **Where scans arrive**: the folder your scans come to. Unset, it is `inbox` in the letters' folder (above it, **The letters' folder**: `Documents/Letters` unless you choose another; `letters/inbox` in your notes folder until you move Sioul's lists, [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). A phone's scanner app syncing into it works too. A folder you chose earlier in the Porch's settings stays the one used. Once Sioul's lists have moved, and unless you chose a folder yourself, scans that still arrive in the old `letters/inbox` of your notes folder are read too, as long as that folder is there. Choosing another letters' folder after the move copies its scans there, each checked, under the same rules as the papers' folder ([Where papers live](#where-papers-live)).
 2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the page says how to install them, under its bar and in its ⚙ ([Install](install.md#the-packages)).
-3. On the page's bar, **Add a scan…** copies a PDF or a picture into that folder; **Link scans…** links scans you keep elsewhere, where they are: they are read like the others and never copied, and if one is later moved or deleted, its card says so; **Open the folder** opens it. The **New** menu's **A paper letter (scan)…** adds a scan from any page.
+3. On the page's bar, **Add a scan…** copies a PDF or a picture into that folder; **Link scans…** links scans you keep elsewhere, where they are: they are read like the others and never copied, and if one is later moved or deleted, its card says so; **Open the folder** opens it (with no folder yet, **Choose the folder…** opens the ⚙ instead). The **New** menu's **A paper letter (scan)…** adds a scan from any page.
 
 PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device. Sioul on Android shows the letters a computer read, without adding or linking.
 
@@ -101,11 +103,14 @@ On the Letters page, each letter waiting is a card: who sent it and what it is, 
 Then:
 
 - **See the scan**;
-- **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay the water bill €86.40";
+- **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay Eau Exemple €86.40", from the sender's name and the amount;
 - **Into the agenda**, for an appointment;
+- **A payment…**: a payment in your budgets, its form filled from what the letter says ([Mail about money](budgets.md#mail-about-money));
 - **For…**: whom it is for, when it is one of your people: its address block's name is read ("For Léa"), and you can tick others;
 - the project it belongs to;
 - **Done, filed**: the scan moves to `<year>/` in the letters' folder, named by its day, its sender and its kind; its text is kept. A linked scan stays where it is. The letter then shows among those filed, under its year, its scan one click away.
+
+A date read wrong is put right from the letter's date in the Agenda: its card's **Edit** opens a small form, until the letter has its task or its event ([Dates asked of you](agenda.md#dates)).
 
 ### Not there yet {#not-there-yet}
 
@@ -115,7 +120,7 @@ Planned: an AI that reads a letter line by line; a check that a letter is genuin
 
 ### How a letter is understood {#how-a-letter-is-understood}
 
-The rules read French first, and English too, by rules rather than guesses. They know the French bodies that write to everyone (the tax office, health insurance, family allowances, Urssaf, France Travail, a court, a hospital, a town hall, a bank, an energy supplier), and the kinds of letters, the gravest first: a formal notice, a tax notice, a decision with its ways of appeal, a reminder, an appointment, a bill. Other senders are named by the first line of their letterhead. A delay is counted from the day the scan came, as from a notification, or from the letter's own date when it says so.
+The rules read French and English, by rules rather than guesses: each of the two when it is ticked under **Languages read** in Settings ▸ Words ([Words Sioul looks for](settings.md#words)). With France ticked among the countries there, they know the French bodies that write to everyone (the tax office, health insurance, family allowances, Urssaf, France Travail, the MDPH, a prefecture, a court, a commissaire de justice, a hospital, a town hall, the pension insurance); the line **Paper letters** of that tab lets you add your own. They know the kinds of letters, the gravest first: a formal notice, a tax notice, a decision with its ways of appeal, a reminder, an appointment, a bill. Other senders are named by the first line of their letterhead. A delay is counted from the day the scan came, as from a notification, or from the letter's own date when it says so.
 
 ### Filed, with its text {#filed-with-its-text}
 
@@ -123,7 +128,7 @@ The rules read French first, and English too, by rules rather than guesses. They
 
 ### Where the tasks go {#where-the-tasks-go}
 
-A task made from a letter or a renewal goes to your usual task list, so that your phone has it. If that list is on your calendar server, its title is there too ("Pay the water bill €86.40", "Renew: Passport"): choose a list kept on this device if you would rather not.
+A task made from a letter or a renewal goes to your usual task list, so that your phone has it. If that list is on your calendar server, its title is there too ("Pay Eau Exemple €86.40", "Renew: Passport"): choose a list kept on this device if you would rather not.
 
 ### Contracts {#contracts}
 
@@ -131,7 +136,7 @@ What you are bound to (your rent, energy, insurances, subscriptions), with its r
 
 ### With an AI agent {#with-an-ai-agent}
 
-If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read the letters' texts as it reads your notes, with one-time codes, account and card numbers masked. It sees your papers' files by their names only, never what they hold.
+If you connect an AI agent ([Using an AI agent](ai-agent.md)), it is told what Sioul read of each letter: who sent it, what it is, when it came, the amount, the date asked with the words that set it, an appointment, its project and its task. Of each paper: what it is, whom it is for, its dates and when renewing starts. It never opens a scan or a paper's file. A letter's whole text is kept among Sioul's own lists, which an agent does not read. While that text and the papers' files are still in your notes folder (before Sioul's lists move, or until you take the old files out), it can read the text as it reads your notes, with one-time codes, account and card numbers masked, and it sees the files by their names only.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -215,13 +220,13 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 ## For technical readers {#for-technical-readers}
 
-**Reading a scan.** A PDF that holds its text is read by Poppler's `pdftotext`; otherwise its pages are made images by `pdftoppm` and read by Tesseract, as photos and images are, in French and English (`fra+eng`) when those languages are installed. These are your system's own programs, run as local processes on your computer; their pages are written in Sioul's cache while read, then emptied. Nothing leaves the computer. When they are missing, the scans wait, and the Porch says how to install them.
+**Reading a scan.** A PDF that holds its text is read by Poppler's `pdftotext`; otherwise its pages are made images by `pdftoppm` and read by Tesseract, as photos and images are, with Tesseract's models of the languages ticked under **Languages read** (`fra+eng` for French and English), those of them that are installed, else English alone. These are your system's own programs, run as local processes on your computer; their pages are written in Sioul's cache while read, then emptied. Nothing leaves the computer. When they are missing, the scans wait, and the Letters page says how to install them.
 
-**The inbox.** `inbox` in the letters' folder (`letters/inbox` in the notes folder until Sioul's lists move), or a folder you choose; PDF, PNG, JPEG, TIFF and WebP. A file changed in the last 20 seconds waits for the next minute, and each file is read once (by its name, size and time).
+**The inbox.** `inbox` in the letters' folder (`letters/inbox` in the notes folder until Sioul's lists move), or a folder you choose (`letters.inbox`); once the lists have moved and none is chosen, the old `letters/inbox` of the notes folder is read too while it is there; PDF, PNG, JPEG, TIFF and WebP. A file changed in the last 20 seconds waits for the next minute, and each file is read once (by its name, size and time).
 
 **Understanding it.** Written rules, no machine learning: the sender by the words of its letterhead; the kind by its phrases; the amount on the line that asks for it ("à payer", "montant dû", "amount due"), else the first amount after a word that names one; the deadline, a date within six words after words that ask by when ("avant le", "au plus tard le", "date limite", "échéance", "no later than", "due by"), never more than 30 days before the scan's day; a delay ("dans un délai de deux mois à compter de la notification", "sous huitaine", "within 30 days") counted from the day the scan came, or from the letter's own date.
 
-**Files.** Each written whole beside its place, then moved into it: `sioul-papers.toml` in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), each paper's `file` named from the papers' folder (`passport.pdf`); the letters' list, `records/letters/letters.toml`, each letter's text in `records/letters/<id>.txt`, the scans filed in `<year>/` of the letters' folder, each letter's `file` named from it (`2026/…`). The papers' and letters' folders are `papers.folder` and `letters.folder` in `config.toml`, each device's own. Before the move, everything was in the notes folder: `sioul-papers.toml` and `papers/` at its root, `letters/letters.toml`, `letters/<id>.txt`, `letters/<year>/`; a device not moved yet and one moved read each other's paths. Plain files, readable by other programs.
+**Files.** Each written whole beside its place, then moved into it: `sioul-papers.toml` in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux), each paper's `file` named from the papers' folder (`passport.pdf`); the letters' list, `records/letters/letters.toml`, each letter's text in `records/letters/<id>.txt`, the scans filed in `<year>/` of the letters' folder, each letter's `file` named from it (`2026/…`). The papers' and letters' folders are `papers.folder` and `letters.folder` in `config.toml`, each device's own; unset, `Papers` and `Letters` in your system's documents folder, and on Android beside your notes folder when it is on the shared storage, else in Sioul's own storage. Before the move, everything was in the notes folder: `sioul-papers.toml` and `papers/` at its root, `letters/letters.toml`, `letters/<id>.txt`, `letters/<year>/`; a device not moved yet and one moved read each other's paths. Plain files, readable by other programs.
 
 **Sealed between devices.** `sioul-papers.toml` travels sealed like every record, in **Projects and money** once Sioul's lists have moved (in **Papers** before). With **Papers** on in Sioul's sharing, each file of the papers' folder is compressed and sealed apart, in pieces of 1 MiB, each sealed with XChaCha20-Poly1305 with the file's name, its index and an end flag as associated data, so that pieces cannot be swapped, cut or added. Their names in the folder are HMAC-SHA-256 of the content's hash, under a sub-key derived by HKDF-SHA-256 from the sharing key: the folder sees neither the files' names nor their contents. Files over 64 MiB stay on the device that has them ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)). Once Sioul's lists have moved, the letters' list and texts travel in **Projects and money** and their scans in **Papers**; before, letters travel with the notes.
 
@@ -229,6 +234,6 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 **Whom a paper is for.** Each person a paper is for is a tie in Sioul's own `links.toml` (`sioul:paper/<id>` to `sioul:person/<id>`), and the paper's `holder` keeps their names, joined by ", ", which an older Sioul shows; a paper with neither is yours. A name written by an older Sioul is matched to a person by name, case and accents aside ([Your people](contacts.md#household)).
 
-**An AI agent.** Its `read_note` tool reads text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note. Its `papers` tool leaves out, and counts, the papers of a person not opened to agents and every health paper of anyone but you.
+**An AI agent.** Its `letters` tool gives what was read of each letter, never its text. Its `read_note` tool reads the notes folder alone: text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note. So a letter's text (`letters/<id>.txt`) and a paper's file name (`papers/…`) are within its reach only while they are in the notes folder. Its `papers` tool gives no file, and leaves out, and counts, the papers of a person not opened to agents and every health paper of anyone but you.
 
 **What is not built.** Searching inside every letter from the window (notes are searched by title, path and tags); reading scans on Android, which has no text-recognition programs; a check that a letter is genuine.

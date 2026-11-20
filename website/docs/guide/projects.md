@@ -18,7 +18,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 - **Mail is checked before it is filed.** As it arrives, a forged message (its domain says it did not send it), or one that borrows a known name, is set aside first and never filed into a project, even when its address looks like your client's. The project's page checks its mail the same way each time it shows it, and so does what an AI agent reads of the project: such a message never appears on its line of time, and neither does a conversation that only such a message ties to it.
 - **A message that fails the sender checks** (both of the signatures that servers use to vouch for a sender failed) is never filed by a route on your client's address or domain. A route on words of the subject, the text or an attachment's name can still file it, since those do not rest on who sent it; on the project's page, it then says "whose address could not be verified".
 - **Every message filed says why it came**: "sender's domain: example.org".
-- **Your projects are one plain file** on your device, among Sioul's own lists (in your notes folder until you move those lists: [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)), and mail is filed on your device. Between your devices that file travels sealed through Sioul's sharing, in **Projects and money**: the folder and its server see that something changed, never what ([Sharing](sharing.md)). Before the move, your notes folder's own sync may carry it instead.
+- **Your projects are one plain file** on your device, among Sioul's own lists (on a device that kept them in your notes folder before, they stay there until you move them: [Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)), and mail is filed on your device. Between your devices that file travels sealed through Sioul's sharing, in **Projects and money**: the folder and its server see that something changed, never what ([Sharing](sharing.md)). Before the move, your notes folder's own sync may carry it instead.
 - There is no server of Sioul's, and nothing about your projects goes to one.
 
 ## Making a project {#making-a-project}
@@ -26,28 +26,32 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 **New project** (or **New ▾ ▸ A project**):
 
 - **Name**.
-- **For a client: its time is billed at an hourly rate**. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
+- **For a client: its time is billed at an hourly rate**, ticked when the form opens on a new project. Then: **For** (who it is for), **An hour costs** (else the rate in [Settings ▸ Invoices](settings.md#invoices)), and **Invoices expected in**: the budget where the money is expected until paid. When **For** names one of your [contacts](contacts.md) (their name, or their organisation), the invoices take its client profile when it has one ([Your clients](time.md#your-clients)), else its postal address.
 - Without it, the project is yours.
 - **What it is for**: work, your admin, leisure, any of them together, the same three switches as everywhere ([Hours](hours.md)). The Projects and Time pages show it in those hours, and its tasks come in them unless they say their own. Nothing ticked, a client's project counts as work; another follows its open tasks, and shows at any hour when it has none.
 - **Where it stands**: open, waiting, or closed.
+- **Open to AI agents**: off until you switch it on ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
 
-**Take out of the list** removes a project. Its tasks, notes, mail and time stay where they are; they are no longer gathered under it.
+**Edit**, at the top of a project's page, opens this form again. **Take out of the list**, at its foot, removes the project once you confirm. Its tasks, notes, mail and time stay where they are; they are no longer gathered under it.
 
 ## A project's page {#a-projects-page}
 
-On the left, every project, with its open tasks and the time left to bill. On the right, the project open:
+On the left, every project, with its open tasks and the time left to bill; closed ones come last, greyed. On the right, the project open:
 
 - **On one line of time**: what is **coming** first (dates asked of its open tasks, events), then what happened **before**, newest first: tasks done, mail, notes changed, time noted, invoices.
 - **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
 - **Make the invoice**, when billable time waits to be billed: a draft of that time opens in the editor, in Budgets ▸ Invoices, where you check it and issue it. A project with a draft already gets that draft back, with the time noted since added ([The editor](time.md#the-editor)).
-- **Its client's profile**, on a project for a client: one line, such as "Client profile: A business · France · 904 123 452", or "No client profile yet: invoices bill it as a business, from its card.", with **Client profile…** ([Your clients](time.md#your-clients)).
-- **Its invoices**: each opens its pane in Budgets ▸ Invoices, with **Paid…**, **Write the mail**, **Print again** and **Credit note…** ([An issued invoice's pane](time.md#an-issued-invoice)). The **Paid** box beside each says it is paid, by transfer, today.
-- **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
+- **Its client's profile**, on a project for a client: one line, such as "Client profile: A business · France · 904 123 452", or "No client profile yet: invoices bill it as a business, from its card.", with **Client profile…** (**Make its client profile…** while it has none) ([Your clients](time.md#your-clients)).
+- **Its invoices**: each opens its pane in Budgets ▸ Invoices, with **Paid…**, **Write the mail**, **Print again** and **Credit note…** ([An issued invoice's pane](time.md#an-issued-invoice)). The **Paid** box beside each says it is paid, by transfer, today; on a credit note with money to give back, the box says **Paid back**. **Print again**, beside the box, copies the file issued where your invoices go, and opens it.
+- **Open to AI agents**: a switch, off until you turn it on. An AI agent you connect then sees the project and what is tied to it, and may add tasks, notes, ties and drafts to it ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
+- **Add ▾** and **Link to…**, above **Mail that comes here by itself**: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
+
+On a phone, the list of projects fills the screen, then the project you open; **Back** returns to the list ([On a phone or a tablet](first-steps.md#on-a-phone)).
 
 ## Mail that comes here by itself {#mail-that-comes-here-by-itself}
 
-**Mail that comes here by itself**, on the project's page, gives the project its routes. A message comes to the project when one route matches; every line filled in a route must match:
+**Mail that comes here by itself**, on the project's page, unfolds the project's routes; **Add a route** starts one, and × takes one out. A message comes to the project when one route matches; every line filled in a route must match:
 
 - **From the domains**: the sender's domain, or any of its subdomains;
 - **From the addresses**;
@@ -55,28 +59,28 @@ On the left, every project, with its open tasks and the time left to bill. On th
 - **Words in the text**;
 - **Words in an attachment's name** ("quote" takes `Quote_2026.pdf`).
 
-Several words or domains on one line: any one of them. Words are matched whole, without case or accents.
+Several words or domains on one line, separated by commas: any one of them. Words are matched whole, without case or accents; in an attachment's name, they are found anywhere in the name.
 
-A reply in a conversation of the project goes with it, and so does a message you tie to it by hand (**Link to…**): what you tie stays as you tied it, even a message the checks would set aside. Every routing keeps its reason, shown on request: "sender's domain: example.org".
+A reply in a conversation of the project goes with it, and so does a message you tie to it by hand (**Link to…**): what you tie stays as you tied it, even a message the checks would set aside. Every routing keeps its reason, shown on request under **Why it is here** when you open the message from the Porch: "sender's domain: example.org".
 
 As it arrives, and each time the project's page shows it, mail is checked before a route files it ([above](#what-is-protected)): forged mail and mail that borrows a known name are set aside first, and a route on your client's address or domain does not file a message that failed the sender checks. The other way round, a project's route is stronger than a spam flag, so your client's real mail is not lost among spam, and Sioul's own spam filter leaves a project's conversations alone.
 
 ## Where projects live {#where-projects-live}
 
-In one file, `sioul-projects.toml`, among Sioul's own lists, in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux): readable, and written by hand if you like. Until you move Sioul's lists out of your notes folder, it is at its root ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). It travels sealed through Sioul's sharing, in **Projects and money**; before the move, your notes folder's own sync may carry it instead ([Sharing](sharing.md)). A project's notes stay in your notes folder, and the project names them by their path there. A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
+In one file, `sioul-projects.toml`, among Sioul's own lists, in `records/` of Sioul's data folder (`~/.local/share/sioul/records/` on Linux): readable, and written by hand if you like. On a device that kept Sioul's lists in your notes folder before, it stays at that folder's root until you move them ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). It travels sealed through Sioul's sharing, in **Projects and money**; before the move, your notes folder's own sync may carry it instead ([Sharing](sharing.md)). A project's notes stay in your notes folder, and the project names them by their path there. A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
 
 If Sioul's lists still hold `sioul-cases.toml`, the file's name before projects had one name, nothing changes: Sioul reads it and writes it as it is, so that a device not yet updated reads it too. When each of your devices has this version, **Rename to sioul-projects.toml**, in the Notes page's settings (⚙), under the notes folder, renames it, with a copy of the old file kept beside it. Links to a project written before still open it.
 
 ## By your hours {#in-quiet-time}
 
-The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change; **As the hours say** brings theirs back at once. A client's project with nothing ticked counts as work; another one with nothing ticked shows for what its open tasks are for, and at any hour when it has none. When the ticks show no project, one sentence says so: "No project for what is ticked." Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
+The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change, a day at most; **As the hours say** brings theirs back at once. On a device you said is for some areas only, the boxes follow that too, and the **?** beside them says what waits on your other devices ([What each device is for](hours.md#what-each-device-is-for)). A client's project with nothing ticked counts as work; another one with nothing ticked shows for what its open tasks are for, and at any hour when it has none. When the ticks show no project, one sentence says so: "No project for what is ticked." Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
 
 ## Going further {#going-further}
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
 - **On a device not updated yet**: **Admin** and **Leisure** together, and all three on a client's project, are written as the older **Yours, outside work**, which an older Sioul reads, and its box reads here as admin and leisure (beside a client, all three, as the older Sioul read it). Other choices are new to an older Sioul: it reads them as nothing said, and saving the project's form there takes them out. Update every device before using them.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
-- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
+- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) sees a project only once you open it: **Open to AI agents**, on its page or in its form. It then reads what the project's page gathers, with one-time codes, sign-in links, account and card numbers masked in its mail, and may add tasks, notes, ties and drafts to it. Of a project left closed it sees nothing ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -138,11 +142,11 @@ Others do more for working together: every other app here shares a project with 
 
 ### The file {#the-file}
 
-`sioul-projects.toml`, in `records/` of Sioul's data folder (at the root of your notes folder until Sioul's lists move): TOML, one `[[project]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`, `ai`), each with its `[[project.route]]` lines. The file's first name, `sioul-cases.toml`, with `[[case]]` and `[[case.route]]`, reads the same and keeps its names when Sioul writes it; renaming it checks that nothing changes before it writes, and keeps `sioul-cases.toml.before-rename`. A project's tasks and events carry its `id` in `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID` under Sioul's own name, which Android's account managers can send back; `REFID` is read too), so other CalDAV programs keep the grouping.
+`sioul-projects.toml`, in `records/` of Sioul's data folder (at the root of your notes folder until Sioul's lists move): TOML, one `[[project]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`, `area` for what it is for, `files` for its notes, `ai`), each with its `[[project.route]]` lines. The file's first name, `sioul-cases.toml`, with `[[case]]` and `[[case.route]]`, reads the same and keeps its names when Sioul writes it; renaming it checks that nothing changes before it writes, and keeps `sioul-cases.toml.before-rename`. A project's tasks and events carry its `id` in `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID` under Sioul's own name, which Android's account managers can send back; `REFID` is read too), so other CalDAV programs keep the grouping.
 
 ### How routes match {#how-routes-match}
 
-- `from_domains`: the sender's domain or any subdomain ("example.org" takes "mail.example.org", never "notexample.org"); `from_addresses`: exact, case ignored; `subject_contains`, `text_contains`, `attachment_contains`: whole words, case and accents ignored. Every list filled must match; any item of a list will do.
+- `from_domains`: the sender's domain or any subdomain ("example.org" takes "mail.example.org", never "notexample.org"); `from_addresses`: exact, case ignored; `subject_contains`, `text_contains`: whole words, case and accents ignored; `attachment_contains`: anywhere in the file's name, case and accents ignored. Every list filled must match; any item of a list will do.
 - The text is read in its first 6,000 characters (the HTML part, read as text, when the text part is only a stub).
 - Conversations follow `In-Reply-To` and `References`, through the messages the checks let in only: a forged reply neither shows nor joins two conversations. A message filed as it arrives is tied to its project (`links.toml`: `mid:` ↔ `sioul:project/<id>`; `sioul:case/<id>`, as written before, reads the same), so it stays when routes change. Changing a project's routes ties the mail already here that its text or attachment routes take, after the same checks.
 

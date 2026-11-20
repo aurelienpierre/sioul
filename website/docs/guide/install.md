@@ -1,5 +1,5 @@
 ---
-description: Download Sioul for Windows, macOS or Linux, or build it from its sources.
+description: Download Sioul for Windows, macOS, Linux or Android, or build it from its sources.
 ---
 
 # Install
@@ -14,8 +14,24 @@ The packages of each version are on [the releases page](https://github.com/aurel
 | macOS 13 and later, Apple silicon and Intel | `Sioul-<version>-macos-universal.dmg` | Open it, and drag Sioul into Applications. It is not notarised yet: the first time, open it from Applications, then **System Settings ▸ Privacy & Security ▸ Open Anyway**. |
 | Linux, any distribution (64-bit) | `Sioul-<version>-x86_64.AppImage` | Make it executable (`chmod +x Sioul-*.AppImage`), then run it. On Ubuntu 24.04 and later, its sites run without Chromium's sandbox: prefer the Flatpak there. |
 | Linux, with Flatpak | `Sioul-<version>.flatpak` | `flatpak install --user Sioul-<version>.flatpak`: the KDE runtime and Qt WebEngine come from Flathub. |
+| Android 9 and later, 64-bit phones and tablets | `Sioul-<version>-android-arm64.apk` | Download it on the phone or the tablet, and open it: [On Android](#on-android). |
 
-Each comes with the command line, `sioul`. These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+Each computer's package comes with the command line, `sioul` ([below](#the-command-line)). These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+
+### The command line
+
+The command line, `sioul`, is in each computer's package, beside the window (`sioul-app`); the Android package has none, so an AI agent connects to Sioul on a computer ([Using an AI agent](ai-agent.md)). Sioul itself runs it from beside its window to train your spam filter by itself. To call it yourself:
+
+| Package | Where `sioul` is, and how to call it |
+|---|---|
+| Windows installer | `sioul.exe`, beside `sioul-app.exe`, in the folder Sioul was installed in: `%LOCALAPPDATA%\Programs\Sioul` when installed for you alone, as the installer does unless run as an administrator, else `C:\Program Files\Sioul`. It is not added to the `PATH`: give its full path. |
+| macOS disk image | `/Applications/Sioul.app/Contents/MacOS/sioul`, once Sioul is in Applications. |
+| Flatpak | `flatpak run --command=sioul com.aurelienpierre.Sioul`, followed by what you would type after `sioul`: it runs in the Flatpak's sandbox, with the window's settings and data. |
+| AppImage | inside the AppImage, which starts the window only: `./Sioul-<version>-x86_64.AppImage --appimage-extract` unpacks it into a folder `squashfs-root`, where `squashfs-root/usr/bin/sioul` is the command line. |
+| Built from the sources | `sioul`, in `~/.local/bin` once installed as [Into your application menu](#into-your-application-menu) says. |
+| Android | none. |
+
+These ways of calling it follow from how each package is made; none has been tried by a person yet.
 
 ## Resources needed
 
@@ -96,6 +112,7 @@ The rest of this page builds Sioul from its sources: for Linux distributions wit
 - **Rust** 1.92 or newer, with Cargo.
 - **A C++ compiler**: the window is partly written in C++.
 - **D-Bus** development files, on Linux: for the system keyring, where passwords go, and for notifications.
+- **pcsc-lite** development files, on Linux: for security keys that hold your OpenPGP key.
 - **Qt 6.9 or newer** (Sioul is built and used with Qt 6.11), with these modules: Qt Declarative (QML and Qt Quick), Qt WebEngine with Qt WebChannel and Qt PDF, Qt Multimedia, Qt Positioning, Qt Location and Qt Image Formats.
 
 Optional, and installable later:
@@ -110,7 +127,7 @@ Optional, and installable later:
 === "Fedora"
 
     ```
-    sudo dnf install git rust cargo gcc-c++ dbus-devel \
+    sudo dnf install git rust cargo gcc-c++ dbus-devel pcsc-lite-devel \
         qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwebengine-devel \
         qt6-qtwebchannel-devel qt6-qtpdf-devel qt6-qtpositioning-devel \
         qt6-qtmultimedia-devel qt6-qtlocation qt6-qtimageformats
@@ -132,7 +149,7 @@ Optional, and installable later:
 
 === "Debian, Ubuntu, Arch"
 
-    The D-Bus development files, a C++ compiler, and Qt 6.9 or newer with the modules above, and their QML modules. Distributions name them differently: Debian and Ubuntu as `qt6-…-dev` and `qml6-module-…`, Arch as `qt6-…`. Your release must ship Qt 6.9 or newer.
+    The D-Bus and pcsc-lite development files (Debian and Ubuntu: `libpcsclite-dev`; Arch: `pcsclite`), a C++ compiler, and Qt 6.9 or newer with the modules above, and their QML modules. Distributions name them differently: Debian and Ubuntu as `qt6-…-dev` and `qml6-module-…`, Arch as `qt6-…`. Your release must ship Qt 6.9 or newer.
 
     Rust from [rustup.rs](https://rustup.rs) when your release's own is older than 1.92.
 
@@ -159,13 +176,13 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
-Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too: reminders use it when the window is closed ([Settings](settings.md#reminders)).
+Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too, beside `sioul-app`: reminders use it when the window is closed ([Settings](settings.md#reminders)), and your spam filter trains by itself through it.
 
 Install right after building. If you run Sioul's tests (`cargo test`) in between, they leave programs built for testing in `target/release/`, which keep no password: build again before installing. `tools/install.sh` does the builds and the installs in one go, and refuses a program built for testing.
 
 ### Updating
 
-In the `sioul` folder: `git pull`, then the two `cargo build` lines and the three `install` lines again, or `tools/install.sh`. Your settings and data are kept apart from the program, in your own folders: they stay as they are.
+In the `sioul` folder: `git pull`, then the two `cargo build` lines and the lines of [Into your application menu](#into-your-application-menu) again, or `tools/install.sh`. Your settings and data are kept apart from the program, in your own folders: they stay as they are.
 
 ## Trying it on invented mail first
 
@@ -197,7 +214,7 @@ For 64-bit phones and tablets with Android 9 or later. Sioul is not in a store: 
 1. On the phone or the tablet, open the releases page and download the APK.
 2. Open it. Android asks whether your browser (or your file manager) may install apps: allow it, then **Install**. Play Protect, where the phone has it, may say it does not know the app.
 3. Each version is signed with the same key, Sioul's: the next one installs over it, your data kept.
-4. **Restricted settings**: Android 13 and later keep some settings from an app installed from a file: notification access, and from Android 15 the texts' permissions. The first time Sioul asks for them, Android may answer "Restricted setting"; only then does Sioul's app info offer, under ⋮ (at the top), **Allow restricted settings**, confirmed with your PIN; then ask again in Sioul. Sioul says these steps, in their order, where it asks for them, in the join's result and on the Porch, with **Sioul's app info**.
+4. **Restricted settings**: Android 13 and later keep some settings from an app installed from a file: notification access, and from Android 15 the texts' permissions. The first time Sioul asks for them, Android may answer "Restricted setting"; only then does Sioul's app info offer, under ⋮ (at the top), **Allow restricted settings**, confirmed with your PIN; then ask again in Sioul. Sioul says these steps, in their order, where it asks for them, in the join's result and on the Porch, with **Sioul's app info**. In **Settings ▸ Devices**, this phone's card also has **Android's restricted settings**: the same three steps, a button for each, each ticked once Sioul sees that it worked.
 
 What Sioul then asks for, and what changes in use: [On a phone or a tablet](first-steps.md#on-a-phone). How the APK is built, by GitHub or by hand, and what differs on Android: the [notes on Android](../dev/android.md).
 

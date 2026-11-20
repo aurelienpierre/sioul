@@ -24,7 +24,7 @@ Most spam filters keep an inbox tidy. Sioul's decides what can wait. It learns f
 
 **It judges strangers' mail only.** It never touches mail from someone you know, a code or a link you asked for, a project's mail, or what you send yourself.
 
-**Train it once.** In the Mail page's ⚙, under **Your own spam filter**, **Train now** names the addresses it learns from, downloads what training needs, then learns. The first time takes long, and Sioul stays usable meanwhile. After that it trains by itself, once a week, while the device charges and nobody is at it (**Train here, once a week, while this device charges and is idle**).
+**Train it once.** In the Mail page's ⚙, under **Your own spam filter**, **Train now** names the addresses it learns from, downloads what training needs, then learns. The first time takes long, and Sioul stays usable meanwhile. After that it trains by itself, once a week, while the device charges and nobody is at it (**Train here, once a week, while this device charges and is idle**): a computer while Sioul runs on it, a phone or a tablet while it shares with your other devices and keeps in step in the background. Each device judges the mail it fetches itself, and gives its table only to a device of yours that does not learn.
 
 **Choose what it does.** It finds a stranger's message **probably spam** (from 95%), **maybe spam** (from 50%) or **probably not spam**. For each verdict, you choose one of three:
 
@@ -37,7 +37,7 @@ Until you choose, it flags what is probably or maybe spam, and moves nothing. Tw
 **Look when you have time.** What it flagged or moved waits on the Porch, in **Caught by your own spam filter**: folded, without a count, never notified. Nothing there asks for your time. You step in only when it is wrong: **Not spam** puts a message back for good and teaches the filter, and **Spam** confirms it. What you say on one device, the others know.
 
 <figure markdown="span">
-  [![The Porch. On the left, "Caught by your own spam filter" opened, without a count, with its sentence under the title: what your own filter caught waits there, never notified; Sioul learns from it as it is, and "Not spam" puts one back and teaches the filter. Then strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  [![The Porch, further down: on the left, From yourself, From people you know, Sites, Money, Paper letters and Someone new, in the screener, then "Caught by your own spam filter" opened, without a count and with nothing written under its title: Not spam for all and Spam for all, then two strangers' messages, each with Not spam and Spam under it; under them, Set aside, folded, and Done for now. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
   <figcaption>What your own filter flagged or moved.</figcaption>
 </figure>
 
@@ -79,7 +79,7 @@ A topic is a quiet word on a message, such as Health, Tax or Choir. It is a way 
 - **To teach a sender**: **Always <topic> for this sender**, or **Never…**, in the same menu.
 - **To look by topic**: the Topic filter, beside the filter by area, shows one topic's mail alone.
 
-Behind this, a small model learns your topics on each device, once a week, with the spam filter. It learns a topic once that topic has 20 messages from 3 senders; below that, your words and Sioul's rules sort it. It is made not to move things under your eyes: a new version replaces the one in use only when it does no worse on your newest mail and changes fewer than 2% of the topics already shown, and a doubt shows only under its topic's filter, as "Perhaps". On a computer, **Groups Sioul noticed** gathers mail that no topic names yet, and **Name it** gives the whole group a topic.
+Behind this, a small model learns your topics on each device, once a week, with the spam filter. It learns a topic once that topic has 20 messages from 3 senders, or 50 from a single one, such as an office; below that, your words and Sioul's rules sort it. It is made not to move things under your eyes: a new version replaces the one in use only when it does no worse on your newest mail and changes fewer than 2% of the topics already shown, and a doubt shows only under its topic's filter, as "Perhaps". On a computer, **Groups Sioul noticed** gathers mail that no topic names yet, and **Name it** gives the whole group a topic.
 
 More: [Topics](mail.md#topics)
 
@@ -93,7 +93,7 @@ A task's tags are its categories: they are written into the task itself, on your
 
 ### Categories on contacts {#categories-on-contacts}
 
-Categories are the groups your address book has already: "Family", "Friends", "Neighbours". They are saved in the card itself, so your phone and your other programs see them. A list can name a category (**Settings ▸ What reaches you**, "Your contacts' categories"): its people then reach you as that list says. Nothing goes on a list by itself, family and friends included.
+Categories are the groups your address book has already: "Family", "Friends", "Neighbours". They are saved in the card itself, so your phone and your other programs see them. A list can name one (**Settings ▸ What reaches you**, under **Who is in which circle**, **Groups**): its people then reach you as that list says. Nothing goes on a list by itself, family and friends included. In an address book that someone else can write, groups decide nothing until you turn them on for that book, in the Contacts ⚙ under **Address books**.
 
 ### A project, or a topic? {#a-project-or-a-topic}
 
@@ -132,7 +132,7 @@ A task can prepare an appointment. In the Agenda, an event's card offers **Add s
 
 **Before** and **After**, on an event or on a task, keep the time to get ready, get there and come back, from 5 minutes to 2 hours each. The plan keeps that time free, and never counts it as a pause.
 
-When the way there has parts of its own, a bus, then the walk from the stop, add them as legs: **Add a ride or a walk…**, in the appointment's card, with **From a timetable** when its time comes from one.
+When the way there has parts of its own, a bus, then the walk from the stop, add them as legs: **Add a ride or a walk…**, in the appointment's card, with **From a timetable** when its time comes from one. Its form says which way it goes: **To get there** puts it before the appointment, **To come back** after it.
 
 - **A leg is an event of its own**, in the appointment's calendar, so your phone's calendar shows it too.
 - **It moves with the appointment.** Change the appointment's time, and its legs move by as much, under the same **Undo**. A bus moved that way is said "timetable not checked" until you set its time yourself.
@@ -158,7 +158,7 @@ The plan places your tasks by itself, and writes no time into them. When a step 
 | **Gantt** | each open task on its days, the date asked as a small diamond, the days without room shaded | seeing whether a date will hold |
 
 <figure markdown="span">
-  [![The List: a search field, "By project" and "Done too" at the top; tasks grouped by project, a bigger task followed by its steps, each with how long it takes, the date asked as days left and what it waits for; tasks without a project below, and those "when you say so" last.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
+  [![The List: a search field, "By project", "Done too" and Select at the top; tasks grouped by project, a bigger task folded on one row with its next step under it, the others each with the date asked as days left, about how long it takes and what it waits for; then the tasks without a project.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
   <figcaption>The list, by project.</figcaption>
 </figure>
 
@@ -168,7 +168,7 @@ A project's **Board**, **List** and **Gantt** buttons open the same views, kept 
 
 ### What your other apps see {#what-your-other-apps-see}
 
-Steps, waits and kinds are written into your tasks in the standard's own terms, on your calendar server. Task apps that know steps show yours in your order (Nextcloud Tasks, Tasks.org). Few understand waits: most show a wait as a step of the other task, and some drop it when you change the task there. [Works with](compatibility.md#other-apps-on-the-same-accounts) says which app keeps what. A list on Google Tasks keeps less, and Sioul greys what Google would not keep.
+Steps, waits and kinds are written into your tasks themselves, on your calendar server. Steps are written as the standard says: task apps that know steps show yours in your order (Nextcloud Tasks, Tasks.org). Waits and kinds are written in lines of Sioul's own, with the standard's words for them: other apps do not show them, and keep them as long as they save a task without dropping what they do not know. [Works with](compatibility.md#other-apps-on-the-same-accounts) says which app keeps what. A list on Google Tasks keeps less, and Sioul greys what Google would not keep.
 
 More: [Tasks](tasks.md) · [Time around an event](agenda.md#time-around-an-event)
 

@@ -4,7 +4,7 @@ description: The two pauses in Sioul, and what they do to your day's plan - Free
 
 # Pauses: Free time and Pause
 
-At the end of the status line, two buttons put Sioul on hold, for two different moments. **Free time**, with a flower, is for a good moment you want to take: the weather is fine now, the energy is there now. **Pause**, apart from it at the very end, is for a moment that is too much. They look different and do different things, so that one is never taken for the other.
+At the end of the status line (the window's title bar on a computer, the line at the bottom on a phone), two buttons put Sioul on hold, for two different moments. **Free time**, with a flower, is for a good moment you want to take: the weather is fine now, the energy is there now. **Pause**, apart from it at the very end, is for a moment that is too much. They look different and do different things, so that one is never taken for the other. On a narrow screen, each shows as its icon alone: the flower, and the pause sign.
 
 Both act on your day's plan: when today's work ends, how much today holds, and what goes to later days.
 
@@ -14,8 +14,8 @@ Sioul is not an emergency service. It does not watch you, and it acts only when 
 
 Press **Free time** and now is leisure, whatever the hour, until you press it again.
 
-- **Who reaches you**: your safe senders' calls and messages, their mail shown without a notification, and your Always through people; **Nothing at all**, in the status line's menu or on Free time's card in What reaches you, keeps even your safe senders away this time. Doses and the codes you asked for still come. What waits, and what still comes: [What reaches you, by time](notifications.md#by-time).
-- **What is offered**: the Tasks page shows "Free time" and, under "If you want:", your own leisure items, in the order you made them. Nothing to finish, no next step, no timer. Movement and exercise are among them unless you turn **Offer movement and exercise** off in [Settings ▸ Pauses](settings.md#pauses); with **Even days** on (for an illness that limits your energy), they are off unless you turn them on.
+- **Who reaches you**: your safe senders' calls and messages, their mail shown without a notification, and your Always through people. **Nothing at all** keeps even your safe senders away: this time, from the status line's menu (a right click or a long press on **Free time**, while it is on); every time, under **In Free time** in Settings ▸ What reaches you ▸ Your rules ▸ **Moments**. Doses and the codes you asked for still come. What waits, and what still comes: [What reaches you, by time](notifications.md#by-time).
+- **What is offered**: the Tasks page shows "Free time" and, under "If you want:", your own leisure items, in the order you made them, eight at most. Nothing to finish, no next step, no timer. Movement and exercise are among them unless you turn **Offer movement and exercise** off in [Settings ▸ Pauses](settings.md#pauses); with **Even days** on (for an illness that limits your energy), they are off unless you turn them on.
 - **A focus session** running stops when you press it, and counts; Sioul offers a line on where you stopped.
 - **The night comes first**: Free time ends by itself when your night begins (or at midnight without one), and a nap in it is a nap.
 - **While it lasts**, the plan already lays today as if you came back now, the end of work moved.
@@ -37,10 +37,10 @@ When Free time takes some of your working hours, the end of today's work moves l
 
 In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
-- **What comes during a pause**: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. It is the pause's card in Settings ▸ [What reaches you](notifications.md#by-time); there, **Later** for Doses ▸ Pause makes dose reminders wait until you come back, reminded once then.
+- **What comes during a pause**: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. It opens the table **What comes when**, in Settings ▸ [What reaches you](notifications.md#by-time), where the **Pause** column says it; there, **Later** in the **Doses** row makes dose reminders wait until you come back, reminded once then.
 - **What helps you**: in your own words, one thing a line. A line with a link or a file's path opens it from the pause: a playlist, a folder of photos, an app's page.
 - **A line for the pause**: one line of yours, shown on the screen.
-- **Breathing guide**: off unless you turn it on; then a slow shape to breathe with, shown only when you tap it, the breath out longer than the breath in, at the pace you set.
+- **Breathing guide**: off unless you turn it on; then a slow shape to breathe with, shown only when you tap it, the breath out longer than the breath in, at the pace you set in **Breaths a minute** (six, unless you change it; from three to ten).
 - **Coming back**: the rest of the day lighter (as a hazy day), no more work that day, or as planned.
 - **Numbers for**: the country whose emergency number and crisis line show during a pause; unless you choose, the country of your phone numbers.
 - **Try the pause screen** shows it as it will be. Nothing is held.
@@ -53,7 +53,7 @@ On Android, **Pause** is also among the quick settings, and at a long press on S
 
 ### The screen {#the-screen}
 
-Sioul's window is covered with a few lines: "Paused. Sioul is keeping everything on hold: mail, tasks, messages. Nothing new will show here until you come back. Sioul asks nothing of you until then." Under them: your line, **What helps you** (your list, folded until you open it), the breathing guide if you turned it on, and one quiet line with the emergency number and the crisis line of your country, one tap to call each; **Other numbers** unfolds the rest. One button, **Come back**: no code, no question.
+Sioul's window is covered with a few lines: "Paused. Sioul is keeping everything on hold: mail, tasks, messages. Nothing new will show here until you come back. Sioul asks nothing of you until then." While dose reminders come, a line says so: "Dose reminders still come." Under them: your line, **What helps you** (your list, folded until you open it), the breathing guide if you turned it on, and one quiet line with the emergency number and the crisis line of your country, one tap to call each; **Other numbers** unfolds the rest. One button, **Come back**: no code, no question.
 
 ### Coming back {#coming-back}
 
@@ -63,7 +63,7 @@ Sioul's window is covered with a few lines: "Paused. Sioul is keeping everything
 - **No more work today**: the work day closes, as with **Done for today**. "Work waits until tomorrow at 09:00."
 - **As planned**: nothing changes.
 
-When tomorrow is a working day, "Tomorrow can be lighter too.", with **Lighten tomorrow**, which makes tomorrow lighter, as a hazy day; doing nothing changes nothing. What was held comes back slowly: the Porch opens at your next admin hours (else your next working hours, else tomorrow morning), or when you open it. Nothing asks what happened, nothing rates it, and closing the day in the evening does not mention it.
+When tomorrow is a working day, "Tomorrow can be lighter too.", with **Lighten tomorrow**, which makes tomorrow lighter, as a hazy day; doing nothing changes nothing. **Continue** shows Sioul again. What was held comes back slowly: the Porch opens at your next admin hours (else your next working hours, else tomorrow morning), or when you open it. Nothing asks what happened, nothing rates it, and closing the day in the evening does not mention it.
 
 For ten seconds the status line offers **Undo**: as if the pause had not been pressed.
 
@@ -74,7 +74,7 @@ Sioul keeps only when the last pause began and ended; **Forget the last pause**,
 | | Free time | Pause |
 |---|---|---|
 | For | a good moment you choose | a moment that is too much |
-| Who reaches you | your safe senders, or no one | no one; dose reminders; on Android, your starred contacts if you chose so |
+| Who reaches you | your safe senders and your Always through people, or your Always through people only | your Always through people's calls and messages; dose reminders, your events' alarms and the codes you asked for |
 | The window | as usual, leisure in view | covered, a few lines |
 | Work | the end of the day moves later, within limits | goes to later days, never into the evening |
 | After | work until the moved end, light steps only past the usual one | the rest of today lighter, closed or as planned; tomorrow lighter if you ask |
@@ -84,7 +84,7 @@ From Free time, **Keep my usual end** turns it into a pause that moves nothing: 
 
 ## Notifications and do-not-disturb {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: the pause's and Free time's cards in [What reaches you](notifications.md#by-time); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: the **Pause** and **Free time** columns of What comes when, in [What reaches you](notifications.md#by-time); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
 
 ## What Sioul does not do {#what-sioul-does-not-do}
 

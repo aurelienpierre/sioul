@@ -4,14 +4,14 @@ description: The window, its keys, and the first things to set up in Sioul - mai
 
 # First steps
 
-Nothing has to be set up at once. Each step below is useful on its own, and Sioul works with whatever you give it. Open it from your application menu, or with `sioul-app` in a terminal.
+Nothing has to be set up at once. Each step below is useful on its own, and Sioul works with whatever you give it. Open it from your application menu, or from your apps on a phone or a tablet; built from its sources, `sioul-app` in a terminal opens it too.
 
 Sioul speaks English and French, as your system does, unless you choose otherwise in **Settings ▸ Display ▸ Language**.
 
 ## The window
 
 <figure markdown="span">
-  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and three icons at the bottom (Accounts, Settings, Refresh everything); on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and at the bottom, Close the work day and Close the whole day, then Accounts, Settings and Refresh everything; on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
 </figure>
 
 **At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](notifications.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
@@ -23,12 +23,12 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 **On the left**, a narrow column of icons, from top to bottom:
 
 - **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper, a paper letter's scan (on a computer: [Letters](papers.md#paper-letters)); and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
-- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an open envelope, its letter showing), Health (a heart). The place shown is marked by a soft tint and a short bar.
+- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer, and on a tablet without a SIM), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an open envelope, its letter showing), Health (a heart). The place shown is marked by a soft tint and a short bar.
 - **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
 
-**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
+**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. What belongs to Sioul as a whole is in **Settings**, in tabs across the page: Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
 ### Keys
 
@@ -43,7 +43,7 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 | ++f5++ | Refresh everything |
 | ++f9++ | The places' names beside their icons, or their icons only; in a narrow window, pull the places out or put them away |
 | ++f11++ | Full screen, or back |
-| ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray) |
+| ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray, where the desktop has one) |
 | ++ctrl+enter++ | Send, in the writing window |
 
 ### On a phone or a tablet {#on-a-phone}
@@ -54,13 +54,14 @@ Sioul on Android: [Install](install.md#on-android). On a small screen (a phone, 
 - **The status line** is at the bottom of the screen on Android, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
 - **One pane at a time**: a page shows its list, then what you open across the whole screen; **Back**, on the bar or Android's, comes back.
 - **Menus** open at a long press on a touch screen, where a mouse would right click.
+- **Settings** opens on the list of its sections, each with a line on what it holds: a tap opens one, and **Back** returns to the list.
 
 What differs on Android:
 
-- **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
-- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as their row in What reaches you says; the others go to your voicemail ([Calls](calls.md)).
+- **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)), new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)) and a code you just asked a site for, with **Copy**; while nobody is at one of your computers, also for a meal, a nap or the night as it comes, and for the end of work hours. The reminders of dates, waits, payments and papers do not come on a phone: a computer or a tablet tells them, and the phone's home screen card lists them.
+- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as this phone's own table says, under **Calls** in its card in **Settings ▸ Devices**; the others go to your voicemail ([Calls](calls.md)).
 - **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people by who wrote them, the rest at the gathered times ([Settings ▸ Devices, this phone's card](settings.md#this-phone)).
-- **Mail** is fetched while Sioul is open: Android stops it in the background.
+- **Mail** is fetched while Sioul is open. Once Sioul is put away, a phone that shares with your other devices goes on fetching its inboxes in the background, every quarter of an hour at the times when new mail may be told. Its switch is **Keep this phone in step in the background**, on unless you turn it off, in the phone's card in **Settings ▸ Devices**, under **Do not disturb on this phone**. A phone that does not share fetches only while Sioul is open.
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
 - **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
@@ -68,11 +69,16 @@ What differs on Android:
 - **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself; a new phone joins them through Murena's sign-in, or another Nextcloud's, from the Porch's **Join your other devices** ([below](#join-your-other-devices)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
 - **Cards on the home screen**: Sioul's widgets (a long press on the home screen, **Widgets**). The full card, "Sioul", begins with today: the date, the weather now and, on the same row, each of the next four hours, the next morning, afternoon, evening and night, then the next seven days, at the place you chose for the weather (tap the weather in Sioul's status line to choose one). Under it, what the Porch has for you, one short line each: a dose due, never as "not taken" ("check before taking it" when another device may know), a code you just asked a site for, the reminders of dates, waits, payments and papers, a call Sioul declined, two events at once. Last, what now is for and, in work or admin time, the next step. Never a count. A tap on a dose, a code or a call opens the Porch; on a reminder, what it is about; on the step, **Now**. The mail and your events have cards of their own, "Sioul — Mail" and "Sioul — Agenda", in the same list of widgets, to place and order as you like: the latest messages on the Porch (who wrote, in bold while you have not read it, when, the subject, a line of the text; outside the hours chosen for mail, only when the Porch opens), and your coming events, day by day, each in its calendar's colour. With **Details on the home screen** turned off ([Settings](settings.md#display)), they name no sender, subject, event, code, dose, reminder, call or step; the date and the weather still show.
 
-**On a tablet**, Sioul is the same Android app, with a computer's layout whenever its window is 720 points wide or more (held sideways, or full screen), and a phone's when it is narrower (split screen). It is a tablet for what follows you, not a phone: the reminders of dates, waits, payments and papers come there as on a computer, and your other devices call it "the tablet". Without a SIM it screens no calls and reads no texts: it shows your phone's texts as a computer does. Settings ▸ **This tablet** says what this device is, if Sioul guessed wrong ([Settings](settings.md#display)).
+**On a tablet**, Sioul is the same Android app, with a computer's layout whenever its window is 720 points wide or more (held sideways, or full screen), and a phone's when it is narrower (split screen). It is a tablet for what follows you, not a phone: the reminders of dates, waits, payments and papers come there as on a computer, and your other devices call it "the tablet". Without a SIM it screens no calls and reads no texts: it shows your phone's texts as a computer does. If Sioul guessed wrong, **What this device is**, on this device's card in **Settings ▸ Devices**, says whether it is a phone, a tablet or a computer ([Settings](settings.md#devices)).
 
 ## Join your other devices
 
 Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on Android, what it has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Sharing** offers the same at any time.
+
+<figure markdown="span">
+  [![The Porch of a device's first days: "Open until 17:00." and Show all mail now; the card "Join your other devices", with Sign in to Murena, Sign in to another Nextcloud, I use a sync app's folder and Leave as is; the card "Sioul sorted your mail into 2 topics, from the senders it knows: Bank, Taxes.", with Leave as is; then Right now, a project's mail and From yourself.](../assets/screens/porch-first-day.png){ loading=lazy }](../assets/screens/porch-first-day.png "Open the picture at full size")
+  <figcaption>The first days: joining your other devices, and the topics Sioul started.</figcaption>
+</figure>
 
 ## Add your mail
 
@@ -92,7 +98,7 @@ Then, on the address's card in **Your accounts**, unfold **Settings for this add
 
 ### Your own domain at a host {#your-own-domain-at-a-host}
 
-An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.`, then `mail.`, followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
 
 Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
 
@@ -105,7 +111,7 @@ When Sioul finds nothing, the form opens with **Server** empty:
 
 If Sioul says that a certificate is for another name while you add an address, the name asked is most likely such an alias: replace it with the name from your host's help. Do not take it from the message, since on a network you do not trust another server could have answered. If an address that worked before says so, try again later or on another network.
 
-Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
+Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only, and last `smtp.` followed by your domain, when it shows a certificate made for that name. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
 
 ### Gmail and Google Workspace
 
@@ -158,6 +164,8 @@ From a CalDAV and CardDAV server: Nextcloud, Fastmail, iCloud, your host.
 
 Already added your mail? On its card in **Your accounts**, **What this server offers** asks the server: its calendars and contacts, and for a Nextcloud, its version and apps. One click adds them.
 
+Two more ways in, without an account. A calendar published at a web address, such as a school's or a university's timetable, is read from there: in the Agenda's ⚙, under **Your agendas**, **Subscribe to a calendar…** ([Agenda](agenda.md#calendars-by-their-address)). Contacts kept in a vCard or a CSV file come in with **Import…**, an icon above the list on the Contacts page ([Contacts](contacts.md#importing)).
+
 ## Add Google
 
 Google takes no password from other programs: you sign in on Google's own page.
@@ -175,7 +183,7 @@ Google's mail is added in the mail form, above: with an app password, or signed 
 
 ## Choose your notes folder
 
-Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) apart from your notes, as plain text files in its own folder, and your papers' and letters' files in folders of their own. Until you move them there, once, they are in your notes folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
+Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) apart from your notes, as plain text files in its own folder, and your papers' and letters' files in folders of their own. A new installation starts this way. One that comes from a version before 0.0.12 keeps them in your notes folder until you move them, once, and every device must run the new version first ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
 
 Open **Notes**: as long as this device has no notes folder, the page asks for one, with **Choose a folder…**. Sioul reads it and links to it; it never owns it. Its settings (⚙) change it later. See [Your notes folder](notes.md#your-notes-folder).
 

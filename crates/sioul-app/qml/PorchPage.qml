@@ -580,6 +580,7 @@ Item {
 
                     property bool leftAsIs: page.sioul.viewFlag("porch-join-left")
 
+                    objectName: "joinCard"
                     visible: page.window.moment.shares === false && !joinCard.leftAsIs
                     Layout.fillWidth: true
                     theme: page.theme

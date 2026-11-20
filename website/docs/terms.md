@@ -5,7 +5,7 @@ description: Sioul's terms of use - free software under the GPL-3.0-or-later lic
 
 # Terms of use
 
-*Last updated on 14 October 2026 (2026-10-14).*
+*Last updated on 20 November 2026 (2026-11-20).*
 
 Sioul is free software, made and published by Aurélien Pierre. These terms say, in plain words, on what terms you use it: the window, the command line and the Android app (for phones and tablets), and this website.
 
@@ -25,13 +25,13 @@ As far as the law allows, neither the developer of Sioul, nor any company whose 
 
 ## The services you connect
 
-Sioul reaches, from your device and for you, the services you add to it (your mail provider, your calendar server, Google, Microsoft) and the few others you choose (Anthropic's API with your own key, GitHub, Bitwarden, OpenStreetMap, Open-Meteo). Your use of each stays under your own agreement with it: Microsoft's Services Agreement for an Outlook.com, Hotmail, Live or MSN address, your organisation's rules for a work or school address, Google's Terms of Service for a Google account. Sioul does not change those agreements, and none of those companies is a party to these terms.
+Sioul reaches, from your device and for you, the services you add to it (your mail provider, your calendar server, Google, Microsoft) and the few others you choose (Anthropic's API with your own key, GitHub, Bitwarden, OpenStreetMap, Open-Meteo, among others: the [privacy policy](privacy.md#other-data) lists them all). Your use of each stays under your own agreement with it: Microsoft's Services Agreement for an Outlook.com, Hotmail, Live or MSN address, your organisation's rules for a work or school address, Google's Terms of Service for a Google account. Sioul does not change those agreements, and none of those companies is a party to these terms.
 
 Sioul's developer is not Microsoft's or Google's agent, and has no partnership with either. Their names are used here only to say which service is meant: Microsoft, Outlook, Hotmail and Microsoft 365 are trademarks of the Microsoft group of companies, and Google and Gmail are trademarks of Google LLC.
 
 ## A work or school account
 
-An address that belongs to your employer or your school stays under its rules. Your organisation may forbid its mail on a personal device, and decides whether Sioul may read it at all: for Microsoft 365, its administrator approves Sioul once. Sioul keeps such an address's mail away from its AI features unless you open it to them, which you should do only if your organisation allows it.
+An address that belongs to your employer or your school stays under its rules. Your organisation may forbid its mail on a personal device, and decides whether Sioul may read it at all: for Microsoft 365, its administrator approves Sioul once. Sioul never gives such an address's mail to its AI shield, and its spam filter never learns from it; it keeps that mail from AI agents unless you open it to them, which you should do only if your organisation allows it.
 
 ## Your data
 

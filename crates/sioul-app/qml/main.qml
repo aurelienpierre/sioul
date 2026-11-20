@@ -2425,6 +2425,16 @@ SioulWindow {
             ]
             readonly property var demo: [
                 () => window.page = 0,
+                // The Porch as it is lived with: the cards of the first days answered "Leave as is",
+                // as the profile says (make-demo.py writes their flags, unless --first-day). The
+                // Porch reads those flags as it is made, before `start` loads them: pressed here.
+                () => {
+                    for (const [flag, card] of [["porch-join-left", "joinCard"], ["topics-day-one-left", "topicsDayOne"]]) {
+                        const panel = grabber.named(window.porchPage, card)
+                        if (sioul.viewFlag(flag) && panel !== null && panel.visible)
+                            grabber.leaveAsIs(panel)
+                    }
+                },
                 () => {},
                 () => {},
                 () => grabber.save(window.moment.hours ? "porch" : "porch-hours"),
@@ -2440,6 +2450,13 @@ SioulWindow {
                 () => {
                     if (!window.moment.hours)
                         budgetsPage.showBank()
+                },
+                // The second account's last movements unfolded, each saying where it went and why.
+                () => {
+                    if (!window.moment.hours) {
+                        budgetsPage.bankNow().unfold("paypal")
+                        budgetsPage.showBank()
+                    }
                 },
                 () => {},
                 () => {
@@ -2482,6 +2499,12 @@ SioulWindow {
                 },
                 () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.startsWith("Iris")) || contactsPage.shown.contacts[0]).key),
                 () => {},
+                // Whether the card shows its number and circle rows, said in the log: some runs
+                // drew it without them, with the same steps and the same data.
+                () => {
+                    const sheet = grabber.named(contactsPage, "personSheetButton")
+                    console.warn("demo: contact card, its sheet's button " + (sheet !== null && sheet.visible ? "shown at " + Math.round(sheet.mapToItem(contactsPage, 0, 0).y) : "not shown"))
+                },
                 () => grabber.save("contacts"),
                 // Notes as folders, the project's open.
                 () => {
@@ -2547,6 +2570,18 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("accounts"),
+                // Settings, its tabs across the window, on the first.
+                () => {
+                    window.page = 12
+                    parametersPage.open("look")
+                },
+                () => {},
+                () => grabber.save("settings-tabs"),
+                // Settings ▸ Devices, this computer's card.
+                () => window.showParameters("devices"),
+                () => {},
+                () => {},
+                () => grabber.save("settings-devices"),
                 () => window.showParameters("attention"),
                 () => {},
                 () => {},
@@ -5284,6 +5319,22 @@ SioulWindow {
                 }
                 return null
             }
+            // A Porch card's "Leave as is" under `root`, pressed.
+            function leaveAsIs(root) {
+                const words = sioul.text("porch-hours-leave")
+                const walk = item => {
+                    if (item.text === words && typeof item.clicked === "function") {
+                        item.clicked()
+                        return true
+                    }
+                    for (let i = 0; i < item.children.length; ++i) {
+                        if (walk(item.children[i]))
+                            return true
+                    }
+                    return false
+                }
+                return walk(root)
+            }
             function mailFilters() {
                 return grabber.named(frame.Overlay.overlay, "mailFilters")
             }
@@ -5324,6 +5375,26 @@ SioulWindow {
                 () => mailPage.scrollSettings("spam.actions"),
                 () => {},
                 () => grabber.saveWindow("spam-settings"),
+                // The panel alone, its background included (the guide's picture), in a window
+                // tall enough for the whole filter, its training's switch included (French
+                // takes more lines): the pop-up's own item, the overlay's child that holds the setting.
+                () => {
+                    if (!window.phoneGrab)
+                        window.height = grabber.demoFrench ? 2200 : 1840
+                },
+                () => mailPage.scrollSettings("spam.actions"),
+                () => {},
+                () => {
+                    let item = grabber.named(frame.Overlay.overlay, "setting:spam.actions")
+                    while (item !== null && item.parent !== null && item.parent !== frame.Overlay.overlay)
+                        item = item.parent
+                    if (item !== null)
+                        item.grabToImage(result => result.saveToFile(grabber.folder + "/spam-settings-panel.png"))
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        window.height = 1500
+                },
                 () => mailPage.scrollSettings("spam.filter"),
                 () => {},
                 () => grabber.saveWindow("spam-training"),
@@ -5339,6 +5410,8 @@ SioulWindow {
                 () => porchPage.openSpam(""),
                 () => {},
                 () => porchPage.showReasons(),
+                // The Porch's column, narrower beside the message, scrolled to the queue again.
+                () => porchPage.scrollToLane("review"),
                 () => {},
                 () => grabber.save("spam-reader"),
                 () => window.close()
