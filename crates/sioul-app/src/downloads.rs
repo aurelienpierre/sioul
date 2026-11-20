@@ -14,7 +14,8 @@
 //! - **Save** (`start`): the place checked and kept for the site; the status
 //!   line says the file comes, if it still does.
 //! - **Come whole and answered** (`done`, off the window's thread): checked
-//!   by the antivirus when this computer has one (as an attachment is), then
+//!   by the antivirus when this computer has one (as an attachment is; the
+//!   status line says "Checking…" only when one is there to ask), then
 //!   placed where you said, under a free name, never over a file
 //!   (`filelock::place_new`): the system's Downloads folder; the folder
 //!   chosen in its "Save as" window; the notes folder, where new notes go;
@@ -22,11 +23,13 @@
 //!   with a title and a type guessed: `papers::file_download`); Letters by
 //!   theirs (where scans arrive, read as a letter received:
 //!   `letters::add_one`). The status line says it, and one notice names it,
-//!   about an opaque id (`sioul:download/<id>`, never the file's path): Open,
-//!   and Show in its folder for the system's folders; in Sioul for Notes,
-//!   Papers and Letters. Never opened by itself. A place that refuses the
-//!   file (full, closed, not its type) keeps it held: the card asks again,
-//!   saying why (`download_refused`).
+//!   both adding that it was not checked, and why, when the antivirus found
+//!   it too big or none answered; the notice is about an opaque id
+//!   (`sioul:download/<id>`, never the file's path): Open, and Show in its
+//!   folder for the system's folders; in Sioul for Notes, Papers and
+//!   Letters. Never opened by itself. A place that refuses the file (full,
+//!   closed, not its type) keeps it held: the card asks again, saying why
+//!   (`download_refused`).
 //! - **Failed or cut** (`failed`): its held folder taken away; said in the
 //!   status line and by a notice.
 //! - **Cancel** (`drop`): what came is deleted.
@@ -42,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use sioul_core::config::{self, Config, NotesFolder};
 use sioul_core::downloads::{self as rules, Memory, Place};
 use sioul_core::notice::{Act, Kind, Notice};
+use sioul_sync::antivirus::{self, Verdict};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -405,7 +409,7 @@ pub(crate) fn opened(address: &str) -> String {
 /// it finds inside) and Show in its folder in a folder of the system's;
 /// Open in Sioul for Notes, Papers and Letters. Returns it and what a click
 /// on it opens.
-fn notice_of(about: &str, place: Place, placed: &Placed, program: bool) -> (Notice, String) {
+fn notice_where(about: &str, place: Place, placed: &Placed, program: bool) -> (Notice, String) {
     let name = placed.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let shown = rules::shortened(&name, SHOWN_CHARS);
     let title = say(&format!("download-in-{}", place.id()), &[("file", shown)]);
@@ -430,6 +434,30 @@ fn notice_of(about: &str, place: Place, placed: &Placed, program: bool) -> (Noti
     (Notice::new(about, Kind::Minor, title, folder.display().to_string()).action(open, Act::Open { address: file_url.clone(), hint: String::new() }).action(tr().text("file-show-folder", None), show), file_url)
 }
 
+/// What the antivirus could not say of a file placed, in one sentence: none
+/// when it found the file clean.
+fn unchecked(verdict: &Verdict) -> Option<String> {
+    match verdict {
+        Verdict::Clean | Verdict::Infected(_) => None,
+        Verdict::TooBig => Some(tr().text("download-unchecked-too-big", None)),
+        Verdict::Unavailable(_) => Some(tr().text("download-unchecked-none", None)),
+    }
+}
+
+/// The notice of a file placed (`notice_where`), what a click on it opens,
+/// and the status line: where it is; for Papers and Letters, what follows
+/// too; then, in both, that it was not checked and why, when the antivirus
+/// found it too big or none answered (`verdict`).
+fn notice_of(about: &str, place: Place, placed: &Placed, program: bool, verdict: &Verdict) -> (Notice, String, String) {
+    let (mut notice, opens) = notice_where(about, place, placed, program);
+    let mut line = if matches!(place, Place::Papers | Place::Letters) { format!("{} {}", notice.title, notice.body) } else { notice.title.clone() };
+    if let Some(said) = unchecked(verdict) {
+        line = format!("{line} {said}");
+        notice.body = format!("{}\n{said}", notice.body);
+    }
+    (notice, opens, line)
+}
+
 /// A notice told, and what it opens kept for its click.
 fn tell_notice(notice: Notice, opens: String) {
     OPENED.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert_with(HashMap::new).insert(notice.about.clone(), opens);
@@ -439,9 +467,10 @@ fn tell_notice(notice: Notice, opens: String) {
 /// The file came whole and is answered (JSON in: `Ended`): checked by the
 /// antivirus when there is one, then placed where you said, off the window's
 /// thread; its held folder taken away once placed. Said in the status line
-/// and by one notice; then the window hears `download_filed` (Papers'
-/// correction, Letters' page, when Sites is still in view). A place that
-/// refuses it keeps it held, and the window hears `download_refused`.
+/// and by one notice, both saying that it was not checked, and why, when it
+/// was not; then the window hears `download_filed` (Papers' correction,
+/// Letters' page, when Sites is still in view). A place that refuses it
+/// keeps it held, and the window hears `download_refused`.
 pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
     let asked: Ended = serde_json::from_str(asked).unwrap_or_default();
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
@@ -460,11 +489,15 @@ pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
         };
         let file = hold.join(&held);
         let about = notice_address(&hold);
-        // As an attachment is: one call to the antivirus when this computer has one.
-        crate::backend::tell(&qt, &shared, say("scan-running", &[("name", shown.clone())]));
-        if let sioul_sync::antivirus::Verdict::Infected(threat) = sioul_sync::antivirus::scan(&file) {
+        // As an attachment is: one call to the antivirus; "Checking…" said
+        // only when one is there to ask (none on a phone, nor without ClamAV).
+        if antivirus::present() {
+            crate::backend::tell(&qt, &shared, say("scan-running", &[("name", shown.clone())]));
+        }
+        let verdict = antivirus::scan(&file);
+        if let Verdict::Infected(threat) = &verdict {
             let _ = std::fs::remove_dir_all(&hold);
-            let line = say("scan-infected", &[("name", shown.clone()), ("threat", threat)]);
+            let line = say("scan-infected", &[("name", shown.clone()), ("threat", threat.clone())]);
             crate::backend::tell(&qt, &shared, line.clone());
             tell_notice(Notice::new(&about, Kind::Minor, say("download-not-kept", &[("file", shown)]), line), String::new());
             over(hold.display().to_string(), "", String::new());
@@ -483,9 +516,7 @@ pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
         let _ = std::fs::remove_dir_all(&hold);
         crate::backend::mark_from_outside(&placed.path);
         let program = rules::is_program(&name, &asked.mime);
-        let (notice, opens) = notice_of(&about, place, &placed, program);
-        // The status line: where it is; for Papers and Letters, what follows too.
-        let line = if matches!(place, Place::Papers | Place::Letters) { format!("{} {}", notice.title, notice.body) } else { notice.title.clone() };
+        let (notice, opens, line) = notice_of(&about, place, &placed, program, &verdict);
         crate::backend::tell(&qt, &shared, line);
         tell_notice(notice, opens);
         over(hold.display().to_string(), place.id(), placed.id.clone());
@@ -812,22 +843,53 @@ mod tests {
         assert_eq!(about, "sioul:download/1700000000000-12-3");
         let path = PathBuf::from("/stand-in/Downloads/statement (2).pdf");
         let placed = Placed { path: path.clone(), address: String::new(), id: String::new() };
-        let (notice, opens) = notice_of(&about, Place::Downloads, &placed, false);
+        let (notice, opens, _) = notice_of(&about, Place::Downloads, &placed, false, &Verdict::Clean);
         let acts: Vec<&Act> = notice.actions.iter().map(|a| &a.act).collect();
         assert_eq!((notice.about.as_str(), opens), (about.as_str(), crate::backend::file_url(&path)));
         assert_eq!(acts, [&Act::Open { address: crate::backend::file_url(&path), hint: String::new() }, &Act::Open { address: "file:///stand-in/Downloads/".into(), hint: String::new() }]);
         for kept in ["/stand-in/Downloads/setup.exe", "/stand-in/Downloads/statement"] {
             let placed = Placed { path: PathBuf::from(kept), address: String::new(), id: String::new() };
-            let (notice, opens) = notice_of(&about, Place::Downloads, &placed, kept.ends_with(".exe"));
+            let (notice, opens, _) = notice_of(&about, Place::Downloads, &placed, kept.ends_with(".exe"), &Verdict::Clean);
             assert_eq!((notice.about.as_str(), opens.as_str()), (about.as_str(), "file:///stand-in/Downloads/"));
             assert_eq!(notice.actions.iter().map(|a| &a.act).collect::<Vec<_>>(), [&Act::Open { address: "file:///stand-in/Downloads/".into(), hint: String::new() }], "never the file: {kept}");
         }
         let note = Placed { path: PathBuf::from("/stand-in/Notes/notes/x.ods"), address: "sioul:note/notes/x.ods".into(), id: String::new() };
-        let (notice, opens) = notice_of(&about, Place::Notes, &note, false);
+        let (notice, opens, _) = notice_of(&about, Place::Notes, &note, false, &Verdict::Clean);
         assert_eq!((notice.about.as_str(), opens.as_str(), notice.actions.len()), (about.as_str(), "sioul:note/notes/x.ods", 1));
         assert_eq!(notice.kind, Kind::Minor);
         tell_notice(notice, opens);
         assert_eq!(opened(&about), "sioul:note/notes/x.ods", "a click opens the note");
         assert_eq!(opened("sioul:download/other"), "");
+    }
+
+    /// What the antivirus said goes with the file placed: nothing more when
+    /// it found the file clean; when it was too big, or none answered, that
+    /// it was not checked and why, in the notice's body and the status line,
+    /// after where the file is (and, for Papers and Letters, what follows).
+    #[test]
+    fn a_file_not_checked_is_said_so() {
+        let about = "sioul:download/1700000000000-12-4";
+        let file = Placed { path: PathBuf::from("/stand-in/Downloads/statement.pdf"), address: String::new(), id: String::new() };
+        let paper = Placed { path: PathBuf::from("/stand-in/Notes/papers/statement.pdf"), address: "sioul:paper/p1".into(), id: "p1".into() };
+        let in_downloads = say("download-in-downloads", &[("file", "statement.pdf".into())]);
+        let in_papers = say("download-in-papers", &[("file", "statement.pdf".into())]);
+        let follows = tr().text("download-in-papers-body", None);
+        // Clean: as before, where it is and nothing else.
+        let (notice, _, line) = notice_of(about, Place::Downloads, &file, false, &Verdict::Clean);
+        let folder = notice_where(about, Place::Downloads, &file, false).0.body;
+        assert_eq!((notice.title.as_str(), notice.body.as_str(), line.as_str()), (in_downloads.as_str(), folder.as_str(), in_downloads.as_str()));
+        let (notice, _, line) = notice_of(about, Place::Papers, &paper, false, &Verdict::Clean);
+        assert_eq!((notice.body.as_str(), line), (follows.as_str(), format!("{in_papers} {follows}")));
+        // Too big, and no antivirus: one sentence more each, its own.
+        let too_big = tr().text("download-unchecked-too-big", None);
+        let none = tr().text("download-unchecked-none", None);
+        assert!(!too_big.is_empty() && !none.is_empty() && too_big != none && too_big != "download-unchecked-too-big" && none != "download-unchecked-none");
+        for (verdict, said) in [(Verdict::TooBig, &too_big), (Verdict::Unavailable("no antivirus (test)".into()), &none)] {
+            let (notice, _, line) = notice_of(about, Place::Downloads, &file, false, &verdict);
+            assert_eq!((notice.title.as_str(), notice.body.clone(), line), (in_downloads.as_str(), format!("{folder}\n{said}"), format!("{in_downloads} {said}")), "{verdict:?}");
+            let (notice, opens, line) = notice_of(about, Place::Papers, &paper, false, &verdict);
+            assert_eq!((notice.body.clone(), line), (format!("{follows}\n{said}"), format!("{in_papers} {follows} {said}")), "{verdict:?}");
+            assert_eq!(opens, "sioul:paper/p1", "it opens as a file checked does");
+        }
     }
 }
