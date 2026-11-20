@@ -45,20 +45,27 @@ Item {
             return JSON.stringify({ said: "batch-changed", left: [{ title: "Team meeting", why: "a meeting", line: "“Team meeting”: a meeting" }] })
         }
         function textWith(key, name, value) { return key + ":" + value }
+        // As the window's search answers: what its page searches alone, tasks or events.
+        readonly property var things: [
+            { thing: "event", key: "/c/dentist.ics", uid: "dentist", title: "Dentist", place: "Clinique du Parc", at: 100, when: "coming", date: "Tue 10 Nov, 14:00", projects: ["Home"], status: "tentative", done: false },
+            { thing: "event", key: "/c/choir.ics", uid: "choir", title: "Choir", place: "", at: 150, when: "coming", date: "Wed 11 Nov, 19:00", projects: [], status: "confirmed", done: false },
+            { thing: "event", key: "/c/hairdresser.ics", uid: "hairdresser", title: "Hairdresser", place: "", at: 40, when: "past", date: "Thu 1 Oct, 11:00", projects: [], status: "cancelled", done: false },
+            { thing: "event", key: "/c/fair.ics", uid: "fair", title: "Book fair", place: "", at: 30, when: "past", date: "Sat 26 Sep", projects: [], status: "confirmed", done: false },
+            { thing: "task", key: "/t/report.ics", uid: "report", title: "Send the report", place: "", at: 150, when: "coming", date: "Wed 11 Nov", projects: ["Home"], status: "needs-action", done: false },
+            { thing: "task", key: "/t/caf.ics", uid: "caf", title: "Fill the form", place: "", at: 200, when: "coming", date: "Thu 12 Nov", projects: [], status: "needs-action", done: false },
+            { thing: "task", key: "/t/plants.ics", uid: "plants", title: "Water the plants", place: "", at: 50, when: "past", date: "Mon 2 Nov", projects: [], status: "completed", done: true },
+            { thing: "task", key: "/t/book.ics", uid: "book", title: "Read the book", place: "", at: null, when: "undated", date: "", projects: [], status: "needs-action", done: false }
+        ]
         function findThings(query) {
-            mock.asked = mock.asked.concat([JSON.parse(query)])
+            const asked = JSON.parse(query)
+            mock.asked = mock.asked.concat([asked])
             return JSON.stringify({
                 projects: [{ id: "home", label: "Home" }],
                 kinds: [{ id: "call", label: "Call" }],
                 categories: ["Papers"],
                 left_out: JSON.parse(query).every_agenda ? 0 : mock.leftOut,
                 agendas: { chosen: mock.off.length > 0, groups: [{ key: "yours:", title: "Yours", agendas: [{ id: "dav/home", name: "Home", on: mock.off.indexOf("dav/home") < 0 }, { id: "dav/work", name: "Work", on: mock.off.indexOf("dav/work") < 0 }] }] },
-                found: [
-                    { thing: "event", key: "/c/dentist.ics", uid: "dentist", title: "Dentist", place: "Clinique du Parc", at: 100, when: "coming", date: "Tue 10 Nov, 14:00", projects: ["Home"], status: "tentative", done: false },
-                    { thing: "task", key: "/t/caf.ics", uid: "caf", title: "Fill the form", place: "", at: 200, when: "coming", date: "Thu 12 Nov", projects: [], status: "needs-action", done: false },
-                    { thing: "task", key: "/t/plants.ics", uid: "plants", title: "Water the plants", place: "", at: 50, when: "past", date: "Mon 2 Nov", projects: [], status: "completed", done: true },
-                    { thing: "task", key: "/t/book.ics", uid: "book", title: "Read the book", place: "", at: null, when: "undated", date: "", projects: [], status: "needs-action", done: false }
-                ]
+                found: mock.things.filter(t => t.thing === (asked.which === "events" ? "event" : "task"))
             })
         }
     }
@@ -314,16 +321,20 @@ Item {
 
         // The rows as found, under what comes, the past and no date; a row opens its card.
         function test_rows_grouped_and_opened() {
-            const search = make("events")
-            const list = root.named(search, "thingsFound")
+            const events = make("events")
+            let list = root.named(events, "thingsFound")
             tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingRow").length === 4)
-            const rows = root.all(list.contentItem, c => c.objectName === "thingRow")
-            mouseClick(rows[0])
+            mouseClick(root.all(list.contentItem, c => c.objectName === "thingRow")[0])
             compare(JSON.stringify(mock.opened), JSON.stringify({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 100, title: "Dentist" }))
-            mouseClick(rows[1])
+            compare(events.line(events.found[0]), "Tue 10 Nov, 14:00  ·  Home  ·  Clinique du Parc  ·  things-status-tentative")
+            const tasks = make("tasks")
+            list = root.named(tasks, "thingsFound")
+            tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingRow").length === 4)
+            const sections = root.all(list.contentItem, c => c.section !== undefined && c.text !== undefined && c.visible).map(c => c.text)
+            compare(sections, ["things-coming", "things-past", "things-undated"], "what comes, the past, no date")
+            mouseClick(root.all(list.contentItem, c => c.objectName === "thingRow")[1])
             compare(JSON.stringify(mock.opened), JSON.stringify({ kind: "task", owner: "caf" }))
-            compare(search.line(search.found[0]), "Tue 10 Nov, 14:00  ·  Home  ·  Clinique du Parc  ·  things-status-tentative")
-            compare(search.line(search.found[2]), "Mon 2 Nov  ·  things-row-done")
+            compare(tasks.line(tasks.found[2]), "Mon 2 Nov  ·  things-row-done")
         }
 
         // Ctrl with a click picks a row, Shift every row from the last; the bar
@@ -346,7 +357,7 @@ Item {
             compare(search.pickedList.length, 2, "picked again: let go")
             bar.change({ status: "completed" })
             compare(mock.changed.asked.status, "completed")
-            compare(mock.changed.things.map(t => t.uid).sort(), ["dentist", "plants"])
+            compare(mock.changed.things.map(t => t.uid).sort(), ["dentist", "hairdresser"])
             compare(mock.status, "batch-changed")
             compare(search.pickedList.length, 0, "the act done: nothing picked")
             verify(bar.visible, "what was left out still said")
