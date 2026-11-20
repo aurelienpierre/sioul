@@ -290,7 +290,7 @@ Quand une tâche est faite, la ligne d’état propose **Comment ça s’est pas
 
 ### Les bureaux ont des horaires {#offices-have-hours}
 
-Une tâche marquée **Demande un bureau ouvert** n’est proposée que pendant l’ouverture des bureaux (du lundi au vendredi, de 09:00 à 17:00, sauf si vous le changez dans le ⚙ de la page Tâches) et n’est prévue que ces jours-là. Un samedi, l’étape suivante est une étape que vous pouvez faire. Une tâche peut aussi avoir les horaires de son propre bureau, avec une pause de midi.
+Une tâche marquée **Demande un bureau ouvert** n’est proposée que pendant l’ouverture de son bureau, et n’est prévue que ses jours-là, jamais un jour férié que Sioul connaît. Un samedi, l’étape suivante est une étape que vous pouvez faire. Les horaires de son bureau sont, du plus précis au plus général : ceux saisis sur la tâche, avec une pause de midi ; sinon ceux de la fiche du premier bureau qu’elle concerne qui en a, ceux du téléphone pour un appel ([Horaires d’ouverture](contacts.md#opening-hours)) ; sinon les horaires habituels des bureaux (du lundi au vendredi, de 09:00 à 17:00, sauf si vous les changez dans le ⚙ de la page Tâches). Son panneau dit lesquels elle suit et de qui, avec ce qui est vrai maintenant (« Centre des impôts : ouvert jusqu’à 12:00 »), ses horaires jour par jour, **Sa fiche** et **Appeler**. Un appel ou une sortie à qui l’on donne un bureau dont la fiche a des horaires est coché **Demande un bureau ouvert** tout seul ; décochez-le et il le reste. Sur la fiche d’un bureau, **Rappeler…** crée une telle tâche en un appui.
 
 ### Si vous en avez envie, et quand vous le direz {#if-you-want-and-when-you-say-so}
 

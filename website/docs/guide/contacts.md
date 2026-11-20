@@ -62,6 +62,7 @@ A contact opens on the right:
 
 - its **categories**, small labels under its name: a click on one shows that category's list;
 - its **e-mail addresses**, each with **Write**, and its **phone numbers**, each with **Call**, which hands the number to your phone, or on a computer to the program that answers phone links;
+- on an office's card, beside its numbers, its **Opening hours**: what is true now, its hours day by day, and **Look them up…**, **Change**, **Call back…** ([Opening hours](#opening-hours), below); on another card, under **More**;
 - **How they reach you**: who they are to you, in a sentence ("Your contacts: in your address book, on no list."), and their sheet ([below](#how-they-reach-you));
 - a small map with a pin at their address, once it is placed ([The map](#the-map));
 - folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in, which a card of a book you can only read says, offering no **Edit**;
@@ -76,6 +77,18 @@ A contact opens on the right:
 **To move one** to another address book, across accounts too, choose it under **Address book** on its card, which shows the book it is in. When the other place would not keep something (Google keeps less than an open server), Sioul says what, and asks before moving. To move many, select them ([Many contacts at once](#many-at-once)).
 
 When you write a message, addresses are completed from your contacts.
+
+## Opening hours {#opening-hours}
+
+An office's hours are written once, on its card, beside the number you call, and every task that involves that office follows them.
+
+- **Where**: on the card of an organisation (a town hall, a tax office, a practice, a shop), or of any card that has hours, the section **Opening hours** comes right under its numbers; on another card, it is under **More**.
+- **What it says**: in one line, what is true now ("Open until 12:00", "Closed: opens Monday at 9:00", "Closed for the public holiday: opens tomorrow at 9:00"); then its hours day by day ("Monday to Friday: 9:00–12:00, 14:00–17:00"), and "Closed on public holidays.", the holidays Sioul knows (Settings ▸ Hours); under **By phone**, when it answers the phone at other hours, those; its free line, for what Sioul cannot count ("Closed in August, by appointment on Thursdays"), shown and never counted; and where the hours come from: "Typed by you on 20 November 2026", or "From the administration's directory (service-public.gouv.fr), checked on…", or "From OpenStreetMap (© OpenStreetMap contributors), checked on…". Hours checked more than a year ago say so, quietly, and offer **Look them up again…**.
+- **Change** (**Add opening hours** on a card without them) opens the week to fill in, a line per day, empty when closed, or the same typed short above it: days, then hours, "mo-fr 9-12, 14-17; sa 9-12" (French days too, "lu-ve"); under it, what Sioul reads. **Answers the phone at other hours** adds those, typed the same way. What Sioul cannot count goes into the free line when you save; nothing typed is dropped.
+- **Look them up…** opens what would be sent, the office's name and where it is, which you can correct, and to whom: the administration's directory (service-public.gouv.fr) for an office in France, and OpenStreetMap. Nothing leaves before you press **Look up**; then one question goes to each. The answer is a short list, **Is it this one?**, each office with its address and hours, its source named. **This one** writes its hours on the card, with their source and the day; what it says that Sioul cannot count is added to the free line. A number or an address the card lacks is offered after (**Add its number … to the card**), never written by itself. Nothing found changes nothing, and a lookup never takes hours off a card. A person's card offers no lookup: a person's name is never sent anywhere. Google is not a source: its terms do not let hours it gives be kept on a card; hours read on its page can be typed in the short form.
+- **Call back…** makes the task "Call ‹name›" at once: a call, that office attached, proposed when it answers. One press, no form.
+- **The tasks that follow them**: a task that needs an open office follows the hours typed on it, else those on the card of the first office it involves that has some (the phone's for a call), else offices' usual hours (Tasks ⚙). Changing the card changes every task of that office. A call or an outing given an office whose card has hours is ticked **Needs an open office** by itself; untick it and it stays so ([Tasks](tasks.md#offices-have-hours)).
+- **Where they are kept**: on the card, in lines of Sioul's own that other programs and an older Sioul keep as they are. A card of an address book you can only read shows its hours, and says they cannot be written there. Google's address books may not keep them: moving such a card there says so first.
 
 ## How they reach you {#how-they-reach-you}
 
