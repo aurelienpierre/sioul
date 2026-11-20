@@ -83,6 +83,8 @@ Item {
         function personOfCard(uid) { return "null" }
         function household() { return JSON.stringify({ persons: [], others: [], relations: [] }) }
         function addressBooks() { return "[]" }
+        // The book the backend proposes for a new card (`newContactBook`): none here, as with no book at all.
+        function newContactBook() { return "" }
         function placeOf(address) { return "" }
         function mapView() { return "{}" }
         function related(uri) { return "[]" }
