@@ -57,7 +57,7 @@ fn locate_fuzzy(address: &str, language: &str, fuzzy: crate::suggest::Service, b
 static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
 /// Waits until `PAUSE` has passed since the last question, then takes its turn.
-fn wait_turn() {
+pub(crate) fn wait_turn() {
     let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(at) = *last {
         let since = at.elapsed();

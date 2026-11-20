@@ -1,0 +1,19 @@
+{
+ "total_count": 2,
+ "results": [
+  {
+   "nom": "Mairie - Exempleville",
+   "adresse": "[{\"type_adresse\": \"Adresse\", \"complement1\": \"\", \"complement2\": \"\", \"numero_voie\": \"Place de l'Exemple\", \"service_distribution\": \"\", \"code_postal\": \"99999\", \"nom_commune\": \"Exempleville\", \"pays\": \"\", \"continent\": \"\", \"longitude\": \"0.000001\", \"latitude\": \"45.000001\"}, {\"type_adresse\": \"Adresse postale\", \"complement1\": \"\", \"complement2\": \"\", \"numero_voie\": \"Place de l'Exemple\", \"service_distribution\": \"\", \"code_postal\": \"99998\", \"nom_commune\": \"Exempleville\", \"pays\": \"France\", \"continent\": \"Europe\", \"longitude\": \"\", \"latitude\": \"\"}]",
+   "telephone": "[{\"valeur\": \"01 23 45 67 89\", \"description\": \"\"}]",
+   "plage_ouverture": "[{\"nom_jour_debut\": \"Lundi\", \"nom_jour_fin\": \"Vendredi\", \"valeur_heure_debut_1\": \"09:00:00\", \"valeur_heure_fin_1\": \"17:00:00\", \"valeur_heure_debut_2\": \"\", \"valeur_heure_fin_2\": \"\", \"commentaire\": \"État civil ouvert le jeudi de 11h30 à 19h.\"}]",
+   "commentaire_plage_ouverture": null
+  },
+  {
+   "nom": "Préfecture - Exemple",
+   "adresse": "[{\"type_adresse\": \"Adresse\", \"complement1\": \"\", \"complement2\": \"\", \"numero_voie\": \"rue de l'Exemple\", \"service_distribution\": \"\", \"code_postal\": \"99999\", \"nom_commune\": \"Exempleville\", \"pays\": \"France\", \"continent\": \"Europe\", \"longitude\": \"0.000002\", \"latitude\": \"45.000002\"}, {\"type_adresse\": \"Adresse postale\", \"complement1\": \"\", \"complement2\": \"\", \"numero_voie\": \"2 esplanade de l'Exemple\", \"service_distribution\": \"CS 00000\", \"code_postal\": \"99997\", \"nom_commune\": \"Exempleville Cedex\", \"pays\": \"France\", \"continent\": \"Europe\", \"longitude\": \"\", \"latitude\": \"\"}]",
+   "telephone": "[{\"valeur\": \"01 98 76 54 32\", \"description\": \"\"}]",
+   "plage_ouverture": "[{\"nom_jour_debut\": \"Lundi\", \"nom_jour_fin\": \"Vendredi\", \"valeur_heure_debut_1\": \"08:30:00\", \"valeur_heure_fin_1\": \"12:00:00\", \"valeur_heure_debut_2\": \"13:30:00\", \"valeur_heure_fin_2\": \"15:00:00\", \"commentaire\": \"\"}]",
+   "commentaire_plage_ouverture": "Uniquement sur rendez-vous"
+  }
+ ]
+}
