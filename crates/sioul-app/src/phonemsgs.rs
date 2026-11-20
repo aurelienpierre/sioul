@@ -303,8 +303,8 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
         let judged = senders.judge_number(key);
         (!judged.card.trim().is_empty()).then_some(judged.card)
     };
-    let phones = crate::calls::phone_names();
-    let phone = |device: &str| calls::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+    let phones = crate::calls::phones_known(config);
+    let phone = |device: &str| calls::device_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
     let column = |at: i64| column_at(&clock, at, now);
     let lister = rules::Lister { now, tr: tr(), region, name_of: &name_of, shows: &shows, phone: &phone, column: &column };
     // Each message its notice: a line goes once each of its messages is dismissed or read on any device.

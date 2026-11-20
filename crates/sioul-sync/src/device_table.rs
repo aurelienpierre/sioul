@@ -64,6 +64,19 @@ pub struct Row {
     /// As its system names it, in words: a computer's host name, "The phone
     /// (its model)", "Another device of yours" when nothing says.
     pub system: String,
+    /// A phone's own number, as the lists of calls say it (Sioul's key,
+    /// `phones::key`): the one you said on its card (`number_given`), else
+    /// the one its entry says Android gives (`number_android`); "" none known.
+    pub number: String,
+    /// The number you said on its card; "" while unsaid.
+    pub number_given: String,
+    /// The number its entry says Android gives (`Entry::number`); "" none.
+    pub number_android: String,
+    /// `number` and `number_android` as the region writes them ("01 99 00
+    /// 12 34"), set by the window (`share::devices`, which knows the
+    /// region); "" here.
+    pub number_words: String,
+    pub number_android_words: String,
     /// What it is: "phone", "tablet", "computer"; "" when its entry does not say.
     pub form: String,
     /// The same in words: "A phone".
@@ -252,6 +265,7 @@ fn of_entry(row: &mut Row, entry: &Entry, clock: &Clock) {
     let words = clock.words;
     row.form = entry.form_or_kind().to_string();
     row.form_words = form_words(&row.form, words);
+    row.number_android = entry.number.clone();
     row.started = entry.started;
     row.opened = clock.short(entry.started);
     row.imported = entry.imported;
@@ -452,6 +466,9 @@ pub fn table(facts: &Facts, words: &Translator) -> Vec<Row> {
             row.given = given.to_string();
             row.name = given.to_string();
         }
+        // A phone's number: the one you said, else the one Android gives (`Entry::number`).
+        row.number_given = word.and_then(Said::number).unwrap_or_default().to_string();
+        row.number = if row.number_given.is_empty() { row.number_android.clone() } else { row.number_given.clone() };
         let area = word.and_then(Said::area);
         row.area = area.map(sioul_core::areas::Area::id).unwrap_or_default();
         row.area_words = area_words(area, words);
@@ -724,7 +741,7 @@ mod tests {
     fn the_table_lists_this_device_first_with_what_you_said_of_each() {
         let english = Translator::new("en");
         let mut kept = Peers::default();
-        let phone = Entry { form: PHONE.into(), version: "0.0.1".into(), parts: Some(vec!["health".into(), "settings".into()]), ..entry("a-phone", "phone", "Moss", false, NOW - 600, true) };
+        let phone = Entry { form: PHONE.into(), version: "0.0.1".into(), parts: Some(vec!["health".into(), "settings".into()]), number: "+33199001234".into(), ..entry("a-phone", "phone", "Moss", false, NOW - 600, true) };
         add(&mut kept, phone, NOW - 590, 0);
         add(&mut kept, Entry { imported: NOW - 90_000, ..entry("b-laptop", "computer", "zeta", true, NOW - 30, true) }, NOW - 25, 0);
         let peers = peers_of(&kept);
@@ -738,6 +755,16 @@ mod tests {
         .into_iter()
         .collect();
         let facts = Facts { id: "here", own: &own, sharing: true, parts: &parts, peers: &peers, kept: &kept, holders: &[], said: &said, computer: true, now: NOW, looked: None, zone: utc() };
+        // A phone's number: the one its entry says Android gives, until you say another on its card.
+        let rows = table(&facts, &english);
+        let phone = rows.iter().find(|r| r.id == "a-phone").unwrap();
+        assert_eq!((phone.number.as_str(), phone.number_given.as_str(), phone.number_android.as_str()), ("+33199001234", "", "+33199001234"));
+        assert!(rows.iter().filter(|r| r.id != "a-phone").all(|r| r.number.is_empty() && r.number_android.is_empty()));
+        let mut corrected = said.clone();
+        corrected.insert("a-phone".into(), Said { number: Some("+33639981234".into()), ..Said::default() });
+        let rows = table(&Facts { said: &corrected, ..facts.clone() }, &english);
+        let phone = rows.iter().find(|r| r.id == "a-phone").unwrap();
+        assert_eq!((phone.number.as_str(), phone.number_given.as_str(), phone.number_android.as_str(), phone.given.as_str(), phone.area.as_str()), ("+33639981234", "+33639981234", "+33199001234", "", ""), "yours holds; its name and area still unsaid");
         let rows = table(&facts, &english);
         assert_eq!(rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["here", "b-laptop", "a-phone"], "this device first, then by the name shown");
         let (here, laptop, phone) = (&rows[0], &rows[1], &rows[2]);

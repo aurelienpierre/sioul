@@ -22,7 +22,8 @@
 #   calls::tests::java_s_lines_read_here (tools/final-pass.sh does both); the
 #   numbers you called, kept 14 days at most and only while the call
 #   screening counts them (Calls.rememberCalled, Calls.calledAt); a row of
-#   the phone's call history as Rust reads it (Calls.historyRow);
+#   the phone's call history as Rust reads it (Calls.historyRow); this
+#   phone's own numbers, one per SIM, as Rust reads them (Calls.ownNumbersLine);
 # - ModeCheck: Sioul's modes (PauseMode's policy from Rust's ask, which modes
 #   let a channel through), a conversation's key against Rust's
 #   (AppNotes.talkKey), the conversations forgotten, Android's pages for a

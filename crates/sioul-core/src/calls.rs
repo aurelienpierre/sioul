@@ -1688,10 +1688,10 @@ pub struct Lister<'a> {
     pub name_of: &'a dyn Fn(&str) -> Option<String>,
     /// Whether this call's caller may reach you now (by phone or in writing).
     pub shows: &'a dyn Fn(&Held) -> bool,
-    /// The phone a call came to, as this device says it (`Held::device`): ""
-    /// for this device's own ("called at"), else "your phone", "your other
-    /// phone", "your phone (Moss)" (`phone_words`).
-    pub phone: &'a dyn Fn(&str) -> String,
+    /// The phone a call came to, as this device says it (`Held::device`,
+    /// `Call::phone`): `phone_words`, the one place that decides it for every
+    /// list of calls.
+    pub phone: &'a dyn Fn(&str) -> PhoneWords,
 }
 
 /// The list, oldest first: the declined calls not seen yet on any device,
@@ -1770,13 +1770,20 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         tr.text("calls-context-day", Some(&args))
     };
     let time = |h: &Held| local(h.at, l.now).strftime("%H:%M").to_string();
-    // This phone's own calls say "called at"; another phone's, which one it was.
+    // This phone's own calls say "called at" while it alone shares its calls; else which
+    // phone it was: by its name, or "called you on" its number.
     let phone = (l.phone)(device);
-    let on = if phone.is_empty() { "" } else { "-on" };
+    let on = if phone.words.is_empty() {
+        ""
+    } else if phone.number {
+        "-number"
+    } else {
+        "-on"
+    };
     let mut args = crate::i18n::args();
     args.set("context", context_said);
     args.set("who", who);
-    args.set("phone", phone.clone());
+    args.set("phone", phone.words.clone());
     let text = match group.len() {
         1 => {
             args.set("time", time(first));
@@ -1793,9 +1800,10 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
             tr.text(&format!("calls-line-more{on}"), Some(&args))
         }
     };
-    // The row's own words: who, what (the time of day, which phone only among several:
-    // the section says "From your phone" already, how many times), when.
-    let row_phone = Some(phone.clone()).filter(|p| *p != tr.text("calls-phone-yours", None) && *p != tr.text("calls-phone-other", None)).unwrap_or_default();
+    // The row's own words: who, what (the time of day, which phone: always among
+    // several phones that share their calls, else by its name alone, the section
+    // saying "From your phone" already; how many times), when.
+    let row_phone = phone.row(tr);
     let row_on = if row_phone.is_empty() { "" } else { "-on" };
     let mut row_args = crate::i18n::args();
     row_args.set("context", context_words.clone());
@@ -1886,16 +1894,114 @@ pub(crate) fn context(tr: &Translator, column: &str) -> String {
     }
 }
 
-/// The phone a call came to, said on another device: "your phone" when one
-/// phone shares its calls with this device, "your other phone" on a phone
-/// when one other does, else "your phone (Moss)" by its name among your
-/// devices (`phones`: each phone's id with its name; "" for this device's own).
-pub fn phone_words(tr: &Translator, device: &str, here: &str, phones: &[(String, String)], this_is_a_phone: bool) -> String {
+/// One of your phones, as the lists of calls name it (`phone_words`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Phone {
+    /// Its id in the sharing.
+    pub id: String,
+    /// Its name: the one you gave it, else as its system names it (its
+    /// model); "" none known. Outside words: drawn as plain text.
+    pub name: String,
+    /// Its own number as Sioul keys numbers: the one you said on its card,
+    /// else the one its entry says Android gives (`device_said::Said::number`,
+    /// sioul-sync's `devices::Entry::number`); "" none known, never guessed.
+    pub number: String,
+}
+
+/// What a device knows of your phones to say which one a call came to.
+#[derive(Debug, Clone, Default)]
+pub struct Phones {
+    /// This device's id in the sharing.
+    pub here: String,
+    /// This device is a phone: another one is "your other phone".
+    pub this_is_a_phone: bool,
+    /// Your phones among your devices, with their names and numbers.
+    pub known: Vec<Phone>,
+    /// The phones whose calls this device lists (`calling`): more than one,
+    /// every line of every list of calls says the phone it came to.
+    pub calling: BTreeSet<String>,
+    /// How numbers are written here.
+    pub region: Option<&'static Region>,
+}
+
+/// The phone a call came to, as the lists of calls say it (`phone_words`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PhoneWords {
+    /// In a sentence: "your phone", "your other phone", "your phone (Moss)",
+    /// "this phone", or its number as the region writes it ("01 99 00 12
+    /// 34"; « le 01 99 00 12 34 » in French); "" for this device's own calls
+    /// while a single phone shares its calls.
+    pub words: String,
+    /// `words` is the phone's number: a line says "called you on" it.
+    pub number: bool,
+    /// More than one phone shares its calls: every line says the phone, on
+    /// the Porch, on the phone's home card and on a person's sheet.
+    pub always: bool,
+}
+
+impl PhoneWords {
+    /// The phone as a row of the Porch says it ("…, on 01 99 00 12 34"):
+    /// always among several phones that share their calls; else only by its
+    /// name, the section saying "From your phone" already.
+    pub fn row(&self, tr: &Translator) -> String {
+        let plain = self.words == tr.text("calls-phone-yours", None) || self.words == tr.text("calls-phone-other", None);
+        if self.always || !plain { self.words.clone() } else { String::new() }
+    }
+
+    /// The phone as a person's sheet says it: only among several phones that share their calls.
+    pub fn sheet(&self) -> String {
+        if self.always { self.words.clone() } else { String::new() }
+    }
+}
+
+/// The phone a call came to (`device`), as every list of calls says it: the
+/// one place that decides it, so that the Porch, the phone's home card and a
+/// person's sheet never differ.
+///
+/// More than one phone shares its calls (`Phones::calling`): every line says
+/// it, this device's own included: by its number when known ("01 99 00 12
+/// 34", as the region writes it), else "this phone" for this device's own,
+/// else its name ("your phone (Moss)"), else "your phone" ("your other
+/// phone" on a phone). A number is never guessed: none known, its name.
+///
+/// A single phone (or none known): as before numbers were said
+/// (`device_words`): nothing for this device's own, else "your phone",
+/// "your other phone" on a phone, or its name among several phones of your
+/// devices.
+pub fn phone_words(tr: &Translator, device: &str, phones: &Phones) -> PhoneWords {
+    if phones.calling.len() <= 1 {
+        return PhoneWords { words: device_words(tr, device, &phones.here, &phones.known, phones.this_is_a_phone), number: false, always: false };
+    }
+    let phone = phones.known.iter().find(|p| p.id == device);
+    let number = phone.map(|p| p.number.trim()).filter(|n| !n.is_empty());
+    let words = match (number, phone.map(|p| p.name.trim()).filter(|n| !n.is_empty())) {
+        (Some(key), _) => {
+            let mut args = crate::i18n::args();
+            args.set("number", shown_number(key, phones.region));
+            tr.text("calls-phone-number", Some(&args))
+        }
+        (None, _) if device == phones.here => tr.text("calls-phone-this", None),
+        (None, Some(name)) => {
+            let mut args = crate::i18n::args();
+            args.set("name", name.to_string());
+            tr.text("calls-phone-named", Some(&args))
+        }
+        (None, None) => tr.text(if phones.this_is_a_phone { "calls-phone-other" } else { "calls-phone-yours" }, None),
+    };
+    PhoneWords { words, number: number.is_some(), always: true }
+}
+
+/// The device a line came from, by its name, as the phone's messages say it
+/// (`phonemsgs`) and the calls did while a single phone shares its calls: ""
+/// for this device's own, "your phone" when one phone is among your devices
+/// besides this one, "your other phone" on a phone when one other is, else
+/// "your phone (Moss)" by its name (`phones`: each with its name).
+pub fn device_words(tr: &Translator, device: &str, here: &str, phones: &[Phone], this_is_a_phone: bool) -> String {
     if device == here {
         return String::new();
     }
-    let others: Vec<&(String, String)> = phones.iter().filter(|(id, _)| id != here).collect();
-    let name = others.iter().find(|(id, _)| id == device).map(|(_, name)| name.trim()).unwrap_or("");
+    let others: Vec<&Phone> = phones.iter().filter(|p| p.id != here).collect();
+    let name = others.iter().find(|p| p.id == device).map(|p| p.name.trim()).unwrap_or("");
     if others.len() > 1 && !name.is_empty() {
         let mut args = crate::i18n::args();
         args.set("name", name.to_string());
@@ -1904,21 +2010,54 @@ pub fn phone_words(tr: &Translator, device: &str, here: &str, phones: &[(String,
     tr.text(if this_is_a_phone { "calls-phone-other" } else { "calls-phone-yours" }, None)
 }
 
+/// A phone's own number from what Android gives (`Calls.ownNumbers`: one
+/// number per active SIM as the SIM carries it, "" where it carries none),
+/// for the phone's entry (sioul-sync's `devices::Entry::number`), as Sioul
+/// keys numbers. Nothing given (`readable` false: the permissions Sioul
+/// already holds do not let Android tell; no SIM; no SIM that carries a
+/// number): none, and the entry keeps what it said. One SIM with a number,
+/// or every SIM giving the same: that number. Several SIMs that do not all
+/// give one number: "" (no number for the phone: a call is never told by
+/// its SIM, docs/android.md, "Two SIMs"), never one of them guessed. A
+/// number that is no whole one counts as none.
+pub fn own_number(readable: bool, sims: &[String], region: Option<&Region>) -> Option<String> {
+    if !readable {
+        return None;
+    }
+    let keys: Vec<Option<String>> = sims
+        .iter()
+        .map(|n| n.trim())
+        .map(|n| (!n.is_empty()).then(|| phones::key(n, region)).filter(|k| phones::is_whole(k) && !k.contains(';') && k.trim_start_matches('+').chars().all(|c| c.is_ascii_digit())))
+        .collect();
+    let known: BTreeSet<&String> = keys.iter().flatten().collect();
+    match (known.len(), keys.iter().all(Option::is_some)) {
+        (0, _) => None,
+        (1, true) => known.into_iter().next().cloned(),
+        _ => Some(String::new()),
+    }
+}
+
+/// The phones whose calls a device lists: each with a call of the month in
+/// a log (`read_logs`) or a history (`read_histories`) given. More than one,
+/// every line says its phone (`phone_words`).
+pub fn calling(held: &[Held], history: &[Logged]) -> BTreeSet<String> {
+    held.iter().map(|h| h.device.clone()).chain(history.iter().map(|l| l.device.clone())).filter(|d| !d.is_empty()).collect()
+}
+
 /// A person's calls of the last month (`keys`, their numbers as Sioul keys
 /// them), newest first, from every phone, rang or declined: one sentence each,
 /// for their sheet, never a count. Each says the phone only when several
-/// phones share their calls. A blocked caller's never come: their calls never
-/// leave their phone.
+/// phones share their calls (`PhoneWords::sheet`). A blocked caller's never
+/// come: their calls never leave their phone.
 pub fn history(calls: &[Held], keys: &BTreeSet<String>, l: &Lister) -> Vec<String> {
     let now_ms = l.now.timestamp().as_millisecond();
-    let several = calls.iter().map(|h| h.device.as_str()).collect::<BTreeSet<_>>().len() > 1;
-    calls.iter().rev().filter(|h| !h.hidden && keys.contains(&h.key) && h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS && h.at <= now_ms + 60_000).map(|h| history_line(h, several, l)).collect()
+    calls.iter().rev().filter(|h| !h.hidden && keys.contains(&h.key) && h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS && h.at <= now_ms + 60_000).map(|h| history_line(h, l)).collect()
 }
 
 /// "Tuesday 6 October at 23:10, while you slept: declined, sent to
 /// voicemail.", "Today at 06:48, while you slept: it rang. A second call
 /// within 15 minutes rings."
-fn history_line(h: &Held, several: bool, l: &Lister) -> String {
+fn history_line(h: &Held, l: &Lister) -> String {
     let tr = l.tr;
     let at = local(h.at, l.now);
     let mut args = crate::i18n::args();
@@ -1933,12 +2072,7 @@ fn history_line(h: &Held, several: bool, l: &Lister) -> String {
         args.set("context", context(tr, &h.column));
         tr.text("calls-history-head", Some(&args))
     };
-    let phone = if several {
-        let said = (l.phone)(&h.device);
-        if said.is_empty() { tr.text("calls-phone-this", None) } else { said }
-    } else {
-        String::new()
-    };
+    let phone = (l.phone)(&h.device).sheet();
     let outcome = if h.rang { "calls-history-rang" } else { "calls-history-declined" };
     let mut args = crate::i18n::args();
     args.set("phone", phone.clone());
@@ -2306,9 +2440,10 @@ fn row_of_calls(kind: &'static str, group: &[&Call], phone: &str, l: &Lister) ->
         tr.text("calls-also-at", Some(&args))
     }));
     let mut what = said.join(", ");
-    // Which phone, only among several: the section says "From your phone" already.
-    let on = (l.phone)(phone);
-    if !on.is_empty() && on != tr.text("calls-phone-yours", None) && on != tr.text("calls-phone-other", None) {
+    // Which phone: always among several phones that share their calls, else by its name
+    // alone, the section saying "From your phone" already (`PhoneWords::row`).
+    let on = (l.phone)(phone).row(tr);
+    if !on.is_empty() {
         let mut args = crate::i18n::args();
         args.set("what", what);
         args.set("phone", on);
@@ -3154,7 +3289,7 @@ mod tests {
             Call { at: ms("2026-10-01T09:00[Europe/Paris]"), ..row("09:00", 3, 0, "04 65 71 80 00") },
         ];
         let tr = Translator::new("en");
-        let (none, all, here) = (|_: &str| None, |_: &Held| true, |_: &str| String::new());
+        let (none, all, here) = (|_: &str| None, |_: &Held| true, |_: &str| PhoneWords::default());
         let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
         let said: Vec<(String, String, &str)> = history_lines(&calls, 90, &l).into_iter().map(|line| (line.who, line.what, line.kind)).collect();
         assert_eq!(
@@ -3193,7 +3328,7 @@ mod tests {
         ];
         let names = |key: &str| (key == "+262639980002").then(|| "Dr Martin's office".to_string());
         let all = |_: &Held| true;
-        let here = |_: &str| String::new();
+        let here = |_: &str| PhoneWords::default();
         for (language, expected) in [
             (
                 "en",
@@ -3261,7 +3396,7 @@ mod tests {
         let tr = Translator::new("en");
         let all = |_: &Held| true;
         let none = |_: &str| None;
-        let here = |_: &str| String::new();
+        let here = |_: &str| PhoneWords::default();
         let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
         assert!(lines(&calls, &Seen::default(), &BTreeMap::new(), &l).is_empty(), "past two weeks");
         let mut seen = Seen::default();
@@ -3354,17 +3489,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// On the phone that screened, a line says "called at"; on another
-    /// device, which phone: "your phone", "your other phone" on a phone, or
-    /// its name when several phones share their calls.
+    /// The phones a device knows (`known`: id, name, number as Sioul keys it,
+    /// "" none), whose calls it lists (`calling`).
+    fn phones_of(here: &str, this_is_a_phone: bool, known: &[(&str, &str, &str)], calling: &[&str]) -> Phones {
+        Phones {
+            here: here.into(),
+            this_is_a_phone,
+            known: known.iter().map(|(id, name, number)| Phone { id: (*id).into(), name: (*name).into(), number: (*number).into() }).collect(),
+            calling: calling.iter().map(|d| (*d).to_string()).collect(),
+            region: fr(),
+        }
+    }
+
+    /// While a single phone shares its calls, on the phone that screened, a
+    /// line says "called at"; on another device, which phone: "your phone",
+    /// "your other phone" on a phone, or its name when several phones are
+    /// among your devices; never its number, though known.
     #[test]
     fn the_list_names_the_phone_elsewhere() {
         let now = at("2026-10-07T10:00[Europe/Paris]");
         let calls = vec![call_on("phone-a", ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep", "matrix", false)];
         let none = |_: &str| None;
         let all = |_: &Held| true;
-        let one = [("phone-a".to_string(), "A12".to_string())];
-        let two = [("phone-a".to_string(), "A12".to_string()), ("phone-b".to_string(), "B7".to_string())];
+        let one = [("phone-a", "A12", "+33199001234")];
+        let two = [("phone-a", "A12", "+33199001234"), ("phone-b", "B7", "")];
         for (language, own, computer, other, named) in [
             (
                 "en",
@@ -3382,8 +3530,10 @@ mod tests {
             ),
         ] {
             let tr = Translator::new(language);
-            let said = |here: &str, phones: &[(String, String)], phone: bool| {
-                let words = |device: &str| phone_words(&tr, device, here, phones, phone);
+            // One phone shares its calls (its number known all the same): nothing more than before numbers were said.
+            let said = |here: &str, known: &[(&str, &str, &str)], phone: bool| {
+                let phones = phones_of(here, phone, known, &["phone-a"]);
+                let words = |device: &str| phone_words(&tr, device, &phones);
                 let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
                 lines(&calls, &Seen::default(), &BTreeMap::new(), &l)[0].text.clone()
             };
@@ -3411,7 +3561,7 @@ mod tests {
         ];
         let none = |_: &str| None;
         let all = |_: &Held| true;
-        let here = |_: &str| String::new();
+        let here = |_: &str| PhoneWords::default();
         for (language, first, again) in [
             ("en", "While you slept, a number not in your contacts called twice, at 06:10 and 06:40.", "The same number called again at 06:48, and that call rang."),
             ("fr", "Pendant votre sommeil, un numéro absent de vos contacts a appelé deux fois, à 06:10 et à 06:40.", "Le même numéro a rappelé à 06:48, et cet appel a sonné."),
@@ -3491,7 +3641,8 @@ mod tests {
             ("fr", ["Aujourd’hui à 10:05, pendant le travail\u{202f}: l’appel a sonné.", "Aujourd’hui à 06:48, pendant votre sommeil\u{202f}: l’appel a sonné. Un deuxième appel en moins de 15 minutes sonne.", "Hier à 23:10, pendant votre sommeil\u{202f}: refusé, envoyé sur votre messagerie."]),
         ] {
             let tr = Translator::new(language);
-            let words = |device: &str| phone_words(&tr, device, "desk", &[("phone-a".to_string(), "A12".to_string())], false);
+            let phones = phones_of("desk", false, &[("phone-a", "A12", "")], &["phone-a"]);
+            let words = |device: &str| phone_words(&tr, device, &phones);
             let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
             assert_eq!(history(&calls, &keys, &l), expected, "{language}");
         }
@@ -3500,11 +3651,172 @@ mod tests {
         both.push(call_on("phone-b", ms("2026-10-07T09:00[Europe/Paris]"), "+262639980002", "neutral", "work", "matrix", false));
         both.sort_by_key(|h| h.at);
         let tr = Translator::new("en");
-        let phones = [("phone-a".to_string(), "A12".to_string()), ("phone-b".to_string(), "B7".to_string())];
-        let words = |device: &str| phone_words(&tr, device, "desk", &phones, false);
+        let phones = phones_of("desk", false, &[("phone-a", "A12", ""), ("phone-b", "B7", "")], &["phone-a", "phone-b"]);
+        let words = |device: &str| phone_words(&tr, device, &phones);
         let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
         let said = history(&both, &keys, &l);
         assert_eq!(&said[..2], ["Today at 10:05, during work: it rang on your phone (A12).", "Today at 09:00, during work: declined on your phone (B7), sent to voicemail."]);
+    }
+
+    /// The one place that says which phone a call came to (`phone_words`):
+    /// with one phone that shares its calls, as before numbers were said
+    /// (nothing for this device's own, "your phone", "your other phone" on a
+    /// phone), its number never said though known; with two, every line,
+    /// this device's own included: by its number as the region writes it,
+    /// else "this phone" for this device's own, else its name, else "your
+    /// phone"; a name is said as written, markup and all (the window draws
+    /// it as plain text).
+    #[test]
+    fn the_phone_a_call_came_to_in_each_case() {
+        let said = |language: &str, device: &str, phones: &Phones| {
+            let words = phone_words(&Translator::new(language), device, phones);
+            (words.words, words.number, words.always)
+        };
+        let s = |text: &str| text.to_string();
+        // One phone shares its calls: its number known changes nothing.
+        let one = phones_of("desk", false, &[("phone-a", "A12", "+33199001234")], &["phone-a"]);
+        assert_eq!(said("en", "phone-a", &one), (s("your phone"), false, false));
+        let on_it = phones_of("phone-a", true, &[("phone-a", "A12", "+33199001234")], &["phone-a"]);
+        assert_eq!(said("en", "phone-a", &on_it), (String::new(), false, false), "this phone's own: called at");
+        let none_known = phones_of("desk", false, &[], &[]);
+        assert_eq!(said("en", "phone-a", &none_known), (s("your phone"), false, false));
+        // Two phones, both numbers known: each by its number, on a computer and on each phone.
+        let known = [("phone-a", "A12", "+33199001234"), ("phone-b", "B7", "+33639981234")];
+        for here in ["desk", "phone-a", "phone-b"] {
+            let phones = phones_of(here, here != "desk", &known, &["phone-a", "phone-b"]);
+            assert_eq!(said("en", "phone-a", &phones), (s("01 99 00 12 34"), true, true), "{here}");
+            assert_eq!(said("en", "phone-b", &phones), (s("06 39 98 12 34"), true, true), "{here}");
+            assert_eq!(said("fr", "phone-a", &phones), (s("le 01 99 00 12 34"), true, true), "{here}");
+        }
+        // Two phones, no number known: by name; this device's own, "this phone"; nameless, "your phone".
+        let unknown = [("phone-a", "A12", ""), ("phone-b", "", "")];
+        let on_a = phones_of("phone-a", true, &unknown, &["phone-a", "phone-b"]);
+        assert_eq!(said("en", "phone-a", &on_a), (s("this phone"), false, true));
+        assert_eq!(said("fr", "phone-a", &on_a), (s("ce téléphone"), false, true));
+        assert_eq!(said("en", "phone-b", &on_a), (s("your other phone"), false, true));
+        let desk = phones_of("desk", false, &unknown, &["phone-a", "phone-b"]);
+        assert_eq!(said("en", "phone-a", &desk), (s("your phone (A12)"), false, true));
+        assert_eq!(said("en", "phone-b", &desk), (s("your phone"), false, true));
+        // A phone whose calls are listed but which is no longer among your devices: none known, never guessed.
+        assert_eq!(said("en", "phone-gone", &desk), (s("your phone"), false, true));
+        // A name with markup in it: as written.
+        let marked = phones_of("desk", false, &[("phone-a", "<b>A12</b> & co", ""), ("phone-b", "B7", "")], &["phone-a", "phone-b"]);
+        assert_eq!(said("en", "phone-a", &marked), (s("your phone (<b>A12</b> & co)"), false, true));
+        // Another country's number, as that country writes it.
+        let london = Phones { region: phones::region_named("GB"), ..phones_of("desk", false, &[("phone-a", "", "+442079460018"), ("phone-b", "", "")], &["phone-a", "phone-b"]) };
+        assert_eq!(said("en", "phone-a", &london).0, "02079460018");
+        // The phones whose calls are listed: each with a call in a log or a history.
+        let held = [call_on("phone-a", 1, "+33199001234", "stranger", "sleep", "matrix", false)];
+        let history = [Logged { device: "phone-b".into(), ..Logged::default() }];
+        assert_eq!(calling(&held, &history), ["phone-a".to_string(), "phone-b".to_string()].into());
+        assert_eq!(calling(&held, &[]).len(), 1);
+    }
+
+    /// What Android gives of a phone's own number, kept for its entry: none
+    /// without the permissions, with no SIM or none that carries a number
+    /// (the entry keeps what it said); one SIM, or every SIM the same, its
+    /// number as Sioul keys it; two SIMs with two numbers, or one unknown,
+    /// "" (no number: never one of them guessed); a number that is no whole
+    /// one counts as none.
+    #[test]
+    fn a_phone_s_own_number_from_what_android_gives() {
+        let s = |list: &[&str]| list.iter().map(|n| (*n).to_string()).collect::<Vec<_>>();
+        assert_eq!(own_number(false, &s(&["+33199001234"]), fr()), None, "not readable: nothing");
+        assert_eq!(own_number(true, &[], fr()), None, "no SIM: nothing");
+        assert_eq!(own_number(true, &s(&[""]), fr()), None, "a SIM that carries no number: nothing");
+        assert_eq!(own_number(true, &s(&["", " "]), fr()), None);
+        assert_eq!(own_number(true, &s(&["+33199001234"]), fr()), Some("+33199001234".into()));
+        assert_eq!(own_number(true, &s(&["01 99 00 12 34"]), fr()), Some("+33199001234".into()), "as the region reads it");
+        assert_eq!(own_number(true, &s(&["+33199001234", "0199001234"]), fr()), Some("+33199001234".into()), "two SIMs, one number");
+        assert_eq!(own_number(true, &s(&["+33199001234", "+33639981234"]), fr()), Some(String::new()), "two numbers: none");
+        assert_eq!(own_number(true, &s(&["+33199001234", ""]), fr()), Some(String::new()), "one SIM's number unknown: none");
+        assert_eq!(own_number(true, &s(&["112"]), fr()), None, "no whole number");
+        assert_eq!(own_number(true, &s(&["1-555-SIOUL"]), fr()), None);
+    }
+
+    /// Two phones share their calls: every line of every list says the phone
+    /// it came to, by its number when known ("called you on 01 99 00 12 34",
+    /// "on 01 99 00 12 34"), else by its name, this device's own included
+    /// ("this phone"): the Porch's lines and rows, the phone's home card (the
+    /// lines' text), the Porch's rows of the histories and a person's sheet,
+    /// in English and in French.
+    #[test]
+    fn every_list_says_the_phone_among_several() {
+        let now = at("2026-10-07T10:30[Europe/Paris]");
+        let calls = vec![
+            call_on("phone-a", ms("2026-10-07T06:10[Europe/Paris]"), "+262639980002", "neutral", "sleep", "matrix", false),
+            call_on("phone-b", ms("2026-10-07T06:20[Europe/Paris]"), "+262639980002", "neutral", "sleep", "matrix", false),
+        ];
+        let keys: BTreeSet<String> = ["+262639980002".to_string()].into();
+        let name_of = |key: &str| (key == "+262639980002").then(|| "Noa".to_string());
+        let all = |_: &Held| true;
+        let known = [("phone-a", "A12", "+33199001234"), ("phone-b", "B7", "")];
+        let both = ["phone-a", "phone-b"];
+        let history_call = |device: &str| {
+            let logged = Logged { device: device.into(), ..Logged::of(&HistoryRow { at: ms("2026-10-07T09:12[Europe/Paris]"), seconds: 0, kind: 3, number: "04 65 71 63 25".into(), presentation: 1 }, fr()).unwrap() };
+            Call::of(&logged, None, crate::notices::State::default())
+        };
+        for (language, here, a_text, a_row, b_text, b_row, a_sheet, b_sheet, missed) in [
+            (
+                "en",
+                "desk",
+                "While you slept, Noa called you on 01 99 00 12 34 at 06:10.",
+                "While you slept, on 01 99 00 12 34",
+                "While you slept, Noa called your phone (B7) at 06:20.",
+                "While you slept, on your phone (B7)",
+                "Today at 06:10, while you slept: declined on 01 99 00 12 34, sent to voicemail.",
+                "Today at 06:20, while you slept: declined on your phone (B7), sent to voicemail.",
+                "Missed call at 09:12, on 01 99 00 12 34",
+            ),
+            (
+                "en",
+                "phone-b",
+                "While you slept, Noa called you on 01 99 00 12 34 at 06:10.",
+                "While you slept, on 01 99 00 12 34",
+                "While you slept, Noa called this phone at 06:20.",
+                "While you slept, on this phone",
+                "Today at 06:10, while you slept: declined on 01 99 00 12 34, sent to voicemail.",
+                "Today at 06:20, while you slept: declined on this phone, sent to voicemail.",
+                "Missed call at 09:12, on 01 99 00 12 34",
+            ),
+            (
+                "fr",
+                "phone-a",
+                "Pendant votre sommeil, Noa vous a appelé sur le 01 99 00 12 34 à 06:10.",
+                "Pendant votre sommeil, sur le 01 99 00 12 34",
+                "Pendant votre sommeil, Noa a appelé votre téléphone (B7) à 06:20.",
+                "Pendant votre sommeil, sur votre téléphone (B7)",
+                "Aujourd’hui à 06:10, pendant votre sommeil\u{202f}: refusé sur le 01 99 00 12 34, envoyé sur votre messagerie.",
+                "Aujourd’hui à 06:20, pendant votre sommeil\u{202f}: refusé sur votre téléphone (B7), envoyé sur votre messagerie.",
+                "Appel manqué à 09:12, sur le 01 99 00 12 34",
+            ),
+        ] {
+            let tr = Translator::new(language);
+            let phones = phones_of(here, here != "desk", &known, &both);
+            let words = |device: &str| phone_words(&tr, device, &phones);
+            let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &name_of, shows: &all, phone: &words };
+            let listed = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
+            let said: Vec<(&str, &str)> = listed.iter().map(|line| (line.text.as_str(), line.what.as_str())).collect();
+            assert_eq!(said, [(a_text, a_row), (b_text, b_row)], "{language} on {here}");
+            assert_eq!(history(&calls, &keys, &l), [b_sheet, a_sheet], "{language} on {here}");
+            assert_eq!(history_lines(&[history_call("phone-a")], 90, &l)[0].what, missed, "{language} on {here}");
+        }
+        // One of the two phones alone shares its calls: nothing more than before, its number known or not.
+        let tr = Translator::new("en");
+        let phones = phones_of("desk", false, &known, &["phone-a"]);
+        let words = |device: &str| phone_words(&tr, device, &phones);
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &name_of, shows: &all, phone: &words };
+        let alone = &calls[..1];
+        let listed = lines(alone, &Seen::default(), &BTreeMap::new(), &l);
+        assert_eq!((listed[0].text.as_str(), listed[0].what.as_str()), ("While you slept, Noa called your phone (A12) at 06:10.", "While you slept, on your phone (A12)"), "two phones among the devices: by name, as before");
+        assert_eq!(history(alone, &keys, &l), ["Today at 06:10, while you slept: declined, sent to voicemail."]);
+        assert_eq!(history_lines(&[history_call("phone-a")], 90, &l)[0].what, "Missed call at 09:12, on your phone (A12)");
+        let phones = phones_of("phone-a", true, &known[..1], &["phone-a"]);
+        let words = |device: &str| phone_words(&tr, device, &phones);
+        let l = Lister { phone: &words, ..l };
+        let listed = lines(alone, &Seen::default(), &BTreeMap::new(), &l);
+        assert_eq!((listed[0].text.as_str(), listed[0].what.as_str()), ("While you slept, Noa called at 06:10.", "While you slept"), "this phone's own, alone: called at");
+        assert_eq!(history_lines(&[history_call("phone-a")], 90, &l)[0].what, "Missed call at 09:12");
     }
 
     /// Java's calls copied into this phone's own log once, whoever copies;
@@ -3555,7 +3867,7 @@ mod tests {
         let tr = Translator::new("en");
         let name_of = |_: &str| None;
         let shows = |_: &Held| true;
-        let phone = |_: &str| String::new();
+        let phone = |_: &str| PhoneWords::default();
         let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &name_of, shows: &shows, phone: &phone };
         let declined = |time: &str, key: &str, why: &str| Held { why: why.into(), ..held(ms(&format!("2026-10-07T{time}[Europe/Paris]")), key, "stranger", "work") };
         let calls = vec![declined("09:00", "+33261911234", "automated"), declined("09:10", "+33353011234", "impossible"), declined("09:20", "+33536491234", "unverified"), declined("09:30", "+33199005555", "screening"), declined("09:40", "", "screening")];
@@ -3603,7 +3915,7 @@ mod tests {
     fn the_snapshot_and_the_plan_are_said_with_their_dates() {
         let name_of = |_: &str| None;
         let shows = |_: &Held| true;
-        let phone = |_: &str| String::new();
+        let phone = |_: &str| PhoneWords::default();
         let declined = |key: &str, why: &str| Held { why: why.into(), ..held(ms("2026-10-20T09:00[Europe/Paris]"), key, "stranger", "work") };
         let calls = vec![declined("+33353011234", "screening"), declined("+33899123456", "impossible"), declined("+33261911234", "automated")];
         let now = at("2026-10-20T10:00[Europe/Paris]");

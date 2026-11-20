@@ -11456,6 +11456,75 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A phone's number (`[device."<id>"] number`, `device_said::set_number`)
+    /// travels with the settings, one entry of its own, as the phone's name
+    /// does: said on the desk while the phone renames itself, both stay;
+    /// written on both before either hears the other, the later holds,
+    /// whole, on both; kept through the other fields' writers there; taken
+    /// out on one, gone on both, the name staying. The sharing's TOML is the
+    /// same code as Sioul 0.0.12's (it names no table and writes each field by
+    /// its path), so a device on that release carries it and keeps it too;
+    /// 0.0.12's own reader and writers are held in sioul-core
+    /// (`device_said::tests::an_older_sioul_reads_and_keeps_a_phone_s_number`).
+    #[test]
+    fn a_phone_s_number_travels_as_its_name_does() {
+        use sioul_core::device_said::{name_of, number_of, set_area, set_name, set_number};
+        let fr = sioul_core::phones::region_named("FR");
+        let base = scratch("devices-number");
+        let folder = base.join("Nextcloud").join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_config, phone_config) = (desk.path("config/config.toml"), phone.path("config/config.toml"));
+        let read = |computer: &Computer| Config::load(&computer.path("config/config.toml")).unwrap();
+        desk.write("config/config.toml", "language = \"en\"\n");
+        phone.write("config/config.toml", "language = \"en\"\n");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+
+        // Said apart: the phone's number on the desk, its name on the phone.
+        set_number(&desk_config, &phone.id, "01 99 00 12 34", fr).unwrap();
+        set_name(&phone_config, &phone.id, "Pocket").unwrap();
+        assert!(desk.exchange(&folder, &key, NOW + 3 * MINUTE).sent > 0);
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+        for computer in [&desk, &phone] {
+            let config = read(computer);
+            assert_eq!((number_of(&config, &phone.id), name_of(&config, &phone.id)), (Some("+33199001234"), Some("Pocket")), "{}", computer.read("config/config.toml"));
+        }
+        assert_eq!(desk.exchange(&folder, &key, NOW + 6 * MINUTE).sent, 0, "nothing changed: nothing goes out");
+
+        // Written on both before either hears the other: the later holds, on both, whole.
+        set_number(&desk_config, &phone.id, "06 39 98 12 34", fr).unwrap();
+        desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+        set_number(&phone_config, &phone.id, "+33 1 99 00 56 78", fr).unwrap();
+        phone.exchange(&folder, &key, NOW + 8 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 9 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 10 * MINUTE);
+        for computer in [&desk, &phone] {
+            assert_eq!(number_of(&read(computer), &phone.id), Some("+33199005678"), "said later on the phone: {}", computer.read("config/config.toml"));
+        }
+        // The other fields written on the desk keep it there and on the phone.
+        set_area(&desk_config, &phone.id, "admin+leisure").unwrap();
+        set_name(&desk_config, &phone.id, "").unwrap();
+        desk.exchange(&folder, &key, NOW + 11 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 12 * MINUTE);
+        for computer in [&desk, &phone] {
+            let config = read(computer);
+            assert_eq!((number_of(&config, &phone.id), name_of(&config, &phone.id)), (Some("+33199005678"), None), "{}", computer.read("config/config.toml"));
+        }
+        // Taken out on the phone: gone on both; what it is for stays.
+        set_number(&phone_config, &phone.id, "", fr).unwrap();
+        phone.exchange(&folder, &key, NOW + 13 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 14 * MINUTE);
+        for computer in [&desk, &phone] {
+            let config = read(computer);
+            assert_eq!(number_of(&config, &phone.id), None, "{}", computer.read("config/config.toml"));
+            assert_eq!(sioul_core::device_said::said_area(&config, &phone.id), Some(sioul_core::areas::Area::PERSONAL));
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// The cells you changed of a device's line (`[device."<id>".at]`,
     /// `device_said::set_cell`) travel with the settings, one entry per
     /// cell: two cells of one device changed on two devices both stay, with

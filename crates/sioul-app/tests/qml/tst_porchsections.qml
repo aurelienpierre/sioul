@@ -324,6 +324,22 @@ Item {
             compare(unreached.more.filter(m => m.id === "why").length, 0, "no reason to give")
         }
 
+        // Two phones share their calls: each call's row says the phone it came to, by its number
+        // ("on 01 99 00 12 34") or by its name (`calls::phone_words`, as `calls::view` gives the
+        // row); a phone's name is outside words, drawn as plain text, its markup shown as written.
+        function test_a_call_s_row_says_the_phone_it_came_to_in_plain_text() {
+            const on = (row, what) => Object.assign({}, row, { notice: Object.assign({}, row.notice, { what: what }) })
+            mock.callLines = [on(root.call("missed", "Noa Linden"), "Missed call at 09:30, on 01 99 00 12 34"), on(root.call("missed", "Ada"), "Missed call at 09:40, on your phone (<b>B7</b>)")]
+            mock.porch = root.porchWith([root.message(1, "The plan")], [])
+            porch.porchText = mock.porch
+            wait(50)
+            for (const what of ["Missed call at 09:30, on 01 99 00 12 34", "Missed call at 09:40, on your phone (<b>B7</b>)"]) {
+                const labels = all(porch, i => i.visible && i.text === what && i.textFormat !== undefined)
+                verify(labels.length > 0, "said in its row: " + what)
+                verify(labels.every(l => l.textFormat === Text.PlainText), "drawn as plain text: " + what)
+            }
+        }
+
         // The agenda's conflict waiting for an answer: Move mine answers it and opens your own event at
         // that time; the row goes at once, said Done on every device; Keep both is in its menu.
         function test_a_conflict_is_answered_from_its_row() {

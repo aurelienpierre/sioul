@@ -135,6 +135,7 @@ Your notes folder travels by its own sync, not by Sioul, unless you switch it on
 **Settings ▸ Devices** lists every device you share with, this one first. In a wide window their fields line up as a table; on a phone each device is a card. For each device:
 
 - **Its name**: the one you give it with **Rename…**, such as "Work laptop", shown on each device your settings travel to. Without one, it has the name its system gives it: a computer's name, "The phone" with its model. Emptying the field puts that name back.
+- **This phone's number**, on a phone's card: the one Android gives it with the permissions Sioul already holds for your texts, else none until you give one; **Give its number…** or **Change the number…**, from any device, typed as you write it. It travels with your settings; emptying it brings Android's back. The lists of calls say it when more than one phone shares its calls ([Several phones](calls.md#several-phones)).
 - **What it is**: a phone, a tablet or a computer. This device's own can be changed there, with **What this device is**, as in [Settings](settings.md#display).
 - **Now**: "In use now.", "Closed since 14:02.", or "Silent since Tue 3 Nov 09:15: it may have stopped without closing." It also says a device you said is off, one silent for a week, one on an older Sioul, and one whose clock runs ahead.
 - **Last opened** and **Last shared**: when Sioul was last opened there, and when it last read the other devices and wrote its own changes.

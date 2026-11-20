@@ -779,7 +779,7 @@ pub struct Lister<'a> {
     /// Whether this line's sender may reach you now (`reaches_now`).
     pub shows: &'a dyn Fn(&Line) -> bool,
     /// The phone a line came from, as this device says it: "" for this
-    /// device's own, "your phone", "your phone (Moss)" (`calls::phone_words`).
+    /// device's own, "your phone", "your phone (Moss)" (`calls::device_words`).
     pub phone: &'a dyn Fn(&str) -> String,
     /// The part of the day a moment (ms) fell in: a column of the matrix ("work", "sleep"…); "" unknown.
     pub column: &'a dyn Fn(i64) -> String,

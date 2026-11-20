@@ -75,9 +75,15 @@ The calls your phone declined also wait on the Porch of your computers, at the s
 
 A person's calls of the last month, rang or declined, are on their sheet: Contacts ▸ their card ▸ **How … reaches you**, or **How they reach you…** on a call's line. Each device keeps a call a month, then takes it out.
 
+### Several phones {#several-phones}
+
+When more than one phone shares its calls with your devices (a work phone and a phone of your own, each with a call in the last month), every line of every list of calls says which phone the call came to: on the Porch, on the phone's home card and on a person's sheet, the lines of the phone you hold included. By its number when it is known: "While you slept, Noa called you on 01 99 00 12 34 at 09:30.", "Missed call at 09:30, on 01 99 00 12 34"; else by its name, "your phone (Moss)", or "this phone" on the phone itself. With a single phone, the lines say no more than before.
+
+Each phone's number is on its card in **Settings ▸ Devices**, under **This phone's number**. Sioul fills it in on the phone itself when Android gives it with the permissions Sioul already holds for your texts (reading them, and your SIMs' names): it asks nothing more. Many SIMs carry no number; then nothing is filled in, and the lines name the phone. What Sioul filled in counts until you change it: **Change the number…** (**Give its number…** while none is known), from any of your devices, typed as you write it; it travels with your settings, sealed. Emptied, the one Android gives comes back, when it gives one. A phone with two SIMs that do not give one number gets none: Android does not tell Sioul which SIM a call came on, so its lines name it by its name.
+
 ## What Sioul never does {#what-sioul-never-does}
 
-It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on Android](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
+It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on; so does a phone's own number, with what each device says of itself and with your settings ([Several phones](#several-phones)). Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on Android](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
 
 ## Why it works this way {#why-it-works-this-way}
 

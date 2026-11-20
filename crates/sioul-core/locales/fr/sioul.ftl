@@ -6785,6 +6785,10 @@ calls-line-more = { $context }, { $who } a appelé { $count } fois, la dernière
 calls-line-once-on = { $context }, { $who } a appelé { $phone } à { $time }.
 calls-line-twice-on = { $context }, { $who } a appelé { $phone } deux fois, à { $first } et à { $second }.
 calls-line-more-on = { $context }, { $who } a appelé { $phone } { $count } fois, la dernière à { $time }.
+# Les mêmes quand plus d’un téléphone partage ses appels et que le numéro de celui-ci est connu : `$phone` est `calls-phone-number`.
+calls-line-once-number = { $context }, { $who } vous a appelé sur { $phone } à { $time }.
+calls-line-twice-number = { $context }, { $who } vous a appelé sur { $phone } deux fois, à { $first } et à { $second }.
+calls-line-more-number = { $context }, { $who } vous a appelé sur { $phone } { $count } fois, la dernière à { $time }.
 # A declined call's row on the Porch (`calls::Line::what`): the time of day it was, on which phone, how many times.
 calls-row = { $context }
 calls-row-on = { $context }, sur { $phone }
@@ -6796,6 +6800,8 @@ calls-phone-yours = votre téléphone
 calls-phone-other = votre autre téléphone
 calls-phone-named = votre téléphone ({ $name })
 calls-phone-this = { device-this }
+# Un téléphone par son propre numéro, tel que la région l’écrit (« sur le 01 99 00 12 34 »), quand plus d’un téléphone partage ses appels.
+calls-phone-number = le { $number }
 calls-again-rang = Le même numéro a rappelé à { $time }, et cet appel a sonné.
 calls-day-today = aujourd’hui
 calls-history-title = Ses appels depuis un mois
@@ -9874,6 +9880,16 @@ devices-rename = Renommer…
 devices-rename-help = Un nom à vous pour cet appareil, qui voyage avec vos réglages. Laissé vide, le nom que lui donne son système revient.
 devices-rename-field = Le nom que vous lui donnez
 devices-system-name = Son système l’appelle { $system }.
+# Le numéro d’un téléphone sur sa carte (`device_said::set_number`, le `number` de l’entrée de l’appareil) : les listes d’appels le disent.
+devices-number = Le numéro de ce téléphone
+devices-number-unknown = Inconnu : les listes d’appels nomment ce téléphone.
+devices-number-android = Tel qu’Android le donne.
+devices-number-given-android = Android donne le { $number }.
+devices-number-give = Donner son numéro…
+devices-number-change = Changer le numéro…
+devices-number-help = Quand plus d’un téléphone partage ses appels, chaque liste d’appels dit par ce numéro le téléphone où chaque appel est arrivé. Il voyage avec vos réglages. Laissé vide, celui que donne Android revient, s’il en donne un.
+devices-number-field = Le numéro de ce téléphone
+devices-number-refused = { $said } : pas un numéro de téléphone entier. Rien n’a changé.
 devices-plain-here = { $name } (cet appareil)
 devices-plain-system = { $name } (appelé { $system } par son système)
 devices-plain-here-system = { $name } (cet appareil, appelé { $system } par son système)
