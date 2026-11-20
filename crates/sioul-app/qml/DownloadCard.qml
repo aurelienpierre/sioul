@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The question a file a site offers asks, over the site (docs/sites.md,
-// "Downloads"): nothing is saved before it is answered. Headed in two
-// sections. The file: its name in a field that can be changed (one plain
-// file name, as Rust made it), its size when the site says it and the host
-// it comes from, and a line of caution for a program. Where: the five places,
-// one chosen (the one chosen last for this site first), each with a line
-// saying where it goes or why it cannot take this file. Save and Cancel;
-// Escape and a phone's back key are Cancel. What the card shows is
-// `downloadOffer`'s (downloads::OfferView); what is pressed goes to its page
-// (SiteDownloads.qml), which starts the download, or asks the folder first
-// in the system's "Save as" window. Words from the site (the name, the host)
-// are drawn as plain text, already cut short by Rust.
+// The question a file a site offers asks, over the site or over the pop-up
+// that offered it (docs/sites.md, "Downloads"). Headed in two sections. The
+// file: its name in a field that can be changed (one plain file name, as
+// Rust made it), its size when the site says it and the host it comes from,
+// one calm line saying it waits in Sioul's own folder until a place is
+// chosen and that Cancel deletes it, and a line of caution for a program.
+// Where: the five places, one chosen (the one chosen last for this site
+// first), each with a line saying where it goes or why it cannot take this
+// file; they follow the name typed. A site that had a file refused, or
+// offers several, gets a flat link to refuse every file from it until it is
+// closed. Save and Cancel; Escape and a phone's back key are Cancel. By
+// keyboard: Tab through it; the arrows move the choice among the places;
+// Enter on a place chooses it and saves; Enter on Cancel cancels. What the
+// card shows is `downloadOffer`'s (downloads::OfferView); what is pressed
+// goes to its page (SiteDownloads.qml). Words from the site (the name, the
+// host) are drawn as plain text, already cut short by Rust; a problem is
+// announced to a screen reader.
 
 pragma ComponentBehavior: Bound
 
@@ -28,7 +33,9 @@ SafeDialog {
     // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // What `downloadOffer` says of the file.
-    property var offer: ({ name: "", host: "", from: "", program: false, caution: "", places: [], first: "downloads", folder: "" })
+    property var offer: ({ name: "", host: "", from: "", waits: "", program: false, caution: "", places: [], first: "downloads", folder: "" })
+    // Whether the link to refuse every file from this site shows.
+    property bool canRefuseSite: false
     // The place chosen here: "downloads", "folder", "notes", "papers", "letters".
     property string place: "downloads"
     // Why the file could not start, from its page; "" none.
@@ -40,25 +47,69 @@ SafeDialog {
     signal saved(string place, string name)
     // Cancel, Escape, a phone's back key: nothing saved.
     signal cancelled()
+    // "Refuse every file from this site".
+    signal siteRefused()
+    // The name in the field changed, by you.
+    signal renamed(string name)
 
-    // The question for one file.
-    function ask(offer) {
+    // The question for one file; `problem`, why its last place refused it ("" none).
+    function ask(offer, problem, canRefuseSite) {
         card.offer = offer
         card.place = offer.first || "downloads"
-        card.problem = ""
         card.answered = false
+        card.canRefuseSite = canRefuseSite === true
         nameField.text = offer.name || ""
         card.open()
         nameField.forceActiveFocus()
         // Its name selected without its extension, as a "Save as" window does.
         const dot = nameField.text.lastIndexOf(".")
         nameField.select(0, dot > 0 ? dot : nameField.text.length)
+        card.say(problem || "")
     }
 
-    // Save: a name is needed; the page closes the card once the file starts.
+    // What the places can take for the name typed: the choice kept while it can take it.
+    function update(offer) {
+        const place = card.place
+        card.offer = Object.assign({}, card.offer, { program: offer.program, caution: offer.caution, places: offer.places })
+        const still = (offer.places || []).some(p => p.id === place && p.enabled)
+        card.place = still ? place : "downloads"
+    }
+
+    // The keys back in the card, its name's field first (the system's "Save as" window closed).
+    function refocus() {
+        card.forceActiveFocus()
+        nameField.forceActiveFocus()
+    }
+
+    // A problem shown under the places, and said to a screen reader.
+    function say(problem) {
+        card.problem = problem
+        if (problem !== "" && typeof problemLine.Accessible.announce === "function")
+            problemLine.Accessible.announce(problem)
+    }
+
+    // The arrows: the next place that can take the file, chosen and focused.
+    function moveChoice(step) {
+        const places = card.offer.places || []
+        let at = places.findIndex(p => p.id === card.place)
+        for (let i = 0; i < places.length; ++i) {
+            at = (at + step + places.length) % places.length
+            if (places[at].enabled) {
+                card.place = places[at].id
+                const row = placeRows.itemAt(at)
+                if (row) {
+                    row.radio.checked = true
+                    row.radio.forceActiveFocus()
+                }
+                return
+            }
+        }
+    }
+
+    // Save: a name is needed; the page closes the card once the place is taken.
     function save() {
         if (nameField.text.trim() === "") {
-            card.problem = card.sioul.text("download-no-name")
+            card.say(card.sioul.text("download-no-name"))
             return
         }
         card.problem = ""
@@ -129,12 +180,30 @@ SafeDialog {
                     selectByMouse: true
                     Accessible.name: card.sioul.text("download-name")
                     onAccepted: card.save()
+                    onTextEdited: renaming.restart()
+                }
+                // The places asked again a moment after the name stops changing.
+                Timer {
+                    id: renaming
+
+                    interval: 300
+                    onTriggered: card.renamed(nameField.text)
                 }
                 Label {
                     objectName: "downloadFrom"
                     visible: (card.offer.from || "") !== ""
                     Layout.fillWidth: true
                     text: card.offer.from || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: card.theme.muted
+                }
+                // Where it waits meanwhile, and what Cancel does.
+                Label {
+                    objectName: "downloadWaits"
+                    visible: (card.offer.waits || "") !== ""
+                    Layout.fillWidth: true
+                    text: card.offer.waits || ""
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: card.theme.muted
@@ -170,12 +239,15 @@ SafeDialog {
                     id: places
                 }
                 Repeater {
+                    id: placeRows
+
                     model: card.offer.places || []
 
                     delegate: ColumnLayout {
                         id: choice
 
                         required property var modelData
+                        property alias radio: radio
 
                         Layout.fillWidth: true
                         spacing: 0
@@ -195,8 +267,18 @@ SafeDialog {
                                 if (radio.checked)
                                     card.place = choice.modelData.id
                             }
-                            Keys.onReturnPressed: card.save()
-                            Keys.onEnterPressed: card.save()
+                            // Enter on a place chooses it, then saves; the arrows move the choice.
+                            Keys.onReturnPressed: choice.chooseAndSave()
+                            Keys.onEnterPressed: choice.chooseAndSave()
+                            Keys.onUpPressed: card.moveChoice(-1)
+                            Keys.onDownPressed: card.moveChoice(1)
+                            Keys.onLeftPressed: card.moveChoice(-1)
+                            Keys.onRightPressed: card.moveChoice(1)
+                        }
+                        function chooseAndSave() {
+                            card.place = choice.modelData.id
+                            radio.checked = true
+                            card.save()
                         }
                         Label {
                             Layout.fillWidth: true
@@ -214,6 +296,8 @@ SafeDialog {
             }
 
             Label {
+                id: problemLine
+
                 objectName: "downloadProblem"
                 visible: card.problem !== ""
                 Layout.fillWidth: true
@@ -221,6 +305,35 @@ SafeDialog {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: card.theme.warm
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: card.problem
+            }
+
+            // A site that keeps offering files: refused as a whole until it is closed or reloaded.
+            Button {
+                id: refuseLink
+
+                objectName: "downloadRefuseSite"
+                visible: card.canRefuseSite
+                Layout.fillWidth: true
+                flat: true
+                text: card.sioul.text("download-refuse-site")
+                Accessible.name: card.sioul.text("download-refuse-site")
+                contentItem: Label {
+                    text: card.sioul.text("download-refuse-site")
+                    wrapMode: Text.Wrap
+                    color: card.theme.accent
+                    font.underline: true
+                    // Its focus seen by keyboard, as a flat link has no frame.
+                    font.bold: refuseLink.visualFocus
+                }
+                onClicked: {
+                    if (card.answered)
+                        return
+                    card.answered = true
+                    card.close()
+                    card.siteRefused()
+                }
             }
         }
     }
@@ -241,6 +354,8 @@ SafeDialog {
                 objectName: "downloadCancel"
                 text: card.sioul.text("ui-cancel")
                 onClicked: card.cancel()
+                Keys.onReturnPressed: card.cancel()
+                Keys.onEnterPressed: card.cancel()
             }
             Button {
                 objectName: "downloadSave"

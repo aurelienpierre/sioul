@@ -537,15 +537,10 @@ SioulWindow {
         }
 
 
-        // An attachment kept in the wallet, or a file a site offered filed there: what it is, asked.
+        // An attachment kept in the wallet: what it is, asked.
         function onPaperKept(file, title, kind) {
             window.page = 13
             papersPage.startFrom(file, title, kind)
-        }
-
-        // A file a site offered, filed where scans arrive: its letter, brought into view once read.
-        function onLetterFiled(id) {
-            window.openLetter(id)
         }
 
         // A task done: "How was it?" beside the line that says so, gone with it.
@@ -614,17 +609,11 @@ SioulWindow {
         Qt.openUrlExternally(url)
     }
 
-    // A file of the papers' folder (a file a site offered, filed in Papers): the paper
-    // that holds it once its form was saved, else its form again, the file attached.
-    function openPaperFile(path) {
-        const found = JSON.parse(sioul.paperOfFile(path) || "{}")
-        cardHost.leave()
-        window.page = 13
-        if (found.id)
-            papersPage.open(found.id)
-        else if (found.file)
-            papersPage.startFrom(found.file, found.title, found.kind)
+    // What a download's notice opens (`sioul:download/<id>`), as this session kept it (downloads.rs).
+    function downloadOpened(address) {
+        return sioul.downloadOpened(address)
     }
+
 
     // The tray's menu (Tray.qml): the work day ("work") or the whole day
     // ("night") closed at any hour, on its sheet in the window.
@@ -4907,7 +4896,9 @@ SioulWindow {
             // phone's with SIOUL_GRAB_PHONE): a page of the bank's own address, made
             // here, offers a statement (no site reached), its card over the site;
             // kept in Downloads, the status line saying so; then a program, its card
-            // with its caution, cancelled (docs/sites.md, "Downloads").
+            // with its caution, cancelled; then the bank's next file, whose card can
+            // refuse the site as a whole; then the status line of a file that did not
+            // come whole (docs/sites.md, "Downloads").
             readonly property var downloadSteps: [
                 () => {
                     if (!window.phoneGrab) {
@@ -4943,6 +4934,18 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.saveWindow("download-cancelled"),
+                () => grabber.offerFile(sioul.text("download-place-downloads") === "Téléchargements" ? "Relevé novembre 2026.pdf" : "Statement November 2026.pdf", "application/pdf", 175000),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("download-card-refuse"),
+                () => {
+                    const card = sitesPage.downloads.card
+                    if (card)
+                        card.cancel()
+                },
+                () => sioul.downloadFailed(JSON.stringify({ hold: "", held: "", name: sioul.text("download-place-downloads") === "Téléchargements" ? "Relevé décembre 2026.pdf" : "Statement December 2026.pdf", reason: 22 })),
+                () => {},
+                () => grabber.saveWindow("download-failed"),
                 () => window.close()
             ]
             // A file offered by a page made in the open site's view, at the site's own

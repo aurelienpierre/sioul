@@ -133,7 +133,7 @@ pub(crate) fn view() -> String {
 }
 
 /// What the form gives back.
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct PaperEdit {
     #[serde(default)]
     kind: String,
@@ -163,26 +163,24 @@ struct PaperEdit {
 
 /// A paper saved: new when `id` is empty; returns what went wrong, else "".
 pub(crate) fn save(id: &str, edit: &str) -> String {
-    let edit: PaperEdit = match serde_json::from_str(edit) {
-        Ok(edit) => edit,
-        Err(e) => return e.to_string(),
-    };
-    let wallet = match wallet() {
-        Ok(wallet) => wallet,
-        Err(e) => return e,
-    };
+    match serde_json::from_str::<PaperEdit>(edit) {
+        Ok(edit) => save_edit(id, &edit).err().unwrap_or_default(),
+        Err(e) => e.to_string(),
+    }
+}
+
+/// A paper saved from its form's fields: its id, or what went wrong.
+fn save_edit(id: &str, edit: &PaperEdit) -> Result<String, String> {
+    let wallet = wallet()?;
     let title = edit.title.trim().to_string();
     if title.is_empty() {
-        return tr().text("papers-no-title", None);
+        return Err(tr().text("papers-no-title", None));
     }
     let date = |text: &str| -> Result<Option<jiff::civil::Date>, String> {
         let text = text.trim();
         if text.is_empty() { Ok(None) } else { text.parse().map(Some).map_err(|_| say("papers-bad-date", &[("date", text.to_string())])) }
     };
-    let (issued, until) = match (date(&edit.issued), date(&edit.until)) {
-        (Ok(issued), Ok(until)) => (issued, until),
-        (Err(e), _) | (_, Err(e)) => return e,
-    };
+    let (issued, until) = (date(&edit.issued)?, date(&edit.until)?);
     let kind = Kind::of(&edit.kind);
     let old = wallet.get(id).cloned().unwrap_or_default();
     // A file from elsewhere is copied into the wallet's folder: it travels with it.
@@ -195,12 +193,9 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
             wallet.docs.named(&path)
         } else if path.is_file() {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            match wallet.keep_file(&path, &name) {
-                Ok(kept) => kept,
-                Err(e) => return e,
-            }
+            wallet.keep_file(&path, &name)?
         } else {
-            return say("papers-no-file", &[("path", path.display().to_string())]);
+            return Err(say("papers-no-file", &[("path", path.display().to_string())]));
         }
     };
     // An end proposed from the issue when the kind's usual length is known and none was given.
@@ -235,11 +230,11 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         };
         wallet.put(paper)
     });
-    match (saved, &edit.for_persons) {
-        (Err(e), _) => e,
-        (Ok(id), Some(chosen)) => crate::persons::tie_paper(&id, chosen, &edit.texts).err().unwrap_or_default(),
-        (Ok(_), None) => String::new(),
+    let id = saved?;
+    if let Some(chosen) = &edit.for_persons {
+        crate::persons::tie_paper(&id, chosen, &edit.texts)?;
     }
+    Ok(id)
 }
 
 /// A paper taken out; its file stays where it is.
@@ -311,20 +306,16 @@ fn guessed(name: &str, subject: &str) -> (String, &'static str) {
     (title, kind.id())
 }
 
-/// A file of the papers' folder, as a notice opens it (`downloads`): the
-/// paper that holds it ({"id"}), once its form was saved; else what the
-/// form starts from again ({"file", "title", "kind"}); {} when it is no longer there.
-pub(crate) fn of_file(path: &str) -> String {
-    let path = crate::backend::local_path(path);
-    if let Ok(wallet) = wallet()
-        && let Some(paper) = wallet.papers.iter().find(|p| wallet.file_path(p).is_some_and(|f| f == path))
-    {
-        return serde_json::json!({ "id": paper.id }).to_string();
+/// A file a site offered, filed in Papers (`downloads`): kept in the
+/// wallet's folder, and a paper made at once for it, yours, with a title and
+/// a type guessed from its name (what Sioul guesses counts until you correct
+/// it). Never a program. Returns the file's path there and the paper's id.
+pub(crate) fn file_download(file: &Path, name: &str) -> Result<(String, String), String> {
+    if sioul_core::downloads::is_program(name, "") {
+        return Err(tr().text("download-papers-program", None));
     }
-    if !path.is_file() {
-        return "{}".into();
-    }
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let (title, kind) = guessed(&name, "");
-    serde_json::json!({ "file": path.display().to_string(), "title": title, "kind": kind }).to_string()
+    let (path, title, kind) = keep_checked(file, name, "")?;
+    let edit = PaperEdit { kind: kind.to_string(), title: if title.trim().is_empty() { name.to_string() } else { title }, file: path.clone(), for_persons: Some(vec![sioul_core::persons::ME.to_string()]), ..PaperEdit::default() };
+    let id = save_edit("", &edit)?;
+    Ok((path, id))
 }
