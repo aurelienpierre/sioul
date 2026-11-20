@@ -2468,7 +2468,7 @@ fn conflict_path(root: &Path, path: &str) -> String {
 }
 
 /// The folder new notes go into, in the notes folder: yours, else "notes".
-fn notes_folder() -> String {
+pub(crate) fn notes_folder() -> String {
     load_config().notes_folder.filter(|f| !f.trim().is_empty()).unwrap_or_else(|| NOTES_FOLDER.to_string())
 }
 

@@ -410,8 +410,9 @@ impl Wallet {
             Some((stem, extension)) => (stem.to_string(), format!(".{extension}")),
             None => (name.clone(), String::new()),
         };
-        let target = std::iter::once(folder.join(&name)).chain((2..1000).map(|n| folder.join(format!("{stem}-{n}{extension}")))).find(|p| !p.exists()).ok_or("no free name")?;
-        std::fs::copy(source, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+        // Whole, under a free name, never over a file: a copy cut short leaves nothing in the folder.
+        let names = |n: u32| if n <= 1 { name.clone() } else { format!("{stem}-{n}{extension}") };
+        let target = crate::filelock::place_new(source, &folder, &names, false).map_err(|e| format!("{}: {e}", folder.join(&name).display()))?;
         Ok(self.docs.named(&target))
     }
 

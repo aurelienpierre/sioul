@@ -135,7 +135,8 @@ SafeDialog {
                 Button {
                     visible: form.file !== ""
                     text: form.sioul.text("ui-open")
-                    onClicked: Qt.openUrlExternally(form.file.startsWith("file:") ? form.file : form.theme.fileUrl(form.file))
+                    // With the desktop's own application; a program never, its folder instead (main.qml, `openFile`).
+                    onClicked: form.window.openFile(form.file.startsWith("file:") ? form.file : form.theme.fileUrl(form.file))
                 }
                 Button {
                     text: form.sioul.text("papers-choose")

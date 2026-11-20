@@ -47,6 +47,17 @@ pub(crate) fn reader_hint() -> String {
     READER.lock().ok().and_then(|r| r.as_ref().map(|(_, said)| said.clone())).unwrap_or_default()
 }
 
+/// The id a scan's letter gets when it is read (`tick`), and the day it
+/// came: the day of its file's time, then a digest of its name, size and
+/// time (`source_of`). Known before the reading, so that a file a site
+/// offered, filed as a letter, opens its letter once read (`downloads`).
+pub(crate) fn letter_id(path: &Path) -> (String, jiff::civil::Date) {
+    let source = source_of(path);
+    let received = std::fs::metadata(path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|_| sioul_core::zone::now().date())).unwrap_or_else(|| sioul_core::zone::now().date());
+    let id = format!("{received}-{:08x}", source.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
+    (id, received)
+}
+
 fn source_of(path: &Path) -> String {
     let meta = std::fs::metadata(path).ok();
     let size = meta.as_ref().map_or(0, |m| m.len());
@@ -101,8 +112,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             if std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
                 continue;
             }
-            let received = std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|_| sioul_core::zone::now().date())).unwrap_or_else(|| sioul_core::zone::now().date());
-            let id = format!("{received}-{:08x}", source.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
+            let (id, received) = letter_id(&path);
             let work = sioul_core::config::cache_dir().join("ocr").join(&id);
             let mut letter = Letter { id: id.clone(), file: places.letters.named(&path), source, received: Some(received), status: "new".into(), ..Letter::default() };
             match sioul_sync::ocr::text_of(&path, &work, &looked.ocr.tesseract) {
@@ -623,19 +633,27 @@ pub(crate) fn folder() -> String {
     inbox.display().to_string()
 }
 
-/// A name free in `folder` for a file named `name`: itself, else "scan (2).pdf", "scan (3).pdf"…
-fn free_name(folder: &Path, name: &str) -> PathBuf {
-    let first = folder.join(name);
-    if !first.exists() {
-        return first;
+/// One scan copied into `inbox` under a name free there, whole: itself,
+/// else "scan (2).pdf", "scan (3).pdf"… (`filelock::place_new`: written
+/// beside under a hidden name, then named, never over a file, so that the
+/// reading never meets half a scan and a failure leaves nothing). Only the
+/// kinds read as scans (`SCANS`). Returns where it is.
+fn place_scan(source: &Path, inbox: &Path) -> Result<PathBuf, String> {
+    let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let readable = source.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()));
+    if !readable {
+        return Err(say("letters-add-not-scan", &[("name", name)]));
     }
-    let path = Path::new(name);
-    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let extension = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-    (2..)
-        .map(|n| folder.join(format!("{stem} ({n}){extension}")))
-        .find(|candidate| !candidate.exists())
-        .unwrap_or(first)
+    let names = |n: u32| sioul_core::downloads::numbered(&name, n, sioul_core::downloads::Numbering::Paren);
+    sioul_core::filelock::place_new(source, inbox, &names, false).map_err(|e| say("letters-add-failed", &[("name", name.clone()), ("detail", e.to_string())]))
+}
+
+/// One scan added to the folder scans arrive in (`place_scan`): each file
+/// `add` is given, and a file a site offered, filed as a letter received
+/// (`downloads`). Read at a coming minute, as a scanner's file is.
+pub(crate) fn add_one(source: &Path) -> Result<PathBuf, String> {
+    let Some(inbox) = inbox() else { return Err(tr().text("letters-no-folder", None)) };
+    place_scan(source, &inbox)
 }
 
 /// Scans chosen on this computer (a JSON array of `file://` addresses, or of
@@ -651,16 +669,9 @@ pub(crate) fn add(files: &str) -> String {
     let mut copied = 0usize;
     let mut problems: Vec<String> = Vec::new();
     for url in chosen.iter().filter(|u| !u.trim().is_empty()) {
-        let source = crate::backend::local_path(url);
-        let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let readable = source.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()));
-        if !readable {
-            problems.push(say("letters-add-not-scan", &[("name", name)]));
-            continue;
-        }
-        match std::fs::copy(&source, free_name(&inbox, &name)) {
+        match place_scan(&crate::backend::local_path(url), &inbox) {
             Ok(_) => copied += 1,
-            Err(e) => problems.push(say("letters-add-failed", &[("name", name), ("detail", e.to_string())])),
+            Err(e) => problems.push(e),
         }
     }
     let mut said: Vec<String> = Vec::new();
@@ -673,7 +684,7 @@ pub(crate) fn add(files: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::free_name;
+    use super::place_scan;
     use sioul_core::storage::Places;
 
     /// Scans linked where they are (the Letters page's "Link scans…"): kept
@@ -741,17 +752,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A scan added twice keeps both, under free names; a file that is no
+    /// scan is refused; nothing half-written or hidden is left in the folder.
     #[test]
     fn a_scan_added_twice_keeps_both() {
-        let folder = std::env::temp_dir().join(format!("sioul-letters-free-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).unwrap();
-        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan.pdf"));
-        std::fs::write(folder.join("scan.pdf"), b"%PDF").unwrap();
-        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan (2).pdf"));
-        std::fs::write(folder.join("scan (2).pdf"), b"%PDF").unwrap();
-        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan (3).pdf"));
-        assert_eq!(free_name(&folder, "photo"), folder.join("photo"));
-        std::fs::remove_dir_all(&folder).unwrap();
+        let base = std::env::temp_dir().join(format!("sioul-letters-free-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (folder, chosen) = (base.join("inbox"), base.join("chosen"));
+        std::fs::create_dir_all(&chosen).unwrap();
+        let scan = chosen.join("scan.pdf");
+        std::fs::write(&scan, b"%PDF").unwrap();
+        assert_eq!(place_scan(&scan, &folder).unwrap(), folder.join("scan.pdf"));
+        assert_eq!(place_scan(&scan, &folder).unwrap(), folder.join("scan (2).pdf"));
+        assert_eq!(place_scan(&scan, &folder).unwrap(), folder.join("scan (3).pdf"));
+        assert!(scan.exists(), "the chosen file stays where it was");
+        std::fs::write(chosen.join("photo"), b"x").unwrap();
+        assert!(place_scan(&chosen.join("photo"), &folder).is_err(), "no scan's kind");
+        let mut names: Vec<String> = std::fs::read_dir(&folder).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+        names.sort();
+        assert_eq!(names, ["scan (2).pdf", "scan (3).pdf", "scan.pdf"]);
+        std::fs::remove_dir_all(&base).unwrap();
     }
     /// A letter's task as its row and card say it: "" when the tasks known
     /// here hold it not (deleted, or a Google list's known here by another

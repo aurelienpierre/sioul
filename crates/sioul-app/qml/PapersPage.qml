@@ -291,7 +291,8 @@ Item {
                                     Button {
                                         visible: row.modelData.file_there
                                         text: page.sioul.text("ui-open")
-                                        onClicked: Qt.openUrlExternally(page.theme.fileUrl(row.modelData.file))
+                                        // A program never, its folder instead (main.qml, `openFile`).
+                                        onClicked: page.window.openFile(page.theme.fileUrl(row.modelData.file))
                                     }
                                 }
                             }

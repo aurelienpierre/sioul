@@ -158,6 +158,8 @@ mod devicekind;
 mod devices;
 mod dispatch;
 mod dnd;
+// A file a site offers: asked where, then placed (docs/sites.md, "Downloads").
+mod downloads;
 mod eventalarms;
 mod eventplace;
 mod duplicates;
@@ -413,6 +415,11 @@ pub fn run() -> i32 {
     // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
     #[cfg(not(target_os = "android"))]
     texts::at_start();
+    // What files from sites left in Sioul's cache, and the hidden files a
+    // stopped placing left in the papers' folder and where scans arrive
+    // (docs/sites.md, "Downloads"): no download can be under way yet.
+    #[cfg(not(target_os = "android"))]
+    downloads::at_start();
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking

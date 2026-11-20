@@ -1915,6 +1915,49 @@ pub mod qobject {
         #[qinvokable]
         fn letters_link(self: Pin<&mut Sioul>, files: &QString) -> QString;
 
+        /// A file a site offers, as it is offered: a folder held for it in
+        /// Sioul's cache and its plain name there, the request accepted into it
+        /// at once; JSON {hold, held, problem} (`downloads::hold`).
+        #[qinvokable]
+        fn download_hold(self: &Sioul, asked: &QString) -> QString;
+
+        /// The card's words and places for that file, the one chosen last for
+        /// the site first, as JSON; asked again as its name is changed (`downloads::offer`).
+        #[qinvokable]
+        fn download_offer(self: &Sioul, asked: &QString) -> QString;
+
+        /// Bytes free on the disk of a held folder; -1 when unknown (`downloads::room`).
+        #[qinvokable]
+        fn download_room(self: &Sioul, hold: &QString) -> f64;
+
+        /// Save pressed on that card: the place checked and kept for the site,
+        /// the status line saying it comes; JSON {name, folder, problem} (`downloads::start`).
+        #[qinvokable]
+        fn download_start(self: Pin<&mut Sioul>, asked: &QString) -> QString;
+
+        /// The file came whole and is answered: placed where you said, off the
+        /// window's thread, said in the status line and by one notice
+        /// (`downloads::done`); `download_filed` or `download_refused` follows.
+        #[qinvokable]
+        fn download_done(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// The file failed or was cut: nothing kept, said why (`downloads::failed`).
+        #[qinvokable]
+        fn download_failed(self: Pin<&mut Sioul>, asked: &QString);
+
+        /// Cancel, or Sioul quitting: what came of a held file deleted (`downloads::drop_held`).
+        #[qinvokable]
+        fn download_drop(self: &Sioul, asked: &QString);
+
+        /// A word of the download's card in the status line: "cancelled",
+        /// "waiting", "too-many", "too-big", "refused" (`downloads::said`).
+        #[qinvokable]
+        fn download_said(self: Pin<&mut Sioul>, what: &QString, asked: &QString);
+
+        /// What a download's notice opens (`sioul:download/<id>`): an address; "" unknown (`downloads::opened`).
+        #[qinvokable]
+        fn download_opened(self: &Sioul, address: &QString) -> QString;
+
         /// The money watch, as JSON (`bank::view`).
         #[qinvokable]
         fn bank(self: &Sioul) -> QString;
@@ -3281,6 +3324,16 @@ pub mod qobject {
         /// An attachment was kept in the papers wallet: the form, to say what it is.
         #[qsignal]
         fn paper_kept(self: Pin<&mut Sioul>, file: QString, title: QString, kind: QString);
+
+        /// A file a site offered is placed (`downloads::done`): its held
+        /// folder, its place, and the paper's or the letter's id.
+        #[qsignal]
+        fn download_filed(self: Pin<&mut Sioul>, hold: QString, place: QString, id: QString);
+
+        /// A place refused a file that came whole (full, closed, not its type):
+        /// it stays held, and its card asks again, saying why.
+        #[qsignal]
+        fn download_refused(self: Pin<&mut Sioul>, hold: QString, problem: QString);
 
         /// A draft's window opens again: "Undo" after sending or discarding.
         /// Also a new draft handed by another application (`outside`).
@@ -4827,11 +4880,12 @@ fn keep_forgetting_opened_attachments() {
     });
 }
 
-/// A file come by mail marked as the system marks what comes from the
-/// Internet: the Mark of the Web on Windows, the quarantine on macOS. Office
-/// then opens it in Protected View, Gatekeeper checks it. A disk that cannot
-/// keep the mark leaves the file as it is.
-fn mark_from_mail(file: &Path) {
+/// A file come by mail, or offered by a site (`downloads`), marked as the
+/// system marks what comes from the Internet: the Mark of the Web on
+/// Windows, the quarantine on macOS (through the system's own `xattr`, no
+/// library of Sioul's). Office then opens it in Protected View, Gatekeeper
+/// checks it. A disk that cannot keep the mark leaves the file as it is.
+pub(crate) fn mark_from_outside(file: &Path) {
     #[cfg(windows)]
     {
         let mut stream = file.as_os_str().to_owned();
@@ -4935,7 +4989,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
             set_status(&qt, say("scan-error", &[("name", name), ("detail", folder.display().to_string())]));
             return;
         }
-        mark_from_mail(&file);
+        mark_from_outside(&file);
         if !phone {
             set_status(&qt, say("scan-running", &[("name", name.clone())]));
         }
@@ -4983,7 +5037,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                         let _ = sioul_core::filelock::remove_wiping(&file);
                         match saved {
                             Ok(_) => {
-                                mark_from_mail(&target);
+                                mark_from_outside(&target);
                                 say("ui-saved", &[("path", target.display().to_string())])
                             }
                             Err(e) => say("scan-error", &[("name", name), ("detail", e.to_string())]),
@@ -7030,6 +7084,42 @@ impl qobject::Sioul {
 
     fn letters_add(self: Pin<&mut Self>, files: &QString) -> QString {
         QString::from(&crate::letters::add(&files.to_string()))
+    }
+
+    fn download_hold(&self, asked: &QString) -> QString {
+        QString::from(&crate::downloads::hold(&asked.to_string()))
+    }
+
+    fn download_offer(&self, asked: &QString) -> QString {
+        QString::from(&crate::downloads::offer(&asked.to_string()))
+    }
+
+    fn download_room(&self, hold: &QString) -> f64 {
+        crate::downloads::room(&hold.to_string())
+    }
+
+    fn download_start(self: Pin<&mut Self>, asked: &QString) -> QString {
+        QString::from(&crate::downloads::start(&self.qt_thread(), &self.shared(), &asked.to_string()))
+    }
+
+    fn download_done(self: Pin<&mut Self>, asked: &QString) {
+        crate::downloads::done(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn download_failed(self: Pin<&mut Self>, asked: &QString) {
+        crate::downloads::failed(&self.qt_thread(), &self.shared(), &asked.to_string());
+    }
+
+    fn download_drop(&self, asked: &QString) {
+        crate::downloads::drop_held(&asked.to_string());
+    }
+
+    fn download_said(self: Pin<&mut Self>, what: &QString, asked: &QString) {
+        crate::downloads::said(&self.qt_thread(), &self.shared(), &what.to_string(), &asked.to_string());
+    }
+
+    fn download_opened(&self, address: &QString) -> QString {
+        QString::from(&crate::downloads::opened(&address.to_string()))
     }
 
     fn letters_link(mut self: Pin<&mut Self>, files: &QString) -> QString {
@@ -9147,8 +9237,10 @@ impl qobject::Sioul {
         // Invoices (the guide's pictures; docs/projects.md), "views" the Week's steps by area and the
         // Time page by area (pictures alone; docs/areas.md), "shell" Settings' tabs and, on a phone, its
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
-        // (pictures alone; docs/qt-quick.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage"].contains(&steps.as_str()) && offline()) {
+        // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
+        // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
+        // docs/sites.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

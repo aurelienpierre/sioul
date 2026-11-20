@@ -598,6 +598,23 @@ SioulWindow {
         noticeOpener.open(address, hint)
     }
 
+    // A file a notice names (a file a site offered, in Downloads or a folder you chose):
+    // a folder in the file manager; a file with the desktop's own application, a
+    // program never, its folder instead (docs/sites.md, "Downloads").
+    function openFile(url) {
+        if (!url.endsWith("/") && sioul.isProgram(url)) {
+            Qt.openUrlExternally(url.slice(0, url.lastIndexOf("/") + 1))
+            return
+        }
+        Qt.openUrlExternally(url)
+    }
+
+    // What a download's notice opens (`sioul:download/<id>`), as this session kept it (downloads.rs).
+    function downloadOpened(address) {
+        return sioul.downloadOpened(address)
+    }
+
+
     // The tray's menu (Tray.qml): the work day ("work") or the whole day
     // ("night") closed at any hour, on its sheet in the window.
     function reviewFromTray(kind) {
@@ -1436,7 +1453,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -4875,6 +4892,73 @@ SioulWindow {
                 () => grabber.save("storage-taken"),
                 () => window.close()
             ]
+            // A file a site offers (SIOUL_GRAB_STEPS=downloads, on a demo profile; a
+            // phone's with SIOUL_GRAB_PHONE): a page of the bank's own address, made
+            // here, offers a statement (no site reached), its card over the site;
+            // kept in Downloads, the status line saying so; then a program, its card
+            // with its caution, cancelled; then the bank's next file, whose card can
+            // refuse the site as a whole; then the status line of a file that did not
+            // come whole (docs/sites.md, "Downloads").
+            readonly property var downloadSteps: [
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    window.page = 3
+                },
+                () => sitesPage.open("bank"),
+                () => {},
+                () => {},
+                () => grabber.offerFile(sioul.text("download-place-downloads") === "Téléchargements" ? "Relevé octobre 2026.pdf" : "Statement October 2026.pdf", "application/pdf", 182000),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("download-card"),
+                () => {
+                    const card = sitesPage.downloads.card
+                    if (card)
+                        card.save()
+                },
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("download-saved"),
+                () => grabber.offerFile("setup.exe", "application/x-msdownload", 5300000),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("download-card-program"),
+                () => {
+                    const card = sitesPage.downloads.card
+                    if (card)
+                        card.cancel()
+                },
+                () => {},
+                () => grabber.saveWindow("download-cancelled"),
+                () => grabber.offerFile(sioul.text("download-place-downloads") === "Téléchargements" ? "Relevé novembre 2026.pdf" : "Statement November 2026.pdf", "application/pdf", 175000),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("download-card-refuse"),
+                () => {
+                    const card = sitesPage.downloads.card
+                    if (card)
+                        card.cancel()
+                },
+                () => sioul.downloadFailed(JSON.stringify({ hold: "", held: "", name: sioul.text("download-place-downloads") === "Téléchargements" ? "Relevé décembre 2026.pdf" : "Statement December 2026.pdf", reason: 22 })),
+                () => {},
+                () => grabber.saveWindow("download-failed"),
+                () => window.close()
+            ]
+            // A file offered by a page made in the open site's view, at the site's own
+            // address: `size` bytes of nothing named `name`, clicked as the page loads.
+            function offerFile(name, type, size) {
+                const view = sitesPage.viewOf(sitesPage.openId)
+                if (!view) {
+                    console.warn("sioul-grab: downloads: no site's view")
+                    return
+                }
+                const script = "const a = document.getElementById('a'); a.href = URL.createObjectURL(new Blob([new Uint8Array(" + size + ")], { type: " + JSON.stringify(type) + " })); a.click();"
+                view.loadHtml("<!doctype html><meta charset=utf-8><body><a id=a download=" + JSON.stringify(name) + ">file</a><script>" + script + "</script></body>", view.url)
+            }
             // Settings ▸ Your folder and sharing before sharing, pictures only
             // (SIOUL_GRAB_STEPS=share-panel, a phone's with SIOUL_GRAB_PHONE): how
             // a device reaches the folder, then the form for a Nextcloud Sioul
