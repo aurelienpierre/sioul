@@ -319,6 +319,10 @@ SafeDialog {
                 flat: true
                 text: card.sioul.text("download-refuse-site")
                 Accessible.name: card.sioul.text("download-refuse-site")
+                // A link: no frame, its words alone.
+                background: null
+                leftPadding: 0
+                rightPadding: 0
                 contentItem: Label {
                     text: card.sioul.text("download-refuse-site")
                     wrapMode: Text.Wrap
