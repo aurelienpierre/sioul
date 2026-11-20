@@ -61,8 +61,11 @@ Item {
         function onMailSearchChanged() {
             page.takeShown()
         }
+        // Its rows changed in place: the mailbox keeps its place (ListPlace.qml).
         function onMailboxPage(text) {
-            page.applyBoxPage(text)
+            boxPlace.keep(() => {
+                page.applyBoxPage(text)
+            })
         }
         function onMailMoved(moves) {
             page.followMoved(JSON.parse(moves || "[]"))
@@ -129,9 +132,8 @@ Item {
     // The mailbox's own list, not a search's.
     readonly property bool boxListed: page.boxShown && !page.searchOpen && !page.draftsShown
     // A folder's rows asked for (`view::folder`): a page, one more each time
-    // its end shows; where the list was, kept while the next page comes.
+    // its end shows; where the list was, kept while the next page comes (`folderPlace`).
     property int folderRows: page.boxPage
-    property real folderKeepY: -1
     property string query: ""
     // The message being read, by its file, and its row.
     property string openKey: ""
@@ -720,17 +722,7 @@ Item {
         page.query = ""
         page.foldersShown = false
         page.folderRows = page.boxPage
-        page.folderKeepY = -1
         page.sioul.openFolder(account, folder, page.folderRows, "")
-    }
-
-    // The folder's rows given again, longer: the list where it was before the next page came.
-    function restoreFolderY() {
-        if (page.folderKeepY < 0)
-            return
-        list.forceLayout()
-        list.contentY = Math.min(page.folderKeepY, Math.max(0, list.contentHeight - list.height))
-        page.folderKeepY = -1
     }
 
     // A folder's list end in sight while it holds more: its next page, the list kept where it was.
@@ -738,7 +730,6 @@ Item {
         if (page.searchOpen || page.boxShown || !page.shown || !page.shown.more || page.folderRows > page.folderItems.length)
             return
         page.folderRows = page.folderItems.length + page.boxPage
-        page.folderKeepY = list.contentY
         page.sioul.openFolder(page.account, page.folder, page.folderRows, page.query)
     }
 
@@ -877,7 +868,6 @@ Item {
                 page.askBoxAgain()
             } else {
                 page.folderRows = page.boxPage
-                page.folderKeepY = -1
                 page.sioul.openFolder(page.account, page.folder, page.folderRows, page.query)
             }
         }
@@ -1516,6 +1506,16 @@ Item {
                 }
             }
 
+            // A message read, moved or deleted, here or elsewhere, a page more: the list keeps its
+            // place (ListPlace.qml); another folder or search starts at its top.
+            ListPlace {
+                id: folderPlace
+
+                view: list
+                // The mailbox draws its own rows (`boxList`): none made here meanwhile.
+                source: page.boxListed ? [] : page.folderItems
+                scope: [page.boxListed, page.searchOpen, page.account, page.folder, page.query]
+            }
             ListView {
                 id: list
 
@@ -1525,8 +1525,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 0
-                // The mailbox draws its own rows (`boxList`): none made here meanwhile.
-                model: page.boxListed ? [] : page.folderItems
+                model: folderPlace.rows
                 ScrollBar.vertical: ScrollBar {}
                 // The list's end in sight: the folder's next page, while it holds more;
                 // the rows come back where they were.
@@ -1535,9 +1534,7 @@ Item {
                         page.folderMoreRows()
                 }
                 onCountChanged: {
-                    if (page.folderKeepY >= 0 && list.count > 0)
-                        Qt.callLater(page.restoreFolderY)
-                    else if (list.atYEnd)
+                    if (list.atYEnd)
                         Qt.callLater(page.folderMoreRows)
                 }
                 Keys.onPressed: event => {
@@ -1752,6 +1749,12 @@ Item {
             // computer, two on a phone (§4.4); the rows its own (`mailbox::page`,
             // by pages of sixty: `applyBoxPage`), the selection, the menu and the
             // drag as a folder's. One ListView reusing its rows (§6).
+            ListPlace {
+                id: boxPlace
+
+                view: boxList
+                rows: boxModel
+            }
             ListView {
                 id: boxList
 
@@ -1800,7 +1803,15 @@ Item {
                 }
             }
 
-            // Drafts written here: a click opens one again.
+            // Drafts written here: a click opens one again. One sent or deleted: the list keeps its
+            // place (ListPlace.qml).
+            ListPlace {
+                id: draftsPlace
+
+                view: draftList
+                source: page.drafts
+                key: "id"
+            }
             ListView {
                 id: draftList
 
@@ -1809,7 +1820,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 2
-                model: page.drafts
+                model: draftsPlace.rows
 
                 delegate: ItemDelegate {
                     id: draftRow

@@ -30,10 +30,19 @@ Item {
     readonly property var view: page.porchText ? JSON.parse(page.porchText) : ({ open: false, closed: null, right_now: [], summary: "", status: "", lanes: [] })
 
     function takeShown() {
-        if (page.visible) {
-            page.porchText = page.sioul.porch
-            page.readNotices()
-        }
+        if (page.visible)
+            porchPlace.keep(() => {
+                page.porchText = page.sioul.porch
+                page.readNoticesNow()
+            })
+    }
+
+    // A message, a code or a notice come, read or dismissed, here or elsewhere: the Porch keeps
+    // the row at its top in place (ListPlace.qml). Its rows say their key (`placeKey`).
+    ListPlace {
+        id: porchPlace
+
+        view: list
     }
 
     Connections {
@@ -50,6 +59,9 @@ Item {
     // {sites, money, letters}, each a list of rows; read while shown.
     property var notices: ({ sites: [], money: [], letters: [] })
     function readNotices() {
+        porchPlace.keep(page.readNoticesNow)
+    }
+    function readNoticesNow() {
         if (page.visible)
             page.notices = JSON.parse(page.sioul.notices("view", "{}") || "{}")
     }
@@ -85,7 +97,9 @@ Item {
         const next = Object.assign({}, page.gone)
         for (const id of asked.ids)
             next[id] = true
-        page.gone = next
+        porchPlace.keep(() => {
+            page.gone = next
+        })
         page.lastSaid = { asked: asked, mark: answer.mark, at: answer.at, said: answer.said }
         undoTimer.restart()
     }
@@ -123,7 +137,9 @@ Item {
         const next = Object.assign({}, page.gone)
         for (const id of asked.ids)
             next[id] = true
-        page.gone = next
+        porchPlace.keep(() => {
+            page.gone = next
+        })
         if (open !== "") {
             const events = [conflict.first, conflict.second].filter(e => e && e.key === open)
             page.window.openThing({ kind: "event", key: open, start: events.length > 0 ? events[0].start || 0 : 0, uri: "" })
@@ -138,7 +154,9 @@ Item {
         const next = Object.assign({}, page.gone)
         for (const id of last.asked.ids)
             delete next[id]
-        page.gone = next
+        porchPlace.keep(() => {
+            page.gone = next
+        })
         page.lastSaid = null
         undoTimer.stop()
     }
@@ -256,16 +274,18 @@ Item {
     Connections {
         target: page.window
 
+        // Each minute, what it reads again, its place kept around all of it.
         function onNowChanged() {
-            if (page.visible) {
-                page.reloadDoses()
-                page.readNotices()
-                page.agendaStamp += 1
-                if (!page.withheldRead)
-                    page.readWithheld()
-                // An admin window begins: the card waits for it.
-                page.readPersonsMade()
-            }
+            if (page.visible)
+                porchPlace.keep(() => {
+                    page.reloadDoses()
+                    page.readNoticesNow()
+                    page.agendaStamp += 1
+                    if (!page.withheldRead)
+                        page.readWithheld()
+                    // An admin window begins: the card waits for it.
+                    page.readPersonsMade()
+                })
         }
     }
 
@@ -1234,6 +1254,7 @@ Item {
                             id: codeRow
 
                             required property var modelData
+                            readonly property string placeKey: codeRow.modelData.notice.id
 
                             sioul: page.sioul
                             theme: page.theme
@@ -1349,6 +1370,7 @@ Item {
                             id: conflictRow
 
                             required property var modelData
+                            readonly property string placeKey: conflictRow.modelData.notice.id
                             readonly property var conflict: conflictRow.modelData.conflict || ({})
                             readonly property bool movable: (conflictRow.conflict.answers || []).indexOf("move") >= 0
                             readonly property var events: conflictRow.conflict.kind === "during" ? [conflictRow.conflict.event] : [conflictRow.conflict.first, conflictRow.conflict.second]
@@ -1399,6 +1421,7 @@ Item {
                             id: siteRow
 
                             required property var modelData
+                            readonly property string placeKey: siteRow.modelData.notice.id
 
                             sioul: page.sioul
                             theme: page.theme
@@ -1448,6 +1471,7 @@ Item {
                             id: moneyRow
 
                             required property var modelData
+                            readonly property string placeKey: moneyRow.modelData.notice.id
 
                             sioul: page.sioul
                             theme: page.theme
@@ -1485,6 +1509,7 @@ Item {
                             id: letterRow
 
                             required property var modelData
+                            readonly property string placeKey: letterRow.modelData.notice.id
                             readonly property var letter: letterRow.modelData.letter || ({})
 
                             sioul: page.sioul
@@ -1595,6 +1620,7 @@ Item {
 
             required property var modelData
             readonly property var shown: page.newOnes(lane.modelData.items)
+            readonly property string placeKey: "lane:" + lane.modelData.key
 
             sioul: page.sioul
             theme: page.theme
@@ -1631,6 +1657,7 @@ Item {
                     id: message
 
                     required property var modelData
+                    readonly property string placeKey: message.modelData.key
 
                     sioul: page.sioul
                     theme: page.theme

@@ -681,7 +681,8 @@ Item {
             page.openBox()
             compare(page.listItems.map(r => r.subject), ["On both lists", "Quote for the cooperative", "Sent to Iris"])
             tryVerify(() => boxList(page).count === 3)
-            compare(find(page, "folderList").count, 0)
+            // Its rows given once the change has settled (ListPlace.qml): none.
+            tryCompare(find(page, "folderList"), "count", 0)
             mock.mailFolder = ""
         }
 
