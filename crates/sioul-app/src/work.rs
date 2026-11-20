@@ -1307,7 +1307,7 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     // page may not have read the one added a moment ago (`tasks::next_in_sequence`).
     let mut edit = edit.clone();
     // A call or an outing made with an office whose card has hours needs it open (`opening::ticks`).
-    if sioul_core::opening::ticks(&edit.kind, edit.office_hours, &[], &edit.contacts, &sioul_core::opening::Cards::of(&loaded(shared).contacts)) {
+    if sioul_core::opening::ticks(&edit.kind, edit.office_hours, "", &[], &edit.contacts, &sioul_core::opening::Cards::of(&loaded(shared).contacts)) {
         edit.office_hours = true;
     }
     if !edit.parent.is_empty() && edit.sort_order.is_none() {
@@ -1471,6 +1471,41 @@ pub(crate) fn rename_category(qt: &QtThread, shared: &Arc<Shared>, from: &str, t
     }
     show_work(qt, shared);
     problem.map_or(Ok(()), Err)
+}
+
+/// The open calls and outings tied to an office's card ticked "Needs an
+/// open office", because the card got hours for the first time by the
+/// person's act on this device, its form saved or a lookup picked
+/// (`opening::to_tick`; review of 20 November 2026, 3): each over its file
+/// as it is now (`changed_in_file`), its list told. Never on a card's
+/// arrival by sync, which writes no task: the tick travels with the task.
+/// An untick made after holds, as nothing ticks again. How many were ticked.
+pub(crate) fn tick_for_office(shared: &Shared, uid: &str, hours: &sioul_core::opening::CardHours) -> usize {
+    let loaded = loaded(shared);
+    let mut accounts = BTreeSet::new();
+    let mut ticked = 0;
+    for task in sioul_core::opening::to_tick(&loaded.tasks, uid, hours) {
+        let path = Path::new(&task.key);
+        let written = std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|current| changed_in_file(&current, |edit| edit.office_hours = true).map(|text| (current, text)))
+            .and_then(|(current, text)| if text == current { Ok(false) } else { vdir::write_item(path, &text).map(|()| true) });
+        if written == Ok(true) {
+            ticked += 1;
+            if let Some(account) = account_of(path) {
+                accounts.insert(account);
+            }
+        }
+    }
+    for account in accounts {
+        pim::nudge(shared, &account);
+    }
+    if ticked > 0
+        && let Ok(mut cache) = shared.loaded.lock()
+    {
+        *cache = None;
+    }
+    ticked
 }
 
 /// A note moved to the vault's trash, "Undo" offered; returns what went wrong, else "".
@@ -1823,7 +1858,8 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         // The task's Busy as written (review B15): the file's, unless the form changed it since it read the task.
         let mut written_busy = edit.busy;
         // Its tick for an open office, the form's word when it changed it, else set by itself
-        // when an office whose card has hours came with this save (`opening::ticks`).
+        // when an office whose card has hours came with this save, or the task became a call
+        // or an outing with such an office already tied (`opening::ticks`).
         let tick_said = read.as_ref().is_some_and(|r| r.office_hours != edit.office_hours);
         let cards = sioul_core::opening::Cards::of(&loaded(shared).contacts);
         change(qt, shared, uid, |text| {
@@ -1834,7 +1870,7 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
                 (Some(read), Some(now)) => TaskEdit::of(now).changed_over(read, &edit),
                 _ => edit.clone(),
             };
-            if !tick_said && let Some(was) = &was && sioul_core::opening::ticks(&edit.kind, edit.office_hours, &was.contacts, &edit.contacts, &cards) {
+            if !tick_said && let Some(was) = &was && sioul_core::opening::ticks(&edit.kind, edit.office_hours, &was.kind, &was.contacts, &edit.contacts, &cards) {
                 edit.office_hours = true;
             }
             written_busy = edit.busy;

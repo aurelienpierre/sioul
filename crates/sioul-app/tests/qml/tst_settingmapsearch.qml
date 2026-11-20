@@ -81,6 +81,17 @@ Item {
             // What it does comes before the field, the field before its buttons.
             const y = item => item.mapToItem(row, 0, 0).y
             verify(y(find(row, "mapSearchNow")) < y(field) && y(field) < y(find(row, "mapSearchChoice0")))
+            // Its sentence said once, first.
+            const said = []
+            const walk = item => {
+                if (item.visible && item.text === "set-map-search-help")
+                    said.push(item)
+                for (let i = 0; i < item.children.length; i++)
+                    walk(item.children[i])
+            }
+            walk(row)
+            compare(said.length, 1)
+            verify(y(said[0]) < y(find(row, "mapSearchNow")))
             // Another address, typed as a person types, saved as typed.
             mouseClick(field)
             field.selectAll()

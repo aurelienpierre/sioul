@@ -264,6 +264,14 @@ Item {
                 detail.limited = ["start", "due_hour", "estimate"]
                 return JSON.stringify(detail)
             }
+            if (uid === "t10") {
+                // A call tied to an office whose card has hours, unticked: it does not follow them.
+                const detail = mock.taskDetail(uid, "Call the tax office")
+                detail.edit.kind = "call"
+                detail.edit.office_hours = mock.followed
+                detail.office = { from: "card", name: "Example tax office", key: "/b/tax.vcf", number: "01 23 45 67 89", phone: false, now: "Example tax office: open until 12:00", lines: ["Monday to Friday: 9:00–12:00"], follows: mock.followed }
+                return JSON.stringify(detail)
+            }
             if (uid === "t7" || uid === "t8") {
                 const detail = mock.taskDetail(uid, titles[uid])
                 detail.keeps_ties = true
@@ -292,6 +300,8 @@ Item {
         }
         // The form's dates refused, as `work::save` says it.
         property bool refuseDates: false
+        // Task t10 follows its office's hours (ticked "Needs an open office").
+        property bool followed: false
         function saveTask(uid, edit, list) {
             mock.calls.push({ what: "saveTask", uid: uid, edit: JSON.parse(edit) })
             if (mock.refuseDates)
@@ -1127,6 +1137,29 @@ Item {
             wait(10)
             const line = root.find(panel, "taskBusyLine")
             verify(line !== null && line.visible && line.text === "Its time is not known yet.")
+        }
+
+        // A call tied to an office with hours, unticked: its panel says it does not follow
+        // them, and "Follow them" ticks it, as a press (review of 20 November 2026, 3).
+        function test_follow_them() {
+            mock.followed = false
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t10" })
+            wait(50)
+            const panel = host.taskPanel
+            verify(panel !== null && panel.uid === "t10")
+            const said = root.find(panel, "taskOfficeNotFollowed")
+            const follow = root.find(panel, "taskOfficeFollow")
+            verify(said !== null && said.visible && follow !== null && follow.visible)
+            mock.calls = []
+            mock.followed = true
+            mouseClick(follow)
+            wait(20)
+            const saved = mock.calls.filter(c => c.what === "saveTask")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare(saved[0].edit.office_hours, true)
+            verify(!root.find(panel, "taskOfficeNotFollowed").visible && !root.find(panel, "taskOfficeFollow").visible, "read again: it follows them")
+            mock.followed = false
         }
 
         function test_the_task_s_card() {

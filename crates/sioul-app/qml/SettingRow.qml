@@ -1485,7 +1485,7 @@ ColumnLayout {
 
     Label {
         // The blocks say their sentence first themselves.
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

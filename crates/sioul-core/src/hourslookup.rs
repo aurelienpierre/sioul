@@ -148,6 +148,7 @@ pub fn in_france(place: &str, region_france: bool) -> bool {
 
 /// One office found.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Found {
     /// `opening::DIRECTORY` or `opening::MAP`.
     pub source: String,

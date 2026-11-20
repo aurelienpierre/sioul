@@ -5,12 +5,15 @@
 // what is true now ("Open until 12:00", "Closed: opens Monday at 9:00"),
 // the hours day by day, when it answers the phone if that differs, the
 // free line for what Sioul cannot count, and where the hours come from and
-// when they were checked. Its buttons: "Look them up…" (never for a
-// person's card, nothing sent before the person reads what goes), "Change"
+// when they were checked. Its buttons: "Look them up…" (only on a card that
+// says it is an organisation's or already holds hours: never a person's
+// name; nothing sent before the person reads what goes), "Change"
 // (OpeningHoursForm.qml) and "Call back…", a task that follows these hours.
-// Read from the backend when the card opens, when the contacts change, and
-// each minute while it shows, since what is true now moves on. Words from
-// the card or a source are drawn as plain text.
+// On any other card, one flat link, "This is an office, a shop or a
+// practice", marks it as an organisation's (`markOffice`); the lookup is
+// offered from then on. Read from the backend when the card opens, when the
+// contacts change, and each minute while it shows, since what is true now
+// moves on. Words from the card or a source are drawn as plain text.
 
 pragma ComponentBehavior: Bound
 
@@ -36,6 +39,16 @@ Section {
     signal lookUpAsked(var shown)
     // "Call back…" made its task: {uid} or {error}.
     signal calledBack(var answer)
+    // "This is an office…" pressed: {ok} or {error}.
+    signal marked(var answer)
+
+    // A second press of "Call back…" within a second makes nothing (two quick presses, one task).
+    function callBack() {
+        if (calledAgain.running)
+            return
+        calledAgain.start()
+        hours.calledBack(JSON.parse(hours.sioul.callBack(hours.key) || "{}"))
+    }
 
     function reload() {
         // Its key may come before the backend while the section is made: read once both are there.
@@ -59,6 +72,11 @@ Section {
         function onContactsChanged() {
             hours.reload()
         }
+    }
+    Timer {
+        id: calledAgain
+
+        interval: 1000
     }
     // What is true now changes with the clock.
     Timer {
@@ -133,10 +151,12 @@ Section {
                 wrapMode: Text.Wrap
                 color: hours.theme.text
             }
+            // Why it counts none of it, when there is more to say ("Di" in doubt); else that it cannot;
+            // public holidays as it reads them, and when Sioul knows none, where to add them.
             Label {
                 visible: part.modelData.part.unread || part.modelData.part.lines.length > 0
                 Layout.fillWidth: true
-                text: hours.sioul.text(part.modelData.part.unread ? "hours-unread" : part.modelData.part.holidays_off ? "hours-holidays" : "hours-holidays-open")
+                text: part.modelData.part.unread ? (part.modelData.part.doubt || hours.sioul.text("hours-unread")) : hours.sioul.text(!part.modelData.part.holidays_off ? "hours-holidays-open" : hours.shown.holidays_known === false ? "hours-holidays-unknown" : "hours-holidays")
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pixelSize: 12
@@ -182,6 +202,17 @@ Section {
         wrapMode: Text.Wrap
         color: hours.theme.text
     }
+    // A card that says neither that it is an organisation's nor holds hours: why no lookup, and the one link that says so.
+    Label {
+        objectName: "openingHoursMarkWhy"
+        visible: hours.shown !== null && hours.shown.mark === true
+        Layout.fillWidth: true
+        text: hours.sioul.text("hours-mark-why")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 12
+        color: hours.theme.muted
+    }
     Flow {
         visible: hours.shown !== null
         Layout.fillWidth: true
@@ -189,7 +220,7 @@ Section {
 
         Button {
             objectName: "openingHoursLookUp"
-            // Never for a person's card, nor one that cannot be written.
+            // Only on a card that says it is an organisation's or holds hours, and that can be written.
             visible: hours.writable && hours.shown.asked !== null
             text: hours.sioul.text(hours.stale ? "hours-look-up-again" : "hours-look-up")
             icon.name: "edit-find"
@@ -214,7 +245,16 @@ Section {
             ToolTip.text: hours.shown ? hours.theme.plain(hours.sioul.textWith("hours-call-back-help", "name", hours.shown.name)) : ""
             ToolTip.delay: 400
             Accessible.description: ToolTip.text
-            onClicked: hours.calledBack(JSON.parse(hours.sioul.callBack(hours.key) || "{}"))
+            onClicked: hours.callBack()
+        }
+        Button {
+            objectName: "openingHoursMark"
+            visible: hours.writable && hours.shown.mark === true
+            flat: true
+            text: hours.sioul.text("hours-mark-office")
+            icon.name: "go-next"
+            icon.color: hours.theme.text
+            onClicked: hours.marked(JSON.parse(hours.sioul.markOffice(hours.key) || "{}"))
         }
     }
 }

@@ -1537,7 +1537,9 @@ Panel {
                 }
             }
             // The office hours it follows, and whose (opening.rs): "Tax office: open until
-            // 12:00", its hours day by day; its card opened from here, and Call, as the card's own.
+            // 12:00", its hours day by day, read again each minute; its card opened from here,
+            // and Call, as the card's own. Unticked, it says it does not follow them, and
+            // "Follow them" ticks it.
             ColumnLayout {
                 id: officeFollows
 
@@ -1547,6 +1549,14 @@ Panel {
                 visible: officeFollows.office !== null && !panel.form
                 Layout.fillWidth: true
                 spacing: 4
+
+                // What is true now moves on: the panel read again each minute while it shows them.
+                Timer {
+                    interval: 60000
+                    repeat: true
+                    running: officeFollows.visible && panel.visible && panel.uid !== ""
+                    onTriggered: panel.reload()
+                }
 
                 // The hours it answers the phone, for a call, when its card has them.
                 Label {
@@ -1580,10 +1590,34 @@ Panel {
                         color: panel.theme.muted
                     }
                 }
+                // Unticked, its office's card has hours: it does not follow them, said, with the link that makes it.
+                Label {
+                    objectName: "taskOfficeNotFollowed"
+                    visible: officeFollows.office !== null && officeFollows.office.from === "card" && officeFollows.office.follows === false
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("hours-task-not-followed")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
                 Flow {
                     visible: officeFollows.office !== null && officeFollows.office.from === "card"
                     Layout.fillWidth: true
                     spacing: 6
+
+                    Button {
+                        objectName: "taskOfficeFollow"
+                        visible: officeFollows.office !== null && officeFollows.office.follows === false && panel.canEdit
+                        flat: true
+                        text: panel.sioul.text("hours-task-follow")
+                        icon.name: "go-next"
+                        icon.color: panel.theme.text
+                        onClicked: {
+                            panel.change("office_hours", true)
+                            panel.reload()
+                        }
+                    }
 
                     Button {
                         objectName: "taskOfficeCard"

@@ -591,24 +591,34 @@ pub mod qobject {
         #[qinvokable]
         fn contact_hours(self: &Sioul, key: &QString) -> QString;
 
-        /// What hours typed read as (`offices::read_hours`): JSON {written, lines, rest, holidays_off}.
+        /// What hours typed read as (`offices::read_hours`): JSON {written,
+        /// short, lines, days, rest, holidays_off, holidays_said, doubt}.
         #[qinvokable]
         fn read_hours(self: &Sioul, text: &QString) -> QString;
 
-        /// Saves a card's hours from their form (JSON {open, phone, note}): {"ok"} or {"error"}.
+        /// Saves a card's hours from their form (JSON {open, phone, note,
+        /// holidays_open}): {"ok", "changed", "ticked"} or {"error"}.
         #[qinvokable]
         fn save_contact_hours(self: Pin<&mut Sioul>, key: &QString, typed: &QString) -> QString;
 
-        /// "Call back…" on an office's card: the task "Call ‹name›", made at once: {"uid"} or {"error"}.
+        /// "This is an office, a shop or a practice": the card marked as an
+        /// organisation's (`contacts::as_office`): {"ok"} or {"error"}.
+        #[qinvokable]
+        fn mark_office(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
+        /// "Call back…" on a card: the task "Call ‹name›", made at once:
+        /// {"uid"}, {"again"} (a second press within a second) or {"error"}.
         #[qinvokable]
         fn call_back(self: Pin<&mut Sioul>, key: &QString) -> QString;
 
         /// Looks a card's hours up because the person pressed Look up (JSON
-        /// `hourslookup::Asked`, the words they saw); the answer comes in `hours_found`.
+        /// `hourslookup::Asked`, the words they saw, and `press`, its number);
+        /// the answer comes in `hours_found`, the press's number in it.
         #[qinvokable]
         fn look_up_hours(self: Pin<&mut Sioul>, key: &QString, asked: &QString);
 
-        /// One office of "Is it this one?" picked: its hours on the card. {"ok", "offers"} or {"error"}.
+        /// One office of "Is it this one?" picked: its hours on the card.
+        /// {"ok", "changed", "ticked", "offers"} or {"error"}.
         #[qinvokable]
         fn pick_hours(self: Pin<&mut Sioul>, key: &QString, found: &QString) -> QString;
 
@@ -6079,6 +6089,10 @@ impl qobject::Sioul {
         QString::from(&crate::offices::save_contact_hours(&self.qt_thread(), &self.shared(), &key.to_string(), &typed.to_string()))
     }
 
+    fn mark_office(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&crate::offices::mark_office(&self.qt_thread(), &self.shared(), &key.to_string()))
+    }
+
     fn call_back(self: Pin<&mut Self>, key: &QString) -> QString {
         QString::from(&crate::offices::call_back(&self.qt_thread(), &self.shared(), &key.to_string()))
     }
@@ -9040,6 +9054,8 @@ impl qobject::Sioul {
             // The AI's key goes to the keyring, never to the configuration; an empty one is forgotten.
             ("ai_key", config::SettingValue::Text(secret)) => sioul_sync::shield_ai::save_api_key(&secret).map_err(|e| e.sentence(tr(), "Anthropic")),
             ("github_token", config::SettingValue::Text(secret)) => sioul_sync::github::save_token(&secret).map_err(|e| e.sentence(tr(), "GitHub")),
+            // The map's search service: "", "none" or an https address, refused in the window's words.
+            (sioul_core::mapsearch::KEY, config::SettingValue::Text(address)) => sioul_core::mapsearch::checked(&address, tr()).and_then(|address| sioul_core::settings::change(&config_path(), &key, shown.as_ref(), &config::SettingValue::Text(address))),
             ("task_categories", config::SettingValue::Rename(change)) => work::rename_category(&self.qt_thread(), &self.shared(), &change.from, &change.to),
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
             // The papers' or letters' folder (Papers ▸ ⚙, Letters ▸ ⚙): once Sioul's lists moved, the files follow, off this thread.

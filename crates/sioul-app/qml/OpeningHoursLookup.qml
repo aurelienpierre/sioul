@@ -3,14 +3,19 @@
 
 // An office's opening hours looked up (hourslookup.rs, offices.rs): first
 // what would be sent, the office's name and where it is, and to whom (the
-// administration's directory for an office in France, OpenStreetMap), which
+// administration's directory for an office in France, the map's search
+// service unless it is set to None or asked Sioul to wait), with what goes
+// along (Sioul's name and version; the window's language to the map), which
 // the person may correct; nothing leaves before they press "Look up", and
-// then one request to each. The answer is a short list, "Is it this one?",
-// each office with its address and hours as plain text, its source named
-// ("© OpenStreetMap contributors"); the one picked has its hours written on
-// the card with their source and the day. A number or an address the card
-// lacks is offered after, never written by itself. Nothing found changes
-// nothing; a source that did not answer is said.
+// then one request to each, both at once. Each press has its number: an
+// answer to an earlier press never fills the list of a later one. The
+// answer is a short list, "Is it this one?", each office with its address
+// and hours as plain text, its source named ("© OpenStreetMap
+// contributors"); the one picked has its hours written on the card with
+// their source and the day ("kept on the card" said only when something
+// was written). A number or an address the card lacks is offered after,
+// never written by itself. Nothing found changes nothing; a source that did
+// not answer is said.
 
 pragma ComponentBehavior: Bound
 
@@ -28,6 +33,12 @@ SafeDialog {
     property var shown: null
     // "ask", "asking", "answered", "picked".
     property string step: "ask"
+    // The number of the last press of Look up: its answer alone fills the list.
+    property int press: 0
+    // The pick wrote something on the card (else it said those hours already).
+    property bool changed: false
+    // Who would be asked, in words; "" when nobody can be.
+    readonly property string sources: lookup.shown ? lookup.shown.sources || "" : ""
     property var found: []
     property var failed: []
     property bool examples: false
@@ -50,12 +61,15 @@ SafeDialog {
         lookup.open()
     }
 
-    // The person pressed Look up: the words they see, sent once.
+    // The person pressed Look up: the words they see, sent once, with this press's number.
     function ask() {
-        if (words.text.trim() === "")
+        // A word still being composed by a phone's keyboard, committed as its field gives up the focus.
+        scroll.forceActiveFocus()
+        if (words.text.trim() === "" || lookup.sources === "" || lookup.step !== "ask")
             return
+        lookup.press += 1
         lookup.step = "asking"
-        const asked = { name: words.text.trim(), place: place.text.trim(), france: lookup.shown && lookup.shown.asked ? lookup.shown.asked.france === true : false }
+        const asked = { name: words.text.trim(), place: place.text.trim(), france: lookup.shown && lookup.shown.asked ? lookup.shown.asked.france === true : false, press: lookup.press }
         lookup.sioul.lookUpHours(lookup.key, JSON.stringify(asked))
     }
 
@@ -66,6 +80,7 @@ SafeDialog {
             return
         }
         lookup.offers = answer.offers || { phone: "", address: "" }
+        lookup.changed = answer.changed !== false
         lookup.step = "picked"
         lookup.picked()
     }
@@ -84,11 +99,14 @@ SafeDialog {
     Connections {
         target: lookup.sioul
 
-        // The answer, for this card and while it is awaited; a late one for a card closed since says nothing.
+        // The answer to this press, for this card, while it is awaited; a late one, for a card
+        // closed since or an earlier press, says nothing.
         function onHoursFound(key, found) {
             if (key !== lookup.key || lookup.step !== "asking")
                 return
             const answer = JSON.parse(found || "{}")
+            if (answer.press !== lookup.press)
+                return
             lookup.found = answer.found || []
             lookup.failed = answer.failed || []
             lookup.examples = answer.offline === true
@@ -144,13 +162,25 @@ SafeDialog {
                     wrapMode: TextEdit.Wrap
                     Accessible.name: lookup.sioul.text("hours-lookup-place")
                 }
+                // What goes, to whom, and with what: the map named, with the window's language, when it is asked.
                 Label {
                     objectName: "openingHoursLookupSends"
                     Layout.fillWidth: true
-                    text: lookup.shown ? lookup.sioul.textWith("hours-lookup-sends", "sources", lookup.shown.sources || "") : ""
+                    text: !lookup.shown ? "" : lookup.sources === "" ? lookup.sioul.text("hours-lookup-nobody") : (lookup.shown.map || "") === "" ? lookup.sioul.textArgs("hours-lookup-sends", JSON.stringify({ sources: lookup.sources, map: lookup.shown.map_name || "" })) : lookup.sioul.textWith("hours-lookup-sends-directory", "sources", lookup.sources)
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: lookup.theme.text
+                }
+                // The map's search service not asked, and why.
+                Label {
+                    objectName: "openingHoursLookupMapStopped"
+                    visible: lookup.shown !== null && (lookup.shown.map || "") !== ""
+                    Layout.fillWidth: true
+                    text: lookup.shown && lookup.shown.map === "off" ? lookup.sioul.text("hours-lookup-map-off") : lookup.sioul.text("hours-lookup-map-waiting")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: lookup.theme.muted
                 }
                 Label {
                     visible: lookup.shown !== null && lookup.shown.offline === true
@@ -309,7 +339,7 @@ SafeDialog {
                 visible: lookup.step === "picked"
                 Layout.fillWidth: true
                 theme: lookup.theme
-                title: lookup.sioul.text("hours-saved")
+                title: lookup.sioul.text(lookup.changed ? "hours-saved" : "hours-saved-same")
 
                 Button {
                     objectName: "openingHoursLookupAddPhone"
@@ -350,7 +380,7 @@ SafeDialog {
         Button {
             objectName: "openingHoursLookupGo"
             visible: lookup.step === "ask"
-            enabled: words.text.trim() !== ""
+            enabled: words.text.trim() !== "" && lookup.sources !== ""
             text: lookup.sioul.text("hours-lookup-go")
             highlighted: true
             onClicked: lookup.ask()

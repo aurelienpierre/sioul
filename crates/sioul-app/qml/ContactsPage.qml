@@ -16,9 +16,10 @@
 // (ContactSelection.qml; one row on a phone); "Import…" reads a vCard or
 // a CSV file (ContactImport.qml, in the window). A card of an address book
 // you only read says so wherever it would be written (wave D). An office's
-// card shows its opening hours beside its numbers (OpeningHours.qml), a
-// person's under More: changed by hand (OpeningHoursForm.qml), looked up
-// when asked (OpeningHoursLookup.qml), "Call back…" a task that follows them.
+// card shows its opening hours beside its numbers (OpeningHours.qml), any
+// other under More: changed by hand (OpeningHoursForm.qml), looked up when
+// asked on an office's card alone (OpeningHoursLookup.qml), "Call back…" a
+// task that follows them.
 
 pragma ComponentBehavior: Bound
 
@@ -325,7 +326,7 @@ Item {
 
     // The map instead of the list: every contact placed, a pin opening its card.
     property bool mapShown: false
-    property var places: ({ allowed: false, tiles: "", pins: [], waiting: 0, locating: false })
+    property var places: ({ allowed: false, tiles: "", pins: [], waiting: 0, locating: false, stopped: "" })
     // The open contact's first address, when placed.
     readonly property var personPin: {
         if (page.person === null || !page.person.addresses)
@@ -580,13 +581,14 @@ Item {
                     Label {
                         visible: page.places.allowed
                         Layout.fillWidth: true
-                        text: page.places.locating ? page.sioul.text("map-locating") : page.sioul.textArgs("map-waiting", JSON.stringify({ n: page.places.waiting }))
+                        // The map's search service set to None or refused today: said, nothing to press (map.rs).
+                        text: page.places.locating ? page.sioul.text("map-locating") : (page.places.stopped || "") !== "" ? page.places.stopped : page.sioul.textArgs("map-waiting", JSON.stringify({ n: page.places.waiting }))
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: page.theme.muted
                     }
                     Button {
-                        visible: !page.places.locating
+                        visible: !page.places.locating && (page.places.stopped || "") === ""
                         text: page.places.allowed ? page.sioul.text("map-place") : page.sioul.text("map-allow-button")
                         icon.name: "mark-location"
                         icon.color: page.theme.text
@@ -937,6 +939,7 @@ Item {
                                             onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
                                             onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
                                             onCalledBack: answer => page.problem = answer.error || ""
+                                            onMarked: answer => page.problem = answer.error || ""
                                         }
                                     }
                                 }
@@ -967,6 +970,7 @@ Item {
                                 Button {
                                     objectName: "cardPersonButton"
                                     visible: page.person !== null && (page.person.uid || "") !== ""
+                                    Layout.maximumWidth: cardScroll.availableWidth
                                     flat: true
                                     icon.name: page.cardPerson ? "go-next" : "list-add"
                                     icon.color: page.theme.text
@@ -981,9 +985,12 @@ Item {
                                         cardLink.popup()
                                     }
                                 }
+                                // Its words carry the card's name, an office's often long: never wider than the
+                                // card's column (on a phone in French, it widened the column past the screen's edge).
                                 Button {
                                     visible: page.person !== null
                                     Layout.leftMargin: 18
+                                    Layout.maximumWidth: Math.max(0, cardScroll.availableWidth - 18)
                                     flat: true
                                     objectName: "personSheetButton"
                                     text: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : ""))
@@ -1136,6 +1143,7 @@ Item {
                                             onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
                                             onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
                                             onCalledBack: answer => page.problem = answer.error || ""
+                                            onMarked: answer => page.problem = answer.error || ""
                                         }
                                     }
                                 }
