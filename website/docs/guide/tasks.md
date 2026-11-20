@@ -9,7 +9,7 @@ description: Tasks in Sioul - one next step with its reason, tasks that wait for
 A plan written as a list is a wall: every line is there at once, and the next step has to be found again each time. Sioul turns the plan into tasks that wait for each other, and shows the one step to take now, with the reason. It lays out your day by itself, around your events, your meals and your rest, in the hours you keep for each kind of work, and nothing is ever overdue. You say how the day is, clear, haze or fog, and a hard day holds less. Your tasks are standard tasks on your own calendar server, which your phone and your other programs see.
 
 <figure markdown="span">
-  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board and Calendar, then Routines and three choices: every project, all kinds, any category. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
+  [![The Tasks page on "Now". At the top, the tabs Now, The day, List, Board, Gantt and Search; under them, Routines, three choices (every project, all kinds, any category), Agendas and ⚙. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
   <figcaption>Now: one step, why it comes now, and the one after it.</figcaption>
 </figure>
 
@@ -92,7 +92,7 @@ A task can also say **what it takes**, in its panel: *light*, *the usual*, *heav
 
 ## Starting, and stopping {#starting-and-stopping}
 
-Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**. It is on Now, on a task's card, and in a task's menu (a right click or a long press) in **List**, **Board** and **Gantt**, for any task, at any hour.
+Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**. It is on Now, on a task's card, and in a task's menu (a right click or a long press) in **List**, **Board** and **Gantt**, for any task, at any hour. A task with steps is started on its steps, one at a time.
 
 The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound. On Linux and on Android, a notification also shows the time running, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 
@@ -102,7 +102,7 @@ The focus window stays on top while you work elsewhere. A disc drains, in a neut
 - Stopping offers one line, **Next time, start by…**, shown when the task comes back.
 - **Busy while I work on it**, on the task's panel: while its timer runs you are busy, and with **While busy** ticked do-not-disturb holds on every device; its time counts in the availability you share ([Busy](notifications.md#busy)). Off unless you turn it on. On a task with steps, a step's timer makes you busy too. Under the switch, a line says what the availability you share holds for the task, or that its time is not known yet.
 
-The time is noted for the task, and for its project: to bill it, and to learn how long things really take ([Time](time.md)). A timer you forgot is cut when you stop it, and the stretch says so ([Time](time.md#where-time-comes-from)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
+The time is noted for the task, and for its project: to bill it, and to learn how long things really take ([Time](time.md)). The time spent on a task's steps counts for the task too: once it is done, all of it is set against the task's own first guess ([How the plan learns](time.md#how-the-plan-learns-from-your-time)). A timer you forgot is cut when you stop it, and the stretch says so ([Time](time.md#where-time-comes-from)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
 
 **Where you stopped.** Whenever something interrupts you (a pause, a meal, the night, the end of the day, a timer stopped), you can leave one line on where you were; **New ▾ ▸ Where I stopped…** leaves one at any time. It shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**. When you [share between your devices](sharing.md), your other devices show it too.
 
@@ -112,7 +112,7 @@ Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It i
 
 ## The day {#the-day}
 
-**The day** is the [Agenda](agenda.md#day-and-week)'s Day, in its own tab here, on today: everything with a time shows, and its cards, its drags and its "+" work as in the Agenda; ◂ and ▸ go to the days around it. **Now** links to it too ("The whole day"). It lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
+**The day** is the [Agenda](agenda.md#day-and-week)'s Day, in its own tab here, on today: everything with a time shows, and its cards, its drags and its "+" work as in the Agenda; ◂ and ▸ go to the days around it, **Today** back to it. **Now** links to it too ("The whole day"). It lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. It shows the steps of every area, whatever the hour; the button beside **Agendas** ("All areas ▾") keeps those of the areas you tick ([Which steps](agenda.md#day-and-week)). The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
 
 The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile, and at once after anything changes what it holds ([The plan](#the-plan)).
 
@@ -142,10 +142,10 @@ After the last step, some time is **Kept free, in case steps take longer** ([How
 
 ## List, Board, Gantt {#list-board-timeline}
 
-One switch away from Now:
+One tab away from Now:
 
 - **List**: every open task in the plan's order, grouped **By project** or **By list**, with a search, and **Done too** on request. **With a date asked** lists only the tasks that have one, the nearest first, each on its own row. The optional ones come last. A task with steps is one row: "Going to the doctor · Thu 29 Oct 14:00 · next: Brush teeth" (its appointment's time, when it prepares one, then its next step); its arrow ▸ shows its steps under it, in their order, and ▾ folds them again. Sioul remembers which you opened; a search shows every step.
-- **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). A task with steps is one card, where its step furthest on is, until its arrow shows its steps. Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
+- **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). A task with steps is one card, where its step furthest on is, until its arrow shows its steps. Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. On a phone, the columns stand one under the other. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
 - **Gantt** (it was called Calendar): each open task on its days, the date asked as a small diamond, days without room shaded. A task with steps is one bar, over its steps' days, until its arrow shows them. One project, or all. A project's **Gantt** button opens this view, kept to the project.
 
 <figure markdown="span">
@@ -153,7 +153,7 @@ One switch away from Now:
   <figcaption>The list, by project.</figcaption>
 </figure>
 
-Three choices at the top of the page, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices.
+Three choices under the tabs, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices. On a phone, the three fold behind one button, **Filters**, which says how many are set: "Filters (2)".
 
 **Your hours shape Now alone.** The day, List, Board, Gantt and Search show every task, work, admin and leisure, whatever the hour: a work task is there in the evening too, and The day shows today's steps of all of them. Now stays calm and shows what the hour is for.
 
@@ -161,7 +161,7 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 ## Search, and changing several at once {#search}
 
-**Search**, the last choice at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
+**Search**, the last tab at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
 
 - **words** found in the title, the notes or the place, each word somewhere, accents and case aside;
 - **Any project**, **No project** or one; the same for the **type** and the **category**. An event has no type: **No type** keeps every event, a type none;
@@ -177,22 +177,23 @@ What comes is listed first, the soonest first, then the past, the newest first, 
 
 A task opens in its card on the right, beside the list (on a small screen, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
-- **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
+- **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses. A task with steps has none of these five buttons: its steps are started and done one by one. Under them, **Busy while I work on it** ([above](#starting-and-stopping));
 - at the top, the appointment it prepares, with when to leave under it ("Leave at 13:10 · Bus 24");
 - its tags, **its steps** in their order (each can be ticked here; their minutes are added up), then its notes with their list to tick, **what it waits for**, each wait with its gap when it has one ("two weeks after it"), and what it frees;
 - its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes, their Markdown drawn safely (no HTML, no picture, links opened by your browser; a list of `- [ ]` items shows its boxes);
-- **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else; **Ties** shows the whole chain, what those things are tied to as well ([Ties](ties.md)).
+- **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. At the foot, **Add ▾** makes something new tied to it: **An event**, **A note**, or **A message**, which starts a draft to the people it involves; **Link to…** ties anything else; **Ties** shows the whole chain, what those things are tied to as well ([Ties](ties.md)). **Delete** and **Close** end the row.
 
 **Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:
 
+- **its tags**, each with × to take it off, and one more typed, or chosen among those in use ("+ tag");
 - **its steps**, and one more in a line ("A step, in one line"), which goes after the others. Their order is yours: each step has a handle ⠿; drag a step with a mouse to another place, or use its menu (right click, or a long press on a touch screen), **Move up** and **Move down**; on the keyboard, Alt+↑ and Alt+↓. The same menu offers **Break this step down** (the step opened, to give it steps of its own), **Make it a task of its own**, and **Fold into the list**, which makes the step an item of the task's list to tick (a step with more than words and a tick, such as a length or a wait, says what it would lose first); **a step of…**: the task it is part of, found by its title ("A step of… (a task's title)"); it moves into that task's list with its own steps, after the steps there. A step shows "A step of …" instead, with × to make it a task of its own again. A task's menu in the lists offers **Make it a step of…** too, and, for a step, **Make it a task of its own**. Each change says so in the status line, with **Undo**; **what it waits for** ("Waits for…": another task, found by its title), and, for the next wait you add, **Then wait**: a gap in days or weeks after the other is done ("the answer comes within two weeks"; 0, none);
-- under **More**: **Can start from**, **Date asked** with its hour ([A date asked and its hour](#a-date-asked-and-its-hour)), **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
+- under **More**: **Can start from**, **Date asked** with its hour ([A date asked and its hour](#a-date-asked-and-its-hour)), **Takes about**, **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **Project**, **Billed** ([Time](time.md)), **What it takes**, **Kind**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Needs an open office** (and its office's own hours, when they are not the usual ones), **Comes back** (repeating), **List**, and **Notes, in Markdown**, with **Add a list to tick** under them. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
 
 Anything can become a task: a message, a line of a note, an event to prepare.
 
 ## The end of the day {#the-end-of-the-day}
 
-**Done for today** ends the work day, early or not. It opens a short sheet first:
+**Done for today**, at the foot of Now, ends the work day, early or not. It opens a short sheet first:
 
 - what you said of the morning, and what the plan did with it: "This morning: haze. The plan kept a lighter day.";
 - **The day felt:** light, usual, heavy, or gave back;
@@ -209,7 +210,7 @@ Then a short screen, read in ten seconds, says:
 - that everything else has its place;
 - the first step when work comes back, which you can say your own way ("After breakfast, open the form");
 - a date asked before then, if there is one, with **Ask for more time**, which writes a draft to the people the task involves for you to read and send (nothing is sent by itself), or you leave it;
-- and what still gets through: one-time codes, and the senders your lists let through then.
+- and what still gets through: one-time codes, and messages from the people you marked as close.
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
@@ -242,7 +243,7 @@ While you sleep ([Hours](hours.md#sleep): the night from winding down to waking,
 **Do at…**, in a task's details, pins it to a day and a time: its block, an event of its own, goes into your calendar, "Planned tasks", made the first time on the account of the task's list (on this device for a list kept here; the Tasks ⚙ can name another calendar). It lasts as long as the plan lays the task, unless you say otherwise. It shows in every calendar, your phone's too, and the task and its block are tied both ways. Its details then show a pin and when, under its title: "Pinned: Thursday 8 October, 10:00–10:30". A click there opens the block in the Agenda; its menu (right click, a long press on a touch screen, or **⋯**) offers **Move…** and **Let the plan place it**. In the list and on the board, its row shows a small pin and its time; Now shows the pin when the next step is pinned, and the day marks its step with one.
 
 - **The plan lays the task in its block**, whatever else is there, and what else fits around it. The block counts once, as the task: never as an event besides.
-- **Move it** with **Change…**, by dragging the step in [the day](#the-day), or by dragging the block in the [Agenda](agenda.md#tasks-pinned-to-a-time) or in any other calendar program: the task follows, at the next sync for another program. Delete the block anywhere, and the plan places the task again.
+- **Move it** with **Move…**, by dragging the step in [the day](#the-day), or by dragging the block in the [Agenda](agenda.md#tasks-pinned-to-a-time) or in any other calendar program: the task follows, at the next sync for another program. Delete the block anywhere, and the plan places the task again.
 - **Let the plan place it** takes the block away; **Undo** waits ten seconds.
 - **Its day and its hour** are set as an event's are, with the keyboard alone or the pointer alone ([A day and an hour](agenda.md#a-day-and-an-hour)).
 - **The block passes and the task is not done**: the plan places it again. The block stays in your calendar as it was; nothing is said, nothing counted.
@@ -307,7 +308,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
-A reminder comes, once, two working days before a date asked, and when a wait is over. These two come from a computer, while Sioul is open or, if you ask, with its window closed; a phone does not tell them, a tablet does ([Settings](settings.md#reminders)).
+A reminder comes, once, two working days before a date asked (**Dates asked: working days before**, in Settings ▸ Reminders), and when a wait is over (**A wait over**, in the Tasks ⚙). A computer tells these two while Sioul is open or, if you ask, with its window closed, and a tablet tells them too; a phone does not, and its card on the home screen lists them instead ([Settings](settings.md#reminders)).
 
 ### What a day holds {#what-a-day-holds}
 
@@ -358,7 +359,7 @@ The ⚙ at the top of the page:
 - **Kinds of task**: renamed, taken away or added; tasks keep the kind they have.
 - **Categories**: renamed on every task that has them, or taken off them all.
 - **Task lists**: renamed, here and on the server; an empty one can be deleted.
-- **A task without an estimate counts** so many minutes.
+- **A task without an estimate counts** so many minutes: 30 unless you change it, from 5 to 240.
 - **New tasks go into**: the list a new task goes into, typed in one line or in its form (where another can be chosen).
 - **Time blocks go into**: the calendar of the tasks you pin to a time; unless you choose one, "Planned tasks", made the first time with each task's list (on this device for a list kept here, or for a Google account).
 - **An alarm in each block**: off unless you turn it on; five minutes before it, in the blocks made or moved from then on.
@@ -373,7 +374,7 @@ The ⚙ at the top of the page:
 
 ### A date asked and its hour {#a-date-asked-and-its-hour}
 
-A date asked is a day, and it can have an hour: the field beside **Date asked** in the form. It says **No hour** until you give one, and that word is the button back. A date never gets an hour you did not give it.
+A date asked is a day, and it can have an hour: the field beside **Date asked** in the form. It says **No hour** until you give one, and that word is the button back. A date never gets an hour you did not give it. An empty **Can start from** or **Date asked** shows an example, 2026-10-05, is typed from its first place wherever you click, and opens its month on today ([A day and an hour](agenda.md#a-day-and-an-hour)).
 
 - An hour means "done by". It holds no time and draws no block: "By 30 October, 16:00: three weeks left". The plan places the task before it, and the reminder says it.
 - When a date falls before the task's start, or at the very moment of it, the form says so and keeps nothing until you change one of them. A start and a date on one day stand: the day holds both.
@@ -393,7 +394,7 @@ In a task's form, **Its appointment…** finds an event by a few words of its ti
 
 ### Elsewhere in Sioul {#elsewhere-in-sioul}
 
-- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can list your tasks, add one and mark one done, on this computer's files; what it does with what it reads is up to the agent.
+- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read your tasks, add some and mark them done, on this device's files; when you ask, it also changes, deletes or moves them, their steps and their list to tick, each change said in the window with **Undo**. It sees a project's tasks only once you open that project to agents. What it does with what it reads is up to the agent.
 - **From the command line**: `sioul tasks` and `sioul focus` do what the page does ([below](#from-the-command-line)).
 
 ## Why it works this way {#why-it-works-this-way}

@@ -20,7 +20,7 @@ A source or a task is for **work**, for **your admin** (bills, letters, offices,
 | Thing | Where you say what it is for | When you have not said |
 |---|---|---|
 | A mail address | on its card in [Accounts](accounts.md#a-mail-address): **What this address is for** | work: an address you did not classify never reaches your evenings |
-| A budget | its form: **For** | your admin |
+| A budget | its form: **For**, its boxes Work, Your admin, Leisure | your admin |
 | An agenda | Agenda ⚙ ▸ **Your agendas**: **For** | work, on an account you said is only for work; else your admin and leisure |
 | A site | its menu: **For** | by its type: secure mailboxes and client areas are admin; chats, social networks and dating are leisure; video calls and other sites are admin and leisure |
 | A task | its panel: **For** | by its tags and project: work's (a client's project, GitHub, the categories you call work), leisure's (joy, family, friends…), both admin and leisure for personal ones (health), else admin |
@@ -52,7 +52,7 @@ In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **H
 [Settings ▸ Hours](settings.md#hours) ▸ **Vacations and holidays**:
 
 - **Your vacations**: from a day to another, each typed as 2026-12-24, with a word on them and a kind: a vacation, sick leave, or something else. **Add** keeps the period; **×** on its line takes it away. What you typed before stays as it was.
-- **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one switch, **its days count as my days off**. Public holidays count unless you turn it off; school holidays do not, unless you turn it on (a parent who stays home with the children, a teacher).
+- **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one box to tick, **its days count as my days off**. Public holidays count unless you untick it; school holidays do not, unless you tick it (a parent who stays home with the children, a teacher).
 - **Subscribe to a calendar of holidays…** opens the Agenda's settings at the form, with the official French calendars ready: public holidays by territory, school holidays by zone.
 
 A day that counts as a day off is one everywhere: leisure all day, nothing planned in it, "two working days before" skips it, work's reminders wait until work comes back, and the agenda shades it. Each device knows the holidays from its own copy of the calendar: one that has not read it yet does not know them, and its line says so.
@@ -103,7 +103,7 @@ Under the devices, a grid says **what comes forward, and when**: for each device
 - **The Porch**: mail to an address this device is not for waits; your safe senders' is shown, without a notification. **Show all mail now** shows everything.
 - **Budgets**: as Mail's filter.
 - **Another app's notifications**, on a phone, when you said what the app is **For**: its automatic notifications wait while the phone is not for it; people's messages come as your hours say, since no other device can tell them for the phone.
-- **Reminders of your tasks**: on the computers for the task's own area: an admin task's date comes on the laptop for admin, not on the work computer.
+- **Reminders of your tasks**: on the computers and tablets for the task's own area (a phone does not tell them): an admin task's date comes on the laptop for admin, not on the work computer.
 
 When the device is the reason, and not the hour, Sioul says so: in the status line ("This device is for work: leisure waits on your other devices."), and in the "?" of Mail's and Budgets' filters.
 

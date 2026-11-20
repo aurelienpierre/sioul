@@ -9,7 +9,7 @@ description: Les tâches dans Sioul – une seule étape suivante avec sa raison
 Un plan écrit en liste est un mur : chaque ligne est là d’un coup, et l’étape suivante doit être retrouvée à chaque fois. Sioul fait du plan des tâches qui s’attendent les unes les autres, et montre la seule étape à faire maintenant, avec sa raison. Il dispose votre journée de lui-même, autour de vos événements, de vos repas et de votre repos, dans les heures que vous gardez pour chaque type de travail, et rien n’est jamais en retard. Vous dites comment est la journée, clair, brume ou brouillard, et une journée difficile en tient moins. Vos tâches sont des tâches standard sur votre propre serveur d’agenda, que votre téléphone et vos autres programmes voient.
 
 <figure markdown="span">
-  [![La page Tâches sur « Maintenant ». En haut, les vues Maintenant, La journée, Liste, Tableau et Calendrier, puis Routines et trois choix : tous les projets, tous les types, toutes les catégories. Au milieu, une carte, « L’étape suivante » : son titre, le projet dont elle fait partie, pourquoi elle vient maintenant, à peu près combien de temps elle prend et où vous en étiez, avec Commencer, Fait, Pas maintenant et Qu’est-ce qui rend cela difficile ? En dessous, « Ensuite » et l’étape d’après, sa date demandée en jours restants ; puis « Autres choix » et « Faites cette semaine », repliés.](../assets/screens/fr/tasks-now.png){ loading=lazy }](../assets/screens/fr/tasks-now.png "Ouvrir l’image en grand")
+  [![La page Tâches sur « Maintenant ». En haut, les onglets Maintenant, La journée, Liste, Tableau, Gantt et Chercher ; sous eux, Routines, trois choix (tous les projets, tous les types, toutes les catégories), Agendas et ⚙. Au milieu, une carte, « L’étape suivante » : son titre, le projet dont elle fait partie, pourquoi elle vient maintenant, à peu près combien de temps elle prend et où vous en étiez, avec Commencer, Fait, Pas maintenant, Détails et Qu’est-ce qui rend cela difficile ? En dessous, « Ensuite » et l’étape d’après, sa date demandée en jours restants ; puis « Autres choix » et « Faites cette semaine », repliés.](../assets/screens/fr/tasks-now.png){ loading=lazy }](../assets/screens/fr/tasks-now.png "Ouvrir l’image en grand")
   <figcaption>Maintenant : une étape, pourquoi elle vient maintenant, et celle d’après.</figcaption>
 </figure>
 
@@ -92,7 +92,7 @@ Une tâche peut aussi dire **ce que ça coûte**, dans son panneau : *léger*,
 
 ## Commencer, et s’arrêter {#starting-and-stopping}
 
-Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**. Il est dans Maintenant, sur la carte d’une tâche, et dans le menu d’une tâche (un clic droit ou un appui long) dans **Liste**, **Tableau** et **Gantt**, pour n’importe quelle tâche, à toute heure.
+Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**. Il est dans Maintenant, sur la carte d’une tâche, et dans le menu d’une tâche (un clic droit ou un appui long) dans **Liste**, **Tableau** et **Gantt**, pour n’importe quelle tâche, à toute heure. Une tâche qui a des étapes se commence par ses étapes, une à une.
 
 La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur Android, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
 
@@ -102,7 +102,7 @@ La fenêtre de concentration reste au premier plan pendant que vous travaillez a
 - S’arrêter propose une ligne, **La prochaine fois, commencer par…**, montrée quand la tâche revient.
 - **Indisponible pendant que j’y travaille**, sur le panneau de la tâche : tant que son minuteur tourne vous êtes indisponible, et avec **Pendant une indisponibilité** coché « Ne pas déranger » tient sur tous vos appareils ; son temps compte dans la disponibilité que vous partagez ([Indisponible](notifications.md#busy)). Désactivé sauf si vous le mettez. Sur une tâche avec des étapes, le minuteur d’une étape vous rend indisponible aussi. Sous l’interrupteur, une ligne dit ce que la disponibilité que vous partagez contient pour la tâche, ou que son temps n’est pas encore connu.
 
-Le temps est noté pour la tâche, et pour son projet : pour le facturer, et pour apprendre combien de temps les choses prennent vraiment ([Temps](time.md)). Un minuteur oublié est coupé quand vous l’arrêtez, et le moment le dit ([Temps](time.md#where-time-comes-from)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
+Le temps est noté pour la tâche, et pour son projet : pour le facturer, et pour apprendre combien de temps les choses prennent vraiment ([Temps](time.md)). Le temps passé sur les étapes d’une tâche compte aussi pour la tâche : une fois qu’elle est faite, il est tout entier comparé à la première estimation de la tâche ([Comment le plan apprend](time.md#how-the-plan-learns-from-your-time)). Un minuteur oublié est coupé quand vous l’arrêtez, et le moment le dit ([Temps](time.md#where-time-comes-from)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
 
 **Où vous en étiez.** Chaque fois que quelque chose vous interrompt (une pause, un repas, la nuit, la fin de la journée, un minuteur arrêté), vous pouvez laisser une ligne sur où vous en étiez ; **Nouveau ▾ ▸ Où j’en suis…** en laisse une à tout moment. Elle revient en haut du Porche et de la page Tâches, et dans la fenêtre de concentration, jusqu’à ce que vous appuyiez sur **C’est fait**. Quand vous [partagez entre vos appareils](sharing.md), vos autres appareils la montrent aussi.
 
@@ -112,7 +112,7 @@ Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cel
 
 ## La journée {#the-day}
 
-**La journée** est le Jour de l’[Agenda](agenda.md#day-and-week), dans son propre onglet ici, sur aujourd’hui : tout ce qui a une heure s’y affiche, et ses cartes, ses glissements et son « + » marchent comme dans l’Agenda ; ◂ et ▸ mènent aux jours autour. **Maintenant** y mène aussi (« Toute la journée »). Elle dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, vos repas et vos siestes ([Santé](health.md#meals-rest-and-sleep)), et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Le temps gardé avant et après une tâche ou un événement s’affiche à part, « Autour : … ». Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait. Ce que vous avez fini aujourd’hui reste là où cela s’est terminé, coché ✓ et estompé.
+**La journée** est le Jour de l’[Agenda](agenda.md#day-and-week), dans son propre onglet ici, sur aujourd’hui : tout ce qui a une heure s’y affiche, et ses cartes, ses glissements et son « + » marchent comme dans l’Agenda ; ◂ et ▸ mènent aux jours autour, **Aujourd’hui** y ramène. **Maintenant** y mène aussi (« Toute la journée »). Elle dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, vos repas et vos siestes ([Santé](health.md#meals-rest-and-sleep)), et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Elle montre les étapes de chaque domaine, quelle que soit l’heure ; le bouton à côté d’**Agendas** (« Tous les domaines ▾ ») garde celles des domaines que vous cochez ([Quelles étapes](agenda.md#day-and-week)). Le temps gardé avant et après une tâche ou un événement s’affiche à part, « Autour : … ». Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait. Ce que vous avez fini aujourd’hui reste là où cela s’est terminé, coché ✓ et estompé.
 
 La journée suit l’horloge : la ligne avance avec les minutes, et la journée est disposée à nouveau à partir de maintenant toutes les cinq minutes et chaque fois que vous revenez dans Sioul, avec ce que vos autres appareils ont marqué ou noté entre-temps, et aussitôt que quelque chose change ce qu’elle tient ([Le plan](#the-plan)).
 
@@ -142,10 +142,10 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
 
 ## Liste, Tableau, Gantt {#list-board-timeline}
 
-À un clic de Maintenant :
+À un onglet de Maintenant :
 
 - **Liste** : chaque tâche ouverte dans l’ordre du plan, groupées **Par projet** ou **Par liste**, avec une recherche, et **Faites aussi** sur demande. **Avec une date demandée** ne liste que les tâches qui en ont une, la plus proche d’abord, chacune sur sa ligne. Les tâches facultatives viennent en dernier. Une tâche qui a des étapes tient sur une ligne : « Aller chez le médecin · jeu. 29 oct. 14:00 · prochaine étape : Se brosser les dents » (l’heure de son rendez-vous, quand elle en prépare un, puis son étape suivante) ; sa flèche ▸ montre ses étapes dessous, dans leur ordre, et ▾ les replie. Sioul se souvient de celles que vous avez ouvertes ; une recherche montre chaque étape.
-- **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Une tâche qui a des étapes tient sur une carte, là où en est son étape la plus avancée, jusqu’à ce que sa flèche montre ses étapes. Les cartes se déplacent par glisser-déposer, à la souris ou au pavé tactile ; sur un écran tactile, glisser fait défiler le tableau. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
+- **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Une tâche qui a des étapes tient sur une carte, là où en est son étape la plus avancée, jusqu’à ce que sa flèche montre ses étapes. Les cartes se déplacent par glisser-déposer, à la souris ou au pavé tactile ; sur un écran tactile, glisser fait défiler le tableau. Sur un téléphone, les colonnes se suivent l’une sous l’autre. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
 - **Gantt** (elle s’appelait Calendrier) : chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés. Une tâche qui a des étapes tient sur une barre, sur les jours de ses étapes, jusqu’à ce que sa flèche les montre. Un projet, ou tous. Le bouton **Gantt** d’un projet ouvre cette vue, limitée au projet.
 
 <figure markdown="span">
@@ -153,7 +153,7 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
   <figcaption>La liste, par projet.</figcaption>
 </figure>
 
-Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **Toutes les catégories**, ne montrent que les tâches d’un projet, d’un type ou d’une catégorie, dans chaque vue, Maintenant compris : « le prochain appel ». Le plan reste entier : un appel qui attend un message attend toujours. Sioul se souvient de vos choix.
+Trois choix sous les onglets, **Tous les projets**, **Tous les types** et **Toutes les catégories**, ne montrent que les tâches d’un projet, d’un type ou d’une catégorie, dans chaque vue, Maintenant compris : « le prochain appel ». Le plan reste entier : un appel qui attend un message attend toujours. Sioul se souvient de vos choix. Sur un téléphone, les trois se replient derrière un seul bouton, **Filtres**, qui dit combien sont choisis : « Filtres (2) ».
 
 **Vos heures ne façonnent que Maintenant.** La journée, Liste, Tableau, Gantt et Chercher montrent chaque tâche, travail, administratif et loisirs, quelle que soit l’heure : une tâche de travail y est aussi le soir, et La journée montre les étapes du jour de toutes. Maintenant reste calme et montre ce à quoi l’heure sert.
 
@@ -161,7 +161,7 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 
 ## Chercher, et changer plusieurs à la fois {#search}
 
-**Chercher**, le dernier choix en haut de la page Tâches et de l’Agenda, trouve tâches et événements ensemble, quelle que soit l’heure :
+**Chercher**, le dernier onglet en haut de la page Tâches et de l’Agenda, trouve tâches et événements ensemble, quelle que soit l’heure :
 
 - des **mots** du titre, des notes ou du lieu, chaque mot quelque part, sans tenir compte des accents ni des majuscules ;
 - **Tous les projets**, **Sans projet** ou l’un d’eux ; de même pour le **type** et la **catégorie**. Un événement n’a pas de type : **Sans type** garde chaque événement, un type aucun ;
@@ -177,22 +177,23 @@ Ce qui vient est listé d’abord, le plus proche d’abord, puis le passé, le 
 
 Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un petit écran, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
 
-- **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
+- **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations. Une tâche qui a des étapes n’a aucun de ces cinq boutons : ses étapes se commencent et se font une à une. Dessous, **Indisponible pendant que j’y travaille** ([plus haut](#starting-and-stopping)) ;
 - en haut, le rendez-vous qu’elle prépare, avec dessous l’heure de partir (« Partir à 13:10 · Bus 24 ») ;
 - ses étiquettes, **ses étapes** dans leur ordre (chacune se coche ici ; leurs minutes s’additionnent), puis ses notes avec leur liste à cocher, **ce qu’elle attend**, chaque attente avec son délai quand elle en a un (« deux semaines après elle »), et ce qu’elle libère ;
 - ses champs en mots, ceux qui sont dits : **Peut commencer le**, **Avant** et **Après**, ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Projet**, **Facturé**, **Type**, **Pour**, **Demande un bureau ouvert**, **Revient**, **Liste** ; ses notes, leur Markdown dessiné sans risque (pas de HTML, pas d’image, des liens ouverts par votre navigateur ; une liste de lignes `- [ ]` montre ses cases) ;
-- **Lié à cela** : le courriel d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un courriel aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste ; **Liens** montre toute la chaîne, ce à quoi ces choses sont liées aussi ([Les liens](ties.md)).
+- **Lié à cela** : le courriel d’où elle vient, ses notes, les personnes, les brouillons, le projet. En bas, **Ajouter ▾** crée quelque chose de nouveau lié à elle : **Un événement**, **Une note**, ou **Un courriel**, qui commence un brouillon aux personnes qu’elle concerne ; **Lier à…** y lie tout le reste ; **Liens** montre toute la chaîne, ce à quoi ces choses sont liées aussi ([Les liens](ties.md)). **Supprimer** et **Fermer** terminent la rangée.
 
 **Modifier**, en haut, change les détails en son formulaire, et **Détails** revient aux détails. Chaque champ est gardé au fur et à mesure :
 
+- **ses étiquettes**, chacune avec × pour l’enlever, et une de plus, tapée ou choisie parmi celles en usage (« + étiquette ») ;
 - **ses étapes**, et une de plus en une ligne (« Une étape, en une ligne »), qui vient après les autres. Leur ordre est le vôtre : chaque étape a une poignée ⠿ ; faites glisser une étape avec une souris à une autre place, ou passez par son menu (clic droit, ou appui long sur un écran tactile), **Monter** et **Descendre** ; au clavier, Alt+↑ et Alt+↓. Le même menu propose **Découper cette étape** (l’étape ouverte, pour lui donner des étapes à elle), **En faire une tâche à part**, et **La ranger dans la liste**, qui fait de l’étape un élément de la liste à cocher de la tâche (une étape qui tient plus que des mots et une coche, une durée ou une attente par exemple, dit d’abord ce qu’elle perdrait) ; **une étape de…** : la tâche dont elle fait partie, trouvée par son titre (« Une étape de… (le titre d’une tâche) ») ; elle va dans la liste de cette tâche avec ses propres étapes, après les étapes qui y sont. Une étape montre plutôt « Une étape de … », avec × pour en refaire une tâche à part. Le menu d’une tâche dans les listes propose aussi **En faire une étape de…**, et, pour une étape, **En faire une tâche à part**. Chaque changement le dit dans la ligne d’état, avec **Annuler** ; **ce qu’elle attend** (« Attend… » : une autre tâche, trouvée par son titre), et, pour la prochaine attente ajoutée, **Puis attendre** : un délai en jours ou en semaines une fois l’autre faite (« la réponse arrive sous deux semaines » ; 0, aucun) ;
-- sous **Plus** : **Peut commencer le**, **Date demandée** avec son heure ([Une date demandée et son heure](#a-date-asked-and-its-hour)), **Prend environ**, **Projet**, **Étiquettes**, **Revient** (la répétition), **Avant** et **Après** (le temps de se préparer, d’y aller et d’en revenir : gardé libre autour d’elle dans votre plan, jamais compté comme une pause ; la journée ne coupe jamais une telle tâche en morceaux), ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Facturé** ([Temps](time.md)), **Demande un bureau ouvert**, **Liste**, et **Notes, en Markdown**. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord.
+- sous **Plus** : **Peut commencer le**, **Date demandée** avec son heure ([Une date demandée et son heure](#a-date-asked-and-its-hour)), **Prend environ**, **Avant** et **Après** (le temps de se préparer, d’y aller et d’en revenir : gardé libre autour d’elle dans votre plan, jamais compté comme une pause ; la journée ne coupe jamais une telle tâche en morceaux), ce qu’elle demande et ce qu’elle apporte, **Projet**, **Facturé** ([Temps](time.md)), **Ce que ça coûte**, **Type**, **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Demande un bureau ouvert** (et les horaires de ce bureau, quand ce ne sont pas les horaires habituels), **Revient** (la répétition), **Liste**, et **Notes, en Markdown**, avec **Ajouter une liste à cocher** dessous. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord.
 
 Tout peut devenir une tâche : un courriel, une ligne d’une note, un événement à préparer.
 
 ## La fin de la journée {#the-end-of-the-day}
 
-**Fini pour aujourd’hui** termine la journée de travail, tôt ou non. Il ouvre d’abord une courte feuille :
+**Fini pour aujourd’hui**, en bas de Maintenant, termine la journée de travail, tôt ou non. Il ouvre d’abord une courte feuille :
 
 - ce que vous avez dit du matin, et ce que le plan en a fait : « Ce matin : brume. Le plan a gardé une journée plus légère. » ;
 - **La journée a été :** légère, habituelle, lourde ou ressourçante ;
@@ -209,7 +210,7 @@ Puis un écran court, lu en dix secondes, dit :
 - que tout le reste a sa place ;
 - la première étape au retour du travail, que vous pouvez dire à votre façon (« Après le petit-déjeuner, ouvrir le formulaire ») ;
 - une date demandée d’ici là, s’il y en a une, avec **Demander un délai**, qui écrit un brouillon aux personnes que la tâche concerne, à relire et à envoyer vous-même (rien ne part tout seul), ou que vous laissez ;
-- et ce qui passe encore : les codes à usage unique, et les expéditeurs que vos listes laissent alors passer.
+- et ce qui passe encore : les codes à usage unique, et les messages des proches que vous avez choisis.
 
 Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’ouvre sur cette première étape. D’ici là, le travail se repose ([le calme](hours.md#quiet-time)). Une pensée qui vient le soir peut se noter en une ligne ; elle attend, hors de vue, le retour du travail.
 
@@ -242,7 +243,7 @@ Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se d�
 **Faire à…**, dans les détails d’une tâche, la fixe à un jour et une heure : son créneau, un événement à part entière, va dans votre agenda, « Tâches planifiées », créé la première fois sur le compte de la liste de la tâche (sur cet appareil pour une liste gardée ici ; le ⚙ des tâches peut en nommer un autre). Il dure ce que le plan donne à la tâche, sauf si vous en décidez autrement. Il s’affiche dans tout agenda, celui de votre téléphone aussi, et la tâche et son créneau sont liés dans les deux sens. Ses détails montrent alors une épingle et quand, sous son titre : « Fixée : jeudi 8 octobre, 10:00–10:30 ». Un clic là ouvre le créneau dans l’agenda ; son menu (clic droit, appui long sur un écran tactile, ou **⋯**) propose **Déplacer…** et **Laisser le plan la placer**. Dans la liste et sur le tableau, sa ligne montre une petite épingle et son heure ; Maintenant montre l’épingle quand l’étape suivante est fixée, et la journée en marque son étape.
 
 - **Le plan place la tâche dans son créneau**, quoi qu’il y ait là, et autour ce qui tient encore. Le créneau compte une fois, comme la tâche : jamais comme un événement en plus.
-- **Déplacez-le** avec **Changer…**, en faisant glisser l’étape dans [la journée](#the-day), ou en faisant glisser le créneau dans l’[agenda](agenda.md#tasks-pinned-to-a-time) ou dans tout autre programme d’agenda : la tâche suit, à la synchronisation suivante pour un autre programme. Supprimez le créneau n’importe où, et le plan replace la tâche.
+- **Déplacez-le** avec **Déplacer…**, en faisant glisser l’étape dans [la journée](#the-day), ou en faisant glisser le créneau dans l’[agenda](agenda.md#tasks-pinned-to-a-time) ou dans tout autre programme d’agenda : la tâche suit, à la synchronisation suivante pour un autre programme. Supprimez le créneau n’importe où, et le plan replace la tâche.
 - **Laisser le plan la placer** retire le créneau ; **Annuler** attend dix secondes.
 - **Son jour et son heure** se règlent comme ceux d’un événement, au clavier seul ou au pointeur seul ([Un jour et une heure](agenda.md#a-day-and-an-hour)).
 - **Le créneau passe et la tâche n’est pas faite** : le plan la replace. Le créneau reste dans votre agenda tel qu’il était ; rien n’est dit, rien n’est compté.
@@ -307,7 +308,7 @@ Une tâche étiquetée `joy` (ce mot anglais, tel quel) est offerte sous **Si vo
 - **Toujours à jour** : le plan est refait aussitôt que quelque chose dont il dépend change (une tâche, sa durée estimée ou le temps noté pour elle, un événement, un repas ou la nuit, vos heures ou vos jours de repos, la météo du jour, **Fini pour aujourd’hui**, ce qu’apportent vos autres appareils ou une synchronisation), ainsi qu’au démarrage de Sioul, toutes les douze heures et à minuit.
 - **Quand une date ne tiendra pas**, la tâche le dit une fois : « À ce rythme, le plan finit après le 30 octobre. La faire plus tôt, la réduire ou la confier garderait la date. » Près d’une date demandée, Maintenant dit ce qui tient : « Jusqu’au mercredi 7 octobre : environ 30 min d’étapes, 3 h de place. »
 
-Un rappel vient, une fois, deux jours travaillés avant une date demandée, et quand une attente est finie. Ces deux rappels viennent d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée ; un téléphone ne les dit pas, une tablette si ([Paramètres](settings.md#reminders)).
+Un rappel vient, une fois, deux jours travaillés avant une date demandée (**Dates demandées : jours travaillés avant**, dans Paramètres ▸ Rappels), et quand une attente est finie (**Une attente finie**, dans le ⚙ de la page Tâches). Un ordinateur dit ces deux rappels quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée, et une tablette les dit aussi ; un téléphone ne les dit pas, et sa carte sur l’écran d’accueil les liste à la place ([Paramètres](settings.md#reminders)).
 
 ### Ce que tient une journée {#what-a-day-holds}
 
@@ -338,7 +339,7 @@ Une routine se joue dans une petite fenêtre au premier plan : l’étape, son
 
 Quand le temps d’une étape est fini, la suivante ne commence seule que si la routine le dit. Sinon elle attend, et demande sans un son : « Son temps est fini : fait, ou quelques minutes de plus ? »
 
-**La fenêtre d’administration** est une routine faite de ce qui est là maintenant : le Porche, l’étape suivante du plan, et une ligne pour revenir.
+**Le créneau des démarches** est une routine faite de ce qui est là maintenant : le Porche, l’étape suivante du plan, et une ligne pour revenir.
 
 ### Sons {#sounds}
 
@@ -358,7 +359,7 @@ Le ⚙ en haut de la page :
 - **Types de tâches** : renommés, retirés ou ajoutés ; les tâches gardent le type qu’elles ont.
 - **Catégories** : renommées sur toutes les tâches qui les ont, ou retirées de toutes.
 - **Listes de tâches** : renommées, ici et sur le serveur ; une liste vide peut être supprimée.
-- **Une tâche sans durée compte** tant de minutes.
+- **Une tâche sans durée compte** tant de minutes : 30 sauf si vous le changez, de 5 à 240.
 - **Les nouvelles tâches vont dans** : la liste où va une nouvelle tâche, tapée en une ligne ou dans son formulaire (où une autre peut se choisir).
 - **Les créneaux vont dans** : l’agenda des tâches que vous fixez à une heure ; sauf si vous en choisissez un, « Tâches planifiées », créé la première fois avec la liste de chaque tâche (sur cet appareil pour une liste gardée ici, ou pour un compte Google).
 - **Une alarme dans chaque créneau** : désactivée sauf si vous l’activez ; cinq minutes avant lui, dans les créneaux faits ou déplacés à partir de là.
@@ -373,7 +374,7 @@ Le ⚙ en haut de la page :
 
 ### Une date demandée et son heure {#a-date-asked-and-its-hour}
 
-Une date demandée est un jour, et elle peut avoir une heure : le champ à côté de **Date demandée** dans le formulaire. Il dit **Sans heure** tant que vous n’en donnez pas, et ce mot est le bouton pour y revenir. Une date ne reçoit jamais une heure que vous ne lui avez pas donnée.
+Une date demandée est un jour, et elle peut avoir une heure : le champ à côté de **Date demandée** dans le formulaire. Il dit **Sans heure** tant que vous n’en donnez pas, et ce mot est le bouton pour y revenir. Une date ne reçoit jamais une heure que vous ne lui avez pas donnée. Un champ **Peut commencer le** ou **Date demandée** vide montre un exemple, 2026-10-05, se tape depuis sa première place où que vous cliquiez, et ouvre son mois sur aujourd’hui ([Un jour et une heure](agenda.md#a-day-and-an-hour)).
 
 - Une heure veut dire « fait pour cette heure-là ». Elle ne tient aucun temps et ne dessine aucun bloc : « Pour le 30 octobre, 16:00 : encore trois semaines ». Le plan place la tâche avant elle, et le rappel la dit.
 - Quand une date tombe avant le début de la tâche, ou au même moment, le formulaire le dit et ne garde rien tant que vous n’avez pas changé l’un des deux. Un début et une date le même jour tiennent : la journée contient les deux.
@@ -393,7 +394,7 @@ Dans le formulaire d’une tâche, **Son rendez-vous…** trouve un événement 
 
 ### Ailleurs dans Sioul {#elsewhere-in-sioul}
 
-- **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lister vos tâches, en ajouter une et en marquer une faite, dans les fichiers de cet ordinateur ; ce qu’il fait de ce qu’il lit dépend de l’agent.
+- **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire vos tâches, en ajouter et les marquer faites, dans les fichiers de cet appareil ; quand vous le demandez, il les change aussi, les supprime ou les déplace, avec leurs étapes et leur liste à cocher, chaque changement dit dans la fenêtre avec **Annuler**. Il ne voit les tâches d’un projet qu’une fois ce projet ouvert aux agents. Ce qu’il fait de ce qu’il lit dépend de l’agent.
 - **En ligne de commande** : `sioul tasks` et `sioul focus` font ce que fait la page ([plus bas](#from-the-command-line)).
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}

@@ -20,7 +20,7 @@ Une source ou une tâche sert au **travail**, à **vos démarches** (factures, c
 | Élément | Où dire à quoi il sert | Si vous ne l’avez pas dit |
 |---|---|---|
 | Une adresse électronique | sur sa fiche dans [Comptes](accounts.md#a-mail-address) : **À quoi sert cette adresse** | le travail : une adresse que vous n’avez pas classée n’atteint jamais vos soirées |
-| Un budget | son formulaire : **Pour** | vos démarches |
+| Un budget | son formulaire : **Pour**, ses cases Travail, Vos démarches, Loisirs | vos démarches |
 | Un agenda | Agenda ⚙ ▸ **Vos agendas** : **Pour** | le travail, sur un compte que vous avez dit réservé au travail ; sinon vos démarches et les loisirs |
 | Un site | son menu : **Pour** | selon son type : messageries sécurisées et espaces clients vont aux démarches ; discussions, réseaux sociaux et rencontres aux loisirs ; appels vidéo et autres sites aux démarches et aux loisirs |
 | Une tâche | son panneau : **Pour** | selon ses étiquettes et son projet : le travail (projet pour un client, GitHub, les catégories que vous appelez travail), les loisirs (joy, famille, amis…), démarches et loisirs à la fois pour les personnelles (santé), sinon les démarches |
@@ -52,7 +52,7 @@ Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de 
 [Paramètres ▸ Heures](settings.md#hours) ▸ **Vacances et jours fériés** :
 
 - **Vos vacances** : d’un jour à un autre, chacun tapé comme 2026-12-24, avec un mot dessus et un type : des vacances, un arrêt maladie, ou autre chose. **Ajouter** garde la période ; **×**, sur sa ligne, l’enlève. Ce que vous aviez déjà saisi reste tel quel.
-- **Agendas de vacances et de jours fériés** : chaque agenda de jours fériés ou de vacances scolaires auquel vous êtes abonné ([Les agendas par leur adresse](agenda.md#calendars-by-their-address)), avec un interrupteur, **ses jours comptent comme mes jours sans travail**. Les jours fériés comptent, sauf si vous l’éteignez ; les vacances scolaires non, sauf si vous l’allumez (un parent qui reste avec les enfants, un enseignant).
+- **Agendas de vacances et de jours fériés** : chaque agenda de jours fériés ou de vacances scolaires auquel vous êtes abonné ([Les agendas par leur adresse](agenda.md#calendars-by-their-address)), avec une case à cocher, **ses jours comptent comme mes jours sans travail**. Les jours fériés comptent, sauf si vous la décochez ; les vacances scolaires non, sauf si vous la cochez (un parent qui reste avec les enfants, un enseignant).
 - **S’abonner à un agenda de vacances…** ouvre les réglages de l’Agenda sur le formulaire, avec les agendas officiels français prêts : les jours fériés par territoire, les vacances scolaires par zone.
 
 Un jour qui compte comme jour sans travail l’est partout : loisirs toute la journée, rien de prévu dedans, « deux jours ouvrés avant » le saute, les rappels du travail attendent son retour, et l’agenda le grise. Chaque appareil connaît les jours fériés par sa propre copie de l’agenda : celui qui ne l’a pas encore lu ne les connaît pas, et sa ligne le dit.
@@ -103,7 +103,7 @@ Sous les appareils, une grille dit **ce qui arrive, et quand** : pour chaque a
 - **Le Porche** : les courriels arrivés à une adresse pour laquelle cet appareil n’est pas fait attendent ; ceux de vos expéditeurs sûrs s’affichent, sans notification. **Montrer tous les courriels maintenant** montre tout.
 - **Les budgets** : comme le filtre des courriels.
 - **Les notifications d’une autre application**, sur un téléphone, quand vous avez dit **Pour** quoi elle est faite : ses notifications automatiques attendent tant que le téléphone n’est pas fait pour cela ; les messages des personnes arrivent selon vos heures, puisqu’aucun autre appareil ne peut les dire à la place du téléphone.
-- **Les rappels de vos tâches** : sur les ordinateurs faits pour l’usage de la tâche : la date d’une démarche arrive sur le portable fait pour vos démarches, pas sur l’ordinateur du travail.
+- **Les rappels de vos tâches** : sur les ordinateurs et les tablettes faits pour l’usage de la tâche (un téléphone ne les dit pas) : la date d’une démarche arrive sur le portable fait pour vos démarches, pas sur l’ordinateur du travail.
 
 Quand c’est l’appareil qui en est la raison, et non l’heure, Sioul le dit : dans la ligne d’état (« Cet appareil est pour le travail : vos loisirs attendent sur vos autres appareils. »), et dans le « ? » des filtres des courriels et des budgets.
 
