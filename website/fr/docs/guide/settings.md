@@ -171,6 +171,18 @@ from = "2026-01-01"
 
 Tout ce que montre Paramètres ▸ Factures est gardé dans cette même table, `[invoice]`, que vous pouvez toujours lire et changer à la main : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/projects.html#invoices) en listent chaque clé. Les taux et les seuils sont ceux de la France pour 2026, tels que l’URSSAF et l’administration fiscale les publient, chacun avec son jour : une mise à jour de Sioul apporte les suivants, et les vôtres restent par-dessus.
 
+## Extensions {#extensions}
+
+Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’un élève sur un ENT. Paramètres ▸ Extensions liste ce que propose la liste signée des extensions, et dit pour chacune, avant que vous n’activiez quoi que ce soit, ce qu’elle apporte, les sites auxquels elle parle et si elle garde une connexion.
+
+- **Activer** télécharge son fichier et le vérifie d’après la liste signée ; **Se connecter…** ouvre la page du site lui-même dans une fenêtre de Sioul (sur un téléphone, un écran de Sioul), son nom toujours affiché au-dessus : vous y tapez votre mot de passe, jamais dans Sioul. Cette page ne partage rien avec vos Sites : vous y connecter ne déconnecte aucun site. La connexion reste dans le trousseau de cet appareil.
+- Elle se met ensuite à jour d’elle-même toutes les trois heures. Chaque agenda qu’elle apporte (l’emploi du temps d’un élève) va dans **un de vos calendriers**, que vous choisissez sur sa ligne : un nouveau sur l’un de vos comptes, au nom de l’élève ; un que vous avez déjà ; ou un nouveau sur cet appareil seulement. Tant que vous n’avez pas choisi, rien n’est écrit. Partagez ce calendrier avec l’autre parent depuis Agenda ⚙ ou depuis son serveur : il n’a pas besoin de Sioul.
+- Sioul n’y écrit que des évènements qu’il marque comme ceux de l’extension : chacun porte le nom de l’extension comme catégorie (« Skolengo »), sa description finit par d’où il vient, et sa fiche dans Sioul dit « Vient de Skolengo ». Rien d’autre dans ce calendrier n’est jamais lu comme venant de l’établissement, changé ni retiré. Un cours changé par l’établissement est réécrit ; un cours inchangé est laissé tel quel, notes ajoutées comprises ; un cours annulé reste, son titre « Annulé : … », pour que l’heure libre se voie ; un cours que l’établissement ne donne plus est retiré ; un jour où la plateforme n’a pas répondu ne change rien. Les cours sont du temps libre : ils ne vous rendent jamais indisponible.
+- Sa ligne dit quand elle a tourné, et pour chaque agenda dans quel calendrier vont ses cours, combien et quand ils ont été lus, ou pourquoi rien n’a été écrit (un calendrier disparu ou qui ne peut plus être écrit : choisissez-en un autre sur la même ligne). **Désactiver** l’arrête sur cet appareil et laisse tout ; **Retirer** oublie sa connexion et demande s’il faut laisser ses cours dans vos calendriers ou les en retirer. Les calendriers eux-mêmes restent toujours.
+- Une extension tourne à part de Sioul et ne reçoit que ce que dit sa liste : les sites qu’elle nomme, sa propre entrée dans le trousseau. Une mise à jour qui demande plus attend votre accord ; une qui demande moins s’applique aussitôt. Une extension retirée de la liste s’arrête, et sa ligne le dit.
+
+Les extensions ne sont pas officielles : un service peut changer et en arrêter une. [Les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/extensions.html) décrivent l’interface et chaque vérification.
+
 ## Les réglages propres à chaque page {#each-pages-own-settings}
 
 Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙ au bout de la première rangée de cette page :

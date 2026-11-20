@@ -49,6 +49,10 @@
 //!    own"), once a week at most while the phone charges with its screen off,
 //!    on a network its download setting allows: on a thread of this process,
 //!    under a wake lock of its own, never waited for by the step.
+//! 8. the extensions enabled and signed in on this phone
+//!    (`extensions::background_step`, docs/extensions.md), every three hours:
+//!    on a thread of this process, waited for as the sealed files are, no
+//!    longer.
 //!
 //! 8. the calendars subscribed by their address (`subscriptions::background_step`),
 //!    beside the mail while you are awake, at most every six hours: each one
@@ -657,11 +661,15 @@ fn step(reason: &str) -> serde_json::Value {
     // on a thread of this process, under a wake lock of its own, never waited for.
     #[cfg(target_os = "android")]
     crate::spam::background_step();
+    // 8. The extensions enabled and signed in on this phone, every three
+    // hours (`extensions::background_step`, docs/extensions.md): on a thread
+    // of this process, waited for with the sealed files below at most.
+    let extensions = std::thread::spawn(crate::extensions::background_step);
     // The sealed files waited for, twenty-five seconds more at most: a large
     // paper on a slow line goes on without holding the step (asked again
     // later if it is cut).
     let until = std::time::Instant::now() + std::time::Duration::from_secs(25);
-    while !(wanted.is_finished() && look.is_finished()) && std::time::Instant::now() < until {
+    while !(wanted.is_finished() && look.is_finished() && extensions.is_finished()) && std::time::Instant::now() < until {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     // Whether the phone keeps close, read again now that this step's pull brought

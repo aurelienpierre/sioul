@@ -12,6 +12,12 @@ sioul-app/src/access.rs	save	1	sioul_core::filelock::replace(&path, text.as_byte
 # sioul-app/src/agenda.rs: what the agenda's Day and Week show on this device (state): no item.
 sioul-app/src/agenda.rs	write_view	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
+# sioul-app/src/extensions.rs: the lock of one call of an extension, beside its log (state): no item.
+sioul-app/src/extensions.rs	run_lock	1	std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path)
+# sioul-app/src/extensions.rs: an extension removed, its log and its lock taken out (state): no item.
+sioul-app/src/extensions.rs	forget	1	std::fs::remove_file(state::log_path(id))
+sioul-app/src/extensions.rs	forget	1	std::fs::remove_file(run_lock_path(id))
+
 # sioul-app/src/alarms.rs: the zone Android last said, for both of a phone's processes (state): no item.
 sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, format!(
 
@@ -34,7 +40,7 @@ sioul-app/src/attachments.rs	saved	1	sioul_core::filelock::remove_wiping(path)
 # sioul-app/src/backend.rs: the weather's cache, attachments opened or checked (a temporary file of their own, then copied where you choose), Windows' mark of a file from mail: no item.
 sioul-app/src/backend.rs	update_weather	1	std::fs::write(weather_cache(), text)
 sioul-app/src/backend.rs	forget_opened_attachments	1	sioul_core::filelock::remove_dir_wiping(&entry.path())
-sioul-app/src/backend.rs	mark_from_mail	1	std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n")
+sioul-app/src/backend.rs	mark_from_outside	1	std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n")
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::write(&file, &bytes)
 sioul-app/src/backend.rs	checked_attachment	4	sioul_core::filelock::remove_wiping(&file)
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::copy(&file, &target)
@@ -66,6 +72,16 @@ sioul-app/src/crypto.rs	export	1	std::fs::write(&path, armored)
 sioul-app/src/dnd.rs	save	1	std::fs::write(&fresh, text)
 sioul-app/src/dnd.rs	save	1	std::fs::rename(&fresh, path)
 
+# sioul-app/src/downloads.rs: a file a site offered, held in Sioul's cache while its question waits (its held folder taken away once placed, failed, cancelled, and the whole held folder at start), then placed in the folder you chose (the system's Downloads, one you chose, the notes'): no item.
+sioul-app/src/downloads.rs	place_held	1	sioul_core::filelock::place_new(file, folder, &names, true)
+sioul-app/src/downloads.rs	place_held	1	sioul_core::filelock::Pending::prepare(file, &root.join(&sub), true)
+sioul-app/src/downloads.rs	done	2	std::fs::remove_dir_all(&hold)
+sioul-app/src/downloads.rs	failed	1	std::fs::remove_dir_all(hold)
+sioul-app/src/downloads.rs	drop_held	1	std::fs::remove_dir_all(&hold)
+sioul-app/src/downloads.rs	at_start	1	std::fs::rename(&root, &aside)
+sioul-app/src/downloads.rs	at_start	1	std::fs::remove_dir_all(&aside)
+sioul-app/src/downloads.rs	at_start	1	std::fs::remove_dir_all(entry.path())
+
 # sioul-app/src/eventalarms.rs: which app rings an event's own alarms, as this device last said it (state): no item.
 sioul-app/src/eventalarms.rs	handover	1	std::fs::write(&path, &word)
 
@@ -94,7 +110,7 @@ sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(
 sioul-app/src/ledger.rs	save_csv	1	std::fs::write(path, csv)
 
 # sioul-app/src/letters.rs: a letter's scan copied into the letters' inbox: no item.
-sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
+sioul-app/src/letters.rs	place_scan	1	sioul_core::filelock::place_new(source, inbox, &names, false)
 
 # sioul-app/src/mail.rs: your answer to a cancellation its organizer sent (`agenda::cancellation`, read again just before, refused otherwise): the one removal of a meeting with others.
 sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
@@ -304,6 +320,9 @@ sioul-core/src/contacts.rs	photo_shown	1	std::fs::write(&path, &bytes)
 # sioul-core/src/contracts.rs: contracts (a file of their own): no item.
 sioul-core/src/contracts.rs	write	1	std::fs::write(&temporary, doc.to_string())
 
+# sioul-core/src/downloads.rs: the place a file from each site went last (state, this device's own): no item.
+sioul-core/src/downloads.rs	save	1	crate::filelock::replace(path, format!(
+
 # sioul-core/src/dose_backs.rs: the doses' moves to put back (a file of its own, written witnessed): no item.
 sioul-core/src/dose_backs.rs	update	1	crate::health::write_witnessed(path, text.as_bytes())
 
@@ -337,10 +356,28 @@ sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::rename(&fresh, path)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::remove_file(&fresh)
 
-# sioul-core/src/filelock.rs: Sioul's own writers and removers themselves (`replace`, `save_merged`, `remove_wiping`): their callers are named where they write.
+# sioul-core/src/extensions/door.rs: the hashes of the lessons an extension wrote from this device, and their file taken out on Remove (state): no item; the lessons themselves go through vdir::write_item and remove_item.
+sioul-core/src/extensions/door.rs	save_noted	1	crate::filelock::replace(&path, text.as_bytes())
+sioul-core/src/extensions/door.rs	take_out	1	std::fs::remove_file(noted_path(extension))
+
+# sioul-core/src/extensions/state.rs: this device's record of its extensions, and each one's log (state): no item.
+sioul-core/src/extensions/state.rs	change	1	crate::filelock::replace(path, text.as_bytes())
+sioul-core/src/extensions/state.rs	append_log	1	crate::filelock::replace(path, text.as_bytes())
+
+# sioul-core/src/filelock.rs: Sioul's own writers and removers themselves (`replace`, `save_merged`, `place_new` and its `Pending`, `remove_wiping`): their callers are named where they write.
 sioul-core/src/filelock.rs	replace	1	std::fs::write(&temporary, bytes)
 sioul-core/src/filelock.rs	replace	1	std::fs::remove_file(&temporary)
 sioul-core/src/filelock.rs	rename_over	1	std::fs::rename(from, to)
+sioul-core/src/filelock.rs	prepare	1	std::fs::rename(source, &hidden)
+sioul-core/src/filelock.rs	prepare	2	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	name	2	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	name	2	std::fs::remove_file(&target)
+sioul-core/src/filelock.rs	name	1	std::fs::hard_link(&hidden, &target)
+sioul-core/src/filelock.rs	name	2	std::fs::remove_file(&hidden)
+sioul-core/src/filelock.rs	drop	1	std::fs::rename(hidden, &self.source)
+sioul-core/src/filelock.rs	drop	1	std::fs::remove_file(hidden)
+sioul-core/src/filelock.rs	copy_zone	1	std::fs::write(stream(to), mark)
+sioul-core/src/filelock.rs	sweep_parts	1	std::fs::remove_file(entry.path())
 sioul-core/src/filelock.rs	new	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	place	2	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	place	1	std::fs::rename(&self.temporary, &self.path)
@@ -490,7 +527,7 @@ sioul-core/src/overlaps.rs	save	1	std::fs::write(path, toml::to_string(self).map
 sioul-core/src/overlaps.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 
 # sioul-core/src/papers.rs: papers in their folder: no item.
-sioul-core/src/papers.rs	keep_file	1	std::fs::copy(source, &target)
+sioul-core/src/papers.rs	keep_file	1	crate::filelock::place_new(source, &folder, &names, false)
 sioul-core/src/papers.rs	write	1	std::fs::write(&temporary, doc.to_string())
 
 # sioul-core/src/persons.rs: the persons your admin is done for (data), written whole beside their place: no item.
@@ -758,6 +795,10 @@ sioul-sync/src/dav.rs	pull	1	std::fs::remove_file(&path)
 sioul-sync/src/devices.rs	publish	1	crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(path, format!("# This device, as it tells your other devices (docs/database.md, \"Devices\").\n{text}").as_bytes())
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(&published_path(path), text.as_bytes())
+
+# sioul-sync/src/extensions/mod.rs: an extension's file, kept in Sioul's private data once its hash held, and taken out: no item.
+sioul-sync/src/extensions/mod.rs	install	1	sioul_core::filelock::replace(&path, &bytes)
+sioul-sync/src/extensions/mod.rs	discard_file	1	std::fs::remove_file(state::file_path(offer))
 
 # sioul-sync/src/photo.rs: a contact's photo from the web, loaded when you asked, in the cache's photos: no item.
 sioul-sync/src/photo.rs	keep	1	std::fs::write(&part, bytes)

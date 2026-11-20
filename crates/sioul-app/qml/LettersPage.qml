@@ -58,15 +58,28 @@ Item {
     // A letter brought into view: its card, or its row among those filed.
     function openLetter(id) {
         page.wanted = id
+        wantedFor.restart()
         page.reload()
+    }
+
+    // A letter not read yet (a file a site offered, filed where scans arrive, read
+    // within a minute) stays wanted until it shows, then comes into view; for two
+    // minutes at most, and not once you left the page: where no program reads
+    // scans, it never shows, and the page never jumps to it later.
+    Timer {
+        id: wantedFor
+
+        interval: 2 * 60 * 1000
+        onTriggered: page.wanted = ""
     }
 
     function reveal() {
         const id = page.wanted
-        page.wanted = ""
         const found = page.find(column, id)
-        if (found !== null)
-            scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
+        if (found === null)
+            return
+        page.wanted = ""
+        scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
     }
 
     // The first item under `item` showing the letter `id` (its `letterId`).
@@ -83,7 +96,12 @@ Item {
         return null
     }
 
-    onVisibleChanged: if (visible) page.reload()
+    onVisibleChanged: {
+        if (page.visible)
+            page.reload()
+        else
+            page.wanted = ""
+    }
     Component.onCompleted: page.reload()
 
     // A scan read, linked or filed, here or by another device: shown at once.

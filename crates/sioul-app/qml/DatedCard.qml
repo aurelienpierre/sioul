@@ -154,7 +154,8 @@ CardFrame {
             visible: card.there && (card.kind === "letter" || card.kind === "letter-appointment") && (card.shown.file || "") !== ""
             flat: true
             text: card.sioul.text("letters-scan")
-            onClicked: Qt.openUrlExternally(card.theme.fileUrl(card.shown.file))
+            // A program never, its folder instead (main.qml, `openFile`).
+            onClicked: card.window.openFile(card.theme.fileUrl(card.shown.file))
         },
         Button {
             objectName: "datedLetterTask"
@@ -200,7 +201,8 @@ CardFrame {
             visible: card.there && card.kind === "paper" && card.shown.file_there === true
             flat: true
             text: card.sioul.text("ui-open")
-            onClicked: Qt.openUrlExternally(card.theme.fileUrl(card.shown.file))
+            // A program never, its folder instead (main.qml, `openFile`).
+            onClicked: card.window.openFile(card.theme.fileUrl(card.shown.file))
         },
         // A holder text that names nobody of your household: made a person, once, in place (docs/persons.md).
         Button {

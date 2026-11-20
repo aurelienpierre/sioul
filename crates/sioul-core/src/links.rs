@@ -142,11 +142,13 @@ pub fn openable(uri: &str) -> bool {
 /// scripts, installers, shortcuts, disk images (the list attachments are kept from).
 const PROGRAMS: &[&str] = &[
     // Windows
-    "exe", "com", "scr", "pif", "bat", "cmd", "msi", "msp", "mst", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "cpl", "lnk", "url", "reg", "inf", "scf", "chm", "msc", "jar", "appref-ms", "application", "appx", "appxbundle", "msix", "msixbundle", "settingcontent-ms", "library-ms", "iso", "img", "vhd", "vhdx", "py", "pyw",
+    "exe", "com", "scr", "pif", "bat", "cmd", "msi", "msp", "mst", "msu", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "wsb", "hta", "cpl", "lnk", "url", "rdp", "reg", "inf", "scf", "chm", "msc", "jar", "jnlp", "appref-ms", "application", "appinstaller", "appx", "appxbundle", "msix", "msixbundle", "settingcontent-ms", "library-ms", "searchconnector-ms", "diagcab", "theme", "themepack", "xll", "iso", "img", "vhd", "vhdx",
+    // Scripts of interpreters a computer may have: Python (its archives and compiled files too), Perl, Ruby, PHP
+    "py", "pyw", "pyz", "pyzw", "pyc", "pl", "rb", "php",
     // macOS
-    "app", "command", "terminal", "tool", "pkg", "mpkg", "dmg", "workflow", "scpt", "scptd", "applescript", "fileloc", "webloc", "inetloc",
+    "app", "command", "terminal", "tool", "pkg", "mpkg", "dmg", "workflow", "scpt", "scptd", "applescript", "fileloc", "webloc", "inetloc", "mobileconfig",
     // Linux
-    "desktop", "sh", "run", "appimage", "deb", "rpm", "flatpakref", "flatpakrepo", "snap",
+    "desktop", "sh", "run", "appimage", "deb", "rpm", "flatpak", "flatpakref", "flatpakrepo", "snap",
 ];
 
 /// Android's installers, which a phone would offer to install rather than
@@ -1481,6 +1483,10 @@ mod tests {
         let program = world.describe("file:///home/a/Downloads/update%20now.desktop");
         assert_eq!((program.title.as_str(), program.key.as_str(), program.program), ("update now.desktop", "file:///home/a/Downloads/", true));
         assert!(is_program("C:\\Users\\a\\setup.EXE") && is_program("/Applications/Tool.app/") && !is_program("/home/a/scan.pdf"));
+        // Files that install, connect or run when opened, from a site too (docs/sites.md, "Downloads").
+        for name in ["app.flatpak", "start.jnlp", "office.rdp", "a.appinstaller", "fix.diagcab", "dark.theme", "dark.themepack", "find.searchconnector-ms", "wifi.mobileconfig", "tool.pyz", "tool.pyzw", "cached.pyc", "add.xll", "box.wsb", "update.msu", "run.pl", "run.rb", "index.php"] {
+            assert!(is_program(name), "{name}");
+        }
         // Android's installers: a phone's list, apart; a computer's is as it was.
         assert!(is_phone_program("/sdcard/Download/App.APK") && is_phone_program("bundle.apks ") && is_phone_program("game.xapk") && is_phone_program("split.apkm"));
         assert!(!is_phone_program("apk.pdf") && !is_phone_program("setup.exe") && !is_program("app.apk"));

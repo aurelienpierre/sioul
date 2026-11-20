@@ -225,6 +225,9 @@ public final class StepService extends Service
                 // A mail attachment opened in the app you choose, or saved where you choose (Attachments.java).
                 if (verb.startsWith("attachment-"))
                     return Attachments.call(context, verb, asked);
+                // An extension's sign-in page, shown on Sioul's own screen (SignIn.java, docs/extensions.md).
+                if (verb.startsWith("sign-in-"))
+                    return SignIn.call(context, verb, asked);
                 // The training by itself: the phone's power and network, its wake lock (Learn.java).
                 if (verb.startsWith("learn-"))
                     return Learn.call(context, verb, asked);

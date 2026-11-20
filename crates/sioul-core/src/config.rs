@@ -165,6 +165,9 @@ pub struct Config {
     /// What an AI agent connected to `sioul mcp` may use (`[mcp]`, docs/mcp.md).
     #[serde(default)]
     pub mcp: McpSettings,
+    /// Where the extensions' signed list is read (`[extensions]`, docs/extensions.md).
+    #[serde(default)]
+    pub extensions: ExtensionSettings,
     /// Your accounts, those switched on (`Config::load` sets the others aside).
     #[serde(rename = "account", default)]
     pub accounts: Vec<Account>,
@@ -994,6 +997,94 @@ pub struct GithubSettings {
 
 fn yes() -> bool {
     true
+}
+
+/// Where the extensions' signed list is read (`[extensions]`, docs/extensions.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ExtensionSettings {
+    /// The manifest's address: `https://…`, or a file on this device (a path
+    /// or `file://…`) for trials before the repository is public; its
+    /// signature is checked all the same. None: the repository's.
+    /// This device's own (`CONFIG_LOCAL`).
+    #[serde(default)]
+    pub manifest: Option<String>,
+    /// The calendar each agenda an extension brings goes into
+    /// (`[extensions.calendars]`, `"<extension>/<agenda>" = "<account>/<id>"`):
+    /// a calendar of the person's own, chosen in Settings ▸ Extensions; an
+    /// ordinary shared setting, so that every device that runs the extension
+    /// writes into the same one. Read leniently: an entry that is no text is
+    /// passed over, never the configuration refused.
+    #[serde(default, deserialize_with = "extension_calendars")]
+    pub calendars: std::collections::BTreeMap<String, String>,
+}
+
+/// `[extensions.calendars]`, its texts alone.
+fn extension_calendars<'de, D: serde::Deserializer<'de>>(d: D) -> Result<std::collections::BTreeMap<String, String>, D::Error> {
+    let found: toml::Value = serde::Deserialize::deserialize(d)?;
+    Ok(found.as_table().map(|t| t.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.trim().to_string()))).filter(|(_, v)| !v.is_empty()).collect()).unwrap_or_default())
+}
+
+/// The key of an agenda's calendar in `[extensions.calendars]`.
+pub fn extension_calendar_key(extension: &str, agenda: &str) -> String {
+    format!("{extension}/{agenda}")
+}
+
+/// The calendar an extension's agenda goes into (`place`, "account/id"),
+/// written in the shared settings; "" takes it out. Under the file's lock.
+pub fn set_extension_calendar(path: &Path, extension: &str, agenda: &str, place: &str) -> Result<(), String> {
+    edit_extension_calendars(path, |calendars| {
+        let key = extension_calendar_key(extension, agenda);
+        if place.trim().is_empty() {
+            calendars.remove(&key);
+        } else {
+            calendars.insert(&key, value(place.trim()));
+        }
+    })
+}
+
+/// Every calendar chosen for an extension's agendas taken out of the shared
+/// settings (Remove, its lessons taken out): another device that still runs
+/// it then writes nothing until a calendar is chosen again.
+pub fn forget_extension_calendars(path: &Path, extension: &str) -> Result<(), String> {
+    edit_extension_calendars(path, |calendars| {
+        let prefix = format!("{extension}/");
+        let gone: Vec<String> = calendars.iter().map(|(k, _)| k.to_string()).filter(|k| k.starts_with(&prefix)).collect();
+        for key in gone {
+            calendars.remove(&key);
+        }
+    })
+}
+
+/// `[extensions.calendars]` changed in place, under the file's lock; an empty one taken out.
+fn edit_extension_calendars(path: &Path, change: impl FnOnce(&mut Table)) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if !doc.contains_key("extensions") {
+            let mut table = Table::new();
+            table.set_implicit(true);
+            doc["extensions"] = Item::Table(table);
+        }
+        let extensions = doc["extensions"].as_table_mut().ok_or_else(|| format!("{}: extensions is not a table", path.display()))?;
+        if !extensions.contains_key("calendars") {
+            extensions.insert("calendars", Item::Table(Table::new()));
+        }
+        let calendars = extensions.get_mut("calendars").and_then(Item::as_table_mut).ok_or_else(|| format!("{}: extensions.calendars is not a table", path.display()))?;
+        change(calendars);
+        if calendars.is_empty() {
+            extensions.remove("calendars");
+        }
+        write_document(path, &doc)
+    })
+}
+
+/// The extensions' repository's manifest, when the configuration names none.
+pub const EXTENSIONS_MANIFEST: &str = "https://raw.githubusercontent.com/aurelienpierre/sioul-extensions/main/manifest.toml";
+
+impl ExtensionSettings {
+    /// The manifest's address: the one set, else the repository's.
+    pub fn manifest_address(&self) -> &str {
+        self.manifest.as_deref().map(str::trim).filter(|m| !m.is_empty()).unwrap_or(EXTENSIONS_MANIFEST)
+    }
 }
 
 /// What an AI agent connected to `sioul mcp` may use, beyond reading and

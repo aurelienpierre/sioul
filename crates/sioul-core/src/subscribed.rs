@@ -544,7 +544,7 @@ pub fn plain_words(text: &str, most: usize) -> String {
 /// component left open or closed out of order, a line outside the calendar,
 /// or no end of the calendar, as a server whose script stops half-way
 /// answers with a 200 (the parser accepts an unterminated component).
-fn shape(text: &str) -> Option<usize> {
+pub(crate) fn shape(text: &str) -> Option<usize> {
     let mut open: Vec<String> = Vec::new();
     let (mut ended, mut events) = (false, 0usize);
     for line in crate::lines::unfold(text) {

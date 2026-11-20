@@ -79,6 +79,220 @@ pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     written
 }
 
+/// `source`'s bytes as a new file in `folder`, under the first name of
+/// `names(1)`, `names(2)`… that nothing holds there, never over a file
+/// (a file a site offers, a paper's scan, a letter's: docs/sites.md,
+/// "Downloads"): `Pending::prepare`, then `Pending::name`. A name that is
+/// not one plain name (a separator, ".", "..", nothing) is refused: the file
+/// never lands outside `folder`. Returns its path.
+pub fn place_new(source: &Path, folder: &Path, names: &dyn Fn(u32) -> String, moved: bool) -> std::io::Result<PathBuf> {
+    let first = names(1);
+    if !plain_name(&first) {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{first}: not one file name")));
+    }
+    Pending::prepare(source, folder, moved)?.name(names)
+}
+
+/// One plain file name: no separator, not "." nor "..", not empty; no ":"
+/// on Windows (a stream's name).
+fn plain_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']) && !(cfg!(windows) && name.contains(':'))
+}
+
+/// The hidden files `Pending` writes beside a place: ".sioul-<process>-<n>.part",
+/// short whatever the file's name (an encrypted home takes some 143 bytes a name).
+const PART_PREFIX: &str = ".sioul-";
+const PART_SUFFIX: &str = ".part";
+
+/// A file on its way into a folder (`place_new`): its bytes whole beside
+/// the place under a short hidden name of its own, synced through a handle
+/// that may write (Windows refuses to flush a file opened to read), before
+/// any name is chosen; so a caller may prepare it outside a lock and only
+/// name it under the lock (the notes'). `moved`: `source` is renamed rather
+/// than copied when it is on the same file system (a download held in
+/// Sioul's cache), and put back if the placing fails. A copy keeps the
+/// source's permissions (on Unix) and its mark of origin (Windows' zone).
+/// Where the hidden file cannot be made at all (a folder handed by a
+/// sandbox's portal, which exposes one file), the final name is created new
+/// and written directly. Dropped unnamed, whatever was made in `folder` goes
+/// and a moved source is put back: whatever fails, nothing is left there.
+pub struct Pending {
+    source: PathBuf,
+    folder: PathBuf,
+    /// The hidden file; None where none could be made (written directly).
+    hidden: Option<PathBuf>,
+    /// `source` was renamed to `hidden`.
+    renamed: bool,
+    named: bool,
+}
+
+impl Pending {
+    pub fn prepare(source: &Path, folder: &Path, moved: bool) -> std::io::Result<Pending> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        std::fs::create_dir_all(folder)?;
+        let hidden = folder.join(format!("{PART_PREFIX}{}-{}{PART_SUFFIX}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let mut pending = Pending { source: source.to_path_buf(), folder: folder.to_path_buf(), hidden: None, renamed: false, named: false };
+        if moved && std::fs::rename(source, &hidden).is_ok() {
+            pending.hidden = Some(hidden.clone());
+            pending.renamed = true;
+            std::fs::OpenOptions::new().write(true).open(&hidden).and_then(|f| f.sync_all())?;
+            return Ok(pending);
+        }
+        if !source.is_file() {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{}: no such file", source.display())));
+        }
+        // No hidden file here (a portal's folder): written directly under its name.
+        let Ok(mut to) = std::fs::OpenOptions::new().write(true).create_new(true).open(&hidden) else { return Ok(pending) };
+        pending.hidden = Some(hidden.clone());
+        copy_into(source, &mut to, &hidden)?;
+        Ok(pending)
+    }
+
+    /// Named the first of `names(1)`, `names(2)`… free in its folder: by a
+    /// link, which fails when the name is taken, so that a file appearing
+    /// meanwhile is never replaced; where the file system makes no links
+    /// (FAT, some shares, a phone's shared storage), by creating the name new
+    /// (which fails when it is taken too) and copying the bytes in. Never a
+    /// rename over a name. Any other error (no room, a quota) fails it.
+    pub fn name(mut self, names: &dyn Fn(u32) -> String) -> std::io::Result<PathBuf> {
+        for n in 1..=9999 {
+            let name = names(n);
+            if !plain_name(&name) {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{name}: not one file name")));
+            }
+            let target = self.folder.join(&name);
+            let Some(hidden) = self.hidden.clone() else {
+                // Written directly: the name created new, the source's bytes in it.
+                match std::fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+                    Ok(mut to) => {
+                        if let Err(e) = copy_into(&self.source, &mut to, &target) {
+                            let _ = std::fs::remove_file(&target);
+                            return Err(e);
+                        }
+                        self.named = true;
+                        sync_folder(&self.folder);
+                        return Ok(target);
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e),
+                }
+            };
+            match std::fs::hard_link(&hidden, &target) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&hidden);
+                    self.named = true;
+                    sync_folder(&self.folder);
+                    return Ok(target);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) if no_links(&e) => match std::fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+                    Ok(mut to) => {
+                        if let Err(e) = copy_into(&hidden, &mut to, &target) {
+                            let _ = std::fs::remove_file(&target);
+                            return Err(e);
+                        }
+                        let _ = std::fs::remove_file(&hidden);
+                        self.named = true;
+                        sync_folder(&self.folder);
+                        return Ok(target);
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e),
+                },
+                Err(e) => return Err(e),
+            }
+        }
+        Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{}: no free name for {}", self.folder.display(), names(1))))
+    }
+}
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if self.named {
+            return;
+        }
+        if let Some(hidden) = &self.hidden {
+            if self.renamed {
+                let _ = std::fs::rename(hidden, &self.source);
+            } else {
+                let _ = std::fs::remove_file(hidden);
+            }
+        }
+    }
+}
+
+/// `from`'s bytes into `to` (a file just created at `at`), synced; on Unix
+/// with `from`'s permissions, on Windows with its mark of origin.
+fn copy_into(from: &Path, to: &mut std::fs::File, at: &Path) -> std::io::Result<()> {
+    let mut source = std::fs::File::open(from)?;
+    std::io::copy(&mut source, to)?;
+    #[cfg(unix)]
+    if let Ok(meta) = source.metadata() {
+        let _ = to.set_permissions(meta.permissions());
+    }
+    #[cfg(windows)]
+    copy_zone(from, at);
+    #[cfg(not(windows))]
+    let _ = at;
+    to.sync_all()
+}
+
+/// Windows' mark of where a file came from (its `Zone.Identifier` stream,
+/// which Windows reads to warn before opening a file from the internet),
+/// carried to its copy; nothing when it has none. A rename or a link keeps it by itself.
+#[cfg(windows)]
+fn copy_zone(from: &Path, to: &Path) {
+    let stream = |path: &Path| {
+        let mut named = path.as_os_str().to_owned();
+        named.push(":Zone.Identifier");
+        PathBuf::from(named)
+    };
+    if let Ok(mark) = std::fs::read(stream(from)) {
+        let _ = std::fs::write(stream(to), mark);
+    }
+}
+
+/// The errors of a link that mean this file system makes none (FAT, exFAT,
+/// some network shares and phones' storage), rather than no room or a quota.
+#[cfg(unix)]
+const NO_LINKS: &[i32] = &[libc::EPERM, libc::EOPNOTSUPP, libc::ENOTSUP, libc::ENOSYS, libc::EMLINK, libc::EXDEV];
+/// ERROR_INVALID_FUNCTION, ERROR_NOT_SAME_DEVICE, ERROR_NOT_SUPPORTED, ERROR_TOO_MANY_LINKS.
+#[cfg(windows)]
+const NO_LINKS: &[i32] = &[1, 17, 50, 1142];
+#[cfg(not(any(unix, windows)))]
+const NO_LINKS: &[i32] = &[];
+
+/// Whether a link failed because this file system makes none (`NO_LINKS`).
+fn no_links(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::Unsupported || e.raw_os_error().is_some_and(|code| NO_LINKS.contains(&code))
+}
+
+/// The hidden files `Pending` left in `folder` a day ago or more: a Sioul
+/// stopped while placing a file (a crash, a power cut). Taken away at start
+/// in Sioul's own places (the papers' folder, where scans arrive); nothing
+/// else is touched.
+pub fn sweep_parts(folder: &Path) {
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let ours = name.starts_with(PART_PREFIX) && name.ends_with(PART_SUFFIX) && name[PART_PREFIX.len()..name.len() - PART_SUFFIX.len()].chars().all(|c| c.is_ascii_digit() || c == '-');
+        let old = entry.metadata().ok().filter(std::fs::Metadata::is_file).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() >= 24 * 3600);
+        if ours && old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// A folder's new name made to last; nothing to do where folders cannot be opened.
+fn sync_folder(folder: &Path) {
+    #[cfg(unix)]
+    if let Ok(opened) = std::fs::File::open(folder) {
+        let _ = opened.sync_all();
+    }
+    #[cfg(not(unix))]
+    let _ = folder;
+}
+
 /// `from` renamed over `to`. On Windows a file another thread or program has
 /// open for a moment (a reader of the same state) refuses to be replaced:
 /// tried again a few times, for a tenth of a second at most (CI's Windows job
@@ -883,5 +1097,158 @@ lighter = [2026-10-01, 2026-10-03]
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "800");
         assert!(dir.join(".count.txt.lock").exists(), "hidden, so never shared");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The names a test folder holds, hidden ones included, sorted.
+    fn names_in(folder: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(folder).map(|r| r.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// A file placed whole under a free name: a name taken gets its number,
+    /// never replaced; copied or moved; nothing hidden left behind.
+    #[test]
+    fn a_file_is_placed_under_a_free_name_never_over_one() {
+        let base = std::env::temp_dir().join(format!("sioul-place-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (held, folder) = (base.join("held"), base.join("Downloads"));
+        std::fs::create_dir_all(&held).unwrap();
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("statement.pdf"), b"older").unwrap();
+        let names = |n: u32| if n == 1 { "statement.pdf".to_string() } else { format!("statement ({n}).pdf") };
+        let source = held.join("statement.pdf");
+        std::fs::write(&source, b"%PDF-new").unwrap();
+        let placed = place_new(&source, &folder, &names, false).unwrap();
+        assert_eq!(placed, folder.join("statement (2).pdf"));
+        assert_eq!(std::fs::read(&placed).unwrap(), b"%PDF-new");
+        assert_eq!(std::fs::read(folder.join("statement.pdf")).unwrap(), b"older", "never replaced");
+        assert!(source.exists(), "copied: the source stays");
+        // Moved: the source goes, its bytes in the third name.
+        let placed = place_new(&source, &folder, &names, true).unwrap();
+        assert_eq!(placed, folder.join("statement (3).pdf"));
+        assert!(!source.exists());
+        assert_eq!(names_in(&folder), ["statement (2).pdf", "statement (3).pdf", "statement.pdf"], "nothing hidden left");
+        // A folder not there yet is made.
+        std::fs::write(&source, b"x").unwrap();
+        assert_eq!(place_new(&source, &base.join("new/inside"), &names, false).unwrap(), base.join("new/inside/statement.pdf"));
+        // A copy keeps the source's permissions: a private file stays private.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let placed = place_new(&source, &folder, &names, false).unwrap();
+            assert_eq!(std::fs::metadata(&placed).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Prepared outside a lock, named under it; the hidden file's name is
+    /// short whatever the file's; dropped unnamed, nothing stays and a moved
+    /// source goes back. Only "no links here" falls back to a name created
+    /// new; a full disk or a quota fails.
+    #[test]
+    fn a_file_prepared_then_named_leaves_nothing_when_dropped() {
+        let base = std::env::temp_dir().join(format!("sioul-pending-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (held, folder) = (base.join("held"), base.join("Notes"));
+        std::fs::create_dir_all(&held).unwrap();
+        let source = held.join(format!("{}.pdf", "long name ".repeat(12)));
+        std::fs::write(&source, b"%PDF").unwrap();
+        let pending = Pending::prepare(&source, &folder, true).unwrap();
+        let hidden = names_in(&folder);
+        assert_eq!(hidden.len(), 1);
+        assert!(hidden[0].starts_with(".sioul-") && hidden[0].ends_with(".part") && hidden[0].len() < 32, "{hidden:?}");
+        assert!(!source.exists(), "moved");
+        drop(pending);
+        assert!(names_in(&folder).is_empty(), "nothing left");
+        assert!(source.exists(), "put back");
+        let pending = Pending::prepare(&source, &folder, false).unwrap();
+        assert_eq!(pending.name(&|n| format!("statement-{n}.pdf")).unwrap(), folder.join("statement-1.pdf"));
+        assert_eq!(names_in(&folder), ["statement-1.pdf"]);
+        assert!(source.exists(), "copied");
+        #[cfg(unix)]
+        {
+            assert!(no_links(&std::io::Error::from_raw_os_error(libc::EPERM)) && no_links(&std::io::Error::from_raw_os_error(libc::EOPNOTSUPP)));
+            assert!(!no_links(&std::io::Error::from_raw_os_error(libc::ENOSPC)) && !no_links(&std::io::Error::from_raw_os_error(libc::EDQUOT)), "no room is no fallback");
+        }
+        assert!(no_links(&std::io::Error::from(std::io::ErrorKind::Unsupported)));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A hidden file left a day ago by a Sioul stopped while placing is swept
+    /// at start; a newer one, and anything else, stays.
+    #[test]
+    fn hidden_files_a_day_old_are_swept() {
+        let folder = std::env::temp_dir().join(format!("sioul-sweep-parts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        let day_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(25 * 3600);
+        for name in [".sioul-123-4.part", ".sioul-56-7.part", "scan.pdf", ".sioul-notes.part", ".other.part"] {
+            std::fs::write(folder.join(name), b"x").unwrap();
+        }
+        for old in [".sioul-123-4.part", "scan.pdf", ".sioul-notes.part", ".other.part"] {
+            std::fs::File::options().write(true).open(folder.join(old)).unwrap().set_modified(day_ago).unwrap();
+        }
+        sweep_parts(&folder);
+        assert_eq!(names_in(&folder), [".other.part", ".sioul-56-7.part", ".sioul-notes.part", "scan.pdf"]);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Windows: a copy carries the file's zone mark, which Windows reads to
+    /// warn before opening a file from the internet.
+    #[cfg(windows)]
+    #[test]
+    fn a_copy_keeps_its_zone_mark() {
+        let base = std::env::temp_dir().join(format!("sioul-zone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let source = base.join("statement.pdf");
+        std::fs::write(&source, b"%PDF").unwrap();
+        std::fs::write(base.join("statement.pdf:Zone.Identifier"), "[ZoneTransfer]\r\nZoneId=3\r\n").unwrap();
+        let placed = place_new(&source, &base.join("Papers"), &|n| format!("statement-{n}.pdf"), false).unwrap();
+        let mut stream = placed.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        assert_eq!(std::fs::read_to_string(stream).unwrap(), "[ZoneTransfer]\r\nZoneId=3\r\n");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Whatever fails leaves nothing in the folder: a source that does not
+    /// read, a name that is not one plain name, a folder that refuses writes.
+    #[test]
+    fn a_failed_placing_leaves_nothing() {
+        let base = std::env::temp_dir().join(format!("sioul-place-fails-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let folder = base.join("Notes");
+        std::fs::create_dir_all(&folder).unwrap();
+        let source = base.join("held.pdf");
+        assert!(place_new(&source, &folder, &|_| "held.pdf".into(), false).is_err(), "no source");
+        assert!(place_new(&source, &folder, &|_| "held.pdf".into(), true).is_err(), "no source to move");
+        assert_eq!(names_in(&folder), Vec::<String>::new());
+        std::fs::write(&source, b"bytes").unwrap();
+        for name in ["../out.pdf", "a/b.pdf", "..", ".", "", "a\\b"] {
+            assert!(place_new(&source, &folder, &|_| name.to_string(), true).is_err(), "{name:?}");
+        }
+        // A first name that is plain and a numbered one that is not: refused at that name, the source put back.
+        std::fs::write(folder.join("held.pdf"), b"there").unwrap();
+        assert!(place_new(&source, &folder, &|n| if n == 1 { "held.pdf".into() } else { "../held.pdf".into() }, true).is_err());
+        assert_eq!(std::fs::read(&source).unwrap(), b"bytes", "moved back where it was");
+        assert_eq!(names_in(&folder), ["held.pdf"]);
+        assert_eq!(names_in(&base), ["Notes", "held.pdf"], "nothing outside the folder either");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let closed = base.join("closed");
+            std::fs::create_dir_all(&closed).unwrap();
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o500)).unwrap();
+            // Root writes anyway: the check means something only for a user.
+            if std::fs::write(closed.join("probe"), b"").is_err() {
+                assert!(place_new(&source, &closed, &|_| "held.pdf".into(), true).is_err());
+                assert_eq!(names_in(&closed), Vec::<String>::new());
+                assert!(source.exists(), "the held file kept where it was");
+            }
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

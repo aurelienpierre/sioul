@@ -68,6 +68,8 @@ Pour faire une note ailleurs, faites un clic droit sur son dossier : **Nouvell
 
 Ce sont aussi des notes, listées à côté des fichiers Markdown, et ouvertes sur place : une image ajustée à la page, les pages d’un PDF, un son avec lecture, pause et position. Elles peuvent être liées à des tâches et à des projets comme toute note.
 
+Les documents bureautiques (un texte, un tableur, une présentation, un livre numérique : `odt`, `ods`, `odp`, `odg`, `doc`, `docx`, `xls`, `xlsx`, `ppt`, `pptx`, `rtf`, `epub`), dont ceux qu’un site a proposés et que vous avez rangés dans Notes ([Sites](sites.md#downloads)), sont listés aussi, par leur nom, et se lient comme toute note ; **Ouvrir avec…** les ouvre dans un autre programme. Aucun autre type de fichier n’est une note.
+
 Les pages d’un PDF prennent la largeur ; Ctrl et la molette, ou deux doigts, les agrandissent. Son texte se sélectionne et se copie. Un lien vers une autre page y va ; un lien vers le web ou vers une adresse dit d’abord où il mène, sous les pages (« Ouvre example.org : https://… »), et ne s’ouvre qu’avec **Ouvrir**, une adresse dans la fenêtre d’écriture de Sioul, comme un lien dans un courriel. Tout autre type de lien (vers un fichier de votre ordinateur, un script) n’est pas suivi, et la ligne le dit.
 
 `![[scan.png]]` montre l’image dans une note.

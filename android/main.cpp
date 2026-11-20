@@ -69,6 +69,7 @@ extern "C" void sioul_handed();
 extern "C" void sioul_keyboard(bool attached);
 // A mail attachment saved where you chose, or not (crates/sioul-app/src/attachments.rs): JSON.
 extern "C" void sioul_attachment_saved(const char *json);
+extern "C" void sioul_sign_in_returned(const char *json);
 // At an event's reminder, and the coming ones in the phone's zone
 // (crates/sioul-app/src/eventalarms.rs): JSON, given back to sioul_string_free.
 extern "C" char *sioul_event_decide(const char *key);
@@ -942,6 +943,15 @@ extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_StepService_nati
 extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_AttachmentSave_nativeSaved(JNIEnv *env, jclass, jstring json)
 {
     sioul_attachment_saved(utf8(env, json).constData());
+}
+
+// SignIn.java's side: an extension's sign-in page answered, {returned} or
+// {cancelled}; Rust gives it to the extension waiting (extensions.rs). On
+// Android's main thread, while Sioul's window runs (Java catches the link
+// error otherwise).
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_SignIn_nativeReturned(JNIEnv *env, jclass, jstring json)
+{
+    sioul_sign_in_returned(utf8(env, json).constData());
 }
 
 // Sioul away (in the back, the screen off): what the window draws with (its

@@ -64,6 +64,30 @@ pub fn scan(file: &Path) -> Verdict {
     }
 }
 
+/// Whether there is an antivirus to ask here, known without asking it: what
+/// `scan` would call is there. On Windows, always (AMSI is part of the
+/// system: only a scan says whether an antivirus answers it); on a phone,
+/// never; on Linux and macOS, whether one of the ClamAV programs `scan` runs
+/// is installed. False: `scan` answers `Unavailable`. True promises no verdict.
+pub fn present() -> bool {
+    #[cfg(feature = "insecure-test-tls")]
+    if std::env::var_os("SIOUL_TEST_NO_ANTIVIRUS").is_some() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        true
+    }
+    #[cfg(target_os = "android")]
+    {
+        false
+    }
+    #[cfg(not(any(windows, target_os = "android")))]
+    {
+        runs(None, daemon_here()).iter().any(|(command, _)| installed(command))
+    }
+}
+
 /// One of ClamAV's programs, as the system has it: on its path, else where
 /// Homebrew puts it (a macOS application does not get the shell's path).
 #[cfg(not(windows))]
@@ -130,9 +154,8 @@ fn system_signatures() -> bool {
 #[cfg(not(any(windows, target_os = "android")))]
 fn clamav(file: &Path) -> Verdict {
     let own = own_signatures();
-    let daemon = daemon_config().is_some_and(|text| daemon_alerts(&text));
     let mut problem = String::new();
-    for (command, options) in runs(own.is_dir().then_some(own.as_path()), daemon) {
+    for (command, options) in runs(own.is_dir().then_some(own.as_path()), daemon_here()) {
         match std::process::Command::new(program(command)).args(&options).arg(file).output() {
             Ok(out) => match clamav_verdict(out.status.code(), &String::from_utf8_lossy(&out.stdout)) {
                 Some(verdict) => return verdict,
@@ -184,6 +207,12 @@ fn clamav_verdict(code: Option<i32>, stdout: &str) -> Option<Verdict> {
 #[cfg(not(any(windows, target_os = "android")))]
 fn daemon_config() -> Option<String> {
     ["/etc/clamd.d/scan.conf", "/etc/clamav/clamd.conf", "/etc/clamd.conf", "/usr/local/etc/clamd.conf", "/opt/homebrew/etc/clamav/clamd.conf", "/usr/local/etc/clamav/clamd.conf"].iter().find_map(|path| std::fs::read_to_string(path).ok())
+}
+
+/// Whether this system's ClamAV daemon says when a file passes its limits (`daemon_alerts`).
+#[cfg(not(any(windows, target_os = "android")))]
+fn daemon_here() -> bool {
+    daemon_config().is_some_and(|text| daemon_alerts(&text))
 }
 
 /// Whether ClamAV's daemon says when a file passes its limits: its

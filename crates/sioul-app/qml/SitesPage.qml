@@ -9,7 +9,9 @@
 // silenced; a chat's real time is one tick away, always in view. Logins come
 // from Bitwarden when you ask, its account set in Accounts (VaultCard.qml).
 // The profile every site shares, and Bitwarden's page that asks a security
-// key, are the window's (SitesWeb.qml), so that Accounts asks a key too.
+// key, are the window's (SitesWeb.qml), so that Accounts asks a key too. A
+// file a site offers waits in Sioul's own folder until you say where it
+// goes (SiteDownloads.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -39,6 +41,8 @@ Item {
     property alias loginChooser: chooser
     property alias addSiteDialog: adding
     property alias addSiteFind: adding.findText
+    // The files the sites offer, and their card (the window's images).
+    property alias downloads: siteFiles
     // What follows Bitwarden's unlocking: the login filled ("fill") or chosen ("choose").
     property string afterUnlock: "fill"
     // Sites opened this session stay loaded: going back to one does not reload it.
@@ -155,6 +159,8 @@ Item {
     // pages too. Returns how many are still closing; `sitesClosed` says when
     // none is (cpp/webengine.cpp waits for it, two seconds at most).
     function closeAll() {
+        // The files under way let go, their held folders gone (SiteDownloads.qml).
+        siteFiles.closeAll()
         // How long it takes, with SIOUL_TIMING.
         page.sioul.mark("closing the sites' pages")
         const closing = []
@@ -238,6 +244,8 @@ Item {
     function dropView(id) {
         if (page.leaving[id] === true)
             return
+        // Closed: its files, if they were refused, are asked again should it come back.
+        siteFiles.forgive(id)
         let holder = null
         for (let i = 0; i < views.count; i++) {
             const item = views.itemAt(i)
@@ -559,10 +567,42 @@ Item {
             notification.show()
         }
 
+        // A file a site offers: accepted at once into Sioul's own folder, where it
+        // waits for you to say where (SiteDownloads.qml). Its view read here, once:
+        // Qt leaves it dangling once the page is gone.
         function onDownloadRequested(download) {
-            download.accept()
-            page.sioul.status = page.sioul.textWith("site-downloading", "file", download.downloadFileName)
+            const view = download.view
+            const from = page.siteOfView(view)
+            siteFiles.offer(download, from.site, view && view.url ? String(view.url) : "", from.popup)
         }
+    }
+
+    // The files the sites offer: each asked in its card, one after the other,
+    // over the pop-up that offered it or over this page while it is in view
+    // (docs/sites.md, "Downloads").
+    SiteDownloads {
+        id: siteFiles
+
+        sioul: page.sioul
+        theme: page.theme
+        window: page.window
+        shown: page.visible && page.window.visible
+    }
+
+    // The site a page belongs to, and the pop-up when it is one: a site's own
+    // view, or a pop-up it opened; {site: null, popup: null} for another page.
+    function siteOfView(view) {
+        if (!view)
+            return { site: null, popup: null }
+        for (const id of Object.keys(page.siteViews)) {
+            if (page.siteViews[id] === view)
+                return { site: page.sites.find(s => s.id === id) || null, popup: null }
+        }
+        for (const popup of page.popups) {
+            if (page.popupOpen(popup) && popup.view === view)
+                return { site: popup.site, popup: popup }
+        }
+        return { site: null, popup: null }
     }
 
     RowLayout {
@@ -622,6 +662,8 @@ Item {
                     Accessible.name: page.sioul.text("site-reload")
                     onClicked: {
                         const view = page.viewOf(page.openId)
+                        // Reloaded by you: a site whose files were refused is asked again.
+                        siteFiles.forgive(page.openId)
                         if (view)
                             view.reload()
                     }

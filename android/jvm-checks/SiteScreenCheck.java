@@ -35,6 +35,8 @@ import java.util.regex.Pattern;
  * over, the console never logged, no address nor cookie in a log line; the
  * camera, the microphone and the location refused; a drawing process that
  * ends handled; one extra read; StepService's door; the library in Gradle.
+ * No Java of Sioul's empties every site's store: only the extensions'
+ * sign-in screen empties one, its own, in a process apart.
  */
 public final class SiteScreenCheck
 {
@@ -458,14 +460,24 @@ public final class SiteScreenCheck
         expect("else its cookies and its address's storage", forgetting.contains("cookies.setCookie(address, cookie);") && forgetting.contains("WebStorage.getInstance().deleteOrigin(") && forgetting.contains("return \"cookies\";"));
         expect("on Android's main thread, waited for a while", body(web, "static JSONObject forget(", "    ").contains("new Handler(Looper.getMainLooper()).post(work);") && body(web, "static JSONObject forget(", "    ").contains("done.await(8, java.util.concurrent.TimeUnit.SECONDS)"));
         expect("StepService's door hands it on", web.contains("case \"site-forget\":"));
-        boolean wipes = false;
+        // Nothing of Sioul's Java empties every site's store (review K2's rule, kept here): the
+        // extensions' sign-in screen alone empties a web store, and it is its own, in a process
+        // apart whose web view keeps other folders (SignInCheck holds the rest of its rule).
+        List<String> wiping = new ArrayList<>();
         try (java.util.stream.Stream<Path> all = Files.list(java)) {
             for (Path source : (Iterable<Path>) all::iterator) {
                 String text = code(read(source));
-                wipes |= text.contains("removeAllCookies") || text.contains("deleteAllData") || text.contains("getDir(\"webview\"") || text.contains("clearCache(true)") || text.contains("deleteBrowsingData(");
+                if (text.contains("removeAllCookies") || text.contains("deleteAllData") || text.contains("getDir(\"webview") || text.contains("clearCache(true)") || text.contains("deleteBrowsingData(") || text.contains("setDataDirectorySuffix("))
+                    wiping.add(source.getFileName().toString());
             }
         }
-        expect("nothing of Sioul's Java empties every site's store (review K2's rule, kept here)", !wipes);
+        expect("nothing of Sioul's Java empties a web store but the sign-in's screen: " + wiping, wiping.equals(List.of("SignIn.java")));
+        Matcher signIn = Pattern.compile("(?s)<activity\\s+android:name=\"com\\.aurelienpierre\\.sioul\\.SignIn\"(.*?)(/>|</activity>)").matcher(manifest);
+        Matcher signInProcess = Pattern.compile("android:process=\"([^\"]+)\"").matcher(signIn.find() ? signIn.group(1) : "");
+        String apart = signInProcess.find() ? signInProcess.group(1) : "";
+        expect("and the sign-in's screen runs in a process apart, its own, where no site is", SignIn.ownProcess("com.aurelienpierre.sioul" + apart, "com.aurelienpierre.sioul") && !SignIn.ownProcess("com.aurelienpierre.sioul", "com.aurelienpierre.sioul") && !declared.contains("android:process"));
+        java.io.File[] itsFolders = SignIn.folders(new java.io.File("data"), new java.io.File("cache"));
+        expect("so the folders it empties are its own, never the sites' (app_webview, cache/WebView)", !itsFolders[0].equals(new java.io.File("data", "app_webview")) && !itsFolders[1].equals(new java.io.File("cache", "WebView")) && itsFolders[0].getParentFile().equals(new java.io.File("data")) && itsFolders[1].getParentFile().equals(new java.io.File("cache")));
         // A web view drawing inside Sioul's process sends the site to the browser (review V1).
         expect("the screen asks where the web view draws before making one", create.indexOf("if (SiteWeb.drawsInside())") >= 0 && create.indexOf("if (SiteWeb.drawsInside())") < create.indexOf("view = page();") && create.indexOf("if (SiteWeb.drawsInside())") > create.indexOf("try {"));
         expect("and then opens the browser, saying why", create.contains("say(site.word(\"one_process\"));\n                browse(site.url);\n                finish();"));
