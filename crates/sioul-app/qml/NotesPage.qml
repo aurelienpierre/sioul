@@ -64,10 +64,8 @@ Item {
     function back() {
         page.open("")
     }
-    // A picture, a PDF, a sound: read or played, never edited here; any other file ("file"): named, opened elsewhere.
+    // A picture, a PDF, a sound: read or played, never edited here; an office document ("document"): named, opened elsewhere.
     readonly property string kind: page.note ? page.note.kind : "text"
-    // Another file that is a program, a script or an installer: never started from here, its folder opened instead.
-    readonly property bool program: page.kind === "file" && page.sioul.isProgram(page.note.url)
     property var openFolders: ({})
     // What changed lately: folded until opened, as you left it.
     property bool recentOpen: page.sioul.viewFlag("notes-recent")
@@ -523,7 +521,7 @@ Item {
                         }
                         Icon {
                             visible: !row.heading
-                            iconName: row.modelData.type === "recent" ? "document-open-recent" : row.folder ? "inode-directory" : ({ "image": "image-x-generic", "pdf": "application-pdf", "audio": "audio-x-generic", "file": "x-office-document" })[row.heading ? "" : row.modelData.note.kind] || "text-x-generic"
+                            iconName: row.modelData.type === "recent" ? "document-open-recent" : row.folder ? "inode-directory" : ({ "image": "image-x-generic", "pdf": "application-pdf", "audio": "audio-x-generic", "document": "x-office-document" })[row.heading ? "" : row.modelData.note.kind] || "text-x-generic"
                             size: 16
                         }
                         ColumnLayout {
@@ -607,16 +605,15 @@ Item {
                                 color: page.theme.muted
                             }
                         }
-                        // A picture, a PDF, a sound, another file: also with the desktop's own
-                        // application; a program's folder, never the program.
+                        // A picture, a PDF, a sound, an office document: also with the desktop's own application.
                         Button {
                             objectName: "noteOpenElsewhere"
                             visible: page.kind !== "text"
                             flat: true
-                            text: page.sioul.text(page.program ? "file-show-folder" : "note-open-elsewhere")
-                            icon.name: page.program ? "folder-open" : "document-open"
+                            text: page.sioul.text("note-open-elsewhere")
+                            icon.name: "document-open"
                             icon.color: page.theme.text
-                            onClicked: Qt.openUrlExternally(page.program ? page.note.url.slice(0, page.note.url.lastIndexOf("/") + 1) : page.note.url)
+                            onClicked: Qt.openUrlExternally(page.note.url)
                         }
                         Button {
                             visible: page.kind === "text"
@@ -646,18 +643,18 @@ Item {
                         }
                     }
 
-                    // Another file: what Sioul does with it, in one line.
+                    // An office document: what Sioul does with it, in one line.
                     Label {
                         objectName: "noteFileSaid"
-                        visible: page.kind === "file"
+                        visible: page.kind === "document"
                         Layout.fillWidth: true
-                        text: page.sioul.text(page.program ? "note-file-program" : "note-file-elsewhere")
+                        text: page.sioul.text("note-file-elsewhere")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: page.theme.muted
                     }
                     Item {
-                        visible: page.kind === "file"
+                        visible: page.kind === "document"
                         Layout.fillHeight: true
                     }
 
