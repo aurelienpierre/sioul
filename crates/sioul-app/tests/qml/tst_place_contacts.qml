@@ -169,7 +169,7 @@ Item {
         function toMiddle() {
             list.contentY = (list.contentHeight - list.height) / 2
             frame()
-            list.contentY += -rows()[0].y + 7
+            list.contentY += rows()[0].y + 7
             frame()
             return rows()[0]
         }

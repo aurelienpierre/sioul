@@ -296,7 +296,7 @@ Item {
             flick.contentY = flick.originY + (flick.contentHeight - flick.height) / 2
             frame(flick)
             const top = topRow(flick)
-            flick.contentY += -top.y + 7
+            flick.contentY += top.y + 7
             frame(flick)
             return topRow(flick)
         }
@@ -359,20 +359,19 @@ Item {
             }
         }
 
-        // Put back before the window has laid the new rows out, the place is off by what the
-        // wrapping rows above learned only then: the second putting back, after the layout, is
-        // what keeps it.
+        // Without the putting back after the window has laid the new rows out, the place is off
+        // by what the wrapping rows above learned only then: that putting back is what keeps it.
         function test_the_place_is_put_back_after_the_layout() {
             const flick = flickOf(dayScroll)
             const before = toMiddle(flick)
             root.dayRows = root.rows(60, ["r3", "r6", "r9"])
             // Given now, without waiting for the event loop (which may draw a frame meanwhile).
             dayPlace.apply()
-            verify(dayPlace.settling !== null, "a second putting back waits for the window's layout")
+            verify(dayPlace.settling !== null, "the putting back waits for the window's layout")
             dayPlace.settling = null
             frame(flick)
             const once = placeOf(flick, before.key)
-            verify(Math.abs(once - before.y) > 4, "once, before the layout: off by " + (once - before.y))
+            verify(Math.abs(once - before.y) > 4, "without it: off by " + (once - before.y))
             // Again, both times.
             toMiddle(flick)
             const again = topRow(flick)

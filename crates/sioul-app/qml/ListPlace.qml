@@ -19,11 +19,13 @@
 // changed inside `keep(() => …)`. When `scope` (what it lists: a filter, a
 // search, a day) changes, the list goes to its top instead.
 //
-// When: the view is put back at once, then once more after the window has
-// laid its rows out (its `afterAnimating`, after Qt's polish and before the
-// frame is drawn): a row whose words wrap only learns its height there, and
-// a place put back before it is off by every such row above. Never while the
-// person drags or flicks the view: new rows wait until the movement ends.
+// When: after the window has laid the new rows out (its `afterAnimating`,
+// after Qt's polish and before the frame is drawn): a row whose words wrap
+// learns its height only there, and a place put back before it is off by
+// every such row above. A ListView, which goes back to its top at once, is
+// also put back at once, its rows made there and laid out on the spot. Never
+// while the person drags or flicks the view: new rows wait until the
+// movement ends.
 
 import QtQuick
 
@@ -115,13 +117,18 @@ QtObject {
         }
         const noted = place.note()
         change()
-        if (noted !== null) {
-            place.putBack(noted)
-            place.settling = noted
-            place.revealWanted(false)
-        } else {
+        if (noted === null) {
             place.revealWanted(true)
+            return
         }
+        // A ListView went back to its top: its rows are made where they were at once. A
+        // Flickable's rows are laid out only in the window's polish: put back after it.
+        if (place.isList) {
+            place.putBack(noted)
+            place.revealWanted(false)
+        }
+        place.settling = noted
+        place.view.Window.window.update()
     }
 
     // The list at its top, as when it shows other things; the person's own ask too.
@@ -351,7 +358,9 @@ QtObject {
         if (place.wanted === "" || place.flick === null || place.flick.moving)
             return
         const flick = place.flick
+        const inner = path => path.endsWith("\u001f" + place.wanted)
         let item = null
+        let below = null
         if (place.isList) {
             const index = place.indexes()["\u001e" + place.wanted]
             if (index !== undefined) {
@@ -362,10 +371,28 @@ QtObject {
                 place.view.positionViewAtIndex(index, ListView.Contain)
                 return
             }
-            const made = place.made().find(f => f[0].endsWith("\u001f" + place.wanted))
-            item = made ? made[1] : null
+            // A row inside one of the list's own (a group's task): that one made first, if it is
+            // not, then the row found in it.
+            let made = place.made().find(f => inner(f[0]))
+            if (made === undefined) {
+                const wanted = JSON.stringify(place.wanted)
+                let holder = -1
+                for (let i = 0; holder < 0 && i < place.view.count; ++i)
+                    if (JSON.stringify(place.rowAt(i)).indexOf(wanted) >= 0)
+                        holder = i
+                if (holder < 0)
+                    return
+                const shown = place.made().filter(f => place.topOf(f[1]) + f[1].height > flick.contentY)
+                below = shown.length === 0 || holder > shown[0][2]
+                place.view.positionViewAtIndex(holder, ListView.Beginning)
+                place.settleList()
+                made = place.made().find(f => inner(f[0]))
+                if (made === undefined)
+                    return
+            }
+            item = made[1]
         } else {
-            const found = place.keyed(flick.contentItem, "", []).find(f => f[0].endsWith("\u001f" + place.wanted))
+            const found = place.keyed(flick.contentItem, "", []).find(f => inner(f[0]))
             item = found ? found[1] : null
         }
         if (item === null)
@@ -373,10 +400,17 @@ QtObject {
         if (last)
             place.wanted = ""
         const top = place.topOf(item)
-        if (top < flick.contentY)
-            place.scrollTo(top)
-        else if (top + item.height > flick.contentY + flick.height)
+        if (below === null)
+            below = top + item.height > flick.contentY + flick.height ? true : top < flick.contentY ? false : null
+        if (below === true)
             place.scrollTo(Math.min(top, top + item.height - flick.height))
+        else if (below === false)
+            place.scrollTo(top)
+        if (below !== null && place.isList) {
+            place.settleList()
+            const again = place.topOf(item)
+            place.scrollTo(below ? Math.min(again, again + item.height - flick.height) : again)
+        }
     }
 
     // Once the window has laid the new rows out, the place put back again: a row's height known

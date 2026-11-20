@@ -29,7 +29,17 @@ Item {
 
     function takeShown() {
         if (page.visible)
-            page.tasksText = page.sioul.tasks
+            nowPlace.keep(() => {
+                page.tasksText = page.sioul.tasks
+            })
+    }
+
+    // Now keeps its place as its tasks change (ListPlace.qml): its rows are read from the
+    // page's whole answer, kept around taking it.
+    ListPlace {
+        id: nowPlace
+
+        view: nowView.item as Item
     }
 
     Connections {
@@ -930,6 +940,7 @@ Item {
                                         id: fold
 
                                         required property var modelData
+                                        readonly property string placeKey: fold.modelData.key
                                         readonly property bool open: fold.modelData.key === "others" ? page.othersShown : fold.modelData.key === "started" ? page.startedShown : fold.modelData.key === "joy" ? page.joyShown : page.doneShown
 
                                         visible: fold.modelData.items.length > 0
@@ -955,6 +966,7 @@ Item {
 
                                             delegate: TaskRow {
                                                 required property var modelData
+                                                readonly property string placeKey: modelData.uid
 
                                                 Layout.fillWidth: true
                                                 task: modelData
@@ -1133,6 +1145,24 @@ Item {
                                 lists: page.shown ? page.shown.lists.filter(l => l.tasks).map(l => ({ id: l.id, label: l.name, tasks: true, events: false })) : []
                                 onCleared: page.stopChoosing()
                             }
+                            // A task added, changed, done or deleted: the list keeps its place (ListPlace.qml),
+                            // a task captured here comes into view.
+                            ListPlace {
+                                id: groupsPlace
+
+                                view: groups
+                                source: page.shown ? page.shown.list.groups : []
+                                key: "title"
+                                scope: [page.shown ? page.shown.view : null, page.query]
+                            }
+                            Connections {
+                                target: capture
+
+                                function onAdded(uid) {
+                                    if (page.mode === "list")
+                                        groupsPlace.reveal(uid)
+                                }
+                            }
                             ListView {
                                 id: groups
 
@@ -1140,7 +1170,7 @@ Item {
                                 Layout.fillHeight: true
                                 clip: true
                                 spacing: 14
-                                model: page.shown ? page.shown.list.groups : []
+                                model: groupsPlace.rows
                                 ScrollBar.vertical: ScrollBar {}
 
                                 delegate: ColumnLayout {
@@ -1163,6 +1193,7 @@ Item {
 
                                         delegate: TaskRow {
                                             required property var modelData
+                                            readonly property string placeKey: modelData.uid
 
                                             Layout.fillWidth: true
                                             task: modelData
@@ -1219,6 +1250,14 @@ Item {
                                 wrapMode: Text.Wrap
                                 color: page.theme.muted
                             }
+                            // A card moved, added or done: the board keeps its place on a phone, each
+                            // column its own on a computer (ListPlace.qml).
+                            ListPlace {
+                                id: boardPlace
+
+                                view: board
+                                source: page.shown ? page.shown.board.columns : []
+                            }
                             // Side by side; on a phone, one under the other, the board scrolled whole.
                             Flickable {
                                 id: board
@@ -1243,13 +1282,16 @@ Item {
                                     Repeater {
                                         id: boardColumns
 
-                                        model: page.shown ? page.shown.board.columns : []
+                                        // The columns without their cards: a card changed leaves the columns as
+                                        // they are (an array equal to the last is not made anew), each its scroll.
+                                        model: boardPlace.rows.map(c => ({ id: c.id, title: c.title }))
 
                                         delegate: Rectangle {
                                             id: column
 
                                             required property var modelData
                                             readonly property string columnId: column.modelData.id
+                                            readonly property var cardsNow: (boardPlace.rows.find(c => c.id === column.columnId) || { cards: [] }).cards
                                             readonly property bool target: {
                                                 if (page.dragging === null || column.columnId === "waiting")
                                                     return false
@@ -1278,6 +1320,13 @@ Item {
                                                     font.weight: Font.DemiBold
                                                     color: page.theme.text
                                                 }
+                                                ListPlace {
+                                                    id: cardsPlace
+
+                                                    view: cards
+                                                    source: column.cardsNow
+                                                    key: "uid"
+                                                }
                                                 ListView {
                                                     id: cards
 
@@ -1287,13 +1336,15 @@ Item {
                                                     Layout.preferredHeight: page.narrow ? cards.contentHeight : -1
                                                     clip: true
                                                     spacing: 4
-                                                    model: column.modelData.cards
+                                                    // On a phone, with the board's own (its place is the board's).
+                                                    model: page.narrow ? column.cardsNow : cardsPlace.rows
                                                     interactive: !page.narrow && page.dragging === null
 
                                                     delegate: Item {
                                                         id: holder
 
                                                         required property var modelData
+                                                        readonly property string placeKey: holder.modelData.uid
 
                                                         width: cards.width
                                                         height: card.implicitHeight
