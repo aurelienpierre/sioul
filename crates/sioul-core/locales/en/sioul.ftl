@@ -9515,6 +9515,12 @@ devices-number-change = Change the number…
 devices-number-help = When more than one phone shares its calls, every list of calls says the phone each call came to by this number. It travels with your settings. Left empty, the one Android gives comes back, when it gives one.
 devices-number-field = This phone's number
 devices-number-refused = { $said }: not a whole phone number. Nothing was changed.
+devices-details = Details
+devices-details-of = Details of { $device }
+devices-missing = { $Count } { $n ->
+        [one] access is
+       *[other] accesses are
+    } missing.
 devices-plain-here = { $name } (this device)
 devices-plain-system = { $name } (named { $system } by its system)
 devices-plain-here-system = { $name } (this device, named { $system } by its system)

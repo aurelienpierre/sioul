@@ -236,7 +236,7 @@ Item {
         else if (page.sections.includes(key))
             page.section = key
         // A part of a tab by its name ("devices.here", "devices.calls", "devices.apps"): the tab, the
-        // part brought into view by it (DevicesTab.reveal for a phone's card).
+        // part brought into view by it (DevicesTab.reveal: a card's Details, a phone's section).
         else if (page.sections.includes(key.split(".")[0]))
             page.section = key.split(".")[0]
         page.listShown = false
@@ -252,11 +252,14 @@ Item {
 
         interval: 150
         onTriggered: {
-            let item = page.rowItem(column, toSetting.key)
-            // A door into a phone's card: its section unfolded (DevicesTab.reveal), else the tab.
+            // A door into a device's card: its Details opened, its section unfolded, brought into
+            // view by the tab once laid out (DevicesTab.reveal, `shown`); else the tab.
             const devices = devicesLoader.item as DevicesTab
-            if (!item && devices && (toSetting.key === "devices.calls" || toSetting.key === "devices.apps"))
-                item = devices.reveal(toSetting.key.slice("devices.".length))
+            if (devices && ["devices.here", "devices.calls", "devices.apps"].includes(toSetting.key)) {
+                devices.reveal(toSetting.key.slice("devices.".length))
+                return
+            }
+            const item = page.rowItem(column, toSetting.key)
             const flick = scroll.contentItem as Flickable
             if (item && flick)
                 flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
@@ -607,6 +610,8 @@ Item {
                             kindRow: page.rows.find(r => r.key === "device_kind") || null
                             onSave: (key, value, shown) => page.save(key, value, shown)
                             onSharingAsked: page.showSetting("files")
+                            // What a door opened in a card, laid out: at the top of the page.
+                            onShown: item => page.bringIntoView(item)
                         }
                     }
                 }

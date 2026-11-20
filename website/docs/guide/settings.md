@@ -79,7 +79,7 @@ Free time and the pause, set up on a calm day: how far the end of work may move,
 
 ## A phone's card {#this-phone}
 
-What sets a phone up is on its own card in [Devices](#devices), under its name.
+What sets a phone up is on its own card in [Devices](#devices), under its **Details**: each section opens when you press its name, at every width, and stays as you left it until you fold it.
 
 - **Calls**, on every phone's card, set from any of your devices: a profile to start from, **Professional**, **Personal**, **Both** or **As Android does**, each with what it does in a line; one small table of who rings in your work hours, the rest of the day, the night and while you are busy, each cell **Rings** or **Voicemail**, while busy also **As usual** (on a phone, a list of rows, each opening its four choices); **Give a group its row…**; the switches, each one setting: commercial and automated callers never ring, a second call within 15 minutes rings, numbers you called in the last 14 days ring as your contacts do, and under **More** numbers that cannot be a caller's or that your network could not verify. Until you change it, the table shows what the phone does today, a cell that differs between moments of the day saying **Varies**; calls are set there alone, and What reaches you's presets leave them. Android does not tell Sioul which SIM a call comes on: the card says so, and on the phone opens Android's SIM page. See [Each phone its own calls](calls.md#calls-per-phone).
 - On the phone itself, its card also holds:
@@ -102,15 +102,13 @@ The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#y
 
 ## Devices {#devices}
 
-Every device you share with, this one first, each on a card; in a wide window, the cards' fields line up as a table.
+Every device you share with, this one first, each on a short card; in a wide window, the cards line up as a table of four columns: the device, what it is, how it is now, what it is for. The rest is under each card's **Details**, closed until you open it; each card stays as you left it, on this device.
 
-- **Rename…**: a name of your own for the device, which travels with your settings. Left empty, the name its system gives it comes back.
-- **What it is**, how it is **now**, when it was **last opened** and when it **last shared**, and its **Sioul**: as each device says them. On this device's own card, **What this device is** changes what it is ([Display](#display)).
+- **What it is** and how it is **now**, as each device says them; unless it is in use, when it was **last opened**, under it.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
+- On this phone, while Android has not given an access, a line counts them, with **What Android must allow**, which opens them.
+- Under **Details**: **Rename…**, a name of your own for the device, which travels with your settings (left empty, the name its system gives it comes back); on this device's own card, **What this device is**, which changes what it is ([Display](#display)); when it **last opened** (while in use), when it **last shared**, its **Sioul**; **Shares**, the parts the device shares (a part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing), which **Change what travels from this device…** opens); in a narrow window, what comes forward on it at each time; a phone's own sections, its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)); last, for another device, **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**.
 - **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
-- **Shares**: the parts the device shares. A part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing), which **Change what travels from this device…** opens from its card.
-- **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**, for another device.
-- A phone's own sections: its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)).
 
 While this device does not share, it is the only one listed. See [Your devices](sharing.md#your-devices).
 

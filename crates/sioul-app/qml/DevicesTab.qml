@@ -3,32 +3,40 @@
 
 // Settings ▸ Devices (« Appareils »; docs/database.md, "Devices"): every
 // device Sioul shares with, this one first, as the core words them
-// (sioul-sync's device_table, the same rows `sioul devices` prints). For
-// each: its name, yours when you gave one ("Rename…"), a phone's own number
-// (yours when you gave one, else the one Android gives: "Change the
-// number…"), what it is (this
-// device's own can be changed here, as in Settings ▸ This device), how it is
-// now, when it last opened and last shared, its Sioul, what it is for (three
-// switches, nothing ticked being everything), the parts it shares (read
-// only for another device: a part is switched on where its data lands), and
-// for another device Count it again, Forget, Forget it now, and Forget it
-// and remove its files (RemovalAsked.qml). In a wide window the fields line
-// up under their names, as a table; in a narrow one each device is a card,
-// each field under its name. With sharing off, this device alone.
+// (sioul-sync's device_table, the same rows `sioul devices` prints). Each
+// card shows four things, nothing else: its name (and "This device"), what
+// it is, how it is now (in use, or when it was last opened), and what it is
+// for (three switches, nothing ticked being everything); on this phone, one
+// line more while Android has not given an access, with its door. The rest
+// is one step away, under the card's Details (CardFold.qml), closed until
+// opened at every width, and left as it was on this device (`viewFlag`,
+// never shared): Rename… (yours when you gave one) and What this device is
+// (as in Settings ▸ This device); when it last opened (while in use), last
+// shared, its Sioul, the parts it shares (read only for another device: a
+// part is switched on where its data lands); a phone's own number (yours when
+// you gave one, else the one Android gives: "Change the number…"); in a narrow
+// window its cells by
+// time; a phone's own sections; last, for another device, Count it again,
+// Forget, Forget it now, and Forget it and remove its files
+// (RemovalAsked.qml). In a wide window the four line up under their names,
+// as a table; in a narrow one each field is under its name. With sharing
+// off, this device alone. Design of 20 November 2026 (the card too long).
 //
 // What a device is for is written into the shared settings, and each device
 // then brings forward only that, at its hours (docs/areas.md, "What each
 // device is for"). Under the devices, the grid says what comes forward on
 // each at each of the five times (DeviceGrid.qml): in a wide window one
-// matrix, devices by times; in a narrow one each card says its cells in
-// words, a line per time. A cell opens three boxes and "As its areas say";
+// matrix, devices by times; in a narrow one each card's Details say its
+// cells in words, a line per time. A cell opens three boxes and "As its areas say";
 // one you changed is framed. Then one sentence for now on this device, one
 // for the areas no device is for, and what a device's areas never keep back.
 //
-// A phone's card holds its own sections (PhoneCard.qml): its calls, set from
-// any device; on the phone itself, what Android must allow, Android's
+// A phone's Details hold its own sections (PhoneCard.qml): its calls, set
+// from any device; on the phone itself, what Android must allow, Android's
 // restricted settings, and what the tab "This phone" held (design of 18
-// November 2026). At a phone's width each section folds.
+// November 2026). Each section folds at every width, made once opened. A
+// door (`reveal`) opens the card's Details and the section it leads to, and
+// the page scrolls to it once laid out (`shown`).
 
 pragma ComponentBehavior: Bound
 
@@ -59,9 +67,11 @@ ColumnLayout {
     // (its folds opened, its sections) instead of making them again.
     property var ids: []
     // The phone card a door lands in, by its part ("calls", "apps"): this
-    // device's when it is a phone, else the first phone's (`reveal`).
+    // device's when it is a phone, else the first phone's (`reveal`); this
+    // phone's own ("here", "allow"), on a phone alone.
     readonly property string callsDoor: tab.doorOf(id => tab.calls[id] !== undefined)
     readonly property string appsDoor: tab.doorOf(id => tab.calls[id] !== undefined && (tab.own.phone === true ? tab.rows.some(r => r.id === id && r.here === true) : tab.lists > 0))
+    readonly property string hereDoor: tab.own.phone === true ? ((tab.rows.find(r => r.here === true) || {}).id || "") : ""
     // How many apps, conversations and sites have times of their own (`appNotesSetup`).
     property int lists: 0
     // A door that found no card to land in, in a line (`reveal`); "" otherwise.
@@ -70,14 +80,16 @@ ColumnLayout {
     // the areas no device is for, what is never kept back (`device_grid::Grid`).
     readonly property var grid: tab.view.grid || ({ times: [], now: "", unheld: "", never: "" })
     property string problem: ""
-    // Wide enough for eight columns: the fields line up as a table.
+    // Wide enough for a table: the four line up under their names, and the Details' fields side by side.
     readonly property bool wide: tab.width >= 900
-    // Each column's share of the width: the device, what it is, now, last
-    // opened, last shared, its Sioul, what it is for, what it shares.
-    readonly property var shares: [0.15, 0.09, 0.17, 0.09, 0.11, 0.12, 0.14, 0.13]
-    readonly property var titles: ["devices-col-name", "devices-col-form", "devices-col-now", "devices-col-opened", "devices-col-shared", "devices-col-sioul", "devices-col-for", "devices-col-parts"]
+    // Each column's share of the width: the device, what it is, now, what it
+    // is for. The others are read in Details, each under its name.
+    readonly property var shares: [0.25, 0.16, 0.29, 0.30]
+    readonly property var titles: ["devices-col-name", "devices-col-form", "devices-col-now", "devices-col-for"]
     readonly property int pad: 12
     readonly property int between: 10
+    // A field's width among the Details' four, in a wide window.
+    readonly property int quarter: Math.floor((tab.width - 2 * tab.pad - 3 * tab.between) / 4)
     // The device being renamed (its id), and the one whose kind is being changed (this one).
     property string renaming: ""
     // The name being typed there, kept by the tab: anything else pressed in
@@ -96,10 +108,22 @@ ColumnLayout {
     signal save(string key, var value, var shown)
     // Your folder and sharing asked for: where this device's parts are switched.
     signal sharingAsked
+    // A part a door opened, laid out: to be brought into view (ParametersPage.qml scrolls to it).
+    signal shown(var item)
 
     // A column's width in the table.
     function col(index) {
-        return Math.floor((tab.width - 2 * tab.pad - 7 * tab.between) * tab.shares[index])
+        return Math.floor((tab.width - 2 * tab.pad - (tab.titles.length - 1) * tab.between) * tab.shares[index])
+    }
+
+    // How this window left a card, kept on this device between starts ("devices-details.<id>":
+    // its Details open; `viewFlag`, the window's own state, never shared).
+    function flag(name) {
+        return typeof tab.sioul.viewFlag === "function" && tab.sioul.viewFlag(name) === true
+    }
+    function setFlag(name, on) {
+        if (typeof tab.sioul.setViewFlag === "function")
+            tab.sioul.setViewFlag(name, on)
     }
 
     // The devices again: every 20 seconds while shown, after each change. Never Android's
@@ -119,15 +143,34 @@ ColumnLayout {
             tab.lists = ((JSON.parse(tab.sioul.appNotesSetup() || "{}") || {}).grid || { rows: [] }).rows.length
     }
 
-    // A door's part in view (ParametersPage.qml, "devices.calls", "devices.apps"):
-    // the card it lands in, that section unfolded; none without such a card.
+    // A door's part in view (ParametersPage.qml: "devices.calls", "devices.apps",
+    // "devices.here"; a card's line of missing accesses: "allow"): the card it
+    // lands in, its Details opened, that section unfolded, and brought into
+    // view once laid out (`shown`); for "here", this phone's own sections.
+    // None without such a card.
     function reveal(part) {
-        const id = part === "calls" ? tab.callsDoor : part === "apps" ? tab.appsDoor : ""
-        const card = id === "" ? null : tab.cardOf(tab, id)
-        const found = card ? card.reveal(part) : null
+        const id = part === "calls" ? tab.callsDoor : part === "apps" ? tab.appsDoor : part === "here" || part === "allow" ? tab.hereDoor : ""
+        const device = id === "" ? null : tab.detailsOf(id)
+        const card = device ? tab.cardOf(device, id) : null
+        const found = !card ? null : part === "here" ? card : card.reveal(part)
         // No card to land in: one line says why, at the tab's top (review of `phones`, L17).
-        tab.doorSaid = found ? "" : tab.sioul.text(part === "calls" ? "devices-door-no-phone" : "devices-door-no-apps")
+        if (part === "calls" || part === "apps")
+            tab.doorSaid = found ? "" : tab.sioul.text(part === "calls" ? "devices-door-no-phone" : "devices-door-no-apps")
+        if (found)
+            revealer.ask(found)
         return found
+    }
+
+    // A device's card by its id, its Details opened (and made, if they were not); none when it is not listed.
+    function detailsOf(id) {
+        for (let i = 0; i < tab.children.length; i++) {
+            const item = tab.children[i]
+            if (item.objectName === "device-" + id && typeof item.openDetails === "function") {
+                item.openDetails()
+                return item
+            }
+        }
+        return null
     }
 
     function cardOf(item, id) {
@@ -199,7 +242,27 @@ ColumnLayout {
         onTriggered: tab.reload()
     }
 
-    // A field of a device: in the table, a cell under its column's title;
+    // What a door opened, once laid out (its Details made, its section unfolded): said to the page, which scrolls to it.
+    Timer {
+        id: revealer
+
+        property var item: null
+
+        function ask(item) {
+            revealer.item = item
+            revealer.restart()
+        }
+
+        interval: 120
+        onTriggered: {
+            const item = revealer.item
+            revealer.item = null
+            if (item)
+                tab.shown(item)
+        }
+    }
+
+    // A field of a device in sight: in the table, a cell under its column's title;
     // in a card, its name above it. What is declared inside comes under its words.
     component Field: ColumnLayout {
         id: field
@@ -231,6 +294,41 @@ ColumnLayout {
             wrapMode: Text.Wrap
             font.pixelSize: 14
             color: field.host.theme.text
+        }
+    }
+
+    // A field of a device's Details: its name above it, at every width; in a wide
+    // window four side by side, each a quarter of the card. None while it says nothing.
+    component Detail: ColumnLayout {
+        id: detail
+
+        // The tab: an inline component is given what it reads.
+        required property var host
+        // Its name's words (a column's title, "devices-col-shared").
+        required property string title
+        property string value: ""
+
+        visible: detail.value !== ""
+        Layout.alignment: Qt.AlignTop
+        Layout.fillWidth: !detail.host.wide
+        Layout.preferredWidth: detail.host.wide ? detail.host.quarter : -1
+        Layout.maximumWidth: detail.host.wide ? detail.host.quarter : Number.POSITIVE_INFINITY
+        spacing: 2
+
+        Label {
+            Layout.fillWidth: true
+            text: detail.host.sioul.text(detail.title)
+            font.pixelSize: 12
+            wrapMode: Text.Wrap
+            color: detail.host.theme.muted
+        }
+        Label {
+            Layout.fillWidth: true
+            text: detail.value
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 14
+            color: detail.host.theme.text
         }
     }
 
@@ -300,9 +398,10 @@ ColumnLayout {
     }
 
     // The table's titles, above the devices: each as wide as its column, on two
-    // lines when its words need them ("Dernière ouverture" in 95 points), their
-    // last lines level above the cells.
+    // lines should its words need them, their last lines level above the cells;
+    // four, whole in English and French from 900 points (tst_frenchwidths.qml).
     RowLayout {
+        objectName: "devicesTitles"
         visible: tab.wide
         Layout.fillWidth: true
         Layout.leftMargin: tab.pad
@@ -343,6 +442,18 @@ ColumnLayout {
             readonly property bool isPhone: (device.row.form || "") === "phone" || (device.row.number || "") !== ""
             // Its number as the region writes it: yours when given, else the one Android gives; "" none known.
             readonly property string numberShown: device.row.number_words || ""
+            // In use now: how it is says it all; otherwise when it was last opened is said under it.
+            readonly property bool inUse: device.row.code === "in-use" || device.row.code === "in-use-then"
+            // On this phone: the accesses Android has not given yet (`phonecard::view`'s `allow`), counted.
+            readonly property int missing: device.row.here === true && tab.own.phone === true ? (tab.own.allow || []).filter(l => l.state === "not-given").length : 0
+            // Whether its Details were left open, on this device (`viewFlag`).
+            readonly property string detailsFlag: "devices-details." + device.deviceId
+
+            // Its Details opened (a door, the line of missing accesses): made now if they were not, and left open.
+            function openDetails() {
+                details.open = true
+                return details
+            }
 
             objectName: "device-" + device.deviceId
             Layout.fillWidth: true
@@ -360,13 +471,14 @@ ColumnLayout {
                 width: device.width - 2 * tab.pad
                 spacing: 6
 
+                // In sight, nothing else: its name, what it is, how it is now, what it is for.
                 GridLayout {
                     Layout.fillWidth: true
-                    columns: tab.wide ? 8 : 1
+                    columns: tab.wide ? 4 : 1
                     columnSpacing: tab.between
                     rowSpacing: 8
 
-                    // Its name: yours when given, with what its system calls it under it.
+                    // Its name: yours when given (what its system calls it is in Details).
                     ColumnLayout {
                         Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: !tab.wide
@@ -392,53 +504,39 @@ ColumnLayout {
                             elide: Text.ElideRight
                             color: tab.theme.accent
                         }
-                        Label {
-                            visible: device.renamed
-                            Layout.fillWidth: true
-                            text: device.renamed ? tab.sioul.textWith("devices-system-name", "system", device.row.system || "") : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 12
-                            color: tab.theme.muted
-                        }
                     }
                     Field {
                         host: tab
                         column: 1
                         value: device.row.form_words || ""
                     }
+                    // How it is now; unless it is in use, when it was last opened, under it.
                     Field {
                         host: tab
                         column: 2
                         value: [device.row.state || ""].concat(device.row.notes || []).join(" ")
-                    }
-                    Field {
-                        host: tab
-                        column: 3
-                        value: device.row.opened || ""
-                    }
-                    Field {
-                        host: tab
-                        column: 4
-                        value: device.row.shared || ""
-                    }
-                    // Its Sioul: an older one said calmly, in its own sentence.
-                    Field {
-                        host: tab
-                        column: 5
-                        value: device.row.older === true ? (device.row.build || "") : (device.row.version || "")
+
+                        Label {
+                            objectName: "deviceOpened"
+                            visible: !device.inUse && (device.row.opened || "") !== ""
+                            Layout.fillWidth: true
+                            text: visible ? tab.sioul.textArgs("devices-plain-line", JSON.stringify({ label: tab.sioul.text("devices-col-opened"), value: device.row.opened || "" })) : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: tab.theme.muted
+                        }
                     }
                     // What it is for: three switches; nothing ticked, everything comes here.
                     Field {
                         host: tab
-                        column: 6
+                        column: 3
 
                         AreaSwitches {
                             objectName: "deviceFor"
                             Layout.fillWidth: true
                             sioul: tab.sioul
                             value: device.row.area || ""
-                            stacked: tab.wide
                             onPicked: value => tab.say(device.deviceId, "area", value)
                         }
                         Label {
@@ -451,358 +549,462 @@ ColumnLayout {
                             color: tab.theme.muted
                         }
                     }
-                    // What it shares: read only; this device's own are switched in Your folder and sharing (below).
-                    Field {
-                        host: tab
-                        column: 7
-                        value: device.row.parts_words || ""
-                    }
                 }
 
-                // A phone's own number (`share::say_of_device`, "number"): the lists of calls say it
-                // when more than one phone shares its calls. Read from the row at each reading:
-                // a number changed on another device shows at the next one.
-                ColumnLayout {
-                    objectName: "deviceNumber"
-                    visible: device.isPhone
-                    Layout.fillWidth: true
-                    spacing: 2
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: tab.sioul.text("devices-number")
-                        font.pixelSize: 12
-                        elide: Text.ElideRight
-                        color: tab.theme.muted
-                    }
-                    Label {
-                        objectName: "deviceNumberValue"
-                        Layout.fillWidth: true
-                        text: device.numberShown !== "" ? device.numberShown : tab.sioul.text("devices-number-unknown")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        font.pixelSize: 14
-                        color: device.numberShown !== "" ? tab.theme.text : tab.theme.muted
-                    }
-                    // Where it comes from: Android, or yours over another Android gives.
-                    Label {
-                        objectName: "deviceNumberFrom"
-                        readonly property string given: device.row.number_given || ""
-                        readonly property string android: device.row.number_android || ""
-
-                        visible: text !== ""
-                        Layout.fillWidth: true
-                        text: given === "" && android !== "" ? tab.sioul.text("devices-number-android") : given !== "" && android !== "" && given !== android ? tab.sioul.textWith("devices-number-given-android", "number", device.row.number_android_words || "") : ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        font.pixelSize: 12
-                        color: tab.theme.muted
-                    }
-                }
-
-                // On a phone: what comes forward on it at each time, in words, a line per time.
-                Loader {
-                    active: !tab.wide && tab.grid.times.length > 0
-                    visible: active
-                    Layout.fillWidth: true
-
-                    sourceComponent: Component {
-                        ColumnLayout {
-                            spacing: 2
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: tab.sioul.text("devices-grid-title")
-                                font.pixelSize: 12
-                                elide: Text.ElideRight
-                                color: tab.theme.muted
-                            }
-                            DeviceGrid {
-                                objectName: "deviceCells"
-                                Layout.fillWidth: true
-                                sioul: tab.sioul
-                                theme: tab.theme
-                                rows: [device.row]
-                                times: tab.grid.times
-                                wide: false
-                                help: tab.sioul.text("devices-cell-help")
-                                onPicked: (id, time, areas) => tab.say(id, "at." + time, areas)
-                            }
-                        }
-                    }
-                }
-
-                // The name you give it: empty, its system's name comes back.
-                ColumnLayout {
-                    visible: tab.renaming === device.deviceId
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: tab.sioul.text("devices-rename-help")
-                        wrapMode: Text.Wrap
-                        font.pixelSize: 13
-                        color: tab.theme.muted
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        TextField {
-                            id: nameField
-
-                            objectName: "deviceNameField"
-                            Layout.fillWidth: true
-                            Layout.maximumWidth: 360
-                            maximumLength: 60
-                            placeholderText: tab.theme.plain(device.row.system || tab.sioul.text("devices-rename-field"))
-                            Accessible.name: tab.sioul.text("devices-rename-field")
-                            onTextEdited: tab.nameDraft = nameField.text
-                            onAccepted: saveName.clicked()
-                            // A card made anew while its name was being typed: what was typed, again.
-                            Component.onCompleted: {
-                                if (tab.renaming === device.deviceId)
-                                    nameField.text = tab.nameDraft
-                            }
-                        }
-                        Button {
-                            id: saveName
-
-                            text: tab.sioul.text("ui-save")
-                            onClicked: {
-                                const name = nameField.text
-                                tab.renaming = ""
-                                tab.nameDraft = ""
-                                tab.say(device.deviceId, "name", name)
-                            }
-                        }
-                        Button {
-                            flat: true
-                            text: tab.sioul.text("ui-cancel")
-                            onClicked: {
-                                tab.renaming = ""
-                                tab.nameDraft = ""
-                            }
-                        }
-                    }
-                }
-
-                // A phone's number, typed as you write it, kept as Sioul keys numbers: empty, the one
-                // Android gives comes back, when it gives one.
-                ColumnLayout {
-                    visible: tab.numbering === device.deviceId
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: tab.sioul.text("devices-number-help")
-                        wrapMode: Text.Wrap
-                        font.pixelSize: 13
-                        color: tab.theme.muted
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        TextField {
-                            id: numberField
-
-                            objectName: "deviceNumberField"
-                            Layout.fillWidth: true
-                            Layout.maximumWidth: 360
-                            maximumLength: 40
-                            inputMethodHints: Qt.ImhDialableCharactersOnly
-                            placeholderText: tab.theme.plain(device.row.number_android_words || tab.sioul.text("devices-number-field"))
-                            Accessible.name: tab.sioul.text("devices-number-field")
-                            onTextEdited: tab.numberDraft = numberField.text
-                            onAccepted: saveNumber.clicked()
-                            // A card made anew while its number was being typed: what was typed, again.
-                            Component.onCompleted: {
-                                if (tab.numbering === device.deviceId)
-                                    numberField.text = tab.numberDraft
-                            }
-                        }
-                        Button {
-                            id: saveNumber
-
-                            text: tab.sioul.text("ui-save")
-                            onClicked: {
-                                const number = numberField.text
-                                tab.numbering = ""
-                                tab.numberDraft = ""
-                                tab.say(device.deviceId, "number", number)
-                            }
-                        }
-                        Button {
-                            flat: true
-                            text: tab.sioul.text("ui-cancel")
-                            onClicked: {
-                                tab.numbering = ""
-                                tab.numberDraft = ""
-                            }
-                        }
-                    }
-                }
-
-                // What this device is, changed here as in Settings ▸ This device.
-                Loader {
-                    active: device.row.here === true && tab.kindOpen && tab.kindRow !== null
-                    visible: active
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: 640
-
-                    sourceComponent: Component {
-                        SettingRow {
-                            setting: tab.kindRow
-                            sioul: tab.sioul
-                            theme: tab.theme
-                            onSave: (key, value, shown) => {
-                                tab.save(key, value, shown)
-                                tab.reload()
-                            }
-                        }
-                    }
-                }
-
-                // A phone silent a day, on a computer: forgotten now, said first what it changes.
-                Label {
-                    visible: device.row.forget_now === true
-                    Layout.fillWidth: true
-                    text: tab.sioul.text("share-device-forget-now-help")
-                    wrapMode: Text.Wrap
-                    font.pixelSize: 13
-                    color: tab.theme.muted
-                }
-
+                // On this phone, while Android has not given an access: how many, in words, and the door to them.
                 Flow {
+                    objectName: "deviceMissing"
+                    visible: device.missing > 0
                     Layout.fillWidth: true
                     spacing: 6
 
-                    Button {
-                        objectName: "deviceRename"
-                        visible: tab.renaming !== device.deviceId
-                        flat: true
-                        text: tab.sioul.text("devices-rename")
-                        onClicked: {
-                            tab.nameDraft = device.row.given || ""
-                            nameField.text = tab.nameDraft
-                            tab.renaming = device.deviceId
-                            nameField.forceActiveFocus()
-                        }
-                    }
-                    // A phone's number: given, or changed (the one you gave, as the region writes it).
-                    Button {
-                        objectName: "deviceNumberChange"
-                        visible: device.isPhone && tab.numbering !== device.deviceId
-                        flat: true
-                        text: tab.sioul.text(device.numberShown !== "" ? "devices-number-change" : "devices-number-give")
-                        onClicked: {
-                            tab.numberDraft = (device.row.number_given || "") !== "" ? device.numberShown : ""
-                            numberField.text = tab.numberDraft
-                            tab.numbering = device.deviceId
-                            numberField.forceActiveFocus()
-                        }
+                    Label {
+                        objectName: "deviceMissingSaid"
+                        width: Math.min(implicitWidth, parent.width)
+                        height: Math.max(implicitHeight, missingDoor.height)
+                        verticalAlignment: Text.AlignVCenter
+                        text: device.missing > 0 ? tab.sioul.textCounted("devices-missing", device.missing) : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: tab.theme.warm
                     }
                     Button {
-                        objectName: "deviceKind"
-                        visible: device.row.here === true && tab.kindRow !== null
+                        id: missingDoor
+
+                        objectName: "deviceMissingOpen"
                         flat: true
-                        text: tab.sioul.text("set-device-kind")
-                        onClicked: tab.kindOpen = !tab.kindOpen
-                    }
-                    // This device's parts are switched where its sharing is set up.
-                    Button {
-                        objectName: "devicePartsChange"
-                        visible: device.row.here === true && tab.view.on === true
-                        flat: true
-                        text: tab.sioul.text("devices-parts-change")
-                        onClicked: tab.sharingAsked()
-                    }
-                    Button {
-                        visible: device.row.off === true
-                        flat: true
-                        text: tab.sioul.text("share-device-count-again")
-                        onClicked: {
-                            tab.problem = tab.sioul.deviceOff(device.deviceId, false)
-                            tab.reload()
-                        }
-                    }
-                    Button {
-                        visible: device.row.forget === true
-                        flat: true
-                        text: tab.sioul.text("share-device-forget")
-                        onClicked: {
-                            tab.problem = tab.sioul.deviceForget(device.deviceId)
-                            tab.reload()
-                        }
-                    }
-                    Button {
-                        visible: device.row.forget_now === true
-                        flat: true
-                        text: tab.sioul.text("share-device-forget-now")
-                        onClicked: {
-                            tab.problem = tab.sioul.deviceForget(device.deviceId)
-                            tab.reload()
-                        }
-                    }
-                    // Its files taken out of the folder, forgotten first (docs/database.md, "Removing a device's files").
-                    Button {
-                        visible: device.row.here !== true && tab.removing !== device.deviceId
-                        flat: true
-                        text: tab.sioul.text("share-device-remove-live")
-                        onClicked: tab.askRemoval(device.deviceId)
+                        text: tab.sioul.text("phone-allow-title")
+                        icon.name: "go-next"
+                        icon.color: tab.theme.text
+                        onClicked: tab.reveal("allow")
                     }
                 }
-                RemovalAsked {
-                    visible: device.row.here !== true && tab.removing === device.deviceId
-                    Layout.fillWidth: true
-                    host: tab
-                    deviceId: device.deviceId
-                }
 
-                // A phone's own sections: its calls, from any device; on the phone itself what
-                // Android must allow and the tab "This phone"'s blocks (PhoneCard.qml). This
-                // device's own is where a door to the phone's setup lands (`setting:devices.here`).
-                // In a centred column of legible width, as a page's text and forms (PageColumn.qml): on a
-                // computer the table's four columns stay near their rows (the pictures' review, point 1).
-                Loader {
-                    active: tab.calls[device.deviceId] !== undefined || (device.row.here === true && tab.own.phone === true)
-                    visible: active
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: tab.theme.readable
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 6
+                // The rest, one step away: closed until opened, left as it was on this device.
+                CardFold {
+                    id: details
 
-                    sourceComponent: Component {
-                        PhoneCard {
-                            objectName: device.row.here === true ? "setting:devices.here" : "phoneCard-" + device.deviceId
-                            sioul: tab.sioul
-                            theme: tab.theme
-                            deviceId: device.deviceId
-                            here: device.row.here === true
-                            calls: tab.calls[device.deviceId] || null
-                            own: tab.own
-                            folds: !tab.wide
-                            lists: tab.lists
-                            onSay: (field, value) => tab.say(device.deviceId, field, value)
-                            onOwnSaid: own => tab.own = own
+                    objectName: "deviceDetails"
+                    Layout.fillWidth: true
+                    theme: tab.theme
+                    title: tab.sioul.text("devices-details")
+                    name: tab.sioul.textWith("devices-details-of", "device", device.row.name || "")
+                    framed: false
+                    titleSize: 14
+                    // As this device's window left it, read once: the card is kept while the devices are the same.
+                    Component.onCompleted: details.open = tab.flag(device.detailsFlag)
+                    onOpenChanged: {
+                        if (tab.flag(device.detailsFlag) !== details.open)
+                            tab.setFlag(device.detailsFlag, details.open)
+                    }
+
+                    Loader {
+                        objectName: "deviceDetailsBody"
+                        active: details.made
+                        visible: active
+                        Layout.fillWidth: true
+
+                        sourceComponent: Component {
+                            ColumnLayout {
+                                spacing: 8
+
+                                // Its names: what its system calls it, under yours; Rename… and, here, What this device is.
+                                Label {
+                                    visible: device.renamed
+                                    Layout.fillWidth: true
+                                    text: device.renamed ? tab.sioul.textWith("devices-system-name", "system", device.row.system || "") : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: tab.theme.muted
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Button {
+                                        objectName: "deviceRename"
+                                        visible: tab.renaming !== device.deviceId
+                                        flat: true
+                                        text: tab.sioul.text("devices-rename")
+                                        onClicked: {
+                                            tab.nameDraft = device.row.given || ""
+                                            nameField.text = tab.nameDraft
+                                            tab.renaming = device.deviceId
+                                            nameField.forceActiveFocus()
+                                        }
+                                    }
+                                    Button {
+                                        objectName: "deviceKind"
+                                        visible: device.row.here === true && tab.kindRow !== null
+                                        flat: true
+                                        text: tab.sioul.text("set-device-kind")
+                                        onClicked: tab.kindOpen = !tab.kindOpen
+                                    }
+                                }
+
+                                // The name you give it: empty, its system's name comes back.
+                                ColumnLayout {
+                                    visible: tab.renaming === device.deviceId
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: tab.sioul.text("devices-rename-help")
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 13
+                                        color: tab.theme.muted
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+
+                                        TextField {
+                                            id: nameField
+
+                                            objectName: "deviceNameField"
+                                            Layout.fillWidth: true
+                                            Layout.maximumWidth: 360
+                                            maximumLength: 60
+                                            placeholderText: tab.theme.plain(device.row.system || tab.sioul.text("devices-rename-field"))
+                                            Accessible.name: tab.sioul.text("devices-rename-field")
+                                            onTextEdited: tab.nameDraft = nameField.text
+                                            onAccepted: saveName.clicked()
+                                            // A card made anew while its name was being typed: what was typed, again.
+                                            Component.onCompleted: {
+                                                if (tab.renaming === device.deviceId)
+                                                    nameField.text = tab.nameDraft
+                                            }
+                                        }
+                                        Button {
+                                            id: saveName
+
+                                            text: tab.sioul.text("ui-save")
+                                            onClicked: {
+                                                const name = nameField.text
+                                                tab.renaming = ""
+                                                tab.nameDraft = ""
+                                                tab.say(device.deviceId, "name", name)
+                                            }
+                                        }
+                                        Button {
+                                            flat: true
+                                            text: tab.sioul.text("ui-cancel")
+                                            onClicked: {
+                                                tab.renaming = ""
+                                                tab.nameDraft = ""
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // What this device is, changed here as in Settings ▸ This device.
+                                Loader {
+                                    active: device.row.here === true && tab.kindOpen && tab.kindRow !== null
+                                    visible: active
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: 640
+
+                                    sourceComponent: Component {
+                                        SettingRow {
+                                            setting: tab.kindRow
+                                            sioul: tab.sioul
+                                            theme: tab.theme
+                                            onSave: (key, value, shown) => {
+                                                tab.save(key, value, shown)
+                                                tab.reload()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Its sharing: when it last opened (while in use; else it is said in sight),
+                                // when it last shared, its Sioul (an older one said calmly, in its own
+                                // sentence), what it shares (read only; this device's own are switched in
+                                // Your folder and sharing).
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: tab.wide ? 4 : 1
+                                    columnSpacing: tab.between
+                                    rowSpacing: 8
+
+                                    Detail {
+                                        host: tab
+                                        title: "devices-col-opened"
+                                        value: device.inUse ? (device.row.opened || "") : ""
+                                    }
+                                    Detail {
+                                        host: tab
+                                        title: "devices-col-shared"
+                                        value: device.row.shared || ""
+                                    }
+                                    Detail {
+                                        host: tab
+                                        title: "devices-col-sioul"
+                                        value: device.row.older === true ? (device.row.build || "") : (device.row.version || "")
+                                    }
+                                    Detail {
+                                        host: tab
+                                        title: "devices-col-parts"
+                                        value: device.row.parts_words || ""
+                                    }
+                                }
+                                // This device's parts are switched where its sharing is set up.
+                                Button {
+                                    objectName: "devicePartsChange"
+                                    visible: device.row.here === true && tab.view.on === true
+                                    flat: true
+                                    text: tab.sioul.text("devices-parts-change")
+                                    onClicked: tab.sharingAsked()
+                                }
+                                // Why another device's parts cannot be switched from here.
+                                Label {
+                                    visible: device.row.here !== true
+                                    Layout.fillWidth: true
+                                    text: tab.sioul.text("devices-parts-elsewhere")
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: tab.theme.muted
+                                }
+
+                                // A phone's own number, with its fields: after what it shares, before its cells
+                                // by time and its sections (design of 20 November 2026, point 3).
+                                // A phone's own number (`share::say_of_device`, "number"): the lists of calls say it
+                                // when more than one phone shares its calls. Read from the row at each reading:
+                                // a number changed on another device shows at the next one.
+                                ColumnLayout {
+                                    objectName: "deviceNumber"
+                                    visible: device.isPhone
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: tab.sioul.text("devices-number")
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                        color: tab.theme.muted
+                                    }
+                                    Label {
+                                        objectName: "deviceNumberValue"
+                                        Layout.fillWidth: true
+                                        text: device.numberShown !== "" ? device.numberShown : tab.sioul.text("devices-number-unknown")
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 14
+                                        color: device.numberShown !== "" ? tab.theme.text : tab.theme.muted
+                                    }
+                                    // Where it comes from: Android, or yours over another Android gives.
+                                    Label {
+                                        objectName: "deviceNumberFrom"
+                                        readonly property string given: device.row.number_given || ""
+                                        readonly property string android: device.row.number_android || ""
+
+                                        visible: text !== ""
+                                        Layout.fillWidth: true
+                                        text: given === "" && android !== "" ? tab.sioul.text("devices-number-android") : given !== "" && android !== "" && given !== android ? tab.sioul.textWith("devices-number-given-android", "number", device.row.number_android_words || "") : ""
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 12
+                                        color: tab.theme.muted
+                                    }
+                                }
+                                // A phone's number: given, or changed (the one you gave, as the region writes it).
+                                Button {
+                                    objectName: "deviceNumberChange"
+                                    visible: device.isPhone && tab.numbering !== device.deviceId
+                                    flat: true
+                                    text: tab.sioul.text(device.numberShown !== "" ? "devices-number-change" : "devices-number-give")
+                                    onClicked: {
+                                        tab.numberDraft = (device.row.number_given || "") !== "" ? device.numberShown : ""
+                                        numberField.text = tab.numberDraft
+                                        tab.numbering = device.deviceId
+                                        numberField.forceActiveFocus()
+                                    }
+                                }
+                                // A phone's number, typed as you write it, kept as Sioul keys numbers: empty, the one
+                                // Android gives comes back, when it gives one.
+                                ColumnLayout {
+                                    visible: tab.numbering === device.deviceId
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: tab.sioul.text("devices-number-help")
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 13
+                                        color: tab.theme.muted
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+
+                                        TextField {
+                                            id: numberField
+
+                                            objectName: "deviceNumberField"
+                                            Layout.fillWidth: true
+                                            Layout.maximumWidth: 360
+                                            maximumLength: 40
+                                            inputMethodHints: Qt.ImhDialableCharactersOnly
+                                            placeholderText: tab.theme.plain(device.row.number_android_words || tab.sioul.text("devices-number-field"))
+                                            Accessible.name: tab.sioul.text("devices-number-field")
+                                            onTextEdited: tab.numberDraft = numberField.text
+                                            onAccepted: saveNumber.clicked()
+                                            // A card made anew while its number was being typed: what was typed, again.
+                                            Component.onCompleted: {
+                                                if (tab.numbering === device.deviceId)
+                                                    numberField.text = tab.numberDraft
+                                            }
+                                        }
+                                        Button {
+                                            id: saveNumber
+
+                                            text: tab.sioul.text("ui-save")
+                                            onClicked: {
+                                                const number = numberField.text
+                                                tab.numbering = ""
+                                                tab.numberDraft = ""
+                                                tab.say(device.deviceId, "number", number)
+                                            }
+                                        }
+                                        Button {
+                                            flat: true
+                                            text: tab.sioul.text("ui-cancel")
+                                            onClicked: {
+                                                tab.numbering = ""
+                                                tab.numberDraft = ""
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // In a narrow window: what comes forward on it at each time, in words, a line per time.
+                                Loader {
+                                    active: !tab.wide && tab.grid.times.length > 0
+                                    visible: active
+                                    Layout.fillWidth: true
+
+                                    sourceComponent: Component {
+                                        ColumnLayout {
+                                            spacing: 2
+
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: tab.sioul.text("devices-grid-title")
+                                                font.pixelSize: 12
+                                                elide: Text.ElideRight
+                                                color: tab.theme.muted
+                                            }
+                                            DeviceGrid {
+                                                objectName: "deviceCells"
+                                                Layout.fillWidth: true
+                                                sioul: tab.sioul
+                                                theme: tab.theme
+                                                rows: [device.row]
+                                                times: tab.grid.times
+                                                wide: false
+                                                help: tab.sioul.text("devices-cell-help")
+                                                onPicked: (id, time, areas) => tab.say(id, "at." + time, areas)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // A phone's own sections: its calls, from any device; on the phone itself what
+                                // Android must allow and the tab "This phone"'s blocks (PhoneCard.qml), each
+                                // folded until opened. This device's own is where a door to the phone's setup
+                                // lands (`setting:devices.here`). In a centred column of legible width, as a
+                                // page's text and forms (PageColumn.qml; the pictures' review, point 1).
+                                Loader {
+                                    active: tab.calls[device.deviceId] !== undefined || (device.row.here === true && tab.own.phone === true)
+                                    visible: active
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: tab.theme.readable
+                                    Layout.alignment: Qt.AlignHCenter
+                                    Layout.topMargin: 6
+
+                                    sourceComponent: Component {
+                                        PhoneCard {
+                                            objectName: device.row.here === true ? "setting:devices.here" : "phoneCard-" + device.deviceId
+                                            sioul: tab.sioul
+                                            theme: tab.theme
+                                            deviceId: device.deviceId
+                                            here: device.row.here === true
+                                            calls: tab.calls[device.deviceId] || null
+                                            own: tab.own
+                                            narrow: !tab.wide
+                                            lists: tab.lists
+                                            onSay: (field, value) => tab.say(device.deviceId, field, value)
+                                            onOwnSaid: own => tab.own = own
+                                        }
+                                    }
+                                }
+
+                                // Last, what can be done about another device. A phone silent a day, on a
+                                // computer: forgotten now, said first what it changes.
+                                Label {
+                                    visible: device.row.forget_now === true
+                                    Layout.fillWidth: true
+                                    text: tab.sioul.text("share-device-forget-now-help")
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: tab.theme.muted
+                                }
+                                Flow {
+                                    visible: device.row.here !== true
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Button {
+                                        visible: device.row.off === true
+                                        flat: true
+                                        text: tab.sioul.text("share-device-count-again")
+                                        onClicked: {
+                                            tab.problem = tab.sioul.deviceOff(device.deviceId, false)
+                                            tab.reload()
+                                        }
+                                    }
+                                    Button {
+                                        visible: device.row.forget === true
+                                        flat: true
+                                        text: tab.sioul.text("share-device-forget")
+                                        onClicked: {
+                                            tab.problem = tab.sioul.deviceForget(device.deviceId)
+                                            tab.reload()
+                                        }
+                                    }
+                                    Button {
+                                        visible: device.row.forget_now === true
+                                        flat: true
+                                        text: tab.sioul.text("share-device-forget-now")
+                                        onClicked: {
+                                            tab.problem = tab.sioul.deviceForget(device.deviceId)
+                                            tab.reload()
+                                        }
+                                    }
+                                    // Its files taken out of the folder, forgotten first (docs/database.md, "Removing a device's files").
+                                    Button {
+                                        visible: tab.removing !== device.deviceId
+                                        flat: true
+                                        text: tab.sioul.text("share-device-remove-live")
+                                        onClicked: tab.askRemoval(device.deviceId)
+                                    }
+                                }
+                                RemovalAsked {
+                                    visible: device.row.here !== true && tab.removing === device.deviceId
+                                    Layout.fillWidth: true
+                                    host: tab
+                                    deviceId: device.deviceId
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-
-    // Why another device's parts cannot be switched from here.
-    Label {
-        visible: tab.rows.length > 1
-        Layout.fillWidth: true
-        text: tab.sioul.text("devices-parts-elsewhere")
-        wrapMode: Text.Wrap
-        font.pixelSize: 13
-        color: tab.theme.muted
     }
 
     // What comes forward, and when: the grid, devices by times.

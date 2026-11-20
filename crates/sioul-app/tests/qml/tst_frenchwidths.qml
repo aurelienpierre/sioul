@@ -5,8 +5,9 @@
 // 1400 points wide gives them (the guide's pictures): Settings ▸ What reaches
 // you, Your rules (ReachesTab.qml: the column of 720 points that Settings
 // keeps for reading), its table of People first; and Settings ▸ Devices
-// (DevicesTab.qml), the whole width, its table's titles over two computers.
-// No word shown is cut: a label wraps rather than ends in "…", a button's
+// (DevicesTab.qml), the whole width, its table's four titles over two
+// computers, each whole on one line, then each card's Details opened. No
+// word shown is cut: a label wraps rather than ends in "…", a button's
 // words fit, or wrap. On stand-ins for Sioul that answer in French. Run by
 // tools/qml-test.sh.
 
@@ -130,6 +131,13 @@ Item {
             "devices-grid-title": "Ce qui arrive, et quand",
             "devices-grid-device": "Appareil",
             "devices-parts-change": "Changer ce qui voyage depuis cet appareil…",
+            "devices-parts-elsewhere": "Une partie s’active ou se coupe sur l’appareil lui-même, là où ses données arrivent.",
+            "devices-details": "Détails",
+            "devices-rename-help": "Un nom à vous pour cet appareil, qui voyage avec vos réglages. Laissé vide, le nom que lui donne son système revient.",
+            "devices-rename-field": "Le nom que vous lui donnez",
+            "ui-save": "Enregistrer",
+            "ui-cancel": "Annuler",
+            "share-device-remove-live": "L’oublier et retirer ses fichiers…",
             "share-device-count-again": "Le compter de nouveau",
             "share-device-forget": "Oublier cet appareil",
             "share-device-forget-now": "L’oublier maintenant",
@@ -141,7 +149,21 @@ Item {
             return devicesMock.words[key] || key
         }
         function textWith(key, name, value) {
-            return key === "devices-system-name" ? "Son système l’appelle " + value + "." : devicesMock.text(key) + " " + value
+            return key === "devices-system-name" ? "Son système l’appelle " + value + "." : key === "devices-details-of" ? "Détails\u202f: " + value : devicesMock.text(key) + " " + value
+        }
+        function textArgs(key, args) {
+            const given = JSON.parse(args)
+            return key === "devices-plain-line" ? given.label + "\u202f: " + given.value : devicesMock.text(key)
+        }
+        // How the window left its pages (`viewFlag`): unsaid, false.
+        property var flags: ({})
+        function viewFlag(name) {
+            return devicesMock.flags[name] === true
+        }
+        function setViewFlag(name, on) {
+            const flags = Object.assign({}, devicesMock.flags)
+            flags[name] = on
+            devicesMock.flags = flags
         }
         function devices() {
             const times = ["Travail", "Démarches", "Loisirs", "Repas", "Sommeil"]
@@ -235,7 +257,8 @@ Item {
             compare(cutAll.length, 0, "cut in Your rules: " + cutAll.join("; "))
         }
 
-        // Settings ▸ Devices, the whole width of a window 1400 and 1280 wide: the table's titles first.
+        // Settings ▸ Devices, the whole width of a window 1400 and 1280 wide: the
+        // table's four titles first, each whole on one line; then the cards, closed and with their Details.
         function test_devices_cut_no_french_word_data() {
             return [{ tag: "1400", width: 1400 - 216 - 32 }, { tag: "1280", width: 1280 - 216 - 32 }]
         }
@@ -247,12 +270,21 @@ Item {
             tryVerify(() => named(devices, "device-tower") !== null)
             waitForRendering(devices)
             verify(devices.wide, "a table")
-            const titles = walk(devices, []).filter(i => i.truncated !== undefined && devicesMock.words["devices-col-opened"] === i.text)
-            verify(titles.length > 0, "the title Dernière ouverture shown")
+            const titles = walk(named(devices, "devicesTitles"), []).filter(i => i.truncated !== undefined)
+            compare(titles.map(t => t.text), ["Appareil", "Ce qu’il est", "Maintenant", "Pour"])
             for (const title of titles)
-                verify(!title.truncated, "« Dernière ouverture » whole in " + Math.round(title.width))
+                verify(!title.truncated && title.lineCount === 1 && title.implicitWidth <= title.width + 0.5, "« " + title.text + " » whole on one line in " + Math.round(title.width))
             const cutAll = cut(devices)
             compare(cutAll.length, 0, "cut in Devices: " + cutAll.join("; "))
+            // Each card's Details opened: their fields and buttons, whole too.
+            for (const id of ["desk", "tower"])
+                devices.detailsOf(id)
+            waitForRendering(devices)
+            verify(walk(devices, []).some(i => i.text === devicesMock.words["share-device-remove-live"]), "the tower's Details shown")
+            const cutDetails = cut(devices)
+            compare(cutDetails.length, 0, "cut in the Details: " + cutDetails.join("; "))
+            for (const fold of walk(devices, []).filter(i => i.objectName === "deviceDetails"))
+                fold.open = false
         }
     }
 }
