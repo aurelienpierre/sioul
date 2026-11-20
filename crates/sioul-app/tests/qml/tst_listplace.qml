@@ -7,12 +7,13 @@
 // Repeater, a ListModel changed in place. Each long list scrolled to its
 // middle; then a row deleted above the view, below it, the top one itself,
 // one added above, below, the rows read again unchanged: the row at the top
-// of the view stays there to the pixel, or its neighbour when it went. The
-// rows wrap, so that their heights are known only once the window has laid
-// them out: the place put back before that is off, and the test shows it.
-// Nothing moves while the person drags; another filter goes to the top; a
-// row the person makes comes into view by the smallest move; a list at its
-// very top stays there. Fiction only. Run by tools/qml-test.sh.
+// of the view stays there to the pixel, or the next one takes its place
+// there when it went. The rows wrap, so that their heights are known only
+// once the window has laid them out: the place put back before that is off,
+// and the test shows it. Nothing moves while the person drags; another
+// filter goes to the top; a row the person makes comes into view by the
+// smallest move; a list at its very top stays there. Fiction only. Run by
+// tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -336,7 +337,6 @@ Item {
             const index = Number(before.key.slice(1))
             const without = (data.without || []).map(k => k === "top" ? before.key : k)
             const next = "r" + (index + 1)
-            const nextAt = placeOf(flick, next)
             const rows = root.rows(60, without, data.added)
             if (data.kind === "flat")
                 root.flatRows = rows
@@ -354,7 +354,8 @@ Item {
                 compare(after.y, before.y, "at the same pixel")
             } else {
                 compare(placeOf(flick, before.key), null, "the top row gone")
-                compare(placeOf(flick, next), nextAt, "the next one where it was")
+                compare(topRow(flick).key, next, "the next one at the top")
+                compare(topRow(flick).y, before.y, "in the top one's place, to the pixel")
             }
         }
 

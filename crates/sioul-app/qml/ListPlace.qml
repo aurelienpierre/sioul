@@ -44,6 +44,10 @@ QtObject {
     // At its very top, the list stays at its top: what comes first shows there (a browser's rule).
     property bool topStays: true
 
+    // The rows of another scope shown, the list at its top: a page that opens such a list
+    // elsewhere (the Agenda's What comes on today) places it here.
+    signal fresh()
+
     // The Flickable that scrolls, and whether it is a ListView.
     readonly property Item flick: place.view === null ? null : place.view.contentY !== undefined ? place.view : place.view.contentItem
     readonly property bool isList: place.view !== null && typeof place.view.positionViewAtIndex === "function"
@@ -105,6 +109,7 @@ QtObject {
                 place.wanted = ""
                 place.settling = null
                 place.toTop()
+                place.fresh()
             }
             return
         }
@@ -222,26 +227,27 @@ QtObject {
         list.ensurePolished()
     }
 
-    // The place noted: the rows in and around the view, the one at its top first, then those under
-    // it, then those over it nearest first, each with how far the view's top is into it.
+    // The place noted: the row at the view's top and how far the view's top is into it; the rows
+    // under it, in order, to take its place when it is gone; the rows over it, nearest first, each
+    // with its own distance, when none under it is left.
     function note() {
         const flick = place.flick
         if (flick.height <= 0)
             return null
-        const atTop = flick.contentY <= flick.originY - flick.topMargin + 0.5
         const found = place.isList ? place.made() : place.keyed(flick.contentItem, "", [])
         const rows = found.map(f => ({ path: f[0], top: place.topOf(f[1]), height: f[1].height, index: f.length > 2 ? f[2] : -1 }))
         rows.sort((a, b) => a.top - b.top)
         let first = rows.findIndex(r => r.top + r.height > flick.contentY)
         if (first < 0)
             first = rows.length - 1
-        const order = rows.slice(first).concat(rows.slice(0, Math.max(0, first)).reverse())
         return {
-            atTop: atTop && place.topStays,
-            rows: order.map(r => ({ path: r.path, offset: flick.contentY - r.top, index: r.index })),
+            atTop: place.topStays && flick.contentY <= flick.originY - flick.topMargin + 0.5,
+            offset: first >= 0 ? flick.contentY - rows[first].top : 0,
+            under: rows.slice(Math.max(0, first)).map(r => r.path),
+            over: rows.slice(0, Math.max(0, first)).reverse().map(r => ({ path: r.path, offset: flick.contentY - r.top })),
             // A ListView's rows in order, by key: the nearest that is left when none of those made is.
             keys: place.isList ? Array.from({ length: place.view.count }, (_, i) => place.keyOf(place.rowAt(i))) : [],
-            last: order.length > 0 ? Math.max.apply(null, order.map(r => r.index)) : -1
+            last: rows.length > 0 ? Math.max.apply(null, rows.map(r => r.index)) : -1
         }
     }
 
@@ -289,8 +295,9 @@ QtObject {
         return where
     }
 
-    // The place noted, put back: the first of its rows still there at the same distance from the
-    // view's top; none of them, a ListView's next row still there (or the one before) at the top.
+    // The place noted, put back: the row that was at the top where it was; gone, the first row
+    // under it still there in its place; none, the nearest over it where it was. In a ListView,
+    // when none of the rows it had made is left, the next row still there in the top one's place.
     function putBack(noted) {
         const flick = place.flick
         if (flick === null || flick.moving)
@@ -304,19 +311,25 @@ QtObject {
         if (!place.isList)
             for (const f of place.keyed(flick.contentItem, "", []))
                 keyedNow[f[0]] = f[1]
-        for (const row of noted.rows) {
-            const item = place.itemOf(row.path, where, keyedNow)
-            if (item !== null) {
-                place.scrollTo(place.topOf(item) + row.offset)
-                if (place.isList) {
-                    place.settleList()
-                    const again = place.itemOf(row.path, where, keyedNow)
-                    if (again !== null)
-                        place.scrollTo(place.topOf(again) + row.offset)
-                }
-                return
+        const put = (path, offset) => {
+            const item = place.itemOf(path, where, keyedNow)
+            if (item === null)
+                return false
+            place.scrollTo(place.topOf(item) + offset)
+            if (place.isList) {
+                place.settleList()
+                const again = place.itemOf(path, where, keyedNow)
+                if (again !== null)
+                    place.scrollTo(place.topOf(again) + offset)
             }
+            return true
         }
+        for (const path of noted.under)
+            if (put(path, noted.offset))
+                return
+        for (const row of noted.over)
+            if (put(row.path, row.offset))
+                return
         if (place.isList && noted.keys.length > 0) {
             const from = Math.max(0, noted.last)
             const order = noted.keys.slice(from + 1).concat(noted.keys.slice(0, from + 1).reverse())
