@@ -1179,6 +1179,10 @@ pub struct OfficeView {
     pub now: String,
     /// The hours in words, one line per run of days (`opening::day_lines`).
     pub lines: Vec<String>,
+    /// It is ticked "Needs an open office": it follows these hours. Unticked
+    /// (its office's card has hours), the panel says it does not, with
+    /// "Follow them" (review of 20 November 2026, 3).
+    pub follows: bool,
 }
 
 /// What a task's panel says of the office hours it follows: when it needs
@@ -1196,7 +1200,7 @@ pub fn office_view(cx: &Context, task: &Task) -> Option<OfficeView> {
         crate::opening::Whose::Usual => ("usual", cx.tr.text("hours-usual-name", None), String::new(), String::new(), false),
     };
     let said = crate::opening::now_line(&followed, &cx.offices.holidays, &now, Some(name.as_str()), cx.tr);
-    Some(OfficeView { from, name, key, number, phone, now: said, lines: crate::opening::day_lines(&followed.windows, cx.tr) })
+    Some(OfficeView { from, name, key, number, phone, now: said, lines: crate::opening::day_lines(&followed.windows, cx.tr), follows: task.office_hours })
 }
 
 /// The gap of `task`'s wait for `other`, in minutes, as the plan reads it
@@ -1291,7 +1295,7 @@ mod tests {
     #[test]
     fn now_follows_the_office_s_card() {
         let hours = |value: &str| Some(crate::opening::Hours { value: value.into(), ..Default::default() });
-        let hall = crate::contacts::Contact { uid: "hall".into(), name: "Example town hall".into(), key: "/books/hall.vcf".into(), phones: vec![crate::contacts::Labeled { label: String::new(), value: "01 23 45 67 89".into() }], hours: crate::opening::CardHours { open: hours("Mo-Fr 09:00-12:00; PH off"), phone: hours("Mo 14:00-16:00"), note: String::new() }, ..Default::default() };
+        let hall = crate::contacts::Contact { uid: "hall".into(), name: "Example town hall".into(), key: "/books/hall.vcf".into(), phones: vec![crate::contacts::Labeled { label: String::new(), value: "01 23 45 67 89".into() }], hours: crate::opening::CardHours { open: hours("Mo-Fr 09:00-12:00; PH off"), phone: hours("Mo 14:00-16:00"), ..Default::default() }, ..Default::default() };
         let call = Task { kind: "call".into(), office_hours: true, contacts: vec![crate::tasks::ContactRef { name: "Example town hall".into(), uri: crate::links::contact_uri("hall") }], ..task("call", "Call the town hall") };
         let out = Task { uid: "out".into(), kind: "out".into(), ..call.clone() };
         // Monday 23 November 2026, 10:00.
@@ -1312,8 +1316,14 @@ mod tests {
         let view = office_view(&cx, &out).unwrap();
         assert_eq!((view.from, view.now.as_str(), view.key.as_str(), view.number.as_str()), ("card", "Example town hall: open until 12:00", "/books/hall.vcf", "01 23 45 67 89"));
         assert!(office_view(&cx, &call).unwrap().phone);
-        // Not ticked, it still names the card it would follow; a task with no office and no tick, nothing.
-        assert!(office_view(&cx, &Task { office_hours: false, ..out }).is_some());
+        // Not ticked, it still names the card it would follow, and says it does not follow it; a task with no office and no tick, nothing.
+        let unticked = office_view(&cx, &Task { office_hours: false, ..out.clone() }).unwrap();
+        assert!(!unticked.follows && view.follows);
+        // A card with phone hours only: an outing does not follow them (review 16).
+        let line = crate::contacts::Contact { uid: "line".into(), name: "Example helpline".into(), hours: crate::opening::CardHours { phone: hours("Mo-Fr 09:00-17:00"), ..Default::default() }, ..Default::default() };
+        let by_line = Offices { cards: crate::opening::Cards::of(&[line]), ..cx.offices.clone() };
+        let outing = Task { contacts: vec![crate::tasks::ContactRef { name: String::new(), uri: crate::links::contact_uri("line") }], ..out };
+        assert_eq!(by_line.follows(&outing).whose, crate::opening::Whose::Usual);
         assert!(office_view(&cx, &task("plain", "Read")).is_none());
     }
 

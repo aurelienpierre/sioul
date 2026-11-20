@@ -1076,7 +1076,7 @@ impl Loaded {
                 // itself, once, which an untick corrects (`opening::ticks`).
                 if kind_of(other) == Kind::Contact {
                     let added = [crate::tasks::ContactRef { name: String::new(), uri: other.to_string() }];
-                    if crate::opening::ticks(&task.kind, task.office_hours, &task.contacts, &added, &crate::opening::Cards::of(&self.contacts)) {
+                    if crate::opening::ticks(&task.kind, task.office_hours, &task.kind, &task.contacts, &added, &crate::opening::Cards::of(&self.contacts)) {
                         lines.push(crate::tasks::concept_line(crate::tasks::OFFICE_CONCEPT));
                     }
                 }
@@ -1320,6 +1320,23 @@ mod tests {
         assert_eq!(to_jane, None, "a message and a contact: the local file");
         let jane = loaded.tie("sioul:contact/jane", "sioul:task/t", &now).unwrap();
         assert!(jane.text.contains("CONTACT;ALTREP=\"sioul:contact/jane\":Jane"), "{}", jane.text);
+        // A call given an office whose card has hours: ticked "Needs an open office" by itself,
+        // once (`opening::ticks`); a card without hours ticks nothing.
+        let call_file = dir.join("c.ics");
+        let kind = crate::tasks::concept_line(&format!("{}call", crate::tasks::KIND_CONCEPT));
+        std::fs::write(&call_file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:c\r\nSUMMARY:Call the office\r\n{kind}\r\nEND:VTODO\r\nEND:VCALENDAR\r\n")).unwrap();
+        let call = crate::tasks::task_of_text(&std::fs::read_to_string(&call_file).unwrap(), &jiff::tz::TimeZone::UTC).map(|mut t| {
+            t.key = call_file.display().to_string();
+            t
+        });
+        assert_eq!(call.as_ref().map(|c| c.kind.as_str()), Some("call"));
+        let office = Contact { uid: "office".into(), name: "Example office".into(), hours: crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Mo-Fr 09:00-12:00".into(), ..Default::default() }), ..Default::default() }, ..Contact::default() };
+        let with_office = Loaded { tasks: call.into_iter().collect(), contacts: vec![office, Contact { uid: "jane".into(), name: "Jane".into(), ..Contact::default() }], ..Loaded::default() };
+        let ticked = with_office.tie("sioul:contact/office", "sioul:task/c", &now).unwrap();
+        let read = crate::tasks::task_of_text(&ticked.text, &jiff::tz::TimeZone::UTC).unwrap();
+        assert!(read.office_hours, "{}", ticked.text);
+        let plain = with_office.tie("sioul:contact/jane", "sioul:task/c", &now).unwrap();
+        assert!(!crate::tasks::task_of_text(&plain.text, &jiff::tz::TimeZone::UTC).unwrap().office_hours);
         // Into the note when the task is not one of the two.
         let noted = loaded.tie("mid:abc@example.org", "sioul:note/plan.md", &now).unwrap();
         assert_eq!(noted.kind, Kind::Note);
