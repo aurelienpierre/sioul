@@ -100,7 +100,16 @@ ListView {
     spacing: 6
     boundsBehavior: Flickable.StopAtBounds
     // Each budget a row, its area's heading the row's section: only those in sight are made.
-    model: tab.view && tab.view.groups ? tab.view.groups.reduce((all, group) => all.concat(group.budgets.map(budget => Object.assign({ area: group.title }, budget))), []) : []
+    model: budgetsPlace.rows
+
+    // A budget added, changed or deleted, a movement counted: the list keeps its place (ListPlace.qml).
+    ListPlace {
+        id: budgetsPlace
+
+        view: tab
+        source: tab.view && tab.view.groups ? tab.view.groups.reduce((all, group) => all.concat(group.budgets.map(budget => Object.assign({ area: group.title }, budget))), []) : []
+        key: "id"
+    }
     section.property: "area"
     section.delegate: Label {
         required property string section

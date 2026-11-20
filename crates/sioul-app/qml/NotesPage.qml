@@ -453,6 +453,17 @@ Item {
                     }
                 }
             }
+            // A note added, renamed, moved or deleted, a folder folded: the list keeps its place
+            // (ListPlace.qml); a search, or the tree for the list, from its top. A note shows
+            // twice (in What changed lately and under All): its key says where.
+            ListPlace {
+                id: listPlace
+
+                view: list
+                source: page.rows
+                key: r => r.type === "note" ? ["note", r.depth, r.showPath, r.note.path].join("|") : r.type + "|" + (r.path || "")
+                scope: [page.query, page.shown.tree]
+            }
             ListView {
                 id: list
 
@@ -461,7 +472,7 @@ Item {
                 clip: true
                 spacing: 2
                 ScrollBar.vertical: ScrollBar {}
-                model: page.rows
+                model: listPlace.rows
 
                 delegate: ItemDelegate {
                     id: row

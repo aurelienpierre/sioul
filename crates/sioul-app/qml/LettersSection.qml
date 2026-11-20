@@ -67,6 +67,8 @@ ColumnLayout {
             id: card
 
             required property var modelData
+            // Known by it where the page keeps its place (ListPlace.qml).
+            readonly property string placeKey: "waiting:" + card.modelData.id
             // Found by the page, to bring it into view (LettersPage.qml, `openLetter`).
             readonly property string letterId: card.modelData.id
 

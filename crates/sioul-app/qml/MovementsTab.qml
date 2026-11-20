@@ -58,17 +58,20 @@ Item {
         const answer = JSON.parse(tab.sioul.movements(JSON.stringify(Object.assign({}, tab.asked, { page: page }))) || "{}")
         tab.problem = answer.problem || ""
         const rows = answer.rows || []
-        if (page === 0 && rows.length === 0)
-            model.clear()
-        for (let i = 0; i < rows.length; ++i) {
-            const at = page * 60 + i
-            if (at < model.count)
-                model.set(at, rows[i])
-            else
-                model.append(rows[i])
-        }
-        if (page === 0 && model.count > rows.length)
-            model.remove(rows.length, model.count - rows.length)
+        // Its rows changed in place: the list keeps its place (ListPlace.qml); other filters, from its top.
+        listPlace.keep(() => {
+            if (page === 0 && rows.length === 0)
+                model.clear()
+            for (let i = 0; i < rows.length; ++i) {
+                const at = page * 60 + i
+                if (at < model.count)
+                    model.set(at, rows[i])
+                else
+                    model.append(rows[i])
+            }
+            if (page === 0 && model.count > rows.length)
+                model.remove(rows.length, model.count - rows.length)
+        })
         delete answer.rows
         tab.shown = Object.assign({ page: 0, more: false, total: "", chips: [], filter: null, accounts: [], budgets: [], declares: [] }, answer)
     }
@@ -187,6 +190,14 @@ Item {
 
     ListModel {
         id: model
+    }
+    ListPlace {
+        id: listPlace
+
+        view: list
+        rows: model
+        key: "address"
+        scope: tab.asked
     }
 
     Timer {

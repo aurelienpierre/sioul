@@ -321,6 +321,15 @@ Item {
             color: tab.theme.muted
         }
 
+        // An invoice made, sent, paid or deleted: the list keeps its place (ListPlace.qml); other
+        // filters, from its top.
+        ListPlace {
+            id: listPlace
+
+            view: list
+            source: tab.shown.rows
+            scope: tab.asked
+        }
         ListView {
             id: list
 
@@ -328,7 +337,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: tab.shown.rows
+            model: listPlace.rows
             reuseItems: true
             ScrollBar.vertical: ScrollBar {}
 

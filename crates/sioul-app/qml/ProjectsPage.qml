@@ -244,13 +244,21 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.theme.muted
             }
+            // A project added, changed or closed: the list keeps its place (ListPlace.qml).
+            ListPlace {
+                id: listPlace
+
+                view: list
+                source: page.listed
+                key: "id"
+            }
             ListView {
                 id: list
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                model: page.listed
+                model: listPlace.rows
                 ScrollBar.vertical: ScrollBar {}
 
                 delegate: ItemDelegate {
