@@ -1603,8 +1603,11 @@ SioulWindow {
                 () => window.close()
             ]
             // An office's opening hours (docs/tasks.md, "Offices' hours"): the health cover's card
-            // with its hours, their form, the town hall's lookup asked and its list (the demo's
-            // examples, no network), and the call that follows the card, its panel.
+            // with its hours, their form; the town hall's card, which says neither that it is an
+            // organisation's nor holds hours, its section under More with the link that says it is
+            // an office's, pressed; its lookup asked and its list (the demo's examples, no
+            // network); the call that follows the card, its panel, then unticked with "Follow
+            // them"; Contacts ⚙'s map's search service.
             readonly property var hoursSteps: [
                 () => {
                     // A computer's at 1400 points, a phone's as it comes (412).
@@ -1624,8 +1627,19 @@ SioulWindow {
                 () => contactsPage.closeHours(),
                 () => contactsPage.open((contactsPage.shown.contacts.find(c => c.key.indexOf("demo-contact-townhall") >= 0) || contactsPage.shown.contacts[0]).key),
                 () => {},
+                () => contactsPage.revealDetails(),
+                () => {},
+                () => {},
+                // Scrolled again to the end once the details are laid out: the section under More in sight on a phone.
+                () => contactsPage.revealDetails(),
+                () => {},
                 () => {},
                 () => grabber.save("hours-card-none"),
+                () => sioul.markOffice(contactsPage.openKey),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.save("hours-card-office"),
                 () => contactsPage.lookUpHours(),
                 () => {},
                 () => {},
@@ -1641,6 +1655,27 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveWindow("hours-task"),
+                // Unticked: the panel says it does not follow the card's hours, with "Follow them".
+                () => {
+                    const read = JSON.parse(sioul.task("demo-task-health-call") || "{}")
+                    if (read.edit)
+                        sioul.saveTask("demo-task-health-call", JSON.stringify(Object.assign({}, read.edit, { office_hours: false, read: read.edit })), "")
+                },
+                () => cardHost.close(),
+                () => {},
+                () => window.openCard({ kind: "task", owner: "demo-task-health-call", title: "" }),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("hours-task-follow"),
+                () => cardHost.close(),
+                () => window.page = 5,
+                () => contactsPage.openSettings(true, "map.search"),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("hours-settings"),
+                () => contactsPage.openSettings(false, ""),
                 () => window.close()
             ]
             readonly property var crudSteps: [
