@@ -102,6 +102,11 @@ pub enum Kind {
     /// exported (`addressbooks`). The window reads and writes them itself
     /// (`address_books_setup`…). Nothing in `value`.
     AddressBooks,
+    /// The map's search service (`mapsearch`), Contacts ⚙'s own block under
+    /// its heading: what it does first, then its address in a field with
+    /// two buttons, its `choices` (OpenStreetMap's, None). `value`: the
+    /// address asked, "none" when it is off.
+    MapSearch,
     /// The changes to many contacts of the last thirty days, each undone as a
     /// whole, the window's own block (`ContactBatches.qml`, review F2), under
     /// its own heading. Nothing in `value`.
@@ -732,6 +737,21 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // The changes to many contacts of the last thirty days, each undone (review F2), under its own heading.
             b.group = tr.text("books-batches", None);
             b.push("contacts.batches", "contacts-batches", Kind::ContactBatches, SettingValue::Text(String::new()));
+            // The map's search service, for the map and the lookups alike, under its heading
+            // (review of 20 November 2026, 10): what it does said first, then its field.
+            b.group = tr.text("set-map-search-group", None);
+            // Its value the address asked ("none" when it is off), its two buttons OpenStreetMap's and None.
+            let shown = match crate::mapsearch::service(&config.map) {
+                crate::mapsearch::Service::At(address) => address,
+                crate::mapsearch::Service::Off => crate::mapsearch::NONE.to_string(),
+            };
+            let s = b.push(crate::mapsearch::KEY, "map-search", Kind::MapSearch, SettingValue::Text(shown));
+            s.choices = [(crate::mapsearch::DEFAULT, "map-search-default"), (crate::mapsearch::NONE, "map-search-none")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            if let crate::mapsearch::Service::At(address) = crate::mapsearch::service(&config.map)
+                && crate::mapsearch::waiting(&crate::config::state_dir(), crate::zone::now().date(), &address)
+            {
+                b.note(tr.text("map-search-waiting", None), Vec::new());
+            }
             b.group = tr.text("set-contacts-more-group", None);
             b.push("map.geocode", "map-geocode", Kind::Bool, SettingValue::Bool(config.map.geocode));
             b.push("map.tiles", "map-tiles", Kind::Text, SettingValue::Text(config.map.tiles.clone().unwrap_or_default()));
@@ -1376,6 +1396,12 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 crate::words::write_list(config_path, path, wanted, shipped.list(path))
             }
         }
+        // The map's search service: "", "none", or an https address (`mapsearch::checked`).
+        crate::mapsearch::KEY => {
+            let SettingValue::Text(text) = value else { return Err(format!("{key}: an address expected")) };
+            let tr = crate::i18n::Translator::new(config.language.as_deref().unwrap_or("en"));
+            set_value(config_path, key, &SettingValue::Text(crate::mapsearch::checked(text, &tr)?))
+        }
         // The time zone this device shows: a name of the time zone database, or "" for its own.
         "agenda.time_zone" => {
             let SettingValue::Text(name) = value else { return Err(format!("{key}: a time zone expected")) };
@@ -1747,7 +1773,7 @@ mod tests {
         // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
         assert_eq!(keys("senders"), vec!["safe", "restricted", "blocked"]);
         // The address books' own block first (wave D), whatever this computer holds.
-        assert_eq!(keys("contacts"), vec!["addressbooks", "contacts.batches", "map.geocode", "map.tiles", "contacts.region"]);
+        assert_eq!(keys("contacts"), vec!["addressbooks", "contacts.batches", "map.search", "map.geocode", "map.tiles", "contacts.region"]);
         // The sites' colours, which only the Sites page reads, then where Bitwarden is set.
         assert_eq!(keys("sites"), vec!["screen_colours", "calmer_colours", "link.bitwarden"]);
         // Bitwarden, Accounts' card: its account, its server, the lock after a time (the

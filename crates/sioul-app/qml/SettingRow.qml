@@ -51,7 +51,7 @@ ColumnLayout {
 
     Label {
         // A block under a heading of its own (the panel's Section) says no title again.
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -413,6 +413,74 @@ ColumnLayout {
                 sioul: field.sioul
                 theme: field.theme
                 about: field.setting.help
+            }
+        }
+    }
+    // The map's search service, Contacts ⚙'s own block under its heading (mapsearch.rs): what it
+    // does said first, then what is asked now, then its address in a field, OpenStreetMap's and
+    // None after it. One setting for the contacts' map and the lookups alike; it travels with the settings.
+    Loader {
+        active: field.setting.kind === "mapsearch"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ColumnLayout {
+                id: search
+
+                readonly property string value: field.setting.kind === "mapsearch" ? String(field.setting.value) : ""
+                readonly property bool off: search.value.toLowerCase() === "none"
+                readonly property string host: search.value.replace(/^https:\/\//, "").split(/[\/?#]/)[0]
+
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    text: field.setting.help
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: field.theme.text
+                }
+                Label {
+                    objectName: "mapSearchNow"
+                    Layout.fillWidth: true
+                    text: search.off ? field.sioul.text("map-search-off-now") : field.sioul.textWith("map-search-now", "host", search.host)
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.weight: Font.DemiBold
+                    color: field.theme.text
+                }
+                TextField {
+                    objectName: "mapSearchField"
+                    Layout.fillWidth: true
+                    text: search.off ? "" : search.value
+                    placeholderText: "https://…"
+                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+                    Accessible.name: field.setting.label
+                    onEditingFinished: {
+                        const typed = text.trim()
+                        if (typed !== "" && typed !== search.value)
+                            field.save(field.setting.key, typed, field.setting.value)
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: field.setting.kind === "mapsearch" ? field.setting.choices : []
+
+                        delegate: Button {
+                            required property var modelData
+                            required property int index
+
+                            objectName: "mapSearchChoice" + index
+                            text: field.theme.plain(modelData.label)
+                            enabled: !field.same(modelData.value, field.setting.value)
+                            onClicked: field.save(field.setting.key, modelData.value, field.setting.value)
+                        }
+                    }
+                }
             }
         }
     }

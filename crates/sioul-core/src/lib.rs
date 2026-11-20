@@ -298,6 +298,8 @@ pub mod ongoing;
 pub mod opening;
 // hourslookup: an office's hours looked up when the person asks (the administration's directory, OpenStreetMap).
 pub mod hourslookup;
+// mapsearch: the map's search service (the contacts' map, an event's map, a lookup), its setting and its refusals.
+pub mod mapsearch;
 pub mod organizer;
 pub mod overlaps;
 pub mod own_time;
