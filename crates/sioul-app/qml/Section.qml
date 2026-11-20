@@ -5,7 +5,9 @@
 // (docs/qt-quick.md, "Sections"): the heading in strong words, in the accent,
 // said as a heading to screen readers; under it the group, on a card's surface
 // with its thin border, so that the fields on it stand out (Theme.qml's
-// `field`). What it holds goes in its column, one under the other.
+// `field`). What it holds goes in its column, one under the other. Without
+// its frame (`framed`), the group lies flat on what holds it: a device's
+// Details on its card (CardFold.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -26,6 +28,8 @@ ColumnLayout {
     default property alias content: body.data
     // The column inside the frame, for its spacing.
     readonly property alias body: body
+    // Its frame drawn: a card's surface, its thin border, room inside; else the group alone.
+    property bool framed: true
 
     spacing: 6
 
@@ -60,9 +64,10 @@ ColumnLayout {
         id: frame
 
         Layout.fillWidth: true
-        padding: section.theme.compact ? 10 : 14
+        padding: section.framed ? (section.theme.compact ? 10 : 14) : 0
 
         background: Rectangle {
+            visible: section.framed
             color: section.theme.surface
             radius: section.theme.radius
             border.color: section.theme.line

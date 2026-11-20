@@ -2,13 +2,15 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A phone's card in Settings ▸ Devices (DevicesTab.qml, PhoneCard.qml), on a
-// stand-in for Sioul. Another phone's card, at a computer's width: its
-// section Calls, open, a grid of Rings and Voicemail by row and moment, the
+// stand-in for Sioul. The phone's sections are in the card's Details, each a
+// fold of its own at a computer's width as at a phone's, made once opened and
+// kept folded again. Another phone's card, at a computer's width: its
+// section Calls, opened, a grid of Rings and Voicemail by row and moment, the
 // profiles (Professional's own line saying that a second call does not ring
 // outside work hours), the switches, a group given its row and taken off,
 // the SIMs' sentence, that this phone does not screen yet; each change said
-// as a field of its line (`deviceSay(id, "calls.…", value)`); no fold line;
-// Android's accesses said to be set on that phone. This phone's own card, at
+// as a field of its line (`deviceSay(id, "calls.…", value)`); Android's
+// accesses said to be set on that phone. This phone's own card, at
 // a phone's width (412 points): every section folded to one line, Calls
 // opened as a list of rows, a row opening its four choices, no grid, nothing
 // past the edge; this device's web view in one line; what Android must allow in the design's order, each line
@@ -19,9 +21,12 @@
 // does today, a cell that varies saying so (a press makes it ring) and when
 // it rings under the table, no profile's line, that calls are set here.
 // The doors (`reveal`): Calls and each app by time, unfolded, in this
-// phone's card, else the first phone's; on a computer, each app by time
-// listed in a phone's card once some have times. A reload keeps the cards
-// and what is unfolded. Run by tools/qml-test.sh. To see the cards, set
+// phone's card, else the first phone's, its Details opened and the page told
+// once laid out (`shown`); on a computer, each app by time listed in a
+// phone's card once some have times. On this phone, a line counts the
+// accesses Android has not given, only while one is missing, its door
+// opening What Android must allow. A reload keeps the cards and what is
+// unfolded. Run by tools/qml-test.sh. To see the cards, set
 // `pictures` below to a folder (a change of your own, not to commit).
 
 import QtQuick
@@ -54,6 +59,13 @@ Item {
         property bool today: false
         // Apps, conversations and sites with times of their own (`appNotesSetup`'s grid's rows).
         property int lists: 0
+        // Every access given on this phone.
+        property bool allGiven: false
+        // How the window left its pages, on this device (`viewFlag`): unsaid, false.
+        property var flags: ({})
+
+        // The sharing's news (Texts' section listens to it).
+        signal sharedIn(string stores)
 
         readonly property var row: ({ here: false, name: "Moss", system: "The phone (Moss)", given: "Moss", form: "phone", form_words: "A phone", code: "closed", state: "Closed since 21:40.", notes: [], opened: "21:00", shared: "21:40", version: "0.0.11", older: false, build: "", area: "admin+leisure", area_words: "Admin, Leisure", parts: [], parts_words: "Settings", off: false, forget: false, forget_now: false, follows: false, cells: [] })
 
@@ -62,6 +74,21 @@ Item {
         }
         function textWith(key, name, value) {
             return key + ":" + value
+        }
+        function textArgs(key, args) {
+            const given = JSON.parse(args)
+            return key + ":" + Object.keys(given).map(k => given[k]).join("|")
+        }
+        function textCounted(key, n) {
+            return key + ":" + n
+        }
+        function viewFlag(name) {
+            return mock.flags[name] === true
+        }
+        function setViewFlag(name, on) {
+            const flags = Object.assign({}, mock.flags)
+            flags[name] = on
+            mock.flags = flags
         }
         function cells(words) {
             const whens = ["work", "day", "night", "busy"]
@@ -129,7 +156,7 @@ Item {
         function phoneCard() {
             if (!mock.herePhone)
                 return JSON.stringify({ phone: false })
-            const line = (what, state) => ({ what: what, label: "label-" + what, for: "for-" + what, state: state, said: state, button: state === "given" ? "Android's page" : "Allow in Android…" })
+            const line = (what, state) => ({ what: what, label: "label-" + what, for: "for-" + what, state: mock.allGiven ? "given" : state, said: state, button: state === "given" ? "Android's page" : "Allow in Android…" })
             return JSON.stringify({
                 phone: true,
                 allow: [line("role", "given"), line("contacts", "given"), line("history", "not-given"), line("notifications", "not-given"), line("texts", "not-given"), line("dnd", "given"), line("alarms", "given"), line("battery", "unknown")],
@@ -216,6 +243,13 @@ Item {
         }
     }
 
+    SignalSpy {
+        id: shownSpy
+
+        target: tab
+        signalName: "shown"
+    }
+
     TestCase {
         name: "PhoneCard"
         when: windowShown
@@ -257,10 +291,39 @@ Item {
             wait(100)
             grabImage(root).save(root.pictures + "/" + name + ".png")
         }
+        // A fold's line pressed, as a person does: a card's Details, a phone's section.
+        function press(fold) {
+            walk(fold, i => i.objectName === "foldLine", [])[0].clicked()
+        }
+        function openDetails(id) {
+            const fold = walk(tab, i => i.objectName === "device-" + id, [])[0].openDetails()
+            verify(fold.open)
+            return fold
+        }
+        function pressDetails(id) {
+            const fold = walk(walk(tab, i => i.objectName === "device-" + id, [])[0], i => i.objectName === "deviceDetails", [])[0]
+            if (!fold.open)
+                press(fold)
+            verify(fold.open, id + ": Details open")
+            // Laid out.
+            wait(50)
+            return fold
+        }
+        // What a fold holds, made once opened: its Loader's item.
+        function made(fold) {
+            const loader = holder(fold)
+            return loader ? loader.item : null
+        }
+        function holder(fold) {
+            return walk(fold, i => /^(body|block)-/.test(i.objectName || ""), [])[0] || null
+        }
         function reload(width, herePhone) {
-            // Each test from cards made anew, at its width (a reload alone keeps them).
+            // Each test from cards made anew, at its width (a reload alone keeps them), every card closed.
             tab.view = ({ on: false, why: "", stays: "", rows: [] })
             tab.ids = []
+            mock.flags = {}
+            mock.allGiven = false
+            shownSpy.clear()
             wait(10)
             root.width = width
             mock.herePhone = herePhone
@@ -277,10 +340,16 @@ Item {
         // Another phone, at a computer's width: its calls set from here, open, a grid.
         function test_another_phone_s_calls_at_a_computer_s_width() {
             reload(1400, false)
+            verify(named("phoneCard-phone") === null, "the phone's sections, in its Details, made once opened")
+            pressDetails("phone")
             const card = named("phoneCard-phone")
             verify(card !== null, "the phone's card has its sections")
+            pressDetails("desk")
             verify(named("setting:devices.here") === null, "the computer's own row has no phone card")
-            compare(all("foldLine").length, 0, "nothing folds at a computer's width")
+            // A section folds at a computer's width too, made once opened.
+            compare(walk(card, i => i.objectName === "foldLine" && showing(i), []).map(l => l.text), ["▸  phone-calls-title"], "Calls, folded")
+            verify(named("callsGrid") === null, "made once opened")
+            press(named("foldCalls"))
             verify(showing(named("callsGrid")), "the table is a grid")
             // Professional's own line says that a second call does not ring outside work hours.
             const professional = named("callsProfile-professional")
@@ -337,20 +406,22 @@ Item {
         // This phone's own card at a phone's width: everything folds; Calls a list of rows.
         function test_this_phone_s_card_at_a_phone_s_width() {
             reload(412, true)
+            pressDetails("phone")
             const card = named("setting:devices.here")
             verify(card !== null, "this phone's card, where a door to its setup lands")
-            const folds = all("foldLine")
+            const folds = walk(card, i => i.objectName === "foldLine" && showing(i), [])
             verify(folds.length >= 7, "Calls, what Android must allow, restricted settings and the tab's blocks: " + folds.length)
             for (const line of folds)
                 verify(within(line), line.text + ": within the page")
-            verify(!showing(named("callsGrid")), "no grid on a phone")
-            verify(!showing(named("callsProfile-personal")), "Calls folded")
+            verify(named("callsGrid") === null, "no grid on a phone")
+            verify(named("callsProfile-personal") === null, "Calls folded, made once opened")
             // This device's web view, in one line (siteview.rs).
             verify(showing(named("webviewLine")) && named("webviewLine").text.indexOf("142.0.7444.90") > 0 && within(named("webviewLine")), "the web view's line")
             verify(["apps", "messages", "texts", "dnd"].every(b => named("block-" + b).item === null), "the tab's blocks made only once unfolded")
             // Calls unfolded: the rows, each opening its four choices.
-            named("foldCalls").open = true
+            press(named("foldCalls"))
             wait(20)
+            verify(!showing(named("callsGrid")), "no grid on a phone")
             const contacts = named("callsRow-contacts")
             verify(showing(contacts))
             verify(named("callsCell-contacts-night") === null, "a row's choices made once opened")
@@ -363,9 +434,9 @@ Item {
             named("callsSimsOpen").clicked()
             compare(mock.asked[mock.asked.length - 1], "allow sims")
             save("phone-card-phone-calls")
-            named("foldCalls").open = false
+            press(named("foldCalls"))
             // What Android must allow, in the design's order, each line its state and one button.
-            named("foldAllow").open = true
+            press(named("foldAllow"))
             wait(20)
             const lines = walk(card, i => i.objectName.indexOf("allow-") === 0 && showing(i), [])
             compare(lines.map(l => l.objectName.slice("allow-".length)).join(" "), "role contacts history notifications texts dnd alarms battery")
@@ -379,10 +450,10 @@ Item {
             named("allowGreyed").clicked()
             compare(mock.asked[mock.asked.length - 1], "allow restricted")
             verify(named("foldRestricted").open, "the card unfolded")
-            named("foldRestricted").open = false
-            named("foldAllow").open = false
+            press(named("foldRestricted"))
+            press(named("foldAllow"))
             // The restricted settings' card: three steps, each a button, ticked once done.
-            named("foldRestricted").open = true
+            press(named("foldRestricted"))
             wait(20)
             const steps = ["notice", "info", "back"].map(id => named("restrictedStep-" + id))
             verify(steps.every(s => showing(s)), "three steps")
@@ -394,7 +465,7 @@ Item {
             }
             verify(within(named("restrictedStep-info")), "the drawing within the page")
             // A block of the tab "This phone", unfolded: made then.
-            named("fold-dnd").open = true
+            press(named("fold-dnd"))
             wait(20)
             verify(named("block-dnd").item !== null, "made once unfolded")
             verify(named("fold-screening") === null || !showing(named("fold-screening")), "no call screening's block without telephony")
@@ -406,6 +477,9 @@ Item {
             mock.today = true
             tab.reloadAll()
             wait(50)
+            pressDetails("phone")
+            press(named("foldCalls"))
+            wait(20)
             verify(!showing(named("callsProfileSaid")), "no profile's line: the table is today's, not a profile's")
             compare(named("callsProfile-personal").checked, false, "nothing chosen")
             const varies = named("callsCell-contacts-day")
@@ -420,12 +494,18 @@ Item {
             save("phone-card-today")
         }
 
-        // The doors: Calls and each app by time, unfolded, in the card they land in.
+        // The doors: Calls and each app by time, unfolded, in the card they land
+        // in, its Details opened; the page told once laid out, to scroll to it.
         function test_doors_land_in_a_phone_s_card() {
             // A computer, narrow: the first phone's Calls; no app by time listed, no door for them.
             reload(412, false)
             const calls = tab.reveal("calls")
             verify(calls !== null && calls.objectName === "foldCalls" && calls.open, "Calls unfolded in the phone's card")
+            verify(walk(walk(tab, i => i.objectName === "device-phone", [])[0], i => i.objectName === "deviceDetails", [])[0].open, "its Details opened")
+            compare(mock.flags["devices-details.phone"], true, "and left open")
+            tryCompare(shownSpy, "count", 1, 2000)
+            verify(shownSpy.signalArguments[0][0] === calls, "the page told what to scroll to")
+            verify(calls.mapToItem(tab, 0, 0).y > walk(tab, i => i.objectName === "device-phone", [])[0].mapToItem(tab, 0, 0).y, "laid out inside the card by then")
             verify(named("phoneCard-phone").reveal("calls") === calls)
             compare(tab.reveal("apps"), null, "no app has times of its own")
             compare(tab.doorSaid, "devices-door-no-apps", "said in a line (L17)")
@@ -438,20 +518,82 @@ Item {
             verify(lists !== null && lists.objectName === "fold-lists" && lists.open, "each app by time, unfolded")
             wait(50)
             verify(named("block-lists").item !== null, "made once unfolded")
-            // This phone: its own card, both doors.
+            // This phone: its own card, both doors, and the door to its setup.
             reload(412, true)
-            const here = named("setting:devices.here")
+            verify(named("setting:devices.here") === null, "made once its Details are opened")
             const own = tab.reveal("apps")
+            const here = named("setting:devices.here")
             verify(own !== null && own.parent === here, "the lists of this phone's own card")
             verify(tab.reveal("calls").parent === here)
+            verify(tab.reveal("here") === here, "settings:devices.here: this phone's sections")
+            // On a computer, no phone of its own: the door to it lands nowhere, and says nothing.
+            reload(1400, false)
+            compare(tab.reveal("here"), null)
+            compare(tab.doorSaid, "")
+        }
+
+        // Each section of a phone's card folds at a computer's width as at a
+        // phone's, made once opened, kept as it was when folded again.
+        function test_sections_fold_at_every_width_data() {
+            return [{ tag: "1400", width: 1400 }, { tag: "412", width: 412 }]
+        }
+        function test_sections_fold_at_every_width(data) {
+            reload(data.width, true)
+            mock.telephony = true
+            tab.reloadAll()
+            wait(20)
+            pressDetails("phone")
+            const card = named("setting:devices.here")
+            const folds = ["foldCalls", "foldAllow", "foldRestricted", "fold-apps", "fold-lists", "fold-messages", "fold-texts", "fold-screening", "fold-dnd"].map(n => named(n))
+            for (const fold of folds) {
+                verify(fold !== null && showing(fold), fold ? fold.objectName : "a fold")
+                verify(!fold.open && made(fold) === null, fold.objectName + ": folded, made once opened")
+                const line = walk(fold, i => i.objectName === "foldLine", [])[0]
+                verify(showing(line), fold.objectName + ": its line")
+            }
+            for (const fold of folds) {
+                press(fold)
+                verify(fold.open && made(fold) !== null, fold.objectName + ": made once opened")
+                const item = made(fold)
+                press(fold)
+                verify(!fold.open && made(fold) === item && !showing(holder(fold)), fold.objectName + ": kept, folded")
+                press(fold)
+                verify(made(fold) === item && showing(holder(fold)), fold.objectName + ": the same, unfolded again")
+            }
+        }
+
+        // On this phone, a line counts the accesses Android has not given, in
+        // words, only while one is missing; its door opens What Android must allow.
+        function test_missing_accesses_are_counted_on_this_phone() {
+            reload(412, true)
+            const phone = walk(tab, i => i.objectName === "device-phone", [])[0]
+            const line = walk(phone, i => i.objectName === "deviceMissing", [])[0]
+            verify(showing(line), "three accesses not given")
+            compare(walk(line, i => i.objectName === "deviceMissingSaid", [])[0].text, "devices-missing:3")
+            verify(!walk(phone, i => i.objectName === "deviceDetails", [])[0].open, "its Details closed")
+            walk(line, i => i.objectName === "deviceMissingOpen", [])[0].clicked()
+            verify(walk(phone, i => i.objectName === "deviceDetails", [])[0].open, "its Details opened")
+            verify(named("foldAllow").open && showing(named("foldAllow")), "What Android must allow, unfolded")
+            tryCompare(shownSpy, "count", 1, 2000)
+            verify(shownSpy.signalArguments[0][0] === named("foldAllow"))
+            // All given: no line.
+            mock.allGiven = true
+            tab.own = JSON.parse(mock.phoneCard())
+            wait(20)
+            verify(!showing(line), "nothing missing: nothing said")
+            // Another phone, from a computer: Android's accesses are its own to say.
+            reload(1400, false)
+            for (const card of walk(tab, i => (i.objectName || "").startsWith("device-"), []))
+                verify(!showing(walk(card, i => i.objectName === "deviceMissing", [])[0]), card.objectName)
         }
 
         // A reload (every 20 s while shown, after each change) keeps the cards and what is unfolded.
         function test_a_reload_keeps_the_card() {
             reload(412, true)
+            pressDetails("phone")
             const card = named("setting:devices.here")
-            named("foldCalls").open = true
-            named("fold-dnd").open = true
+            press(named("foldCalls"))
+            press(named("fold-dnd"))
             named("callsRow-contacts").clicked()
             wait(20)
             const dnd = named("fold-dnd")

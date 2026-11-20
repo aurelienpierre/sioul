@@ -9483,6 +9483,12 @@ devices-rename = Rename…
 devices-rename-help = A name of your own for this device, which travels with your settings. Left empty, the name its system gives it comes back.
 devices-rename-field = The name you give it
 devices-system-name = Its system calls it { $system }.
+devices-details = Details
+devices-details-of = Details of { $device }
+devices-missing = { $Count } { $n ->
+        [one] access is
+       *[other] accesses are
+    } missing.
 devices-plain-here = { $name } (this device)
 devices-plain-system = { $name } (named { $system } by its system)
 devices-plain-here-system = { $name } (this device, named { $system } by its system)

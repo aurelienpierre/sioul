@@ -14,10 +14,13 @@
 // (where sites open: siteview.rs). Another phone's card says that
 // Android's accesses are set on that phone; on a computer, it lists each app,
 // conversation and site with times of its own, read and changed there too
-// (AppNotesSetup.qml's part "lists"). At a phone's width every section folds
-// (CardFold.qml), and is made only once opened. A door lands in one card's
-// part (`reveal`; DevicesTab.qml chooses the card): Settings ▸ Devices ▸ Calls
-// ("settings:devices.calls") and each app by time ("settings:devices.apps").
+// (AppNotesSetup.qml's part "lists"). The card is in the device's Details
+// (DevicesTab.qml); at every width each section folds (CardFold.qml), and is
+// made only once opened, then kept. A door lands in one card's part
+// (`reveal`; DevicesTab.qml chooses the card and opens its Details): Settings
+// ▸ Devices ▸ Calls ("settings:devices.calls"), each app by time
+// ("settings:devices.apps"), and what Android must allow (the card's line of
+// missing accesses).
 
 pragma ComponentBehavior: Bound
 
@@ -40,8 +43,8 @@ ColumnLayout {
     property var calls: null
     // What this phone says of itself (`phonecard::view`): {phone, allow, restricted, webview}; {phone: false} elsewhere.
     property var own: ({ phone: false })
-    // A phone's width: the sections fold.
-    property bool folds: false
+    // A phone's width: Calls as a list of rows, what Android must allow in a column.
+    property bool narrow: false
     // How many apps, conversations and sites have times of their own.
     property int lists: 0
 
@@ -60,7 +63,7 @@ ColumnLayout {
 
     // A door's part in view: its section unfolded, and returned to be scrolled to.
     function reveal(part) {
-        const name = part === "calls" ? "foldCalls" : part === "restricted" ? "foldRestricted" : "fold-lists"
+        const name = part === "calls" ? "foldCalls" : part === "restricted" ? "foldRestricted" : part === "allow" ? "foldAllow" : "fold-lists"
         for (let i = 0; i < card.children.length; i++) {
             const fold = card.children[i] as CardFold
             if (fold && fold.objectName === name && fold.visible) {
@@ -74,22 +77,31 @@ ColumnLayout {
     spacing: 10
 
     CardFold {
+        id: callsFold
+
         objectName: "foldCalls"
         visible: card.calls !== null
         Layout.fillWidth: true
         theme: card.theme
         title: card.sioul.text("phone-calls-title")
-        folds: card.folds
 
-        CallsLine {
+        Loader {
+            objectName: "body-calls"
+            active: callsFold.made
+            visible: active
             Layout.fillWidth: true
-            sioul: card.sioul
-            theme: card.theme
-            view: card.calls || ({ rows: [], columns: [], profiles: [], switches: [], groups: [] })
-            here: card.phoneHere
-            narrow: card.folds
-            onSay: (field, value) => card.say(field, value)
-            onSimsAsked: card.ownSaid(JSON.parse(card.sioul.phoneAllow("sims") || "{}"))
+
+            sourceComponent: Component {
+                CallsLine {
+                    sioul: card.sioul
+                    theme: card.theme
+                    view: card.calls || ({ rows: [], columns: [], profiles: [], switches: [], groups: [] })
+                    here: card.phoneHere
+                    narrow: card.narrow
+                    onSay: (field, value) => card.say(field, value)
+                    onSimsAsked: card.ownSaid(JSON.parse(card.sioul.phoneAllow("sims") || "{}"))
+                }
+            }
         }
     }
     // Another phone: what Android allows is set on it.
@@ -123,40 +135,56 @@ ColumnLayout {
         Layout.fillWidth: true
         theme: card.theme
         title: card.sioul.text("phone-allow-title")
-        folds: card.folds
 
-        AllowList {
+        Loader {
+            objectName: "body-allow"
+            active: allowFold.made
+            visible: active
             Layout.fillWidth: true
-            sioul: card.sioul
-            theme: card.theme
-            lines: card.own.allow || []
-            narrow: card.folds
-            onAsk: what => {
-                card.ownSaid(JSON.parse(card.sioul.phoneAllow(what) || "{}"))
-                // "Android greys the switch?": the restricted settings' card, unfolded.
-                if (what === "restricted")
-                    card.reveal("restricted")
+
+            sourceComponent: Component {
+                AllowList {
+                    sioul: card.sioul
+                    theme: card.theme
+                    lines: card.own.allow || []
+                    narrow: card.narrow
+                    onAsk: what => {
+                        card.ownSaid(JSON.parse(card.sioul.phoneAllow(what) || "{}"))
+                        // "Android greys the switch?": the restricted settings' card, unfolded.
+                        if (what === "restricted")
+                            card.reveal("restricted")
+                    }
+                }
             }
         }
     }
     CardFold {
+        id: restrictedFold
+
         objectName: "foldRestricted"
         visible: card.phoneHere && card.own.restricted !== null && card.own.restricted !== undefined
         Layout.fillWidth: true
         theme: card.theme
         title: card.sioul.text("restricted-title")
-        folds: card.folds
 
-        RestrictedCard {
+        Loader {
+            objectName: "body-restricted"
+            active: restrictedFold.made
+            visible: active
             Layout.fillWidth: true
-            sioul: card.sioul
-            theme: card.theme
-            view: card.own.restricted || ({ steps: [] })
-            onStep: id => card.ownSaid(JSON.parse(card.sioul.restrictedStep(id) || "{}"))
+
+            sourceComponent: Component {
+                RestrictedCard {
+                    sioul: card.sioul
+                    theme: card.theme
+                    view: card.own.restricted || ({ steps: [] })
+                    onStep: id => card.ownSaid(JSON.parse(card.sioul.restrictedStep(id) || "{}"))
+                }
+            }
         }
     }
 
-    // The tab "This phone"'s blocks, each made once shown.
+    // The tab "This phone"'s blocks, each made once unfolded.
     Repeater {
         model: card.blocks === "" ? [] : card.blocks.split(" ")
 
@@ -169,11 +197,10 @@ ColumnLayout {
             Layout.fillWidth: true
             theme: card.theme
             title: card.sioul.text("phone-card-" + block.modelData)
-            folds: card.folds
 
             Loader {
                 objectName: "block-" + block.modelData
-                active: !block.folds || block.open
+                active: block.made
                 Layout.fillWidth: true
                 sourceComponent: block.modelData === "apps" ? apps : block.modelData === "lists" ? lists : block.modelData === "messages" ? messages : block.modelData === "texts" ? texts : block.modelData === "screening" ? screening : dnd
             }

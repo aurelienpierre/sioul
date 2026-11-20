@@ -2,13 +2,17 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Settings ▸ Devices (DevicesTab.qml), on a stand-in for Sioul: this device
-// first, each device's fields as the core words them; what a device is for
-// as three switches, nothing ticked being everything; a name given, and
-// taken back; Count it again, Forget, Forget it now, and "Forget it and
-// remove its files…" with what goes said first; this device's own kind and
-// its parts' link; sharing off, this device alone. In a wide window the
-// fields line up as a table under their titles; at a phone's width (412
-// points) each device is a card and nothing runs past the edge. Under the
+// first, each device's fields as the core words them. A card shows four
+// things and nothing else (its name, what it is, how it is now or when it was
+// last opened, what it is for), short at both widths; its Details, opened,
+// show the rest, kept open across a reload and in a tab made anew, as this
+// device's window keeps them (`viewFlag`). What a device is for as three
+// switches, nothing ticked being everything; a name given, and taken back;
+// Count it again, Forget, Forget it now, and "Forget it and remove its
+// files…" with what goes said first; this device's own kind and its parts'
+// link; sharing off, this device alone. In a wide window the four line up
+// as a table under their titles; at a phone's width (412 points) each field
+// is under its name and nothing runs past the edge. Under the
 // devices, what comes forward on each at each time (DeviceGrid.qml, tested
 // by itself in tst_devicegrid.qml): one matrix in a wide window, each card's
 // own lines on a phone; a cell ticked is said as `at.<time>`; then now on
@@ -47,6 +51,8 @@ Item {
         property var asked: []
         // What you said of each device, as the settings hold it: id → { name, area }.
         property var said: ({ "desk": { name: "Work desk", area: "work" } })
+        // How the window left its pages, on this device (`viewFlag`): unsaid, false.
+        property var flags: ({})
         // Made up: no real device.
         readonly property var known: [
             { id: "desk", here: true, system: "desk-host", form: "computer", form_words: "A computer", code: "in-use", state: "In use now.", notes: [], opened: "09:12", shared: "10:41", version: "0.0.3 (eff8661abcde)", older: false, build: "Sioul 0.0.3 (eff8661abcde).", parts: ["settings", "health"], parts_words: "Settings and accounts, Health", off: false, forget: false, forget_now: false },
@@ -59,6 +65,21 @@ Item {
         }
         function textWith(key, name, value) {
             return key + ":" + value
+        }
+        function textArgs(key, args) {
+            const given = JSON.parse(args)
+            return key + ":" + Object.keys(given).map(k => given[k]).join("|")
+        }
+        function textCounted(key, n) {
+            return key + ":" + n
+        }
+        function viewFlag(name) {
+            return mock.flags[name] === true
+        }
+        function setViewFlag(name, on) {
+            const flags = Object.assign({}, mock.flags)
+            flags[name] = on
+            mock.flags = flags
         }
         // Each device's cells as its areas say, here made up: the desk for work,
         // the phone for the rest; the laptop's Sioul is older. A cell said
@@ -142,6 +163,23 @@ Item {
         signalName: "sharingAsked"
     }
 
+    // The tab made anew (Settings left and come back to, the window started again), on the same Sioul.
+    Loader {
+        id: again
+
+        active: false
+        width: 1068
+        y: 2000
+
+        sourceComponent: Component {
+            DevicesTab {
+                sioul: mock
+                theme: testTheme
+                kindRow: root.kind
+            }
+        }
+    }
+
     TestCase {
         name: "DevicesTab"
         when: windowShown
@@ -183,6 +221,21 @@ Item {
         function boxes(within) {
             return walk(named(within, "deviceFor"), i => i.checkable === true && i.toggled !== undefined, [])
         }
+        // A card's Details, and their line, pressed as a person does.
+        function details(id) {
+            return named(card(id), "deviceDetails")
+        }
+        function openDetails(id) {
+            const fold = details(id)
+            if (!fold.open)
+                walk(fold, i => i.objectName === "foldLine", [])[0].clicked()
+            verify(fold.open, id + ": Details open")
+        }
+        // Every word that shows on a card, once each, sorted.
+        function words(within) {
+            const all = walk(within, i => showing(i) && typeof i.text === "string" && i.text !== "", []).map(i => i.text)
+            return all.filter((t, i) => all.indexOf(t) === i).sort()
+        }
         function save(name) {
             if (root.pictures === "")
                 return
@@ -205,44 +258,122 @@ Item {
             tab.kindOpen = false
             tab.problem = ""
             tab.reload()
+            wait(20)
+            // Every card closed, as a window opened for the first time leaves them.
+            for (const fold of walk(tab, i => i.objectName === "deviceDetails", []))
+                fold.open = false
+            mock.flags = {}
             sharingSpy.clear()
             wait(50)
         }
 
-        // This device first, then the others; each field as the core words it;
-        // in a wide window, as a table under its titles.
+        // This device first, then the others; four columns in a wide window,
+        // a table under its titles; the rest of each device in its Details.
         function test_each_device_with_its_fields_this_one_first() {
             verify(tab.wide, "a wide window: the table")
             compare(tab.rows.map(r => r.id), ["desk", "laptop", "phone"])
             const cards = walk(tab, i => (i.objectName || "").startsWith("device-"), [])
             compare(cards.map(c => c.objectName), ["device-desk", "device-laptop", "device-phone"])
             verify(cards[0].y < cards[1].y && cards[1].y < cards[2].y, "this device first")
-            // The titles once, above the devices; none repeated in the rows.
+            // Four titles, once, above the devices; none repeated in the rows.
+            compare(tab.titles, ["devices-col-name", "devices-col-form", "devices-col-now", "devices-col-for"])
             for (const title of tab.titles)
                 compare(walk(tab, i => showing(i) && i.text === title, []).length, 1, title)
             const desk = card("desk")
             compare(named(desk, "deviceName").text, "Work desk")
             verify(shown(desk, "devices-this") !== null, "marked as this device")
-            verify(shown(desk, "devices-system-name:desk-host") !== null, "what its system calls it, under the name given")
-            verify(shown(desk, "A computer") !== null && shown(desk, "In use now.") !== null && shown(desk, "09:12") !== null && shown(desk, "10:41") !== null)
-            verify(shown(desk, "0.0.3 (eff8661abcde)") !== null && shown(desk, "Settings and accounts, Health") !== null)
+            verify(shown(desk, "A computer") !== null && shown(desk, "In use now.") !== null)
             const phone = card("phone")
             compare(named(phone, "deviceName").text, "The phone (Moss)")
-            verify(shown(phone, "devices-this") === null && shown(phone, "devices-system-name:The phone (Moss)") === null, "no name given: its system's alone")
+            verify(shown(phone, "devices-this") === null)
             verify(shown(phone, "Closed since Sat 10 Oct 21:40.") !== null)
-            verify(shown(phone, "Read the others Sat 10 Oct 21:39; wrote its own Sat 10 Oct 21:40.") !== null)
-            verify(shown(phone, "Sioul 0.0.2 (0123456789ab), older than this device's (0.0.3 (eff8661abcde)): updating it there, when you can, keeps both alike.") !== null, "an older Sioul, said calmly")
+            verify(shown(phone, "devices-plain-line:devices-col-opened|Sat 10 Oct 21:00") !== null, "not in use: when it was last opened, under how it is")
             const laptop = card("laptop")
             verify(shown(laptop, "Counted as off, as you said, until it shares again. It does not share its doses.") !== null, "its notes with how it is")
-            verify(shown(laptop, "Its Sioul does not say what it shares.") !== null)
             // The fields line up: each device's cell starts where its title does.
             const title = walk(tab, i => showing(i) && i.text === "devices-col-now", [])[0]
             for (const id of ["desk", "phone"]) {
                 const cell = shown(card(id), id === "desk" ? "In use now." : "Closed since Sat 10 Oct 21:40.")
                 compare(Math.round(cell.mapToItem(tab, 0, 0).x), Math.round(title.mapToItem(tab, 0, 0).x), "under its title: " + id)
             }
-            verify(shown(tab, "devices-parts-elsewhere") !== null, "why another device's parts are read only")
             save("devices-table")
+            // The rest, in Details: what its system calls it, when it opened (in use), last shared, its Sioul, its parts.
+            openDetails("desk")
+            verify(shown(desk, "devices-system-name:desk-host") !== null, "what its system calls it, under the name given")
+            verify(shown(desk, "devices-col-opened") !== null && shown(desk, "09:12") !== null, "in use: when it opened, in Details")
+            verify(shown(desk, "devices-col-shared") !== null && shown(desk, "10:41") !== null)
+            verify(shown(desk, "devices-col-sioul") !== null && shown(desk, "0.0.3 (eff8661abcde)") !== null)
+            verify(shown(desk, "devices-col-parts") !== null && shown(desk, "Settings and accounts, Health") !== null)
+            verify(shown(desk, "devices-parts-elsewhere") === null, "this device's parts are changed from here")
+            openDetails("phone")
+            verify(shown(phone, "devices-system-name:The phone (Moss)") === null, "no name given: its system's alone")
+            verify(shown(phone, "devices-col-opened") === null, "said once: in sight, not in its Details")
+            verify(shown(phone, "Read the others Sat 10 Oct 21:39; wrote its own Sat 10 Oct 21:40.") !== null)
+            verify(shown(phone, "Sioul 0.0.2 (0123456789ab), older than this device's (0.0.3 (eff8661abcde)): updating it there, when you can, keeps both alike.") !== null, "an older Sioul, said calmly")
+            openDetails("laptop")
+            verify(shown(laptop, "Its Sioul does not say what it shares.") !== null)
+            verify(shown(laptop, "devices-parts-elsewhere") !== null, "why another device's parts are read only")
+            save("devices-table-details")
+        }
+
+        // Closed, a card shows four things and nothing else: its name (and This
+        // device), what it is, how it is now (or when it was last opened), what
+        // it is for, and its Details' line. Short: each card of the tab as it
+        // was before 20 November 2026 was 190 to 262 points high in a wide
+        // window, 569 to 817 in a narrow one.
+        function test_a_closed_card_shows_four_things_and_nothing_else() {
+            const fold = "▸  devices-details"
+            const boxes = ["area-admin", "area-leisure", "area-work"]
+            compare(words(card("desk")), ["A computer", "In use now.", "Work desk", "devices-this", fold].concat(boxes).sort())
+            compare(words(card("laptop")), ["A computer", "Counted as off, as you said, until it shares again. It does not share its doses.", "devices-for-all", "devices-plain-line:devices-col-opened|Fri 2 Oct 08:00", "laptop-host", fold].concat(boxes).sort())
+            compare(words(card("phone")), ["A phone", "Closed since Sat 10 Oct 21:40.", "The phone (Moss)", "devices-for-all", "devices-plain-line:devices-col-opened|Sat 10 Oct 21:00", fold].concat(boxes).sort())
+            // Nothing of the Details made yet: made once opened.
+            for (const id of ["desk", "laptop", "phone"]) {
+                compare(named(card(id), "deviceDetailsBody").item, null, id + ": Details made once opened")
+                verify(card(id).height < 185, id + ": " + card(id).height + " points high")
+            }
+            root.width = 412
+            tryVerify(() => !tab.wide, 2000)
+            wait(100)
+            for (const id of ["desk", "laptop", "phone"])
+                verify(card(id).height < 400, id + ": " + card(id).height + " points high at a phone's width")
+            // Its Details' line: a button with its arrow, named for a screen reader with the device.
+            const line = walk(details("phone"), i => i.objectName === "foldLine", [])[0]
+            compare(line.Accessible.name, "devices-details-of:The phone (Moss)")
+            compare(line.Accessible.role, Accessible.Button)
+            line.clicked()
+            compare(line.text, "▾  devices-details")
+            verify(named(card("phone"), "deviceDetailsBody").item !== null, "made once opened")
+            tryVerify(() => card("phone").height > 400, 2000, "the full ledger, one step away")
+            line.clicked()
+            tryVerify(() => card("phone").height < 400, 2000, "folded again")
+        }
+
+        // Each card's Details stay as they were left: through a reload of the
+        // devices (every 20 seconds, after each change), and in the tab made
+        // anew, as this device's window keeps them (`viewFlag`, never shared).
+        // What was made stays made, folded or not.
+        function test_details_stay_as_they_were_left() {
+            openDetails("phone")
+            compare(mock.flags["devices-details.phone"], true, "kept by this device's window")
+            const body = named(card("phone"), "deviceDetailsBody").item
+            const before = card("phone")
+            tab.reload()
+            wait(50)
+            verify(card("phone") === before && details("phone").open, "kept through a reload")
+            // Folded again: what was made is kept, hidden.
+            walk(details("phone"), i => i.objectName === "foldLine", [])[0].clicked()
+            compare(mock.flags["devices-details.phone"], false)
+            verify(named(card("phone"), "deviceDetailsBody").item === body && !showing(body), "made once, kept folded")
+            openDetails("phone")
+            // The tab made anew: the phone's Details open, made at once; the others closed.
+            again.active = true
+            tryVerify(() => again.item !== null && walk(again.item, i => i.objectName === "device-phone", []).length === 1, 2000)
+            const made = n => walk(again.item, i => i.objectName === "device-" + n, [])[0]
+            verify(named(made("phone"), "deviceDetails").open, "the phone's Details open, as left")
+            verify(named(made("phone"), "deviceDetailsBody").item !== null)
+            verify(!named(made("desk"), "deviceDetails").open && named(made("desk"), "deviceDetailsBody").item === null, "the desk's closed, as left")
+            again.active = false
         }
 
         // What a device is for: three switches, written at once for any device;
@@ -275,6 +406,8 @@ Item {
         // "Rename…": the name you give, shown at once; empty, its system's name comes back.
         function test_a_device_is_renamed_and_takes_its_system_s_name_back() {
             const phone = card("phone")
+            verify(named(phone, "deviceRename") === null || !showing(named(phone, "deviceRename")), "Rename… is in Details")
+            openDetails("phone")
             verify(!showing(named(phone, "deviceNameField")), "no field before the press")
             named(phone, "deviceRename").clicked()
             const field = named(phone, "deviceNameField")
@@ -306,6 +439,8 @@ Item {
         // same, and the draft is the tab's in any case; saving then
         // writes what was typed, never an emptied field (the review of phase 1, R5).
         function test_a_name_being_typed_survives_a_reload() {
+            openDetails("laptop")
+            openDetails("desk")
             named(card("laptop"), "deviceRename").clicked()
             const field = named(card("laptop"), "deviceNameField")
             compare(field.text, "", "no name given yet")
@@ -364,6 +499,10 @@ Item {
         // for this device.
         function test_another_device_is_counted_forgotten_and_its_files_removed() {
             const laptop = card("laptop")
+            verify(button(laptop, "share-device-count-again") === null, "in Details, last")
+            openDetails("laptop")
+            openDetails("phone")
+            openDetails("desk")
             button(laptop, "share-device-count-again").clicked()
             compare(mock.asked, ["off laptop false"])
             button(card("laptop"), "share-device-forget").clicked()
@@ -398,7 +537,9 @@ Item {
         // device, and its parts, switched in Your folder and sharing.
         function test_this_device_s_kind_and_parts() {
             const desk = card("desk")
-            verify(named(card("phone"), "deviceKind") === null || !showing(named(card("phone"), "deviceKind")), "another device's kind is its own to say")
+            openDetails("desk")
+            openDetails("phone")
+            verify(!showing(named(card("phone"), "deviceKind")), "another device's kind is its own to say")
             verify(walk(desk, i => showing(i) && i.text === "A phone", []).length === 0, "no choice before the press")
             named(desk, "deviceKind").clicked()
             tryVerify(() => shown(desk, "A phone is carried.") !== null, 2000, "the setting, with its sentence")
@@ -475,7 +616,8 @@ Item {
             compare(unheld.text, "No device is for your admin and leisure: until one is, that comes on every device, as the hours say.")
         }
 
-        // At a phone's width: cards, each field under its name, nothing past the edge.
+        // At a phone's width: cards, each field under its name, nothing past the
+        // edge, Details open or not; each card's cells by time in its Details.
         function test_cards_on_a_narrow_window() {
             root.width = 412
             tryVerify(() => !tab.wide, 2000)
@@ -485,6 +627,11 @@ Item {
             // No row of titles; each field carries its name.
             for (const title of tab.titles.slice(1))
                 compare(walk(tab, i => showing(i) && i.text === title, []).length, 3, title + ": once a card")
+            verify(named(phone, "deviceCells") === null || !showing(named(phone, "deviceCells")), "its cells by time in its Details")
+            for (const id of ["desk", "laptop", "phone"])
+                openDetails(id)
+            wait(50)
+            compare(walk(tab, i => showing(i) && i.text === "devices-col-shared", []).length, 3, "each Details' fields under their names")
             verify(shown(phone, "Closed since Sat 10 Oct 21:40.") !== null)
             const now = shown(phone, "devices-col-now")
             const state = shown(phone, "Closed since Sat 10 Oct 21:40.")
@@ -519,6 +666,7 @@ Item {
             tab.reload()
             wait(50)
             compare(tab.rows.map(r => r.id), ["desk"])
+            openDetails("desk")
             verify(shown(tab, "devices-alone") !== null, "why it is alone")
             verify(shown(tab, "devices-parts-elsewhere") === null)
             verify(!showing(named(card("desk"), "devicePartsChange")), "no part to change while it does not share")
