@@ -93,7 +93,7 @@ Les étiquettes d’une tâche sont ses catégories : elles sont écrites dans
 
 ### Les catégories sur les contacts {#categories-on-contacts}
 
-Les catégories sont les groupes que votre carnet d’adresses a déjà : « Famille », « Amis », « Voisins ». Elles sont enregistrées dans la fiche elle-même : votre téléphone et vos autres logiciels les voient. Une liste peut nommer une catégorie (**Paramètres ▸ Ce qui vous joint**, « Les catégories de vos contacts ») : ses personnes vous joignent alors comme cette liste le dit. Rien ne va sur une liste de soi-même, la famille et les amis non plus.
+Les catégories sont les groupes que votre carnet d’adresses a déjà : « Famille », « Amis », « Voisins ». Elles sont enregistrées dans la fiche elle-même : votre téléphone et vos autres logiciels les voient. Une liste peut en nommer une (**Paramètres ▸ Ce qui vous joint**, sous **Qui est dans quel cercle**, **Groupes**) : ses personnes vous joignent alors comme cette liste le dit. Rien ne va sur une liste de soi-même, la famille et les amis non plus. Dans un carnet d’adresses où quelqu’un d’autre peut écrire, les groupes ne décident rien tant que vous ne les avez pas activés pour ce carnet, dans le ⚙ des Contacts sous **Carnets d’adresses**.
 
 ### Un projet, ou un thème ? {#a-project-or-a-topic}
 
@@ -132,7 +132,7 @@ Une tâche peut préparer un rendez-vous. Dans l’Agenda, la carte d’un évé
 
 **Avant** et **Après**, sur un événement ou sur une tâche, gardent le temps de se préparer, d’y aller et d’en revenir, de 5 minutes à 2 heures chacun. Le plan garde ce temps libre, et ne le compte jamais comme une pause.
 
-Quand le chemin a ses propres parties, un bus, puis la marche depuis l’arrêt, ajoutez-les comme des trajets : **Ajouter un trajet…**, dans la carte du rendez-vous, avec **D’après un horaire** quand son heure en vient.
+Quand le chemin a ses propres parties, un bus, puis la marche depuis l’arrêt, ajoutez-les comme des trajets : **Ajouter un trajet…**, dans la carte du rendez-vous, avec **D’après un horaire** quand son heure en vient. Son formulaire dit dans quel sens il va : **Pour y aller** le place avant le rendez-vous, **Pour en revenir** après.
 
 - **Un trajet est un événement à part**, dans l’agenda du rendez-vous : l’agenda de votre téléphone le montre aussi.
 - **Il bouge avec le rendez-vous.** Changez l’heure du rendez-vous, et ses trajets bougent d’autant, sous le même **Annuler**. Un bus déplacé ainsi est dit « horaire non vérifié » jusqu’à ce que vous régliez son heure vous-même.
@@ -168,7 +168,7 @@ Les boutons **Tableau**, **Liste** et **Gantt** d’un projet ouvrent les mêmes
 
 ### Ce que voient vos autres applications {#what-your-other-apps-see}
 
-Les étapes, les attentes et les types sont écrits dans vos tâches dans les termes du standard, sur votre serveur d’agenda. Les applications de tâches qui connaissent les étapes montrent les vôtres dans votre ordre (Nextcloud Tasks, Tasks.org). Peu comprennent les attentes : la plupart montrent une attente comme une étape de l’autre tâche, et certaines la perdent quand vous y changez la tâche. [Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts) dit quelle application garde quoi. Une liste sur Google Tasks garde moins, et Sioul grise ce que Google ne garderait pas.
+Les étapes, les attentes et les types sont écrits dans vos tâches elles-mêmes, sur votre serveur d’agenda. Les étapes sont écrites comme le dit le standard : les applications de tâches qui connaissent les étapes montrent les vôtres dans votre ordre (Nextcloud Tasks, Tasks.org). Les attentes et les types sont écrits dans des lignes propres à Sioul, avec les mots du standard : les autres applications ne les montrent pas, et les gardent tant qu’elles enregistrent une tâche sans perdre ce qu’elles ne connaissent pas. [Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts) dit quelle application garde quoi. Une liste sur Google Tasks garde moins, et Sioul grise ce que Google ne garderait pas.
 
 La suite : [Les tâches](tasks.md) · [Le temps autour d’un événement](agenda.md#time-around-an-event)
 

@@ -65,6 +65,8 @@ Ils viennent du serveur qui les garde déjà.
 - **Un serveur CalDAV et CardDAV** (Nextcloud, Fastmail, iCloud, votre hébergeur) : dans **Comptes ▸ Ajouter un compte**, sous « Ajouter des contacts et agendas », tapez votre adresse et votre mot de passe, puis **Se connecter et ajouter**. Vos carnets d’adresses et vos agendas arrivent ; les tâches viennent avec les agendas qui les contiennent. Quand vos courriels sont chez le même fournisseur, **Ce que ce serveur offre**, sur la carte de l’adresse, les ajoute en un clic.
 - **Google** : sous « Agendas, contacts et tâches Google », tapez votre adresse Google et choisissez **Se connecter avec Google**. Vous vous connectez sur la page de Google, dans votre navigateur.
 - **Sans serveur** : Sioul peut garder des agendas, des listes de tâches et des contacts sur cet appareil seulement. À votre première tâche, **Créer la liste** crée une liste en un clic.
+- **Un agenda lu par son adresse web**, comme l’emploi du temps d’une école ou d’une université : dans le ⚙ de l’Agenda, sous **Vos agendas**, **S’abonner à un agenda…**. Sioul le lit et ne le modifie jamais ; les jours fériés et les vacances scolaires de France y sont prêts à l’emploi ([L’agenda](agenda.md#calendars-by-their-address)).
+- **Des contacts gardés dans un fichier** : sur la page Contacts, **Importer…**, une icône au-dessus de la liste, lit un fichier vCard ou CSV dans un carnet d’adresses ([Les contacts](contacts.md#importing)).
 
 Sioul n’atteint pas les agendas et les contacts de Microsoft : Microsoft ne les offre pas par les standards ouverts que Sioul parle.
 
@@ -128,13 +130,13 @@ La suite : [L’agenda](agenda.md)
 La page **Tâches** s’ouvre sur **Maintenant** : une étape, pourquoi elle vient maintenant, et celle d’après. Elle a cinq boutons : **Commencer**, **Fait**, **Pas maintenant**, **Détails** et **Qu’est-ce qui rend cela difficile ?**
 
 <figure markdown="span">
-  [![La page Tâches sur « Maintenant ». En haut, les vues Maintenant, La journée, Liste, Tableau et Calendrier, puis Routines et trois choix : tous les projets, tous les types, toutes les catégories. Au milieu, une carte, « L’étape suivante » : son titre, le projet dont elle fait partie, pourquoi elle vient maintenant, à peu près combien de temps elle prend et où vous en étiez, avec Commencer, Fait, Pas maintenant et Qu’est-ce qui rend cela difficile ? En dessous, « Ensuite » et l’étape d’après, sa date demandée en jours restants ; puis « Autres choix » et « Faites cette semaine », repliés.](../assets/screens/fr/tasks-now.png){ loading=lazy }](../assets/screens/fr/tasks-now.png "Ouvrir l’image en grand")
+  [![La page Tâches sur « Maintenant ». En haut, les vues Maintenant, La journée, Liste, Tableau et Gantt, puis Routines et trois choix : tous les projets, tous les types, toutes les catégories. Au milieu, une carte, « L’étape suivante » : son titre, le projet dont elle fait partie, pourquoi elle vient maintenant, à peu près combien de temps elle prend et où vous en étiez, avec Commencer, Fait, Pas maintenant, Détails et Qu’est-ce qui rend cela difficile ? En dessous, « Ensuite » et l’étape d’après, sa date demandée en jours restants ; puis « Autres choix » et « Faites cette semaine », repliés.](../assets/screens/fr/tasks-now.png){ loading=lazy }](../assets/screens/fr/tasks-now.png "Ouvrir l’image en grand")
   <figcaption>Maintenant : une étape, pourquoi elle vient maintenant, et celle d’après.</figcaption>
 </figure>
 
 - **Une nouvelle tâche** : **Nouvelle tâche**, ou une ligne en haut de la page. `Appeler les impôts demain ~15m {30/10}` crée une tâche qui peut commencer demain, prend un quart d’heure, et est demandée pour le 30 octobre.
 - **Pas maintenant** est respecté sans discussion : l’étape revient demain, et l’étape suivante vient d’autre chose.
-- **Comment est la journée ?** En haut de la page, **Clair**, **Brume** ou **Brouillard** : une journée difficile en tient moins. C’est vous qui le dites ; rien n’est deviné de ce que vous faites.
+- **Comment est aujourd’hui ?** En haut de la page, **Clair**, **Brume** ou **Brouillard** : une journée difficile en tient moins. C’est vous qui le dites ; rien n’est deviné de ce que vous faites.
 - **La journée** dispose aujourd’hui : vos événements, vos repas, et les étapes que le plan donne aujourd’hui, aux heures faites pour elles.
 
 Vos tâches sont des tâches standards, sur votre serveur d’agenda elles aussi.
@@ -155,7 +157,7 @@ Les contacts font ici plus que garder des adresses. Chaque personne est sur une 
 | **Bloqués** | jamais, par aucun canal |
 | **Inconnus** | tous les autres ; leur premier courriel attend votre accord, sous le Porche |
 
-**Comment cette personne vous joint**, sur la fiche d’un contact, montre sa liste et la change. Ce que fait chaque liste à chaque moment de votre journée est dans **Paramètres ▸ Ce qui vous joint**, dit en phrases.
+Sur la fiche d’un contact, **Comment Sam vous joint**, avec le nom de la personne, montre sa liste et la change. Ce que fait chaque liste, pour les courriels et pour les messages, est dans **Paramètres ▸ Ce qui vous joint**, sous **Personnes** ; les appels se règlent pour chaque téléphone, dans **Paramètres ▸ Appareils**. Une liste de plus, **Passent toujours**, est pour les quelques personnes qui doivent vous joindre même pendant « Ne pas déranger » : elle est la même sur tous vos appareils, et une personne bloquée n’y est jamais.
 
 La suite : [Les contacts](contacts.md) · [Ce qui vous joint, et quand](notifications.md)
 
@@ -196,7 +198,7 @@ Sur un ordinateur qui partage déjà, **Ajouter un appareil**, dans le même pan
 
 - **Vos règles vous suivent.** Les heures, les listes et le « ne pas déranger » réglés sur un appareil valent sur les autres, le plus souvent en quelques minutes.
 - **Chaque appareil choisit ce qui voyage depuis lui**, partie par partie, sous **Ce qui voyage depuis cet appareil**.
-- **Mettez vos appareils à jour ensemble quand vous le pouvez.** Des appareils sur des versions différentes continuent de partager, mais une partie dont la forme est plus récente que ce qu’un appareil sait lire attend sur cet appareil jusqu’à sa mise à jour.
+- **Mettez vos appareils à jour ensemble quand vous le pouvez.** Des appareils sur des versions différentes continuent de partager, mais une partie dont la forme est plus récente que ce qu’un appareil sait lire attend sur cet appareil jusqu’à sa mise à jour. Les listes de Sioul (projets, budgets…) ne quittent votre dossier de notes qu’une fois que chaque appareil a un Sioul qui connaît leur nouvelle place : un Sioul plus ancien fait attendre le déplacement jusqu’à sa mise à jour, ou jusqu’à ce que vous oubliiez cet appareil dans **Paramètres ▸ Appareils**.
 - **Sur Android**, une application de synchronisation n’apporte souvent les changements que toutes les demi-heures. Quand le dossier est sur votre Nextcloud, Sioul y lit lui-même les nouvelles de vos autres appareils, chaque minute tant qu’il est ouvert.
 
 La suite : [Partager entre vos appareils](sharing.md)

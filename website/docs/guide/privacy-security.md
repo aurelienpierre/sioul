@@ -77,7 +77,7 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 | Notes | your notes folder, wherever you chose it |
 | Your papers' files; your letters' scans | the papers' and the letters' folders, `~/Documents/Papers` and `~/Documents/Letters` unless you chose others |
 
-Until you move Sioul's lists out of your notes folder, they, your papers and your scanned letters are in it ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). On Windows, Sioul's folders are in `%APPDATA%\Sioul`; on macOS, in `~/Library/Application Support/Sioul`. On Linux and macOS, Sioul makes its own folders yours alone each time it starts: other accounts on the same computer cannot open them. Your notes, papers' and letters' folders keep the permissions you gave them.
+On a device that used Sioul before version 0.0.12, Sioul's lists, your papers and your scanned letters are in your notes folder until you move them out of it ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). On Windows, Sioul's settings are in `%APPDATA%\sioul` and its data in `%LOCALAPPDATA%\sioul`; on macOS, both are in `~/Library/Application Support/sioul`. On Linux and macOS, Sioul makes its own folders yours alone each time it starts: other accounts on the same computer cannot open them. Your notes, papers' and letters' folders keep the permissions you gave them.
 
 **Passwords**, Google's access, the keys and tokens of the services you turn on, and passphrases go to your system's keyring: GNOME Keyring or KWallet on Linux, the Credential Manager on Windows, the Keychain on macOS; on Android, encrypted with a key that its KeyStore keeps. Never in a plain file.
 
@@ -145,7 +145,7 @@ The sites you pin live in one browser profile of Sioul's own, apart from your us
 
 A site that asks for a security key gets it (FIDO2 and WebAuthn: a YubiKey, a Nitrokey), and so do the passkeys kept on it; the key's PIN is asked in Sioul's own dialog. Passkeys kept in a phone or in the system do not work in Sioul's sites on Linux and macOS.
 
-Logins come from your Bitwarden vault, opened by Sioul itself, read only: nothing is ever written to it, your master password and keys are never kept, and the logins stay in memory until Sioul closes. From the Sites page, the vault can open with your security key, as its second step, or alone when Bitwarden knows the key as a passkey. A login made for another domain says so, so that a look-alike site shows. See [Sites](sites.md).
+Logins come from your Bitwarden vault, opened by Sioul itself, read only: nothing is ever written to it, your master password and keys are never kept, and the logins stay in memory until you lock the vault, until the time without use that you chose has passed, or until Sioul closes. Your Bitwarden account is set once, in **Accounts ▸ Your accounts**, under **Password manager**: the Sites page fills logins from it, and the account forms can take a password from it. On a computer, from Accounts or from the Sites page, the vault can open with your security key, as its second step, or alone when Bitwarden knows the key as a passkey. A login made for another domain says so, so that a look-alike site shows. See [Sites](sites.md).
 
 On Android, sites open in your browser, with its own protections, and Sioul keeps no login there.
 
@@ -207,7 +207,7 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 | OpenStreetMap's geocoder (Nominatim); when it finds nothing, the Base Adresse Nationale (your region France), then Photon (komoot) | your contacts' postal addresses, once each, nothing else | only after you choose **Place them** |
 | OpenStreetMap's geocoder (Nominatim); when it finds nothing, the Base Adresse Nationale (your region France), then Photon (komoot) | an event's place, once, nothing else | only when you press **Map** in its card, and only when the event has no point of its own and the place was never looked up |
 | OpenStreetMap's map images, or those you chose | which part of the map is shown | while the map is open |
-| The Base Adresse Nationale (France), or Photon (komoot) elsewhere | what you type in an event's place, three characters at least, never its title | as you type a place, after a pause, while **Suggest addresses as you type** is on (Settings ▸ Agenda) |
+| The Base Adresse Nationale (France), or Photon (komoot) elsewhere | what you type in an event's place, three characters at least, never its title | as you type a place, after a pause, while **Suggest addresses as you type** is on (the Agenda's ⚙) |
 | The maps app or page you open | an event's place, and its point when known | only when you press **Directions** |
 | Your guests | an invitation to a meeting you organise: its title, times, place, notes and who else is invited, never your time around it, its costs, your reminder, what ties it to your messages, notes and projects, nor who takes a child's event; later its changes, or its cancellation | when you save it with guests, move it, give it a status, or delete it or one time of it: for a meeting made in Sioul, by you, from your drafts; for one made elsewhere, by your calendar's server when it schedules meetings itself, else by you ([Agenda](agenda.md#inviting-people)) |
 | Your calendar server | a question: whether it schedules meetings itself, and by which addresses it knows you | once a day, during a sync |
@@ -215,10 +215,12 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 | Their domain's Web Key Directory, then keys.openpgp.org | the addresses you write to | only when you choose **Look for their keys** |
 | The address written on your security key, your domain's key directory, then keys.openpgp.org | your security key's fingerprint, and your addresses' domain | only when you choose **Look for it** or **Look for a newer version** |
 | Each site you pin | a request for its own icon | about once a week |
+| The address of each calendar you subscribe to; for France's ready-made holidays, Etalab's files (on GitHub Pages) and the Ministry of Education's open data (on Opendatasoft) | a request for the calendar's file, with nothing of yours | once you subscribe to it (Agenda ⚙): then when Sioul opens and every three hours on a computer, a few times a day on a phone; a calendar of holidays once a day |
+| The server a contact's card names for its photo | a request for the picture, with nothing of yours | only when you press **Load the photo** on that card, once |
 | Anthropic | the subject and the first 4,000 characters of the text of each message in an address you protect, unmasked | only with **Let the AI read it first**, and your own key |
 | The AI agent you connect, and its provider | what it reads | only if you connect one ([Using an AI agent](ai-agent.md)) |
 | GitHub | your token; searches for your issues and pull requests | only if you turn GitHub on |
-| Your Bitwarden server, and its own security-key page when your key is your second step | your login, to open your vault | when you fill a login from it |
+| Your Bitwarden server, and its own security-key page when your key is your second step | your login, to open your vault | when you unlock your vault |
 | Your Nextcloud (Murena's included) | the sharing folder's sealed files | only if Sioul keeps that folder in step itself, or fetches it from there as a backup |
 | ClamAV's update servers | a request for virus signatures | once a day, only when your system keeps none of its own |
 

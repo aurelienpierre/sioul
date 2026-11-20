@@ -28,7 +28,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
 
-**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
+**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. What belongs to Sioul as a whole is in **Settings**, in tabs across the page: Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
 ### Keys
 
@@ -54,13 +54,14 @@ Sioul on Android: [Install](install.md#on-android). On a small screen (a phone, 
 - **The status line** is at the bottom of the screen on Android, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
 - **One pane at a time**: a page shows its list, then what you open across the whole screen; **Back**, on the bar or Android's, comes back.
 - **Menus** open at a long press on a touch screen, where a mouse would right click.
+- **Settings** opens on the list of its sections, each with a line on what it holds: a tap opens one, and **Back** returns to the list.
 
 What differs on Android:
 
-- **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
-- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as their row in What reaches you says; the others go to your voicemail ([Calls](calls.md)).
+- **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)), new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)) and a code you just asked a site for, with **Copy**; while nobody is at one of your computers, also for a meal, a nap or the night as it comes, and for the end of work hours. The reminders of dates, waits, payments and papers do not come on a phone: a computer or a tablet tells them, and the phone's home screen card lists them.
+- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as this phone's own table says, under **Calls** in its card in **Settings ▸ Devices**; the others go to your voicemail ([Calls](calls.md)).
 - **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people by who wrote them, the rest at the gathered times ([Settings ▸ Devices, this phone's card](settings.md#this-phone)).
-- **Mail** is fetched while Sioul is open: Android stops it in the background.
+- **Mail** is fetched while Sioul is open. Once Sioul is put away, a phone that shares with your other devices goes on fetching its inboxes in the background, every quarter of an hour at the times when new mail may be told. Its switch is **Keep this phone in step in the background**, on unless you turn it off, in the phone's card in **Settings ▸ Devices**, under **Do not disturb on this phone**. A phone that does not share fetches only while Sioul is open.
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
 - **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
@@ -68,7 +69,7 @@ What differs on Android:
 - **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself; a new phone joins them through Murena's sign-in, or another Nextcloud's, from the Porch's **Join your other devices** ([below](#join-your-other-devices)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
 - **Cards on the home screen**: Sioul's widgets (a long press on the home screen, **Widgets**). The full card, "Sioul", begins with today: the date, the weather now and, on the same row, each of the next four hours, the next morning, afternoon, evening and night, then the next seven days, at the place you chose for the weather (tap the weather in Sioul's status line to choose one). Under it, what the Porch has for you, one short line each: a dose due, never as "not taken" ("check before taking it" when another device may know), a code you just asked a site for, the reminders of dates, waits, payments and papers, a call Sioul declined, two events at once. Last, what now is for and, in work or admin time, the next step. Never a count. A tap on a dose, a code or a call opens the Porch; on a reminder, what it is about; on the step, **Now**. The mail and your events have cards of their own, "Sioul — Mail" and "Sioul — Agenda", in the same list of widgets, to place and order as you like: the latest messages on the Porch (who wrote, in bold while you have not read it, when, the subject, a line of the text; outside the hours chosen for mail, only when the Porch opens), and your coming events, day by day, each in its calendar's colour. With **Details on the home screen** turned off ([Settings](settings.md#display)), they name no sender, subject, event, code, dose, reminder, call or step; the date and the weather still show.
 
-**On a tablet**, Sioul is the same Android app, with a computer's layout whenever its window is 720 points wide or more (held sideways, or full screen), and a phone's when it is narrower (split screen). It is a tablet for what follows you, not a phone: the reminders of dates, waits, payments and papers come there as on a computer, and your other devices call it "the tablet". Without a SIM it screens no calls and reads no texts: it shows your phone's texts as a computer does. Settings ▸ **This tablet** says what this device is, if Sioul guessed wrong ([Settings](settings.md#display)).
+**On a tablet**, Sioul is the same Android app, with a computer's layout whenever its window is 720 points wide or more (held sideways, or full screen), and a phone's when it is narrower (split screen). It is a tablet for what follows you, not a phone: the reminders of dates, waits, payments and papers come there as on a computer, and your other devices call it "the tablet". Without a SIM it screens no calls and reads no texts: it shows your phone's texts as a computer does. If Sioul guessed wrong, **What this device is**, on this device's card in **Settings ▸ Devices**, says whether it is a phone, a tablet or a computer ([Settings](settings.md#devices)).
 
 ## Join your other devices
 
@@ -158,6 +159,8 @@ From a CalDAV and CardDAV server: Nextcloud, Fastmail, iCloud, your host.
 
 Already added your mail? On its card in **Your accounts**, **What this server offers** asks the server: its calendars and contacts, and for a Nextcloud, its version and apps. One click adds them.
 
+Two more ways in, without an account. A calendar published at a web address, such as a school's or a university's timetable, is read from there: in the Agenda's ⚙, under **Your agendas**, **Subscribe to a calendar…** ([Agenda](agenda.md#calendars-by-their-address)). Contacts kept in a vCard or a CSV file come in with **Import…**, an icon above the list on the Contacts page ([Contacts](contacts.md#importing)).
+
 ## Add Google
 
 Google takes no password from other programs: you sign in on Google's own page.
@@ -175,7 +178,7 @@ Google's mail is added in the mail form, above: with an app password, or signed 
 
 ## Choose your notes folder
 
-Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) apart from your notes, as plain text files in its own folder, and your papers' and letters' files in folders of their own. Until you move them there, once, they are in your notes folder ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
+Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul keeps its own lists (projects, budgets, the lists of your papers and letters) apart from your notes, as plain text files in its own folder, and your papers' and letters' files in folders of their own. A new installation starts this way. One that comes from a version before 0.0.12 keeps them in your notes folder until you move them, once, and every device must run the new version first ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)).
 
 Open **Notes**: as long as this device has no notes folder, the page asks for one, with **Choose a folder…**. Sioul reads it and links to it; it never owns it. Its settings (⚙) change it later. See [Your notes folder](notes.md#your-notes-folder).
 

@@ -93,7 +93,7 @@ A task's tags are its categories: they are written into the task itself, on your
 
 ### Categories on contacts {#categories-on-contacts}
 
-Categories are the groups your address book has already: "Family", "Friends", "Neighbours". They are saved in the card itself, so your phone and your other programs see them. A list can name a category (**Settings ▸ What reaches you**, "Your contacts' categories"): its people then reach you as that list says. Nothing goes on a list by itself, family and friends included.
+Categories are the groups your address book has already: "Family", "Friends", "Neighbours". They are saved in the card itself, so your phone and your other programs see them. A list can name one (**Settings ▸ What reaches you**, under **Who is in which circle**, **Groups**): its people then reach you as that list says. Nothing goes on a list by itself, family and friends included. In an address book that someone else can write, groups decide nothing until you turn them on for that book, in the Contacts ⚙ under **Address books**.
 
 ### A project, or a topic? {#a-project-or-a-topic}
 
@@ -132,7 +132,7 @@ A task can prepare an appointment. In the Agenda, an event's card offers **Add s
 
 **Before** and **After**, on an event or on a task, keep the time to get ready, get there and come back, from 5 minutes to 2 hours each. The plan keeps that time free, and never counts it as a pause.
 
-When the way there has parts of its own, a bus, then the walk from the stop, add them as legs: **Add a ride or a walk…**, in the appointment's card, with **From a timetable** when its time comes from one.
+When the way there has parts of its own, a bus, then the walk from the stop, add them as legs: **Add a ride or a walk…**, in the appointment's card, with **From a timetable** when its time comes from one. Its form says which way it goes: **To get there** puts it before the appointment, **To come back** after it.
 
 - **A leg is an event of its own**, in the appointment's calendar, so your phone's calendar shows it too.
 - **It moves with the appointment.** Change the appointment's time, and its legs move by as much, under the same **Undo**. A bus moved that way is said "timetable not checked" until you set its time yourself.
@@ -168,7 +168,7 @@ A project's **Board**, **List** and **Gantt** buttons open the same views, kept 
 
 ### What your other apps see {#what-your-other-apps-see}
 
-Steps, waits and kinds are written into your tasks in the standard's own terms, on your calendar server. Task apps that know steps show yours in your order (Nextcloud Tasks, Tasks.org). Few understand waits: most show a wait as a step of the other task, and some drop it when you change the task there. [Works with](compatibility.md#other-apps-on-the-same-accounts) says which app keeps what. A list on Google Tasks keeps less, and Sioul greys what Google would not keep.
+Steps, waits and kinds are written into your tasks themselves, on your calendar server. Steps are written as the standard says: task apps that know steps show yours in your order (Nextcloud Tasks, Tasks.org). Waits and kinds are written in lines of Sioul's own, with the standard's words for them: other apps do not show them, and keep them as long as they save a task without dropping what they do not know. [Works with](compatibility.md#other-apps-on-the-same-accounts) says which app keeps what. A list on Google Tasks keeps less, and Sioul greys what Google would not keep.
 
 More: [Tasks](tasks.md) · [Time around an event](agenda.md#time-around-an-event)
 

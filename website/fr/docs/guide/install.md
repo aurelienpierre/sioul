@@ -96,6 +96,7 @@ La suite de cette page construit Sioul à partir de ses sources : pour les dis
 - **Rust** 1.92 ou plus récent, avec Cargo.
 - **Un compilateur C++** : la fenêtre est en partie écrite en C++.
 - **Les fichiers de développement de D-Bus**, sur Linux : pour le trousseau du système, où vont les mots de passe, et pour les notifications.
+- **Les fichiers de développement de pcsc-lite**, sur Linux : pour les clés de sécurité qui portent votre clé OpenPGP.
 - **Qt 6.9 ou plus récent** (Sioul est construit et utilisé avec Qt 6.11), avec ces modules : Qt Declarative (QML et Qt Quick), Qt WebEngine avec Qt WebChannel et Qt PDF, Qt Multimedia, Qt Positioning, Qt Location et Qt Image Formats.
 
 En option, et installables plus tard :
@@ -110,7 +111,7 @@ En option, et installables plus tard :
 === "Fedora"
 
     ```
-    sudo dnf install git rust cargo gcc-c++ dbus-devel \
+    sudo dnf install git rust cargo gcc-c++ dbus-devel pcsc-lite-devel \
         qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwebengine-devel \
         qt6-qtwebchannel-devel qt6-qtpdf-devel qt6-qtpositioning-devel \
         qt6-qtmultimedia-devel qt6-qtlocation qt6-qtimageformats
@@ -132,7 +133,7 @@ En option, et installables plus tard :
 
 === "Debian, Ubuntu, Arch"
 
-    Les fichiers de développement de D-Bus, un compilateur C++, et Qt 6.9 ou plus récent avec les modules ci-dessus, et leurs modules QML. Les distributions les nomment différemment : Debian et Ubuntu `qt6-…-dev` et `qml6-module-…`, Arch `qt6-…`. Votre version de la distribution doit fournir Qt 6.9 ou plus récent.
+    Les fichiers de développement de D-Bus et de pcsc-lite (Debian et Ubuntu : `libpcsclite-dev` ; Arch : `pcsclite`), un compilateur C++, et Qt 6.9 ou plus récent avec les modules ci-dessus, et leurs modules QML. Les distributions les nomment différemment : Debian et Ubuntu `qt6-…-dev` et `qml6-module-…`, Arch `qt6-…`. Votre version de la distribution doit fournir Qt 6.9 ou plus récent.
 
     Rust depuis [rustup.rs](https://rustup.rs) quand celui de votre version est plus ancien que 1.92.
 
@@ -165,7 +166,7 @@ Installez juste après avoir construit. Si vous lancez les tests de Sioul (`carg
 
 ### Mettre à jour {#updating}
 
-Dans le dossier `sioul` : `git pull`, puis à nouveau les deux lignes `cargo build` et les trois lignes `install`, ou `tools/install.sh`. Vos réglages et vos données sont gardés à part du programme, dans vos propres dossiers : ils restent tels quels.
+Dans le dossier `sioul` : `git pull`, puis à nouveau les deux lignes `cargo build` et les lignes de [Dans votre menu d’applications](#into-your-application-menu), ou `tools/install.sh`. Vos réglages et vos données sont gardés à part du programme, dans vos propres dossiers : ils restent tels quels.
 
 ## L’essayer d’abord sur des courriels inventés {#trying-it-on-invented-mail-first}
 
@@ -197,7 +198,7 @@ Pour les téléphones et tablettes 64 bits sous Android 9 ou plus récent. Sioul
 1. Sur le téléphone ou la tablette, ouvrez la page des versions et téléchargez l’APK.
 2. Ouvrez-le. Android demande si votre navigateur (ou votre gestionnaire de fichiers) peut installer des applications : autorisez-le, puis **Installer**. Play Protect, si le téléphone l’a, peut dire qu’il ne connaît pas l’application.
 3. Chaque version est signée de la même clé, celle de Sioul : la suivante s’installe par-dessus, vos données gardées.
-4. **Les paramètres restreints** : depuis Android 13, Android tient certains réglages à l’écart d’une application installée depuis un fichier : l’accès aux notifications et, depuis Android 15, les autorisations des SMS. La première fois que Sioul les demande, Android peut répondre « Paramètre restreint » ; c’est seulement ensuite que les infos de l’application Sioul proposent, sous ⋮ (en haut), **Autoriser les paramètres restreints**, confirmé avec votre code ; demandez ensuite de nouveau dans Sioul. Sioul dit ces étapes, dans leur ordre, là où il les demande, dans le résultat de l’ajout et sur le Porche, avec **Infos de l’application Sioul**.
+4. **Les paramètres restreints** : depuis Android 13, Android tient certains réglages à l’écart d’une application installée depuis un fichier : l’accès aux notifications et, depuis Android 15, les autorisations des SMS. La première fois que Sioul les demande, Android peut répondre « Paramètre restreint » ; c’est seulement ensuite que les infos de l’application Sioul proposent, sous ⋮ (en haut), **Autoriser les paramètres restreints**, confirmé avec votre code ; demandez ensuite de nouveau dans Sioul. Sioul dit ces étapes, dans leur ordre, là où il les demande, dans le résultat de l’ajout et sur le Porche, avec **Infos de l’application Sioul**. Dans **Paramètres ▸ Appareils**, la carte de ce téléphone a aussi **Paramètres restreints d’Android** : les trois mêmes étapes, un bouton pour chacune, chacune cochée dès que Sioul voit qu’elle a réussi.
 
 Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléphone ou une tablette](first-steps.md#on-a-phone). Comment l’APK est construit, par GitHub ou à la main, et ce qui diffère sur Android : les [notes sur Android (en anglais)](https://sioul.aurelienpierre.com/dev/android.html).
 
