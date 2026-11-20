@@ -133,9 +133,20 @@ fn tesseract(image: &Path, wanted: &[String]) -> Result<String, Unread> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// The most pages of a PDF read: a letter is a few pages; a file a site
+/// offers chooses its own number of pages, each made a picture at 300 dpi
+/// before it is read (docs/porch.md, "Paper letters").
+pub const PAGES_READ: u32 = 100;
+
+/// `pdftotext`'s and `pdftoppm`'s words for the pages read: the first `PAGES_READ`.
+fn first_pages() -> [String; 4] {
+    ["-f".into(), "1".into(), "-l".into(), PAGES_READ.to_string()]
+}
+
 /// A scan's text: a PDF's own, else read from its pages; an image's, read.
 /// `work` is a folder for the pages while they are read (emptied after);
-/// `wanted`, Tesseract's models to read them with ("fra", "eng").
+/// `wanted`, Tesseract's models to read them with ("fra", "eng"). At most
+/// `PAGES_READ` pages of a PDF, whether added by hand or offered by a site.
 pub fn text_of(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unread> {
     let extension = file.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if extension != "pdf" {
@@ -144,7 +155,7 @@ pub fn text_of(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Un
     if !runs("pdftotext") {
         return Err(Unread::Missing(install_hint(wanted)));
     }
-    let own = crate::command(program("pdftotext")).args(["-layout"]).arg(file).arg("-").output().map_err(|e| Unread::Failed(e.to_string()))?;
+    let own = crate::command(program("pdftotext")).args(["-layout"]).args(first_pages()).arg(file).arg("-").output().map_err(|e| Unread::Failed(e.to_string()))?;
     let text = String::from_utf8_lossy(&own.stdout).to_string();
     if text.chars().filter(|c| c.is_alphanumeric()).count() > 80 {
         return Ok(text);
@@ -160,7 +171,7 @@ pub fn text_of(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Un
 
 /// A PDF's pages made images in `work`, then read in their order.
 fn pages_read(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unread> {
-    let made = crate::command(program("pdftoppm")).args(["-r", "300", "-png"]).arg(file).arg(work.join("page")).output().map_err(|e| Unread::Failed(e.to_string()))?;
+    let made = crate::command(program("pdftoppm")).args(["-r", "300", "-png"]).args(first_pages()).arg(file).arg(work.join("page")).output().map_err(|e| Unread::Failed(e.to_string()))?;
     if !made.status.success() {
         return Err(Unread::Failed(String::from_utf8_lossy(&made.stderr).lines().last().unwrap_or("").to_string()));
     }
@@ -177,6 +188,11 @@ fn pages_read(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pdf_is_read_up_to_a_hundred_pages() {
+        assert_eq!(first_pages(), ["-f", "1", "-l", "100"]);
+    }
 
     /// Windows: Tesseract found where its installers put it, off the PATH,
     /// in folders invented for the test standing for Program Files and
