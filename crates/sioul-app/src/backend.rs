@@ -3538,7 +3538,7 @@ pub struct SioulRust {
     time_view: QString,
     extensions: QString,
     sign_in_page: QString,
-    shared: Arc<Shared>,
+    shared: WindowShared,
 }
 
 /// What the background threads and the window share.
@@ -3656,6 +3656,21 @@ pub(crate) struct Shared {
     pub(crate) agenda_asked: AtomicBool,
     /// The days shown once already, made from the first plan before the page asked (`agenda::days_wanted`).
     pub(crate) agenda_prefilled: AtomicBool,
+}
+
+/// The window's `Shared` (`SioulRust`), made as QML makes the window's
+/// `Sioul` (main.qml): before any page, and before `start`. What the window
+/// kept between sessions is read into it then, so that a page that reads it
+/// at once, as a property's first value, reads it as it was left: the task
+/// and notes pages' choices and how each page was left (`work::WorkState`, a
+/// Porch card answered "Leave as is", a section folded). Read only: nothing
+/// is written or migrated here.
+struct WindowShared(Arc<Shared>);
+
+impl Default for WindowShared {
+    fn default() -> WindowShared {
+        WindowShared(Arc::new(Shared { work: Mutex::new(work::WorkState::load()), ..Shared::default() }))
+    }
 }
 
 /// The plan is made again every twelve hours, and when the day changes: a task
@@ -4275,7 +4290,7 @@ pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
         let generation = shared.generation.fetch_add(1, Ordering::Relaxed) + 1;
         let views = compute(shared);
         let _ = qt.queue(move |mut sioul| {
-            let shared = Arc::clone(&sioul.rust().shared);
+            let shared = Arc::clone(&sioul.rust().shared.0);
             // Only the newest: results queued while the window was frozen (a phone
             // with Sioul in the back) are not applied one after the other at its return.
             if shared.generation.load(Ordering::Relaxed) != generation || shared.shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
@@ -5173,7 +5188,7 @@ fn message_json(key: &str) -> String {
 
 impl qobject::Sioul {
     pub(crate) fn shared(&self) -> Arc<Shared> {
-        Arc::clone(&self.rust().shared)
+        Arc::clone(&self.rust().shared.0)
     }
 
     fn text(&self, id: &QString) -> QString {
@@ -5225,11 +5240,8 @@ impl qobject::Sioul {
         // Your sites' own icons, from the start rather than at the first minute.
         crate::sites::favicon_tick(&self.qt_thread());
         update_weather(&self.qt_thread(), &self.shared());
+        // The task pages as you left them are read already, with the window's object (`WindowShared`).
         let (qt, shared) = (self.qt_thread(), self.shared());
-        // The task pages as you left them.
-        if let Ok(mut state) = shared.work.lock() {
-            *state = work::WorkState::load();
-        }
         show(&qt, &shared);
         pim::show_pim(&qt, &shared);
         work::show_work(&qt, &shared);
@@ -9878,5 +9890,25 @@ mod tests {
         } else {
             assert_eq!(one_file_name("C:evil.txt"), "C:evil.txt");
         }
+    }
+
+    /// A card answered "Leave as is" stays away at the next start: the
+    /// window's object, as QML makes it in main.qml, holds the flags saved by
+    /// the session before when the pages are made, before `start` runs, so
+    /// that a page reading one as a property's first value reads it as saved
+    /// (the Porch's cards came back at every start).
+    #[test]
+    fn a_flag_saved_reads_true_before_start() {
+        sioul_core::config::stand_ins_only();
+        let flag = "porch-join-left";
+        // The session before: "Leave as is" pressed (`setViewFlag`).
+        crate::work::set_view_flag(&Shared::default(), flag, true);
+        // The next start: the window's object as CXX-Qt makes it, `start` not called yet.
+        let window = SioulRust::default();
+        let shared: &Shared = &window.shared.0;
+        let read = crate::work::view_flag(shared, flag);
+        // The other tests' folders as they were.
+        let _ = std::fs::remove_file(crate::work::WorkState::path());
+        assert!(read, "a flag saved reads true before start");
     }
 }

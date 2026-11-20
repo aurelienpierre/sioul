@@ -71,9 +71,11 @@ pub struct SioulRust {
     budgets: QString,
     …
     places_found: QString,
-    shared: Arc<Shared>,
+    shared: WindowShared,
 }
 ```
+
+`shared` holds what the window's threads share, an `Arc<Shared>`. It is made with the object, as QML makes `Sioul` in main.qml, before any page and before `start`: what the window kept between sessions (how each page was left, `work::WorkState`) is read into it then, since a page may read it at once, as a property's first value.
 
 The methods are written in one `impl qobject::Sioul` block further down. They are short: each passes its arguments to a module of the crate (`work.rs`, `pim.rs`, `health.rs`…) or of the core, and returns what it gets back. For example:
 

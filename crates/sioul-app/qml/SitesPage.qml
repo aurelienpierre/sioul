@@ -82,7 +82,8 @@ Item {
     function devicesFor(site) {
         return site && (site.microphone || site.camera) ? page.callDevices : ({})
     }
-    // A page's scripts, for a site (null: a page of no site).
+    // A page's scripts, for a site (null: a page of no site). Bindings read
+    // it: the sites' web holder is made before them (`keepViews`).
     function webFixesFor(site) {
         // In every page, before its own scripts, the security keys' fix (SitesWeb.qml).
         return [page.window.sitesWeb().webauthnFix, {
@@ -234,8 +235,14 @@ Item {
         for (let i = 0; i < viewIds.count; i++)
             have.push(viewIds.get(i).siteId)
         for (const id of ids) {
-            if (have.indexOf(id) < 0)
+            if (have.indexOf(id) < 0) {
+                // The sites' web holder (SitesWeb.qml) made first, here: a view's
+                // `fixes` reads it at once (`webFixesFor`), and made from inside
+                // that binding it changed the loader the binding had just read
+                // (a binding loop on "fixes").
+                page.window.sitesWeb()
                 viewIds.append({ siteId: id })
+            }
         }
     }
 
