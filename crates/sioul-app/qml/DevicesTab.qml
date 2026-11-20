@@ -215,7 +215,7 @@ ColumnLayout {
             Layout.fillWidth: true
             text: field.host.sioul.text(field.host.titles[field.column])
             font.pixelSize: 12
-            elide: Text.ElideRight
+            wrapMode: Text.Wrap
             color: field.host.theme.muted
         }
         Label {
@@ -294,7 +294,9 @@ ColumnLayout {
         onClicked: tab.sharingAsked()
     }
 
-    // The table's titles, above the devices.
+    // The table's titles, above the devices: each as wide as its column, on two
+    // lines when its words need them ("Dernière ouverture" in 95 points), their
+    // last lines level above the cells.
     RowLayout {
         visible: tab.wide
         Layout.fillWidth: true
@@ -312,10 +314,11 @@ ColumnLayout {
 
                 Layout.preferredWidth: tab.col(index)
                 Layout.maximumWidth: tab.col(index)
+                Layout.alignment: Qt.AlignBottom
                 text: tab.sioul.text(modelData)
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
                 color: tab.theme.muted
             }
         }

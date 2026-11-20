@@ -550,6 +550,18 @@ ColumnLayout {
                     font.italic: cellButton.modelData.cell.value === "own"
                     Accessible.name: tab.theme.plain(cellButton.modelData.circle.label + ", " + (tab.shown.people.channels[cellButton.modelData.column - 1] || { label: "" }).label + ": " + cellButton.modelData.cell.label)
                     onClicked: behaviours.ask(cellButton.modelData.circle, [cellButton.modelData.cell], cellButton)
+
+                    // A third of the reading column each: words longer than that ("Aux heures de
+                    // travail et de démarches") go on to a second line, never cut.
+                    contentItem: Label {
+                        text: cellButton.text
+                        textFormat: Text.PlainText
+                        font: cellButton.font
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: cellButton.palette.buttonText
+                    }
                 }
             }
             Label {
