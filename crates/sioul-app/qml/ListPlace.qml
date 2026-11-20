@@ -59,12 +59,8 @@ QtObject {
     property var held: []
     // The scope the rows shown were read under.
     property string shownScope: ""
-    // The place noted, put back once more after the window's layout; the view moved meanwhile by
-    // the page on purpose (a row brought into view), which then stays.
+    // The place noted, put back once more after the window's layout.
     property var settling: null
-    property bool pageMoved: false
-    // This putting the place back, at work: its own moves are not the page's.
-    property bool puttingBack: false
     // A row the person just made from this list, brought into view when it comes.
     property string wanted: ""
 
@@ -132,8 +128,13 @@ QtObject {
             place.revealWanted(false)
         }
         place.settling = noted
-        place.pageMoved = false
         place.view.Window.window.update()
+    }
+
+    // The page moves the view itself, on purpose (a row brought into view right after its rows
+    // changed): the place is not put back over it.
+    function leave() {
+        place.settling = null
     }
 
     // The list at its top, as when it shows other things; the person's own ask too.
@@ -315,12 +316,6 @@ QtObject {
     // under it still there in its place; none, the nearest over it where it was. In a ListView,
     // when none of the rows it had made is left, the next row still there in the top one's place.
     function putBack(noted) {
-        place.puttingBack = true
-        place.putBackNow(noted)
-        place.puttingBack = false
-    }
-
-    function putBackNow(noted) {
         const flick = place.flick
         if (flick === null || flick.moving)
             return
@@ -370,12 +365,6 @@ QtObject {
     // The row the person just made, in view by the smallest move once it is there; `last`: no
     // correction comes after (else it is looked for again then).
     function revealWanted(last) {
-        place.puttingBack = true
-        place.revealNow(last)
-        place.puttingBack = false
-    }
-
-    function revealNow(last) {
         if (place.wanted === "" || place.flick === null || place.flick.moving)
             return
         const flick = place.flick
@@ -443,7 +432,7 @@ QtObject {
         function onAfterAnimating() {
             const noted = place.settling
             place.settling = null
-            if (noted !== null && !place.pageMoved)
+            if (noted !== null)
                 place.putBack(noted)
             place.revealWanted(true)
         }
@@ -457,19 +446,6 @@ QtObject {
 
         function onMovementStarted() {
             place.settling = null
-        }
-
-        // While a putting back waits: moved by the page, unless Qt just kept the view within
-        // content grown shorter (its own move, made as the content's height changes, to its end).
-        function onContentYChanged() {
-            if (place.settling !== null && !place.puttingBack)
-                place.pageMoved = true
-        }
-
-        function onContentHeightChanged() {
-            const flick = place.flick
-            if (place.settling !== null && place.pageMoved && Math.abs(flick.contentY - place.most()) < 0.5)
-                place.pageMoved = false
         }
 
         // Once every handler of the movement's end has run (a page's own fixing up included).

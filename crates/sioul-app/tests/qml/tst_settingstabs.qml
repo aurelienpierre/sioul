@@ -298,7 +298,8 @@ Item {
             compare(narrow.section, "hours")
             verify(!narrow.listed, "the section shows")
             verify(narrow.canGoBack, "Back returns to the list")
-            verify(named(narrow, "setting:time_off").length === 1, "its row")
+            // Its rows given once the change has settled (ListPlace.qml).
+            tryVerify(() => named(narrow, "setting:time_off").length === 1, 2000, "its row")
             save(phone, "settings-phone-hours-" + data.language)
             narrow.back()
             verify(narrow.listed, "the list again")

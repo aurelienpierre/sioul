@@ -441,15 +441,26 @@ Item {
                     color: page.theme.warm
                 }
 
+                // A setting changed, here or on another device: the section keeps its place
+                // (ListPlace.qml); another section, from its top.
+                ListPlace {
+                    id: settingsPlace
+
+                    view: scroll
+                    source: page.groups
+                    scope: page.section
+                }
+
                 // Each heading's rows in a frame of their own.
                 Repeater {
-                    model: page.groups
+                    model: settingsPlace.rows
 
                     delegate: Section {
                         id: group
 
                         required property var modelData
                         required property int index
+                        readonly property string placeKey: "group:" + group.modelData.group
 
                         Layout.fillWidth: true
                         Layout.topMargin: group.index === 0 ? 6 : 14
@@ -462,6 +473,7 @@ Item {
 
                             delegate: SettingRow {
                                 required property var modelData
+                                readonly property string placeKey: modelData.key
 
                                 objectName: "setting:" + modelData.key
                                 Layout.fillWidth: true

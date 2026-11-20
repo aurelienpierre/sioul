@@ -173,6 +173,14 @@ Item {
                 item = item.parent
             flick = item
             verify(flick !== null && flick.contentHeight > flick.height, "a day longer than its room")
+            // The page's parts made a moment later (its medicines, under the day) laid out first.
+            for (let i = 0; i < 50; ++i) {
+                const height = flick.contentHeight
+                wait(30)
+                frame()
+                if (flick.contentHeight === height)
+                    break
+            }
         }
 
         function test_a_meal_later_from_its_row_keeps_the_place() {

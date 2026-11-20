@@ -149,6 +149,7 @@ Item {
             page.openFolders = next
         }
         Qt.callLater(() => {
+            listPlace.leave()
             list.contentY = y
             if (row.open || index < 0)
                 return

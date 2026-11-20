@@ -129,8 +129,9 @@ Item {
         function test_the_door_shows_them_under_their_heading_in_hours() {
             page.showSetting("needs")
             compare(page.section, "hours")
+            // Its rows given once the change has settled (ListPlace.qml).
+            tryVerify(() => walk(page, i => i instanceof NeedsSection, []).length === 1, 2000, "one block")
             const sections = walk(page, i => i instanceof NeedsSection, [])
-            compare(sections.length, 1, "one block")
             tryVerify(() => sections[0].visible && sections[0].height > 0)
             // Laid out, and scrolled to it (ParametersPage.qml's `toSetting`, 150 ms).
             wait(400)

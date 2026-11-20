@@ -88,6 +88,7 @@ Item {
         if (found === null)
             return
         page.wanted = ""
+        lettersPlace.leave()
         scroll.contentItem.contentY = Math.max(0, Math.min(found.mapToItem(column, 0, 0).y, column.height - scroll.availableHeight))
     }
 

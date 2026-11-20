@@ -512,6 +512,7 @@ Item {
                 if (!row || !flick)
                     return
                 const top = row.y + listColumn.y
+                dayPlace.leave()
                 if (top < flick.contentY || top + row.height > flick.contentY + flick.height)
                     flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
             }
@@ -525,6 +526,7 @@ Item {
 
                 function onMedicinesWanted() {
                     const flick = scroll.contentItem as Flickable
+                    dayPlace.leave()
                     if (flick && medicinesHere.visible)
                         flick.contentY = Math.max(0, Math.min(medicinesHere.y + listColumn.y - 8, flick.contentHeight - flick.height))
                 }
