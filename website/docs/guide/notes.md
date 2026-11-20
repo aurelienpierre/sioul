@@ -28,7 +28,7 @@ Choose your Obsidian vault, or the **Notes** folder that Nextcloud Notes keeps i
 Some of what Obsidian draws, Sioul shows as the text it is: callouts, highlights, footnotes, formulas and diagrams. A note embedded in another (`![[another note]]`) shows as a link to it; pictures show in place.
 
 <figure markdown="span">
-  [![The Notes page: New note and the other buttons above a list of every note, each with its folder; a note open in the middle, its path and tags under its title, its text with links and a picture of a sketch; on the right, what is tied to it (tasks, a message, other notes) and its lines not ticked, each with a button that makes it a task.](../assets/screens/notes.png){ loading=lazy }](../assets/screens/notes.png "Open the picture at full size")
+  [![The Notes page: a search field, New note and the other buttons, then List and Folders above every note in its folder, Projects unfolded; a note open in the middle, its path and tags under its title, Edit and Aa beside it, its text with links and a picture of a sketch; on the right, Add and Link to…, what is tied to it (tasks, a message, other notes) with See them all, and its lines not ticked.](../assets/screens/notes.png){ loading=lazy }](../assets/screens/notes.png "Open the picture at full size")
   <figcaption>A note, read, with what is tied to it on the side.</figcaption>
 </figure>
 

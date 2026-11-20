@@ -129,7 +129,7 @@ Rules in the budget file can send a sender's or a word's payments to a budget by
 ## Bank accounts {#bank-accounts}
 
 <figure markdown="span">
-  [![Bank accounts on the Budgets page: two cards, each with its balance from the bank's file, the budgets it fills, the reserves that top it up, its last movements, each saying where it went and why, with ⋯ beside it, and Take in an export…, Rules… and Edit; below, a payment that took another amount than expected.](../assets/screens/bank-accounts.png){ loading=lazy }](../assets/screens/bank-accounts.png "Open the picture at full size")
+  [![Bank accounts on the Budgets page: two cards, each with its balance from the bank's file, the budgets it fills, Take in an export…, Rules… and Edit; the first with the reserves that top it up and its last movements folded, the second with its last 6 movements unfolded, each saying where it went and why, with "As the rules say" and ⋯ beside it.](../assets/screens/bank-accounts.png){ loading=lazy }](../assets/screens/bank-accounts.png "Open the picture at full size")
   <figcaption>Each account, the budgets it fills, and where each movement went.</figcaption>
 </figure>
 

@@ -9,7 +9,7 @@ description: Sioul's mail client - every address and folder, each message checke
 The Mail page keeps all your mail, from every address, for when you choose to look; what is new waits on [the Porch](porch.md) first. Sioul checks each message itself as it arrives, and tells you before you read it whether it really comes from the address it shows. Nothing in a message loads or runs, and an attachment goes through your system's antivirus, when it has one, before it opens. You write in plain text, in Markdown if you like, and whatever you send, move or delete can be undone for ten seconds. Sioul shows no unread counts, no badges and no red.
 
 <figure markdown="span">
-  [![The Mail page on All addresses: on the left, All addresses chosen, then each address, one unfolded with its folders (Inbox, Sent, Drafts, Archive, Junk, Trash); at the top, a search field, More… and the Real time box; above the list, the chips All, Unread, Sent and Spam, the filter's button "Leisure ▾", a square for each address and "All topics ▾"; then the messages by day, one line each with its address's square, who, the subject and the time, a small dot before the unread ones, a quiet "forged" or a topic beside some.](../assets/screens/mail.png){ loading=lazy }](../assets/screens/mail.png "Open the picture at full size")
+  [![The Mail page on All addresses: on the left, All addresses chosen, then each address, one unfolded with its folders (Inbox, Sent, Drafts, Archive, Junk, Trash); at the top, a search field, More… and the Real time box; above the list, the chips All, Unread, Sent and Spam, the filter's button "Work ▾" (in work hours), a square for each address and "All topics ▾"; then the messages by day, one line each with its address's square, who, the subject and the time, a small dot before the unread ones, a paper clip beside those with an attachment.](../assets/screens/mail.png){ loading=lazy }](../assets/screens/mail.png "Open the picture at full size")
   <figcaption>Folders on the left, the newest mail in the middle, no counts.</figcaption>
 </figure>
 
@@ -251,7 +251,7 @@ Filters act on new mail as it arrives, on its server: into a folder, archived, t
 - **Run them on the inboxes…** applies them to everything in your inboxes now, read mail too. Sioul first says what would change; **Run them now** does it after ten seconds, with **Undo**.
 
 <figure markdown="span">
-  [![Under the filters, after Run them on the inboxes…: “In your inboxes now, one message would change, read or not. Codes you asked for, mail set aside and what your spam filter keeps for review stay as they are.”, then each filter that would act with its count, “One message: Bank (From contains …)”, and two buttons, Run them now and Not now.](../assets/screens/mail-filters-run.png){ loading=lazy }](../assets/screens/mail-filters-run.png "Open the picture at full size")
+  [![Under the filters, after Run them on the inboxes…: “In your inboxes now, one message would change, read or not. Codes you asked for, mail set aside and what your own spam filter caught stay as they are.”, then each filter that would act with its count, “One message: Bank (From contains …)”, and two buttons, Run them now and Not now.](../assets/screens/mail-filters-run.png){ loading=lazy }](../assets/screens/mail-filters-run.png "Open the picture at full size")
   <figcaption>Running them on the inboxes: what would change is said first.</figcaption>
 </figure>
 

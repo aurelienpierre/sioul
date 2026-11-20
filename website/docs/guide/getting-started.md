@@ -130,7 +130,7 @@ More: [Agenda](agenda.md)
 The **Tasks** page opens on **Now**: one step, why it comes now, and the one after it. It has five buttons: **Start**, **Done**, **Not now**, **Details** and **What makes it hard?**
 
 <figure markdown="span">
-  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board and Gantt, then Routines and three choices: every project, all kinds, any category. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
+  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board, Gantt and Search, then Routines and three choices: every project, all kinds, any category; under them, the field for a task in one line with New task, and "How is today?" with Clear, Haze and Fog. In the middle, a line saying how long the steps until Monday take and how much room there is, then one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, about how long it takes and what it waits for; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
   <figcaption>Now: one step, why it comes now, and the one after it.</figcaption>
 </figure>
 

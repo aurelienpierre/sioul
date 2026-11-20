@@ -129,7 +129,7 @@ Des règles dans le fichier des budgets peuvent envoyer d’elles-mêmes vers un
 ## Les comptes bancaires {#bank-accounts}
 
 <figure markdown="span">
-  [![Les comptes bancaires sur la page Budgets : deux comptes, chacun sur une carte avec son solde d’après le fichier de la banque, les budgets qu’il remplit, les réserves qui le renflouent, ses derniers mouvements, chacun disant où il est allé et pourquoi, avec ⋯ à côté, et Prendre un export…, Règles… et Modifier ; dessous, un paiement qui a pris un autre montant que prévu.](../assets/screens/fr/bank-accounts.png){ loading=lazy }](../assets/screens/fr/bank-accounts.png "Ouvrir l’image en grand")
+  [![Les comptes bancaires sur la page Budgets : deux comptes, chacun sur une carte avec son solde d’après le fichier de la banque, les budgets qu’il remplit, Prendre un export…, Règles… et Modifier ; le premier avec les réserves qui le renflouent et ses derniers mouvements repliés, le second avec ses 6 derniers mouvements dépliés, chacun disant où il est allé et pourquoi, avec « Selon les règles » et ⋯ à côté.](../assets/screens/fr/bank-accounts.png){ loading=lazy }](../assets/screens/fr/bank-accounts.png "Ouvrir l’image en grand")
   <figcaption>Chaque compte, les budgets qu’il remplit, et où est allé chaque mouvement.</figcaption>
 </figure>
 

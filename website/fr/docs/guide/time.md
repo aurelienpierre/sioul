@@ -107,8 +107,8 @@ L’éditeur montre le brouillon tel qu’il serait émis aujourd’hui. Il gard
 - **Aperçu de la facture**, replié : la facture telle qu’elle s’imprimera, dans sa propre langue.
 
 <figure markdown="span">
-  [![Le même éditeur, les lignes de temps dépliées, chaque tâche avec ses heures et son prix de l’heure, puis les totaux, Émettre, Facture d’acompte… et Supprimer ; dessous, l’Aperçu ouvert : la facture telle qu’elle s’imprimera, avec vos coordonnées, celles du client, les lignes, les totaux et comment payer.](../assets/screens/fr/invoice-preview.png){ loading=lazy }](../assets/screens/fr/invoice-preview.png "Ouvrir l’image en grand")
-  <figcaption>Les lignes de temps dépliées, et l’aperçu.</figcaption>
+  [![Le même éditeur, descendu jusqu’à son Aperçu : la facture telle qu’elle s’imprimera, « Brouillon de facture », les dates de la prestation, la date de paiement et le projet, puis chaque ligne de temps avec sa quantité, son prix de l’heure et son montant, le total, la mention de TVA, vos coordonnées bancaires et comment payer, et ce que coûte un retard de paiement.](../assets/screens/fr/invoice-preview.png){ loading=lazy }](../assets/screens/fr/invoice-preview.png "Ouvrir l’image en grand")
+  <figcaption>L’aperçu, tel que la facture s’imprimera.</figcaption>
 </figure>
 
 L’unité de chaque ligne est une unité que Sioul connaît, aucun prix unitaire n’est sous zéro (moins à payer, c’est une remise, ou un avoir), et un pays s’écrit en deux lettres ou par son nom. L’écriture de droite à gauche (hébreu, arabe) ne s’imprime pas encore : Sioul demande des lettres latines.

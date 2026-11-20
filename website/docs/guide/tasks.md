@@ -9,7 +9,7 @@ description: Tasks in Sioul - one next step with its reason, tasks that wait for
 A plan written as a list is a wall: every line is there at once, and the next step has to be found again each time. Sioul turns the plan into tasks that wait for each other, and shows the one step to take now, with the reason. It lays out your day by itself, around your events, your meals and your rest, in the hours you keep for each kind of work, and nothing is ever overdue. You say how the day is, clear, haze or fog, and a hard day holds less. Your tasks are standard tasks on your own calendar server, which your phone and your other programs see.
 
 <figure markdown="span">
-  [![The Tasks page on "Now". At the top, the tabs Now, The day, List, Board, Gantt and Search; under them, Routines, three choices (every project, all kinds, any category), Agendas and ⚙. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
+  [![The Tasks page on "Now". At the top, the tabs Now, The day, List, Board, Gantt and Search; under them, Routines, three choices (every project, all kinds, any category), Agendas and ⚙; then the field for a task in one line with New task, and "How is today?" with Clear, Haze and Fog. In the middle, a line saying how long the steps until Monday take and how much room there is, then one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now, Details and What makes it hard?. Below, "After that" and the following step, about how long it takes and what it waits for; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
   <figcaption>Now: one step, why it comes now, and the one after it.</figcaption>
 </figure>
 
@@ -136,7 +136,7 @@ They are yours to fill or to leave empty, and they are quiet: messages from site
 After the last step, some time is **Kept free, in case steps take longer** ([How long things take](time.md#how-long-things-take)). When something changed what today holds, a line above the day says why, in words.
 
 <figure markdown="span">
-  [![The day: a column of hours with a thin band marking work, admin and leisure hours, a line at the current hour, the day's steps one after the other with their times, a pause between them, and a line under the day saying one more step does not fit before it ends.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
+  [![The day: Today, ◂ and ▸ beside its date, then Agendas, All areas and Show; a sentence on what comes next, and a question from Léa's agenda, "Who takes it?", with Me, Sam and Later. Below, a column of hours under a legend for work and your admin: the meals, a task done this morning, an event, a line at the current hour, the afternoon's steps at their times beside a block of Sam's, then "Kept free, in case steps take longer", "Time for you" and the evening's choir rehearsal.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
   <figcaption>The day: your hours by kind, and the steps placed in them.</figcaption>
 </figure>
 
@@ -149,7 +149,7 @@ One tab away from Now:
 - **Gantt** (it was called Calendar): each open task on its days, the date asked as a small diamond, days without room shaded. A task with steps is one bar, over its steps' days, until its arrow shows them. One project, or all. A project's **Gantt** button opens this view, kept to the project.
 
 <figure markdown="span">
-  [![The List: a search field, "By project" and "Done too" at the top; tasks grouped by project, a bigger task followed by its steps, each with how long it takes, the date asked as days left and what it waits for; tasks without a project below, and those "when you say so" last.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
+  [![The List: a search field, "By project", "Done too" and Select at the top; tasks grouped by project, a bigger task folded on one row with its next step under it, the others each with the date asked as days left, about how long it takes and what it waits for; then the tasks without a project.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
   <figcaption>The list, by project.</figcaption>
 </figure>
 

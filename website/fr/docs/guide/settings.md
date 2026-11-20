@@ -10,7 +10,17 @@ description: Les paramètres de Sioul – un seul endroit pour ce qui concerne S
 
 La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Agents d’IA**, en haut de la page. Ce qui règle un téléphone est sur sa carte dans **Appareils**. **Mots**, après **Ce qui vous joint**, garde les mots auxquels Sioul reconnaît les choses ([plus bas](#words)). Les flèches du clavier passent d’un onglet à l’autre quand la rangée d’onglets a le focus. Dans une fenêtre trop étroite pour tous les noms, la rangée défile de côté : son bout coupé s’estompe, et la flèche à ce bout amène l’onglet suivant en vue.
 
+<figure markdown="span">
+  [![Les Paramètres sur un ordinateur, sur leur premier onglet : en haut, les onglets Affichage, Heures, Ce qui vous joint, Mots, Rappels, Pauses, Partage, Appareils, Factures et Agents d’IA ; sous Affichage, « Langue et apparence » avec Langue, Couleurs, Afficher le nom des lieux à côté de leur icône et Afficher les mots de passe pendant la saisie, chacun avec sa phrase ; puis « Cet appareil » et Ce qu’est cet appareil.](../assets/screens/fr/settings-tabs.png){ loading=lazy }](../assets/screens/fr/settings-tabs.png "Ouvrir l’image en grand")
+  <figcaption>Un onglet par section, en haut.</figcaption>
+</figure>
+
 Sur un téléphone, et dans une fenêtre aussi étroite, Paramètres s’ouvre plutôt sur la liste de ses sections, chacune avec une ligne qui dit ce qu’elle contient. Touchez-en une pour l’ouvrir ; Retour, ou la flèche en haut à gauche, vous ramène à la liste. Un lien vers un réglage, depuis une notification ou une autre page, ouvre directement sa section, et Retour vous ramène alors là où vous étiez. À votre visite suivante, Paramètres s’ouvre de nouveau sur la liste.
+
+<figure markdown="span">
+  [![Les Paramètres sur un téléphone : ☰ et Paramètres sur la barre du haut, puis la liste des sections, Affichage, Heures, Ce qui vous joint, Mots, Rappels, Pauses, Partage et Appareils, chacune avec une ligne sur ce qu’elle contient et une flèche, puis Factures, à moitié cachée ; la ligne d’état au bas de l’écran.](../assets/screens/fr/settings-phone.png){ loading=lazy }](../assets/screens/fr/settings-phone.png "Ouvrir l’image en grand")
+  <figcaption>Sur un téléphone, la liste des sections.</figcaption>
+</figure>
 
 ## Protégé par défaut {#what-is-protected}
 

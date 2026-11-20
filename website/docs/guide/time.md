@@ -107,8 +107,8 @@ Each save sends only what you changed. When the draft changed meanwhile on this 
 - **Preview**, folded: the invoice as it will print, in its own language.
 
 <figure markdown="span">
-  [![The same editor, the lines of time unfolded, each task with its hours and its price an hour, then the totals, Issue, Deposit invoice… and Discard; under them the Preview, opened: the invoice as it will print, with your details, the client's, the lines, the totals and how to pay.](../assets/screens/invoice-preview.png){ loading=lazy }](../assets/screens/invoice-preview.png "Open the picture at full size")
-  <figcaption>The lines of time unfolded, and the preview.</figcaption>
+  [![The same editor, scrolled down to its Preview: the invoice as it will print, "Draft invoice", the dates of the service, when it is payable and the project, then each line of time with its quantity, its price an hour and its amount, the total, the VAT mention, your bank details and how to pay, and what a late payment costs.](../assets/screens/invoice-preview.png){ loading=lazy }](../assets/screens/invoice-preview.png "Open the picture at full size")
+  <figcaption>The preview, as the invoice will print.</figcaption>
 </figure>
 
 Each line's unit is one Sioul knows, no unit price is below zero (less to pay is a discount, or a credit note), and a country is its two letters or its name. Writing from right to left (Hebrew, Arabic) cannot be printed yet: Sioul asks for Latin letters.

@@ -37,7 +37,7 @@ Until you choose, it flags what is probably or maybe spam, and moves nothing. Tw
 **Look when you have time.** What it flagged or moved waits on the Porch, in **Caught by your own spam filter**: folded, without a count, never notified. Nothing there asks for your time. You step in only when it is wrong: **Not spam** puts a message back for good and teaches the filter, and **Spam** confirms it. What you say on one device, the others know.
 
 <figure markdown="span">
-  [![The Porch. On the left, "Caught by your own spam filter" opened, without a count, with its sentence under the title: what your own filter caught waits there, never notified; Sioul learns from it as it is, and "Not spam" puts one back and teaches the filter. Then strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  [![The Porch, further down: on the left, From yourself, From people you know, Sites, Money, Paper letters and Someone new, in the screener, then "Caught by your own spam filter" opened, without a count and with nothing written under its title: Not spam for all and Spam for all, then two strangers' messages, each with Not spam and Spam under it; under them, Set aside, folded, and Done for now. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
   <figcaption>What your own filter flagged or moved.</figcaption>
 </figure>
 
@@ -158,7 +158,7 @@ The plan places your tasks by itself, and writes no time into them. When a step 
 | **Gantt** | each open task on its days, the date asked as a small diamond, the days without room shaded | seeing whether a date will hold |
 
 <figure markdown="span">
-  [![The List: a search field, "By project" and "Done too" at the top; tasks grouped by project, a bigger task followed by its steps, each with how long it takes, the date asked as days left and what it waits for; tasks without a project below, and those "when you say so" last.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
+  [![The List: a search field, "By project", "Done too" and Select at the top; tasks grouped by project, a bigger task folded on one row with its next step under it, the others each with the date asked as days left, about how long it takes and what it waits for; then the tasks without a project.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
   <figcaption>The list, by project.</figcaption>
 </figure>
 

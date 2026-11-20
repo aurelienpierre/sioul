@@ -11,7 +11,7 @@ Some mail never leaves its website: a bank's secure mailbox, the hospital's, the
 These secure mailboxes exist because ordinary mail was not private enough for a bank's or an office's letters. Their answer was to make you come to them, each with its own login and its own code, while your mailbox gets, at most, a note that something is waiting. Sioul keeps them here, in one place, so that you no longer watch them one by one; and its encrypted mail is there so that such letters can come back to you as mail, sealed for you alone ([Why Sioul encrypts mail](privacy-security.md#why-sioul-encrypts-mail)).
 
 <figure markdown="span">
-  [![The Sites page: above the list, a funnel, a sort button and a button that folds the list; the site for these hours (a chat, with a dot for its news), then "Other hours: 4" opened on a bank, the tax office, a health insurer and video calls, shown muted; Pin a site, Usual sites and the page's settings (⚙) under the list.](../assets/screens/sites.png){ loading=lazy }](../assets/screens/sites.png "Open the picture at full size")
+  [![The Sites page: above the list, a funnel, a sort button and a button that folds the list; the sites for these hours, a chat with a dot for its news and video calls, then "Other hours: 3" opened on a bank, the tax office and a health insurer, shown muted; Pin a site, Usual sites and the page's settings (⚙) under the list.](../assets/screens/sites.png){ loading=lazy }](../assets/screens/sites.png "Open the picture at full size")
   <figcaption>Secure mailboxes and chats, logged in once.</figcaption>
 </figure>
 
