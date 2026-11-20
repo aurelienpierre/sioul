@@ -79,7 +79,7 @@ Le temps libre et la pause, préparés un jour calme : jusqu’où la fin du t
 
 ## La carte d’un téléphone {#this-phone}
 
-Ce qui règle un téléphone est sur sa propre carte dans [Appareils](#devices), sous son nom.
+Ce qui règle un téléphone est sur sa propre carte dans [Appareils](#devices), dans ses **Détails** : chaque section s’ouvre quand vous appuyez sur son nom, quelle que soit la largeur, et reste comme vous l’avez laissée jusqu’à ce que vous la repliiez.
 
 - **Appels**, sur la carte de chaque téléphone, réglés depuis n’importe lequel de vos appareils : un profil de départ, **Professionnel**, **Personnel**, **Les deux** ou **Comme Android**, chacun avec ce qu’il fait en une ligne ; un petit tableau de qui sonne pendant vos heures de travail, le reste de la journée, la nuit et quand vous êtes indisponible, chaque case **Sonne** ou **Messagerie**, quand vous êtes indisponible aussi **Comme d’habitude** (sur un téléphone, une liste de lignes, chacune ouvrant ses quatre choix) ; **Donner sa ligne à un groupe…** ; les interrupteurs, chacun un seul réglage : les appels commerciaux et automatisés ne sonnent jamais, un second appel dans les 15 minutes sonne, les numéros appelés ces 14 derniers jours sonnent comme vos contacts, et sous **Plus** les numéros qui ne peuvent pas être ceux d’un appelant ou que votre réseau n’a pas pu vérifier. Tant que vous ne le changez pas, le tableau montre ce que fait le téléphone aujourd’hui, une case qui diffère selon les moments de la journée disant **Varie** ; les appels se règlent là seulement, et les préréglages de Ce qui vous joint n’y touchent pas. Android ne dit pas à Sioul sur quelle SIM arrive un appel : la carte le dit, et sur le téléphone ouvre la page des SIM d’Android. Voir [À chaque téléphone ses appels](calls.md#calls-per-phone).
 - Sur le téléphone lui-même, sa carte a aussi :
@@ -102,15 +102,13 @@ Le dossier des notes est à la page Notes, dans son ⚙ ([Votre dossier de notes
 
 ## Appareils {#devices}
 
-Chaque appareil avec lequel vous partagez, celui-ci d’abord, chacun sur une carte ; dans une fenêtre large, les champs des cartes s’alignent en tableau.
+Chaque appareil avec lequel vous partagez, celui-ci d’abord, chacun sur une carte courte ; dans une fenêtre large, les cartes s’alignent en un tableau de quatre colonnes : l’appareil, ce qu’il est, où il en est maintenant, ce à quoi il sert. Le reste est dans les **Détails** de chaque carte, fermés jusqu’à ce que vous les ouvriez ; chaque carte reste comme vous l’avez laissée, sur cet appareil.
 
-- **Renommer…** : un nom à vous pour l’appareil, qui voyage avec vos réglages. Laissé vide, le nom que lui donne son système revient.
-- **Ce qu’il est**, où il en est **maintenant**, sa **dernière ouverture**, son **dernier partage** et son **Sioul** : tels que chaque appareil les dit. Sur la carte de cet appareil, **Ce qu’est cet appareil** change ce qu’il est ([Affichage](#display)).
+- **Ce qu’il est** et où il en est **maintenant**, tels que chaque appareil les dit ; sauf s’il est utilisé, sa **dernière ouverture**, en dessous.
 - **Pour** : **Travail**, **Vos démarches**, **Loisirs**, plusieurs à la fois si vous voulez ; sans rien de coché, tout y arrive. Vous pouvez le dire de n’importe quel appareil, depuis n’importe lequel. Cela voyage avec vos réglages, vers chaque appareil qui partage **Réglages et comptes**. Chaque appareil ne fait alors venir que ce pour quoi il est fait, aux heures prévues pour cela.
+- Sur ce téléphone, tant qu’Android n’a pas donné un accès, une ligne les compte, avec **Ce qu’Android doit permettre**, qui les ouvre.
+- Dans les **Détails** : **Renommer…**, un nom à vous pour l’appareil, qui voyage avec vos réglages (laissé vide, le nom que lui donne son système revient) ; sur la carte de cet appareil, **Ce qu’est cet appareil**, qui change ce qu’il est ([Affichage](#display)) ; sa **dernière ouverture** (tant qu’il est utilisé), son **dernier partage**, son **Sioul** ; **Partage**, les parties que l’appareil partage (une partie se change sur l’appareil lui-même ; celles de cet appareil sont dans [Partage](#your-folder-and-sharing), que **Changer ce qui voyage depuis cet appareil…** ouvre) ; dans une fenêtre étroite, ce qui arrive sur lui à chaque moment ; les sections propres à un téléphone, ses **Appels**, et sur le téléphone lui-même ce qu’Android doit permettre et ce qui le règle ([La carte d’un téléphone](#this-phone)) ; en dernier, pour un autre appareil, **Le compter de nouveau**, **Oublier cet appareil**, **L’oublier maintenant** et **L’oublier et retirer ses fichiers…**.
 - **Ce qui arrive, et quand**, sous les appareils : pour chaque appareil, ce qui arrive à chaque moment de votre semaine (travail, démarches, loisirs, repas, sommeil). Appuyez sur une case pour la changer ; **Selon ce à quoi il sert** la remet. Une phrase dit ce que cet appareil fait venir en ce moment ([À quoi sert chaque appareil](hours.md#what-each-device-is-for)).
-- **Partage** : les parties que l’appareil partage. Une partie se change sur l’appareil lui-même ; celles de cet appareil sont dans [Partage](#your-folder-and-sharing), que **Changer ce qui voyage depuis cet appareil…** ouvre depuis sa carte.
-- **Le compter de nouveau**, **Oublier cet appareil**, **L’oublier maintenant** et **L’oublier et retirer ses fichiers…**, pour un autre appareil.
-- Les sections propres à un téléphone : ses **Appels**, et sur le téléphone lui-même ce qu’Android doit permettre et ce qui le règle ([La carte d’un téléphone](#this-phone)).
 
 Tant que cet appareil ne partage pas, il est le seul de la liste. Voir [Vos appareils](sharing.md#your-devices).
 

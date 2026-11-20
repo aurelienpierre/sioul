@@ -8,7 +8,7 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 
 ## Setting it up {#setting-it-up}
 
-1. **Settings ▸ Devices**, this phone's card (on the phone, where a section opens when you press its name): its section **The call screening on this phone** says what Sioul does with calls, what it never does, and what always rings.
+1. **Settings ▸ Devices**, this phone's card, under its **Details** (where each section opens when you press its name): its section **The call screening on this phone** says what Sioul does with calls, what it never does, and what always rings.
 2. **Let Sioul screen calls**: in **What Android must allow** on the same card, the line **Caller ID & spam app** and its button **Allow in Android…**; Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, choose "None" as caller ID & spam app in Android's own settings, among its default apps.
 3. **Allow reading contacts**, the line **Contacts** there, while it says **Not given**: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
 4. **Who may call you, and when**: the card's section **Calls**, which you can set from any of your devices ([Each phone its own calls](#calls-per-phone)). Until you change it, the table shows what the phone does today, the same on every phone.
@@ -31,7 +31,7 @@ Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time
 
 ## Each phone its own calls {#calls-per-phone}
 
-A work phone and a phone of your own need not screen alike. In **Settings ▸ Devices**, each phone's card has a section **Calls**, which you can set from any of your devices:
+A work phone and a phone of your own need not screen alike. In **Settings ▸ Devices**, each phone's card has, under its **Details**, a section **Calls**, which you can set from any of your devices:
 
 - **Start from**: **Professional** (everyone else rings in your work hours; commercial callers never; outside work hours, everything but Always through goes to voicemail, and a second call within 15 minutes does not ring there either), **Personal** (your contacts ring in the day; everyone else goes to voicemail unless they call twice within 15 minutes), **Both** (work's rows in work hours, the personal ones outside), or **As Android does** (Sioul screens nothing on that phone; your blocked numbers still go to voicemail). Once you change a cell or a switch by hand, the profile reads **Your own**.
 - **One small table**: who rings in your work hours, the rest of the day, the night, and while you are busy (an event marked busy, or a task marked busy while its timer runs: [Busy](notifications.md#busy)). Its rows: Always through, which rings at every moment; Safe; Your contacts; Restricted; Everyone else (numbers nobody knows); Hidden numbers. Each cell is **Rings** or **Voicemail**; while busy also **As usual**, the first value of every row: as the moment says, or as Do not disturb says when being busy turns it on. A cell set to Rings or Voicemail decides while you are busy, Do not disturb or not. **Give a group its row…** adds a group of your contacts (School, Clients…), which rings, except at night, until you change it; the **×** beside its name takes it off. On a phone the table is a list of rows: press one to see its four moments.
