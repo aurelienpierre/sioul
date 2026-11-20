@@ -46,8 +46,16 @@ sioul-app/src/backend.rs	checked_attachment	4	sioul_core::filelock::remove_wipin
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::copy(&file, &target)
 sioul-app/src/backend.rs	set_weather_place	1	std::fs::remove_file(weather_cache())
 
+# sioul-app/src/chosen.rs: a file chosen in a dialog on a phone, copied into Sioul's cache while what asked for it takes it (its held folder taken away once taken, and the whole held folder at start), then placed in the folder it was chosen for; and a file saved where Android made its document: no item.
+sioul-app/src/chosen.rs	gone	1	sioul_core::filelock::remove_wiping(&entry.path())
+sioul-app/src/chosen.rs	gone	1	std::fs::remove_dir_all(hold)
+sioul-app/src/chosen.rs	keep_in	1	sioul_core::filelock::place_new(&self.path, folder, &names, true)
+sioul-app/src/chosen.rs	save_in	1	std::fs::write(&file, bytes)
+sioul-app/src/chosen.rs	set_aside	1	std::fs::rename(root, &aside)
+sioul-app/src/chosen.rs	sweep	1	std::fs::remove_dir_all(&folder)
+
 # sioul-app/src/contactexport.rs: cards exported as one vCard file where you chose, never into the address books: no item.
-sioul-app/src/contactexport.rs	export	1	sioul_core::filelock::replace(&path, text.as_bytes())
+sioul-app/src/contactexport.rs	export	1	sioul_core::filelock::replace(path, text.as_bytes())
 
 # sioul-app/src/contactimport.rs: a file of contacts handed, kept for the window until it reads it (handed/contacts/), taken out of the waiting ones (renamed) before its thread reads it, then removed: no item (what it holds is written through vdir::write_item, by contactbatch::run).
 sioul-app/src/contactimport.rs	keep_all	1	sioul_core::filelock::replace(&dir.join(format!("{}.{extension}", sioul_core::vdir::new_name())), &bytes)
@@ -142,7 +150,7 @@ sioul-app/src/persons.rs	end	1	std::fs::copy(&file, folder.join(&name))
 sioul-app/src/persons.rs	keeps	1	std::fs::copy(&file, papers_dir.join(&name))
 
 # sioul-app/src/projects.rs: a time sheet exported where you choose: no item.
-sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
+sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(path, &csv)
 # sioul-app/src/projects.rs: what the Projects and Time pages show on this device (state): no item.
 sioul-app/src/projects.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
@@ -201,7 +209,7 @@ sioul-app/src/texts.rs	attach	1	std::fs::remove_dir_all(attached_folder())
 sioul-app/src/texts.rs	attach_made	1	std::fs::remove_dir_all(&folder)
 sioul-app/src/texts.rs	set_limit	1	write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
 sioul-app/src/texts.rs	set_cap	1	write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
-sioul-app/src/texts.rs	call	1	std::fs::copy(p, &target)
+sioul-app/src/texts.rs	call	1	std::fs::write(target, &bytes)
 sioul-app/src/texts.rs	call	1	std::fs::remove_dir_all(opened_folder())
 
 # sioul-app/src/topics.rs: the topics started on day one, kept for the Porch's card that names them once (state): no item.

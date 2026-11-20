@@ -2340,7 +2340,7 @@ mod tests {
         assert!(warm && expired);
         let encryption = short_fingerprint(&parts(&half)[1].fingerprint);
         assert!(line.starts_with(&format!("Its encryption subkey ({encryption}) expired on ")) && !line.contains("Its primary key"), "{line}");
-        assert!(line.ends_with("Renew for two years renews them with its primary key. By hand, name each subkey: GnuPG's \"*\" leaves those already expired as they are."), "{line}");
+        assert!(line.ends_with("Renew for two years renews them with its primary key. By hand, name each subkey: GnuPG's \u{201c}*\u{201d} leaves those already expired as they are."), "{line}");
         assert_eq!(subkeys_of(&half).len(), 2);
         // Nothing expired: until when, as before.
         let (fresh, _) = CertBuilder::general_purpose(Some("Card Holder <now@example.org>")).set_validity_period(Duration::from_secs(365 * 24 * 3600)).generate().unwrap();
