@@ -1005,15 +1005,16 @@ fn setup_with(said: String) -> String {
     setup.to_string()
 }
 
-/// Who on the list is starred on this phone (READ_CONTACTS, never written):
+/// Who on the list, and of your people whose calls ring under
+/// do-not-disturb (`stars::your_people`), is starred on this phone
+/// (READ_CONTACTS, never written):
 /// {permission, summary, people: [{id, name, state, contact}]}, the state
-/// "starred", "not-starred", "unknown" (no contact has their number),
-/// "no-number".
+/// "starred", "not-starred", "unknown" (no contact has their number), "no-number".
 fn stars(config: &Config) -> serde_json::Value {
-    let people = People::load(&People::default_path());
+    let mut people = People::load(&People::default_path());
+    people.people.extend(crate::stars::your_people(config).people);
     let asked: Vec<serde_json::Value> = people.people.iter().map(|p| serde_json::json!({ "id": p.id, "phones": p.phones })).collect();
     let answer = crate::steps::java("stars", &serde_json::json!({ "people": asked }).to_string());
-    let _ = config;
     stars_of(&people, &answer, tr())
 }
 
@@ -1036,10 +1037,13 @@ fn stars_of(people: &People, answer: &serde_json::Value, tr: &sioul_core::i18n::
             serde_json::json!({ "id": p.id, "name": if p.name.is_empty() { p.emails.first().cloned().unwrap_or_default() } else { p.name.clone() }, "state": state, "contact": seen.and_then(|f| f["contact"].as_str()).unwrap_or_default() })
         })
         .collect();
-    let summary = if missing == 0 {
-        tr.text("dnd-stars-all", None)
-    } else {
-        tr.text("dnd-stars-missing", Some(&tr.counted(missing)))
+    // Your people among them (`stars::CIRCLE`): the words name them too.
+    let close = people.people.iter().any(|p| p.id.starts_with(sioul_core::stars::CIRCLE));
+    let summary = match (missing, close) {
+        (0, false) => tr.text("dnd-stars-all", None),
+        (0, true) => tr.text("dnd-stars-all-people", None),
+        (_, false) => tr.text("dnd-stars-missing", Some(&tr.counted(missing))),
+        (_, true) => tr.text("dnd-stars-missing-people", Some(&tr.counted(missing))),
     };
     serde_json::json!({ "permission": true, "summary": summary, "missing": missing, "people": listed })
 }
@@ -1397,6 +1401,28 @@ mod tests {
         let mode = sioul_core::quiet::mode(&config.week_hours(), &sioul_core::vacations::DaysOff::of(&config), &overrides, &sioul_core::quiet::Blocks::default(), &now);
         let look = Look { config, overrides, switch: Switch::default(), state, mode, now };
         assert_eq!(moment_of(&look)["paused"], true);
+    }
+
+    /// Your people whose calls ring under do-not-disturb are on the same
+    /// line (`stars::your_people`), and its words name them.
+    #[test]
+    fn the_phone_s_starred_line_names_your_people() {
+        let mut people = People::default();
+        people.add(Person { name: "Claire".into(), phones: vec!["+262639980001".into()], ..Person::default() }, None);
+        people.people.push(Person { id: format!("{}lea", sioul_core::stars::CIRCLE), name: "Léa".into(), phones: vec!["+262639980005".into()], ..Person::default() });
+        let claire = people.people[0].id.clone();
+        let en = sioul_core::i18n::Translator::new("en");
+        let answer = serde_json::json!({ "permission": true, "people": [{ "id": claire, "state": "starred" }, { "id": "circle:lea", "state": "not-starred", "contact": "content://com.android.contacts/contacts/lookup/l/2" }] });
+        let said = stars_of(&people, &answer, &en);
+        assert_eq!(said["summary"], "One person on your list or of your people is not starred on this phone.");
+        assert_eq!((said["people"][1]["name"].as_str(), said["people"][1]["state"].as_str()), (Some("Léa"), Some("not-starred")));
+        let all = serde_json::json!({ "permission": true, "people": [{ "id": claire, "state": "starred" }, { "id": "circle:lea", "state": "starred" }] });
+        assert_eq!(stars_of(&people, &all, &en)["summary"], "Everyone on your list and each of your people with a number is starred on this phone: their calls ring during do-not-disturb.");
+        let fr = sioul_core::i18n::Translator::new("fr");
+        for summary in [stars_of(&people, &answer, &fr)["summary"].clone(), stars_of(&people, &all, &fr)["summary"].clone()] {
+            let text = summary.as_str().unwrap();
+            assert!(text.contains("proches") && !text.contains('{') && !text.contains(" :"), "{text}");
+        }
     }
 
     #[test]

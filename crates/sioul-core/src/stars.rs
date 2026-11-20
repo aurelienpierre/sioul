@@ -29,6 +29,17 @@
 //! - a star Sioul wrote for someone taken off the list in Sioul is taken
 //!   off there; a star of the person's own is left as it is.
 //!
+//! **Your people** (docs/attention.md, §1.2; decision of 20 November 2026)
+//! are starred by the same path while their calls ring under do-not-disturb
+//! (`plan_with`'s `also`, ids `circle:<person>`): never added to the list
+//! nor taken off it; a contact that holds one of them unstarred is starred,
+//! Sioul remembering it wrote it for them; that star is taken off once they
+//! leave the circle or their calls no longer ring under do-not-disturb; the
+//! person unstarring it is their act, never undone while they stay one of
+//! your people. A contact of theirs already starred when Sioul first looks
+//! is left as it is, never added to the list, never unstarred: who set it
+//! cannot be told.
+//!
 //! A contact read nowhere, a look that read nothing, a contact that matches
 //! nobody any more: nothing changes. Someone no contact of the place holds
 //! cannot be starred there: the window says so. A blocked number is never
@@ -297,15 +308,29 @@ fn person_of(seen: &Seen, region: Option<&crate::phones::Region>) -> Person {
     }
 }
 
+/// What starts the id of one of your people starred by Sioul (`plan_with`'s
+/// `also`): `circle:<their id in persons.toml>`, never an id of the list's.
+pub const CIRCLE: &str = "circle:";
+
 /// What to do at a place (the module's rules), from the list as it is, what
 /// the place holds now, and its memory. `blocked`: whether a contact is
 /// blocked (never added).
 pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool) -> Plan {
+    plan_with(people, &People::default(), seen, memory, region, blocked)
+}
+
+/// `plan`, with your people to star there too (`also`, their ids starting
+/// with `CIRCLE`: the module's rules for them): starred as the list's
+/// people are, never added to the list nor taken off it.
+pub fn plan_with(people: &People, also: &People, seen: &[Seen], memory: &Memory, region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool) -> Plan {
     // A look that read nothing: nothing changes, the memory kept (M9).
     if seen.is_empty() {
         return Plan { memory: memory.clone(), ..Plan::default() };
     }
     let (matches, near, unmatched) = matched_and_near(people, seen, region);
+    // Each contact's one of your people wanting a star, by the same matching (a shared number: nobody).
+    let (wanted, _) = matched(also, seen, region);
+    let wanted: Vec<Option<&String>> = wanted.iter().map(|w| w.first().map(|&i| &also.people[i].id)).collect();
     // A contact that would match through a number or an address two contacts or two people share: nobody (M8).
     let ambiguous = |c: &Seen| unmatched.contains(&c.id);
     let on_list = |id: &str| people.people.iter().any(|p| p.id == id);
@@ -332,11 +357,13 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
     }
     let removing = plan.remove.clone();
     let leaves = |i: usize| removing.contains(&people.people[i].id);
-    for (c, m) in seen.iter().zip(&matches) {
+    for ((c, m), wanted) in seen.iter().zip(&matches).zip(&wanted) {
         let written_for = memory.written.get(&c.id);
         if c.starred {
             plan.memory.left.remove(&c.id);
-            if m.is_empty() && !ambiguous(c) && !memory.seen.contains(&c.id) && written_for.is_none() {
+            // One of your people's, starred before Sioul starred it for them (or by whom cannot be
+            // told): left as it is, never added to the list.
+            if m.is_empty() && wanted.is_none() && !ambiguous(c) && !memory.seen.contains(&c.id) && written_for.is_none() {
                 // Starred since the last look, on the list nowhere: added; a blocked one is left as it is.
                 if !blocked(c) {
                     plan.add.push(person_of(c, region));
@@ -345,13 +372,18 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
             if let Some(person) = written_for
                 && !on_list(person)
             {
-                match m.first() {
+                match (m.first(), wanted) {
                     // Someone on the list it stands for now (taken off and put back): still Sioul's, for them.
-                    Some(&i) => {
+                    (Some(&i), _) => {
                         plan.memory.written.insert(c.id.clone(), people.people[i].id.clone());
                     }
-                    // A star Sioul wrote for someone taken off the list in Sioul: taken off there.
-                    None => {
+                    // One of your people it stands for now: still Sioul's, for them.
+                    (None, Some(id)) => {
+                        plan.memory.written.insert(c.id.clone(), (*id).clone());
+                    }
+                    // A star Sioul wrote for someone taken off the list in Sioul, or for one of your
+                    // people who left the circle or whose calls no longer ring then: taken off there.
+                    (None, None) => {
                         plan.unstar.push(c.id.clone());
                         plan.memory.written.remove(&c.id);
                         plan.memory.seen.remove(&c.id);
@@ -378,6 +410,20 @@ pub fn plan(people: &People, seen: &[Seen], memory: &Memory, region: Option<&cra
                 if !by_hand_now && !left_for_them && written_for.is_none() {
                     plan.star.push(c.id.clone());
                     plan.memory.written.insert(c.id.clone(), person.clone());
+                    plan.memory.seen.insert(c.id.clone());
+                }
+            } else if let Some(id) = wanted {
+                // One of your people, held here without a star. Unstarred by hand since the last look,
+                // Sioul's star or theirs: their act, remembered, never undone while they stay one of
+                // your people (nobody leaves a circle by a star). Otherwise starred, Sioul remembering it.
+                let by_hand_now = memory.seen.contains(&c.id);
+                if by_hand_now {
+                    plan.memory.left.insert(c.id.clone(), (*id).clone());
+                }
+                let left_for_them = memory.left.get(&c.id) == Some(*id);
+                if !by_hand_now && !left_for_them && !blocked(c) {
+                    plan.star.push(c.id.clone());
+                    plan.memory.written.insert(c.id.clone(), (*id).clone());
                     plan.memory.seen.insert(c.id.clone());
                 }
             }
@@ -446,13 +492,19 @@ pub struct Looked {
 /// look), `memory` brought to what the place holds now (its caller saves
 /// it), and where each person is starred there recorded in their entries.
 pub fn look(list: &Path, memory: &mut Memory, place: &str, seen: &[Seen], region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool, write: Option<Write>) -> Result<Looked, String> {
+    look_with(list, &People::default(), memory, place, seen, region, blocked, write)
+}
+
+/// `look`, your people starred there too (`plan_with`'s `also`).
+#[allow(clippy::too_many_arguments)]
+pub fn look_with(list: &Path, also: &People, memory: &mut Memory, place: &str, seen: &[Seen], region: Option<&crate::phones::Region>, blocked: &dyn Fn(&Seen) -> bool, write: Option<Write>) -> Result<Looked, String> {
     // A look that read nothing (a provider restarting, an answer naming no card): nothing changes,
     // the memory and where each is starred included (review of `phones`, M9).
     if seen.is_empty() {
         return Ok(Looked::default());
     }
     let people = People::read(list)?;
-    let plan = plan(&people, seen, memory, region, blocked);
+    let plan = plan_with(&people, also, seen, memory, region, blocked);
     let changed = apply_to_list(list, &plan, region)?;
     let failed: Vec<String> = match write {
         _ if plan.star.is_empty() && plan.unstar.is_empty() => Vec::new(),
@@ -779,5 +831,55 @@ mod tests {
         listed(&mut again, "Claire", "01 99 00 00 06");
         let third = super::plan(&again, &place, &second.memory, fr(), &nobody);
         assert_eq!(third.star, ["claire"], "put back on the list in Sioul: starred again");
+    }
+
+    /// Your people (decision of 20 November 2026), by the same path as the
+    /// list: a contact holding one of them unstarred is starred, Sioul
+    /// remembering it wrote it for them, and nobody is added to the list;
+    /// their star is taken off once they leave the circle or their calls no
+    /// longer ring under do-not-disturb (`also` without them); unstarred by
+    /// hand, never put back while they stay; a star Sioul did not write is
+    /// never taken off, nor adds them to the list; put on Always through,
+    /// Sioul's star is the list's.
+    #[test]
+    fn your_people_are_starred_and_unstarred_by_sioul_alone() {
+        let nobody_listed = People::default();
+        let mut also = People::default();
+        also.people.push(Person { id: format!("{CIRCLE}lea"), name: "Léa".into(), phones: vec!["01 99 00 00 21".into()], ..Person::default() });
+        let lea = format!("{CIRCLE}lea");
+        let place = [seen("lea", "01 99 00 00 21", false), seen("mine", "01 99 00 00 22", true)];
+        let first = plan_with(&nobody_listed, &also, &place, &Memory::default(), fr(), &nobody);
+        assert_eq!(first.star, ["lea"]);
+        assert_eq!(first.memory.written.get("lea"), Some(&lea), "Sioul's own star, for one of your people");
+        assert_eq!(first.add.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["mine"], "a star of the person's own adds them to the list, as before; Léa is not added");
+        // Written: nothing to do.
+        let starred = [seen("lea", "01 99 00 00 21", true)];
+        let second = plan_with(&nobody_listed, &also, &starred, &first.memory, fr(), &nobody);
+        assert!(second.is_empty(), "{second:?}");
+        // Out of the circle, or their calls no longer ring under do-not-disturb: Sioul's star taken off.
+        let third = plan_with(&nobody_listed, &People::default(), &starred, &second.memory, fr(), &nobody);
+        assert_eq!(third.unstar, ["lea"]);
+        assert!(third.add.is_empty() && third.remove.is_empty() && !third.memory.written.contains_key("lea"));
+        // Unstarred by hand: their act, never undone while they stay one of your people.
+        let by_hand = plan_with(&nobody_listed, &also, &[seen("lea", "01 99 00 00 21", false)], &second.memory, fr(), &nobody);
+        assert!(by_hand.star.is_empty() && by_hand.remove.is_empty() && by_hand.add.is_empty(), "{by_hand:?}");
+        assert_eq!(by_hand.memory.left.get("lea"), Some(&lea));
+        let again = plan_with(&nobody_listed, &also, &[seen("lea", "01 99 00 00 21", false)], &by_hand.memory, fr(), &nobody);
+        assert!(again.star.is_empty(), "{again:?}");
+        // Starred when Sioul first looks (by whom cannot be told): left, never added, never taken off.
+        let unknown = plan_with(&nobody_listed, &also, &starred, &Memory::default(), fr(), &nobody);
+        assert!(unknown.add.is_empty() && unknown.star.is_empty() && unknown.unstar.is_empty(), "{unknown:?}");
+        let left = plan_with(&nobody_listed, &People::default(), &starred, &unknown.memory, fr(), &nobody);
+        assert!(left.unstar.is_empty() && left.add.is_empty(), "nothing Sioul did not star is ever unstarred: {left:?}");
+        // A blocked number is never starred for them.
+        let blocked = |c: &Seen| c.id == "lea";
+        assert!(plan_with(&nobody_listed, &also, &[seen("lea", "01 99 00 00 21", false)], &Memory::default(), fr(), &blocked).star.is_empty());
+        // On Always through too: the list's rules; Sioul's star for them is the list's once they are put on it.
+        let mut listed_people = People::default();
+        let on_list = listed(&mut listed_people, "Léa", "01 99 00 00 21");
+        let both = plan_with(&listed_people, &also, &[seen("lea", "01 99 00 00 21", false)], &Memory::default(), fr(), &nobody);
+        assert_eq!((both.star.as_slice(), both.memory.written.get("lea")), (&["lea".to_string()][..], Some(&on_list)));
+        let moved = plan_with(&listed_people, &People::default(), &starred, &second.memory, fr(), &nobody);
+        assert!(moved.unstar.is_empty() && moved.memory.written.get("lea") == Some(&on_list), "{moved:?}");
     }
 }

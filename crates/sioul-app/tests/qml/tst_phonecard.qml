@@ -86,6 +86,8 @@ Item {
                 columns: [{ id: "work", label: "Work hours" }, { id: "day", label: "The rest of the day" }, { id: "night", label: "The night" }, { id: "busy", label: "While busy" }],
                 rows: [
                     { id: "always", label: "Always through", fixed: true, group: false, cells: mock.cells(["R", "R", "R", "R"]) },
+                    // Your people (share::calls_views, calls::people_row): the matrix's row, fixed here.
+                    { id: "people", label: "Your people", fixed: true, group: false, cells: mock.cells(["R", "R", "R", "U"]), words: "Work hours: Rings · The rest of the day: Rings · The night: Rings · While busy: As usual", note: "Your people ring as What reaches you ▸ What comes when says, the same on every phone: a phone’s own table leaves them as they are." },
                     { id: "safe", label: "Safe", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "R"]) },
                     { id: "contacts", label: "Your contacts", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "U"]) },
                     { id: "group:School", label: "School", fixed: false, group: true, cells: mock.cells(["R", "R", "V", "R"]) },
@@ -312,6 +314,11 @@ Item {
             named("callsSwitch-unverified").toggled()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.switch.unverified on")
             verify(all("callsCell-always-work").length === 0, "Always through shows no button: it always rings")
+            // Your people's row: fixed here, its cells in words, where it is set said under the table.
+            verify(all("callsCell-people-night").length === 0, "Your people show no button: set in What reaches you")
+            verify(showing(named("callsRow-people")))
+            const where = named("callsPeople")
+            verify(showing(where) && where.text.indexOf("What comes when") > 0, where ? where.text : "none")
             // A profile, a switch, a group taken off, a group given its row.
             professional.clicked()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.profile professional")
@@ -351,6 +358,11 @@ Item {
             // Calls unfolded: the rows, each opening its four choices.
             named("foldCalls").open = true
             wait(20)
+            // Your people: a line that opens nothing, its cells said under it, where it is set under the table.
+            const people = named("callsRow-people")
+            verify(showing(people) && !people.enabled, "fixed: nothing to open")
+            verify(walk(card, i => i.text !== undefined && String(i.text).indexOf("The night: Rings") >= 0 && showing(i), []).length > 0, "its cells in words")
+            verify(showing(named("callsPeople")))
             const contacts = named("callsRow-contacts")
             verify(showing(contacts))
             verify(named("callsCell-contacts-night") === null, "a row's choices made once opened")

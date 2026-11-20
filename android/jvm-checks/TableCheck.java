@@ -17,7 +17,8 @@ import org.json.JSONObject;
  * own state>", never over a blocked one; floors.people empty. Then a table of
  * version 2 (19 October 2026): the call screening apart ("screening", its
  * prefixes in national form), Expecting a call ("expecting"), frames with
- * the people you know only and work's hours ("hours"). Read through org.json's
+ * the people you know only and work's hours ("hours"); your people's row
+ * ("people", 20 November 2026). Read through org.json's
  * own jar (android.jar's is a stub), from the JSON text as serde writes it,
  * then the cases of calls.rs's tests.
  */
@@ -258,6 +259,31 @@ public final class TableCheck
         expect("line: no second call", Calls.decideFor(own, "01 99 00 55 55", false, ms(day, "20:00"), 0, null, ms(day, "19:58"), none), true, "matrix", "stranger", "sleep");
         expect("line: before its frames", Calls.decideFor(own, "01 99 00 55 55", false, ms(day, "08:00"), 0, null, 0, none), false, "no-frame", "stranger", "");
         expect("line: emergency", Calls.decideFor(own, "112", false, ms(day, "20:00"), 0, null, 0, none), false, "emergency", "", "");
+        // Your people (calls.rs's your_people_s_calls_ring_by_their_row, 20 November 2026): their numbers
+        // written "people", read by the frames' row of that name, which rings at night and under
+        // do-not-disturb where a safe caller goes to voicemail; never a group's row (theirs is no
+        // contact's); "always-people" on Always through. The same Java: a row is read by its name.
+        String[] close = { "people", "safe", "neutral", "restricted", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger", "group-0" };
+        String people = "{\"v\":2,\"made\":" + midnight
+            + ",\"region\":{\"code\":\"FR\",\"calling\":\"33\",\"trunk\":\"0\",\"international\":\"00\",\"digits\":[10,10],\"french\":true}"
+            + ",\"trunk_zero\":[\"33\"]"
+            + ",\"numbers\":{\"+33199000001\":\"safe\",\"+33199000006\":\"always-people\",\"+33199000008\":\"people\",\"+33199000004\":\"blocked\"}"
+            + ",\"prefixes\":[],\"phone_contacts\":\"neutral\",\"floors\":{\"emergency\":[\"112\"],\"people\":[]}"
+            + ",\"screening\":{\"on\":true,\"hours\":\"always\",\"unknown\":\"voicemail\",\"hidden\":\"voicemail\",\"automated\":\"voicemail\",\"impossible\":\"voicemail\",\"unverified\":\"voicemail\",\"called_days\":14,\"automated_prefixes\":[],\"impossible_prefixes\":[]}"
+            + ",\"line\":true,\"groups\":{\"+33199000008\":\"group-0\"}"
+            + ",\"frames\":["
+            + frame2(midnight, work0, "sleep", false, close, "people", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(work0, work1, "work", true, close, "people", "safe", "neutral", "restricted", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(work1, dnd0, "leisure", false, close, "people", "safe", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(dnd0, dnd1, "dnd", false, close, "people", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger")
+            + "],\"repeat_minutes\":15,\"emergency_hours\":24}";
+        Calls.Table near = Calls.Table.of(new JSONObject(people));
+        expect("your people at night", Calls.decideFor(near, "01 99 00 00 08", false, ms(day, "03:00"), 0, null, 0, none), false, "matrix", "people", "sleep");
+        expect("your people under do-not-disturb", Calls.decideFor(near, "01 99 00 00 08", false, ms(day, "18:30"), 0, null, 0, none), false, "matrix", "people", "dnd");
+        expect("a safe caller at night", Calls.decideFor(near, "01 99 00 00 01", false, ms(day, "03:00"), 0, null, 0, none), true, "matrix", "safe", "sleep");
+        expect("a safe caller under do-not-disturb", Calls.decideFor(near, "01 99 00 00 01", false, ms(day, "18:30"), 0, null, 0, none), true, "matrix", "safe", "dnd");
+        expect("your people on Always through", Calls.decideFor(near, "01 99 00 00 06", false, ms(day, "03:00"), 0, null, 0, none), false, "matrix", "always-people", "sleep");
+        expect("your people blocked", Calls.decideFor(near, "01 99 00 00 04", false, ms(day, "03:00"), 0, null, 0, none), true, "blocked", "blocked", "");
         System.out.println(failed == 0 ? "all " + checked + " table decisions agree with calls.rs" : failed + " of " + checked + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

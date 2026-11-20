@@ -735,6 +735,8 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
     let categories = sioul_core::porch::Book::load(sioul_core::reach::region(config), &sioul_core::addressbooks::groups_held_back(config)).names();
     let today = crate::calls::today(config);
     let held = held_words(config);
+    // Your people's row, the matrix's on every phone, after Always through's (`calls::people_row`).
+    let people = crate::calls::people_row(config);
     devices
         .filter_map(|(id, form, old)| {
             let said = config.devices.get(id);
@@ -742,7 +744,11 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
             let screens = switch.device.get(id).map(|d| sioul_core::calls::part_of(d).screens);
             (form == "phone" || line.is_some() || screens == Some(true)).then(|| {
                 let card = sioul_core::calls_line::Card { area: said.and_then(sioul_core::device_said::Said::area), screens, categories: &categories, today: Some(&today), busy_is_dnd: crate::calls::busy_turns_dnd(config), held: &held, older: old };
-                (id.to_string(), sioul_core::calls_line::view(line, &card, tr()))
+                let mut view = sioul_core::calls_line::view(line, &card, tr());
+                if let (Some(row), Some(rows)) = (&people, view["rows"].as_array_mut()) {
+                    rows.insert(1.min(rows.len()), row.clone());
+                }
+                (id.to_string(), view)
             })
         })
         .collect()
@@ -754,8 +760,11 @@ fn calls_views<'a>(config: &sioul_core::config::Config, devices: impl Iterator<I
 fn held_words(config: &sioul_core::config::Config) -> String {
     use sioul_core::attention::{Column, Level, Person, Row};
     let attention = sioul_core::attention::Attention::of(config);
-    let rows: Vec<String> = [(Person::Safe, "safe"), (Person::Neutral, "contacts"), (Person::Restricted, "restricted")]
+    // Your people while the circle holds someone (their row in no phone's line: the matrix's everywhere).
+    let people = !sioul_core::persons::Circle::now().is_empty();
+    let rows: Vec<String> = [(Person::People, "people"), (Person::Safe, "safe"), (Person::Neutral, "contacts"), (Person::Restricted, "restricted")]
         .into_iter()
+        .filter(|(person, _)| people || *person != Person::People)
         .filter(|(person, _)| attention.cell(Row::People(sioul_core::reach::Channel::Calls, *person), Column::Dnd) == Level::Now)
         .map(|(_, id)| tr().text(&format!("phone-calls-row-{id}"), None))
         .collect();

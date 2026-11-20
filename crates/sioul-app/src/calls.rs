@@ -330,6 +330,54 @@ pub(crate) fn today(config: &Config) -> sioul_core::calls_line::Today {
     sioul_core::calls_line::Today::of(&Attention::of(config), &Screening::of(config), &clock, &from, &until)
 }
 
+/// Your people's row on each phone's card in Settings ▸ Devices (decision of
+/// 20 November 2026), while the circle holds someone: the matrix's Calls row
+/// Your people, the same on every phone, a line or none (no line's value
+/// keeps a row of theirs: 0.0.12 writes the value whole with the rows it
+/// knows, docs/attention.md §7), read for each moment of the coming week as
+/// `calls_line::Today` reads the matrix (a cell that rings in some moments of
+/// its column and not in others says Varies), as usual while busy; fixed
+/// here, its words saying where it is set. None while the circle holds nobody.
+pub(crate) fn people_row(config: &Config) -> Option<serde_json::Value> {
+    use sioul_core::attention::{Column, Level, Now};
+    use sioul_core::calls_line::When;
+    if sioul_core::persons::Circle::now().is_empty() {
+        return None;
+    }
+    let attention = Attention::of(config);
+    let now = sioul_core::zone::now();
+    let clock = Clock::load(config, &now);
+    let from = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
+    let until = from.checked_add(jiff::Span::new().days(7)).unwrap_or_else(|_| now.clone());
+    // Per column (work hours, the rest of the day, the night): rang in some moment, held in some.
+    let mut said = [(false, false); 3];
+    for moment in clock.frames(&from, &until).into_iter().map(|f| Now::of_moment(&f.moment)).chain([Now::time(Column::Free)]) {
+        // A pause and "Nothing at all" are every phone's rule, in no column (as `Today`).
+        if moment.is(Column::Pause) || (moment.nothing && moment.is(Column::Free)) {
+            continue;
+        }
+        let rings = attention.person(sioul_core::reach::Channel::Calls, Person::People, false, &moment) == Level::Now;
+        let cell = &mut said[When::of(&moment).index()];
+        if rings { cell.0 = true } else { cell.1 = true }
+    }
+    let word = |id: &str| tr().text(id, None);
+    let mut cells: Vec<serde_json::Value> = said
+        .iter()
+        .zip(When::ALL)
+        .map(|((rang, held), when)| {
+            let (cell, label) = match (rang, held) {
+                (_, false) => ("rings", word("phone-calls-rings")),
+                (false, true) => ("voicemail", word("phone-calls-voicemail")),
+                (true, true) => ("rings", word("phone-calls-varies")),
+            };
+            json!({ "when": when.id(), "cell": cell, "rings": cell == "rings", "word": label })
+        })
+        .collect();
+    cells.push(json!({ "when": When::Busy.id(), "cell": "usual", "rings": false, "word": word("phone-calls-usual") }));
+    let words: Vec<String> = cells.iter().zip(When::ALL).map(|(c, w)| format!("{}: {}", word(&format!("phone-calls-when-{}", w.id())), c["word"].as_str().unwrap_or_default())).collect();
+    Some(json!({ "id": "people", "label": word("phone-calls-row-people"), "fixed": true, "group": false, "cells": cells, "words": words.join(" · "), "note": word("phone-calls-people-note") }))
+}
+
 /// Whether this phone's own line in Settings ▸ Devices says what it lets ring
 /// (`sioul_core::calls_line`): its grid; none, the shared screening holds.
 pub(crate) fn line_here(config: &Config) -> Option<sioul_core::calls_line::Grid> {

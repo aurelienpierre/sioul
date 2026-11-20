@@ -302,7 +302,8 @@ ColumnLayout {
             Note {
                 visible: listRow.modelData.fixed === true
                 Layout.leftMargin: 8
-                text: line.sioul.text("phone-calls-always-rings")
+                // Your people's row says where it is set; Always through's that it always rings.
+                text: listRow.modelData.id === "people" ? (listRow.modelData.words || "") : line.sioul.text("phone-calls-always-rings")
             }
             // Its four choices, each moment on a line of its own.
             Repeater {
@@ -427,6 +428,14 @@ ColumnLayout {
         }
     }
 
+    // Your people's row: the matrix's, the same on every phone, set in What reaches you.
+    Note {
+        objectName: "callsPeople"
+        readonly property var people: (line.view.rows || []).find(r => r.id === "people") || null
+
+        visible: !line.android && people !== null
+        text: people ? people.note || "" : ""
+    }
     // What "as usual" means while busy (M1); what a pause and do-not-disturb do on this phone (M4).
     Note {
         objectName: "callsBusy"
