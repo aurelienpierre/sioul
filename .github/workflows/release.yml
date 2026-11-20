@@ -438,6 +438,6 @@ jobs:
             : > notes.md
           fi
           sed "s/<version>/${version}/g" packaging/release-notes.md >> notes.md
-          prerelease=""
-          case "$version" in 0.*) prerelease="--prerelease" ;; esac
-          gh release create "$tag" dist/* --title "Sioul ${version}" --notes-file notes.md $prerelease --verify-tag
+          # An ordinary release, the latest: the site's and the README's links go to
+          # releases/latest, which skips a pre-release (it answered 404 until 0.0.12).
+          gh release create "$tag" dist/* --title "Sioul ${version}" --notes-file notes.md --latest --verify-tag
