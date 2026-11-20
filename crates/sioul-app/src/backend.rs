@@ -586,6 +586,46 @@ pub mod qobject {
         #[qinvokable]
         fn load_contact_photo(self: Pin<&mut Sioul>, url: &QString);
 
+        /// A card's opening hours as its section shows them, read now
+        /// (`offices::contact_hours`): JSON; "" for a card that is gone.
+        #[qinvokable]
+        fn contact_hours(self: &Sioul, key: &QString) -> QString;
+
+        /// What hours typed read as (`offices::read_hours`): JSON {written,
+        /// short, lines, days, rest, holidays_off, holidays_said, doubt}.
+        #[qinvokable]
+        fn read_hours(self: &Sioul, text: &QString) -> QString;
+
+        /// Saves a card's hours from their form (JSON {open, phone, note,
+        /// holidays_open}): {"ok", "changed", "ticked"} or {"error"}.
+        #[qinvokable]
+        fn save_contact_hours(self: Pin<&mut Sioul>, key: &QString, typed: &QString) -> QString;
+
+        /// "This is an office, a shop or a practice": the card marked as an
+        /// organisation's (`contacts::as_office`): {"ok"} or {"error"}.
+        #[qinvokable]
+        fn mark_office(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
+        /// "Call back…" on a card: the task "Call ‹name›", made at once:
+        /// {"uid"}, {"again"} (a second press within a second) or {"error"}.
+        #[qinvokable]
+        fn call_back(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
+        /// Looks a card's hours up because the person pressed Look up (JSON
+        /// `hourslookup::Asked`, the words they saw, and `press`, its number);
+        /// the answer comes in `hours_found`, the press's number in it.
+        #[qinvokable]
+        fn look_up_hours(self: Pin<&mut Sioul>, key: &QString, asked: &QString);
+
+        /// One office of "Is it this one?" picked: its hours on the card.
+        /// {"ok", "changed", "ticked", "offers"} or {"error"}.
+        #[qinvokable]
+        fn pick_hours(self: Pin<&mut Sioul>, key: &QString, found: &QString) -> QString;
+
+        /// A number or an address a lookup found, added to the card ("phone" or "address"): {"ok"} or {"error"}.
+        #[qinvokable]
+        fn add_to_card(self: Pin<&mut Sioul>, key: &QString, what: &QString, value: &QString) -> QString;
+
         /// Shows the contacts of one category only; empty: all of them.
         #[qinvokable]
         fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
@@ -3369,6 +3409,11 @@ pub mod qobject {
         #[qsignal]
         fn places_changed(self: Pin<&mut Sioul>);
 
+        /// A card's hours were looked up (`offices::look_up`): its key, and
+        /// JSON {found: [{source, name, address, phone, hours, note, lines, source_name}], failed: [sentence], offline}.
+        #[qsignal]
+        fn hours_found(self: Pin<&mut Sioul>, key: QString, found: QString);
+
         /// Addresses suggested for what was typed in a place (`eventplace::suggest`):
         /// JSON {used: [label], found: [{label, lat, lon}], service}.
         #[qsignal]
@@ -6042,6 +6087,38 @@ impl qobject::Sioul {
 
     fn load_contact_photo(self: Pin<&mut Self>, url: &QString) {
         pim::load_contact_photo(&self.qt_thread(), &self.shared(), &url.to_string());
+    }
+
+    fn contact_hours(&self, key: &QString) -> QString {
+        QString::from(&crate::offices::contact_hours(&key.to_string()))
+    }
+
+    fn read_hours(&self, text: &QString) -> QString {
+        QString::from(&crate::offices::read_hours(&text.to_string()))
+    }
+
+    fn save_contact_hours(self: Pin<&mut Self>, key: &QString, typed: &QString) -> QString {
+        QString::from(&crate::offices::save_contact_hours(&self.qt_thread(), &self.shared(), &key.to_string(), &typed.to_string()))
+    }
+
+    fn mark_office(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&crate::offices::mark_office(&self.qt_thread(), &self.shared(), &key.to_string()))
+    }
+
+    fn call_back(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&crate::offices::call_back(&self.qt_thread(), &self.shared(), &key.to_string()))
+    }
+
+    fn look_up_hours(self: Pin<&mut Self>, key: &QString, asked: &QString) {
+        crate::offices::look_up(&self.qt_thread(), &key.to_string(), &asked.to_string());
+    }
+
+    fn pick_hours(self: Pin<&mut Self>, key: &QString, found: &QString) -> QString {
+        QString::from(&crate::offices::pick(&self.qt_thread(), &self.shared(), &key.to_string(), &found.to_string()))
+    }
+
+    fn add_to_card(self: Pin<&mut Self>, key: &QString, what: &QString, value: &QString) -> QString {
+        QString::from(&crate::offices::add_to_card(&self.qt_thread(), &self.shared(), &key.to_string(), &what.to_string(), &value.to_string()))
     }
 
     fn save_contact(self: Pin<&mut Self>, key: &QString, edit: &QString) -> QString {
@@ -8989,6 +9066,8 @@ impl qobject::Sioul {
             // The AI's key goes to the keyring, never to the configuration; an empty one is forgotten.
             ("ai_key", config::SettingValue::Text(secret)) => sioul_sync::shield_ai::save_api_key(&secret).map_err(|e| e.sentence(tr(), "Anthropic")),
             ("github_token", config::SettingValue::Text(secret)) => sioul_sync::github::save_token(&secret).map_err(|e| e.sentence(tr(), "GitHub")),
+            // The map's search service: "", "none" or an https address, refused in the window's words.
+            (sioul_core::mapsearch::KEY, config::SettingValue::Text(address)) => sioul_core::mapsearch::checked(&address, tr()).and_then(|address| sioul_core::settings::change(&config_path(), &key, shown.as_ref(), &config::SettingValue::Text(address))),
             ("task_categories", config::SettingValue::Rename(change)) => work::rename_category(&self.qt_thread(), &self.shared(), &change.from, &change.to),
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
             // The papers' or letters' folder (Papers ▸ ⚙, Letters ▸ ⚙): once Sioul's lists moved, the files follow, off this thread.
@@ -9242,7 +9321,9 @@ impl qobject::Sioul {
         // status, its place's buttons and its map, a tentative one, the event form's place suggested (pictures
         // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
-        // address and Directions (a picture alone), "rest" the window left alone, shown, hidden, then with
+        // address and Directions (a picture alone), "hours" an office's card with its opening hours,
+        // their form, a lookup asked and its list (the demo's examples), the panel of a call that
+        // follows the card (pictures alone; docs/tasks.md), "rest" the window left alone, shown, hidden, then with
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
         // (tools/measure-idle.py), "invoices" Money ▸ Invoices: a project's client profile,
         // its Make the invoice in the editor, issued, its pane, Paid…, the list, Settings ▸
@@ -9252,7 +9333,7 @@ impl qobject::Sioul {
         // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
         // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
         // docs/sites.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

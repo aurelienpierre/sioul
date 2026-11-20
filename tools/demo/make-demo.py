@@ -396,7 +396,15 @@ def contacts() -> dict:
                       place=(45.7745, 4.8320), cats=[t("friends", "amis")]),
         "healthcover": dict(name=W.health_name, email=[("work", f"members@{W.health}")], phone=[("work", "+33 4 65 71 80 00")],
                             org=W.health_name, adr=(street("20 Boulevard de l'Exemple"), "69003", "Lyon"), place=(45.7608, 4.8458),
-                            note=t("Open Monday to Friday, 9:00 to 12:00 and 14:00 to 16:30.", "Ouvert du lundi au vendredi, de 9 h à 12 h et de 14 h à 16 h 30.")),
+                            note=t("Open Monday to Friday, 9:00 to 12:00 and 14:00 to 16:30.", "Ouvert du lundi au vendredi, de 9 h à 12 h et de 14 h à 16 h 30."),
+                            # Its opening hours on its card, typed (docs/tasks.md, "Offices' hours"): its call follows them.
+                            hours=dict(open="Mo-Fr 09:00-12:00,14:00-16:30; PH off", phone="Mo-Th 09:00-12:00", checked="2026-09-14",
+                                       note=t("Closed between Christmas and New Year.", "Fermé entre Noël et le jour de l'An."))),
+        # An office with no hours yet, no number, typed as a card that says neither that it is an
+        # organisation's nor a person's: "This is an office…" then "Look them up…" fill it (its
+        # answers in the demo are examples). An invented town, as the tests' fixtures name it.
+        "townhall": dict(name=t("Exempleville town hall", "Mairie d’Exempleville"), email=[], phone=[],
+                         adr=(street("6 Place de l'Exemple"), "99999", "Exempleville"), place=(45.7740, 4.8050)),
         "sophie": dict(name="Sophie Marchand", first="Sophie", last="Marchand", email=[("work", f"sophie.marchand@{W.bank}")], phone=[("work", "+33 4 65 71 30 52")],
                        org=W.bank_name, title=t("Account adviser", "Conseillère clientèle"), adr=(street("1 Cours Imaginaire"), "69002", "Lyon"), place=(45.7578, 4.8320)),
     }
@@ -428,6 +436,14 @@ def vcard(key: str, c: dict) -> str:
         lines.append("NOTE:" + c["note"].replace(",", "\\,").replace(";", "\\;"))
     if c.get("cats"):
         lines.append("CATEGORIES:" + ",".join(c["cats"]))
+    hours = c.get("hours")
+    if hours:
+        text = lambda v: v.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;")
+        lines.append(f"X-SIOUL-OPENING-HOURS;X-SIOUL-SOURCE=typed;X-SIOUL-CHECKED={hours['checked']}:{text(hours['open'])}")
+        if hours.get("phone"):
+            lines.append(f"X-SIOUL-PHONE-HOURS;X-SIOUL-SOURCE=typed;X-SIOUL-CHECKED={hours['checked']}:{text(hours['phone'])}")
+        if hours.get("note"):
+            lines.append(f"X-SIOUL-HOURS-NOTE:{text(hours['note'])}")
     lines.append("END:VCARD")
     return "\r\n".join(lines) + "\r\n"
 
@@ -1641,7 +1657,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            extra=["X-SIOUL-PAUSE-DURING:public", f"X-SIOUL-PAUSE-DURING:school/{SCHOOL_ID}", f"X-SIOUL-PAUSE-DURING:vacations/{VACATIONS_OWNER}"])
          # It ends with the season, at the end of June.
          .replace("RRULE:FREQ=WEEKLY", f"RRULE:FREQ=WEEKLY;UNTIL={utc(c.at(date(c.today.year + 1, 6, 30), '23:59'))}")),
-        ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
+        ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:00", "13:00", location="Café du Quai")),
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
@@ -1837,7 +1853,7 @@ def write_tasks(p: Profile, mail: dict):
                             categories=[work], project="fernhill", completed=c.at(c.day(0), "09:20"), contacts=["oskar"])),
         # Admin.
         ("home-tasks", task(c, "health-call", t("Call the health cover office about the refund", "Appeler la caisse santé pour le remboursement"), estimate=15,
-                            kind="call", categories=[admin, t("health", "santé")], office="mo-fr 09:00-12:00, 14:00-16:30", contacts=["healthcover"],
+                            kind="call", categories=[admin, t("health", "santé")], office="", contacts=["healthcover"],
                             notes=t("The September consultation: only €18.50 came back.", "La consultation de septembre : seulement 18,50 € remboursés."))),
         ("home-tasks", task(c, "meter", t("Send the meter reading to Brightwatt", "Envoyer le relevé de compteur à Clairwatt"), estimate=10, kind="online",
                             categories=[admin], due=c.day(12), links=[("via", mid(mail["energy"]))])),

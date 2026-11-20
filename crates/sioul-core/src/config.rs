@@ -857,6 +857,10 @@ pub struct MapSettings {
     /// Postal addresses may be sent to OpenStreetMap's geocoder, once each, to place contacts.
     #[serde(default)]
     pub geocode: bool,
+    /// The map's search service, for the contacts' map and a lookup's
+    /// (`mapsearch`): unset, OpenStreetMap's Nominatim; "none", neither asks.
+    #[serde(default)]
+    pub search: Option<String>,
 }
 
 /// How the contacts read phone numbers (docs/client.md, "Duplicates").

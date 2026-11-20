@@ -132,6 +132,8 @@ pub mod extensions;
 pub mod fetch;
 pub mod filters;
 pub mod geocode;
+// hours: an office's opening hours looked up because you pressed Look up (`sioul_core::hourslookup`).
+pub mod hours;
 pub mod github;
 pub mod google;
 pub mod google_tasks;

@@ -384,7 +384,7 @@ Panel {
         add("task-kind", kind ? kind.label : (e.kind || ""))
         add("task-field-area", e.area ? e.area.split("+").map(a => panel.sioul.text("area-" + a)).join(", ") : "")
         if (e.office_hours)
-            add("task-office-hours", e.office_times || panel.sioul.text("task-office-usual-short"))
+            add("task-office-hours", e.office_times || (panel.detail.office && panel.detail.office.from === "card" ? panel.detail.office.name : panel.sioul.text("task-office-usual-short")))
         add("task-field-repeat", e.repeat ? panel.sioul.text("repeat-" + e.repeat) : "")
         const list = panel.detail.lists ? panel.detail.lists.find(l => l.id === panel.detail.list) : null
         add("task-field-list", list ? list.name : "")
@@ -1536,6 +1536,109 @@ Panel {
                     }
                 }
             }
+            // The office hours it follows, and whose (opening.rs): "Tax office: open until
+            // 12:00", its hours day by day, read again each minute; its card opened from here,
+            // and Call, as the card's own. Unticked, it says it does not follow them, and
+            // "Follow them" ticks it.
+            ColumnLayout {
+                id: officeFollows
+
+                readonly property var office: panel.detail !== null && panel.detail.office ? panel.detail.office : null
+
+                objectName: "taskOfficeFollows"
+                visible: officeFollows.office !== null && !panel.form
+                Layout.fillWidth: true
+                spacing: 4
+
+                // What is true now moves on: the panel read again each minute while it shows them.
+                Timer {
+                    interval: 60000
+                    repeat: true
+                    running: officeFollows.visible && panel.visible && panel.uid !== ""
+                    onTriggered: panel.reload()
+                }
+
+                // The hours it answers the phone, for a call, when its card has them.
+                Label {
+                    visible: officeFollows.office !== null && officeFollows.office.phone === true
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("hours-phone-title")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
+                Label {
+                    objectName: "taskOfficeNow"
+                    Layout.fillWidth: true
+                    text: officeFollows.office ? officeFollows.office.now : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.weight: Font.DemiBold
+                    color: panel.theme.text
+                }
+                Repeater {
+                    model: officeFollows.office ? officeFollows.office.lines : []
+
+                    delegate: Label {
+                        required property string modelData
+
+                        Layout.fillWidth: true
+                        text: modelData
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: panel.theme.muted
+                    }
+                }
+                // Unticked, its office's card has hours: it does not follow them, said, with the link that makes it.
+                Label {
+                    objectName: "taskOfficeNotFollowed"
+                    visible: officeFollows.office !== null && officeFollows.office.from === "card" && officeFollows.office.follows === false
+                    Layout.fillWidth: true
+                    text: panel.sioul.text("hours-task-not-followed")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
+                Flow {
+                    visible: officeFollows.office !== null && officeFollows.office.from === "card"
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Button {
+                        objectName: "taskOfficeFollow"
+                        visible: officeFollows.office !== null && officeFollows.office.follows === false && panel.canEdit
+                        flat: true
+                        text: panel.sioul.text("hours-task-follow")
+                        icon.name: "go-next"
+                        icon.color: panel.theme.text
+                        onClicked: {
+                            panel.change("office_hours", true)
+                            panel.reload()
+                        }
+                    }
+
+                    Button {
+                        objectName: "taskOfficeCard"
+                        flat: true
+                        text: panel.sioul.text("hours-task-open-card")
+                        icon.name: "go-next"
+                        icon.color: panel.theme.text
+                        Accessible.name: officeFollows.office ? panel.sioul.textWith("hours-task-open-card-name", "name", officeFollows.office.name) : ""
+                        onClicked: panel.window.openThing({ kind: "contact", uri: "", key: officeFollows.office.key, title: officeFollows.office.name }, true)
+                    }
+                    Button {
+                        objectName: "taskOfficeCall"
+                        visible: officeFollows.office !== null && officeFollows.office.number !== ""
+                        text: panel.sioul.text("ui-call")
+                        icon.name: "call-start"
+                        icon.color: panel.theme.text
+                        Accessible.name: officeFollows.office ? panel.sioul.textWith("hours-task-call", "name", officeFollows.office.name) : ""
+                        onClicked: Qt.openUrlExternally("tel:" + officeFollows.office.number.replace(/[^+0-9]/g, ""))
+                    }
+                }
+            }
             // Done: how it was, if you want to say. Filled in with what was
             // foreseen; nothing is kept until one changes, or "As expected".
             BareButton {
@@ -1895,7 +1998,8 @@ Panel {
                         panel.change("office_times", (from === to ? from : from + "-" + to) + " " + hours)
                     }
 
-                    visible: panel.detail !== null && panel.detail.edit.office_hours
+                    // Hours typed on the task: for an office with no card, and old tasks; one whose card has hours follows it.
+                    visible: panel.detail !== null && panel.detail.edit.office_hours && !(panel.detail.office && panel.detail.office.from === "card")
                     enabled: panel.canEdit && panel.keeps("office")
                     Layout.columnSpan: 2
                     Layout.leftMargin: 28
@@ -1994,9 +2098,10 @@ Panel {
                         }
                     }
                     // Hours set otherwise (several ranges of days): shown as they are, kept until changed here.
+                    // None typed: its office's card's when it has some (said below), else the usual ones.
                     Label {
                         Layout.fillWidth: true
-                        text: officeTimes.stored === "" ? panel.sioul.text("task-office-usual") : officeTimes.parts ? "" : officeTimes.stored
+                        text: officeTimes.stored === "" ? (panel.detail !== null && panel.detail.office && panel.detail.office.from === "card" ? "" : panel.sioul.text("task-office-usual")) : officeTimes.parts ? "" : officeTimes.stored
                         textFormat: Text.PlainText
                         visible: text !== ""
                         wrapMode: Text.Wrap

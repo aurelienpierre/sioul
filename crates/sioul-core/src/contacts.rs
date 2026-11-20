@@ -69,6 +69,13 @@ pub struct Contact {
     /// it is kept: what "Load the photo" asks for (`web_photo_file`); empty
     /// otherwise (decided 3 November 2026).
     pub photo_web: String,
+    /// Its opening hours, when it is an office's (`opening`): Sioul's own
+    /// lines, which other programs keep as they are.
+    pub hours: crate::opening::CardHours,
+    /// What the card says it is (`card_kind`): "org" for an organisation's,
+    /// "person" for a person's, "" when it says neither (a card made in the
+    /// form, its name line Sioul's guess).
+    pub card: &'static str,
 }
 
 /// What the contact form gives back.
@@ -340,6 +347,12 @@ fn contact_with(card: &[String], path: &Path, book: &Collection, photos: bool) -
         suffix,
         photo: photo.0,
         photo_web: photo.1,
+        hours: crate::opening::CardHours::of(card),
+        card: match card_kind(card) {
+            crate::titles::Card::Company => "org",
+            crate::titles::Card::Person => "person",
+            crate::titles::Card::Unknown => "",
+        },
     }
 }
 
@@ -408,7 +421,9 @@ fn card_kind(card: &[String]) -> crate::titles::Card {
     let first = |property: &str| card.iter().find(|l| lines::name(l) == property).map(|l| shown(l)).unwrap_or_default();
     let fold = |t: &str| folded(t).split_whitespace().collect::<Vec<_>>().join(" ");
     let (name, org) = (first("FN"), first("ORG"));
-    if first("KIND").eq_ignore_ascii_case("org") || (!org.is_empty() && fold(&org) == fold(&name)) {
+    // vCard 4.0's KIND, Apple's mark on a 3.0 card (`X-ABShowAs:COMPANY`, what `as_office` writes
+    // when its organisation is someone else's name), or its name its organisation's.
+    if first("KIND").eq_ignore_ascii_case("org") || first(SHOW_AS).eq_ignore_ascii_case("company") || (!org.is_empty() && fold(&org) == fold(&name)) {
         return Card::Company;
     }
     let Some(parts) = n_parts(card) else { return Card::Unknown };
@@ -761,6 +776,90 @@ pub fn move_title(text: &str) -> TitleMove {
     TitleMove::Moves { title, before, after: rest, kept, sure, text: rewritten(out, added) }
 }
 
+/// A card with these opening hours (`opening`, Sioul's own lines): each of
+/// its lines in the place of the first it replaces, the others before
+/// `END:VCARD`; every other line byte for byte, `REV` renewed. None when the
+/// card says these hours already. Hours taken off (none given) take their
+/// lines with them; nothing else is ever removed.
+pub fn with_hours(text: &str, hours: &crate::opening::CardHours) -> Option<String> {
+    let card = lines::unfold(text);
+    if crate::opening::CardHours::of(&card) == *hours {
+        return None;
+    }
+    let wanted = hours.lines();
+    let mut out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    let mut added = Vec::new();
+    for name in [crate::opening::OPEN, crate::opening::PHONE, crate::opening::NOTE] {
+        let present: Vec<usize> = card.iter().enumerate().filter(|(_, l)| lines::name(l) == name).map(|(i, _)| i).collect();
+        for &i in &present {
+            out[i] = None;
+        }
+        if let Some(line) = wanted.iter().find(|l| lines::name(l) == name) {
+            match present.first() {
+                Some(&i) => out[i] = Some(line.clone()),
+                None => added.push(line.clone()),
+            }
+        }
+    }
+    Some(rewritten(out, added))
+}
+
+/// Apple's mark of a company's card in vCard 3.0, which has no `KIND`.
+const SHOW_AS: &str = "X-ABSHOWAS";
+
+/// A card marked as an organisation's (an office, a shop, a practice: the
+/// person's word, "This is an office, a shop or a practice", decided 20
+/// November 2026), in the way its version lets other programs read it: a
+/// vCard 4.0 card gets `KIND:org` (in the place of another `KIND`); a 3.0
+/// card, which Sioul's form writes and which has no `KIND`, gets its name
+/// written in its organisation (`ORG`) when that is empty, else Apple's
+/// `X-ABShowAs:COMPANY`. Every other line byte for byte, `REV` renewed;
+/// `card_kind` reads each of them back. None when the card says so already.
+pub fn as_office(text: &str) -> Option<String> {
+    let card = lines::unfold(text);
+    if card_kind(&card) == crate::titles::Card::Company {
+        return None;
+    }
+    let first = |property: &str| card.iter().position(|l| lines::name(l) == property);
+    let four = card.iter().any(|l| lines::name(l) == "VERSION" && lines::value(l).trim() == "4.0");
+    let mut out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    let mut added = Vec::new();
+    if four {
+        match first("KIND") {
+            Some(i) => out[i] = Some("KIND:org".into()),
+            None => added.push("KIND:org".into()),
+        }
+    } else if let Some(name) = first("FN").map(|i| shown(&card[i])).filter(|n| !n.is_empty())
+        && card.iter().filter(|l| lines::name(l) == "ORG").all(|l| shown(l).is_empty())
+    {
+        for i in card.iter().enumerate().filter(|(_, l)| lines::name(l) == "ORG").map(|(i, _)| i) {
+            out[i] = None;
+        }
+        added.push(format!("ORG:{}", lines::escape(&name)));
+    } else {
+        added.push("X-ABShowAs:COMPANY".into());
+    }
+    Some(rewritten(out, added))
+}
+
+/// A card with one more number (`TEL`) or postal address (`ADR`), unlabelled,
+/// as the form would write it; every other line byte for byte, `REV`
+/// renewed. None when the card shows that value already (an office's
+/// number a lookup found and the person chose to add).
+pub fn with_value(text: &str, property: &str, value: &str) -> Option<String> {
+    let card = lines::unfold(text);
+    let value = value.trim();
+    if value.is_empty() || !matches!(property, "TEL" | "ADR") {
+        return None;
+    }
+    let wanted = if property == "ADR" { tidy_address(value) } else { value.to_string() };
+    if card.iter().any(|l| lines::name(l) == property && shown(l) == wanted) {
+        return None;
+    }
+    let out: Vec<Option<String>> = card.iter().cloned().map(Some).collect();
+    Some(rewritten(out, vec![write_value("", property, "", value, false)]))
+}
+
 /// A card's lines as changed, `REV` renewed, what was added before `END:VCARD`.
 fn rewritten(out: Vec<Option<String>>, mut added: Vec<String>) -> String {
     let mut kept: Vec<String> = out.into_iter().flatten().filter(|l| lines::name(l) != "REV").collect();
@@ -1077,6 +1176,98 @@ pub fn new_path(book: &Collection) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An office's hours written through the contacts' writer: in the place of
+    /// their lines, every other line as it was; nothing when they say the same.
+    #[test]
+    fn opening_hours_on_a_card() {
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:hall\r\nFN:Example town hall\r\nTEL:01 23 45 67 89\r\nX-OTHER-APP:kept\r\nEND:VCARD\r\n";
+        let hours = crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Mo-Fr 09:00-12:00; PH off".into(), source: "typed".into(), checked: "2026-11-20".into(), holidays_open: false }), phone: None, note: "Closed in August".into(), extra: Vec::new() };
+        let written = with_hours(card, &hours).unwrap();
+        let lines = lines::unfold(&written);
+        assert!(lines.contains(&"X-OTHER-APP:kept".to_string()) && lines.contains(&"TEL:01 23 45 67 89".to_string()));
+        assert!(lines.contains(&"X-SIOUL-OPENING-HOURS;X-SIOUL-SOURCE=typed;X-SIOUL-CHECKED=2026-11-20:Mo-Fr 09:00-12:00\\; PH off".to_string()), "{lines:?}");
+        assert_eq!(crate::opening::CardHours::of(&lines), hours);
+        assert_eq!(with_hours(&written, &hours), None, "the same hours: nothing written");
+        // Changed: in the place of the first, the note taken off with nothing else.
+        let changed = crate::opening::CardHours { note: String::new(), ..hours.clone() };
+        let again = lines::unfold(&with_hours(&written, &crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Sa 09:00-12:00; PH off".into(), ..Default::default() }), ..changed }).unwrap());
+        let at = |l: &[String], name: &str| l.iter().position(|x| lines::name(x) == name);
+        assert_eq!(at(&again, crate::opening::OPEN), at(&lines, crate::opening::OPEN), "where it was");
+        assert!(at(&again, crate::opening::NOTE).is_none() && again.contains(&"X-OTHER-APP:kept".to_string()));
+        // An older Sioul's form saved over it keeps the lines (`apply` changes only its fields).
+        let older = apply(&written, &ContactEdit { name: "Example town hall".into(), phones: vec![Labeled { label: String::new(), value: "01 23 45 67 89".into() }], notes: "A note".into(), ..ContactEdit::default() });
+        assert_eq!(crate::opening::CardHours::of(&lines::unfold(&older)), hours);
+        // A number a lookup found, added when asked; never twice.
+        let added = with_value(card, "TEL", "+33 1 98 76 54 32").unwrap();
+        assert!(lines::unfold(&added).contains(&"TEL:+33 1 98 76 54 32".to_string()));
+        assert_eq!(with_value(card, "TEL", "01 23 45 67 89"), None);
+    }
+
+    /// The card's writer for hours at its edges (review 11): a line folded
+    /// over 75 octets read and replaced where it was; a grouped line
+    /// (`item1.`) of another program kept; two lines of hours, one written
+    /// back, the second's text in the free line; a source parameter that
+    /// would break the line written as a parameter, read back the same; an
+    /// address a lookup found, added in its parts.
+    #[test]
+    fn hours_on_a_card_at_the_edges() {
+        let long = format!("Mo-Fr 09:00-12:00,14:00-17:00; Sa 09:00-12:00; {}", "\"by appointment on the first Thursday of the month\" ".repeat(2));
+        let card = lines::fold(&["BEGIN:VCARD".to_string(), "VERSION:3.0".into(), "FN:Example office".into(), "item1.TEL:01 23 45 67 89".into(), "item1.X-ABLabel:Counter".into(), format!("X-SIOUL-OPENING-HOURS:{}", lines::escape(&long)), "X-SIOUL-OPENING-HOURS:Su 10:00-11:00".into(), "END:VCARD".into()]);
+        assert!(card.contains("\r\n "), "folded");
+        let read = crate::opening::CardHours::of(&lines::unfold(&card));
+        assert_eq!(read.open.as_ref().unwrap().value, long.trim());
+        assert_eq!(read.extra, vec!["Su 10:00-11:00"]);
+        let hostile = crate::opening::CardHours { open: Some(crate::opening::Hours { value: "Mo 09:00-10:00".into(), source: "evil\";X-OTHER=1:Mo".into(), ..Default::default() }), ..read.clone().folded() };
+        let written = with_hours(&card, &hostile).unwrap();
+        let after = lines::unfold(&written);
+        assert!(after.contains(&"item1.TEL:01 23 45 67 89".to_string()) && after.contains(&"item1.X-ABLabel:Counter".to_string()), "{after:?}");
+        assert_eq!(after.iter().filter(|l| lines::name(l) == crate::opening::OPEN).count(), 1, "one line of hours");
+        assert_eq!(after.iter().position(|l| lines::name(l) == crate::opening::OPEN), Some(5), "where the first was");
+        let back = crate::opening::CardHours::of(&after);
+        assert_eq!(back.open.as_ref().unwrap().source, "evil\";X-OTHER=1:Mo", "the parameter read back as written");
+        assert_eq!(back.open.as_ref().unwrap().value, "Mo 09:00-10:00");
+        assert_eq!(back.note, "Su 10:00-11:00");
+        // An address a lookup found: added in its parts, as the form writes one.
+        let with_address = with_value(&written, "ADR", "1 Place de l'Exemple\n99999 Exempleville").unwrap();
+        let adr = lines::unfold(&with_address).into_iter().find(|l| lines::name(l) == "ADR").unwrap();
+        assert!(adr.contains("1 Place de l'Exemple") && adr.contains("99999") && adr.contains("Exempleville"), "{adr}");
+        assert_eq!(with_value(&with_address, "ADR", "1 Place de l'Exemple\n99999 Exempleville"), None, "never twice");
+    }
+
+    /// "This is an office, a shop or a practice": a card marked as an
+    /// organisation's as its version lets other programs read it, every other
+    /// line kept, read back as one; a person's card read from its text is
+    /// neither, and nothing can be looked up for it (review of 20 November 2026, 1).
+    #[test]
+    fn a_card_said_to_be_an_office_s() {
+        let book = book();
+        let read = |text: &str| contact(&lines::unfold(text), Path::new("/books/x.vcf"), &book);
+        let person = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:jeanne\r\nFN:Jeanne Exemple\r\nN:Exemple;Jeanne;;;\r\nTEL:01 23 45 67 89\r\nADR:;;1 rue de l'Exemple;Exempleville;;99999;\r\nX-OTHER-APP:kept\r\nEND:VCARD\r\n";
+        let jeanne = read(person);
+        assert_eq!(jeanne.card, "", "its name line is Sioul's guess: the card says neither");
+        assert_eq!(crate::hourslookup::Asked::of(&jeanne, true), None, "nothing can be asked for it");
+        // vCard 3.0, its organisation empty: its name written there, every other line kept.
+        let office = as_office(person).unwrap();
+        let lines = lines::unfold(&office);
+        assert!(lines.contains(&"ORG:Jeanne Exemple".to_string()) && lines.contains(&"X-OTHER-APP:kept".to_string()) && lines.contains(&"N:Exemple;Jeanne;;;".to_string()), "{lines:?}");
+        assert_eq!(read(&office).card, "org");
+        assert!(crate::hourslookup::Asked::of(&read(&office), true).is_some());
+        assert_eq!(as_office(&office), None, "said already");
+        // Its organisation another name: Apple's mark, the organisation kept.
+        let at_work = person.replace("X-OTHER-APP:kept", "ORG:Exemple SARL");
+        let marked = as_office(&at_work).unwrap();
+        assert!(marked.contains("X-ABShowAs:COMPANY\r\n") && marked.contains("ORG:Exemple SARL\r\n"), "{marked}");
+        assert_eq!(read(&marked).card, "org");
+        // vCard 4.0: KIND, in the place of the one there.
+        let four = "BEGIN:VCARD\r\nVERSION:4.0\r\nKIND:individual\r\nFN:Cabinet Exemple\r\nN:Exemple;Cabinet;;;\r\nEND:VCARD\r\n";
+        let written = as_office(four).unwrap();
+        assert!(written.starts_with("BEGIN:VCARD\r\nVERSION:4.0\r\nKIND:org\r\nFN:Cabinet Exemple\r\n"), "{written}");
+        assert_eq!(read(&written).card, "org");
+        // A card with hours typed on it is the person's word that it is an office's: asked.
+        let typed = with_hours(person, &crate::opening::CardHours { note: "By appointment".into(), ..Default::default() }).unwrap();
+        assert!(crate::hourslookup::Asked::of(&read(&typed), true).is_some());
+    }
 
     #[test]
     fn a_photo_to_show() {

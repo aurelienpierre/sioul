@@ -294,6 +294,12 @@ pub mod moves;
 pub mod movements;
 pub mod needs;
 pub mod ongoing;
+// opening: an office's opening hours on its card, and the hours a task that needs an open office follows.
+pub mod opening;
+// hourslookup: an office's hours looked up when the person asks (the administration's directory, OpenStreetMap).
+pub mod hourslookup;
+// mapsearch: the map's search service (the contacts' map, an event's map, a lookup), its setting and its refusals.
+pub mod mapsearch;
 pub mod organizer;
 pub mod overlaps;
 pub mod own_time;

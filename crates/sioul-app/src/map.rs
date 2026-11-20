@@ -32,6 +32,9 @@ struct MapView {
     waiting: usize,
     /// Placing is under way.
     locating: bool,
+    /// Why no address is placed now, in a sentence: the map's search service
+    /// set to None, or refused today (`geocode::stopped_now`); "" otherwise.
+    stopped: String,
 }
 
 /// The tile server's address before "{z}/{x}/{y}.png", OpenStreetMap's by default.
@@ -56,7 +59,9 @@ pub(crate) fn view(shared: &Shared) -> String {
             }
         }
     }
-    json(&MapView { allowed: load_config().map.geocode, tiles: tiles(), pins, waiting, locating: shared.locating.load(Ordering::Relaxed) })
+    let allowed = load_config().map.geocode;
+    let stopped = if allowed && waiting > 0 { sioul_sync::geocode::stopped_now().map(|e| e.sentence(tr(), "OpenStreetMap")).unwrap_or_default() } else { String::new() };
+    json(&MapView { allowed, tiles: tiles(), pins, waiting, locating: shared.locating.load(Ordering::Relaxed), stopped })
 }
 
 /// Where one address is, when placed: {"lat", "lon"}, else "".
@@ -65,9 +70,12 @@ pub(crate) fn place_of(address: &str) -> String {
 }
 
 /// Places the addresses not asked yet, when you allowed it: one a second, on a
-/// thread; the map is told every few, and at the end.
+/// thread; the map is told every few, and at the end. Nothing starts while
+/// the map's search service is set to None or refused today (`map.search`,
+/// `geocode::stopped_now`: the map says why); a refusal met on the way is
+/// said once, and what is left waits.
 pub(crate) fn locate(qt: &QtThread, shared: &Arc<Shared>) {
-    if !load_config().map.geocode || crate::backend::offline() || shared.locating.swap(true, Ordering::Relaxed) {
+    if !load_config().map.geocode || crate::backend::offline() || sioul_sync::geocode::stopped_now().is_some() || shared.locating.swap(true, Ordering::Relaxed) {
         return;
     }
     let loaded = loaded(shared);

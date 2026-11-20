@@ -134,6 +134,11 @@ pub fn contact_losses(card: &str, to: Provider) -> Vec<&'static str> {
     if has(&|l| ["KIND", "GENDER", "ANNIVERSARY", "MEMBER", "RELATED", "LANG"].iter().any(|p| l.starts_with(&format!("{p}:")) || l.starts_with(&format!("{p};")))) {
         lost.push("vcard4");
     }
+    // An office's hours are lines of Sioul's own (`opening`): Google is not
+    // known to keep a property it does not know, and Sioul has not tried it.
+    if has(&|l| crate::opening::CardHours::is_line(l)) {
+        lost.push("hours");
+    }
     lost
 }
 
@@ -145,6 +150,8 @@ mod tests {
     fn google_keeps_less() {
         let card = "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Jane\r\nitem1.EMAIL:jane@example.org\r\nitem1.X-ABLabel:Studio\r\nBDAY:--0412\r\nGENDER:F\r\nEND:VCARD\r\n";
         assert_eq!(contact_losses(card, Provider::Google), vec!["labels", "birthday-no-year", "vcard4"]);
+        let office = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Example town hall\r\nX-SIOUL-OPENING-HOURS:Mo-Fr 09:00-12:00\r\nEND:VCARD\r\n";
+        assert_eq!(contact_losses(office, Provider::Google), vec!["hours"]);
         assert!(contact_losses(card, Provider::Dav).is_empty());
         let task = Task { repeat: "weekly".into(), estimate: 30, ..Task::default() };
         assert_eq!(task_losses(&task, Provider::GoogleTasks), vec!["repeat", "estimate"]);

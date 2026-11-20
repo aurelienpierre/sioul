@@ -1,0 +1,95 @@
+[
+ {
+  "place_id": 100001,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "node",
+  "osm_id": 1000001,
+  "lat": "45.0000010",
+  "lon": "0.0000010",
+  "category": "amenity",
+  "type": "townhall",
+  "place_rank": 30,
+  "importance": 0.2,
+  "addresstype": "amenity",
+  "name": "Example town hall",
+  "display_name": "Example town hall, 1, Place de l'Exemple, Exempleville, 99999, France",
+  "boundingbox": [
+   "44.9999510",
+   "45.0000510",
+   "-0.0000490",
+   "0.0000510"
+  ],
+  "extratags": {
+   "phone": "+33 1 23 45 67 89",
+   "website": "https://example.org/",
+   "townhall:type": "city",
+   "opening_hours": "Mo-Fr 08:30-12:00,13:30-17:00; Sa 09:00-12:00; PH off",
+   "wheelchair": "yes"
+  },
+  "address": {
+   "amenity": "Example town hall",
+   "house_number": "1",
+   "road": "Place de l'Exemple",
+   "town": "Exempleville",
+   "postcode": "99999",
+   "country": "France",
+   "country_code": "fr"
+  }
+ },
+ {
+  "place_id": 100002,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 1000002,
+  "lat": "45.0000020",
+  "lon": "0.0000020",
+  "category": "office",
+  "type": "government",
+  "place_rank": 30,
+  "importance": 0.1,
+  "addresstype": "office",
+  "name": "Example tax office",
+  "display_name": "Example tax office, 3, Rue de l'Exemple, Exempleville, 99999, France",
+  "boundingbox": [
+   "44.9999520",
+   "45.0000520",
+   "-0.0000480",
+   "0.0000520"
+  ],
+  "extratags": {
+   "contact:phone": "+33 1 98 76 54 32",
+   "opening_hours": "Mo-Th 09:00-12:00; Aug off"
+  },
+  "address": {
+   "office": "Example tax office",
+   "house_number": "3",
+   "road": "Rue de l'Exemple",
+   "town": "Exempleville",
+   "postcode": "99999",
+   "country": "France",
+   "country_code": "fr"
+  }
+ },
+ {
+  "place_id": 100003,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "node",
+  "osm_id": 1000003,
+  "lat": "45.0000030",
+  "lon": "0.0000030",
+  "category": "amenity",
+  "type": "post_office",
+  "place_rank": 30,
+  "importance": 0.1,
+  "addresstype": "amenity",
+  "name": "Example post office",
+  "display_name": "Example post office, 5, Rue de l'Exemple, Exempleville, 99999, France",
+  "boundingbox": [
+   "44.9999530",
+   "45.0000530",
+   "-0.0000470",
+   "0.0000530"
+  ],
+  "extratags": {}
+ }
+]

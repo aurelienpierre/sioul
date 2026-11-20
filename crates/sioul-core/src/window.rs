@@ -7,7 +7,8 @@
 //! them, quiet time (`quiet.rs`). Predictable looks, not silence: in a field
 //! trial, people given no notifications at all felt more anxious, while
 //! batching them three times a day helped (Fitz et al. 2019; docs/research.md).
-//! The same rows say when offices are open, for tasks that need one.
+//! The same rows say when offices are open, for tasks that need one; an
+//! office's own hours, on its card, are read in `opening`.
 
 use jiff::civil::{Date, Weekday};
 use jiff::{SignedDuration, Span, Zoned};
@@ -15,7 +16,7 @@ use serde::Deserialize;
 
 /// One day's hours, as written in the configuration: `day`, `start`, `end`
 /// ("tuesday", "09:00", "17:00"); older files say `minutes` instead of `end`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct AdminWindow {
     /// "tuesday", "tue" or "mardi".
     pub day: String,
@@ -102,18 +103,18 @@ pub fn days_open(windows: &[AdminWindow]) -> [bool; 7] {
     days
 }
 
-const SHORT: [&str; 7] = ["mo", "tu", "we", "th", "fr", "sa", "su"];
-const NAMES: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+pub(crate) const SHORT: [&str; 7] = ["mo", "tu", "we", "th", "fr", "sa", "su"];
+pub(crate) const NAMES: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 /// "mo", "lu", "monday", "lundi": a day, Monday 0.
-fn day_index(text: &str) -> Option<usize> {
+pub(crate) fn day_index(text: &str) -> Option<usize> {
     let text = text.trim().to_lowercase();
     let french = ["lu", "ma", "me", "je", "ve", "sa", "di"];
     SHORT.iter().position(|d| *d == text).or_else(|| french.iter().position(|d| *d == text)).or_else(|| parse_weekday(&text).map(|w| w.to_monday_zero_offset() as usize))
 }
 
 /// "09:00", from "9:00" or "9h00" or "9".
-fn tidy_time(text: &str) -> Option<String> {
+pub(crate) fn tidy_time(text: &str) -> Option<String> {
     let text = text.trim().to_lowercase().replace('h', ":");
     let (hour, minute) = match text.split_once(':') {
         Some((h, m)) => (h.parse::<u8>().ok()?, if m.is_empty() { 0 } else { m.parse::<u8>().ok()? }),

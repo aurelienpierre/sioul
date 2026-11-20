@@ -159,7 +159,8 @@ pub(crate) fn remade(kinds: &BTreeSet<Kind>) -> Remade {
         pim: any(&[Kind::Calendars, Kind::Contacts, Kind::Agendas]),
         // The Porch says the declarations and the invoices not paid yet.
         views: any(&[Kind::Money, Kind::Accounts, Kind::Projects, Kind::Papers, Kind::Letters, Kind::Sites, Kind::Invoices, Kind::Issued]),
-        work: any(&[Kind::Calendars, Kind::Notes, Kind::Links, Kind::Projects]),
+        // Contacts too: an office's card says the hours its tasks follow (`opening`).
+        work: any(&[Kind::Calendars, Kind::Contacts, Kind::Notes, Kind::Links, Kind::Projects]),
     }
 }
 
@@ -269,6 +270,8 @@ mod tests {
         }
         let calendars: BTreeSet<Kind> = [Kind::Calendars].into_iter().collect();
         assert_eq!(remade(&calendars), Remade { pim: true, views: false, work: true });
+        // An office's card arrived: its tasks follow its hours, the plan made again.
+        assert_eq!(remade(&[Kind::Contacts].into_iter().collect()), Remade { pim: true, views: false, work: true });
         // A draft saved as it is typed tells its views only: nothing read again, the day never planned again (the review of phase 3, F7).
         assert_eq!(heard(Kind::Invoices), Heard { signal: true, agenda: false, loaded: false, ties: false });
         // An issued record, a life or a journal empties the tie index too, which reads them; still no store read again (R15).

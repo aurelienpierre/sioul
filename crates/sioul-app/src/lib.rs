@@ -186,6 +186,7 @@ mod organized;
 #[cfg(target_os = "android")]
 mod nfc;
 mod notices;
+mod offices;
 mod ledger;
 mod leave;
 mod letters;

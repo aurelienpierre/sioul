@@ -114,36 +114,50 @@ impl Filter {
 /// Whether offices are open now, for tasks that need one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Offices {
+    /// Offices' usual hours are open now.
     pub open: bool,
     /// When they open next, in words; empty when open.
     pub next: String,
-    /// The moment: a task's own office (its hours, `Task::office_times`) is told by it.
+    /// The moment: a task's own office (its hours, `Task::office_times`, or
+    /// its office's card's) is told by it.
     pub now: Option<jiff::Zoned>,
+    /// The offices' cards with hours, by UID (`opening::Cards`).
+    pub cards: crate::opening::Cards,
+    /// Offices' usual hours (Tasks ⚙, "When offices are open").
+    pub usual: Vec<crate::window::AdminWindow>,
+    /// The public holidays Sioul knows: offices are closed then.
+    pub holidays: std::collections::BTreeSet<jiff::civil::Date>,
 }
 
 impl Offices {
     /// Always open: for places that do not care (tests, a list).
     pub fn always() -> Offices {
-        Offices { open: true, next: String::new(), now: None }
+        Offices { open: true, ..Offices::default() }
+    }
+
+    /// The hours a task follows (`opening::hours_for`): its own, else its office's card's, else the usual ones.
+    pub fn follows(&self, task: &Task) -> crate::opening::Followed {
+        crate::opening::hours_for(task, &self.cards, &self.usual)
     }
 
     /// Whether the office a task needs is open now: its own hours when it has
-    /// some, else offices' usual ones. A task needing none is always free.
+    /// some, else its office's card's, else offices' usual ones. A task
+    /// needing none is always free.
     pub fn open_for(&self, task: &Task) -> bool {
         if !task.office_hours {
             return true;
         }
-        let own = crate::window::parse_ranges(&task.office_times);
+        let followed = self.follows(task);
         match &self.now {
-            Some(now) if !own.is_empty() => crate::window::current(&own, now).is_some(),
+            Some(now) if followed.whose != crate::opening::Whose::Usual => followed.open_until(&self.holidays, now).is_some(),
             _ => self.open,
         }
     }
 
-    /// When a task's own office opens next; None for the usual hours (`next` says them).
+    /// When a task's own office opens next (its hours or its card's); None for the usual hours (`next` says them).
     pub fn opening_for(&self, task: &Task) -> Option<jiff::Zoned> {
-        let own = crate::window::parse_ranges(&task.office_times);
-        self.now.as_ref().filter(|_| !own.is_empty()).and_then(|now| crate::window::next_opening(&own, now))
+        let followed = self.follows(task);
+        self.now.as_ref().filter(|_| followed.whose != crate::opening::Whose::Usual).and_then(|now| followed.next_opening(&self.holidays, now))
     }
 }
 
@@ -594,7 +608,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     let closed: Vec<&Task> = ready.iter().copied().filter(|t| !cx.offices.open_for(t) && !aside.contains(&t.uid)).collect();
     if !closed.is_empty() {
         let own = closed.iter().filter_map(|t| cx.offices.opening_for(t)).min_by_key(jiff::Zoned::timestamp);
-        let usual = closed.iter().any(|t| crate::window::parse_ranges(&t.office_times).is_empty());
+        let usual = closed.iter().any(|t| cx.offices.follows(t).whose == crate::opening::Whose::Usual);
         let when = match own {
             Some(own) if !usual => cx.tr.when(&own),
             _ => cx.offices.next.clone(),
@@ -1143,6 +1157,50 @@ pub struct DetailView {
     pub pin: Option<PinView>,
     /// "Do at…"'s length by default, in minutes: what the plan lays for it, its margins aside (`blocks::default_minutes`).
     pub pin_minutes: u32,
+    /// The office hours it follows (`office_view`): None when it needs no
+    /// open office and involves no office whose card has hours.
+    pub office: Option<OfficeView>,
+}
+
+/// The hours a task follows, as its panel says them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct OfficeView {
+    /// "own" (typed on the task), "card" (its office's), "usual" (Tasks ⚙).
+    pub from: &'static str,
+    /// The office's name, for its card's hours.
+    pub name: String,
+    /// Its card's file, to open it from the task.
+    pub key: String,
+    /// The office's number, to call it from the task.
+    pub number: String,
+    /// The hours it answers the phone, not its counter's.
+    pub phone: bool,
+    /// What is true now, in a sentence: "Tax office: open until 12:00".
+    pub now: String,
+    /// The hours in words, one line per run of days (`opening::day_lines`).
+    pub lines: Vec<String>,
+    /// It is ticked "Needs an open office": it follows these hours. Unticked
+    /// (its office's card has hours), the panel says it does not, with
+    /// "Follow them" (review of 20 November 2026, 3).
+    pub follows: bool,
+}
+
+/// What a task's panel says of the office hours it follows: when it needs
+/// an open office, or involves an office whose card has hours (its tick
+/// unset, the panel still says them, with Call).
+pub fn office_view(cx: &Context, task: &Task) -> Option<OfficeView> {
+    let followed = cx.offices.follows(task);
+    if !task.office_hours && !matches!(followed.whose, crate::opening::Whose::Card { .. }) {
+        return None;
+    }
+    let now = cx.offices.now.clone().unwrap_or_else(crate::zone::now);
+    let (from, name, key, number, phone) = match &followed.whose {
+        crate::opening::Whose::Own => ("own", cx.tr.text("hours-own-name", None), String::new(), String::new(), false),
+        crate::opening::Whose::Card { name, key, number, phone, .. } => ("card", name.clone(), key.clone(), number.clone(), *phone),
+        crate::opening::Whose::Usual => ("usual", cx.tr.text("hours-usual-name", None), String::new(), String::new(), false),
+    };
+    let said = crate::opening::now_line(&followed, &cx.offices.holidays, &now, Some(name.as_str()), cx.tr);
+    Some(OfficeView { from, name, key, number, phone, now: said, lines: crate::opening::day_lines(&followed.windows, cx.tr), follows: task.office_hours })
 }
 
 /// The gap of `task`'s wait for `other`, in minutes, as the plan reads it
@@ -1198,6 +1256,7 @@ pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], r
         ratio_line: String::new(),
         pin: pin_view(cx, &task.uid),
         pin_minutes: crate::blocks::default_minutes(task, cx.planned(&task.uid).map(|p| p.laid).filter(|l| *l > 0), 30),
+        office: office_view(cx, task),
     }
 }
 
@@ -1229,6 +1288,43 @@ mod tests {
 
     fn task(uid: &str, title: &str) -> Task {
         Task { uid: uid.into(), title: title.into(), estimate: 15, ..Task::default() }
+    }
+
+    /// Now and the task's panel follow the office's card (`opening`): the phone's hours for a
+    /// call, the counter's for an outing, closed on a public holiday, said with its name.
+    #[test]
+    fn now_follows_the_office_s_card() {
+        let hours = |value: &str| Some(crate::opening::Hours { value: value.into(), ..Default::default() });
+        let hall = crate::contacts::Contact { uid: "hall".into(), name: "Example town hall".into(), key: "/books/hall.vcf".into(), phones: vec![crate::contacts::Labeled { label: String::new(), value: "01 23 45 67 89".into() }], hours: crate::opening::CardHours { open: hours("Mo-Fr 09:00-12:00; PH off"), phone: hours("Mo 14:00-16:00"), ..Default::default() }, ..Default::default() };
+        let call = Task { kind: "call".into(), office_hours: true, contacts: vec![crate::tasks::ContactRef { name: "Example town hall".into(), uri: crate::links::contact_uri("hall") }], ..task("call", "Call the town hall") };
+        let out = Task { uid: "out".into(), kind: "out".into(), ..call.clone() };
+        // Monday 23 November 2026, 10:00.
+        let now: jiff::Zoned = "2026-11-23T10:00[Europe/Paris]".parse().unwrap();
+        let offices = Offices { open: true, next: String::new(), now: Some(now.clone()), cards: crate::opening::Cards::of(&[hall]), usual: crate::window::default_office_hours(), holidays: BTreeSet::new() };
+        assert!(!offices.open_for(&call), "it answers the phone from 14:00");
+        assert_eq!(offices.opening_for(&call).map(|z| z.hour()), Some(14));
+        assert!(offices.open_for(&out), "its counter is open");
+        let holiday = Offices { holidays: [now.date()].into(), ..offices.clone() };
+        assert!(!holiday.open_for(&out), "closed on a public holiday");
+        assert!(holiday.open_for(&Task { office_hours: false, ..out.clone() }), "a task that needs no open office");
+        // The panel: whose hours, what is true now, its card and its number.
+        let tasks = vec![call.clone(), out.clone()];
+        let plan = plan(&tasks, now.date(), &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let filter = Filter::default();
+        let cx = Context { filter: &filter, offices, tasks: &tasks, plan: &plan, today: now.date(), tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+        let view = office_view(&cx, &out).unwrap();
+        assert_eq!((view.from, view.now.as_str(), view.key.as_str(), view.number.as_str()), ("card", "Example town hall: open until 12:00", "/books/hall.vcf", "01 23 45 67 89"));
+        assert!(office_view(&cx, &call).unwrap().phone);
+        // Not ticked, it still names the card it would follow, and says it does not follow it; a task with no office and no tick, nothing.
+        let unticked = office_view(&cx, &Task { office_hours: false, ..out.clone() }).unwrap();
+        assert!(!unticked.follows && view.follows);
+        // A card with phone hours only: an outing does not follow them (review 16).
+        let line = crate::contacts::Contact { uid: "line".into(), name: "Example helpline".into(), hours: crate::opening::CardHours { phone: hours("Mo-Fr 09:00-17:00"), ..Default::default() }, ..Default::default() };
+        let by_line = Offices { cards: crate::opening::Cards::of(&[line]), ..cx.offices.clone() };
+        let outing = Task { contacts: vec![crate::tasks::ContactRef { name: String::new(), uri: crate::links::contact_uri("line") }], ..out };
+        assert_eq!(by_line.follows(&outing).whose, crate::opening::Whose::Usual);
+        assert!(office_view(&cx, &task("plain", "Read")).is_none());
     }
 
     #[test]

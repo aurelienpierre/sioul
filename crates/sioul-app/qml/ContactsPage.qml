@@ -15,7 +15,11 @@
 // "Select" gives each row a box, and the selection bar acts on many at once
 // (ContactSelection.qml; one row on a phone); "Import…" reads a vCard or
 // a CSV file (ContactImport.qml, in the window). A card of an address book
-// you only read says so wherever it would be written (wave D).
+// you only read says so wherever it would be written (wave D). An office's
+// card shows its opening hours beside its numbers (OpeningHours.qml), any
+// other under More: changed by hand (OpeningHoursForm.qml), looked up when
+// asked on an office's card alone (OpeningHoursLookup.qml), "Call back…" a
+// task that follows them.
 
 pragma ComponentBehavior: Bound
 
@@ -151,6 +155,12 @@ Item {
         }
     }
     property bool moreShown: false
+    // Its opening hours (OpeningHours.qml): beside its numbers on an
+    // organisation's card or one that has hours; under More on the others,
+    // when the card can be written.
+    readonly property bool hasHours: page.person !== null && page.person.hours !== undefined && (page.person.hours.open !== null || page.person.hours.phone !== null || (page.person.hours.note || "") !== "")
+    readonly property bool hoursMain: page.person !== null && (page.person.card === "org" || page.hasHours)
+    readonly property bool hoursUnderMore: page.person !== null && !page.hoursMain && !page.person.read_only
     property string problem: ""
     // Their list, who they are to you and why (`personOf`): {who, from, choice
     // ("" when their categories decide), said, own [an address or a number of
@@ -263,11 +273,28 @@ Item {
     }
 
     // The card's details unfolded and scrolled to (`revealed`), for the window's images:
-    // on a phone the card's scroll is short, under what it keeps in sight.
+    // on a phone the card's end is below the screen.
     property int revealed: 0
     function revealDetails() {
         page.moreShown = true
         page.revealed += 1
+    }
+    // The card back at its top (`raised`), for the window's images: after a change made far down it.
+    property int raised: 0
+
+    // For the window's images: the open card's hours changed by hand, looked up, asked, closed.
+    function changeHours() {
+        (hoursForm.now() as OpeningHoursForm).edit(page.openKey, JSON.parse(page.sioul.contactHours(page.openKey) || "null"))
+    }
+    function lookUpHours() {
+        (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, JSON.parse(page.sioul.contactHours(page.openKey) || "null"))
+    }
+    function lookUpAsk() {
+        (hoursLookup.now() as OpeningHoursLookup).ask()
+    }
+    function closeHours() {
+        hoursForm.close()
+        hoursLookup.close()
     }
 
     // The first contact, for the window's images.
@@ -301,7 +328,7 @@ Item {
 
     // The map instead of the list: every contact placed, a pin opening its card.
     property bool mapShown: false
-    property var places: ({ allowed: false, tiles: "", pins: [], waiting: 0, locating: false })
+    property var places: ({ allowed: false, tiles: "", pins: [], waiting: 0, locating: false, stopped: "" })
     // The open contact's first address, when placed.
     readonly property var personPin: {
         if (page.person === null || !page.person.addresses)
@@ -556,13 +583,14 @@ Item {
                     Label {
                         visible: page.places.allowed
                         Layout.fillWidth: true
-                        text: page.places.locating ? page.sioul.text("map-locating") : page.sioul.textArgs("map-waiting", JSON.stringify({ n: page.places.waiting }))
+                        // The map's search service set to None or refused today: said, nothing to press (map.rs).
+                        text: page.places.locating ? page.sioul.text("map-locating") : (page.places.stopped || "") !== "" ? page.places.stopped : page.sioul.textArgs("map-waiting", JSON.stringify({ n: page.places.waiting }))
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: page.theme.muted
                     }
                     Button {
-                        visible: !page.places.locating
+                        visible: !page.places.locating && (page.places.stopped || "") === ""
                         text: page.places.allowed ? page.sioul.text("map-place") : page.sioul.text("map-allow-button")
                         icon.name: "mark-location"
                         icon.color: page.theme.text
@@ -723,6 +751,10 @@ Item {
                         anchors.fill: parent
                         spacing: 10
 
+                        // The whole card scrolls, its client's part and its ties included; only Edit and
+                        // Close stay under it. Kept under it, the ties (twelve rows at most) took the card's
+                        // own room: on a phone its scroll view was left a quarter of the screen, its view
+                        // cut through the opening hours' buttons.
                         ScrollView {
                             id: cardScroll
 
@@ -739,6 +771,11 @@ Item {
                                         if (flick)
                                             flick.contentY = Math.max(0, flick.contentHeight - flick.height)
                                     })
+                                }
+                                function onRaisedChanged() {
+                                    const flick = cardScroll.contentItem as Flickable
+                                    if (flick)
+                                        flick.contentY = 0
                                 }
                             }
 
@@ -898,6 +935,25 @@ Item {
                                         }
                                     }
                                 }
+                                // Its opening hours, beside its numbers (an organisation's card, or one that has hours).
+                                Loader {
+                                    active: page.hoursMain
+                                    visible: active
+                                    Layout.fillWidth: true
+
+                                    sourceComponent: Component {
+                                        OpeningHours {
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            window: page.window
+                                            key: page.openKey
+                                            onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
+                                            onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
+                                            onCalledBack: answer => page.problem = answer.error || ""
+                                            onMarked: answer => page.problem = answer.error || ""
+                                        }
+                                    }
+                                }
 
                                 // How they reach you: their list and why, in a sentence; their
                                 // sheet (PersonSheet.qml) chooses their list, Always through, and
@@ -925,6 +981,7 @@ Item {
                                 Button {
                                     objectName: "cardPersonButton"
                                     visible: page.person !== null && (page.person.uid || "") !== ""
+                                    Layout.maximumWidth: cardScroll.availableWidth
                                     flat: true
                                     icon.name: page.cardPerson ? "go-next" : "list-add"
                                     icon.color: page.theme.text
@@ -939,9 +996,12 @@ Item {
                                         cardLink.popup()
                                     }
                                 }
+                                // Its words carry the card's name, an office's often long: never wider than the
+                                // card's column (on a phone in French, it widened the column past the screen's edge).
                                 Button {
                                     visible: page.person !== null
                                     Layout.leftMargin: 18
+                                    Layout.maximumWidth: Math.max(0, cardScroll.availableWidth - 18)
                                     flat: true
                                     objectName: "personSheetButton"
                                     text: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : ""))
@@ -966,7 +1026,7 @@ Item {
 
                                 // The rest, folded.
                                 BareButton {
-                                    readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0)
+                                    readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0 || page.hoursUnderMore)
 
                                     visible: any
                                     flat: true
@@ -1078,59 +1138,79 @@ Item {
                                         }
                                     }
                                 }
-                            }
-                        }
-                        // As a client: its profile, what its invoices print; a draft invoice for it.
-                        Label {
-                            objectName: "contactClientProfile"
-                            visible: page.clientProfile !== null && page.clientProfile.exists
-                            Layout.fillWidth: true
-                            text: page.clientProfile && page.clientProfile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.clientProfile.summary) : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 13
-                            color: page.theme.muted
-                        }
-                        Flow {
-                            visible: page.clientRef !== ""
-                            Layout.fillWidth: true
-                            spacing: 6
+                                // Under More, on a card not known as an organisation's and without hours yet.
+                                Loader {
+                                    active: page.moreShown && page.hoursUnderMore
+                                    visible: active
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 12
 
-                            Button {
-                                objectName: "contactBill"
-                                text: page.sioul.text("clients-bill")
-                                icon.name: "document-new"
-                                icon.color: page.theme.text
-                                onClicked: {
-                                    const made = JSON.parse(page.sioul.newInvoiceDraft(JSON.stringify({ client: page.clientRef })) || "{}")
-                                    if (made.error)
-                                        page.problem = made.error
-                                    else
-                                        page.window.openInvoiceDraft(made.draft)
+                                    sourceComponent: Component {
+                                        OpeningHours {
+                                            sioul: page.sioul
+                                            theme: page.theme
+                                            window: page.window
+                                            key: page.openKey
+                                            onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
+                                            onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
+                                            onCalledBack: answer => page.problem = answer.error || ""
+                                            onMarked: answer => page.problem = answer.error || ""
+                                        }
+                                    }
+                                }
+                                // As a client: its profile, what its invoices print; a draft invoice for it.
+                                Label {
+                                    objectName: "contactClientProfile"
+                                    visible: page.clientProfile !== null && page.clientProfile.exists
+                                    Layout.fillWidth: true
+                                    text: page.clientProfile && page.clientProfile.exists ? page.sioul.textWith("clients-profile-line", "profile", page.clientProfile.summary) : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
+                                }
+                                Flow {
+                                    visible: page.clientRef !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Button {
+                                        objectName: "contactBill"
+                                        text: page.sioul.text("clients-bill")
+                                        icon.name: "document-new"
+                                        icon.color: page.theme.text
+                                        onClicked: {
+                                            const made = JSON.parse(page.sioul.newInvoiceDraft(JSON.stringify({ client: page.clientRef })) || "{}")
+                                            if (made.error)
+                                                page.problem = made.error
+                                            else
+                                                page.window.openInvoiceDraft(made.draft)
+                                        }
+                                    }
+                                    Button {
+                                        objectName: "contactProfile"
+                                        flat: true
+                                        text: page.sioul.text(page.clientProfile && page.clientProfile.exists ? "clients-profile-change" : "clients-profile-make")
+                                        onClicked: profileForm.now().edit(page.clientRef)
+                                    }
+                                }
+                                // What they are part of: tasks, notes, events.
+                                ThingActions {
+                                    visible: page.source !== null
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    window: page.window
+                                    source: page.source
+                                }
+                                RelatedList {
+                                    Layout.fillWidth: true
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    title: page.sioul.text("related-title")
+                                    uri: page.source ? page.source.uri : ""
+                                    onOpenThing: item => page.window.openThing(item)
                                 }
                             }
-                            Button {
-                                objectName: "contactProfile"
-                                flat: true
-                                text: page.sioul.text(page.clientProfile && page.clientProfile.exists ? "clients-profile-change" : "clients-profile-make")
-                                onClicked: profileForm.now().edit(page.clientRef)
-                            }
-                        }
-                        // What they are part of: tasks, notes, events.
-                        ThingActions {
-                            visible: page.source !== null
-                            sioul: page.sioul
-                            theme: page.theme
-                            window: page.window
-                            source: page.source
-                        }
-                        RelatedList {
-                            Layout.fillWidth: true
-                            sioul: page.sioul
-                            theme: page.theme
-                            title: page.sioul.text("related-title")
-                            uri: page.source ? page.source.uri : ""
-                            onOpenThing: item => page.window.openThing(item)
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -1294,6 +1374,30 @@ Item {
                     }
                     onEndAsked: person => endForm.now().ask(person)
                 }
+            }
+        }
+    }
+
+    // An office's opening hours changed by hand (OpeningHoursForm.qml).
+    Later {
+        id: hoursForm
+
+        sourceComponent: Component {
+            OpeningHoursForm {
+                sioul: page.sioul
+                theme: page.theme
+            }
+        }
+    }
+
+    // An office's opening hours looked up, "Is it this one?" (OpeningHoursLookup.qml).
+    Later {
+        id: hoursLookup
+
+        sourceComponent: Component {
+            OpeningHoursLookup {
+                sioul: page.sioul
+                theme: page.theme
             }
         }
     }

@@ -1119,7 +1119,7 @@ fn step_at(m: &Moment, input: &PlanInput, mode: &Mode, at: &Zoned) -> Option<Ste
     if !time_for_a_step(mode) {
         return None;
     }
-    let situation = quiet::Situation::now(m.config, m.overrides, m.blocks, at, m.tr, &input.loaded.projects).on(&crate::dispatch::lines());
+    let situation = quiet::Situation::now(m.config, m.overrides, m.blocks, at, m.tr, &input.loaded.projects, &sioul_core::opening::Cards::of(&input.loaded.contacts)).on(&crate::dispatch::lines());
     let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
     let today = input.today.date == at.date().to_string();
     let (weather, aside) = if today { (input.today.weather, input.today.aside.clone()) } else { (Weather::Clear, BTreeSet::new()) };
