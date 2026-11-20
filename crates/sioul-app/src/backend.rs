@@ -5250,6 +5250,11 @@ impl qobject::Sioul {
         crate::agents::watch(&qt, &shared);
         // The notices' presses heard, the previous run's taken away (tell.rs, docs/notifications.md).
         crate::tell::start(&qt);
+        // Your people's line, said once (review M2): read from the persons' file, never the window's
+        // state; not while pictures are taken, which tell nothing.
+        if std::env::var_os("SIOUL_GRAB").is_none() {
+            std::thread::spawn(crate::reaches::tell_circle_once);
+        }
         // On a phone, a notification tapped while Sioul was not running opens
         // its thing once the window is up (`take_taps`: Qt may start Active,
         // and `back_here` never come); the notices to know posted meanwhile

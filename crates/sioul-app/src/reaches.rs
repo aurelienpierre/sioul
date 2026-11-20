@@ -222,6 +222,44 @@ fn why(judged: &sioul_core::porch::Judged) -> String {
     }
 }
 
+/// The notice that your people have a line of their own (review M2), when
+/// it is due (`persons::Persons::circle_untold`): one informative notice,
+/// opening What reaches you at their line.
+fn circle_notice(store: &sioul_core::persons::Persons, today: jiff::civil::Date) -> Option<sioul_core::notice::Notice> {
+    use sioul_core::notice::{Kind as NoticeKind, Notice, address};
+    store.circle_untold(today).then(|| Notice::new(address::settings("attention.people"), NoticeKind::Minor, text("reach-people-told-title"), text("reach-people-told")))
+}
+
+/// The first time this version starts with someone in Contacts ▸ Your
+/// people (review M2): one calm notice says that they have a line of their
+/// own in What reaches you and that their calls ring at every time, with
+/// the door to it. Said once on the devices that share the persons, never
+/// at a start again: the mark (`Persons::circle_told`) is written in the
+/// store, read from its file here, never from the window's state, as the
+/// notice is posted (a computer's claim, made just before it is posted; on
+/// a phone, once handed to Android). One that waits, held by a pause or a
+/// do-not-disturb, comes when it ends; one never posted comes at the next
+/// start. Never lost comes before never doubled: two devices starting
+/// before the mark travels may each say it.
+pub(crate) fn tell_circle_once() {
+    let path = sioul_core::persons::Persons::default_path();
+    let today = sioul_core::zone::now().date();
+    let Some(notice) = sioul_core::persons::Persons::read(&path).ok().and_then(|store| circle_notice(&store, today)) else { return };
+    let mark = move || {
+        sioul_core::persons::change(&path, |store| store.circle_told = store.circle_told.max(sioul_core::persons::CIRCLE_TOLD))
+            .map_err(|e| eprintln!("sioul: your people's notice: {e}"))
+            .is_ok()
+    };
+    if cfg!(target_os = "android") {
+        if let Some(json) = crate::eventalarms::notice_json(&notice.key(), &notice, false, None, jiff::Timestamp::now().as_second()) {
+            crate::steps::java("notice", &json.to_string());
+            mark();
+        }
+        return;
+    }
+    crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(Box::new(mark)), true);
+}
+
 /// This file's words: the window's language, or a test's.
 fn tr() -> &'static Translator {
     SPOKEN.with(|spoken| spoken.get()).unwrap_or_else(crate::backend::tr)
@@ -1574,6 +1612,30 @@ mod tests {
             args.set("first", "yes");
             args
         })));
+    }
+
+    /// The notice that your people have a line of their own (review M2):
+    /// due while the circle holds someone and it was never told, about What
+    /// reaches you's People line, informative, said well in both languages;
+    /// none once told, none for nobody.
+    #[test]
+    fn your_people_are_told_once_with_the_door() {
+        use sioul_core::persons::{CIRCLE_TOLD, Person as Someone, Persons};
+        let today = jiff::civil::date(2026, 11, 20);
+        let mut store = Persons::default();
+        assert!(circle_notice(&store, today).is_none(), "nobody: nothing");
+        store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Someone::default() });
+        for language in ["en", "fr"] {
+            speak(language);
+            let notice = circle_notice(&store, today).expect("due");
+            assert_eq!(notice.about, "sioul:settings/attention.people", "its door: the People line");
+            assert_eq!(notice.kind, sioul_core::notice::Kind::Minor, "to know");
+            worded(&notice.title, language);
+            said_well(&notice.body, language);
+        }
+        speak("en");
+        store.circle_told = CIRCLE_TOLD;
+        assert!(circle_notice(&store, today).is_none(), "told: never again");
     }
 
     /// The page's choices name their rows and cells, and refuse what they do not offer.
