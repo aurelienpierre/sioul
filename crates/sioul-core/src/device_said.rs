@@ -8,12 +8,14 @@
 //! each device is for").
 //!
 //! Kept in the configuration, `[device."<id>"]`, `<id>` being the device's
-//! id in the sharing (sioul-sync's `share::Here::id`): `name`, `area`, and
-//! under it `[device."<id>".at]`, a key per cell changed (`work`, `admin`,
-//! `leisure`, `meals`, `sleep`): areas as everywhere, or `none` for
-//! nothing. Only what you said: a device with no `area` is for everything,
-//! as every device was before; one with no `name` is named as its system
-//! names it; a time with no cell is as the device's areas say.
+//! id in the sharing (sioul-sync's `share::Here::id`): `name`, `area`, a
+//! phone's `number`, and under it `[device."<id>".at]`, a key per cell
+//! changed (`work`, `admin`, `leisure`, `meals`, `sleep`): areas as
+//! everywhere, or `none` for nothing. Only what you said: a device with no
+//! `area` is for everything, as every device was before; one with no `name`
+//! is named as its system names it; a phone with no `number` is known by the
+//! number its own entry says Android gives, else by its name; a time with no
+//! cell is as the device's areas say.
 //! The table travels with the settings, one entry per field, so that a name
 //! given on one device and an area set on another both stay, and so that
 //! any device may say what each of the others is for. A Sioul that does not
@@ -21,8 +23,13 @@
 //! sharing carries its fields like any other setting.
 //!
 //! What a device says of itself (its system's name, its kind, its build,
-//! its sessions) is not here: it writes that alone, sealed, in the sharing
-//! folder (sioul-sync's `devices::Entry`).
+//! its sessions, the number Android gives a phone) is not here: it writes
+//! that alone, sealed, in the sharing folder (sioul-sync's `devices::Entry`).
+//!
+//! An older Sioul (0.0.12 and before) reads a device's line field by field
+//! and passes over `number`, and its writers edit the line in place, so the
+//! number stays through them (`tests::an_older_sioul_reads_and_keeps_a_phone_s_number`,
+//! against 0.0.12's own reader and writers).
 //!
 //! What folds or waits by it is the rule's to say (`areas::Here::brings`),
 //! which reads a device's line as `Said::line` gives it.
@@ -60,6 +67,12 @@ pub struct Said {
     /// phase 2, N3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changed: Option<i64>,
+    /// A phone's own number as you said it, kept as Sioul keys numbers
+    /// (`phones::key`: "+33199001234"): the lists of calls say it when more
+    /// than one phone shares its calls (`calls::phone_words`). Unsaid, the
+    /// number the phone's own entry says Android gives; neither, none known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
     /// What this phone lets ring (`calls_line`, `[device."<id>".calls]`),
     /// when it says something this Sioul reads; none: the phone keeps the
     /// shared call screening, as before.
@@ -92,6 +105,11 @@ impl Said {
     /// The name you gave it, when it says something.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref().map(str::trim).filter(|name| !name.is_empty())
+    }
+
+    /// The phone's number you said, as Sioul keys it, when it says one.
+    pub fn number(&self) -> Option<&str> {
+        self.number.as_deref().map(str::trim).filter(|number| !number.is_empty())
     }
 
     /// What you said it is for; none while unsaid, or said in no word that reads.
@@ -147,7 +165,7 @@ fn read(value: &toml::Value) -> BTreeMap<String, Said> {
     let word = |line: &toml::Table, field: &str| line.get(field).and_then(toml::Value::as_str).map(str::to_string);
     let cells = |line: &toml::Table| line.get("at").map(cells_of).unwrap_or_default();
     let changed = |line: &toml::Table| line.get(CHANGED).and_then(toml::Value::as_integer);
-    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), at: cells(line), changed: changed(line), calls: line.get(crate::calls_line::KEY).and_then(crate::calls_line::read) }))).collect()
+    devices.iter().filter_map(|(id, line)| line.as_table().map(|line| (id.clone(), Said { name: word(line, "name"), area: word(line, "area"), number: word(line, "number"), at: cells(line), changed: changed(line), calls: line.get(crate::calls_line::KEY).and_then(crate::calls_line::read) }))).collect()
 }
 
 /// The longest name a device is given, in characters: a line of a card.
@@ -167,6 +185,28 @@ pub fn area_of(config: &Config, id: &str) -> Area {
 /// The name you gave the device `id`; none while unsaid.
 pub fn name_of<'a>(config: &'a Config, id: &str) -> Option<&'a str> {
     config.devices.get(id).and_then(Said::name)
+}
+
+/// The number you gave the phone `id`, as Sioul keys it; none while unsaid.
+pub fn number_of<'a>(config: &'a Config, id: &str) -> Option<&'a str> {
+    config.devices.get(id).and_then(Said::number)
+}
+
+/// The phone `id`'s own number, written into the configuration in place,
+/// as Sioul keys numbers (`phones::key`, read as `region` writes them); ""
+/// takes it out (the number its entry says Android gives again, else none).
+/// A number is refused, nothing written, when it is not a whole one: letters,
+/// a short number, an extension.
+pub fn set_number(path: &Path, id: &str, number: &str, region: Option<&crate::phones::Region>) -> Result<(), String> {
+    let number = number.trim();
+    if number.is_empty() {
+        return set(path, id, "number", None);
+    }
+    let key = crate::phones::key(number, region);
+    if !crate::phones::is_whole(&key) || key.contains(';') || !key.trim_start_matches('+').chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("{number}: not a whole phone number"));
+    }
+    set(path, id, "number", Some(key))
 }
 
 /// The name you give the device `id`, written into the configuration in
@@ -300,8 +340,8 @@ fn set(path: &Path, id: &str, field: &str, value: Option<String>) -> Result<(), 
                 }
             }
         }
-        // What it is for said: when, for the keeper of the notices; a name is no change of it.
-        stamp(devices, id, field != "name");
+        // What it is for said: when, for the keeper of the notices; a name or a number is no change of it.
+        stamp(devices, id, !matches!(field, "name" | "number"));
         if devices.is_empty() {
             doc.remove("device");
         }
@@ -329,12 +369,20 @@ fn stamp(devices: &mut dyn toml_edit::TableLike, id: &str, said: bool) {
     }
 }
 
+/// Sioul 0.0.12's reader and writers of `[device."<id>"]`, as released
+/// (`tests/fixtures/older/device_said_0_0_12.rs`), for the tests alone.
+#[cfg(test)]
+#[allow(dead_code, clippy::all, clippy::pedantic)]
+#[path = "../tests/fixtures/older/device_said_0_0_12.rs"]
+mod older_0_0_12;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const DESK: &str = "0d0f3a52-6f0c-4f4e-9b62-2f0f6f1f7a11";
     const PHONE: &str = "7b1c9e04-52a8-4c0d-8f0e-93c1b2a4d5e6";
+    use super::older_0_0_12 as older;
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("sioul-device-said-{name}-{}", std::process::id()));
@@ -574,6 +622,88 @@ mod tests {
         set_name(&path, DESK, "").unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("follows = 2") && text.contains("work = \"work+leisure\"") && !text.contains("name ="), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A phone's number is written in place as Sioul keys numbers, read back
+    /// as you said it, and taken out with ""; words that are no whole number
+    /// (letters, a short number, an extension) are refused, nothing written;
+    /// a number is no change of what the device is for (`changed` stays); a
+    /// number of the wrong type is passed over, the line's other fields read.
+    #[test]
+    fn a_phone_s_number_is_written_in_place_as_sioul_keys_it() {
+        let dir = scratch("number");
+        let path = dir.join("config.toml");
+        let fr = crate::phones::region_named("FR");
+        std::fs::write(&path, format!("# mine\nlanguage = \"fr\"\n\n[device.\"{PHONE}\"]\nname = \"Pocket\"\n")).unwrap();
+        set_number(&path, PHONE, " 01 99 00 12 34 ", fr).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("number = \"+33199001234\"") && text.contains("# mine") && text.contains("name = \"Pocket\""), "{text}");
+        assert!(!text.contains(CHANGED), "a number is no change of what the phone is for: {text}");
+        let read = Config::load(&path).unwrap();
+        assert_eq!((number_of(&read, PHONE), name_of(&read, PHONE)), (Some("+33199001234"), Some("Pocket")));
+        // Written in another form, the same key; another country's, as written there.
+        set_number(&path, PHONE, "+33 6 39 98 12 34", fr).unwrap();
+        assert_eq!(number_of(&Config::load(&path).unwrap(), PHONE), Some("+33639981234"));
+        set_number(&path, DESK, "020 7946 0018", crate::phones::region_named("GB")).unwrap();
+        assert_eq!(number_of(&Config::load(&path).unwrap(), DESK), Some("+442079460018"));
+        // Refused, nothing written: letters, a short number, an extension, nothing but spaces in another id.
+        let text = std::fs::read_to_string(&path).unwrap();
+        for odd in ["1-555-SIOUL", "112", "3114", "01 99 00 12 34 ext. 5", "01 99 00 12 34;ext=5", "a phone"] {
+            assert!(set_number(&path, PHONE, odd, fr).is_err(), "{odd}");
+        }
+        assert!(set_number(&path, " ", "01 99 00 12 34", fr).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        // Taken out: the name stays; the last field out, the table goes.
+        set_number(&path, PHONE, "", fr).unwrap();
+        let read = Config::load(&path).unwrap();
+        assert_eq!((number_of(&read, PHONE), name_of(&read, PHONE)), (None, Some("Pocket")));
+        set_name(&path, PHONE, "").unwrap();
+        set_number(&path, DESK, " ", fr).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("device") && text.contains("# mine"), "{text}");
+        // Read leniently: a number that is no text is passed over, the line's name read; an empty one is none.
+        let odd: Config = toml::from_str(&format!("[device.\"{PHONE}\"]\nname = \"Pocket\"\nnumber = 199001234\n\n[device.\"{DESK}\"]\nnumber = \" \"\n")).unwrap();
+        assert_eq!((number_of(&odd, PHONE), name_of(&odd, PHONE), number_of(&odd, DESK)), (None, Some("Pocket"), None));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A phone's number in the settings, read and written by Sioul 0.0.12
+    /// (its own reader and writers, as released): the configuration reads,
+    /// the field passed over, its other fields read; its writers (a name, an
+    /// area, a cell, each said and taken out) keep the number where it is, and
+    /// so does what a phone lets ring (`calls_line`, whose writers are those
+    /// of 0.0.12); this Sioul reads the number back. An older Sioul neither
+    /// fails on it nor drops it.
+    #[test]
+    fn an_older_sioul_reads_and_keeps_a_phone_s_number() {
+        let dir = scratch("older");
+        let path = dir.join("config.toml");
+        let fr = crate::phones::region_named("FR");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        set_name(&path, PHONE, "Pocket").unwrap();
+        set_number(&path, PHONE, "01 99 00 12 34", fr).unwrap();
+        // 0.0.12 reads the settings: no error, the number passed over, the name read.
+        let text = std::fs::read_to_string(&path).unwrap();
+        let read: older::Config = toml::from_str(&text).expect("0.0.12 reads the settings");
+        assert_eq!((older::name_of(&read, PHONE), older::said_area(&read, PHONE)), (Some("Pocket"), None));
+        // 0.0.12 writes the line: a name, an area, a cell, each said and taken out again.
+        older::set_name(&path, PHONE, "Pocket phone").unwrap();
+        older::set_area(&path, PHONE, "admin+leisure").unwrap();
+        older::set_cell(&path, PHONE, Time::Work, Some(Area::WORK)).unwrap();
+        assert_eq!(number_of(&Config::load(&path).unwrap(), PHONE), Some("+33199001234"), "{}", std::fs::read_to_string(&path).unwrap());
+        older::set_cell(&path, PHONE, Time::Work, None).unwrap();
+        older::set_area(&path, PHONE, "").unwrap();
+        older::set_name(&path, PHONE, "").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("number = \"+33199001234\""), "the line stays while the number is in it: {text}");
+        let read = Config::load(&path).unwrap();
+        assert_eq!((number_of(&read, PHONE), name_of(&read, PHONE), said_area(&read, PHONE)), (Some("+33199001234"), None, None));
+        // What the phone lets ring, written and taken out (`calls_line`, unchanged since 0.0.12).
+        let start = crate::calls_line::Profile::Both.grid();
+        crate::calls_line::set_profile(&path, PHONE, crate::calls_line::Profile::Personal, &start).unwrap();
+        crate::calls_line::clear(&path, PHONE).unwrap();
+        assert_eq!(number_of(&Config::load(&path).unwrap(), PHONE), Some("+33199001234"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -53,6 +53,21 @@ pub struct Entry {
     /// Sioul reads the entry as before, the field unknown to it passed over.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub form: String,
+    /// A phone's own number as Android gives it there, kept as Sioul keys
+    /// numbers (`sioul_core::phones::key`: "+33199001234"), read with
+    /// permissions Sioul already holds (the texts': its SIMs listed, their
+    /// numbers read; `sioul_core::calls::own_number`): one SIM with a
+    /// number, or every SIM giving the same. "" while Android gives none,
+    /// on a computer and from an older Sioul; an answer that gives nothing
+    /// changes nothing; two SIMs that do not give one number, none (a call
+    /// is never told by its SIM: docs/android.md, "Two SIMs"). The number you
+    /// say on its card holds over it (`sioul_core::device_said::Said::number`);
+    /// the lists of calls say it when more than one phone shares its calls
+    /// (`sioul_core::calls::phone_words`). Written again when it changes, as
+    /// anything the entry says (`steady`). Sealed with the rest; an older
+    /// Sioul reads the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
     /// The Sioul that wrote it: its version ("0.0.3") and the commit it was
     /// built from (`sioul_core::build::COMMIT`); an older Sioul's entry says
     /// its version alone, or neither, and reads all the same.
@@ -1275,6 +1290,81 @@ mod tests {
         let older = serde_json::json!({ "id": id, "kind": "computer", "started": t, "working": true });
         std::fs::write(&file, crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
         assert_eq!(all(&folder, &KEY).0[0].areas, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A phone says the number Android gives it (`number`), sealed in its
+    /// entry: the server never reads it; Sioul 0.0.12 reads the entry as
+    /// before, the field unknown to it passed over (its `Entry`, these
+    /// fields as it declares them), and never writes another device's entry,
+    /// so nothing of it is dropped there; said again the same, nothing is
+    /// written; changed (another SIM), written at once though the phone is put
+    /// away; an older Sioul's entry says none.
+    #[test]
+    fn a_phone_says_the_number_android_gives_and_an_older_one_passes_over_it() {
+        /// The entry as Sioul 0.0.12 reads it, for what the doses and the list need.
+        #[derive(Deserialize)]
+        struct Older {
+            id: String,
+            #[serde(default)]
+            name: String,
+            #[serde(default)]
+            kind: String,
+            #[serde(default)]
+            form: String,
+            #[serde(default)]
+            started: i64,
+            #[serde(default)]
+            closed: i64,
+            working: bool,
+            #[serde(default)]
+            doses: bool,
+            #[serde(default)]
+            parts: Option<Vec<String>>,
+        }
+        let dir = scratch("number");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let own = own_path(&state);
+        let vault = Some((folder.as_path(), &KEY));
+        let file = file_of(&folder, &id);
+        let t = 1_800_000_000;
+        change_at(&own, vault, t, |e| {
+            e.id = id.clone();
+            e.name = "Moss".into();
+            e.kind = PHONE.into();
+            e.form = PHONE.into();
+            e.doses = true;
+            e.parts = Some(vec!["calls".into()]);
+            e.start(t);
+        })
+        .unwrap();
+        let before = all(&folder, &KEY).0.remove(0);
+        assert_eq!(before.number, "", "not said yet: as an older Sioul's");
+        change_at(&own, vault, t + 5, |e| e.number = "+33199001234".into()).unwrap();
+        let read = all(&folder, &KEY).0.remove(0);
+        assert_eq!(read.number, "+33199001234");
+        assert_eq!(read.said(), before.said(), "the doses read the same of it");
+        let sealed = std::fs::read_to_string(&file).unwrap();
+        assert!(!sealed.contains("33199001234") && !sealed.contains("199001234"), "sealed: the server never reads the number");
+        let plain = crate::share::open(&KEY, &bound(&id), sealed.trim()).unwrap();
+        assert!(String::from_utf8_lossy(&plain).contains("\"number\":\"+33199001234\""));
+        let older: Older = serde_json::from_slice(&plain).expect("Sioul 0.0.12 reads it");
+        assert_eq!((older.id.as_str(), older.name.as_str(), older.kind.as_str(), older.form.as_str(), older.started, older.closed, older.working, older.doses, older.parts), (id.as_str(), "Moss", PHONE, PHONE, t, 0, true, true, Some(vec!["calls".to_string()])));
+        // Kept here as TOML, and read back.
+        assert_eq!(super::own(&own).number, "+33199001234");
+        // Put away; the same number said again: nothing written. Another one: written at once.
+        change_at(&own, vault, t + 10, |e| e.close(t + 10)).unwrap();
+        let written = std::fs::read(&file).unwrap();
+        change_at(&own, vault, t + 60, |e| e.number = "+33199001234".into()).unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), written, "said already: its entry stays as it is");
+        change_at(&own, vault, t + 120, |e| e.number = "+33639981234".into()).unwrap();
+        assert_ne!(std::fs::read(&file).unwrap(), written, "changed: written though the phone is put away");
+        assert_eq!(all(&folder, &KEY).0[0].number, "+33639981234");
+        // An older Sioul's entry: none said.
+        let older = serde_json::json!({ "id": id, "kind": "phone", "started": t, "working": true });
+        std::fs::write(&file, crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].number, "");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
