@@ -34,19 +34,21 @@ pub(crate) fn export(qt: &QtThread, shared: &Arc<Shared>, text: &str, url: &str)
             None => return tr().text("books-gone", None),
         }
     };
-    if url.starts_with("content:") {
-        return tr().text("books-export-on-a-phone", None);
-    }
-    let path = crate::backend::local_path(url);
-    // Never into Sioul's own address books, where it would be read as a card.
-    if path.as_os_str().is_empty() || path.starts_with(Kind::Contacts.root()) {
-        return tr().text("books-export-where", None);
-    }
     let text = vdir::cards_as_vcf(&files);
     let count = text.matches("BEGIN:VCARD").count();
-    if let Err(e) = sioul_core::filelock::replace(&path, text.as_bytes()) {
-        return format!("{}: {e}", path.display());
+    // A path as before; a phone's document, which Android made where you chose, through its writer (`chosen`).
+    let written = crate::chosen::save(url, "contacts.vcf", text.as_bytes(), |path| {
+        // Never into Sioul's own address books, where it would be read as a card.
+        if path.as_os_str().is_empty() || path.starts_with(Kind::Contacts.root()) {
+            return Err(tr().text("books-export-where", None));
+        }
+        sioul_core::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
+    });
+    match written {
+        Ok(place) => {
+            tell(qt, shared, say("books-exported", &[("n", count.to_string()), ("path", place)]));
+            String::new()
+        }
+        Err(e) => e,
     }
-    tell(qt, shared, say("books-exported", &[("n", count.to_string()), ("path", path.display().to_string())]));
-    String::new()
 }

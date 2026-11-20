@@ -184,16 +184,18 @@ fn save_edit(id: &str, edit: &PaperEdit) -> Result<String, String> {
     let kind = Kind::of(&edit.kind);
     let old = wallet.get(id).cloned().unwrap_or_default();
     // A file from elsewhere is copied into the wallet's folder: it travels with it.
+    // A phone's dialog names a document Android reads: copied for it first (`chosen`), that copy gone once kept.
     let file = if edit.file.trim().is_empty() {
         String::new()
     } else {
-        let path = crate::backend::local_path(edit.file.trim());
+        let chosen = crate::chosen::take(edit.file.trim())?;
+        let path = chosen.path();
         let inside = wallet.file_path(&old).is_some_and(|f| f == path) || path.starts_with(&wallet.docs.folder);
         if inside {
-            wallet.docs.named(&path)
+            wallet.docs.named(path)
         } else if path.is_file() {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            wallet.keep_file(&path, &name)?
+            wallet.keep_file(path, &name)?
         } else {
             return Err(say("papers-no-file", &[("path", path.display().to_string())]));
         }

@@ -41,7 +41,7 @@ En mots, jamais en rouge :
 
 - **Quoi** : une carte d’identité, un passeport, un titre de séjour, un permis de conduire, une carte Vitale ou une attestation de droits, une complémentaire santé, une attestation d’assurance, un avis d’impôt, une quittance de loyer, un RIB, un bulletin de paie, une attestation ou un certificat, une garantie, une procuration, une mesure de protection (un mandat de protection future, une habilitation familiale, une curatelle, une tutelle), ou un autre papier ;
 - **Nom** : « Passeport », « Quittance septembre » ;
-- **Fichier** : un scan ou une photo, copié dans vos papiers ;
+- **Fichier** : un scan ou une photo, copié dans vos papiers (sur un téléphone ou une tablette, depuis tout ce qu’atteint le sélecteur de fichiers d’Android : sa mémoire, les téléchargements, l’application d’un cloud) ;
 - **Délivré le** et **Valable jusqu’au**. Pour un passeport, une carte d’identité ou une garantie, une fin est proposée d’après la date de délivrance quand vous n’en donnez pas ;
 - **Pour** : vous, ou des personnes de vos proches, plusieurs à la fois (un avis d’impôt commun, un bail à deux), ou **Nouvelle personne…** ([Vos proches](contacts.md#household)) ;
 - **Notes**.

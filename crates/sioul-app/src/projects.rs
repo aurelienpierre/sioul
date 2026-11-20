@@ -306,7 +306,8 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
 }
 
 /// A project's billable time from `from` to `to`, written as a spreadsheet at
-/// `target` (a file address); returns the file written.
+/// `target` (a file address; a phone's document, through its writer:
+/// `chosen::save`); returns where it was written, as it is said there.
 pub(crate) fn export_time_csv(shared: &Shared, project: &str, from: &str, to: &str, target: &str) -> Result<String, String> {
     let loaded = loaded(shared);
     let Some(found) = loaded.projects.iter().find(|c| c.id == project) else { return Err(tr().text("project-gone", None)) };
@@ -316,9 +317,7 @@ pub(crate) fn export_time_csv(shared: &Shared, project: &str, from: &str, to: &s
     let french = tr().text("qt-locale", None).starts_with("fr");
     let words = ["time-csv-what", "time-csv-hours", "time-csv-rate", "time-csv-amount", "time-csv-total"].map(|w| tr().text(w, None));
     let csv = timereport::billable_csv(&all, found, from, to, config.invoice.rate, french, [&words[0], &words[1], &words[2], &words[3], &words[4]]);
-    let path = crate::backend::local_path(target);
-    std::fs::write(&path, csv).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(path.display().to_string())
+    crate::chosen::save(target, "time.csv", csv.as_bytes(), |path| std::fs::write(path, &csv).map_err(|e| format!("{}: {e}", path.display())))
 }
 
 /// A file address's path with its %-escapes undone ("Mes%20factures" → "Mes factures").

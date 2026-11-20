@@ -408,13 +408,19 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String, Paid) {
 }
 
 fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
-    let path = crate::backend::local_path(file);
     let config = load_config();
     let Some(root) = config.records_root() else { return (false, tr().text("papers-no-store", None)) };
+    // A phone's dialog names a document Android reads: copied for it first (`chosen`), that copy gone once read.
+    let chosen = match crate::chosen::take(file) {
+        Ok(chosen) => chosen,
+        Err(e) => return (false, e),
+    };
+    let path = chosen.path().to_path_buf();
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => return (false, format!("{}: {e}", path.display())),
     };
+    drop(chosen);
     // Some banks still write Latin-1.
     let text = String::from_utf8(bytes.clone()).unwrap_or_else(|_| bytes.iter().map(|&b| b as char).collect());
     let statement = match sioul_core::bank::read(&sioul_core::words::Words::of(&config).bank, &text) {

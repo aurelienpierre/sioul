@@ -24,7 +24,9 @@ SafeDialog {
     property var kinds: []
     property string paperId: ""
     property string problem: ""
-    // Its file: a path, or a file:// address just chosen.
+    // Its file: a path, or the address a dialog just gave: file:// on a
+    // computer, content:// on a phone (a document Android reads, copied when
+    // saved: chosen.rs).
     property string file: ""
     // Whom it may be for, {id, name}, you first (papers::view's `choices`).
     property var choices: []
@@ -127,13 +129,15 @@ SafeDialog {
 
                 Label {
                     Layout.fillWidth: true
-                    text: form.file === "" ? "—" : (form.file.startsWith("file:") ? form.theme.localPath(form.file) : form.file).split(/[\/\\]/).pop()
+                    // A phone's document by the name its provider gives it.
+                    text: form.file === "" ? "—" : form.file.startsWith("content:") ? form.sioul.chosenName(form.file) : (form.file.startsWith("file:") ? form.theme.localPath(form.file) : form.file).split(/[\/\\]/).pop()
                     textFormat: Text.PlainText
                     elide: Text.ElideMiddle
                     color: form.theme.text
                 }
                 Button {
-                    visible: form.file !== ""
+                    // Not a phone's document just chosen: it opens once kept, from the wallet.
+                    visible: form.file !== "" && !form.file.startsWith("content:")
                     text: form.sioul.text("ui-open")
                     // With the desktop's own application; a program never, its folder instead (main.qml, `openFile`).
                     onClicked: form.window.openFile(form.file.startsWith("file:") ? form.file : form.theme.fileUrl(form.file))

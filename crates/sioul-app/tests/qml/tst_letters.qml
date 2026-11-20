@@ -6,7 +6,8 @@
 // sender, kind and lines, a date asked and its project field, a linked one
 // moved away since, one filed; nothing past the screen's edge (review of
 // 1017fa4, L3); the waiting first, then the filed by year; each one's quiet
-// line said once. Run by tools/qml-test.sh.
+// line said once; a scan a phone cannot link where it is offered as a copy,
+// added only once that is chosen. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -74,6 +75,22 @@ Item {
         function lettersFolder() {
             return "/stand-in/letters"
         }
+        // What linking and adding were asked, and what the status line said.
+        property var linked: []
+        property var added: []
+        property string status: ""
+        function lettersLink(files) {
+            mock.linked = JSON.parse(files)
+            // The phone's document Sioul cannot read there later comes back, said.
+            return JSON.stringify({ said: "letters-link-phone", add: mock.linked.filter(f => f.startsWith("content:")) })
+        }
+        function lettersAdd(files) {
+            mock.added = JSON.parse(files)
+            return "letters-added"
+        }
+        function textCounted(key, n) {
+            return key + " " + n
+        }
         function text(key) {
             return key
         }
@@ -125,6 +142,30 @@ Item {
             if (item.contentItem && item.contentItem !== item)
                 labels(item.contentItem, found, seen)
             return found
+        }
+
+        // A phone's document that cannot be linked where it is: said, then a
+        // copy offered; nothing added until the copy is chosen.
+        function test_a_scan_a_phone_cannot_link_is_offered_as_a_copy() {
+            const doc = "content://org.example.cloud.documents/document/7"
+            mock.added = []
+            page.section.linkChosen(["file:///stand-in/Documents/water.pdf", doc])
+            compare(mock.linked.length, 2, "both asked to be linked")
+            compare(mock.status, "letters-link-phone")
+            const offer = findChild(page.section, "lettersAddInstead")
+            tryVerify(() => offer.item !== null && offer.item.opened)
+            compare(offer.item.action, "letters-link-add 1")
+            compare(mock.added.length, 0, "nothing added before the copy is chosen")
+            offer.item.confirmed()
+            compare(mock.added, [doc], "the phone's document alone, as a copy")
+            compare(mock.status, "letters-added")
+            offer.item.close()
+            tryVerify(() => !offer.item.opened)
+            // All linked where they are: nothing offered.
+            mock.added = []
+            page.section.linkChosen(["file:///stand-in/Documents/water.pdf"])
+            wait(50)
+            verify(!offer.item.opened, "no question when everything was linked")
         }
 
         function test_a_letter_fits_a_phone_s_width() {

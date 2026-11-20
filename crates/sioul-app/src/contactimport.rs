@@ -133,16 +133,23 @@ fn read_ended(qt: &QtThread, view: serde_json::Value) {
 /// A file read off the window's thread (`handed`: a file waiting, taken out
 /// once read): what it holds shown, the first step.
 pub(crate) fn read(qt: &QtThread, shared: &Arc<Shared>, path: &str, handed: bool) {
-    // A phone's picker gives a content: address, which only Android reads: its own
-    // way in is "Open with Sioul" from where the file is (ShareActivity.java).
-    if path.starts_with("content:") {
-        return shown(qt, serde_json::json!({ "step": "problem", "line": tr().text("import-on-a-phone", None) }));
-    }
     READING.store(true, Ordering::Release);
-    let (qt, _shared, path) = (qt.clone(), Arc::clone(shared), crate::backend::local_path(path));
+    let (qt, _shared, url) = (qt.clone(), Arc::clone(shared), path.to_string());
     shown(&qt, serde_json::json!({ "step": "reading", "line": tr().text("import-reading", None) }));
     std::thread::spawn(move || {
+        // A file the dialog chose: a phone's document, which only Android reads, copied
+        // for it first (`chosen`), here off the window's thread; that copy gone once read.
+        let chosen = if handed {
+            None
+        } else {
+            match crate::chosen::take(&url) {
+                Ok(chosen) => Some(chosen),
+                Err(e) => return read_ended(&qt, serde_json::json!({ "step": "problem", "line": e })),
+            }
+        };
+        let path = chosen.as_ref().map_or_else(|| crate::backend::local_path(&url), |c| c.path().to_path_buf());
         let bytes = read_at_most(&path);
+        drop(chosen);
         // A handed file's name, as it was handed: "people.csv.taken" → "people.csv".
         let named = if handed { path.with_extension("") } else { path.clone() };
         if handed {

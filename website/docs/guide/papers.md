@@ -41,7 +41,7 @@ In words, never in red:
 
 - **What**: an identity card, a passport, a residence permit, a driving licence, a health insurance card or attestation, a health cover, an insurance certificate, a tax notice, a rent receipt, bank details, a payslip, an attestation or certificate, a warranty, a procuration, a legal protection measure (a mandat de protection future, an habilitation familiale, a curatelle, a tutelle), or another paper;
 - **Name**: "Passport", "Rent receipt September";
-- **File**: a scan or a photo, copied into your papers;
+- **File**: a scan or a photo, copied into your papers (on a phone or a tablet, from wherever Android's file chooser reaches: its storage, Downloads, a cloud's app);
 - **Issued on** and **Valid until**. For a passport, an identity card or a warranty, an end is proposed from the issue when you give none;
 - **For**: you, or your people, several at once (a joint tax notice, a lease of two), or **New person…** ([Your people](contacts.md#household));
 - **Notes**.

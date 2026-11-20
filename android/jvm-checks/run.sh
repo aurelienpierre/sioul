@@ -121,6 +121,12 @@
 #   path into Sioul's own folders refused as the system resolves it (written
 #   inside, "..", a link to a file or a folder of Sioul's, a root named by a
 #   link), one elsewhere taken; the manifest's VIEW of calendar files.
+# - ChosenCheck: a file chosen in one of Sioul's dialogs (Chosen): the bound
+#   and the room before a byte is read, only content:// addresses copied or
+#   written to, the names a provider gives cleaned as a shared file's
+#   (ShareActivity.cleaned); read from the sources, its reading the share
+#   sheet's and its writing the attachments', the verbs routed, no
+#   permission to read the phone's media added to the manifest.
 # - QuietCheck: the quiet window over what Sioul gathered (QuietWindow): the
 #   hint set before anything is held again, each released key held again for
 #   a second (Android 11 and later) or left to its own time (9 and 10), the
@@ -186,7 +192,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck ChosenCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

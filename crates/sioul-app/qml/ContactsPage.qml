@@ -1689,8 +1689,8 @@ Item {
         id: importFile
 
         nameFilters: [page.sioul.text("import-file-kinds") + " (*.vcf *.vcard *.csv)"]
-        // Its address as chosen: Rust reads a file's (file:///C:/… on Windows too), and says
-        // how a phone hands one over when the picker gives a content: address.
+        // Its address as chosen: Rust reads a file's (file:///C:/… on Windows too), and a
+        // phone's content: address through a copy Android makes for it (chosen.rs).
         onAccepted: page.sioul.importContacts(importFile.selectedFile.toString())
     }
 

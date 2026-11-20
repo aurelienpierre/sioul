@@ -1453,6 +1453,11 @@ pub mod qobject {
         #[qinvokable]
         fn is_program(self: &Sioul, name: &QString) -> bool;
 
+        /// The name a file dialog's answer shows: a file's own, a phone's
+        /// document's as its provider gives it (`chosen::shown_name`).
+        #[qinvokable]
+        fn chosen_name(self: &Sioul, url: &QString) -> QString;
+
         /// The window's first frame drawn: said with how long the start took, when timed (`crate::timing`).
         #[qinvokable]
         fn first_frame(self: &Sioul);
@@ -1951,8 +1956,9 @@ pub mod qobject {
         fn letters_add(self: Pin<&mut Sioul>, files: &QString) -> QString;
 
         /// Scans chosen elsewhere (a JSON array of file addresses) linked where
-        /// they are, never copied, to be read at a coming minute: what happened,
-        /// in a sentence (`letters::link`).
+        /// they are, never copied, to be read at a coming minute: JSON {said
+        /// (what happened, in a sentence), add (the addresses a phone cannot
+        /// link where they are, to offer as copies)} (`letters::link`).
         #[qinvokable]
         fn letters_link(self: Pin<&mut Sioul>, files: &QString) -> QString;
 
@@ -3857,9 +3863,10 @@ fn windows_path(decoded: &str) -> String {
     path.replace('/', "\\")
 }
 
-/// The file a `file://` address names (from a file dialog, a drop), its
+/// The file a `file://` address names (a drop, a folder), its
 /// percent-escapes undone; "file:///C:/…" is "C:\…" on Windows. Anything
-/// else is a path already.
+/// else is a path already. A file dialog's answer goes through `chosen`
+/// instead: a phone's is a `content://` address, which only Android reads.
 pub(crate) fn local_path(url: &str) -> PathBuf {
     let Some(rest) = url.strip_prefix("file://") else { return PathBuf::from(url) };
     // "file://localhost/…" is this computer too.
@@ -7022,6 +7029,10 @@ impl qobject::Sioul {
         crate::attachments::kept_closed(&name.to_string(), crate::attachments::phone())
     }
 
+    fn chosen_name(&self, url: &QString) -> QString {
+        QString::from(&crate::chosen::shown_name(&url.to_string()))
+    }
+
     fn first_frame(&self) {
         crate::timing("the first frame drawn");
     }
@@ -7214,9 +7225,9 @@ impl qobject::Sioul {
     }
 
     fn letters_link(mut self: Pin<&mut Self>, files: &QString) -> QString {
-        let said = crate::letters::link(&files.to_string());
+        let (said, add) = crate::letters::link(&files.to_string());
         self.as_mut().letters_changed();
-        QString::from(&said)
+        QString::from(&serde_json::json!({ "said": said, "add": add }).to_string())
     }
 
     fn bank(&self) -> QString {
